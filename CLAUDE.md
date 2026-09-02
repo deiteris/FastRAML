@@ -14,8 +14,14 @@ that area has already settled.
    dependencies, not by importance: the type system precedes endpoints, the merge
    precedes templates, validation comes last.
 
-**Current state: Phase 0 complete** (positions, errors, uris, loaders, yamlnode).
-Phase 1 is next: registry, fragments, `!include`, `uses:`.
+**Current state: Phase 0 complete** (positions, errors, uris, loaders, yamlnode),
+plus three leaf modules built ahead of the critical path: the RDT expression
+parser (Phase 3's), template variables and transforms (Phase 6's), and URI
+template parsing (Phase 5's).
+
+**Phase 1 is next.** Start at `docs/briefs/phase-1.md` — it states what exists,
+what to build, the decisions already settled, and the reference line ranges
+worth opening. A brief per phase lives in `docs/briefs/`.
 
 ## The gate
 

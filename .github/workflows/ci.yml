@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  FORCE_COLOR: '1'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras --dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy pyraml/
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows earns a place in the matrix: path and URI handling differ
+        # materially, and the sandbox uses different OS primitives there.
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --dev --python ${{ matrix.python }}
+      - name: Enable symlink creation (Windows)
+        # Without this the sandbox escape tests skip rather than run, and the
+        # symlink vectors are the ones worth proving.
+        if: runner.os == 'Windows'
+        run: |
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" `
+            /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+        shell: pwsh
+      - run: uv run pytest -q -rs
+
+  # The pure-Python YAML backend must stay working: libyaml is optional, and a
+  # behaviour difference between the two would only surface here.
+  test-pure-python-yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --dev
+      - name: Reinstall PyYAML without libyaml
+        run: uv pip install --force-reinstall --no-binary :all: pyyaml
+      - run: uv run python -c "import pyraml; assert pyraml.backend_name() == 'python', pyraml.backend_name()"
+      - run: uv run pytest -q
+
+  tck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the compliance kit
+        uses: actions/checkout@v4
+        with:
+          repository: acronis/go-raml
+          path: go-raml
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --dev
+      - name: Run the TCK against the ratchet
+        env:
+          PYRAML_TCK_DIR: go-raml/raml-tck
+        run: uv run pytest tests/tck -q

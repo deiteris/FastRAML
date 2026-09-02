@@ -1,0 +1,139 @@
+[project]
+name = "pyraml"
+version = "0.0.1"
+description = "A RAML 1.0 parser for Python"
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = [
+    # YAML composition. libyaml (CSafeLoader) is used automatically when the
+    # wheel provides it; the pure-Python composer is the fallback.
+    "pyyaml>=6.0",
+    # External JSON Schema types (RAML spec "Using XML and JSON Schemas").
+    # Landed in Phase 8; declared now so the lockfile is stable.
+    "jsonschema>=4.21",
+    "referencing>=0.35",
+    # The !singularize / !pluralize template actions.
+    "inflect>=7.0",
+]
+
+[project.optional-dependencies]
+# Linear-time regex engine for `pattern:` facets. See docs/01 deviation D3.
+re2 = ["google-re2"]
+
+[project.scripts]
+pyraml = "pyraml.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy",
+    "pytest",
+    "pytest-benchmark",
+    "hypothesis",
+    "ruff",
+    "types-pyyaml",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pyraml"]
+# PEP 561: without this in the wheel the annotations are invisible to a
+# consumer's type checker and every import from here reads as `Any`.
+artifacts = ["pyraml/py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "tck: RAML Test Compliance Kit fixtures (see docs/14-testing.md)",
+]
+
+# --- Tooling -----------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+# The design documents contain illustrative Python that is written for reading,
+# not for running. Formatting it expands grouped field lists one per line and
+# costs the documents their density.
+exclude = ["docs"]
+
+[tool.ruff.lint]
+select = [
+    "ALL", # include all the rules, including new ones
+]
+ignore = [
+    #### modules
+    "COM", # flake8-commas
+    "C90", # mccabe complexity
+    "DJ",  # django
+    "EXE", # flake8-executable
+    "T10", # debugger
+    "TID", # flake8-tidy-imports
+
+    #### specific rules
+    "D100",   # ignore missing docs
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D106",
+    "D107",
+    "D200",
+    "D203",
+    "D205",
+    # D212 and D213 are mutually exclusive; one of the pair must be ignored.
+    # This project puts the summary on the first line (D212's rule), which is
+    # the opposite of the sibling packages' choice.
+    "D213",
+    "D400",
+    "D401",
+    "D415",
+    "E402",   # false positives for local imports
+    "E501",   # line too long
+    "TRY003", # external messages in exceptions are too verbose
+    "TD002",
+    "TD003",
+    "FIX002", # too verbose descriptions of todos
+    "PTH123",
+    "ERA001",
+    "CPY001", # this project does not use per-file copyright headers
+    "ANN401", # *args: Any in context managers is standard Python
+]
+
+[tool.ruff.format]
+# Match flake8-quotes below; without this the formatter rewrites to double
+# quotes and then the linter objects to its output.
+quote-style = "single"
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+# Docstrings use """; single here fights the formatter (ruff warns Q001).
+multiline-quotes = "double"
+
+[tool.ruff.lint.per-file-ignores]
+# The loaders are the only module allowed to touch the filesystem directly, and
+# they need low-level os primitives that the security rules flag by default.
+"pyraml/loaders.py" = ["S603", "PTH", "PLR0911"]
+# Tests import lazily to keep a module optional, and assert on private state.
+"tests/*.py" = [
+    "S101", "ARG", "FBT", "PLR2004", "S311", "ANN", "T201", "SLF001", "BLE001",
+    "INP001", "S105", "S106", "PTH", "PLC0415", "D",
+]
+
+[tool.mypy]
+ignore_missing_imports = true
+disable_error_code = []
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[[tool.mypy.overrides]]
+# The parser core is held to a stricter standard than the tests.
+module = "pyraml.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_unreachable = true

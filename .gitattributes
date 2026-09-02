@@ -1,0 +1,8 @@
+# Store text as LF in the repository. The CI runs on Linux and Windows, and the
+# YAML layer has tests that assert CRLF handling, so line endings must be a
+# deliberate property of a fixture rather than an artefact of the checkout.
+* text=auto eol=lf
+
+# Fixtures and lockfiles are byte-exact.
+*.raml  text eol=lf
+uv.lock text eol=lf

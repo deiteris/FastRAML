@@ -173,7 +173,7 @@ In rough priority order:
 | Risk | Where | Mitigation |
 |------|-------|------------|
 | Provenance is subtly wrong; types resolve in the wrong namespace | Phase 6 | The three-way golden; a test that asserts the *location* of every shape produced by a template, not just that it resolved |
-| The two index walks (`collect_variables_index` / substitution) drift apart | Phase 6 | One shared walker; a fixture with nested sequences asserts they agree |
+| The two index walks (`collect_variables_index` / substitution) drift apart | Phase 6 | **Closed.** One shared walker (`iter_indexed`); a fixture with nested sequences asserts they agree. The index was also made injective — go-raml's `idx + i` rule is not, and the collision is reachable (docs/08 § 7.1) |
 | Parent-shape mutation during multiple inheritance | Phase 4 | Explicit test: two children inherit one parent, assert the parent is byte-identical after |
 | `RecursionError` on deep user input | Phases 4, 6, 8 | Depth guard + hypothesis property 10 |
 | Performance regressions creep in unnoticed | all | Benchmarks in CI from Phase 9, baselines committed |

@@ -252,3 +252,68 @@ class TestCollectRequiredVariables:
         root = parse('description: nothing to see here\n')
         _declared, index = collect_variables_index(root, LOCATION)
         assert collect_required_variables(root, 0, index) == set()
+
+
+class TestIndexUniqueness:
+    """The positional index must be injective.
+
+    go-raml's `idx + i` rule is not: a node and its first child share an index.
+    Substitution tolerates that (replacing an absent substring is a no-op), but
+    a required-variable scan does not — it reports variables from unrelated
+    branches. See `iter_indexed`.
+    """
+
+    def test_every_node_gets_a_distinct_index(self):
+        from pyraml.parser.templates import iter_indexed
+        from pyraml.yamlnode import compose
+
+        node = compose(
+            'post:\n'
+            '  body:\n'
+            '    application/json:\n'
+            '      example: <<TextAboutPost>>\n'
+            'get:\n'
+            '  responses:\n'
+            '    200:\n'
+            '      description: ok\n',
+            uri='file:///t.raml',
+        )
+        pairs_seen = list(iter_indexed(node))
+        indices = [i for i, _ in pairs_seen]
+        assert len(indices) == len(set(indices)), 'positional indices collided'
+        assert indices == list(range(len(indices))), 'indices are not a dense preorder sequence'
+
+    def test_a_sibling_branch_does_not_report_another_branch_variable(self):
+        # The concrete failure the collision caused: `get` has no variables, but
+        # under `idx + i` its `200` key shared an index with `<<TextAboutPost>>`.
+        from pyraml.parser.templates import collect_required_variables, collect_variables_index, iter_indexed
+        from pyraml.yamlnode import compose, pairs
+
+        node = compose(
+            'post:\n'
+            '  body:\n'
+            '    application/json:\n'
+            '      example: <<TextAboutPost>>\n'
+            'get:\n'
+            '  responses:\n'
+            '    200:\n'
+            '      description: ok\n',
+            uri='file:///t.raml',
+        )
+        _declared, index = collect_variables_index(node, 'file:///t.raml')
+        by_index = {id(n): i for i, n in iter_indexed(node)}
+        get_value = next(v for k, v in pairs(node) if k.value == 'get')
+        assert collect_required_variables(get_value, by_index[id(get_value)], index) == set()
+
+    def test_the_owning_branch_still_reports_its_variable(self):
+        from pyraml.parser.templates import collect_required_variables, collect_variables_index, iter_indexed
+        from pyraml.yamlnode import compose, pairs
+
+        node = compose(
+            'post:\n  body:\n    example: <<TextAboutPost>>\nget:\n  description: ok\n',
+            uri='file:///t.raml',
+        )
+        _declared, index = collect_variables_index(node, 'file:///t.raml')
+        by_index = {id(n): i for i, n in iter_indexed(node)}
+        post_value = next(v for k, v in pairs(node) if k.value == 'post')
+        assert collect_required_variables(post_value, by_index[id(post_value)], index) == {'TextAboutPost'}

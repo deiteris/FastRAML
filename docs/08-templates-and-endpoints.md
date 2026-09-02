@@ -375,15 +375,38 @@ A template body is scanned **once, at declaration time**, producing:
 - `declared_variables: set[str]`
 - `node_variable_index: dict[int, list[VariableInfo]]`
 
-The `int` key is a **positional index** from a deterministic walk: a node has
-index `idx`, its i-th child has index `idx + i`. Substitution repeats the same
-walk and looks up by index. This avoids storing a per-node map and avoids
-re-scanning strings at every application site — a resource type applied to 200
-endpoints scans its body once.
+The `int` key is a **positional index** from a deterministic walk. Substitution
+repeats the same walk and looks up by index. This avoids storing a per-node map
+and avoids re-scanning strings at every application site — a resource type
+applied to 200 endpoints scans its body once.
 
-The walk must be *exactly* the same in both functions; it is one helper used by
-both (`collect_variables_index` / `compile_source_provenance`), and a test asserts
-they agree on a fixture with nested sequences and mappings.
+The walk must be *exactly* the same in both functions, so it is one helper
+(`iter_indexed`) called by both `collect_variables_index` and
+`compile_source_provenance`. A test asserts they agree on a fixture with nested
+sequences and mappings.
+
+**The index is a unique preorder sequence**, and this is a deliberate divergence
+from the reference. go-raml computes it as "a node has index `idx`, its i-th
+child has `idx + i`" (`template.go`, `collectVariablesIndex`). That rule is not
+injective: a node and its own first child both receive `idx`. On a small trait
+body of 17 nodes it collapses onto 7 distinct indices.
+
+Substitution tolerates the collision, because replacing a substring that is not
+present is a no-op. Two other consumers do not:
+
+- `collect_required_variables` returns the variable *names* in a subtree, so a
+  collision makes it demand a parameter the template never used. This is how the
+  fault was found — a `200` response key under `get:` shared an index with
+  `<<TextAboutPost>>` under `post:`.
+- `compile_source_provenance` replaces a whole node when a **complex**
+  (non-scalar) parameter matches an indexed variable, and it does not first check
+  that the node's own text mentions that variable. A colliding node is therefore
+  overwritten by an unrelated parameter value.
+
+pyRAML assigns each node the next integer in a depth-first, left-to-right walk.
+Uniqueness costs nothing, and it removes the class of fault rather than relying
+on `str.replace` being a no-op. The walk is iterative, so template depth cannot
+reach CPython's recursion limit.
 
 `VariableInfo` is `(name, substring, actions)` where `substring` is the literal
 `<<name | !action>>` text, so substitution is `str.replace(substring, value, 1)`

@@ -88,8 +88,18 @@ class Union:
     members: tuple[RdtNode, ...]
 ```
 
-Errors carry the column of the offending token and are reported as
-`invalid type expression` with the exact position inside the file.
+Only `Primitive` and `Reference` carry a column. They are the only nodes a
+consumer positions: `TypeExprRef` is emitted for type names and built-in
+keywords, never for the `[]`, `?` or `|` operators, whose extent is implied by
+their operands. An `Array`, `Optional_` or `Union` is structural.
+
+Errors carry the column of the offending token, **relative to the expression
+string**, and the caller rebases it. The parser is memoised on expression text
+alone (§ 2.3) and so cannot know which file it is parsing; a diagnostic raised
+here therefore has no location. The caller — which does know — catches it, adds
+`base.type_expr.value_pos.column` to the column, and re-raises with the file URI.
+That is what lets one malformed expression repeated 500 times cost one parse and
+still produce 500 correctly positioned diagnostics.
 
 ### 2.3 The expression cache
 

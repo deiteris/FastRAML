@@ -230,14 +230,34 @@ def _parse_variable_content(content: str, location: str) -> tuple[str, list[str]
 def iter_indexed(node: Node, idx: int = 0) -> Iterator[tuple[int, Node]]:
     """Walk `node` and its descendants, pairing each with its positional index.
 
-    A node has index `idx`; its i-th child has index `idx + i`. This walk must
-    be *exactly* the same every time it runs: `collect_variables_index` and a
-    future substitution pass both call this one helper, so the two can never
-    drift apart (docs/08 section 7.1; docs/15 risk register).
+    Indices are a **unique** preorder sequence: the root gets `idx`, and every
+    subsequent node in depth-first, left-to-right order gets the next integer.
+
+    This walk must be *exactly* the same every time it runs, because
+    `collect_variables_index` and a later substitution pass look each other's
+    results up by index. Both call this one helper, so they cannot drift apart
+    (docs/08 section 7.1; docs/15 risk register).
+
+    go-raml computes the index as "a node has index `idx`, its i-th child has
+    `idx + i`" (`template.go`, `collectVariablesIndex`). That rule is not
+    injective — a node and its own first child both get `idx`, so a body of 17
+    nodes can collapse onto 7 indices. Substitution survives it because
+    replacing a substring that is absent is a no-op, but two consumers do not:
+    a required-variable scan reports variables from an unrelated branch, and a
+    complex (non-scalar) parameter can splice itself into a colliding node,
+    which go-raml grafts without first checking that the node's text mentions
+    the variable. A unique index removes the whole class of fault, at no cost.
+
+    Iterative rather than recursive, so template depth cannot reach CPython's
+    recursion limit (docs/12-performance.md section 14).
     """
-    yield idx, node
-    for i, child in enumerate(node.content):
-        yield from iter_indexed(child, idx + i)
+    stack = [node]
+    index = idx
+    while stack:
+        current = stack.pop()
+        yield index, current
+        index += 1
+        stack.extend(reversed(current.content))
 
 
 def collect_variables_index(

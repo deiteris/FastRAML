@@ -1,0 +1,4 @@
+{
+  "comment": "Expected TCK outcome per fixture. \"pass\" means the parser did what the fixture's name promises. Regenerate with pytest --update-ratchet.",
+  "outcomes": {}
+}

@@ -60,6 +60,20 @@ conversion of PyYAML's `ScalarNode`/`MappingNode`/`SequenceNode` into our `Node`
 `yaml.SafeLoader` otherwise, and replaces the implicit-resolver table — see
 § 2.2.
 
+`compose` takes **text**. Bytes become text in exactly one function,
+`decode_source`, which every entry point that reads a loader calls first:
+
+```python
+def decode_source(data: bytes) -> str:
+    return data.decode('utf-8-sig')
+```
+
+RAML is UTF-8 (spec § Markup Language), and `utf-8-sig` additionally strips a
+byte order mark, which would otherwise sit in front of `#%RAML` and defeat the
+fragment-header check. Anything else is a `UnicodeDecodeError` rather than a
+guess: sniffing an encoding would let the same bytes mean different things on
+different machines. One function is the only place that policy is written down.
+
 Notes on that conversion:
 
 - PyYAML's `MappingNode.value` is a list of `(key, value)` tuples; flatten it.
@@ -122,15 +136,19 @@ through both pyRAML and `ruamel.yaml` in YAML 1.2 mode, and fails on any
 disagreement in shape, tag or text. Ruamel is a dev dependency; it never ships,
 and nothing outside that test imports it.
 
-Three gaps remain, all in the scanner and all shared with go-yaml:
+Three gaps remain, all in the scanner, all recorded as deviations:
 
-- `[ ::vector ]` — a flow scalar beginning with a colon. Valid YAML 1.2, rejected
-  by PyYAML. Not a construct RAML uses.
-- U+2028/U+2029 inside a scalar. YAML 1.1 treats them as line breaks; 1.2 does
-  not. PyYAML rejects them.
-- `title:<TAB>value` parses under libyaml and is **rejected** by the pure-Python
-  scanner. This one is a divergence between our own two backends, not a version
-  question; see [12](12-performance.md) § 19.
+- U+2028/U+2029 in an unquoted scalar. PyYAML reads them as line breaks, splits
+  the line, and fails elsewhere; `compose` recognises the character on the
+  failure path and reports it by name and position instead. Quoted forms work.
+  [01](01-scope-and-coverage.md) D10.
+- `[ ::vector ]` — a flow scalar beginning with a colon. D10.
+- `title:<TAB>value` parses under libyaml and is rejected by the pure-Python
+  scanner. A divergence between our own two backends, not a version question.
+  D9, and [12](12-performance.md) § 19.
+
+Only the third is a correctness risk, because it makes the answer depend on the
+installation. It is why CI runs both backends.
 
 ### 2.3 Empty documents
 

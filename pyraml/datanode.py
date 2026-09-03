@@ -266,9 +266,11 @@ def parse_int(text: str) -> int:
     if prefix in ('0x', '0o', '0b'):
         return sign * int(cleaned, 0)
     if cleaned[:1] == '0' and len(cleaned) > 1:
-        # YAML 1.1 octal, which PyYAML's resolver still accepts as `0o17` only;
-        # a bare leading zero is decimal here, matching PyYAML's constructor.
-        return sign * int(cleaned.lstrip('0') or '0', 10)
+        # A bare leading zero is octal, as in PyYAML's own constructor and in
+        # go-yaml's `strconv.ParseInt(plain, 0, 64)`: `017` is 15, not 17.
+        # `08` has no octal reading, so `int` raises and `scalar_value` keeps the
+        # text — which is what go-yaml does with it too.
+        return sign * int(cleaned, 8)
     return sign * int(cleaned, 10)
 
 

@@ -20,7 +20,7 @@ from pyraml.loaders import build_loader
 from pyraml.parser.fragments import decode_fragment, identify_fragment
 from pyraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml
 from pyraml.uris import path_to_file_uri
-from pyraml.yamlnode import read_head
+from pyraml.yamlnode import decode_source, read_head
 
 if TYPE_CHECKING:
     from pyraml.loaders import ResourceLoader
@@ -73,7 +73,7 @@ def parse_from_path(path: str | os.PathLike[str], options: ParseOptions | None =
 
     uri = path_to_file_uri(entry)
     try:
-        text = raml.loader.load(uri).decode('utf-8-sig')
+        text = decode_source(raml.loader.load(uri))
     except OSError as err:
         raise RamlError.wrap('load resource', err, uri, kind=ErrorKind.READING) from err
     return _parse(raml, uri, text, options)

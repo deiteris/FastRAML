@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Final
 
 from pyraml.errors import ErrorKind, RamlError
 from pyraml.uris import path_to_file_uri, resolve_uri_ref
-from pyraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, compose, node_error
+from pyraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, compose, decode_source, node_error
 
 if TYPE_CHECKING:
     from pyraml.positions import Position
@@ -156,12 +156,13 @@ def _load(raml: Raml, node: Node, target: str, location: str) -> bytes:
 
 
 def _compose_include(node: Node, data: bytes, target: str) -> Node:
+    text = decode_source(data)
     extension = posixpath.splitext(strip_uri_suffix(node.value))[1].lower()
     if extension in _YAML_EXTENSIONS:
         # YAML 1.2 is a superset of JSON, so .json composes correctly too.
-        return compose(data, uri=target)
+        return compose(text, uri=target)
     # Spec section Resolving Includes: any other file is included as a scalar.
-    return Node(NodeKind.SCALAR, TAG_STR, data.decode('utf-8-sig'))
+    return Node(NodeKind.SCALAR, TAG_STR, text)
 
 
 def strip_uri_suffix(ref: str) -> str:

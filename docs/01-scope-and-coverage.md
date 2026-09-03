@@ -200,6 +200,35 @@ is slow and a heavy dependency for a grammar of nine productions. pyRAML uses a
 hand-written tokenizer plus recursive-descent parser with a memoised
 expression→AST cache. See [06](06-type-expressions.md).
 
+### D9 — A tab after a key's colon depends on the YAML backend
+
+`title:<TAB>My API` parses under libyaml and is rejected by PyYAML's pure-Python
+scanner. The tab is legal YAML; the pure scanner is wrong. Both scanners are
+PyYAML's and neither is ours to fix, so pyRAML accepts the divergence rather than
+pretending it does not exist.
+
+Consequences, and the reason this is a recorded deviation rather than a silent
+one: the backend is **not** purely a performance choice, `backend_name()` is
+therefore semantic as well as diagnostic, and CI runs the whole suite under both
+backends so the set of divergences cannot grow unnoticed
+([14](14-testing.md) § 6). A user who hits it can replace the tab with a space,
+or install libyaml.
+
+### D10 — Two YAML 1.2 characters and one construct are not accepted
+
+All three are PyYAML scanner limitations, shared with `gopkg.in/yaml.v3`, so
+pyRAML is no stricter than the reference implementation:
+
+- **U+2028 and U+2029.** YAML 1.1 reads them as line breaks; YAML 1.2 says they
+  are ordinary characters. In an unquoted scalar PyYAML splits the line and then
+  fails somewhere else, so `compose` detects the character on the failure path
+  and reports `unquoted line separator character` at its exact position with the
+  fix — quote the value. Quoted forms work today and are unaffected: the check
+  runs only after composition has already failed.
+- **A flow scalar beginning with a colon**, as in `[ ::vector ]`. Block sequences
+  and plain values accept `::vector`; only the flow form is rejected. Not a
+  construct RAML uses.
+
 ## 5. Dependency budget
 
 | Dependency | Purpose | Required? |

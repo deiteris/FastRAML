@@ -32,6 +32,7 @@ __all__ = [
     'NodeKind',
     'backend_name',
     'compose',
+    'decode_source',
     'duplicate_keys',
     'end_column',
     'end_line',
@@ -145,6 +146,11 @@ TAG_MERGE: Final = '!!merge'
 TAG_INCLUDE: Final = '!include'
 
 _STANDARD_TAG_PREFIX: Final = 'tag:yaml.org,2002:'
+
+#: YAML 1.1 reads these as line breaks; YAML 1.2 says they are ordinary
+#: characters. PyYAML implements 1.1, so an unquoted scalar containing one is
+#: split across lines and then fails somewhere else entirely. Deviation D10.
+_LINE_SEPARATORS: Final = ('\u2028', '\u2029')
 
 #: Maximum nesting depth accepted while converting a document. Guards CPython's
 #: recursion limit: a hostile or generated file must produce a positioned
@@ -407,8 +413,20 @@ def _empty_mapping() -> Node:
     return Node(NodeKind.MAPPING, TAG_MAP, '', [], 1, 1, 1, 1)
 
 
+def decode_source(data: bytes) -> str:
+    """Bytes from a loader as text.
+
+    RAML is UTF-8 (spec section Markup Language). `utf-8-sig` additionally
+    strips a byte order mark, which would otherwise sit in front of `#%RAML`
+    and defeat the fragment-header check. This is the only place the parser
+    decides how bytes become text, so it is the only place to change if that
+    policy ever widens.
+    """
+    return data.decode('utf-8-sig')
+
+
 def compose(
-    source: str | bytes,
+    source: str,
     *,
     uri: str,
     max_depth: int = MAX_DEPTH,
@@ -424,21 +442,53 @@ def compose(
     Raises `RamlError` for a YAML syntax error, for nesting beyond `max_depth`,
     for alias expansion beyond `max_nodes`, and for a recursive anchor.
     """
-    # utf-8-sig strips a byte order mark, which would otherwise sit in front of
-    # `#%RAML` and defeat the fragment-header check.
-    text = source.decode('utf-8-sig') if isinstance(source, bytes) else source
-
+    text = source
     try:
         root = yaml.compose(text, Loader=_RamlLoader)
     except yaml.MarkedYAMLError as err:
-        raise _syntax_error(err, uri) from err
+        raise (_line_separator_error(text, uri) or _syntax_error(err, uri)) from err
     except yaml.YAMLError as err:
-        raise RamlError.new(str(err), uri, kind=ErrorKind.PARSING) from err
+        raise (_line_separator_error(text, uri) or RamlError.new(str(err), uri, kind=ErrorKind.PARSING)) from err
 
     if root is None:
         return _empty_mapping()
 
     return _Converter(uri, max_depth, max_nodes).convert(root)
+
+
+def _line_separator_error(text: str, uri: str) -> RamlError | None:
+    """The diagnostic for a U+2028/U+2029 that the scanner read as a line break.
+
+    Consulted only after composition has already failed, and reported only when
+    the separators are demonstrably the cause: they are replaced with spaces and
+    the document is composed again. If it now succeeds they were the obstacle;
+    if it still fails the real error is elsewhere and the caller's own
+    diagnostic is the better one. Without that second attempt this would hijack
+    every failure in a file that merely *contains* a separator, including the
+    quoted forms, which parse correctly.
+
+    Substituting one space per character keeps every offset, so the position
+    reported below is the character's real one. Deviation D10.
+    """
+    if not any(separator in text for separator in _LINE_SEPARATORS):
+        return None
+
+    neutral = text
+    for separator in _LINE_SEPARATORS:
+        neutral = neutral.replace(separator, ' ')
+    try:
+        yaml.compose(neutral, Loader=_RamlLoader)
+    except yaml.YAMLError:
+        return None
+
+    index = min(found for found in (text.find(s) for s in _LINE_SEPARATORS) if found >= 0)
+    return RamlError.new(
+        'unquoted line separator character',
+        uri,
+        Position(text.count('\n', 0, index) + 1, index - (text.rfind('\n', 0, index) + 1) + 1),
+        kind=ErrorKind.PARSING,
+        info={'character': f'U+{ord(text[index]):04X}', 'hint': 'quote the value or remove the character'},
+    )
 
 
 def _syntax_error(err: yaml.MarkedYAMLError, uri: str) -> RamlError:

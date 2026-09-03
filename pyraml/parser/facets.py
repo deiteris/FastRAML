@@ -70,10 +70,18 @@ def scalar_bool(node: Node, location: str) -> bool:
 
 
 def scalar_int(node: Node, location: str) -> int:
-    """A scalar node as an integer. Anything but `!!int` is an error."""
+    """A scalar node as an integer. Anything but `!!int` is an error.
+
+    The tag can resolve where the text will not convert — `08` is tagged `!!int`
+    by the YAML 1.2 table but has no octal reading — so the conversion is
+    guarded rather than allowed to escape as a `ValueError`.
+    """
     if node.kind is not NodeKind.SCALAR or node.tag != TAG_INT:
         raise node_error('expected an integer value', location, node)
-    return parse_int(node.value)
+    try:
+        return parse_int(node.value)
+    except ValueError as err:
+        raise node_error('expected an integer value', location, node, info={'value': node.value}) from err
 
 
 def scalar_fraction(node: Node, location: str) -> Fraction:
@@ -85,12 +93,15 @@ def scalar_fraction(node: Node, location: str) -> Fraction:
     """
     if node.kind is not NodeKind.SCALAR or node.tag not in (TAG_INT, TAG_FLOAT):
         raise node_error('expected a number value', location, node)
-    if node.tag == TAG_INT:
-        return Fraction(parse_int(node.value))
     text = node.value.replace('_', '')
     if text.lstrip('+-').lower() in ('.inf', '.nan'):
         raise node_error('expected a finite number value', location, node)
-    return Fraction(text)
+    try:
+        if node.tag == TAG_INT:
+            return Fraction(parse_int(node.value))
+        return Fraction(text)
+    except (ValueError, ZeroDivisionError) as err:
+        raise node_error('expected a number value', location, node, info={'value': node.value}) from err
 
 
 def compile_pattern(raml: Raml, text: str, node: Node, location: str) -> re.Pattern[str]:

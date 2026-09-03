@@ -22,6 +22,7 @@ from pyraml.yamlnode import (
     NodeKind,
     backend_name,
     compose,
+    decode_source,
     duplicate_keys,
     end_column,
     end_line,
@@ -260,16 +261,78 @@ class TestLineEndings:
 
 
 class TestEncoding:
+    """`decode_source` is the single place where bytes become text.
+
+    `compose` takes `str`. Every entry point that reads a loader passes through
+    here first, so the encoding policy lives in one function instead of being
+    repeated at each of them.
+    """
+
     def test_bytes_are_decoded_as_utf8(self):
-        root = compose('title: café\n'.encode(), uri=URI)
-        _, value = next(pairs(root))
-        assert value.value == 'café'
+        assert decode_source('title: café\n'.encode()) == 'title: café\n'
 
     def test_a_byte_order_mark_is_stripped(self):
         # A BOM in front of `#%RAML` would defeat the fragment-header check.
         source = '\ufeff#%RAML 1.0\ntitle: X\n'.encode()
-        assert read_head(compose(source, uri=URI).content[0].value) == 'title'
+        assert read_head(decode_source(source)) == '#%RAML 1.0'
+
+    def test_non_utf8_input_is_rejected_rather_than_guessed(self):
+        # RAML is UTF-8 (spec section Markup Language). Sniffing an encoding
+        # would make the same bytes mean different things on different machines.
+        with pytest.raises(UnicodeDecodeError):
+            decode_source('title: café\n'.encode('utf-16'))
 
 
 def test_backend_is_reported():
     assert backend_name() in {'libyaml', 'python'}
+
+
+class TestLineSeparators:
+    """U+2028 and U+2029 (docs/01 section 4, D10).
+
+    YAML 1.1 reads them as line breaks and YAML 1.2 does not, so PyYAML silently
+    splits an unquoted scalar that contains one and then fails somewhere else.
+    The character cannot be supported, but the diagnostic can point at it.
+    """
+
+    SEPARATOR = chr(0x2028)
+    PARAGRAPH = chr(0x2029)
+
+    @pytest.mark.parametrize(
+        ('label', 'template'),
+        [('plain', 'a: x{sep}y'), ('block literal', 'a: |\n  x{sep}y'), ('key', 'x{sep}y: 1')],
+    )
+    def test_an_unquoted_separator_is_named_and_located(self, label: str, template: str):
+        with pytest.raises(RamlError) as caught:
+            compose(template.format(sep=self.SEPARATOR), uri='file:///a.raml')
+        trace = next(iter(caught.value.chains()))[-1]
+        assert trace.message == 'unquoted line separator character'
+        assert trace.info['character'] == 'U+2028'
+        assert trace.position.line == (2 if label == 'block literal' else 1)
+
+    def test_the_paragraph_separator_is_named_too(self):
+        with pytest.raises(RamlError) as caught:
+            compose(f'a: x{self.PARAGRAPH}y', uri='file:///a.raml')
+        assert next(iter(caught.value.chains()))[-1].info['character'] == 'U+2029'
+
+    @pytest.mark.parametrize('quote', ["'", '"'])
+    def test_a_quoted_separator_parses_and_round_trips(self, quote: str):
+        # PyYAML handles these correctly inside quotes, so the diagnostic must
+        # not fire: it is consulted only after composition has already failed.
+        node = compose(f'a: {quote}x{self.SEPARATOR}y{quote}', uri='file:///a.raml')
+        assert node.content[1].value == f'x{self.SEPARATOR}y'
+
+    def test_a_quoted_separator_does_not_hijack_an_unrelated_error(self):
+        # The check is only allowed to fire when the separators are the cause.
+        # Here one sits harmlessly inside quotes and the real fault is a flow
+        # sequence three lines later; that is what must be reported.
+        source = f"a: 'x{self.SEPARATOR}y'\nb: [1,"
+        with pytest.raises(RamlError) as caught:
+            compose(source, uri='file:///a.raml')
+        trace = next(iter(caught.value.chains()))[-1]
+        assert trace.message != 'unquoted line separator character'
+
+    def test_an_ordinary_syntax_error_is_unaffected(self):
+        with pytest.raises(RamlError) as caught:
+            compose('a: [1,', uri='file:///a.raml')
+        assert next(iter(caught.value.chains()))[-1].message != 'unquoted line separator character'

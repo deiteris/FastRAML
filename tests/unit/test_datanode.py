@@ -33,6 +33,15 @@ class TestScalarConversion:
             ('v: 42', 42),
             ('v: -7', -7),
             ('v: 0x1f', 31),
+            ('v: 0o17', 15),
+            # A bare leading zero is octal, as in PyYAML's constructor and in
+            # go-yaml's ParseInt base 0: `017` is 15, not 17.
+            ('v: 017', 15),
+            ('v: -017', -15),
+            # ...and a leading zero with no octal reading keeps its text, which
+            # is also what go-yaml does with it.
+            ('v: 08', '08'),
+            ('v: 09', '09'),
             ('v: 1_000', 1000),
             ('v: 1.5', 1.5),
             ('v: true', True),
@@ -43,7 +52,6 @@ class TestScalarConversion:
             ('v: yes', 'yes'),
             ('v: on', 'on'),
             ('v: 12:30:00', '12:30:00'),
-            ('v: 0o17', 15),
             ('v:', None),
             # A timestamp keeps its literal text: RAML wants the written form
             # of a date-only example, and the type layer parses it.

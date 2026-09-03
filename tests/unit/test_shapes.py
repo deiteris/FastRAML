@@ -5,10 +5,12 @@ See docs/05-type-model.md section 1.
 
 from __future__ import annotations
 
+import re
 from typing import ClassVar
 
 import pytest
 
+from pyraml import RamlError
 from pyraml.registry import Raml
 from pyraml.types.base import (
     ONE_SHAPE,
@@ -19,6 +21,16 @@ from pyraml.types.base import (
     Property,
     declaration_facets,
 )
+from pyraml.types.xml import decode_xml_serialization
+from pyraml.yamlnode import Node, compose, pairs
+
+LOCATION = 'file:///a.raml'
+
+
+def value_of(text: str) -> Node:
+    """The value node of a one-key document."""
+    _key, value = next(iter(pairs(compose(text, uri=LOCATION))))
+    return value
 
 
 def make_base(raml: Raml | None = None, **kwargs) -> BaseShape:
@@ -81,7 +93,24 @@ class TestPropertyRecords:
         assert Property(name='age', base=base, required=True).base is base
 
     def test_a_pattern_property_reprs_its_regex(self):
-        import re
-
         prop = PatternProperty(pattern=re.compile('^a'), base=make_base())
         assert repr(prop) == "PatternProperty('^a')"
+
+
+class TestXmlSerialization:
+    def test_all_five_keys_are_read(self):
+        text = 'xml:\n  attribute: true\n  wrapped: false\n  name: n\n  namespace: ns\n  prefix: p\n'
+        xml = decode_xml_serialization(Raml(), value_of(text), LOCATION)
+        assert (xml.attribute.value, xml.wrapped.value) == (True, False)
+        assert (xml.name.value, xml.namespace.value, xml.prefix.value) == ('n', 'ns', 'p')
+
+    def test_an_unknown_key_is_an_error_so_a_typo_is_caught(self):
+        with pytest.raises(RamlError) as caught:
+            decode_xml_serialization(Raml(), value_of('xml:\n  wraped: true\n'), LOCATION)
+        trace = next(iter(caught.value.chains()))[-1]
+        assert (trace.message, trace.info) == ('unknown xml property', {'property': 'wraped'})
+
+    def test_a_non_mapping_is_rejected(self):
+        with pytest.raises(RamlError) as caught:
+            decode_xml_serialization(Raml(), value_of('xml: true\n'), LOCATION)
+        assert next(iter(caught.value.chains()))[-1].message == 'xml must be a mapping'

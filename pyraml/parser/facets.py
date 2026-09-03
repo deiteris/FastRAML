@@ -27,7 +27,7 @@ from pyraml.parser.annotations import is_annotation_key, unmarshal_domain_extens
 from pyraml.parser.includes import IncludeInfo, resolve_include
 from pyraml.positions import UNKNOWN
 from pyraml.types.base import ScalarFacet
-from pyraml.yamlnode import TAG_NULL, Node, NodeKind, node_error, pairs
+from pyraml.yamlnode import TAG_BOOL, TAG_NULL, Node, NodeKind, node_error, pairs
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -36,15 +36,28 @@ if TYPE_CHECKING:
     from pyraml.registry import Raml
 
 __all__ = [
+    'make_bool_facet',
     'make_scalar_facet',
     'make_seq_facet',
     'make_string_facet',
     'resolve_annotated_scalar',
+    'scalar_bool',
     'scalar_str',
 ]
 
 #: The key that carries the value in the annotated-scalar form.
 FACET_VALUE: Final = 'value'
+
+#: Everything YAML 1.1 spells as true. Composition has already resolved the tag,
+#: so reaching here with `!!bool` means one of these or its false counterpart.
+_TRUE_SCALARS: Final = frozenset({'true', 'yes', 'on', 'y'})
+
+
+def scalar_bool(node: Node, location: str) -> bool:
+    """A scalar node as a boolean. Anything but `!!bool` is an error."""
+    if node.kind is not NodeKind.SCALAR or node.tag != TAG_BOOL:
+        raise node_error('expected a boolean value', location, node)
+    return node.value.lower() in _TRUE_SCALARS
 
 
 def scalar_str(node: Node, location: str) -> str:
@@ -114,6 +127,11 @@ def make_scalar_facet[T](
 def make_string_facet(raml: Raml, key_node: Node | None, value_node: Node, location: str) -> ScalarFacet[str]:
     """`make_scalar_facet` for the common case of a string-valued facet."""
     return make_scalar_facet(raml, key_node, value_node, location, scalar_str)
+
+
+def make_bool_facet(raml: Raml, key_node: Node | None, value_node: Node, location: str) -> ScalarFacet[bool]:
+    """`make_scalar_facet` for a boolean facet: `required`, `wrapped`, `strict`."""
+    return make_scalar_facet(raml, key_node, value_node, location, scalar_bool)
 
 
 def make_seq_facet[T](raml: Raml, value_node: Node, location: str, convert: Callable[[Node, str], T]) -> ScalarFacet[T]:

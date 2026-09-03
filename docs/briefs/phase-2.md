@@ -175,10 +175,12 @@ register it in `fragment_types` (or `fragment_annotations`) **and** append it to
 8. **`discriminator` is checked in P10, not at decode time** — the property it
    names may be inherited. The one exception is a discriminator on a union, which
    can never become valid and is rejected immediately.
-9. **`types/` imports exactly one thing from `parser/`**: `make_scalar_facet`
-   from `parser/facets.py`. Settled when `ScalarFacet` moved here; doc 02 § 2
-   states the reasoning. Do not widen it — everything else a shape needs from
-   YAML arrives as a `Node`.
+9. **`types/` imports from exactly two `parser/` modules**: `parser/facets.py`
+   for the scalar-facet builders, and `parser/annotations.py` for the two
+   functions that build a `DomainExtension` — annotations may be written on a
+   declaration and inside `example:`, so the type layer meets them. Doc 02 § 2
+   states the reasoning. Do not widen it further: everything else a shape needs
+   from YAML arrives as a `Node` or a `DataNode`.
 10. **Every shape is appended to `raml.shapes`, and to `unresolved_shapes` iff
     its kind is `UnknownShape`.** That is invariant I4, and P7 depends on it.
 11. **`types/` points one way: `shape.py` → `scalars.py`/`complex_.py` →

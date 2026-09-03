@@ -124,18 +124,25 @@ pyraml/
 
 Rules on the layout:
 
-- `types/` imports from `parser/` in exactly one place: `parser/facets.py`, for
-  `make_scalar_facet`. Everything else a shape needs from YAML arrives as a
-  `Node` (from `yamlnode.py`, which both layers may import).
+- `types/` imports from `parser/` in exactly two places: `parser/facets.py`, for
+  the scalar-facet builders, and `parser/annotations.py`, for the two functions
+  that turn an `(annotation)` key into a `DomainExtension`. Everything else a
+  shape needs from YAML arrives as a `Node` (from `yamlnode.py`, which both
+  layers may import) or as a `DataNode` (from `datanode.py`, likewise).
 
-  That one edge is deliberate. `ScalarFacet` is a type-model class and lives in
+  Both edges are deliberate. `ScalarFacet` is a type-model class and lives in
   `types/base.py`, but *building* one needs the parser twice over: an `!include`
   at a facet position has to be read through the include cache, and the
   annotated-scalar form has to turn `(annotation)` keys into `DomainExtension`s.
   Every one of the fourteen shapes decodes scalar facets, so the alternative —
   threading a builder callback through every `decode_facets` — would cost more
-  than the rule protects. The edge cannot cycle: `parser/facets.py` imports
-  `types/base.py` and nothing else from `types/`.
+  than the rule protects. Annotations are the same story one level up: they may
+  be written on a declaration, and inside `example:`, so the type layer has to
+  build them where it finds them.
+
+  Neither edge can cycle: `parser/facets.py` imports `types/base.py` and nothing
+  else from `types/`, and `parser/annotations.py` imports nothing from `types/`
+  at runtime at all.
 
   References in the other direction are free, because they are annotations only:
   `BaseShape` names `DomainExtension`, `DataNode`, `DataTypeFragment` and

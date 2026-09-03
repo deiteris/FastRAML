@@ -15,6 +15,7 @@ stays acyclic without runtime indirection. See docs/02-architecture.md section 3
 from __future__ import annotations
 
 import itertools
+from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Literal
 
@@ -139,7 +140,9 @@ class Raml:
         self.domain_extensions: list[DomainExtension] = []
         self.include_refs: dict[str, list[IncludeRef]] = {}
 
-        self.unresolved_shapes: list[BaseShape] = []
+        # A worklist, drained from the left in P7 while resolution appends to
+        # the right; a deque keeps both ends O(1).
+        self.unresolved_shapes: deque[BaseShape] = deque()
 
         self.global_protocols: list[str] = []
         self.global_media_types: list[str] = []

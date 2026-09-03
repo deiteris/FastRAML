@@ -269,6 +269,89 @@ class BaseShape:
     def __repr__(self) -> str:
         return f'BaseShape(id={self.id}, name={self.name!r}, type={self.type!r})'
 
+    # -- copying (docs/07-resolution-and-inheritance.md section 5) ------------
+
+    def clone(self, memo: dict[int, BaseShape]) -> BaseShape:
+        """A deep, **structure-preserving** copy.
+
+        `memo` is keyed on `BaseShape.id`, so a diamond stays a diamond and a
+        cycle stays a cycle — this model has both, and a copy that turned a
+        cycle into infinite recursion would be a hang rather than a bug report.
+        Pass the same `memo` across calls to keep several shapes' shared parts
+        shared; pass a fresh one, via `clone_detached`, to share nothing.
+
+        The clone keeps the original's `id`. That is what lets `memo` be keyed
+        on it, and a caller who needs a distinct identity — union member
+        merging is the one that does — assigns a fresh one from
+        `Raml.next_id()`.
+
+        `copy.deepcopy` is not an option: it would copy the `Raml`
+        back-pointer, the compiled `re.Pattern` objects and the YAML nodes.
+        """
+        existing = memo.get(self.id)
+        if existing is not None:
+            return existing
+
+        clone = BaseShape(
+            id=self.id,
+            raml=self._raml,
+            location=self.location,
+            name=self.name,
+            key_pos=self.key_pos,
+            value_pos=self.value_pos,
+            anchor=self.anchor,
+            is_annotation_type=self.is_annotation_type,
+        )
+        # Registered before the children are copied, so a cycle back to this
+        # shape finds the in-progress clone instead of recursing forever.
+        memo[self.id] = clone
+
+        clone.type = self.type
+        # Facets are never mutated in place, only rebound, so they are shared.
+        clone.display_name = self.display_name
+        clone.description = self.description
+        clone.default = self.default
+        clone.required = self.required
+        clone.example = self.example
+        clone.examples = self.examples
+        clone.enum = self.enum
+        clone.xml = self.xml
+        clone.type_expr = self.type_expr
+        clone.type_expr_refs = list(self.type_expr_refs)
+        clone._unwrapped = self._unwrapped
+
+        # The containers are what unwrap mutates, so each gets its own.
+        clone.custom_facets = dict(self.custom_facets)
+        clone.annotations = dict(self.annotations)
+        clone.custom_facet_defs = {
+            name: Property(name=prop.name, base=prop.base.clone(memo), required=prop.required)
+            for name, prop in self.custom_facet_defs.items()
+        }
+        clone.inherits = [parent.clone(memo) for parent in self.inherits]
+        clone.alias = self.alias.clone(memo) if self.alias is not None else None
+
+        if self.link is not None and self.link.shape is not None:
+            # A link is rewritten to inheritance at the start of unwrap
+            # (docs/07 section 2), and unwrap is the only thing that reads one.
+            # Doing it here rather than copying the fragment keeps a file to one
+            # `DataTypeFragment` per parse, which invariant I3 depends on.
+            clone.link = None
+            clone.inherits = [self.link.shape.clone(memo)]
+        else:
+            clone.link = self.link
+
+        clone.shape = self.shape.clone(clone, memo) if self.shape is not None else None
+        return clone
+
+    def clone_detached(self) -> BaseShape:
+        """`clone` with a fresh memo: parents, links and aliases copied too.
+
+        The result shares nothing with the original, so mutating it — which is
+        what unwrap does — cannot reach the declared model. Costs a full copy
+        per call, which is why the default is `clone` with a shared memo.
+        """
+        return self.clone({})
+
 
 @dataclass(slots=True, eq=False)
 class Property:
@@ -336,6 +419,25 @@ def declaration_facets(kind: type[Shape]) -> Mapping[str, DeclarationFacet]:
     return getattr(kind, 'DECLARATION_FACETS', _NO_DECLARATION_FACETS)
 
 
+_SLOT_CACHE: dict[type, tuple[str, ...]] = {}
+
+
+def copyable_slots(kind: type) -> tuple[str, ...]:
+    """Every field a kind holds, `base` excepted, nearest class first.
+
+    `__slots__` is per class, so the whole MRO has to be walked; the result is
+    cached because `clone` runs once per shape per validated type.
+    """
+    cached = _SLOT_CACHE.get(kind)
+    if cached is None:
+        names: list[str] = []
+        for klass in kind.__mro__:
+            names += [name for name in getattr(klass, '__slots__', ()) if name != 'base']
+        cached = tuple(names)
+        _SLOT_CACHE[kind] = cached
+    return cached
+
+
 class KindBase:
     """What every kind object shares: the back-pointer, and the unwritten half.
 
@@ -379,8 +481,22 @@ class KindBase:
     def validate(self, value: Any, path: str) -> None:
         raise NotImplementedError('Phase 8: docs/10-validation.md section 3')
 
-    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> Shape:
-        raise NotImplementedError('Phase 4: docs/07-resolution-and-inheritance.md section 5')
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> Shape:  # noqa: ARG002 - the four kinds that override this need `memo`
+        """Copy this kind onto an already-cloned `base` (docs/07 section 5).
+
+        Every facet a kind holds is a `ScalarFacet` or a list of them, and
+        nothing ever mutates one in place — `inherit` only ever rebinds the
+        field — so they are shared rather than copied. The three kinds that hold
+        *declarations* override this and clone those through `memo`.
+
+        Driven off `__slots__` rather than written out seventeen times. That is
+        sound here only because `__slots__` on every model class is a project
+        rule, not a convention (CLAUDE.md), so the field list cannot go stale.
+        """
+        clone = type(self)(base)
+        for name in copyable_slots(type(self)):
+            setattr(clone, name, getattr(self, name))
+        return clone
 
     def __repr__(self) -> str:
         return f'{type(self).__name__}(id={self.base.id})'

@@ -284,12 +284,51 @@ performance bug, and picking a too-shallow one is a correctness bug.
 
 | Method | Copies | Use |
 |--------|--------|-----|
-| `clone_shallow()` | the base and its own dicts; children shared | rarely — swapping a shape's kind |
 | `clone(memo)` | deep, but **structure-preserving**: `memo: dict[int, BaseShape]` keyed by shape id, so a diamond stays a diamond and a cycle stays a cycle | the default deep copy |
 | `clone_detached()` | `clone({})` — a fresh memo, so parents, links and aliases are copied too and the result shares nothing | union member merging; validating without mutating the declared model |
 
 `copy.deepcopy` is never used: it would copy the `Raml` back-pointer, the compiled
-regexes and the YAML nodes.
+regexes and the YAML nodes. A test asserts that no module in `pyraml/` imports
+the `copy` module at all.
+
+**There is no `clone_shallow`.** Earlier drafts of this table listed one, for
+"swapping a shape's kind" — but P7 swaps a kind by building a fresh kind object
+on the same base (`attach_kind`), so it never needs a copy, and no other caller
+appeared. go-raml defines `CloneShallow` and calls it from nowhere outside its
+own tests. Seventeen `clone_shallow` methods for an operation with no caller is
+cost without a reader; add it when something needs it.
+
+### 5.1 What a clone shares, and why
+
+Only three things are copied: the `BaseShape`, the kind object, and the
+containers unwrap mutates (`custom_facets`, `annotations`, `custom_facet_defs`,
+`inherits`, and the property/items/anyOf children).
+
+Every facet is shared by reference. A `ScalarFacet` is never mutated in place —
+`inherit` only ever rebinds the field that holds one — so copying them would be
+pure cost, and the compiled `re.Pattern` on a pattern property is immutable.
+
+Per-kind `clone` is written out only for the four kinds that hold something a
+copy must follow: `ObjectShape`, `ArrayShape`, `UnionShape` and
+`RecursiveShape` (whose `head` is a back-edge, and so goes through the memo —
+cloning it afresh would unroll the very cycle the marker exists to close). The
+other thirteen use one implementation on `KindBase` that copies field by field
+off `__slots__`. That is sound only because `__slots__` on every model class is
+a project rule rather than a convention, so the field list cannot go stale.
+
+### 5.2 Identity, and the one thing a clone rewrites
+
+A clone **keeps the original's `id`**, which is what lets `memo` be keyed on it.
+A caller needing a distinct identity assigns a fresh one from `Raml.next_id()`;
+union member merging (§ 3.4) is the one that does. So `id` is unique per parse
+among shapes the *parser* built, not among all shapes that exist.
+
+A clone of a shape with a `link` comes out with `inherits` instead, exactly as
+§ 2's rewrite would produce. go-raml instead shallow-copies the
+`DataTypeFragment` so the copy can hold a cloned shape; here that would mean two
+fragment objects for one file, which invariant I3 rules out. Since unwrap is the
+only reader of `link` and its first act is this rewrite, doing it at copy time
+costs nothing and keeps the fragment cache honest.
 
 Validation (P10) uses this discipline: for each declared shape, if it is not
 already unwrapped, `clone_detached()` then unwrap the copy, caching the result by

@@ -14,11 +14,11 @@ for P7 (docs/07 section 1).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from pyraml.datanode import make_data_node
 from pyraml.parser.facets import make_bool_facet, make_int_facet, make_string_facet
-from pyraml.types.base import ONE_SHAPE, PROPERTIES, SHAPE_LIST, KindBase
+from pyraml.types.base import ONE_SHAPE, PROPERTIES, SHAPE_LIST, KindBase, PatternProperty, Property
 from pyraml.yamlnode import node_error
 
 if TYPE_CHECKING:
@@ -28,8 +28,6 @@ if TYPE_CHECKING:
     from pyraml.types.base import (
         BaseShape,
         DeclarationFacet,
-        PatternProperty,
-        Property,
         ScalarFacet,
     )
     from pyraml.yamlnode import Node
@@ -52,6 +50,25 @@ class ComplexKind(KindBase):
 
     def is_scalar(self) -> bool:
         return False
+
+
+def _clone_properties(properties: dict[str, Property] | None, memo: dict[int, BaseShape]) -> dict[str, Property] | None:
+    if properties is None:
+        return None
+    return {
+        name: Property(name=prop.name, base=prop.base.clone(memo), required=prop.required)
+        for name, prop in properties.items()
+    }
+
+
+def _clone_pattern_properties(
+    properties: dict[str, PatternProperty] | None, memo: dict[int, BaseShape]
+) -> dict[str, PatternProperty] | None:
+    if properties is None:
+        return None
+    # The compiled pattern is shared: `re.Pattern` is immutable, and it is one
+    # of the three things `copy.deepcopy` would have copied pointlessly.
+    return {key: PatternProperty(pattern=prop.pattern, base=prop.base.clone(memo)) for key, prop in properties.items()}
 
 
 class ObjectShape(ComplexKind):
@@ -111,6 +128,12 @@ class ObjectShape(ComplexKind):
                     rest += (key, value)
         super().decode_facets(rest)
 
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> ObjectShape:
+        clone = cast('ObjectShape', super().clone(base, memo))
+        clone.properties = _clone_properties(self.properties, memo)
+        clone.pattern_properties = _clone_pattern_properties(self.pattern_properties, memo)
+        return clone
+
 
 class ArrayShape(ComplexKind):
     """`array`. `items` is one declaration, built before construction."""
@@ -142,6 +165,11 @@ class ArrayShape(ComplexKind):
                     rest += (key, value)
         super().decode_facets(rest)
 
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> ArrayShape:
+        clone = cast('ArrayShape', super().clone(base, memo))
+        clone.items = self.items.clone(memo) if self.items is not None else None
+        return clone
+
 
 class UnionShape(ComplexKind):
     """`union`. Its members arrive built, one declaration each."""
@@ -169,6 +197,11 @@ class UnionShape(ComplexKind):
                 )
             rest += (key, value)
         super().decode_facets(rest)
+
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> UnionShape:
+        clone = cast('UnionShape', super().clone(base, memo))
+        clone.any_of = None if self.any_of is None else [member.clone(memo) for member in self.any_of]
+        return clone
 
 
 class JsonShape(ComplexKind):
@@ -238,3 +271,9 @@ class RecursiveShape(ComplexKind):
     def __init__(self, base: BaseShape, head: BaseShape) -> None:
         super().__init__(base)
         self.head = head
+
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> RecursiveShape:
+        # `head` is a back-edge into the same graph, so it goes through `memo`:
+        # cloning it afresh would unroll the cycle the marker exists to close.
+        # The generic path cannot be used at all — `__init__` requires a head.
+        return RecursiveShape(base, self.head.clone(memo))

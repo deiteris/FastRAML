@@ -17,12 +17,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar, cast
 
 from pyraml.datanode import make_data_node
+from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.parser.facets import make_bool_facet, make_int_facet, make_string_facet
 from pyraml.types.base import ONE_SHAPE, PROPERTIES, SHAPE_LIST, KindBase, PatternProperty, Property
+from pyraml.types.values import failure, index_path, key_path, type_name, unique_items
 from pyraml.yamlnode import node_error
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from typing import Any
 
     from pyraml.datanode import DataNode
     from pyraml.types.base import (
@@ -50,6 +53,25 @@ class ComplexKind(KindBase):
 
     def is_scalar(self) -> bool:
         return False
+
+    def wrong_type(self, value: Any, path: str, expected: str) -> RamlError:
+        return failure(
+            'invalid type',
+            self.base.location,
+            self.base.value_pos,
+            info={'path': path, 'expected': expected, 'found': type_name(value)},
+        )
+
+
+def _count_bounds(
+    base: BaseShape,
+    low: ScalarFacet[int] | None,
+    high: ScalarFacet[int] | None,
+    message: str,
+) -> None:
+    """`minItems`/`maxItems` and `minProperties`/`maxProperties` (docs/10 § 2)."""
+    if low is not None and high is not None and low.value > high.value:
+        raise failure(message, base.location, low.key_pos, info={'min': low.value, 'max': high.value})
 
 
 def _clone_properties(properties: dict[str, Property] | None, memo: dict[int, BaseShape]) -> dict[str, Property] | None:
@@ -134,6 +156,142 @@ class ObjectShape(ComplexKind):
         clone.pattern_properties = _clone_pattern_properties(self.pattern_properties, memo)
         return clone
 
+    def check(self) -> None:
+        accumulator = Accumulator()
+        try:
+            _count_bounds(self.base, self.min_properties, self.max_properties, 'minProperties exceeds maxProperties')
+        except RamlError as err:
+            accumulator.add(err)
+        forbids_extras = self.additional_properties is not None and not self.additional_properties.value
+        if self.pattern_properties and forbids_extras and self.additional_properties is not None:
+            accumulator.add(
+                failure(
+                    'pattern properties conflict with additionalProperties',
+                    self.base.location,
+                    self.additional_properties.key_pos,
+                )
+            )
+        try:
+            self._check_discriminator()
+        except RamlError as err:
+            accumulator.add(err)
+        for prop in (self.properties or {}).values():
+            try:
+                prop.base.check()
+            except RamlError as err:
+                accumulator.add(err)
+        for pattern in (self.pattern_properties or {}).values():
+            try:
+                pattern.base.check()
+            except RamlError as err:
+                accumulator.add(err)
+        accumulator.raise_if_any()
+
+    def _check_discriminator(self) -> None:
+        """docs/05 section 9. Checked here because the property may be inherited."""
+        if self.discriminator is None:
+            if self.discriminator_value is not None:
+                # A value with nothing to discriminate on says nothing.
+                raise failure('discriminatorValue without discriminator', self.base.location, self.base.value_pos)
+            return
+        name = self.discriminator.value
+        if not self.properties:
+            raise failure('discriminator requires properties', self.base.location, self.discriminator.value_pos)
+        prop = self.properties.get(name)
+        if prop is None:
+            raise failure(
+                'discriminator property not found',
+                self.base.location,
+                self.discriminator.value_pos,
+                info={'property': name},
+            )
+        if prop.base.shape is None or not prop.base.shape.is_scalar():
+            raise failure(
+                'discriminator property must be scalar',
+                self.base.location,
+                self.discriminator.value_pos,
+                info={'property': name},
+            )
+        if self.discriminator_value is not None:
+            prop.base.validate_at(self.discriminator_value.raw, f'$.{name}')
+
+    def validate(self, value: Any, path: str) -> None:
+        """docs/10 section 5.1's order, which is observable and therefore fixed."""
+        if not isinstance(value, dict):
+            raise self.wrong_type(value, path, 'object')
+        declared = self.properties or {}
+        accumulator = Accumulator()
+
+        # 1. Every missing required property, as one message. Reporting them
+        #    one at a time makes a half-written document a scrolling exercise.
+        missing = [name for name, prop in declared.items() if prop.required and name not in value]
+        if missing:
+            accumulator.add(
+                failure(
+                    'missing required properties',
+                    self.base.location,
+                    self.base.value_pos,
+                    info={'path': path, 'properties': missing},
+                )
+            )
+
+        # 2. Declared properties, in *declaration* order, so the first error a
+        #    caller sees matches the order the document reads in.
+        for name, prop in declared.items():
+            if name in value:
+                try:
+                    prop.base.validate_at(value[name], key_path(path, name))
+                except RamlError as err:
+                    accumulator.add(err)
+
+        # 3. Everything the declaration did not name.
+        for name, item in value.items():
+            if name in declared:
+                continue
+            try:
+                self._validate_extra(name, item, path)
+            except RamlError as err:
+                accumulator.add(err)
+
+        count = len(value)
+        for bound, message, ok in (
+            (
+                self.min_properties,
+                'too few properties',
+                count >= (self.min_properties.value if self.min_properties else 0),
+            ),
+            (
+                self.max_properties,
+                'too many properties',
+                count <= (self.max_properties.value if self.max_properties else count),
+            ),
+        ):
+            if bound is not None and not ok:
+                accumulator.add(
+                    failure(
+                        message,
+                        self.base.location,
+                        self.base.value_pos,
+                        info={'path': path, 'count': count, 'bound': bound.value},
+                    )
+                )
+        accumulator.raise_if_any()
+
+    def _validate_extra(self, name: str, item: Any, path: str) -> None:
+        """A key the declaration did not name: a pattern property, or refused."""
+        for pattern in (self.pattern_properties or {}).values():
+            # Declaration order, first match wins (docs/05 section 5.1).
+            if pattern.pattern.search(name) is not None:
+                pattern.base.validate_at(item, key_path(path, name))
+                return
+        if self.additional_properties is not None and not self.additional_properties.value:
+            raise failure(
+                'additional properties are not allowed',
+                self.base.location,
+                self.base.value_pos,
+                info={'path': path, 'property': name},
+            )
+
 
 class ArrayShape(ComplexKind):
     """`array`. `items` is one declaration, built before construction."""
@@ -170,6 +328,61 @@ class ArrayShape(ComplexKind):
         clone.items = self.items.clone(memo) if self.items is not None else None
         return clone
 
+    def check(self) -> None:
+        accumulator = Accumulator()
+        try:
+            _count_bounds(self.base, self.min_items, self.max_items, 'minItems exceeds maxItems')
+        except RamlError as err:
+            accumulator.add(err)
+        if self.items is not None:
+            try:
+                self.items.check()
+            except RamlError as err:
+                accumulator.add(err)
+        accumulator.raise_if_any()
+
+    def validate(self, value: Any, path: str) -> None:
+        if not isinstance(value, list):
+            raise self.wrong_type(value, path, 'array')
+        accumulator = Accumulator()
+        count = len(value)
+        if self.min_items is not None and count < self.min_items.value:
+            accumulator.add(
+                failure(
+                    'too few items',
+                    self.base.location,
+                    self.base.value_pos,
+                    info={'path': path, 'count': count, 'minItems': self.min_items.value},
+                )
+            )
+        if self.max_items is not None and count > self.max_items.value:
+            accumulator.add(
+                failure(
+                    'too many items',
+                    self.base.location,
+                    self.base.value_pos,
+                    info={'path': path, 'count': count, 'maxItems': self.max_items.value},
+                )
+            )
+        if self.items is not None:
+            for index, item in enumerate(value):
+                try:
+                    self.items.validate_at(item, index_path(path, index))
+                except RamlError as err:
+                    accumulator.add(err)
+        if self.unique_items is not None and self.unique_items.value:
+            duplicate = unique_items(value)
+            if duplicate is not None:
+                accumulator.add(
+                    failure(
+                        'items are not unique',
+                        self.base.location,
+                        self.base.value_pos,
+                        info={'path': index_path(path, duplicate)},
+                    )
+                )
+        accumulator.raise_if_any()
+
 
 class UnionShape(ComplexKind):
     """`union`. Its members arrive built, one declaration each."""
@@ -203,6 +416,40 @@ class UnionShape(ComplexKind):
         clone.any_of = None if self.any_of is None else [member.clone(memo) for member in self.any_of]
         return clone
 
+    def check(self) -> None:
+        accumulator = Accumulator()
+        for member in self.any_of or ():
+            try:
+                member.check()
+            except RamlError as err:
+                accumulator.add(err)
+        accumulator.raise_if_any()
+
+    def validate(self, value: Any, path: str) -> None:
+        """First member that validates wins; if none does, report all of them.
+
+        Reporting only the last member's failure is the unhelpful thing to do
+        here — the reader cannot tell which member they meant to satisfy.
+        """
+        accumulator = Accumulator()
+        for member in self.any_of or ():
+            try:
+                member.validate_at(value, path)
+            except RamlError as err:
+                accumulator.add(err)
+            else:
+                return
+        message = 'value matches no member of the union'
+        info = {'path': path, 'found': type_name(value)}
+        combined = accumulator.result()
+        if combined is None:
+            # No members at all — reachable only for a union that declared none
+            # and inherited none (docs/07 section 3.4).
+            raise failure(message, self.base.location, self.base.value_pos, info=info)
+        raise RamlError.wrap(
+            message, combined, self.base.location, self.base.value_pos, kind=ErrorKind.VALIDATING, info=info
+        )
+
 
 class JsonShape(ComplexKind):
     """A type declared by an external or inline JSON Schema.
@@ -235,6 +482,15 @@ class JsonShape(ComplexKind):
                 info={'facet': pairs[0].value},
             )
 
+    def check(self) -> None:
+        # Accepts rather than raises: compiling the schema is Phase 8b
+        # (docs/10 section 6), and until then a JSON-schema-typed declaration is
+        # simply unvalidated. Raising here would reject documents that are fine.
+        return
+
+    def validate(self, value: Any, path: str) -> None:  # noqa: ARG002 - unvalidated until the schema is compiled
+        return
+
 
 class UnknownShape(ComplexKind):
     """A declaration whose kind is not settled yet.
@@ -259,6 +515,19 @@ class UnknownShape(ComplexKind):
     def decode_facets(self, pairs: list[Node]) -> None:
         self.facets = pairs
 
+    def check(self) -> None:
+        # Always fails. Reaching it means P7 was skipped, and a silent pass here
+        # would hide invariant I5 breaking (docs/10 section 2).
+        raise failure(
+            'type could not be resolved',
+            self.base.location,
+            self.base.key_pos,
+            info={'type': self.base.type or None, 'name': self.base.name},
+        )
+
+    def validate(self, value: Any, path: str) -> None:  # noqa: ARG002 - the shape is unusable whatever the value
+        self.check()
+
 
 class RecursiveShape(ComplexKind):
     """A back-edge: the point where a type cycle returns to its head.
@@ -277,3 +546,13 @@ class RecursiveShape(ComplexKind):
         # cloning it afresh would unroll the cycle the marker exists to close.
         # The generic path cannot be used at all — `__init__` requires a head.
         return RecursiveShape(base, self.head.clone(memo))
+
+    def check(self) -> None:
+        # The head is checked where it is declared. Following the back-edge here
+        # is what a cycle makes non-terminating, and it would say nothing new.
+        return
+
+    def validate(self, value: Any, path: str) -> None:
+        # No visited set: the *data* is finite even though the type is cyclic,
+        # so the recursion is bounded by the value's own depth.
+        self.head.validate_at(value, path)

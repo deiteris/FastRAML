@@ -39,6 +39,7 @@ __all__ = [
     'key_path',
     'parse_rfc2616',
     'parse_rfc3339',
+    'same_value',
     'type_name',
     'unique_items',
     'valid_date_only',
@@ -223,12 +224,19 @@ def parse_rfc2616(text: str) -> bool:
 PAIRWISE_LIMIT: Final = 20
 
 
-def _same(left: Any, right: Any) -> bool:  # noqa: PLR0911 - a chain of disjoint cases, not nested logic
-    """Semantic equality: `1` and `1.0` are the same item, `1` and `True` are not."""
+def same_value(left: Any, right: Any) -> bool:  # noqa: PLR0911 - a chain of disjoint cases, not nested logic
+    """Semantic equality: `1` and `1.0` are the same item, `1` and `True` are not.
+
+    Used by `uniqueItems` and by enum membership, which have to agree: an enum
+    of `[1]` accepting `1.0` while `uniqueItems` calls them distinct would be a
+    contradiction the model cannot explain.
+    """
     if isinstance(left, dict) and isinstance(right, dict):
-        return len(left) == len(right) and all(key in right and _same(value, right[key]) for key, value in left.items())
+        return len(left) == len(right) and all(
+            key in right and same_value(value, right[key]) for key, value in left.items()
+        )
     if isinstance(left, list) and isinstance(right, list):
-        return len(left) == len(right) and all(_same(a, b) for a, b in zip(left, right, strict=True))
+        return len(left) == len(right) and all(same_value(a, b) for a, b in zip(left, right, strict=True))
     if isinstance(left, dict | list) or isinstance(right, dict | list):
         return False
     left_bool = left is True or left is False
@@ -244,7 +252,7 @@ def _same(left: Any, right: Any) -> bool:  # noqa: PLR0911 - a chain of disjoint
 
 
 def _hash(value: Any) -> int:
-    """A hash agreeing with `_same`: key-sorted for mappings, ordered for sequences."""
+    """A hash agreeing with `same_value`: key-sorted for mappings, ordered for sequences."""
     if isinstance(value, dict):
         return hash(('map', tuple(sorted((key, _hash(child)) for key, child in value.items()))))
     if isinstance(value, list):
@@ -266,14 +274,14 @@ def unique_items(items: list[Any]) -> int | None:
     """
     if len(items) <= PAIRWISE_LIMIT:
         for index, item in enumerate(items):
-            if any(_same(item, earlier) for earlier in items[:index]):
+            if any(same_value(item, earlier) for earlier in items[:index]):
                 return index
         return None
 
     buckets: dict[int, list[Any]] = {}
     for index, item in enumerate(items):
         bucket = buckets.setdefault(_hash(item), [])
-        if any(_same(item, earlier) for earlier in bucket):
+        if any(same_value(item, earlier) for earlier in bucket):
             return index
         bucket.append(item)
     return None

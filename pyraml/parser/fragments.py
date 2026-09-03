@@ -906,7 +906,11 @@ def parse_fragment(raml: Raml, uri: str, kind: FragmentKind) -> Fragment:
 
 def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Fragment:
     """Register, decode, then resolve `uses:` — in that order. See the module docstring."""
-    if kind is FragmentKind.DATA_TYPE and uri.lower().endswith('.json'):
+    # The extension is taken past a `#pointer`, as in `check_fragment_kind`:
+    # `schema.json#/definitions/User` is a JSON include of an inner element, not
+    # a RAML DataType. Testing the raw URI misses the pointer form, and the file
+    # then decodes as RAML with `$schema` and `definitions` as custom facets.
+    if kind is FragmentKind.DATA_TYPE and strip_uri_suffix(uri).lower().endswith('.json'):
         return _decode_json_data_type(raml, uri, text)
 
     fragment = make_fragment(raml, kind, uri)

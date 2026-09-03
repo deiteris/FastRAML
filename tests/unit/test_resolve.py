@@ -82,10 +82,9 @@ class TestExpressionStructure:
         assert describe(types['T']) == expected
 
     def test_an_optional_array_is_not_an_array_of_optionals(self, workspace):
-        # `?` is postfix on the whole `type`, after every `[]` (docs/06 § 1), so
-        # `string[]?` is `(string[]) | nil`. go-raml's visitor applies the two
-        # notations in the opposite order and yields an array of optionals;
-        # this follows the spec's desugaring, and the parser test pins the AST.
+        # A postfix notation applies to everything to its left, so the rightmost
+        # is outermost (docs/06 § 3). This is the only pair that distinguishes
+        # the two directions: `string[][]` nests the same either way.
         assert describe(library(workspace, '  T: string[]?\n')['T']) == 'union(array[string] | nil)'
 
     def test_a_union_member_is_its_own_declaration(self, workspace):

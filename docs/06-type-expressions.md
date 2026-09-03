@@ -158,14 +158,20 @@ The pending facets travel with the **outermost** shape only. `type: string[]`
 with `minItems: 1` beside it means a bounded array of unbounded strings; the
 item type is a separate declaration and must not see the bound.
 
-**A divergence from go-raml, in `string[]?`.** Its visitor
-(`rdt_visitor.go` 88–140) walks the postfix notations left to right and makes
-the *first* one the outermost wrapper, so `string[]?` builds an array of
-optionals. § 1 reads the grammar the other way — `?` is postfix on a whole
-`type`, after any `[]`s — which is also the spec's desugaring of `T?` to
-`T | nil` with `T` being `string[]`. pyRAML follows § 1 and produces
-`(string[]) | nil`. The AST is pinned by `test_expressions.py` and the built
-shape by `test_resolve.py`, so the choice cannot drift silently.
+A postfix notation applies to everything written to its left, so the
+**rightmost** one is the outermost wrapper — the builder starts there and
+recurses inwards:
+
+| Expression | Shape |
+|------------|-------|
+| `string[][]` | array of array of string |
+| `string[]?` | union of `string[]` and `nil` — an optional array |
+| `string?[]` | rejected; `?` may appear only after the `[]`s (§ 1) |
+
+`string[]?` is the case that distinguishes the two directions, `string[][]`
+being symmetric. It follows from the spec's desugaring of `T?` to `T | nil`,
+where `T` is everything to the left: `string[]`. `test_expressions.py` pins the
+AST, `test_resolve.py` the built shape.
 
 ### 3.1 Alias versus inheritance
 

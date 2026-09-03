@@ -92,9 +92,7 @@ types, templates, or those two v1.1 fragment kinds.
 **Build:**
 
 1. `types/base.py`: `BaseShape` with its full `__slots__`, `Property`,
-   `PatternProperty`, and the `Shape` protocol — including the
-   `decode_facets(facets, make_shape)` signature that keeps `types/` pointing one
-   way ([02](02-architecture.md) § 2).
+   `PatternProperty`, and the `Shape` protocol.
 2. `types/inference.py`: `identify_shape_type` and `FACET_TYPE_HINT`. Small,
    self-contained, and every later step calls it.
 3. `types/xml.py` and `types/examples.py`: two leaf records with decoders, needed
@@ -102,10 +100,15 @@ types, templates, or those two v1.1 fragment kinds.
 4. `types/scalars.py` and `types/complex_.py`: the fourteen kinds plus
    `UnknownShape`, `JsonShape` and `RecursiveShape`. Only `decode_facets` has a
    body; `inherit`, `alias_to`, `check`, `validate` and `clone` raise
-   `NotImplementedError` naming the phase that fills them.
+   `NotImplementedError` naming the phase that fills them. `ObjectShape`,
+   `ArrayShape` and `UnionShape` each declare a `DECLARATION_FACETS` table and
+   take those children through `__init__`; no kind imports `shape.py`
+   ([02](02-architecture.md) § 2).
 5. `types/shape.py`: `make_shape`, `make_body_shape`, `make_property`,
-   `make_pattern_property`, and the kind dispatch. This is the step that has to
-   be right; the rest of the phase serves it.
+   `make_pattern_property`, and the kind dispatch — which reads
+   `DECLARATION_FACETS` off the class it is about to construct, builds those
+   children, and passes them in. This is the step that has to be right; the rest
+   of the phase serves it.
 6. Wire the seams: `unmarshal_types(..., is_annotation=)` per
    [04](04-fragments-and-namespaces.md) § 5.1, called from the `_raw_*`
    attributes, and the example builder called from `NamedExample`.

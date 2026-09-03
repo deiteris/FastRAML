@@ -131,11 +131,13 @@ One `make_property` serves `properties:`, `headers:`, `queryParameters:`,
 declarations" per the spec, so all six get `?` handling and inline type
 declarations for free (doc 05 §§ 5, 7).
 
-**`shape.py` imports the kind modules; they must not import it back.** A shape
-that holds declarations — object `properties`, array `items`, union `anyOf` —
-receives the builder as a parameter instead: `decode_facets(facets, make_shape)`.
-Doc 02 § 2 records why that beats a deferred import or a module-level builder
-slot. Three kinds use the parameter; the rest ignore it.
+**`shape.py` imports the kind modules; they must not import it back.** A kind
+that holds declarations does not build them. It declares which of its facets hold
+declarations in a class-level `DECLARATION_FACETS` table, and `make_shape` — which
+knows the kind before it constructs anything — builds those children and passes
+them to the constructor. `decode_facets` then takes one argument and sees no
+declarations. Doc 02 § 2 records the four alternatives and why each lost, and why
+`base.py` is the one place `make_shape` cannot live.
 
 ### 3.6 Wiring the seams
 
@@ -180,9 +182,11 @@ register it in `fragment_types` (or `fragment_annotations`) **and** append it to
 10. **Every shape is appended to `raml.shapes`, and to `unresolved_shapes` iff
     its kind is `UnknownShape`.** That is invariant I4, and P7 depends on it.
 11. **`types/` points one way: `shape.py` → `scalars.py`/`complex_.py` →
-    `base.py`.** The builder reaches a concrete kind as the second parameter of
-    `decode_facets`, never as an import. Settled with the module map; doc 02 § 2
-    gives the two alternatives and why they lost.
+    `base.py`.** Nothing reaches back — not an import, not a parameter, not a
+    field on `Raml`. A kind that holds declarations publishes a
+    `DECLARATION_FACETS` table and receives its children through `__init__`. The
+    price is that `properties:` is read in `shape.py` while `minProperties:` is
+    read in `ObjectShape`; doc 02 § 2 says why that beats the four alternatives.
 12. **`Example`/`Examples`, `XmlSerialization` and `make_shape` each have a
     module** — `types/examples.py`, `types/xml.py`, `types/shape.py`. Doc 02 § 2
     was silent on all three until this phase was planned; it is not silent now.

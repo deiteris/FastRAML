@@ -33,7 +33,7 @@ class BaseShape:
 ```python
 class Shape(Protocol):            # the kind-specific half
     base: BaseShape
-    def decode_facets(self, pairs: list[Node], make_shape: ShapeBuilder) -> None: ...
+    def decode_facets(self, pairs: list[Node]) -> None: ...
     def inherit(self, source: Shape) -> Shape: ...
     def alias_to(self, source: Shape) -> Shape: ...
     def check(self) -> None: ...              # is the declaration self-consistent?
@@ -164,13 +164,16 @@ value_node kind?
        └── anything else    → appended to `facets`, a flat [k0,v0,k1,v1,…] list
 ```
 
-The leftover `facets` list is then handed to the concrete shape's
-`decode_facets`, together with `make_shape` itself — `properties:`, `items:` and
-`anyOf` hold declarations, and `types/` points one way, so the builder arrives as
-a parameter rather than as an import back into `shape.py`
-([02](02-architecture.md) § 2). pyRAML keeps go-raml's allocation-lean structure
-here: one pass, one list, no intermediate dict, and the concrete shape sees only
-the keys it might handle.
+Before the leftover `facets` list reaches the concrete shape, `make_shape`
+removes the keys that hold declarations — object `properties` and
+`patternProperties`, array `items`, union `anyOf` — builds them, and passes them
+to the shape's constructor. Which keys those are is a class-level table,
+`DECLARATION_FACETS`, on the three kinds that have any; `types/` points one way,
+so a kind never calls back into `shape.py` ([02](02-architecture.md) § 2).
+
+What remains is handed to `decode_facets`. pyRAML keeps go-raml's
+allocation-lean structure here: one pass, one list, no intermediate dict, and the
+concrete shape sees only the keys it might handle.
 
 Any key the concrete shape does not recognise becomes a **custom facet value** in
 `base.custom_facets`. P10 validates those values against the `facets:`

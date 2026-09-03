@@ -144,21 +144,65 @@ Rules on the layout:
 
 - **Inside `types/`, dependencies point one way: `shape.py` → `scalars.py` /
   `complex_.py` → `base.py`.** `shape.py` imports the concrete kinds to dispatch
-  on kind, so the kinds must not import `shape.py` back — and `ObjectShape` needs
-  a shape builder, because `properties:` holds declarations.
+  on kind, so the kinds must not import `shape.py` back. But three kinds hold
+  declarations — object `properties` and `patternProperties`, array `items`,
+  union `anyOf` — and only `make_shape` can build a declaration.
 
-  The builder is therefore a **parameter**: `decode_facets(facets, make_shape)`.
-  Three kinds use it (object properties, array `items`, union `anyOf`); the other
-  fourteen ignore it. This is the callback this section already prescribes for
-  shape construction, passed explicitly rather than reached for.
+  **The kinds declare what they hold; `shape.py` decides how to build it.** Each
+  declaration-holding kind carries a class-level table, and nothing else:
 
-  Two alternatives were rejected. A deferred import inside the method is the
-  usual fix, but it is exactly the runtime indirection the rule above exists to
-  avoid. A module-level builder slot that `shape.py` fills at import makes
-  `import pyraml.types.complex_` alone a half-initialised module, and moves a
-  static error to run time. One extra parameter on one protocol method costs
-  less than either, and it puts the dependency in the signature where a reader
-  and a type checker both see it.
+  ```python
+  class ObjectShape:
+      DECLARATION_FACETS = {"properties": MAP_OF_PROPERTIES,
+                            "patternProperties": MAP_OF_PATTERN_PROPERTIES}
+  class ArrayShape:
+      DECLARATION_FACETS = {"items": ONE_SHAPE}
+  class UnionShape:
+      DECLARATION_FACETS = {"anyOf": SEQ_OF_SHAPES}
+  ```
+
+  `make_shape` knows the kind before it constructs anything, so it reads the
+  table off the class, builds those children itself, and passes them in:
+
+  ```python
+  cls = KIND_TO_CLASS[kind]
+  shape = cls(base, **built)     # a typed __init__; no setattr, no later mutation
+  shape.decode_facets(rest)      # one argument; `rest` holds no declarations
+  ```
+
+  Nothing flows back from `shape.py` into the kinds — not a function, not a
+  protocol, not a field on `Raml`. Fourteen kinds never learn that a builder
+  exists.
+
+  This also puts `properties:` on the same footing as the five other places a
+  declaration appears. One `make_property` serves `properties`, `headers`,
+  `queryParameters`, `uriParameters`, `baseUriParameters` and `facets`
+  ([05](05-type-model.md) § 5), and the other five are built by their caller.
+  Only `ObjectShape` would have been asked to build its own children.
+
+  The cost: an object's facets are decoded in two places. `properties:` is read
+  in `shape.py`, `minProperties:` in `ObjectShape`. One table, in the class, is
+  where a reader finds out.
+
+  Four alternatives were rejected:
+
+  - `decode_facets(facets, make_shape)` — fourteen of seventeen implementations
+    carry an argument they never read, in a protocol doc 05 § 1 publishes.
+  - A deferred import inside the three methods. The usual fix, but it is exactly
+    the runtime indirection this section exists to avoid, and it is invisible to
+    a reader scanning the imports.
+  - A module-level builder slot that `shape.py` fills at import: `import
+    pyraml.types.complex_` alone becomes a half-initialised module, and a static
+    error becomes a runtime one.
+  - The builder injected on `Raml` and reached through `base._raml`. It adds no
+    import edge and it fits an existing seam, but it is a service locator: the
+    dependency vanishes from every signature that uses it.
+
+  Moving `make_shape` into `base.py` does not solve this at all. It travels with
+  its need to construct the kinds, so it would close a loop across the layer
+  boundary — `parser/facets.py` → `types/base.py` → `types/complex_.py` →
+  `parser/facets.py` — and `import pyraml.types.base` would fail outright, since
+  `complex_.py` imports `Property` from a `base` that has not defined it yet.
 - `registry.py` imports nothing from `parser/` or `types/` at module level; it
   holds the stores and uses `TYPE_CHECKING` imports for annotations. This keeps
   the import graph acyclic without runtime indirection.

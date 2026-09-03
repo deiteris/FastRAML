@@ -124,13 +124,16 @@ pyraml/
 
 Rules on the layout:
 
-- `types/` imports from `parser/` in exactly two places: `parser/facets.py`, for
-  the scalar-facet builders, and `parser/annotations.py`, for the two functions
-  that turn an `(annotation)` key into a `DomainExtension`. Everything else a
-  shape needs from YAML arrives as a `Node` (from `yamlnode.py`, which both
-  layers may import) or as a `DataNode` (from `datanode.py`, likewise).
+- `types/` imports from `parser/` in exactly three places: `parser/facets.py`, for
+  the scalar-facet builders; `parser/annotations.py`, for the two functions
+  that turn an `(annotation)` key into a `DomainExtension`; and
+  `parser/includes.py`, for `note_include_ref`, since a `type:` or `examples:`
+  scalar may be an `!include` and the reference has to be recorded where it is
+  found. Everything else a shape needs from YAML arrives as a `Node` (from
+  `yamlnode.py`, which both layers may import) or as a `DataNode` (from
+  `datanode.py`, likewise).
 
-  Both edges are deliberate. `ScalarFacet` is a type-model class and lives in
+  All three edges are deliberate. `ScalarFacet` is a type-model class and lives in
   `types/base.py`, but *building* one needs the parser twice over: an `!include`
   at a facet position has to be read through the include cache, and the
   annotated-scalar form has to turn `(annotation)` keys into `DomainExtension`s.
@@ -140,9 +143,20 @@ Rules on the layout:
   be written on a declaration, and inside `example:`, so the type layer has to
   build them where it finds them.
 
-  Neither edge can cycle: `parser/facets.py` imports `types/base.py` and nothing
-  else from `types/`, and `parser/annotations.py` imports nothing from `types/`
-  at runtime at all.
+  None of the three can cycle: `parser/facets.py` imports `types/base.py` and
+  nothing else from `types/`, and `parser/annotations.py` and
+  `parser/includes.py` import nothing from `types/` at runtime at all.
+
+  **`parser/fragments.py` is not on that list and must not join it.** It imports
+  `make_shape` at module level, so a runtime edge back to it from `types/` is
+  the one genuine cycle in the layout — which is why the deferred import below
+  exists. Where P7 needs something a fragment knows, the fragment supplies it:
+  a name is resolved through `BaseShape.anchor`, which is already a
+  `ReferenceResolver` object, and the `uses:` entry behind a `lib.Type` prefix
+  comes from `ReferenceResolver.library_link` for the same reason. The one
+  lookup with no object to hang off — finding the scope for a shape whose
+  `anchor` is `None` — goes through `Raml.resolver_at`, an index the fragment
+  decoder fills where it already performs the capability check.
 
 - **One deferred import exists, in `types/shape.py`, and no other may be added.**
   `type: !include lib.raml` and `examples: !include e.raml` have to parse a
@@ -255,6 +269,7 @@ class Raml:
         # --- indices -------------------------------------------------------
         "fragment_types",  # uri -> {name: BaseShape}
         "fragment_annotations",  # uri -> {name: BaseShape}
+        "fragment_resolvers",  # uri -> ReferenceResolver (P7's anchor fallback)
         "fragment_typedefs",  # uri -> [BaseShape]   (everything declared there)
         "endpoints",  # full_uri -> EndPoint (duplicate detection)
         "shapes",  # [BaseShape] in creation order

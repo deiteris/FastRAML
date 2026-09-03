@@ -32,16 +32,12 @@ if TYPE_CHECKING:
 
     from pyraml.datanode import DataNode
     from pyraml.parser.annotations import DomainExtension
-    from pyraml.parser.fragments import DataTypeFragment, ReferenceResolver
+    from pyraml.parser.fragments import DataTypeFragment, LibraryLink, ReferenceResolver
     from pyraml.parser.includes import IncludeInfo
     from pyraml.registry import Raml
     from pyraml.types.examples import Example, Examples
     from pyraml.types.xml import XmlSerialization
     from pyraml.yamlnode import Node
-
-    # Phase 3 replaces this alias with the real class (docs/06 section 5). It is
-    # written out so the field list below reads as its finished form.
-    TypeExprRef = Any
 
 __all__ = [
     'BUILTIN_TYPES',
@@ -73,6 +69,7 @@ __all__ = [
     'Property',
     'ScalarFacet',
     'Shape',
+    'TypeExprRef',
     'declaration_facets',
 ]
 
@@ -143,6 +140,33 @@ class ScalarFacet[T]:
 
     def __repr__(self) -> str:
         return f'ScalarFacet({self.value!r})'
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class TypeExprRef:
+    """Where one name inside a type expression was written, and what it means.
+
+    Emitted by P7 for every type name and built-in keyword in an expression,
+    never for the `[]`, `?` or `|` operators, whose extent is implied by their
+    operands. `lib.Type` produces two: one for the prefix, which navigates to
+    the library file, and one for the name, which navigates to the declaration.
+
+    Nothing in the parser reads these. They cost one small object per name and
+    are what lets a future LSP offer go-to-definition and hover without
+    re-lexing. See docs/06-type-expressions.md section 3.2.
+    """
+
+    #: 1-based, in the file that wrote the expression.
+    line: int
+    #: 1-based file column, already rebased off the expression's own column.
+    column: int
+    #: The declaration a type name refers to.
+    resolved: BaseShape | None = None
+    #: The `lib` half of `lib.Type`, and the alias exactly as written.
+    library_link: LibraryLink | None = None
+    library_alias: str | None = None
+    #: The keyword, when the name was a primitive rather than a reference.
+    builtin: str | None = None
 
 
 class BaseShape:

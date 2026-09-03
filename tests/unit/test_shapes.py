@@ -5,6 +5,7 @@ See docs/05-type-model.md section 1.
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from typing import ClassVar
 
@@ -19,6 +20,7 @@ from pyraml.types.base import (
     BaseShape,
     PatternProperty,
     Property,
+    TypeExprRef,
     declaration_facets,
 )
 from pyraml.types.xml import decode_xml_serialization
@@ -65,6 +67,38 @@ class TestBaseShape:
     def test_ids_are_unique_within_one_parse(self):
         raml = Raml()
         assert make_base(raml).id != make_base(raml).id
+
+
+class TestTypeExprRef:
+    """docs/06 section 3.2 — one record per name inside a type expression.
+
+    Nothing in the parser reads these; P7 emits them so a future LSP can offer
+    go-to-definition without re-lexing.
+    """
+
+    def test_a_primitive_ref_names_only_the_keyword(self):
+        ref = TypeExprRef(line=3, column=9, builtin='string')
+        assert (ref.resolved, ref.library_link, ref.library_alias) == (None, None, None)
+
+    def test_a_reference_ref_names_only_the_declaration(self):
+        target = make_base(name='Person')
+        ref = TypeExprRef(line=3, column=9, resolved=target)
+        assert ref.resolved is target
+        assert ref.builtin is None
+
+    def test_refs_do_not_compare_by_value(self):
+        # `resolved` points into a recursive model, so a generated __eq__ would
+        # walk it (CLAUDE.md).
+        first = TypeExprRef(line=1, column=1, builtin='string')
+        second = TypeExprRef(line=1, column=1, builtin='string')
+        assert first != second
+
+    def test_a_ref_is_frozen_and_has_no_instance_dict(self):
+        ref = TypeExprRef(line=1, column=1)
+        with pytest.raises(AttributeError):
+            ref.__dict__  # noqa: B018 - the access is the assertion
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            ref.column = 2
 
 
 class TestDeclarationFacets:

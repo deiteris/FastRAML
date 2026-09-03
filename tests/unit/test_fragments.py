@@ -378,6 +378,45 @@ class TestProtocolConformance:
         assert not isinstance(parse_from_path(root / 'dt.raml').entry_point, SecuritySchemeResolver)
 
 
+class TestLibraryLinkLookup:
+    """docs/06 section 3.2 — the library half of a `lib.Type` reference.
+
+    On the resolver protocol rather than reached through `uses` so that P7 can
+    emit it through the anchor it already holds.
+    """
+
+    def test_a_uses_prefix_resolves_to_its_link(self, workspace):
+        root = workspace({'api.raml': API + 'uses:\n  l: lib.raml\n', 'lib.raml': '#%RAML 1.0 Library\n'})
+        fragment = parse_from_path(root / 'api.raml').entry_point
+        link = fragment.library_link('l')
+        assert link is not None
+        assert link.link.location == path_to_file_uri(root / 'lib.raml')
+
+    def test_an_unknown_prefix_is_none_rather_than_an_error(self, workspace):
+        # P7 emits the type-name ref either way; only the library ref is skipped.
+        root = workspace({'api.raml': API + 'uses:\n  l: lib.raml\n', 'lib.raml': '#%RAML 1.0 Library\n'})
+        assert parse_from_path(root / 'api.raml').entry_point.library_link('nope') is None
+
+    def test_a_fragment_with_no_uses_has_no_links(self, workspace):
+        root = workspace({'dt.raml': '#%RAML 1.0 DataType\ntype: string\n'})
+        assert parse_from_path(root / 'dt.raml').entry_point.library_link('l') is None
+
+
+class TestResolverIndex:
+    """docs/04 section 4.2 — P7's fallback for a shape with no anchor."""
+
+    def test_every_decoded_fragment_is_indexed_by_its_location(self, workspace):
+        root = workspace({'api.raml': API + 'uses:\n  l: lib.raml\n', 'lib.raml': '#%RAML 1.0 Library\n'})
+        raml = parse_from_path(root / 'api.raml')
+        for name in ('api', 'lib'):
+            uri = path_to_file_uri(root / f'{name}.raml')
+            assert raml.resolver_at(uri) is raml.fragments[uri], name
+
+    def test_an_unknown_location_has_no_resolver(self, workspace):
+        root = workspace({'api.raml': API})
+        assert parse_from_path(root / 'api.raml').resolver_at('file:///nowhere.raml') is None
+
+
 class TestParseCtx:
     def test_the_stack_is_empty_again_after_a_parse(self, workspace):
         root = workspace({'api.raml': API + 'uses:\n  l: lib.raml\n', 'lib.raml': '#%RAML 1.0 Library\n'})

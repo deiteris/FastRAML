@@ -90,6 +90,7 @@ class Raml:
         'domain_extensions',
         'endpoints',
         'fragment_annotations',
+        'fragment_resolvers',
         'fragment_typedefs',
         'fragment_types',
         'include_refs',
@@ -134,6 +135,7 @@ class Raml:
 
         self.fragment_types: dict[str, dict[str, BaseShape]] = {}
         self.fragment_annotations: dict[str, dict[str, BaseShape]] = {}
+        self.fragment_resolvers: dict[str, ReferenceResolver] = {}
         self.fragment_typedefs: dict[str, list[BaseShape]] = {}
         self.endpoints: dict[str, EndPoint] = {}
         self.shapes: list[BaseShape] = []
@@ -193,6 +195,19 @@ class Raml:
 
     def put_annotation_type(self, name: str, location: str, shape: BaseShape) -> None:
         self.fragment_annotations.setdefault(location, {})[name] = shape
+
+    def put_resolver(self, location: str, resolver: ReferenceResolver) -> None:
+        """Index a fragment by the names it can resolve (docs/04 section 4.2)."""
+        self.fragment_resolvers[location] = resolver
+
+    def resolver_at(self, location: str) -> ReferenceResolver | None:
+        """The scope a name written in `location` resolves in.
+
+        P7's fallback for a shape whose `anchor` is `None` — one built outside
+        any fragment decode, which means programmatic construction or a test.
+        Every shape a parse produces carries an anchor instead.
+        """
+        return self.fragment_resolvers.get(location)
 
     def put_typedef(self, location: str, shape: BaseShape) -> None:
         """Record a shape in the flat per-file index unwrap and validation iterate."""

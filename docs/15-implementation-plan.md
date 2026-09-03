@@ -79,7 +79,7 @@ types, templates, or those two v1.1 fragment kinds.
 
 ---
 
-## Phase 2 — The type system
+## Phase 2 — The type system — **complete**
 
 **Prerequisites:** Phase 1. Specifically: `Raml.put_type` /
 `put_annotation_type` / `put_typedef` / `put_shape` / `unresolved_shapes`;
@@ -120,6 +120,18 @@ Shapes are created but not resolved; everything unresolvable is an
 it needs expressions or inheritance; unit tests cover every inference rule and
 both property-optionality corner cases; a test asserts invariant I4 over a parsed
 corpus.
+
+**Outcome.** TCK 529 → 558 of 930, no regressions. I4, I1 and declaration order
+are asserted over 472 parsed fixtures and 1167 shapes
+(`tests/tck/test_invariants.py`).
+
+Wiring the seams exposed three defects the unit tests had not: an empty
+declaration block (`properties:` with nothing under it) read as an error; a JSON
+include with a pointer (`schema.json#/definitions/User`) was not recognised as
+JSON; and a scalar whose tag would not convert crashed instead of keeping its
+text. The third led to the YAML layer being wrong more broadly — PyYAML resolves
+YAML 1.1, RAML is YAML 1.2 — which is now fixed and pinned by a differential
+oracle ([03](03-yaml-and-io.md) § 2.2, [14](14-testing.md) § 1.4).
 
 ---
 

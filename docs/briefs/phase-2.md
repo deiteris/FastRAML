@@ -95,7 +95,7 @@ references already taken to the `BaseShape` must survive a kind swap.
 
 ### 3.2 `pyraml/types/inference.py`
 
-`identify_shape_type(facets, default_type)` and the `FACET_TYPE_HINT` table from
+`identify_shape_type(facets, default_type, location)` and `FACET_TYPE_HINT` from
 doc 05 § 4.2. Four rules, in order, and the `string`/`file` reconciliation is the
 one that gets mis-implemented — `pattern` is string-only and poisons it.
 

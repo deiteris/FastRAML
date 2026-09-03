@@ -21,7 +21,7 @@ read, the annotated-scalar form unwrapped — so the builder stays in
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, Protocol
 
 from pyraml.positions import UNKNOWN, Position
 
@@ -43,9 +43,28 @@ if TYPE_CHECKING:
     TypeExprRef = Any
 
 __all__ = [
+    'BUILTIN_TYPES',
     'ONE_SHAPE',
     'PROPERTIES',
     'SHAPE_LIST',
+    'TYPE_ANY',
+    'TYPE_ARRAY',
+    'TYPE_BOOLEAN',
+    'TYPE_COMPOSITE',
+    'TYPE_DATETIME',
+    'TYPE_DATETIME_ONLY',
+    'TYPE_DATE_ONLY',
+    'TYPE_FILE',
+    'TYPE_INTEGER',
+    'TYPE_JSON',
+    'TYPE_NIL',
+    'TYPE_NULL',
+    'TYPE_NUMBER',
+    'TYPE_OBJECT',
+    'TYPE_RECURSIVE',
+    'TYPE_STRING',
+    'TYPE_TIME_ONLY',
+    'TYPE_UNION',
     'BaseShape',
     'DeclarationFacet',
     'PatternProperty',
@@ -54,6 +73,51 @@ __all__ = [
     'Shape',
     'declaration_facets',
 ]
+
+# The built-in type names (spec section Raml Data Types). `null` is the spec's
+# alias for `nil`.
+TYPE_ANY: Final = 'any'
+TYPE_STRING: Final = 'string'
+TYPE_INTEGER: Final = 'integer'
+TYPE_NUMBER: Final = 'number'
+TYPE_BOOLEAN: Final = 'boolean'
+TYPE_DATETIME: Final = 'datetime'
+TYPE_DATETIME_ONLY: Final = 'datetime-only'
+TYPE_DATE_ONLY: Final = 'date-only'
+TYPE_TIME_ONLY: Final = 'time-only'
+TYPE_ARRAY: Final = 'array'
+TYPE_OBJECT: Final = 'object'
+TYPE_FILE: Final = 'file'
+TYPE_NIL: Final = 'nil'
+TYPE_NULL: Final = 'null'
+
+# Kinds that exist in the model but are not names a document may use, except
+# `union`, which a type expression produces and go-raml also accepts written out.
+TYPE_UNION: Final = 'union'
+TYPE_JSON: Final = 'json'
+TYPE_COMPOSITE: Final = 'composite'
+TYPE_RECURSIVE: Final = 'recursive'
+
+#: A declaration may not take one of these as its name (docs/04 section 5.1).
+BUILTIN_TYPES: Final = frozenset(
+    {
+        TYPE_ANY,
+        TYPE_STRING,
+        TYPE_INTEGER,
+        TYPE_NUMBER,
+        TYPE_BOOLEAN,
+        TYPE_DATETIME,
+        TYPE_DATETIME_ONLY,
+        TYPE_DATE_ONLY,
+        TYPE_TIME_ONLY,
+        TYPE_ARRAY,
+        TYPE_OBJECT,
+        TYPE_FILE,
+        TYPE_NIL,
+        TYPE_NULL,
+        TYPE_UNION,
+    }
+)
 
 
 @dataclass(slots=True, eq=False)

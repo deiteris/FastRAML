@@ -52,7 +52,9 @@ always raises is honest and cheap.
 
 ## 3. Name resolution
 
-Two functions cover every lookup in the parser.
+Two functions cover every lookup that can fail. (A third, `library_link`, is a
+plain `uses:` lookup that returns `None` — it serves tooling, not resolution;
+see § 4.2.)
 
 ```python
 def resolve_reference(local: dict[str, T] | None,
@@ -143,8 +145,17 @@ creation time**:
 | `TraitDefinition` / `ResourceTypeDefinition` | `anchor` | names inside the template body |
 | `DomainExtension` | `anchor` | the annotation-type name |
 
-Resolution then uses the captured anchor, falling back to a location lookup only
-for shapes built without a parse context (programmatic construction, tests).
+Resolution then uses the captured anchor, falling back to `Raml.resolver_at(location)`
+only for shapes built without a parse context (programmatic construction, tests).
+That index is filled by the fragment decoder, in the same line that decides
+whether a fragment can resolve names at all — so P7 needs a dict lookup rather
+than a capability check, and `types/` needs no runtime import of
+`parser/fragments.py` (doc 02 § 2). On a full TCK parse the fallback is never
+reached: every shape a parse produces carries an anchor.
+
+The `lib` half of a qualified name is reached the same way, through
+`ReferenceResolver.library_link(prefix)`, so that P7 can emit the library
+reference doc 06 § 3.2 requires without leaving the anchor it already holds.
 
 ### 4.3 Consequences of anchor scoping
 

@@ -104,8 +104,17 @@ still produce 500 correctly positioned diagnostics.
 ### 2.3 The expression cache
 
 ```python
-Raml.expr_cache: dict[str, RdtNode | RdtError]
+ExprCache = dict[str, RdtNode | RamlError]
+
+Raml.expr_cache: ExprCache
+parse_expression(text: str, cache: ExprCache) -> RdtNode
 ```
+
+The cache is **passed in, not held on the parser's module**. It belongs to one
+parse and dies with it: a module-level dict would outlive every `Raml` and grow
+for the life of the interpreter, and `Raml` already owns every other cache whose
+lifetime is the parse (doc 02 § 3). This also keeps `expressions/` a leaf that
+knows nothing about the registry — it receives a `dict`, not a `Raml`.
 
 Parsing is **memoised on the expression text**. In a real corpus the same handful
 of expressions (`string`, `integer`, `object`, `MyType`, `MyType[]`) appear
@@ -145,29 +154,51 @@ Per node kind:
 Every anonymous base inherits `target.base.anchor` and `target.base.type_expr`, so
 inner references resolve in the right namespace and report the right column.
 
+The pending facets travel with the **outermost** shape only. `type: string[]`
+with `minItems: 1` beside it means a bounded array of unbounded strings; the
+item type is a separate declaration and must not see the bound.
+
+A postfix notation applies to everything written to its left, so the
+**rightmost** one is the outermost wrapper — the builder starts there and
+recurses inwards:
+
+| Expression | Shape |
+|------------|-------|
+| `string[][]` | array of array of string |
+| `string[]?` | union of `string[]` and `nil` — an optional array |
+| `string?[]` | rejected; `?` may appear only after the `[]`s (§ 1) |
+
+`string[]?` is the case that distinguishes the two directions, `string[][]`
+being symmetric. It follows from the spec's desugaring of `T?` to `T | nil`,
+where `T` is everything to the left: `string[]`. `test_expressions.py` pins the
+AST, `test_resolve.py` the built shape.
+
 ### 3.1 Alias versus inheritance
 
 A `Reference` produces one of two relationships. One field decides which:
 
 ```python
-if target.facets is None:  # the declaration was a bare scalar: `type: Foo`
-    shape.base.alias = ref
-else:  # there were sibling facets: `type: Foo` + `minLength: 5`
+if target.from_mapping:  # `Foo: {type: Bar, …}` — a declaration that narrows
     shape.base.inherits.append(ref)
+else:  # `Foo: Bar` — a pure reference, nothing to narrow with
+    shape.base.alias = ref
 ```
 
-`target.facets is None` — as distinct from an empty list — means the declaration
-was a scalar node with no accompanying mapping, that is, a pure reference. The
-new shape is then an **alias**: it borrows the referent's facets wholesale and is
-not treated as a subtype.
+A declaration written as a bare scalar is a pure reference, and the new shape is
+an **alias**: it borrows the referent's facets wholesale and is not treated as a
+subtype. A declaration written as a mapping is **inheritance**: the new shape
+narrows the referent, and the rules in [07](07-resolution-and-inheritance.md)
+apply — even when the mapping carries nothing but `type:`, because what makes it
+a subtype is the form, not whether the author got as far as writing a facet.
 
-When sibling facets are present, the relationship is **inheritance**: the new
-shape narrows the referent, and the rules in
-[07](07-resolution-and-inheritance.md) apply.
-
-`make_shape` must therefore pass `None`, not `[]`, for the scalar case. A
-refactor that normalises the two is a silent behaviour change, so a test asserts
-the distinction.
+`UnknownShape.from_mapping` records this at decode time, since P7 no longer has
+the value node. It is deliberately **not** encoded as `facets is None` versus
+`facets == []`, which is what go-raml does: Go conflates a nil slice with an
+empty one, so the field was free there. Here it would cost `list[Node] | None` in
+the `Shape.decode_facets` protocol and a `None` guard in nine per-kind loops, for
+a distinction exactly one of the seventeen kinds reads — and a nullable list is
+the encoding a later refactor normalises away without noticing. A named boolean
+cannot be. A test asserts the distinction either way.
 
 ### 3.2 Reference positions for tooling
 

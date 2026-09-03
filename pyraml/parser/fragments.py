@@ -172,6 +172,16 @@ class ReferenceResolver(Fragment, Protocol):
 
     def trait_definition(self, name: str) -> TraitDefinition: ...
 
+    def library_link(self, prefix: str) -> LibraryLink | None:
+        """The `uses:` entry a qualified name's prefix names, if any.
+
+        On the protocol rather than reached through a fragment's `uses` field
+        so that P7 can emit the library half of a `lib.Type` reference
+        (docs/06 section 3.2) through the anchor it already holds, without
+        `types/` importing this module at runtime.
+        """
+        ...
+
 
 @runtime_checkable
 class SecuritySchemeResolver(Protocol):
@@ -279,6 +289,14 @@ class _BaseFragment:
 
     def decode(self, node: Node) -> None:  # pragma: no cover - overridden everywhere
         raise NotImplementedError
+
+    def library_link(self, prefix: str) -> LibraryLink | None:
+        """One `uses:` lookup, shared by every fragment kind.
+
+        Unlike the four name resolvers, this one has no local-declaration half
+        and no annotation fallback, so `_UsesOnlyFragment` does not override it.
+        """
+        return self.uses.get(prefix)
 
 
 class _UsesOnlyFragment(_BaseFragment):
@@ -875,6 +893,11 @@ def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Frag
     # to the in-progress object instead of recursing.
     raml.put_fragment(uri, fragment)
     anchor = fragment if isinstance(fragment, ReferenceResolver) else None
+    if anchor is not None:
+        # Indexed here, where the capability check already happens, so that P7's
+        # fallback for a shape built outside any parse context is a dict lookup
+        # rather than a second isinstance in `types/` (docs/04 section 4.2).
+        raml.put_resolver(uri, anchor)
     raml.push_ctx(ParseCtx(anchor=anchor))
     try:
         root = compose(text, uri=uri)

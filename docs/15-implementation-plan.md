@@ -145,21 +145,41 @@ the critical path; this phase consumes them rather than writing them. Normative:
 
 **Build:**
 
-1. `types/expressions/build.py`: the AST → shape visitor, and the reference
-   positions (`TypeExprRef`) that make go-to-definition work inside an
-   expression.
-2. The expression cache, keyed by text into `Raml.expr_cache` — one parse per
+1. `types/resolve.py`: `resolve_shapes` and its worklist drain (P7) **and** the
+   AST → shape visitor, which are mutually recursive and so share a module
+   ([02](02-architecture.md) § 2). Each `UnknownShape` becomes a concrete kind
+   **in place**, so references already taken stay valid.
+2. The reference positions (`TypeExprRef`) that make go-to-definition work
+   inside an expression, and the two lookups they need
+   ([06](06-type-expressions.md) § 3.2, [04](04-fragments-and-namespaces.md)
+   § 4.2).
+3. The expression cache, keyed by text into `Raml.expr_cache` — one parse per
    distinct expression, not per occurrence.
-3. `resolve_shapes` and its worklist drain (P7): each `UnknownShape` becomes a
-   concrete kind **in place**, so references already taken stay valid.
 4. Alias-versus-inheritance discrimination ([06](06-type-expressions.md) § 3.1) —
-   the distinction the remaining resolution rules hang off.
+   the distinction the remaining resolution rules hang off. It has a decode half
+   too: the form of the declaration must be recorded while the value node is
+   still in hand.
 5. Cyclic-reference detection, so a self-referential expression is a diagnostic
    rather than a hang.
 
 **Done when:** every line of `rdt/examples.txt` builds the expected shape;
 `Types/` fixtures that use expressions parse; no reachable `UnknownShape` remains
 after a parse (invariant I5 asserted by a test helper).
+
+**Outcome.** TCK 558 → 584 of 930, no regressions. All twenty-six are *invalid*
+fixtures now rejected: resolution only ever adds diagnostics, so the informative
+half of the result is that no valid fixture moved in either direction.
+I5 is asserted over the corpus alongside a reachability walk that ties it back
+to I4 (`tests/tck/test_invariants.py`).
+
+Two things the plan had in the wrong place. The visitor and the driver are
+mutually recursive — a reference's target may itself be unresolved — so they
+share `types/resolve.py` rather than splitting across `expressions/build.py`,
+and the driver is a free function because `registry.py` may not import `types/`
+at runtime ([02](02-architecture.md) § 2, [07](07-resolution-and-inheritance.md)
+§ 1). Step 4 also turned out to have a decode half: the form of a declaration
+decides alias versus inheritance, and had to be recorded while the value node
+was still in hand ([06](06-type-expressions.md) § 3.1).
 
 ---
 

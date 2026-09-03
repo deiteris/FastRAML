@@ -2,7 +2,9 @@ r"""Recursive-descent parser for RAML type expressions (RDT).
 
 Implements docs/06-type-expressions.md sections 1-2: the grammar, the AST, and
 the memoised entry point. Section 3 (AST -> shapes) is **not** implemented
-here -- it depends on a type model that does not exist yet.
+here. It is mutually recursive with the resolution driver -- a reference's
+target may itself be unresolved -- so the two live together in
+`types/resolve.py` rather than one importing the other (docs/02 section 2).
 
 Grammar, reproduced from the reference ANTLR grammar (docs/06 section 1):
 
@@ -34,6 +36,7 @@ from .lexer import Token, TokenKind, expression_error, tokenize
 
 __all__ = [
     'Array',
+    'ExprCache',
     'Optional_',
     'Primitive',
     'RdtNode',
@@ -173,30 +176,37 @@ class _Parser:
         raise expression_error(token.col, expected='a type', found=token.text)
 
 
-#: Memoised on the expression's exact text (docs/06 section 2.3). The AST is
-#: immutable and carries no file positions -- only intra-expression columns --
-#: so one entry safely serves every occurrence of the same expression text in
-#: a corpus. A failed parse is cached as the `RamlError` instance itself and
-#: re-raised on every hit, so 500 occurrences of one malformed expression cost
-#: one parse and 500 dictionary hits. This cache lives on the module for now;
-#: a later phase moves it onto the registry.
-_cache: dict[str, RdtNode | RamlError] = {}
+#: What `Raml.expr_cache` holds (docs/06 section 2.3).
+ExprCache = dict[str, 'RdtNode | RamlError']
 
 
-def parse_expression(text: str) -> RdtNode:
+def parse_expression(text: str, cache: ExprCache) -> RdtNode:
     """Parse a RAML type expression (a `type:` scalar) to its AST.
+
+    Memoised on the expression's exact text. The AST is immutable and carries
+    no file positions -- only intra-expression columns -- so one entry safely
+    serves every occurrence of the same text in a corpus. A failed parse is
+    cached as the `RamlError` instance itself and re-raised on every hit, so
+    500 occurrences of one malformed expression cost one parse and 500
+    dictionary hits, while each of the 500 diagnostics still gets its own file
+    position -- that comes from the caller, not from here.
+
+    The cache belongs to one parse and is passed in rather than held on this
+    module. A module-level dict would outlive every `Raml` and grow for the
+    life of the interpreter, and `Raml` already owns every other cache whose
+    lifetime is the parse (docs/02 section 3).
 
     Raises `RamlError` for a malformed expression, with the offending token's
     0-based column in `info['column']`. See `expression_error` for why the
     error carries no file `location` at this layer.
     """
-    cached = _cache.get(text)
+    cached = cache.get(text)
     if cached is None:
         try:
             cached = _Parser(tokenize(text)).parse()
         except RamlError as err:
             cached = err
-        _cache[text] = cached
+        cache[text] = cached
     if isinstance(cached, RamlError):
         raise cached
     return cached

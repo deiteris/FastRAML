@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from .parser import (
     Array,
+    ExprCache,
     Optional_,
     Primitive,
     RdtNode,
@@ -17,6 +18,7 @@ from .parser import (
 
 __all__ = [
     'Array',
+    'ExprCache',
     'Optional_',
     'Primitive',
     'RdtNode',

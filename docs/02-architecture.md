@@ -264,7 +264,7 @@ class Raml:
         # --- caches (the reason this class exists) -------------------------
         "fragments",  # uri -> Fragment      (one parse per file)
         "include_nodes",  # uri -> Node          (one compose per file)
-        "expr_cache",  # str -> RdtAst        (one parse per expression)
+        "expr_cache",  # str -> RdtNode | RamlError (one parse per expression)
         "json_schema_registry",  # shared JSON Schema compiler/registry
         # --- indices -------------------------------------------------------
         "fragment_types",  # uri -> {name: BaseShape}

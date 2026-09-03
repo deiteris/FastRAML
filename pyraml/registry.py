@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from pyraml.parser.annotations import DomainExtension
     from pyraml.parser.fragments import Fragment, ReferenceResolver
     from pyraml.parser.includes import IncludeRef
+    from pyraml.types.expressions import ExprCache
     from pyraml.yamlnode import Node
 
     # Phase 2 onwards replace these aliases with the real classes. They are
@@ -130,7 +131,9 @@ class Raml:
 
         self.fragments: dict[str, Fragment] = {}
         self.include_nodes: dict[str, Node] = {}
-        self.expr_cache: dict[str, Any] = {}
+        # One parse per distinct expression text, not per occurrence. Held here
+        # rather than on the expression parser so it dies with the parse.
+        self.expr_cache: ExprCache = {}
         self.json_schema_registry: dict[Any, Any] = {}
 
         self.fragment_types: dict[str, dict[str, BaseShape]] = {}

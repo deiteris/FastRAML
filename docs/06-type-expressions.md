@@ -104,8 +104,17 @@ still produce 500 correctly positioned diagnostics.
 ### 2.3 The expression cache
 
 ```python
-Raml.expr_cache: dict[str, RdtNode | RdtError]
+ExprCache = dict[str, RdtNode | RamlError]
+
+Raml.expr_cache: ExprCache
+parse_expression(text: str, cache: ExprCache) -> RdtNode
 ```
+
+The cache is **passed in, not held on the parser's module**. It belongs to one
+parse and dies with it: a module-level dict would outlive every `Raml` and grow
+for the life of the interpreter, and `Raml` already owns every other cache whose
+lifetime is the parse (doc 02 § 3). This also keeps `expressions/` a leaf that
+knows nothing about the registry — it receives a `dict`, not a `Raml`.
 
 Parsing is **memoised on the expression text**. In a real corpus the same handful
 of expressions (`string`, `integer`, `object`, `MyType`, `MyType[]`) appear

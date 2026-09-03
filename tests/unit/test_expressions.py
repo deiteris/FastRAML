@@ -13,25 +13,27 @@ import pytest
 
 import pyraml.types.expressions.parser as parser_module
 from pyraml.errors import RamlError
+from pyraml.registry import Raml
 from pyraml.types.expressions import (
     Array,
+    ExprCache,
     Optional_,
     Primitive,
     Reference,
     Union,
-    parse_expression,
 )
+from pyraml.types.expressions import parse_expression as parse_with_cache
 from pyraml.types.expressions.lexer import Token, TokenKind, tokenize
 
 
-@pytest.fixture(autouse=True)
-def _clear_expression_cache():
-    # The cache is module-global (docs/06 section 2.3: "lives on the module
-    # for now"). Clearing it around every test keeps identity-based
-    # assertions (TestCache) independent of test order.
-    parser_module._cache.clear()
-    yield
-    parser_module._cache.clear()
+def parse_expression(text: str, cache: ExprCache | None = None):
+    """Parse with a cache of this call's own unless one is supplied.
+
+    The real cache belongs to a `Raml` (docs/06 section 2.3), so there is no
+    global to clear between tests. A test that is about the memoisation passes
+    its own dict and is the only thing that shares one.
+    """
+    return parse_with_cache(text, {} if cache is None else cache)
 
 
 # -- The reference corpus -----------------------------------------------------
@@ -160,12 +162,18 @@ class TestMalformedInput:
 
 class TestCache:
     def test_returns_the_identical_object_for_the_same_text(self):
-        first = parse_expression('MyType[]')
-        second = parse_expression('MyType[]')
+        cache: ExprCache = {}
+        first = parse_expression('MyType[]', cache)
+        second = parse_expression('MyType[]', cache)
         assert first is second
 
     def test_distinct_text_is_not_shared(self):
-        assert parse_expression('MyType') is not parse_expression('OtherType')
+        cache: ExprCache = {}
+        assert parse_expression('MyType', cache) is not parse_expression('OtherType', cache)
+
+    def test_two_caches_do_not_share(self):
+        # The cache belongs to one parse: nothing survives into the next.
+        assert parse_expression('MyType[]') is not parse_expression('MyType[]')
 
     def test_parses_once_for_many_repeated_calls(self, monkeypatch):
         calls = 0
@@ -177,15 +185,17 @@ class TestCache:
             return real_tokenize(text)
 
         monkeypatch.setattr(parser_module, 'tokenize', counting_tokenize)
+        cache: ExprCache = {}
         for _ in range(500):
-            parse_expression('Counted.Type[]?')
+            parse_expression('Counted.Type[]?', cache)
         assert calls == 1
 
     def test_a_parse_failure_is_cached_as_the_same_exception_object(self):
+        cache: ExprCache = {}
         errors = []
         for _ in range(500):
             try:
-                parse_expression('(broken')
+                parse_expression('(broken', cache)
             except RamlError as err:
                 errors.append(err)
         assert len(errors) == 500
@@ -201,10 +211,14 @@ class TestCache:
             return real_tokenize(text)
 
         monkeypatch.setattr(parser_module, 'tokenize', counting_tokenize)
+        cache: ExprCache = {}
         for _ in range(500):
             with pytest.raises(RamlError):
-                parse_expression('also | (broken')
+                parse_expression('also | (broken', cache)
         assert calls == 1
+
+    def test_a_fresh_registry_starts_with_an_empty_cache(self):
+        assert Raml().expr_cache == {}
 
 
 class TestTokenizer:

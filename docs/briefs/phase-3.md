@@ -85,35 +85,28 @@ go-raml distinguishes them by nil-versus-empty on that same slice
 and `TestAliasVersusInheritance` in `tests/unit/test_shape_decode.py` pins all
 four forms.
 
-### 3.2 `TypeExprRef`, and the two lookups it needs
+### 3.2 `TypeExprRef` and the two lookups it needs — **done**
 
-`TypeExprRef` per doc 06 § 3.2 — a `@dataclass(frozen=True, slots=True)` in
-`types/base.py`, replacing the `Any` alias. Its comment there cites "docs/06
-section 5", which does not exist; the class is § 3.2.
+`TypeExprRef` is the real record in `types/base.py`, per doc 06 § 3.2. Both
+lookups now exist, and both are shaped so that `types/` need not import
+`parser/fragments.py` at runtime — that module imports `make_shape`, so it is
+the one genuine cycle in the layout (doc 02 § 2):
 
-Two lookups do not exist yet and both are needed:
+- `ReferenceResolver.library_link(prefix)`, on the protocol so P7 reaches it
+  through the anchor it already holds. It emits the library half of a
+  `lib.Type` reference.
+- `Raml.resolver_at(location)`, doc 04 § 4.2's fallback for a shape with no
+  anchor. Filled by the fragment decoder in the line that already performs the
+  capability check. On a full TCK parse it is never reached — all 578 unresolved
+  shapes carry an anchor — so it exists for programmatic construction and tests.
 
-- **The location fallback.** Doc 04 § 4.2's last line: resolution uses the shape's
-  captured `anchor`, "falling back to a location lookup only for shapes built
-  without a parse context". `BaseShape.anchor` is `None` for a programmatically
-  built shape and in unit tests. go-raml's `GetReferencedType(name, location)`
-  is the model.
-- **`library_link_by_prefix(prefix, location)`**, so a qualified `lib.Type` can
-  emit the *two* refs doc 06 § 3.2 requires — one for the prefix, navigating to
-  the library file, one for the name, navigating to the declaration.
+### 3.3 The expression cache lives on the registry — **done**
 
-### 3.3 Move the expression cache onto the registry
-
-Doc 06 § 2.3 specifies `Raml.expr_cache`. The slot exists and is unused;
-`expressions/parser.py` instead holds a module-level `_cache` with a comment
-saying a later phase moves it. That cache is process-global: it outlives every
-parse and grows for the life of the interpreter.
-
-`parse_expression` gains the cache as a parameter. Narrow the registry's
-annotation from `dict[str, Any]` to `dict[str, RdtNode | RamlError]` under
-`TYPE_CHECKING`. Existing tests in `tests/unit/test_expressions.py` call the old
-signature and need updating — including `TestCache`, which is the only place the
-memoisation is pinned.
+`parse_expression(text, cache)`, with `Raml.expr_cache` typed `ExprCache =
+dict[str, RdtNode | RamlError]`. It used to be a module-level dict in
+`expressions/parser.py`, which outlived every parse and grew for the life of the
+interpreter. The parser takes a `dict`, not a `Raml`, so `expressions/` stays a
+leaf that knows nothing about the registry.
 
 ### 3.4 `pyraml/types/resolve.py` — the driver and the visitor, one module
 

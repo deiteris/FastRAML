@@ -241,6 +241,17 @@ except ImportError:
 The chosen backend is reported by `pyraml.backend_info()` so a user can tell why
 their parse is slow.
 
+**The backend is not purely a speed choice, and that is a defect.** The two
+scanners do not accept the same documents: `title:<TAB>My API` — a tab where a
+space would do — parses under libyaml and is rejected by the pure-Python
+scanner. So a file can parse on one installation and fail on another.
+
+Until that is closed, the mitigation is to run the suite under **both** backends
+in CI, so the set of divergences cannot grow unnoticed. The scalar-resolution
+half of the YAML layer is pinned by `tests/conformance`
+([03](03-yaml-and-io.md) § 2.2); this is the syntax half, and it has no oracle
+yet.
+
 ### 20. Expression AST cache
 
 Type expressions are memoised on their text ([06](06-type-expressions.md) § 2.3).

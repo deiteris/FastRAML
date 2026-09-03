@@ -12,6 +12,7 @@ decoding. See docs/03-yaml-and-io.md.
 
 from __future__ import annotations
 
+import re
 import sys
 from enum import IntEnum
 from typing import TYPE_CHECKING, Final
@@ -49,6 +50,71 @@ except ImportError:  # pragma: no cover
     from yaml import SafeLoader as _Loader  # type: ignore[assignment]
 
     _BACKEND = 'python'
+
+
+#: The YAML 1.2 core schema, as the resolver table PyYAML's scanner consults.
+#:
+#: RAML 1.0 is defined over YAML 1.2; PyYAML implements YAML 1.1. Left alone it
+#: reads `no` as a boolean, `12:30:00` as the integer 45000 and `1e3` as a
+#: string — so `example: no` on a string type would silently become `False`, and
+#: the spec's own `lunchtime: 12:30:00` would become a number.
+#:
+#: The patterns are `ruamel.yaml`'s YAML 1.2 resolvers, which track the spec and
+#: agree with `gopkg.in/yaml.v3` — the library the reference implementation uses,
+#: and therefore what the TCK is scored against. `tests/conformance` composes the
+#: whole corpus through both and fails on any disagreement.
+#:
+#: `null`, `str`, `seq`, `map` and `timestamp` are left as PyYAML has them: the
+#: oracle shows they already agree. Timestamps stay implicit, as in go-yaml, and
+#: `datanode` keeps their text rather than converting.
+_YAML_1_2_RESOLVERS: Final = (
+    (
+        'tag:yaml.org,2002:bool',
+        re.compile(r'^(?:true|True|TRUE|false|False|FALSE)$'),
+        'tTfF',
+    ),
+    (
+        'tag:yaml.org,2002:int',
+        re.compile(
+            r"""^(?:[-+]?0b[0-1_]+
+            |[-+]?0o?[0-7_]+
+            |[-+]?[0-9_]+
+            |[-+]?0x[0-9a-fA-F_]+)$""",
+            re.VERBOSE,
+        ),
+        '-+0123456789',
+    ),
+    (
+        'tag:yaml.org,2002:float',
+        re.compile(
+            r"""^(?:[-+]?(?:[0-9][0-9_]*)\.[0-9_]*(?:[eE][-+]?[0-9]+)?
+            |[-+]?(?:[0-9][0-9_]*)(?:[eE][-+]?[0-9]+)
+            |[-+]?\.[0-9_]+(?:[eE][-+][0-9]+)?
+            |[-+]?\.(?:inf|Inf|INF)
+            |\.(?:nan|NaN|NAN))$""",
+            re.VERBOSE,
+        ),
+        '-+.0123456789',
+    ),
+)
+
+
+class _RamlLoader(_Loader):  # type: ignore[valid-type, misc]
+    """`_Loader` with YAML 1.2 scalar resolution.
+
+    Only the implicit-resolver table changes. The scanner is untouched, which
+    matters: PyYAML ships a current libyaml, so `[ http://example.com ]` — a
+    colon inside a plain scalar in flow context — already parses correctly.
+    """
+
+
+_REPLACED: Final = frozenset(tag for tag, _pattern, _first in _YAML_1_2_RESOLVERS)
+_RamlLoader.yaml_implicit_resolvers = {
+    first: [(tag, pattern) for tag, pattern in resolvers if tag not in _REPLACED]
+    for first, resolvers in _Loader.yaml_implicit_resolvers.items()
+}
+for _tag, _pattern, _first_chars in _YAML_1_2_RESOLVERS:
+    _RamlLoader.add_implicit_resolver(_tag, _pattern, list(_first_chars))
 
 
 def backend_name() -> str:
@@ -363,7 +429,7 @@ def compose(
     text = source.decode('utf-8-sig') if isinstance(source, bytes) else source
 
     try:
-        root = yaml.compose(text, Loader=_Loader)
+        root = yaml.compose(text, Loader=_RamlLoader)
     except yaml.MarkedYAMLError as err:
         raise _syntax_error(err, uri) from err
     except yaml.YAMLError as err:

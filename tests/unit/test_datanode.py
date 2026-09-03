@@ -36,7 +36,14 @@ class TestScalarConversion:
             ('v: 1_000', 1000),
             ('v: 1.5', 1.5),
             ('v: true', True),
-            ('v: no', False),
+            ('v: false', False),
+            # YAML 1.2: `true` and `false` are the only booleans. `no` is a
+            # string, and so are the base-60 forms YAML 1.1 read as numbers.
+            ('v: no', 'no'),
+            ('v: yes', 'yes'),
+            ('v: on', 'on'),
+            ('v: 12:30:00', '12:30:00'),
+            ('v: 0o17', 15),
             ('v:', None),
             # A timestamp keeps its literal text: RAML wants the written form
             # of a date-only example, and the type layer parses it.

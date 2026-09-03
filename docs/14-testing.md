@@ -91,6 +91,40 @@ documented deviation ([01](01-scope-and-coverage.md) § 4).
 The script needs a Go toolchain, so it does not run in CI. It is the fastest way
 to diagnose a TCK failure.
 
+### 1.4 Differential conformance: the YAML 1.2 oracle
+
+`tests/conformance` answers a question the TCK cannot: **does our YAML layer read
+scalars the way YAML 1.2 says?** The TCK scores whether a document parses, not
+what it parses to, so `example: 12:30:00` becoming the integer 45000 is invisible
+to it — the fixture still passes.
+
+The oracle is `ruamel.yaml` in YAML 1.2 mode (`typ='safe', pure=True`). Each
+input is composed twice and the two node trees are compared on shape, tag and
+text:
+
+- a table of scalar forms in four syntactic positions — plain value, quoted
+  value, mapping key, flow-sequence item — so a resolver change cannot fix one
+  position and break another;
+- structural documents covering includes, anchors, block scalars, flow
+  collections and complex keys;
+- **every** `.raml`/`.yaml`/`.yml` file in the TCK corpus, not only the entry
+  documents: an included library is exactly where an odd scalar hides.
+
+Rules that keep it honest:
+
+- `KNOWN_DIVERGENCES` is keyed by reason, so an exception cannot be added without
+  writing down why.
+- `MAX_UNCOMPARABLE` bounds the documents neither side can compose. The TCK ships
+  deliberately malformed fixtures, so it is not zero — but a change that quietly
+  stopped comparing most of the corpus would otherwise look like a pass.
+- Ruamel is a **dev dependency**. It never ships, and nothing outside this suite
+  imports it. The pure-Python loader is required, not incidental: ruamel's C
+  extension carries a pre-0.2.2 libyaml scanner that rejects
+  `[ http://example.com ]`.
+
+This suite covers resolution. The scanner half has no oracle; see
+[12](12-performance.md) § 19 for the one known backend divergence.
+
 ## 2. Golden tests
 
 For inputs where "no error" is too weak an assertion. Each case is a directory:
@@ -183,7 +217,7 @@ sizes to check linearity.
 |------|--------|
 | Python | 3.12, 3.13 |
 | OS | Linux, Windows (path/URI handling differs materially) |
-| YAML backend | libyaml **and** pure-Python (the pure-Python job also guards against accidental libyaml-only behaviour) |
+| YAML backend | libyaml **and** pure-Python. Not optional: the two scanners already disagree on `title:<TAB>value` ([12](12-performance.md) § 19), so a libyaml-only run would ship that divergence. |
 | Regex engine | `re` always; `re2` in one job |
 
 Plus, on every PR: `ruff check`, `ruff format --check`, `mypy --strict pyraml/`,

@@ -49,7 +49,9 @@ __all__ = [
     'value_node_of',
 ]
 
-_TRUE_SCALARS: Final = frozenset({'true', 'yes', 'on', 'y'})
+#: The loader resolves YAML 1.2, where `true` is the only true. `yes`, `on`
+#: and `y` are strings and never reach here tagged `!!bool`.
+_TRUE_SCALARS: Final = frozenset({'true'})
 
 #: Float scalars YAML spells in words rather than digits.
 _SPECIAL_FLOATS: Final = {

@@ -93,6 +93,13 @@ def unwrap_shapes(raml: Raml, *, max_depth: int = DEFAULT_MAX_DEPTH) -> None:
         for name, base in declared.items():
             declared[name] = walk.done.get(base.id, base)
 
+    # P8 bound `defined_by` to the un-flattened declaration. Left alone, P10
+    # would validate annotation values against a shape with no inherited
+    # constraints on it, and would do so silently (docs/09 section B4).
+    for extension in raml.domain_extensions:
+        if extension.defined_by is not None:
+            extension.defined_by = walk.done.get(extension.defined_by.id, extension.defined_by)
+
     accumulator.raise_if_any()
     mark_recursions(raml, max_depth=max_depth)
     raml.unwrapped = True

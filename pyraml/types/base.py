@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from pyraml.datanode import DataNode
+    from pyraml.domains import DomainLocation
     from pyraml.parser.annotations import DomainExtension
     from pyraml.parser.fragments import DataTypeFragment, LibraryLink, ReferenceResolver
     from pyraml.parser.includes import IncludeInfo
@@ -192,6 +193,9 @@ class BaseShape:
         'examples',
         'enum',
         'xml',
+        # An annotation-type facet, but stored on every base: which facets a
+        # declaration may carry is decided by `shape.py`, not by this class.
+        'allowed_targets',
         # structure
         'inherits',
         'alias',
@@ -240,6 +244,10 @@ class BaseShape:
         self.examples: Examples | None = None
         self.enum: list[DataNode] | None = None
         self.xml: XmlSerialization | None = None
+        #: `allowedTargets:` on an annotation type. `None` and `[]` differ and
+        #: the difference must survive to P10: absent means *any* target, empty
+        #: means none at all (docs/09 section B5).
+        self.allowed_targets: list[DomainLocation] | None = None
 
         # The containers are allocated eagerly: an empty dict costs less than a
         # `None` check at every read across four passes.
@@ -316,6 +324,9 @@ class BaseShape:
         clone.examples = self.examples
         clone.enum = self.enum
         clone.xml = self.xml
+        # Copied, not shared: `None` versus a list is meaningful here, and a
+        # shared list would let one clone's narrowing reach the original.
+        clone.allowed_targets = None if self.allowed_targets is None else list(self.allowed_targets)
         clone.type_expr = self.type_expr
         clone.type_expr_refs = list(self.type_expr_refs)
         clone._unwrapped = self._unwrapped

@@ -27,6 +27,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
+from pyraml.domains import DomainLocation
 from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
 from pyraml.parser.documentation import DocumentationItem, decode_documentation_item
@@ -121,6 +122,26 @@ HEADS: Final[Mapping[str, FragmentKind]] = {
 def identify_fragment(head: str) -> FragmentKind | None:
     """The kind a document's first line declares, or `None` if it declares none."""
     return HEADS.get(head)
+
+
+#: What an annotation written at a fragment's root is being applied to. The two
+#: names that do not simply match are `DataType`, whose root *is* a type
+#: declaration, and `AnnotationTypeDeclaration`, whose root is an annotation
+#: type. Narrower sites push over this via `Raml.target_scope`.
+#: See docs/09-security-and-annotations.md section B5.
+FRAGMENT_TARGETS: Final[Mapping[FragmentKind, DomainLocation]] = {
+    FragmentKind.API: DomainLocation.API,
+    FragmentKind.LIBRARY: DomainLocation.LIBRARY,
+    FragmentKind.DATA_TYPE: DomainLocation.TYPE_DECLARATION,
+    FragmentKind.NAMED_EXAMPLE: DomainLocation.EXAMPLE,
+    FragmentKind.DOCUMENTATION_ITEM: DomainLocation.DOCUMENTATION_ITEM,
+    FragmentKind.RESOURCE_TYPE: DomainLocation.RESOURCE_TYPE,
+    FragmentKind.TRAIT: DomainLocation.TRAIT,
+    FragmentKind.ANNOTATION_TYPE: DomainLocation.ANNOTATION_TYPE,
+    FragmentKind.SECURITY_SCHEME: DomainLocation.SECURITY_SCHEME,
+    FragmentKind.OVERLAY: DomainLocation.OVERLAY,
+    FragmentKind.EXTENSION: DomainLocation.EXTENSION,
+}
 
 
 # -- facet names --------------------------------------------------------------
@@ -898,7 +919,7 @@ def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Frag
         # fallback for a shape built outside any parse context is a dict lookup
         # rather than a second isinstance in `types/` (docs/04 section 4.2).
         raml.put_resolver(uri, anchor)
-    raml.push_ctx(ParseCtx(anchor=anchor))
+    raml.push_ctx(ParseCtx(anchor=anchor, target=FRAGMENT_TARGETS[kind]))
     try:
         root = compose(text, uri=uri)
         raml.store_source_node(uri, root)

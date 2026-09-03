@@ -726,7 +726,7 @@
     "Types/annotation-inherits-pattern-prop-01/valid.raml": "pass",
     "Types/annotations-used-in-type-01/invalid-wrong-value-type.raml": "fail",
     "Types/annotations-used-in-type-01/valid.raml": "pass",
-    "Types/annotations-used-in-type-02/invalid-undefined-annotation.raml": "fail",
+    "Types/annotations-used-in-type-02/invalid-undefined-annotation.raml": "pass",
     "Types/annotations-used-in-type-02/valid.raml": "pass",
     "Types/annotations-used-in-type-03/invalid-wrong-nested-property-type.raml": "fail",
     "Types/annotations-used-in-type-03/valid.raml": "pass",

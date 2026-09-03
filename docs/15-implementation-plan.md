@@ -232,6 +232,57 @@ exists for.
 
 ---
 
+## Phase 4b — Domain extensions (P8) — **complete**
+
+Numbered `4b` rather than renumbering what follows: code comments name phases by
+number, and the re-binding step depends on Phase 4's unwrap.
+
+**Prerequisites:** Phase 2 for annotation types, which are shapes, and Phase 4
+for the re-binding. Normative: [09](09-security-and-annotations.md) Part B.
+Brief: `docs/briefs/phase-4b.md`.
+
+**Why it moved.** P8 was Phase 7's build step 4, grouped there because that phase
+is titled "Security and annotations". Nothing in it touches security: it binds an
+annotation application to the annotation *type* it names. It was also the only
+gap left in the P0–P9 chain, and Phase 8's `_validate_domain_extensions` cannot
+be written without it.
+
+**Build:**
+
+1. `DomainLocation` in `pyraml/domains.py`, a leaf module because `registry.py`
+   carries it on `ParseCtx` and `parser/annotations.py` reads it
+   ([02](02-architecture.md) § 2).
+2. `ParseCtx.target` and `Raml.target_scope`, plus the per-`FragmentKind` default
+   and the four narrower scopes.
+3. `allowedTargets` decoded onto `BaseShape.allowed_targets`, `None` and `[]`
+   kept distinct.
+4. `resolve_domain_extensions` — the pass — wired unconditionally between P7 and
+   P9.
+5. `defined_by` re-bound through `walk.done` at the end of unwrap.
+
+**Done when:** each of the six reachable sites records itself; a qualified name
+binds through `uses:` and an undeclared one is an accumulated error; both
+`allowedTargets` forms round-trip and a bad entry is positioned at that entry;
+a binding still points at a live shape after unwrap, asserted over the corpus.
+
+**Outcome.** TCK 594 → 595 of 930, no regressions — as predicted, since the only
+thing P8 rejects by itself is an undeclared annotation name. 30 unit tests in
+`test_domain_extensions.py`, plus two corpus checks over the 52 annotation
+applications the TCK's valid fixtures contain.
+
+Twelve existing unit-test fixtures applied annotations they never declared, and
+were corrected rather than the rule relaxed. That is the shape of this pass's
+risk: it only ever adds diagnostics, so everything it can do to a document that
+used to parse is reject it.
+
+The design changed under contact. An explicit `target` parameter on
+`unmarshal_domain_extension` was the plan; the annotated-scalar form goes
+through `make_scalar_facet`, whose four dozen call sites would each have had to
+thread one, and § B5's trait subtlety needs a value the decode site does not
+have. The `ParseCtx` stack already solved exactly this problem for the anchor.
+
+---
+
 ## Phase 5 — Endpoints (stage 1 and 2, no templates)
 
 **Prerequisites:** Phase 2 — a body, a header and a query parameter are all
@@ -297,12 +348,10 @@ hypothesis.
 
 ## Phase 7 — Security and annotations
 
-**Prerequisites:** Phase 5 for the operations schemes attach to, Phase 6 if a
-scheme arrives through a trait, and Phase 2 for annotation types, which are
-shapes. The `_raw_security_schemes` and `_raw_secured_by` seams and the
-`SecuritySchemeFragment` body hold the input; `Raml.domain_extensions` is already
-populated by Phase 1 and needs only resolving. Normative:
-[09](09-security-and-annotations.md).
+**Prerequisites:** Phase 5 for the operations schemes attach to, and Phase 6 if a
+scheme arrives through a trait. The `_raw_security_schemes` and `_raw_secured_by`
+seams and the `SecuritySchemeFragment` body hold the input. Normative:
+[09](09-security-and-annotations.md) Part A.
 
 **Build:**
 
@@ -312,21 +361,27 @@ populated by Phase 1 and needs only resolving. Normative:
    scheme, and OAuth 2.0 scope narrowing.
 3. Fill `Raml.global_secured_by` from `APIFragment._raw_secured_by` — the
    pre-pass that harvests it already runs in the right order.
-4. P8: bind every `DomainExtension.name` through its captured anchor, and re-bind
-   `defined_by` after unwrap replaces shape objects.
-5. `DomainLocation` tagging at every application site, then `allowedTargets`
-   enforcement (§ B5), which the reference implementation parses and ignores.
+4. Push a `DomainLocation` scope at each application site this phase creates:
+   `SECURITY_SCHEME` and `SECURITY_SCHEME_SETTINGS`. The enum and the mechanism
+   are Phase 4b's; Phases 5 and 6 owe the same for their own sites.
 
-**Done when:** `SecuritySchemes/` and `Annotations/` pass, including the
-`allowedTargets` fixtures that the reference implementation skips.
+P8 itself moved to Phase 4b, which also decodes `allowedTargets`. Enforcing it
+is Phase 8's, with the rest of validation.
+
+**Done when:** `SecuritySchemes/` passes, and the `Annotations/` fixtures whose
+application site is a security scheme.
 
 ---
 
 ## Phase 8 — Validation and JSON Schema
 
 **Prerequisites:** Phase 4 — validation runs against unwrapped shapes, and
-`validate=True` without `unwrap=True` unwraps a private copy. Phase 7 for
-annotation values. Normative: [10](10-validation.md).
+`validate=True` without `unwrap=True` unwraps a private copy. Phase 4b for
+`defined_by`, without which annotation values have nothing to validate against.
+**Not** Phases 5–7. `_validate_types` iterates `fragment_typedefs`, which the
+endpoint decoders register into through the same helpers types use, so endpoints
+feed the validator without the validator changing. Phases 5–7 widen its input,
+they do not change its shape. Normative: [10](10-validation.md).
 
 **Build:**
 
@@ -337,12 +392,27 @@ annotation values. Normative: [10](10-validation.md).
 3. Example, default and enum validation (§ 3), on top of steps 1 and 2.
 4. Custom facet validation against the `facets:` declarations found in the
    inheritance chain (§ 4).
-5. The shared JSON Schema registry, `JsonShape` and its restrictions, and the
+5. Annotation values against `defined_by`, and `allowedTargets` against the
+   recorded site — the six locations reachable before Phase 5, all seventeen
+   after Phase 7.
+6. The shared JSON Schema registry, `JsonShape` and its restrictions, and the
    schema → shape projection (§ 6).
 
-**Done when:** the full TCK runs with `unwrap=True, validate=True`; every
-`*invalid*` fixture outside the skip list produces an error; every `*valid*`
-fixture outside the skip list does not.
+Steps 1–5 stand alone and are worth taking before Phases 5–7: 133 of the 336
+fixtures the ratchet still records as failing declare no resource and no
+template, and 325 of those 336 are *invalid* fixtures the parser fails to
+reject. Validation is the largest single lever in the corpus and it is on the
+critical path for the endpoint categories too, most of which need it before
+their invalid fixtures can fail.
+
+Doc 10 § 6.2's "no schema in query parameters, query string, URI parameters or
+headers" needs three decoders that do not exist until Phase 5. That check lands
+with them.
+
+**Done when:** every `*invalid*` fixture outside the skip list that declares no
+resource and no template produces an error, and no `*valid*` fixture regresses —
+the whole-corpus form of that criterion needs Phase 7 and is Phase 8's second
+half.
 
 ---
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
+from pyraml.domains import DomainLocation
 from pyraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
 from pyraml.parser.facets import make_string_facet
 from pyraml.positions import UNKNOWN, Position
@@ -63,16 +64,17 @@ def decode_documentation_item(raml: Raml, node: Node, location: str) -> Document
         raise node_error('documentation item must be a mapping node', location, node)
 
     item = DocumentationItem(id=raml.next_id(), location=location, key_pos=node.position, value_pos=node.full_position)
-    for key, value in pairs(node):
-        if key.value == FACET_TITLE:
-            item.title = _required_text(raml, key, value, location)
-        elif key.value == FACET_CONTENT:
-            item.content = _required_text(raml, key, value, location)
-        elif is_annotation_key(key.value):
-            extension = unmarshal_domain_extension(raml, location, key, value)
-            item.annotations[extension.name] = extension
-        else:
-            raise node_error('unknown field', location, key, info={'field': key.value})
+    with raml.target_scope(DomainLocation.DOCUMENTATION_ITEM):
+        for key, value in pairs(node):
+            if key.value == FACET_TITLE:
+                item.title = _required_text(raml, key, value, location)
+            elif key.value == FACET_CONTENT:
+                item.content = _required_text(raml, key, value, location)
+            elif is_annotation_key(key.value):
+                extension = unmarshal_domain_extension(raml, location, key, value)
+                item.annotations[extension.name] = extension
+            else:
+                raise node_error('unknown field', location, key, info={'field': key.value})
 
     if item.title is None:
         raise node_error('title is required', location, node)

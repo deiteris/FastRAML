@@ -25,7 +25,9 @@ from pyraml import (
 from pyraml.parser.fragments import HEADS, ReferenceResolver, SecuritySchemeResolver, identify_fragment
 from tests.unit.conftest import CountingLoader
 
-API = '#%RAML 1.0\ntitle: Example\n'
+#: `a` and `here` are declared because P8 requires every application to bind to
+#: a declaration; `any` because these tests carry arbitrary values on them.
+API = '#%RAML 1.0\ntitle: Example\nannotationTypes:\n  a: any\n  here: any\n'
 
 
 def messages(error: RamlError) -> list[str]:
@@ -221,7 +223,8 @@ class TestLibrary:
     def test_a_library_decodes_usage_uses_and_annotations(self, workspace):
         root = workspace(
             {
-                'lib.raml': '#%RAML 1.0 Library\nusage: Shared types\nuses:\n  o: other.raml\n(tag): v\n',
+                'lib.raml': '#%RAML 1.0 Library\nusage: Shared types\nuses:\n  o: other.raml\n'
+                'annotationTypes:\n  tag: any\n(tag): v\n',
                 'other.raml': '#%RAML 1.0 Library\n',
             }
         )
@@ -338,7 +341,8 @@ class TestUsesResolution:
             parse_from_path(root / 'api.raml')
         chain = next(iter(caught.value.chains()))
         assert chain[0].message == 'parse uses library'
-        assert chain[0].position.line == 4, 'the position is the uses: entry, not the uses: key'
+        uses_key_line = API.count('\n') + 1
+        assert chain[0].position.line == uses_key_line + 1, 'the position is the uses: entry, not the uses: key'
 
     def test_duplicate_library_names_are_rejected(self, workspace):
         root = workspace({'api.raml': API + 'uses:\n  l: a.raml\n  l: b.raml\n'})
@@ -428,7 +432,7 @@ class TestParseCtx:
         root = workspace(
             {
                 'api.raml': API + 'uses:\n  l: lib.raml\n(here): 1\n',
-                'lib.raml': '#%RAML 1.0 Library\n(there): 2\n',
+                'lib.raml': '#%RAML 1.0 Library\nannotationTypes:\n  there: any\n(there): 2\n',
             }
         )
         raml = parse_from_path(root / 'api.raml')

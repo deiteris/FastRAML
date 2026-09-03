@@ -3,9 +3,9 @@
 The internal name comes from AMF, by way of go-raml, and is kept because
 "annotation" collides with Python's own vocabulary in a heavily typed codebase.
 
-Phase 1 builds and registers extensions but does not resolve them: binding a
-name to its declaration needs annotation types, which arrive with the type
-system. Every extension is appended to the flat `Raml.domain_extensions` list,
+Phase 1 builds and registers extensions; P8 (`resolve_domain_extensions`) binds
+each one to the annotation type it names, which needs the type system to have
+run. Every extension is appended to the flat `Raml.domain_extensions` list,
 which is what lets the later resolution and validation passes be single loops
 rather than a traversal of the model.
 
@@ -18,6 +18,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from pyraml.datanode import make_data_node
+from pyraml.domains import DomainLocation
+from pyraml.errors import Accumulator, ErrorKind, RamlError
+from pyraml.parser.references import UnresolvedReferenceError
 from pyraml.positions import UNKNOWN, Position
 from pyraml.yamlnode import node_error
 
@@ -32,6 +35,7 @@ if TYPE_CHECKING:
 __all__ = [
     'DomainExtension',
     'is_annotation_key',
+    'resolve_domain_extensions',
     'unmarshal_domain_extension',
 ]
 
@@ -48,6 +52,10 @@ class DomainExtension:
     value_pos: Position = UNKNOWN
     #: The scope the annotation *name* resolves in, captured at creation time.
     anchor: ReferenceResolver | None = None
+    #: Where it was applied, for `allowedTargets` enforcement in P10. Captured
+    #: at creation time for the same reason the anchor is: the decoder that
+    #: finds the key is the only thing that knows.
+    target: DomainLocation = DomainLocation.API
     #: The annotation type this application was bound to. Filled by P8.
     defined_by: BaseShape | None = None
 
@@ -70,6 +78,7 @@ def unmarshal_domain_extension(raml: Raml, location: str, key_node: Node, value_
     if not name:
         raise node_error('annotation name must not be empty', location, key_node)
 
+    ctx = raml.current_ctx()
     extension = DomainExtension(
         id=raml.next_id(),
         name=name,
@@ -77,7 +86,45 @@ def unmarshal_domain_extension(raml: Raml, location: str, key_node: Node, value_
         location=location,
         key_pos=key_node.position,
         value_pos=value_node.full_position,
-        anchor=raml.current_ctx().anchor,
+        anchor=ctx.anchor,
+        target=ctx.target,
     )
     raml.domain_extensions.append(extension)
     return extension
+
+
+def resolve_domain_extensions(raml: Raml) -> None:
+    """P8 — bind every application to the annotation type it names.
+
+    One loop over the flat list, which is why `Raml.domain_extensions` exists
+    (docs/09 section B3). Spec section Annotations: "All annotations used in an
+    API specification MUST be declared in its annotationTypes node", so a name
+    that resolves nowhere is an error rather than a shrug.
+
+    Errors accumulate: a document with three undeclared annotations reports
+    three. This pass never rewrites a value, only fills `defined_by`.
+    """
+    accumulator = Accumulator()
+    for extension in raml.domain_extensions:
+        # An extension built outside a fragment decode — programmatic
+        # construction, or a test — has no anchor, so fall back to the index
+        # the decoder fills, exactly as P7 does for a shape.
+        anchor = extension.anchor or raml.resolver_at(extension.location)
+        if anchor is None:
+            accumulator.add(_unresolved(extension, 'annotation type not found'))
+            continue
+        try:
+            extension.defined_by = anchor.reference_annotation_type(extension.name)
+        except UnresolvedReferenceError as err:
+            accumulator.add(_unresolved(extension, err.reason))
+    accumulator.raise_if_any()
+
+
+def _unresolved(extension: DomainExtension, reason: str) -> RamlError:
+    return RamlError.new(
+        reason,
+        extension.location,
+        extension.key_pos,
+        kind=ErrorKind.RESOLVING,
+        info={'annotation': extension.name},
+    )

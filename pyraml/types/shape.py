@@ -20,9 +20,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from pyraml.datanode import make_data_node
+from pyraml.domains import DomainLocation
 from pyraml.errors import Accumulator, RamlError
 from pyraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
-from pyraml.parser.facets import compile_pattern, make_bool_facet, make_string_facet
+from pyraml.parser.facets import compile_pattern, make_bool_facet, make_string_facet, scalar_str
 from pyraml.parser.includes import note_include_ref
 from pyraml.types.base import (
     BUILTIN_TYPES,
@@ -202,23 +203,27 @@ def unmarshal_types(raml: Raml, node: Node, location: str, *, is_annotation: boo
 
     declared: dict[str, BaseShape] = {}
     accumulator = Accumulator()
-    for key, value in pairs(node):
-        name = key.value
-        try:
-            if name in BUILTIN_TYPES:
-                raise node_error('cannot redefine a built-in type', location, key, info={'type': name})
-            if name in declared:
-                raise node_error('duplicate type name', location, key, info={'type': name})
-            base = make_shape(raml, key, value, location)
-            base.is_annotation_type = is_annotation
-            declared[name] = base
-            if is_annotation:
-                raml.put_annotation_type(name, location, base)
-            else:
-                raml.put_type(name, location, base)
-            raml.put_typedef(location, base)
-        except RamlError as err:
-            accumulator.add(err)
+    # An annotation written on one of these declarations targets the
+    # declaration, not the file that holds it (docs/09 section B5).
+    target = DomainLocation.ANNOTATION_TYPE if is_annotation else DomainLocation.TYPE_DECLARATION
+    with raml.target_scope(target):
+        for key, value in pairs(node):
+            name = key.value
+            try:
+                if name in BUILTIN_TYPES:
+                    raise node_error('cannot redefine a built-in type', location, key, info={'type': name})
+                if name in declared:
+                    raise node_error('duplicate type name', location, key, info={'type': name})
+                base = make_shape(raml, key, value, location)
+                base.is_annotation_type = is_annotation
+                declared[name] = base
+                if is_annotation:
+                    raml.put_annotation_type(name, location, base)
+                else:
+                    raml.put_type(name, location, base)
+                raml.put_typedef(location, base)
+            except RamlError as err:
+                accumulator.add(err)
     accumulator.raise_if_any()
     return declared
 
@@ -272,15 +277,34 @@ def _decode(  # noqa: PLR0912 - one pass over the sixteen-row table of docs/05 s
             case 'xml':
                 base.xml = decode_xml_serialization(raml, value, location)
             case 'allowedTargets':
-                # An annotation-type facet; docs/09 owns it and Phase 7 decodes
-                # it. Consumed here so it does not become a custom facet value.
-                pass
+                base.allowed_targets = _decode_allowed_targets(value, location)
             case name if is_annotation_key(name):
                 extension = unmarshal_domain_extension(raml, location, key, value)
                 base.annotations[extension.name] = extension
             case _:
                 facets += (key, value)
     return type_node, facets
+
+
+def _decode_allowed_targets(value_node: Node, location: str) -> list[DomainLocation]:
+    """`allowedTargets:` — one target name or a sequence of them (docs/09 § B5).
+
+    The result is a list either way, but an *absent* facet stays `None` on the
+    base: absent means any target is allowed and empty means none is, and P10
+    has to tell them apart.
+    """
+    items = value_node.content if value_node.kind is NodeKind.SEQUENCE else [value_node]
+    targets: list[DomainLocation] = []
+    accumulator = Accumulator()
+    for item in items:
+        # Positioned at the offending value, not at the `allowedTargets` key:
+        # in a sequence of six the key says nothing about which one is wrong.
+        try:
+            targets.append(DomainLocation(scalar_str(item, location)))
+        except ValueError:
+            accumulator.add(node_error('unknown annotation target', location, item, info={'target': item.value}))
+    accumulator.raise_if_any()
+    return targets
 
 
 def _decode_enum(raml: Raml, value_node: Node, location: str) -> list:
@@ -503,10 +527,12 @@ def make_property_map(raml: Raml, value_node: Node, location: str) -> dict[str, 
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('parameter declarations must be a mapping', location, value_node)
     declared: dict[str, Property] = {}
-    for key, value in pairs(value_node):
-        prop = make_property(raml, key, value, location)
-        declared[prop.name] = prop
-        raml.put_typedef(location, prop.base)
+    # Each parameter is a type declaration, whatever holds the map.
+    with raml.target_scope(DomainLocation.TYPE_DECLARATION):
+        for key, value in pairs(value_node):
+            prop = make_property(raml, key, value, location)
+            declared[prop.name] = prop
+            raml.put_typedef(location, prop.base)
     return declared
 
 

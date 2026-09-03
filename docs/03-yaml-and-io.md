@@ -123,7 +123,8 @@ the head is taken by slicing to the first `\n`, not by a buffered reader.
 ### 4.1 Resolution
 
 ```python
-def resolve_include_uri(node: Node, location: str) -> str
+def resolve_ref_uri(raml: Raml, ref: str, location: str) -> str
+def resolve_include_uri(raml: Raml, node: Node, location: str) -> str  # = resolve_ref_uri(raml, node.value, location)
 ```
 
 Per spec § Includes there are three argument forms:
@@ -137,6 +138,12 @@ Per spec § Includes there are three argument forms:
 The workspace-root rule is what makes an "absolute" RAML path portable. Default
 root is the directory of the entry file; `ParseOptions(workspace_root=...)` widens
 it when an API spans sibling directories.
+
+The registry is a parameter because the workspace root lives on it. The same
+three forms apply to a `uses:` value, which is a path but not an `!include`, so
+`uses:` resolution goes through `resolve_ref_uri` too. go-raml resolves a `uses:`
+value with plain RFC 3986 and therefore sends `/libs/a.raml` to the filesystem
+root; sharing one rule here is a deliberate, small divergence.
 
 ### 4.2 What an include produces
 
@@ -172,18 +179,27 @@ There are two entry points for a reason:
 
 | Function | Reads the file? | Use when |
 |----------|-----------------|----------|
-| `note_include_ref(node, location)` | no | the target will be loaded by a *fragment* parser that has its own cache (`!include` of a DataType, Trait, NamedExample…) |
-| `resolve_include(node, location)` | yes, cached | the target's content is spliced into the current tree as data |
+| `note_include_ref(raml, node, location) -> str` | no | the target will be loaded by a *fragment* parser that has its own cache (`!include` of a DataType, Trait, NamedExample…) |
+| `resolve_include(raml, node, location) -> (uri, Node)` | yes, cached | the target's content is spliced into the current tree as data |
 
 Calling `resolve_include` where `note_include_ref` suffices doubles the I/O for
-every typed-fragment include.
+every typed-fragment include. Both return an empty URI for a node that is not an
+include, so a decoder can call them unconditionally; `resolve_include` then
+returns the node it was given.
+
+The extension is taken after any `#fragment` or `?query` is stripped, so
+`!include schema.json#/definitions/Item` is still a JSON include.
 
 ## 5. Resource loaders
 
 ```python
 class ResourceLoader(Protocol):
-    def load(self, uri: str) -> bytes: ...
+    def load(self, uri: str, *, max_bytes: int | None = None) -> bytes: ...
 ```
+
+`max_bytes` is how the size limit is enforced without reading an oversized file:
+an implementation that honours it returns at most `max_bytes + 1` bytes, and the
+caller fails when that extra byte materialises.
 
 | Loader | Behaviour |
 |--------|-----------|
@@ -240,6 +256,15 @@ class DataNode:
     __slots__ = ("value", "include", "location", "key_pos", "value_pos")
 ```
 
+`scalar` holds the value itself rather than a wrapper, so a YAML null and "this
+is not a scalar" would otherwise be indistinguishable; `ValueNode.is_scalar`
+answers that question instead. A scalar's Python value comes from its **tag and
+its literal text**: `!!timestamp` and any unrecognised tag keep the text, because
+RAML needs the written form of a `date-only` example.
+
+`make_data_node(raml, key_node, value_node, location)` is the single constructor;
+`key_node` is `None` where there is no key, as in a sequence item.
+
 `ValueNode.raw` holds the plain Python projection (`dict`/`list`/scalar) computed
 **once** during construction. Validation and serialization use `raw`; diagnostics
 use the position-bearing structure. Computing `raw` lazily was considered and
@@ -265,8 +290,9 @@ baseUri:
   (redirectable): true
 ```
 
-This is handled in exactly one function, `resolve_annotated_scalar(node,
-location)`, called by the generic scalar-facet builder. It:
+This is handled in exactly one function, `resolve_annotated_scalar(raml, node,
+location) -> (Node, dict[str, DomainExtension])`, called by the generic
+scalar-facet builder. It:
 
 - returns the node unchanged if it is a scalar;
 - if it is a mapping, extracts `value`, parses every `(annotation)` key into a
@@ -274,9 +300,15 @@ location)`, called by the generic scalar-facet builder. It:
 - errors if `value` is absent.
 
 Because every scalar facet goes through one builder
-(`make_scalar_facet(raml, key_node, value_node, location) -> ScalarFacet[T]`),
-the form is supported at all 30+ nodes the spec lists without per-facet code. The
-resulting extensions ride on `ScalarFacet.annotations`.
+
+```python
+def make_scalar_facet(raml, key_node, value_node, location, convert: Callable[[Node, str], T]) -> ScalarFacet[T]
+```
+
+the form is supported at all 30+ nodes the spec lists without per-facet code, and
+so is `!include` at a facet position. `convert` is what Go gets from its type
+parameter: `scalar_str` for the string facets, one function per facet type after
+that. The resulting extensions ride on `ScalarFacet.annotations`.
 
 ## 8. URI utilities
 

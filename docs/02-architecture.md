@@ -107,6 +107,7 @@ pyraml/
   types/
     base.py               BaseShape, Property, PatternProperty, ScalarFacet, the Shape protocol
     shape.py              make_shape / make_body_shape / make_property; kind dispatch (doc 05 §4)
+    resolve.py            P7: the worklist drain *and* the AST → shape visitor (docs 06 §3, 07 §§1–2)
     inference.py          identify_shape_type, default-type rules (doc 05)
     scalars.py            String/Number/Integer/Boolean/Date*/File/Nil shapes
     complex_.py           Object/Array/Union/Any/Json/Unknown/Recursive shapes
@@ -118,9 +119,18 @@ pyraml/
     validate.py           check() and validate() (doc 10)
     expressions/
       lexer.py            RDT tokenizer (doc 06)
-      parser.py           RDT recursive-descent parser + AST cache
-      build.py            AST → shapes
+      parser.py           RDT recursive-descent parser; memoised on a caller-supplied cache
 ```
+
+`types/resolve.py` holds the AST → shape visitor as well as the driver, rather
+than the separate `expressions/build.py` an earlier draft of this list named.
+The two are mutually recursive — `resolve_shape` runs the visitor, and the
+visitor's `Reference` case calls `resolve_shape` on the referent, which may
+still be unknown — and both ways of splitting them are ruled out by the rules
+below: passing `resolve` in as a callback is the shape rejected under
+`DECLARATION_FACETS`, and a deferred import is the indirection this section
+exists to prevent. go-raml separates them only because Go's ANTLR runtime wants
+a visitor struct.
 
 Rules on the layout:
 

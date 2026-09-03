@@ -15,22 +15,29 @@ During decoding, a declaration whose kind cannot be determined yet becomes an
 onto `Raml.unresolved_shapes`.
 
 ```python
-def resolve_shapes(self) -> None:
+def resolve_shapes(raml: Raml) -> None:
     acc = Accumulator()
-    q = self.unresolved_shapes
+    q = raml.unresolved_shapes
     while q:
         base = q.popleft()
         try:
-            self.resolve_shape(base)
+            resolve_shape(raml, base)
         except RamlError as e:
             acc.add(wrap("resolve shape", e, base.location, base.key_pos))
     acc.raise_if_any()
 ```
 
-The queue is **not** a snapshot: `resolve_shape` may itself create new unknown
-shapes (a type expression like `(A|B)[]` allocates anonymous inner shapes) and
-appends them, and the loop picks them up. That is why it is a `while q:` over a
-`deque`, not a `for` over a list.
+These are **free functions in `types/resolve.py`, not methods on `Raml`**, which
+is where the Go original puts them. `registry.py` imports nothing from `types/`
+at runtime, and that is what keeps the import graph acyclic without indirection
+(§ 3).
+
+The queue is **not** a snapshot. Two things lengthen it while it is being read:
+a type expression like `(A|B)[]` allocates anonymous inner shapes, and a kind's
+declaration facets — an `items:` or `properties:` that had to be left undigested
+while the kind was unknown — are only built once the kind is settled, so each of
+those may be unresolved in turn. That is why it is a `while q:` over a `deque`,
+not a `for` over a list.
 
 The property that makes this fast: **there is no second traversal of the model.**
 The YAML decoder already walked every node once; along the way it registered

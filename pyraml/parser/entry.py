@@ -19,6 +19,7 @@ from pyraml.errors import ErrorKind, RamlError
 from pyraml.loaders import build_loader
 from pyraml.parser.fragments import decode_fragment, identify_fragment
 from pyraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml
+from pyraml.types.resolve import resolve_shapes
 from pyraml.uris import path_to_file_uri
 from pyraml.yamlnode import decode_source, read_head
 
@@ -125,10 +126,14 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     raml.entry_point = decode_fragment(raml, uri, kind, text)
 
     # P4-P6 — endpoints, security schemes, URI parameter propagation. API only.
-    # P7    — resolve shapes (drain the unknown worklist).
+    # Phases 5 to 7; the order is fixed by docs/02 section 1.
+
+    # P7 — drain the unknown worklist: every declaration whose kind the document
+    # alone could not settle now gets one. After this, invariant I5 holds.
+    resolve_shapes(raml)
+
     # P8    — resolve domain extensions against their annotation types.
     # P9    — unwrap, when options.unwrap.
     # P10   — validate, when options.validate.
-    # Phases 2 and later; the order above is fixed by docs/02 section 1.
     _ = options
     return raml

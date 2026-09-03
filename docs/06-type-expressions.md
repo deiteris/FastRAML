@@ -154,6 +154,19 @@ Per node kind:
 Every anonymous base inherits `target.base.anchor` and `target.base.type_expr`, so
 inner references resolve in the right namespace and report the right column.
 
+The pending facets travel with the **outermost** shape only. `type: string[]`
+with `minItems: 1` beside it means a bounded array of unbounded strings; the
+item type is a separate declaration and must not see the bound.
+
+**A divergence from go-raml, in `string[]?`.** Its visitor
+(`rdt_visitor.go` 88–140) walks the postfix notations left to right and makes
+the *first* one the outermost wrapper, so `string[]?` builds an array of
+optionals. § 1 reads the grammar the other way — `?` is postfix on a whole
+`type`, after any `[]`s — which is also the spec's desugaring of `T?` to
+`T | nil` with `T` being `string[]`. pyRAML follows § 1 and produces
+`(string[]) | nil`. The AST is pinned by `test_expressions.py` and the built
+shape by `test_resolve.py`, so the choice cannot drift silently.
+
 ### 3.1 Alias versus inheritance
 
 A `Reference` produces one of two relationships. One field decides which:

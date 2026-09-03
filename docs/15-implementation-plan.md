@@ -145,15 +145,20 @@ the critical path; this phase consumes them rather than writing them. Normative:
 
 **Build:**
 
-1. `types/expressions/build.py`: the AST → shape visitor, and the reference
-   positions (`TypeExprRef`) that make go-to-definition work inside an
-   expression.
-2. The expression cache, keyed by text into `Raml.expr_cache` — one parse per
+1. `types/resolve.py`: `resolve_shapes` and its worklist drain (P7) **and** the
+   AST → shape visitor, which are mutually recursive and so share a module
+   ([02](02-architecture.md) § 2). Each `UnknownShape` becomes a concrete kind
+   **in place**, so references already taken stay valid.
+2. The reference positions (`TypeExprRef`) that make go-to-definition work
+   inside an expression, and the two lookups they need
+   ([06](06-type-expressions.md) § 3.2, [04](04-fragments-and-namespaces.md)
+   § 4.2).
+3. The expression cache, keyed by text into `Raml.expr_cache` — one parse per
    distinct expression, not per occurrence.
-3. `resolve_shapes` and its worklist drain (P7): each `UnknownShape` becomes a
-   concrete kind **in place**, so references already taken stay valid.
 4. Alias-versus-inheritance discrimination ([06](06-type-expressions.md) § 3.1) —
-   the distinction the remaining resolution rules hang off.
+   the distinction the remaining resolution rules hang off. It has a decode half
+   too: the form of the declaration must be recorded while the value node is
+   still in hand.
 5. Cyclic-reference detection, so a self-referential expression is a diagnostic
    rather than a hang.
 

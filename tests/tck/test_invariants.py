@@ -74,6 +74,84 @@ class TestI4:
         assert not offenders, '\n'.join(offenders[:20])
 
 
+def _reachable(raml):
+    """Every shape reachable from the model's roots, by explicit stack.
+
+    Recursion would not survive a self-referential type — `Node.next: Node` is
+    legal and produces a cycle in the object graph until P9 marks it.
+    """
+    from pyraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
+
+    stack = [base for shapes in raml.fragment_typedefs.values() for base in shapes]
+    stack += [base for declared in raml.fragment_types.values() for base in declared.values()]
+    stack += [base for declared in raml.fragment_annotations.values() for base in declared.values()]
+
+    seen: dict[int, object] = {}
+    while stack:
+        base = stack.pop()
+        if id(base) in seen:
+            continue
+        seen[id(base)] = base
+
+        stack += base.inherits
+        stack += [prop.base for prop in base.custom_facet_defs.values()]
+        if base.alias is not None:
+            stack.append(base.alias)
+        if base.link is not None and base.link.shape is not None:
+            stack.append(base.link.shape)
+
+        shape = base.shape
+        if isinstance(shape, ArrayShape) and shape.items is not None:
+            stack.append(shape.items)
+        elif isinstance(shape, UnionShape) and shape.any_of is not None:
+            stack += shape.any_of
+        elif isinstance(shape, ObjectShape):
+            stack += [prop.base for prop in (shape.properties or {}).values()]
+            stack += [prop.base for prop in (shape.pattern_properties or {}).values()]
+    return seen
+
+
+class TestI5:
+    """After P7 no reachable shape is an `UnknownShape`.
+
+    The strongest form is asserted first: on a parse that succeeded, *no* shape
+    the registry created is still unknown, reachable or not. The walk then ties
+    I5 back to I4 — a shape reachable through the model but absent from
+    `raml.shapes` would escape every other check in this file.
+    """
+
+    def test_nothing_is_still_unknown_after_a_parse(self, corpus: list):
+        from pyraml.types.complex_ import UnknownShape
+
+        assert corpus, 'no fixture parsed; the check would be vacuous'
+        offenders = [
+            f'{name}: shape {shape.id} ({shape.name!r}) type={shape.type!r}'
+            for name, raml in corpus
+            for shape in raml.shapes
+            if isinstance(shape.shape, UnknownShape)
+        ]
+        assert not offenders, '\n'.join(offenders[:20])
+
+    def test_the_worklist_is_drained(self, corpus: list):
+        offenders = [f'{name}: {len(raml.unresolved_shapes)} left' for name, raml in corpus if raml.unresolved_shapes]
+        assert not offenders, '\n'.join(offenders[:20])
+
+    def test_every_reachable_shape_was_registered(self, corpus: list):
+        offenders: list[str] = []
+        reached = 0
+        for name, raml in corpus:
+            registered = {id(shape) for shape in raml.shapes}
+            found = _reachable(raml)
+            reached += len(found)
+            offenders += [
+                f'{name}: shape {base.id} ({base.name!r}) is reachable but not in raml.shapes'
+                for key, base in found.items()
+                if key not in registered
+            ]
+        assert not offenders, '\n'.join(offenders[:20])
+        assert reached > 0, 'the walk found nothing; it would be vacuous'
+
+
 class TestI1:
     """Every `location` is a `file://` or `http(s)://` URI, never an OS path."""
 

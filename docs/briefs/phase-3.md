@@ -108,45 +108,25 @@ dict[str, RdtNode | RamlError]`. It used to be a module-level dict in
 interpreter. The parser takes a `dict`, not a `Raml`, so `expressions/` stays a
 leaf that knows nothing about the registry.
 
-### 3.4 `pyraml/types/resolve.py` — the driver and the visitor, one module
+### 3.4 `pyraml/types/resolve.py` — the driver and the visitor — **done**
 
-Doc 07 § 1 writes `resolve_shapes` as a method on `RAML`. It cannot be one here:
-doc 02 § 3 has `registry.py` importing nothing from `types/` at runtime, and that
-is what keeps the import graph acyclic without indirection. These are free
-functions taking `raml` as their first argument. Amend doc 07 § 1's pseudo-code
-in the same commit.
+Free functions, not `Raml` methods: `registry.py` imports nothing from `types/`
+at runtime (doc 02 § 3). Doc 07 § 1's pseudo-code was amended to match.
 
-Doc 02 § 2 lists `expressions/build.py` for the AST → shape visitor, as a module
-separate from the driver. **Merge them instead.** The two are mutually recursive
-— `resolve_shape` runs the visitor, and the visitor's `Reference` case calls
-`resolve_shape` on the referent (doc 06 § 3, row 2) — and both ways out of that
-are already ruled out by § 2 itself: a `resolve` callback parameter is the
-`decode_facets(facets, make_shape)` shape that section rejects, and a deferred
-import is the indirection it exists to prevent. They are one algorithm; go-raml
-splits them only because Go's ANTLR runtime wants a visitor struct. Amend doc 02
-§ 2's layout and doc 15's Phase 3 step 1.
+The visitor lives in the same module rather than in the `expressions/build.py`
+doc 02 § 2 used to name, because the two are mutually recursive — the
+`Reference` case calls `resolve_shape` on a referent that may still be unknown —
+and both ways of splitting them are ruled out by § 2 itself. Doc 02 § 2 and
+doc 15's Phase 3 step 1 now say so.
 
-The driver is doc 07 § 1 verbatim: `while q:` over the deque, never a snapshot,
-because the visitor appends to it. Errors accumulate.
+`attach_kind` in `shape.py` was made public and is what P7 builds every kind
+with. It is already go-raml's `MakeConcreteShapeYAML`: same three arguments,
+same in-place `base.shape` swap, same `_split_declarations` and
+`_check_custom_facet_names` afterwards. There is no second constructor.
 
-`resolve_shape` is doc 07 § 1.1's five-line table, in that order — the
-already-resolved short-circuit *before* the `_visiting` check, so a shape reached
-twice by two referrers is free and only a genuine cycle errors.
+### 3.5 P7 in the driver — **done**
 
-The visitor is doc 06 § 3's six-row table. Two things carry from `target.base` to
-every anonymous shape it allocates: `anchor`, so inner references resolve in the
-right namespace, and `type_expr`, so columns rebase correctly.
-
-**Reuse `_attach_kind`.** It is already go-raml's `MakeConcreteShapeYAML` —
-same three arguments, same in-place `base.shape` swap, same
-`_split_declarations` and `_check_custom_facet_names` afterwards. P7 does not
-need a second constructor; it needs that one, made public.
-
-### 3.5 Wire P7 into the driver
-
-One line in `parser/entry.py`, where the comment `# P7 — resolve shapes (drain
-the unknown worklist).` already marks the slot. It runs after `decode_fragment`
-and before P8.
+`resolve_shapes(raml)` in `parser/entry.py`, after `decode_fragment`, before P8.
 
 ---
 
@@ -233,9 +213,10 @@ From `docs/15-implementation-plan.md` Phase 3, made concrete:
 - The TCK ratchet moves. Record the new baseline and **read the diff before
   committing it**:
   `PYRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck --update-ratchet`
-  Today the whole corpus sits at 558 pass / 372 fail, with `Types/` at 174 / 128
-  and `Libraries/` at 37 / 12 — those two are where expressions and cross-file
-  references live, so they are where movement is expected.
+  It went 558 → 584, all twenty-six fail→pass and no regression. Every one is an
+  *invalid* fixture the parser now rejects, because resolution can only add
+  diagnostics; that no valid fixture moved in either direction is the useful
+  half of the result. Nineteen are under `Types/`.
 - The full gate passes.
 
 Unit tests belong in `tests/unit/test_expressions.py` (the parser and the cache)

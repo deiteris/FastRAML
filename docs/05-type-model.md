@@ -165,11 +165,12 @@ value_node kind?
 ```
 
 Before the leftover `facets` list reaches the concrete shape, `make_shape`
-removes the keys that hold declarations — object `properties` and
-`patternProperties`, array `items`, union `anyOf` — builds them, and passes them
-to the shape's constructor. Which keys those are is a class-level table,
-`DECLARATION_FACETS`, on the three kinds that have any; `types/` points one way,
-so a kind never calls back into `shape.py` ([02](02-architecture.md) § 2).
+removes the keys that hold declarations — object `properties`, array `items`,
+union `anyOf` — builds them, and passes them to the shape's constructor. Which
+keys those are is a class-level table, `DECLARATION_FACETS`, on the three kinds
+that have any; `types/` points one way, so a kind never calls back into
+`shape.py` ([02](02-architecture.md) § 2). `properties:` fills two constructor
+keywords, since a `/regex/` key inside it becomes a pattern property (§ 5.1).
 
 What remains is handed to `decode_facets`. pyRAML keeps go-raml's
 allocation-lean structure here: one pass, one list, no intermediate dict, and the

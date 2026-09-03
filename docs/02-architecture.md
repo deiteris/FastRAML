@@ -145,21 +145,25 @@ Rules on the layout:
 - **Inside `types/`, dependencies point one way: `shape.py` → `scalars.py` /
   `complex_.py` → `base.py`.** `shape.py` imports the concrete kinds to dispatch
   on kind, so the kinds must not import `shape.py` back. But three kinds hold
-  declarations — object `properties` and `patternProperties`, array `items`,
-  union `anyOf` — and only `make_shape` can build a declaration.
+  declarations — object `properties`, array `items`, union `anyOf` — and only
+  `make_shape` can build a declaration.
 
   **The kinds declare what they hold; `shape.py` decides how to build it.** Each
   declaration-holding kind carries a class-level table, and nothing else:
 
   ```python
   class ObjectShape:
-      DECLARATION_FACETS = {"properties": MAP_OF_PROPERTIES,
-                            "patternProperties": MAP_OF_PATTERN_PROPERTIES}
+      DECLARATION_FACETS = {"properties": PROPERTIES}   # fills two keywords
   class ArrayShape:
       DECLARATION_FACETS = {"items": ONE_SHAPE}
   class UnionShape:
-      DECLARATION_FACETS = {"anyOf": SEQ_OF_SHAPES}
+      DECLARATION_FACETS = {"anyOf": SHAPE_LIST}
   ```
+
+  A `DeclarationFacet` names how to read the value node and which constructor
+  keywords the result arrives under. `properties:` fills two — `properties` and
+  `pattern_properties` — because a `/regex/` key inside it is routed to the
+  second (§ 5.1 of doc 05); `patternProperties` is not a key anyone writes.
 
   `make_shape` knows the kind before it constructs anything, so it reads the
   table off the class, builds those children itself, and passes them in:

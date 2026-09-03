@@ -1,19 +1,26 @@
 """The eleven scalar kinds.
 
 Each reads the facets doc 05 section 3 gives it and passes everything else up
-to `KindBase`, which files it as a custom facet value. In Phase 2 only
-`decode_facets` has a body: `inherit`, `alias_to`, `check`, `validate` and
-`clone` arrive with Phases 4 and 8, and the stubs name the phase.
+to `KindBase`, which files it as a custom facet value.
 
 Numeric bounds never pass through `float`. Integer bounds are `int`, and a
 number's bounds and `multipleOf` are `Fraction`s built from the written text:
 `Fraction(1.1)` embeds the binary-float error, and `multipleOf: 1.1` would then
 reject `2.2` (docs/05 section 3.1).
+
+`check` and `validate` are methods here rather than functions in
+`types/validate.py`, because dispatch on kind is what a method already is and
+doc 05's `Shape` protocol declares both. What they share lives in
+`types/values.py`, a leaf, so using it cannot close a cycle back through the
+pass driver (docs/02 section 2).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+import base64
+import binascii
+import re
+from typing import TYPE_CHECKING, ClassVar, Final
 
 from pyraml.parser.facets import (
     make_fraction_facet,
@@ -24,12 +31,26 @@ from pyraml.parser.facets import (
     scalar_str,
 )
 from pyraml.types.base import KindBase
+from pyraml.types.values import (
+    INTEGER_RANGES,
+    as_fraction,
+    failure,
+    is_multiple_of,
+    parse_rfc2616,
+    parse_rfc3339,
+    type_name,
+    valid_date_only,
+    valid_datetime_only,
+    valid_time_only,
+)
 from pyraml.yamlnode import NodeKind, node_error
 
 if TYPE_CHECKING:
-    import re
+    from collections.abc import Container
     from fractions import Fraction
+    from typing import Any
 
+    from pyraml.errors import RamlError
     from pyraml.types.base import BaseShape, ScalarFacet
     from pyraml.yamlnode import Node
 
@@ -59,14 +80,124 @@ INTEGER_FORMATS: Final = {'int8': 0, 'int16': 1, 'int32': 2, 'int': 2, 'int64': 
 #: `format` on a number.
 NUMBER_FORMATS: Final = frozenset({'float', 'double'})
 
+#: A `fileTypes` entry: RFC 6838 `type/subtype`, the wildcard `*/*` aside.
+_MEDIA_TYPE: Final = re.compile(r'\A[A-Za-z0-9][\w.+-]*/[A-Za-z0-9][\w.+-]*\Z')
+
+
+def _decode_base64(text: str) -> bytes:
+    """The payload a base64 `file` value stands for.
+
+    Undecodable text falls back to its UTF-8 bytes rather than failing: doc 10
+    section 5 gives `file` no wellformedness rule, only length bounds, and
+    inventing one here would reject values the spec accepts.
+    """
+    try:
+        return base64.b64decode(text, validate=True)
+    except (binascii.Error, ValueError):
+        return text.encode('utf-8', 'surrogatepass')
+
+
+def _disordered(
+    low: ScalarFacet[Any] | None, high: ScalarFacet[Any] | None
+) -> tuple[ScalarFacet[Any], ScalarFacet[Any]] | None:
+    """The pair, when a min/max bound is unsatisfiable; `None` when it is fine.
+
+    Returning the pair rather than a boolean is what lets the callers raise
+    without re-narrowing two `Optional`s the test has already settled.
+    """
+    if low is not None and high is not None and low.value > high.value:
+        return low, high
+    return None
+
+
+def _bounds_error(base: BaseShape, message: str, low: ScalarFacet[Any], high: ScalarFacet[Any]) -> RamlError:
+    # Positioned at the *lower* bound, which is written first, so the reader
+    # sees the offending pair from its top.
+    return failure(message, base.location, low.key_pos, info={'min': str(low.value), 'max': str(high.value)})
+
+
+def _check_format(base: BaseShape, declared: ScalarFacet[str] | None, allowed: Container[str], kind: str) -> None:
+    """Deviation D2: the two numeric format tables do not mix."""
+    if declared is not None and declared.value not in allowed:
+        raise failure(
+            'unknown format', base.location, declared.value_pos, info={'format': declared.value, 'type': kind}
+        )
+
+
+def _check_numeric(
+    base: BaseShape,
+    minimum: ScalarFacet[Any] | None,
+    maximum: ScalarFacet[Any] | None,
+    multiple_of: ScalarFacet[Fraction] | None,
+) -> None:
+    """The two rules `number` and `integer` share (docs/10 section 2)."""
+    pair = _disordered(minimum, maximum)
+    if pair is not None:
+        raise _bounds_error(base, 'minimum exceeds maximum', *pair)
+    if multiple_of is not None and multiple_of.value == 0:
+        raise failure('multipleOf must not be zero', base.location, multiple_of.value_pos)
+
+
+def _validate_numeric(  # noqa: PLR0913 - three facets, and each names itself at the call site
+    base: BaseShape,
+    number: Fraction,
+    path: str,
+    *,
+    minimum: ScalarFacet[Any] | None,
+    maximum: ScalarFacet[Any] | None,
+    multiple_of: ScalarFacet[Fraction] | None,
+) -> None:
+    """Bounds and `multipleOf`, compared exactly (docs/10 section 5.3).
+
+    Every comparison is `Fraction` against `Fraction` or `int`. Nothing here
+    goes through `float`, which is what lets `multipleOf: 1.1` accept `2.2`.
+    """
+    if minimum is not None and number < minimum.value:
+        raise failure(
+            'value is below the minimum',
+            base.location,
+            base.value_pos,
+            info={'path': path, 'value': str(number), 'minimum': str(minimum.value)},
+        )
+    if maximum is not None and number > maximum.value:
+        raise failure(
+            'value is above the maximum',
+            base.location,
+            base.value_pos,
+            info={'path': path, 'value': str(number), 'maximum': str(maximum.value)},
+        )
+    if multiple_of is not None and not is_multiple_of(number, multiple_of.value):
+        raise failure(
+            'value is not a multiple',
+            base.location,
+            base.value_pos,
+            info={'path': path, 'value': str(number), 'multipleOf': str(multiple_of.value)},
+        )
+
 
 class ScalarKind(KindBase):
-    """A kind whose values are single scalars rather than structures."""
+    """A kind whose values are single scalars rather than structures.
+
+    `check` does nothing by default: most scalar kinds hold no facet that can
+    contradict another. The four that do — string, number, integer, file —
+    override it (docs/10 section 2).
+    """
 
     __slots__ = ()
 
     def is_scalar(self) -> bool:
         return True
+
+    def check(self) -> None:
+        return
+
+    def wrong_type(self, value: Any, path: str, expected: str) -> RamlError:
+        return failure(
+            'invalid type',
+            self.base.location,
+            self.base.value_pos,
+            info={'path': path, 'expected': expected, 'found': type_name(value)},
+        )
 
 
 class AnyShape(ScalarKind):
@@ -74,27 +205,75 @@ class AnyShape(ScalarKind):
 
     __slots__ = ()
 
+    def validate(self, value: Any, path: str) -> None:  # noqa: ARG002 - `any` conforms to everything, by definition
+        return
+
 
 class NilShape(ScalarKind):
     """`nil` — the only conforming value is null."""
 
     __slots__ = ()
 
+    def validate(self, value: Any, path: str) -> None:
+        if value is not None:
+            raise self.wrong_type(value, path, 'nil')
+
 
 class BooleanShape(ScalarKind):
     __slots__ = ()
 
+    def validate(self, value: Any, path: str) -> None:
+        # Identity, not `isinstance`: there are exactly two booleans, and
+        # `isinstance(True, int)` is what this has to avoid saying yes to.
+        if value is not True and value is not False:
+            raise self.wrong_type(value, path, 'boolean')
 
-class DateOnlyShape(ScalarKind):
+
+class _DateKind(ScalarKind):
+    """The three date kinds, which differ only in the grammar they accept."""
+
     __slots__ = ()
 
+    #: The RAML type name, which doubles as the grammar's name in a diagnostic.
+    GRAMMAR: ClassVar[str] = ''
 
-class TimeOnlyShape(ScalarKind):
+    def accepts(self, text: str) -> bool:
+        raise NotImplementedError
+
+    def validate(self, value: Any, path: str) -> None:
+        if not isinstance(value, str):
+            raise self.wrong_type(value, path, self.GRAMMAR)
+        if not self.accepts(value):
+            raise failure(
+                'invalid date',
+                self.base.location,
+                self.base.value_pos,
+                info={'path': path, 'expected': self.GRAMMAR, 'value': value},
+            )
+
+
+class DateOnlyShape(_DateKind):
     __slots__ = ()
+    GRAMMAR: ClassVar[str] = 'date-only'
+
+    def accepts(self, text: str) -> bool:
+        return valid_date_only(text)
 
 
-class DateTimeOnlyShape(ScalarKind):
+class TimeOnlyShape(_DateKind):
     __slots__ = ()
+    GRAMMAR: ClassVar[str] = 'time-only'
+
+    def accepts(self, text: str) -> bool:
+        return valid_time_only(text)
+
+
+class DateTimeOnlyShape(_DateKind):
+    __slots__ = ()
+    GRAMMAR: ClassVar[str] = 'datetime-only'
+
+    def accepts(self, text: str) -> bool:
+        return valid_datetime_only(text)
 
 
 class DateTimeShape(ScalarKind):
@@ -117,6 +296,23 @@ class DateTimeShape(ScalarKind):
             else:
                 rest += (key, value)
         super().decode_facets(rest)
+
+    def check(self) -> None:
+        _check_format(self.base, self.format, DATETIME_FORMATS, 'datetime')
+
+    def validate(self, value: Any, path: str) -> None:
+        if not isinstance(value, str):
+            raise self.wrong_type(value, path, 'datetime')
+        # RFC 3339 by default; `format: rfc2616` selects the other grammar and
+        # they share nothing, so this is a choice rather than a fallback.
+        rfc2616 = self.format is not None and self.format.value == 'rfc2616'
+        if not (parse_rfc2616(value) if rfc2616 else parse_rfc3339(value)):
+            raise failure(
+                'invalid date',
+                self.base.location,
+                self.base.value_pos,
+                info={'path': path, 'expected': 'rfc2616' if rfc2616 else 'rfc3339', 'value': value},
+            )
 
 
 class StringShape(ScalarKind):
@@ -145,6 +341,38 @@ class StringShape(ScalarKind):
                 case _:
                     rest += (key, value)
         super().decode_facets(rest)
+
+    def check(self) -> None:
+        pair = _disordered(self.min_length, self.max_length)
+        if pair is not None:
+            raise _bounds_error(self.base, 'minLength exceeds maxLength', *pair)
+
+    def validate(self, value: Any, path: str) -> None:
+        if not isinstance(value, str):
+            raise self.wrong_type(value, path, 'string')
+        if self.min_length is not None and len(value) < self.min_length.value:
+            raise failure(
+                'value is too short',
+                self.base.location,
+                self.base.value_pos,
+                info={'path': path, 'length': len(value), 'minLength': self.min_length.value},
+            )
+        if self.max_length is not None and len(value) > self.max_length.value:
+            raise failure(
+                'value is too long',
+                self.base.location,
+                self.base.value_pos,
+                info={'path': path, 'length': len(value), 'maxLength': self.max_length.value},
+            )
+        if self.pattern is not None and self.pattern.value.search(value) is None:
+            # `search`, not `match`: RAML patterns are unanchored unless the
+            # author anchors them, which is ECMA-262's behaviour.
+            raise failure(
+                'value does not match pattern',
+                self.base.location,
+                self.base.value_pos,
+                info={'path': path, 'pattern': self.pattern.value.pattern, 'value': value},
+            )
 
 
 class NumberShape(ScalarKind):
@@ -176,6 +404,22 @@ class NumberShape(ScalarKind):
                 case _:
                     rest += (key, value)
         super().decode_facets(rest)
+
+    def check(self) -> None:
+        _check_numeric(self.base, self.minimum, self.maximum, self.multiple_of)
+        _check_format(self.base, self.format, NUMBER_FORMATS, 'number')
+
+    def validate(self, value: Any, path: str) -> None:
+        # `bool` is a subclass of `int` in Python, so it reaches here as a
+        # number unless it is refused by identity first (docs/10 section 5).
+        number = None if value is True or value is False else as_fraction(value)
+        if number is None or isinstance(value, str):
+            # A numeric string is a number for `integer`, per doc 10 section 5's
+            # number-preserving-decoder note, but not for `number`.
+            raise self.wrong_type(value, path, 'number')
+        _validate_numeric(
+            self.base, number, path, minimum=self.minimum, maximum=self.maximum, multiple_of=self.multiple_of
+        )
 
 
 class IntegerShape(ScalarKind):
@@ -211,6 +455,36 @@ class IntegerShape(ScalarKind):
                     rest += (key, value)
         super().decode_facets(rest)
 
+    def check(self) -> None:
+        _check_numeric(self.base, self.minimum, self.maximum, self.multiple_of)
+        _check_format(self.base, self.format, INTEGER_FORMATS, 'integer')
+
+    def validate(self, value: Any, path: str) -> None:
+        number = None if value is True or value is False else as_fraction(value)
+        if number is None:
+            raise self.wrong_type(value, path, 'integer')
+        if number.denominator != 1:
+            # `4.0` is an integer and `4.5` is not: doc 10 section 5 accepts a
+            # float or Decimal whose value is integral.
+            raise failure(
+                'value is not an integer',
+                self.base.location,
+                self.base.value_pos,
+                info={'path': path, 'value': str(number)},
+            )
+        _validate_numeric(
+            self.base, number, path, minimum=self.minimum, maximum=self.maximum, multiple_of=self.multiple_of
+        )
+        if self.format is not None:
+            low, high = INTEGER_RANGES[self.format.value]
+            if not low <= number <= high:
+                raise failure(
+                    'value is outside the format range',
+                    self.base.location,
+                    self.base.value_pos,
+                    info={'path': path, 'value': str(number), 'format': self.format.value},
+                )
+
 
 class FileShape(ScalarKind):
     """`file`, which shares its length bounds with `string` and adds a list of
@@ -242,3 +516,41 @@ class FileShape(ScalarKind):
                 case _:
                     rest += (key, value)
         super().decode_facets(rest)
+
+    def check(self) -> None:
+        pair = _disordered(self.min_length, self.max_length)
+        if pair is not None:
+            raise _bounds_error(self.base, 'minLength exceeds maxLength', *pair)
+        for declared in self.file_types or ():
+            if declared.value != '*/*' and _MEDIA_TYPE.match(declared.value) is None:
+                raise failure(
+                    'invalid media type', self.base.location, declared.value_pos, info={'fileType': declared.value}
+                )
+
+    def validate(self, value: Any, path: str) -> None:
+        # `fileTypes` is deliberately not checked against the value: a base64
+        # blob carries no media type of its own. The facet's wellformedness is
+        # checked above, and enforcing it needs a content type, which only the
+        # body that transported the value has (Phase 5).
+        if isinstance(value, bytes):
+            size = len(value)
+        elif isinstance(value, str):
+            size = len(_decode_base64(value))
+        else:
+            raise self.wrong_type(value, path, 'file')
+        # In bytes, not characters: doc 10 section 5 is explicit about it, and
+        # for base64 the two differ by about a third.
+        if self.min_length is not None and size < self.min_length.value:
+            raise failure(
+                'value is too short',
+                self.base.location,
+                self.base.value_pos,
+                info={'path': path, 'bytes': size, 'minLength': self.min_length.value},
+            )
+        if self.max_length is not None and size > self.max_length.value:
+            raise failure(
+                'value is too long',
+                self.base.location,
+                self.base.value_pos,
+                info={'path': path, 'bytes': size, 'maxLength': self.max_length.value},
+            )

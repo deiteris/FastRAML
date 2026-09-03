@@ -177,14 +177,14 @@ class TestApiDecoding:
             }
         )
         api = parse_from_path(root / 'api.raml').entry_point
-        assert api._raw_types is not None
-        assert api._raw_annotation_types is not None
+        # Phase 2 decodes the three type-shaped declarations.
+        assert list(api.types) == ['A']
+        assert list(api.annotation_types) == ['B']
+        assert list(api.base_uri_parameters) == ['p']
+        # The rest are still seams, each waiting on the phase named beside it.
         assert api._raw_traits is not None
         assert api._raw_resource_types is not None
         assert api._raw_security_schemes is not None
-        assert api._raw_base_uri_parameters is not None
-        # Nothing was decoded into the model yet: that is Phase 2 and later.
-        assert api.types == {}
         assert api.traits == {}
 
 
@@ -253,14 +253,16 @@ class TestTypedFragments:
         fragment = parse_from_path(root / 'user.raml').entry_point
         assert isinstance(fragment, DataTypeFragment)
         assert fragment.declared_name == 'user.raml'
-        assert [key.value for key, _ in _pairs(fragment._raw_declaration)] == ['type']
+        assert fragment.shape.name == 'user.raml', 'the shape is named after the file'
+        assert fragment.shape.type == 'object'
         assert fragment.uses['l'].link is not None
 
     def test_a_named_example_keeps_each_example_by_name(self, workspace):
         root = workspace({'ex.raml': '#%RAML 1.0 NamedExample\nfirst:\n  a: 1\nsecond:\n  b: 2\n'})
         fragment = parse_from_path(root / 'ex.raml').entry_point
         assert isinstance(fragment, NamedExample)
-        assert list(fragment._raw_examples) == ['first', 'second']
+        assert list(fragment.examples) == ['first', 'second']
+        assert fragment.examples['first'].data.raw == {'a': 1}
 
     @pytest.mark.parametrize(
         ('head', 'cls'),

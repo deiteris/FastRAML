@@ -124,18 +124,38 @@ pyraml/
 
 Rules on the layout:
 
-- `types/` imports from `parser/` in exactly one place: `parser/facets.py`, for
-  `make_scalar_facet`. Everything else a shape needs from YAML arrives as a
-  `Node` (from `yamlnode.py`, which both layers may import).
+- `types/` imports from `parser/` in exactly two places: `parser/facets.py`, for
+  the scalar-facet builders, and `parser/annotations.py`, for the two functions
+  that turn an `(annotation)` key into a `DomainExtension`. Everything else a
+  shape needs from YAML arrives as a `Node` (from `yamlnode.py`, which both
+  layers may import) or as a `DataNode` (from `datanode.py`, likewise).
 
-  That one edge is deliberate. `ScalarFacet` is a type-model class and lives in
+  Both edges are deliberate. `ScalarFacet` is a type-model class and lives in
   `types/base.py`, but *building* one needs the parser twice over: an `!include`
   at a facet position has to be read through the include cache, and the
   annotated-scalar form has to turn `(annotation)` keys into `DomainExtension`s.
   Every one of the fourteen shapes decodes scalar facets, so the alternative —
   threading a builder callback through every `decode_facets` — would cost more
-  than the rule protects. The edge cannot cycle: `parser/facets.py` imports
-  `types/base.py` and nothing else from `types/`.
+  than the rule protects. Annotations are the same story one level up: they may
+  be written on a declaration, and inside `example:`, so the type layer has to
+  build them where it finds them.
+
+  Neither edge can cycle: `parser/facets.py` imports `types/base.py` and nothing
+  else from `types/`, and `parser/annotations.py` imports nothing from `types/`
+  at runtime at all.
+
+- **One deferred import exists, in `types/shape.py`, and no other may be added.**
+  `type: !include lib.raml` and `examples: !include e.raml` have to parse a
+  fragment, so `make_shape` needs `parser.fragments.parse_fragment`; and a
+  fragment declares types, so `parser/fragments.py` needs `make_shape`. That
+  recursion is in the language — a type may be a file, and a file declares types
+  — not in the module layout, so no ordering of the two modules removes it. The
+  import therefore sits inside the two functions that link a fragment,
+  `_parse_data_type` and `_parse_named_example`, each with a comment saying why.
+
+  The alternative is to note the include at decode time and link it in P7. It
+  works for `type:`, where a worklist already exists, and reads badly for
+  `examples:`, where none does. If a third such case ever appears, take it.
 
   References in the other direction are free, because they are annotations only:
   `BaseShape` names `DomainExtension`, `DataNode`, `DataTypeFragment` and
@@ -145,21 +165,25 @@ Rules on the layout:
 - **Inside `types/`, dependencies point one way: `shape.py` → `scalars.py` /
   `complex_.py` → `base.py`.** `shape.py` imports the concrete kinds to dispatch
   on kind, so the kinds must not import `shape.py` back. But three kinds hold
-  declarations — object `properties` and `patternProperties`, array `items`,
-  union `anyOf` — and only `make_shape` can build a declaration.
+  declarations — object `properties`, array `items`, union `anyOf` — and only
+  `make_shape` can build a declaration.
 
   **The kinds declare what they hold; `shape.py` decides how to build it.** Each
   declaration-holding kind carries a class-level table, and nothing else:
 
   ```python
   class ObjectShape:
-      DECLARATION_FACETS = {"properties": MAP_OF_PROPERTIES,
-                            "patternProperties": MAP_OF_PATTERN_PROPERTIES}
+      DECLARATION_FACETS = {"properties": PROPERTIES}   # fills two keywords
   class ArrayShape:
       DECLARATION_FACETS = {"items": ONE_SHAPE}
   class UnionShape:
-      DECLARATION_FACETS = {"anyOf": SEQ_OF_SHAPES}
+      DECLARATION_FACETS = {"anyOf": SHAPE_LIST}
   ```
+
+  A `DeclarationFacet` names how to read the value node and which constructor
+  keywords the result arrives under. `properties:` fills two — `properties` and
+  `pattern_properties` — because a `/regex/` key inside it is routed to the
+  second (§ 5.1 of doc 05); `patternProperties` is not a key anyone writes.
 
   `make_shape` knows the kind before it constructs anything, so it reads the
   table off the class, builds those children itself, and passes them in:

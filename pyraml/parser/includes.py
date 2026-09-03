@@ -35,6 +35,7 @@ __all__ = [
     'resolve_include',
     'resolve_include_uri',
     'resolve_ref_uri',
+    'strip_uri_suffix',
 ]
 
 #: Include arguments composed as YAML. Everything else becomes a string scalar,
@@ -155,7 +156,7 @@ def _load(raml: Raml, node: Node, target: str, location: str) -> bytes:
 
 
 def _compose_include(node: Node, data: bytes, target: str) -> Node:
-    extension = posixpath.splitext(_strip_uri_suffix(node.value))[1].lower()
+    extension = posixpath.splitext(strip_uri_suffix(node.value))[1].lower()
     if extension in _YAML_EXTENSIONS:
         # YAML 1.2 is a superset of JSON, so .json composes correctly too.
         return compose(data, uri=target)
@@ -163,7 +164,7 @@ def _compose_include(node: Node, data: bytes, target: str) -> Node:
     return Node(NodeKind.SCALAR, TAG_STR, data.decode('utf-8-sig'))
 
 
-def _strip_uri_suffix(ref: str) -> str:
+def strip_uri_suffix(ref: str) -> str:
     """Drop a `#fragment` or `?query` before taking a file extension.
 
     `schemas/order.json#/definitions/Item` is a JSON include, not an include of

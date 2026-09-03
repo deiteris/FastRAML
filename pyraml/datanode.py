@@ -233,16 +233,24 @@ def scalar_value(node: Node) -> Any:
     `!!timestamp` and every unrecognised tag keep the raw text: RAML wants the
     literal form of a `date-only` example, and the type layer parses it. Numbers
     are converted from the text, never through an intermediate `float`.
+
+    A tag whose text will not convert keeps the raw text too, by the same rule
+    and never as a crash. That is how a YAML 1.1 sexagesimal — `12:30:00`, which
+    PyYAML tags `!!int` — reaches a `time-only` example as the string it was
+    written as.
     """
     tag = node.tag
     if tag == TAG_NULL:
         return None
     if tag == TAG_BOOL:
         return node.value.lower() in _TRUE_SCALARS
-    if tag == TAG_INT:
-        return parse_int(node.value)
-    if tag == TAG_FLOAT:
-        return _parse_float(node.value)
+    try:
+        if tag == TAG_INT:
+            return parse_int(node.value)
+        if tag == TAG_FLOAT:
+            return _parse_float(node.value)
+    except ValueError:
+        return node.value
     return node.value
 
 

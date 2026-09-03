@@ -31,9 +31,11 @@ from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
 from pyraml.parser.documentation import DocumentationItem, decode_documentation_item
 from pyraml.parser.facets import make_scalar_facet, make_string_facet, scalar_str
-from pyraml.parser.includes import note_include_ref, resolve_ref_uri
+from pyraml.parser.includes import note_include_ref, resolve_ref_uri, strip_uri_suffix
 from pyraml.parser.references import resolve_library_reference, resolve_reference
 from pyraml.registry import ParseCtx
+from pyraml.types.examples import Example, make_example
+from pyraml.types.shape import make_property_map, make_shape, unmarshal_types
 from pyraml.uris import uri_base
 from pyraml.yamlnode import (
     TAG_INCLUDE,
@@ -53,10 +55,9 @@ if TYPE_CHECKING:
 
     from pyraml.positions import Position
     from pyraml.registry import Raml
-    from pyraml.types.base import ScalarFacet
+    from pyraml.types.base import BaseShape, Property, ScalarFacet
 
-    # Phase 2 onwards replace these aliases with the real classes.
-    BaseShape = Any
+    # Later phases replace these aliases with the real classes.
     ResourceTypeDefinition = Any
     SecuritySchemeDefinition = Any
     TraitDefinition = Any
@@ -332,11 +333,9 @@ class Library(_BaseFragment):
     """`#%RAML 1.0 Library` — the only fragment that declares all five kinds."""
 
     __slots__ = (
-        '_raw_annotation_types',
         '_raw_resource_types',
         '_raw_security_schemes',
         '_raw_traits',
-        '_raw_types',
         'annotation_types',
         'annotations',
         'resource_types',
@@ -356,8 +355,6 @@ class Library(_BaseFragment):
         self.security_schemes: dict[str, SecuritySchemeDefinition] = {}
         self.annotations: dict[str, DomainExtension] = {}
         # Seams: kept as written until the phase named beside each decodes them.
-        self._raw_types: Node | None = None  # Phase 2
-        self._raw_annotation_types: Node | None = None  # Phase 2
         self._raw_traits: Node | None = None  # Phase 6
         self._raw_resource_types: Node | None = None  # Phase 6
         self._raw_security_schemes: Node | None = None  # Phase 7
@@ -399,9 +396,9 @@ class Library(_BaseFragment):
                 elif name == FACET_USAGE:
                     self.usage = make_string_facet(raml, key, value, self.location)
                 elif name in (FACET_TYPES, FACET_SCHEMAS):
-                    self._raw_types = declarations.types(key, value)
+                    self.types = unmarshal_types(raml, declarations.types(key, value), self.location)
                 elif name == FACET_ANNOTATION_TYPES:
-                    self._raw_annotation_types = value
+                    self.annotation_types = unmarshal_types(raml, value, self.location, is_annotation=True)
                 elif name == FACET_TRAITS:
                     self._raw_traits = value
                 elif name == FACET_RESOURCE_TYPES:
@@ -422,17 +419,15 @@ class APIFragment(_BaseFragment):
     """`#%RAML 1.0` — the root document."""
 
     __slots__ = (
-        '_raw_annotation_types',
-        '_raw_base_uri_parameters',
         '_raw_endpoints',
         '_raw_resource_types',
         '_raw_secured_by',
         '_raw_security_schemes',
         '_raw_traits',
-        '_raw_types',
         'annotation_types',
         'annotations',
         'base_uri',
+        'base_uri_parameters',
         'description',
         'documentation',
         'media_types',
@@ -460,10 +455,8 @@ class APIFragment(_BaseFragment):
         self.resource_types: dict[str, ResourceTypeDefinition] = {}
         self.security_schemes: dict[str, SecuritySchemeDefinition] = {}
         self.annotations: dict[str, DomainExtension] = {}
+        self.base_uri_parameters: dict[str, Property] = {}
         # Seams: kept as written until the phase named beside each decodes them.
-        self._raw_types: Node | None = None  # Phase 2
-        self._raw_annotation_types: Node | None = None  # Phase 2
-        self._raw_base_uri_parameters: Node | None = None  # Phase 2
         self._raw_traits: Node | None = None  # Phase 6
         self._raw_resource_types: Node | None = None  # Phase 6
         self._raw_security_schemes: Node | None = None  # Phase 7
@@ -553,11 +546,11 @@ class APIFragment(_BaseFragment):
         """The seams: kept as written for Phase 2 (types), 6 (templates), 7 (security)."""
         name = key.value
         if name in (FACET_TYPES, FACET_SCHEMAS):
-            self._raw_types = declarations.types(key, value)
+            self.types = unmarshal_types(self._raml, declarations.types(key, value), self.location)
         elif name == FACET_ANNOTATION_TYPES:
-            self._raw_annotation_types = value
+            self.annotation_types = unmarshal_types(self._raml, value, self.location, is_annotation=True)
         elif name == FACET_BASE_URI_PARAMETERS:
-            self._raw_base_uri_parameters = value
+            self.base_uri_parameters = make_property_map(self._raml, value, self.location)
         elif name == FACET_TRAITS:
             self._raw_traits = value
         elif name == FACET_RESOURCE_TYPES:
@@ -628,19 +621,16 @@ class APIFragment(_BaseFragment):
 class DataTypeFragment(_UsesOnlyFragment):
     """`#%RAML 1.0 DataType` — the whole document is one type declaration."""
 
-    __slots__ = ('_raw_declaration', 'shape')
+    __slots__ = ('shape',)
 
     def __init__(self, raml: Raml, location: str) -> None:
         super().__init__(raml, location)
         self.shape: BaseShape | None = None
-        #: The declaration, `uses:` removed. Phase 2 builds the shape from it,
-        #: naming it after the file (`uri_base(location)`).
-        self._raw_declaration: Node | None = None
 
     def decode(self, node: Node) -> None:
         filtered, uses = filter_fragment_uses(self._raml, node, self.location)
         self.uses = uses
-        self._raw_declaration = filtered
+        self._build(filtered)
 
     def decode_json_schema(self, text: str) -> None:
         """Wrap raw JSON Schema text as `{type: "<raw json>"}`.
@@ -649,12 +639,24 @@ class DataTypeFragment(_UsesOnlyFragment):
         understands, so an external schema needs no branch of its own
         downstream. See docs/04 section 5.2.
         """
-        self._raw_declaration = Node(
-            NodeKind.MAPPING,
-            TAG_MAP,
-            '',
-            [Node(NodeKind.SCALAR, TAG_STR, 'type'), Node(NodeKind.SCALAR, TAG_STR, text)],
+        self._build(
+            Node(
+                NodeKind.MAPPING,
+                TAG_MAP,
+                '',
+                [Node(NodeKind.SCALAR, TAG_STR, 'type'), Node(NodeKind.SCALAR, TAG_STR, text)],
+            )
         )
+
+    def _build(self, declaration: Node) -> None:
+        """The whole remaining mapping is the declaration (docs/04 section 5.2).
+
+        A synthetic key node carrying the file's base name gives the shape a
+        sensible name; from there it is an ordinary declaration.
+        """
+        key = Node(NodeKind.SCALAR, TAG_STR, self.declared_name)
+        self.shape = make_shape(self._raml, key, declaration, self.location)
+        self._raml.put_typedef(self.location, self.shape)
 
     @property
     def declared_name(self) -> str:
@@ -665,19 +667,17 @@ class DataTypeFragment(_UsesOnlyFragment):
 class NamedExample(_UsesOnlyFragment):
     """`#%RAML 1.0 NamedExample` — a mapping of example name to example."""
 
-    __slots__ = ('_raw_examples', 'examples')
+    __slots__ = ('examples',)
 
     def __init__(self, raml: Raml, location: str) -> None:
         super().__init__(raml, location)
-        self.examples: dict[str, Any] = {}
-        #: name -> the example's value node. Phase 2 builds the examples.
-        self._raw_examples: dict[str, Node] = {}
+        self.examples: dict[str, Example] = {}
 
     def decode(self, node: Node) -> None:
         filtered, uses = filter_fragment_uses(self._raml, node, self.location)
         self.uses = uses
         for key, value in pairs(filtered):
-            self._raw_examples[key.value] = value
+            self.examples[key.value] = make_example(self._raml, value, key.value, self.location)
 
 
 class DocumentationItemFragment(_UsesOnlyFragment):
@@ -828,7 +828,9 @@ def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> None:
     header — and an `AnnotationTypeDeclaration` is accepted where a `DataType`
     is expected, the two being structurally identical.
     """
-    if kind is FragmentKind.DATA_TYPE and uri.lower().endswith('.json'):
+    # The extension is taken past a `#pointer`: `order.json#/definitions/Item`
+    # is a JSON include, not an include of something ending `.json#`.
+    if kind is FragmentKind.DATA_TYPE and strip_uri_suffix(uri).lower().endswith('.json'):
         return
 
     head = read_head(text)

@@ -20,10 +20,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from pyraml.datanode import make_data_node
+from pyraml.errors import Accumulator, RamlError
 from pyraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
 from pyraml.parser.facets import compile_pattern, make_bool_facet, make_string_facet
 from pyraml.parser.includes import note_include_ref
 from pyraml.types.base import (
+    BUILTIN_TYPES,
     TYPE_ANY,
     TYPE_COMPOSITE,
     TYPE_JSON,
@@ -57,7 +59,7 @@ from pyraml.types.scalars import (
     TimeOnlyShape,
 )
 from pyraml.types.xml import decode_xml_serialization
-from pyraml.yamlnode import TAG_INCLUDE, TAG_NULL, TAG_STR, NodeKind, node_error, pairs
+from pyraml.yamlnode import TAG_INCLUDE, TAG_NULL, TAG_STR, NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
     from typing import Any
@@ -74,7 +76,9 @@ __all__ = [
     'make_declarations',
     'make_pattern_property',
     'make_property',
+    'make_property_map',
     'make_shape',
+    'unmarshal_types',
 ]
 
 #: Kind name to the class that implements it. A name absent from this table is
@@ -177,6 +181,44 @@ def make_shape(
     return base
 
 
+def unmarshal_types(raml: Raml, node: Node, location: str, *, is_annotation: bool = False) -> dict[str, BaseShape]:
+    """Decode a `types:`, `schemas:` or `annotationTypes:` mapping.
+
+    Per name: reject a built-in name, reject a duplicate in the same map, build
+    the shape, register it under the file, and append it to the flat per-file
+    index that unwrap and validation iterate (docs/04 section 5.1).
+
+    Errors accumulate, so one bad declaration does not hide the rest.
+    """
+    if is_null(node):
+        # `types:` with nothing under it. RAML uses an empty value widely.
+        return {}
+    if node.kind is not NodeKind.MAPPING:
+        raise node_error('type declarations must be a mapping', location, node)
+
+    declared: dict[str, BaseShape] = {}
+    accumulator = Accumulator()
+    for key, value in pairs(node):
+        name = key.value
+        try:
+            if name in BUILTIN_TYPES:
+                raise node_error('cannot redefine a built-in type', location, key, info={'type': name})
+            if name in declared:
+                raise node_error('duplicate type name', location, key, info={'type': name})
+            base = make_shape(raml, key, value, location)
+            base.is_annotation_type = is_annotation
+            declared[name] = base
+            if is_annotation:
+                raml.put_annotation_type(name, location, base)
+            else:
+                raml.put_type(name, location, base)
+            raml.put_typedef(location, base)
+        except RamlError as err:
+            accumulator.add(err)
+    accumulator.raise_if_any()
+    return declared
+
+
 def make_body_shape(raml: Raml, key_node: Node | None, value_node: Node, location: str) -> BaseShape:
     """`make_shape` for a `body:` node, whose default type is `any`.
 
@@ -259,6 +301,8 @@ def _decode_examples(raml: Raml, base: BaseShape, value_node: Node) -> None:
             link=_parse_named_example(raml, value_node, base.location),
         )
         return
+    if is_null(value_node):
+        return
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('examples must be a mapping', base.location, value_node)
     values = {key.value: make_example(raml, value, key.value, base.location) for key, value in pairs(value_node)}
@@ -267,6 +311,8 @@ def _decode_examples(raml: Raml, base: BaseShape, value_node: Node) -> None:
 
 def _decode_custom_facet_defs(raml: Raml, base: BaseShape, value_node: Node) -> None:
     """`facets:` — a properties declaration, so it reuses `make_property`."""
+    if is_null(value_node):
+        return
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('facets must be a mapping', base.location, value_node)
     for key, value in pairs(value_node):
@@ -413,6 +459,9 @@ def make_declarations(
     raml: Raml, value_node: Node, location: str
 ) -> tuple[dict[str, Property], dict[str, PatternProperty]]:
     """Read a properties declaration into its named and its pattern halves."""
+    if is_null(value_node):
+        # `properties:` with nothing under it declares no properties.
+        return {}, {}
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('properties must be a mapping', location, value_node)
     properties: dict[str, Property] = {}
@@ -426,6 +475,25 @@ def make_declarations(
             prop = make_property(raml, key, value, location)
             properties[prop.name] = prop
     return properties, patterns
+
+
+def make_property_map(raml: Raml, value_node: Node, location: str) -> dict[str, Property]:
+    """A properties declaration where a `/regex/` key carries no meaning.
+
+    Headers, query parameters, URI parameters and base-URI parameters. Each one
+    joins the flat per-file index, which is what unwrap and validation iterate
+    instead of walking the model graph (docs/04 section 5.1).
+    """
+    if is_null(value_node):
+        return {}
+    if value_node.kind is not NodeKind.MAPPING:
+        raise node_error('parameter declarations must be a mapping', location, value_node)
+    declared: dict[str, Property] = {}
+    for key, value in pairs(value_node):
+        prop = make_property(raml, key, value, location)
+        declared[prop.name] = prop
+        raml.put_typedef(location, prop.base)
+    return declared
 
 
 def make_property(raml: Raml, key_node: Node, value_node: Node, location: str) -> Property:

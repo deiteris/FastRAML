@@ -45,6 +45,7 @@ __all__ = [
     'SequenceValue',
     'ValueNode',
     'make_data_node',
+    'parse_int',
     'value_node_of',
 ]
 
@@ -239,13 +240,13 @@ def scalar_value(node: Node) -> Any:
     if tag == TAG_BOOL:
         return node.value.lower() in _TRUE_SCALARS
     if tag == TAG_INT:
-        return _parse_int(node.value)
+        return parse_int(node.value)
     if tag == TAG_FLOAT:
         return _parse_float(node.value)
     return node.value
 
 
-def _parse_int(text: str) -> int:
+def parse_int(text: str) -> int:
     cleaned = text.replace('_', '')
     sign = 1
     if cleaned[:1] in ('+', '-'):

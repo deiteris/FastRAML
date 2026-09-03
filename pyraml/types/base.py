@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, Protocol
 
+from pyraml.datanode import make_data_node
 from pyraml.positions import UNKNOWN, Position
 
 if TYPE_CHECKING:
@@ -67,6 +68,7 @@ __all__ = [
     'TYPE_UNION',
     'BaseShape',
     'DeclarationFacet',
+    'KindBase',
     'PatternProperty',
     'Property',
     'ScalarFacet',
@@ -308,6 +310,56 @@ def declaration_facets(kind: type[Shape]) -> Mapping[str, DeclarationFacet]:
     that hold no declarations carry nothing they do not use.
     """
     return getattr(kind, 'DECLARATION_FACETS', _NO_DECLARATION_FACETS)
+
+
+class KindBase:
+    """What every kind object shares: the back-pointer, and the unwritten half.
+
+    This is go-raml's `scalarShape` / `noScalarShape` embedding, not a facet
+    hierarchy — doc 05 section 1 rules that out, and nothing here is a facet.
+    Keep it that way: a facet on this class would be a facet no `BaseShape`
+    knows about.
+
+    The default `decode_facets` is the last rule of doc 05 section 4: a key the
+    kind does not recognise is a custom facet value. Kinds with facets of their
+    own handle those and pass the rest up.
+    """
+
+    __slots__ = ('base',)
+
+    def __init__(self, base: BaseShape) -> None:
+        self.base = base
+
+    def decode_facets(self, pairs: list[Node]) -> None:
+        for index in range(0, len(pairs), 2):
+            key = pairs[index]
+            self.base.custom_facets[key.value] = make_data_node(
+                self.base._raml,  # noqa: SLF001 - the kind is the base's other half
+                key,
+                pairs[index + 1],
+                self.base.location,
+            )
+
+    def is_scalar(self) -> bool:
+        raise NotImplementedError
+
+    def inherit(self, source: Shape) -> Shape:
+        raise NotImplementedError('Phase 4: docs/07-resolution-and-inheritance.md section 3')
+
+    def alias_to(self, source: Shape) -> Shape:
+        raise NotImplementedError('Phase 4: docs/07-resolution-and-inheritance.md section 2')
+
+    def check(self) -> None:
+        raise NotImplementedError('Phase 8: docs/10-validation.md section 2')
+
+    def validate(self, value: Any, path: str) -> None:
+        raise NotImplementedError('Phase 8: docs/10-validation.md section 3')
+
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> Shape:
+        raise NotImplementedError('Phase 4: docs/07-resolution-and-inheritance.md section 5')
+
+    def __repr__(self) -> str:
+        return f'{type(self).__name__}(id={self.base.id})'
 
 
 class Shape(Protocol):

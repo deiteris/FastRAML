@@ -54,6 +54,14 @@ Why the split rather than a class per type with inherited common facets?
   beats rebuilding an object other things point at.
 - Common facets are decoded once, in one place, regardless of kind.
 
+The kind objects do share one small base class, `KindBase`: the `base`
+back-pointer, the five methods later phases fill, and the default
+`decode_facets` that files an unrecognised key as a custom facet value. Two
+subclasses of it, `ScalarKind` and `ComplexKind`, differ only in `is_scalar`.
+This is go-raml's `scalarShape` / `noScalarShape` embedding, and it is not the
+hierarchy rejected above: **no facet may live on it**, because a facet there
+would be one no `BaseShape` knows about.
+
 Concrete kinds: `AnyShape`, `NilShape`, `ObjectShape`, `ArrayShape`,
 `UnionShape`, `StringShape`, `NumberShape`, `IntegerShape`, `BooleanShape`,
 `FileShape`, `DateTimeShape`, `DateTimeOnlyShape`, `DateOnlyShape`,
@@ -93,7 +101,7 @@ hold arbitrary user data use `DataNode`.** `default`, `enum` members and
 | `string` | `pattern`, `minLength`, `maxLength` | `ScalarFacet[Pattern]`, `ScalarFacet[int]`×2 |
 | `number` | `minimum`, `maximum`, `multipleOf`, `format` | `ScalarFacet[Fraction]`×3, `ScalarFacet[str]` |
 | `integer` | same four | `ScalarFacet[int]`×2, `ScalarFacet[Fraction]`, `ScalarFacet[str]` |
-| `file` | `fileTypes`, `minLength`, `maxLength` | `list[Node[str]]`, `ScalarFacet[int]`×2 |
+| `file` | `fileTypes`, `minLength`, `maxLength` | `list[ScalarFacet[str]]`, `ScalarFacet[int]`×2 |
 | `datetime` | `format` (`rfc3339` \| `rfc2616`) | `ScalarFacet[str]` |
 | `boolean`, `nil`, `any`, other dates | — | |
 

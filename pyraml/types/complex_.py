@@ -211,11 +211,17 @@ class UnknownShape(ComplexKind):
     this list (docs/07 section 1).
     """
 
-    __slots__ = ('facets',)
+    __slots__ = ('facets', 'from_mapping')
 
-    def __init__(self, base: BaseShape, facets: list[Node] | None = None) -> None:
+    def __init__(self, base: BaseShape, facets: list[Node] | None = None, *, from_mapping: bool = True) -> None:
         super().__init__(base)
         self.facets: list[Node] = facets if facets is not None else []
+        #: Was the declaration a mapping (`Foo: {type: Bar}`) rather than a bare
+        #: scalar (`Foo: Bar`)? It is the only thing that tells P7 whether a
+        #: reference is inheritance or an alias, so it is recorded rather than
+        #: inferred from `facets` being empty — a mapping carrying nothing but
+        #: `type:` also leaves this list empty (docs/06 section 3.1).
+        self.from_mapping = from_mapping
 
     def decode_facets(self, pairs: list[Node]) -> None:
         self.facets = pairs

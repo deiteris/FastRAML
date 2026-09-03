@@ -150,24 +150,27 @@ inner references resolve in the right namespace and report the right column.
 A `Reference` produces one of two relationships. One field decides which:
 
 ```python
-if target.facets is None:  # the declaration was a bare scalar: `type: Foo`
-    shape.base.alias = ref
-else:  # there were sibling facets: `type: Foo` + `minLength: 5`
+if target.from_mapping:  # `Foo: {type: Bar, …}` — a declaration that narrows
     shape.base.inherits.append(ref)
+else:  # `Foo: Bar` — a pure reference, nothing to narrow with
+    shape.base.alias = ref
 ```
 
-`target.facets is None` — as distinct from an empty list — means the declaration
-was a scalar node with no accompanying mapping, that is, a pure reference. The
-new shape is then an **alias**: it borrows the referent's facets wholesale and is
-not treated as a subtype.
+A declaration written as a bare scalar is a pure reference, and the new shape is
+an **alias**: it borrows the referent's facets wholesale and is not treated as a
+subtype. A declaration written as a mapping is **inheritance**: the new shape
+narrows the referent, and the rules in [07](07-resolution-and-inheritance.md)
+apply — even when the mapping carries nothing but `type:`, because what makes it
+a subtype is the form, not whether the author got as far as writing a facet.
 
-When sibling facets are present, the relationship is **inheritance**: the new
-shape narrows the referent, and the rules in
-[07](07-resolution-and-inheritance.md) apply.
-
-`make_shape` must therefore pass `None`, not `[]`, for the scalar case. A
-refactor that normalises the two is a silent behaviour change, so a test asserts
-the distinction.
+`UnknownShape.from_mapping` records this at decode time, since P7 no longer has
+the value node. It is deliberately **not** encoded as `facets is None` versus
+`facets == []`, which is what go-raml does: Go conflates a nil slice with an
+empty one, so the field was free there. Here it would cost `list[Node] | None` in
+the `Shape.decode_facets` protocol and a `None` guard in nine per-kind loops, for
+a distinction exactly one of the seventeen kinds reads — and a nullable list is
+the encoding a later refactor normalises away without noticing. A named boolean
+cannot be. A test asserts the distinction either way.
 
 ### 3.2 Reference positions for tooling
 

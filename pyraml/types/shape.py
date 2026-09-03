@@ -173,7 +173,10 @@ def make_shape(
             raml.put_shape(base)
             return base
 
-    _attach_kind(raml, base, kind, facets)
+    # A mapping declaration narrows whatever its `type:` names; a bare scalar or
+    # sequence one has nothing to narrow with. That is the whole of docs/06
+    # section 3.1, and only an UnknownShape ever reads it.
+    _attach_kind(raml, base, kind, facets, from_mapping=value_node.kind is NodeKind.MAPPING)
     raml.put_shape(base)
     if isinstance(base.shape, UnknownShape):
         # Invariant I4: P7 drains this worklist and swaps in the real kind.
@@ -376,14 +379,24 @@ def _inherited(raml: Raml, item: Node, location: str) -> BaseShape:
 # -- kind dispatch -----------------------------------------------------------
 
 
-def _attach_kind(raml: Raml, base: BaseShape, kind: str, facets: list[Node]) -> None:
-    """Construct the kind object, giving it any children it holds."""
+def _attach_kind(raml: Raml, base: BaseShape, kind: str, facets: list[Node], *, from_mapping: bool) -> None:
+    """Construct the kind object, giving it any children it holds.
+
+    P7 calls this too, to swap the real kind in for an `UnknownShape` once the
+    type expression has been resolved (docs/07 section 1.1).
+    """
     base.type = kind
     cls: type[Shape] = KIND_TO_CLASS.get(kind, UnknownShape)
     rest, built = _split_declarations(raml, cls, facets, base.location)
-    # Each DECLARATION_FACETS table names its own constructor keywords, which is
-    # a correspondence a checker cannot see.
-    shape = cls(base, **built)  # type: ignore[call-arg]
+    shape: Shape
+    if cls is UnknownShape:  # noqa: SIM108 - a ternary loses both comments and widens the `type: ignore`
+        # An UnknownShape holds no declarations, so `built` is empty; the one
+        # thing it needs is the flag P7 tells an alias from a subtype by.
+        shape = UnknownShape(base, from_mapping=from_mapping)
+    else:
+        # Each DECLARATION_FACETS table names its own constructor keywords, which
+        # is a correspondence a checker cannot see.
+        shape = cls(base, **built)  # type: ignore[call-arg]
     base.shape = shape
     shape.decode_facets(rest)
     _check_custom_facet_names(base)

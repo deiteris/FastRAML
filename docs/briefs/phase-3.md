@@ -68,26 +68,22 @@ Skim only: doc 05 § 4 (the walk you are reusing, not rewriting), doc 15 Phase 3
 
 Build in this order; each step depends only on the ones above it.
 
-### 3.1 Fix `UnknownShape.facets`: `None` versus `[]`
+### 3.1 Record the declaration's form — **done**
 
-**Do this first — everything in § 3.5 hangs off it.** Doc 06 § 3.1: a `Reference`
-produces an *alias* when the declaration was a bare scalar (`Foo: Bar`) and
-*inheritance* when it was a mapping with sibling keys (`Foo: {type: Bar}`). The
-one field that distinguishes them is `facets`, which must be `None` in the first
-case and `[]` in the second.
+Landed already, because § 3.4 cannot be written without it. Recorded here so you
+know why the code and go-raml differ.
 
-Today it is `[]` in both: `_decode` returns `(value_node, [])` for a non-mapping
-value, and `_attach_kind` passes that straight through. go-raml's
-`BaseShape.decode` (`shape.go` 1121) returns nil facets for a scalar or sequence
-node and `make([]*yaml.Node, 0)` for a mapping — the distinction is deliberate
-there and doc 06 § 3.1 already warns that normalising the two is a silent
-behaviour change.
+Doc 06 § 3.1: a `Reference` produces an *alias* when the declaration was a bare
+scalar (`Foo: Bar`) and *inheritance* when it was a mapping (`Foo: {type: Bar}`),
+including a mapping that carries nothing else. Phase 2 recorded neither: it left
+`UnknownShape.facets == []` in both cases, which would have made every alias a
+subtype.
 
-Threading `list[Node] | None` through `_decode`, `_attach_kind` and
-`_split_declarations` is the whole fix. Watch `_split_declarations`, which
-indexes into the list.
-
-A test asserts the distinction, per doc 06 § 3.1's last line.
+go-raml distinguishes them by nil-versus-empty on that same slice
+(`BaseShape.decode`, `shape.go` 1121), which is free in Go. Here it is
+`UnknownShape.from_mapping`, set by `_attach_kind`. Doc 06 § 3.1 now says why,
+and `TestAliasVersusInheritance` in `tests/unit/test_shape_decode.py` pins all
+four forms.
 
 ### 3.2 `TypeExprRef`, and the two lookups it needs
 
@@ -180,8 +176,8 @@ and before P8.
 5. **Anonymous inner shapes are fresh `BaseShape`s.** `string[]` is two
    declarations. Sharing one base would leak `minItems: 1`, written beside the
    expression, onto the item type (doc 06 § 3).
-6. **Alias versus inheritance is decided by `facets is None` and nothing else.**
-   See § 3.1.
+6. **Alias versus inheritance is decided by the declaration's form, and nothing
+   else** — not by whether any facet was written beside the `type:`. See § 3.1.
 7. **The expression cache is keyed on text alone and caches failures too.** The
    AST carries only intra-expression columns, never a file position, which is
    what makes one entry safe for every occurrence. A malformed expression
@@ -234,6 +230,7 @@ From `docs/15-implementation-plan.md` Phase 3, made concrete:
   optionals, unions and grouping. They are already a parser fixture in
   `tests/unit/test_expressions.py`; extend them to assert the built shape.
 - A test pins `Foo: Bar` → alias and `Foo: {type: Bar}` → inherits (doc 06 § 3.1).
+  The decode half of this is done; the resolution half is not.
 - A test pins a cyclic `A: B` / `B: A` as a diagnostic, not a hang.
 - A test pins that one malformed expression written in two files produces two
   diagnostics with two different locations off one cached parse.

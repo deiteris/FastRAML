@@ -248,3 +248,37 @@ class TestMultipleInheritance:
         with pytest.raises(RamlError) as caught:
             shape('T: [!include a.raml]\n')
         assert first_trace(caught).message == '!include is not allowed in multiple inheritance'
+
+
+class TestAliasVersusInheritance:
+    """docs/06 section 3.1 — the form of the declaration, not its facet count.
+
+    P7 reads `from_mapping` and nothing else to decide whether a reference makes
+    the new shape an alias of the referent or a subtype of it. It is recorded
+    here because by P7 the value node is gone.
+    """
+
+    def test_a_bare_scalar_reference_is_not_a_mapping(self):
+        base = shape('T: Other\n')
+        assert isinstance(base.shape, UnknownShape)
+        assert base.shape.from_mapping is False
+
+    def test_a_mapping_carrying_only_type_is_still_a_mapping(self):
+        # The case the `facets is None` encoding gets wrong: no facets were
+        # written, yet the declaration is a subtype rather than an alias.
+        base = shape('T:\n  type: Other\n')
+        assert isinstance(base.shape, UnknownShape)
+        assert base.shape.from_mapping is True
+        assert base.shape.facets == []
+
+    def test_a_mapping_with_sibling_facets_is_a_mapping(self):
+        base = shape('T:\n  type: Other\n  minLength: 5\n')
+        assert isinstance(base.shape, UnknownShape)
+        assert base.shape.from_mapping is True
+
+    def test_a_sequence_of_parents_is_not_a_mapping(self):
+        # Multiple inheritance never aliases, so the flag is unread here; it is
+        # asserted so that a change to the rule shows up as a failing test.
+        base = shape('T: [Cat, Dog]\n')
+        assert isinstance(base.shape, UnknownShape)
+        assert base.shape.from_mapping is False

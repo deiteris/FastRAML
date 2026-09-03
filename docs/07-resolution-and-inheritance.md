@@ -144,7 +144,10 @@ set at the top level.
 
 Fragments additionally get their `traits`/`resourceTypes`/`securitySchemes`
 definition maps rewritten so that a `!include`d definition is replaced by the
-linked definition object — collapsing the indirection for consumers.
+linked definition object — collapsing the indirection for consumers. Those three
+are still undecoded `_raw_*` nodes until Phases 6 and 7, so P9 has nothing to
+rewrite yet; the step belongs here rather than there, and is written when the
+maps exist.
 
 ### 3.3 Multiple inheritance
 

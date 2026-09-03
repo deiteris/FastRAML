@@ -207,6 +207,29 @@ recursion marking pass; a test proves a parent's `properties` dict is not mutate
 when two children inherit from it; `unwrap(unwrap(x)) == unwrap(x)` holds under
 hypothesis.
 
+**Outcome.** TCK 584 → 594 of 930, no regressions. 109 unit tests across
+`test_clone.py`, `test_inherit.py` and `test_unwrap.py`; **I6** asserted over the
+corpus from its own `unwrap=True` fixture, kept separate because I4 and I5 are
+about the model *before* flattening.
+
+Four things [07](07-resolution-and-inheritance.md) did not say, now amended
+there. A union target that declares no members takes the parent's outright —
+not an edge case, since `T: {type: SomeUnion, …}` gets the union kind from P7
+but no `anyOf`, and its absence regressed a valid fixture. `Raml.shapes` is
+rebuilt rather than appended to. There is no `clone_shallow`: it was listed for
+"swapping a shape's kind", which P7 does by building a fresh kind object, and
+go-raml's own is called from nowhere. And § 3.6 now states both halves of what
+an alias is — own identity, *shared* contents — because only the first was
+written down, and the second is what a reader has to know before touching
+recursion marking.
+
+The one defect worth remembering: marking must not descend into an alias whose
+referent is on the walk. Miss it and the walk iterates the dict it is already
+inside, and its substitution lands in the referent's — which is how `Node.kids`
+stops being an array. The first fix attempted was to copy the alias's
+containers, which hides that bug and silently breaks the propagation an alias
+exists for.
+
 ---
 
 ## Phase 5 — Endpoints (stage 1 and 2, no templates)

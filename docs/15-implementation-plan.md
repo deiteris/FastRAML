@@ -166,6 +166,21 @@ the critical path; this phase consumes them rather than writing them. Normative:
 `Types/` fixtures that use expressions parse; no reachable `UnknownShape` remains
 after a parse (invariant I5 asserted by a test helper).
 
+**Outcome.** TCK 558 → 584 of 930, no regressions. All twenty-six are *invalid*
+fixtures now rejected: resolution only ever adds diagnostics, so the informative
+half of the result is that no valid fixture moved in either direction.
+I5 is asserted over the corpus alongside a reachability walk that ties it back
+to I4 (`tests/tck/test_invariants.py`).
+
+Two things the plan had in the wrong place. The visitor and the driver are
+mutually recursive — a reference's target may itself be unresolved — so they
+share `types/resolve.py` rather than splitting across `expressions/build.py`,
+and the driver is a free function because `registry.py` may not import `types/`
+at runtime ([02](02-architecture.md) § 2, [07](07-resolution-and-inheritance.md)
+§ 1). Step 4 also turned out to have a decode half: the form of a declaration
+decides alias versus inheritance, and had to be recorded while the value node
+was still in hand ([06](06-type-expressions.md) § 3.1).
+
 ---
 
 ## Phase 4 — Inheritance and unwrap

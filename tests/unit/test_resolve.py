@@ -61,6 +61,58 @@ class TestInvariantI5:
         assert not parse_from_path(root / 'lib.raml').unresolved_shapes
 
 
+#: go-raml's `rdt/examples.txt`, verbatim, paired with the shape each builds.
+#: `test_expressions.py` pins the same thirteen lines at AST level; this is the
+#: other half, and the corpus is kept inline there and here so neither test
+#: needs the sibling checkout.
+#:
+#: The names they use are declared by `CORPUS_DECLARATIONS` below. Note that
+#: `date-time` is not a RAML built-in — the spec's name is `datetime` — so the
+#: corpus treats it as an ordinary reference, and so must this.
+EXAMPLES_CORPUS = [
+    ('string', 'string'),
+    ('integer?', 'union(integer | nil)'),
+    ('date-time[]', 'array[datetime]'),
+    ('Ref?', 'union(object | nil)'),
+    ('Ref[]', 'array[object]'),
+    ('external.Ref', 'file'),
+    ('external.Ref?', 'union(file | nil)'),
+    ('external.Ref[]', 'array[file]'),
+    ('string | nil', 'union(string | nil)'),
+    ('Ref | string', 'union(object | string)'),
+    ('(string | integer)?', 'union(union(string | integer) | nil)'),
+    ('(string | integer)[]', 'array[union(string | integer)]'),
+    (
+        '(string | integer) | Ref[] | external.Ref?',
+        'union(union(string | integer) | array[object] | union(file | nil))',
+    ),
+]
+
+#: Each referenced name resolves to a different kind, so a wrong binding shows
+#: up as a wrong kind rather than passing unnoticed.
+CORPUS_DECLARATIONS = '  Ref:\n    properties:\n      a: string\n  date-time: datetime\n'
+CORPUS_LIBRARY = {'ext.raml': LIB + 'types:\n  Ref: file\n'}
+
+
+class TestExamplesCorpus:
+    """docs/15 Phase 3: every line of `rdt/examples.txt` builds its shape."""
+
+    @pytest.mark.parametrize(('expression', 'expected'), EXAMPLES_CORPUS, ids=[line for line, _ in EXAMPLES_CORPUS])
+    def test_a_corpus_line_builds_its_shape(self, workspace, expression, expected):
+        root = workspace(
+            {
+                'lib.raml': LIB
+                + 'uses:\n  external: ext.raml\n'
+                + 'types:\n'
+                + CORPUS_DECLARATIONS
+                + f'  T: {expression}\n',
+                **CORPUS_LIBRARY,
+            }
+        )
+        raml = parse_from_path(root / 'lib.raml')
+        assert describe(raml.types_in(raml.location)['T']) == expected
+
+
 class TestExpressionStructure:
     """docs/06 section 3 — one row of the visitor's table each."""
 

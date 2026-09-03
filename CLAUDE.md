@@ -14,22 +14,23 @@ that area has already settled.
    dependencies, not by importance: the type system precedes endpoints, the merge
    precedes templates, validation comes last.
 
-**Current state: Phases 0, 1 and 2 complete.** Phase 0: positions, errors, uris,
+**Current state: Phases 0 to 3 complete.** Phase 0: positions, errors, uris,
 loaders, yamlnode. Phase 1: registry, fragments, includes, namespaces, datanode,
 facets, references, annotations, the entry points and the pass driver (P0–P3).
 Phase 2: the whole `types/` package — `BaseShape`, the seventeen kinds,
 inference, examples, xml, and `make_shape`, wired into `types:`,
-`annotationTypes:`, `baseUriParameters:` and the typed fragments. Three leaf
-modules were built ahead of the critical path: the RDT expression parser
-(Phase 3's), template variables and transforms (Phase 6's), and URI template
-parsing (Phase 5's).
+`annotationTypes:`, `baseUriParameters:` and the typed fragments. Phase 3:
+`types/resolve.py` (P7) — the worklist drain and the type-expression visitor,
+which share a module because they are mutually recursive. Two leaf modules were
+built ahead of the critical path: template variables and transforms (Phase 6's)
+and URI template parsing (Phase 5's).
 
-**Phase 3, resolution (P7), is next.** It drains `Raml.unresolved_shapes`:
-parse each type expression, bind each name, and swap the real kind in for every
-`UnknownShape`. Everything still deferred is retained as the original `Node` on
-a `_raw_*` attribute; `grep -rn '_raw_' pyraml/` lists every seam, and a comment
-beside each names the phase that decodes it. A brief per phase lives in
-`docs/briefs/`.
+**Phase 4, inheritance and unwrap (P9), is next.** `inherit`, `alias_to` and
+`clone` still raise `NotImplementedError` naming their doc section; `link` is
+resolved but not yet rewritten to `inherits`. Everything else still deferred is
+retained as the original `Node` on a `_raw_*` attribute; `grep -rn '_raw_'
+pyraml/` lists every seam, and a comment beside each names the phase that
+decodes it. A brief per phase lives in `docs/briefs/`.
 
 ## The gate
 
@@ -78,6 +79,11 @@ Full list with the pass that establishes each: `docs/02-architecture.md` § 4.
 go-raml lives at `../go-raml-main`. The design documents already capture its
 decisions, so **read targeted line ranges when you need a detail, not whole
 files**. Reading it wholesale is what consumes a session's context.
+
+Go is installed. When the question is what go-raml *does* rather than how it is
+built, **run it** — `go test -run <name> .` against a throwaway `zz_*_test.go`
+in that checkout, deleted afterwards. A trace of the code is a hypothesis, and
+its comments have been wrong about its own behaviour.
 
 ## TCK
 

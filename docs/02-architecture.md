@@ -105,10 +105,13 @@ pyraml/
     uritemplates.py       RFC 6570 L1/L2 parsing and parameter synthesis
 
   types/
-    base.py               BaseShape, Property, PatternProperty, ScalarFacet
+    base.py               BaseShape, Property, PatternProperty, ScalarFacet, the Shape protocol
+    shape.py              make_shape / make_body_shape / make_property; kind dispatch (doc 05 §4)
     inference.py          identify_shape_type, default-type rules (doc 05)
     scalars.py            String/Number/Integer/Boolean/Date*/File/Nil shapes
     complex_.py           Object/Array/Union/Any/Json/Unknown/Recursive shapes
+    examples.py           Example, Examples (doc 05 §6)
+    xml.py                XmlSerialization (doc 05 §8)
     inherit.py            per-kind inheritance rules (doc 07)
     unwrap.py             unwrap driver + recursion marking (doc 07)
     jsonschema_.py        external JSON Schema types (doc 10 §5)
@@ -138,6 +141,24 @@ Rules on the layout:
   `BaseShape` names `DomainExtension`, `DataNode`, `DataTypeFragment` and
   `ReferenceResolver` under `TYPE_CHECKING`, which `from __future__ import
   annotations` keeps as strings and never imports at runtime.
+
+- **Inside `types/`, dependencies point one way: `shape.py` → `scalars.py` /
+  `complex_.py` → `base.py`.** `shape.py` imports the concrete kinds to dispatch
+  on kind, so the kinds must not import `shape.py` back — and `ObjectShape` needs
+  a shape builder, because `properties:` holds declarations.
+
+  The builder is therefore a **parameter**: `decode_facets(facets, make_shape)`.
+  Three kinds use it (object properties, array `items`, union `anyOf`); the other
+  fourteen ignore it. This is the callback this section already prescribes for
+  shape construction, passed explicitly rather than reached for.
+
+  Two alternatives were rejected. A deferred import inside the method is the
+  usual fix, but it is exactly the runtime indirection the rule above exists to
+  avoid. A module-level builder slot that `shape.py` fills at import makes
+  `import pyraml.types.complex_` alone a half-initialised module, and moves a
+  static error to run time. One extra parameter on one protocol method costs
+  less than either, and it puts the dependency in the signature where a reader
+  and a type checker both see it.
 - `registry.py` imports nothing from `parser/` or `types/` at module level; it
   holds the stores and uses `TYPE_CHECKING` imports for annotations. This keeps
   the import graph acyclic without runtime indirection.

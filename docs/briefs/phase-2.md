@@ -78,16 +78,20 @@ expect of custom facets), doc 15 Phase 2.
 
 ## 3. What to build
 
+The module map is settled — doc 02 § 2 now lists all six. Build them in this
+order; each step depends only on the ones above it, so the tree stays green if
+you stop between any two.
+
 ### 3.1 `pyraml/types/base.py`
 
 `BaseShape` with the `__slots__` list from doc 05 § 1 — the full set, even where
-a later phase fills the field. `Property` and `PatternProperty` (doc 05 § 3).
-`ScalarFacet` is already there.
+a later phase fills the field. `Property` and `PatternProperty` (doc 05 § 3), and
+the `Shape` protocol. `ScalarFacet` is already there.
 
 `BaseShape` holds one kind-specific `Shape` object rather than being subclassed.
-That is deviation-free go-raml parity and it is load-bearing: the kind of a
-declaration is unknown at creation time, and it can change again during
-resolution, so references taken to the `BaseShape` must survive a kind swap.
+That is go-raml parity and it is load-bearing: the kind of a declaration is
+unknown at creation time, and it can change again during resolution, so
+references already taken to the `BaseShape` must survive a kind swap.
 
 ### 3.2 `pyraml/types/inference.py`
 
@@ -95,26 +99,43 @@ resolution, so references taken to the `BaseShape` must survive a kind swap.
 doc 05 § 4.2. Four rules, in order, and the `string`/`file` reconciliation is the
 one that gets mis-implemented — `pattern` is string-only and poisons it.
 
-### 3.3 `pyraml/types/scalars.py` and `pyraml/types/complex_.py`
+### 3.3 `pyraml/types/xml.py` and `pyraml/types/examples.py`
+
+Two leaf records with decoders: `XmlSerialization` (doc 05 § 8; unknown keys
+inside `xml:` are an error, so a typo is caught) and `Example`/`Examples`
+(doc 05 § 6). Both are common facets, so step 3.5's walk needs them.
+
+They are separate modules on purpose. `xml:` and `example:` have nothing in
+common beyond both being facets, and `Example` is consumed by the `NamedExample`
+fragment and by Phase 8's validation, while `XmlSerialization` is consumed by
+nothing in v1.
+
+### 3.4 `pyraml/types/scalars.py` and `pyraml/types/complex_.py`
 
 The fourteen concrete kinds plus `UnknownShape`, `JsonShape` and `RecursiveShape`
 (doc 05 § 1, last paragraph). Each implements the `Shape` protocol; in Phase 2
 only `decode_facets` has a real body — `inherit`, `alias_to`, `check`, `validate`
-and `clone` belong to Phases 4, 8 and can raise `NotImplementedError` with a
-comment naming the phase.
+and `clone` belong to Phases 4 and 8, and should raise `NotImplementedError` with
+a comment naming the phase.
 
-### 3.4 The single decode entry point
+### 3.5 `pyraml/types/shape.py` — the single decode entry point
 
 `make_shape(raml, key_node, value_node, location, default_type)` — doc 05 § 4 —
-plus the `make_body_shape` wrapper that defaults to `any` instead of `string`.
-Every property, header, query parameter, body, URI parameter and type declaration
-goes through it. Getting this one function right is most of the phase.
+plus the `make_body_shape` wrapper that defaults to `any` instead of `string`,
+`make_property`, `make_pattern_property`, and the kind dispatch. Every property,
+header, query parameter, body, URI parameter and type declaration goes through
+it. Getting this one module right is most of the phase.
 
-### 3.5 Properties, examples, custom facets, `xml:`
+One `make_property` serves `properties:`, `headers:`, `queryParameters:`,
+`uriParameters:`, `baseUriParameters:` and `facets:` — all six are "properties
+declarations" per the spec, so all six get `?` handling and inline type
+declarations for free (doc 05 §§ 5, 7).
 
-Doc 05 §§ 5–8. One `make_property` serves `properties:`, `headers:`,
-`queryParameters:`, `uriParameters:`, `baseUriParameters:` and `facets:` — all
-six are "properties declarations" per the spec.
+**`shape.py` imports the kind modules; they must not import it back.** A shape
+that holds declarations — object `properties`, array `items`, union `anyOf` —
+receives the builder as a parameter instead: `decode_facets(facets, make_shape)`.
+Doc 02 § 2 records why that beats a deferred import or a module-level builder
+slot. Three kinds use the parameter; the rest ignore it.
 
 ### 3.6 Wiring the seams
 
@@ -158,19 +179,13 @@ register it in `fragment_types` (or `fragment_annotations`) **and** append it to
    YAML arrives as a `Node`.
 10. **Every shape is appended to `raml.shapes`, and to `unresolved_shapes` iff
     its kind is `UnknownShape`.** That is invariant I4, and P7 depends on it.
-
-### 4.1 Two things this brief does *not* settle
-
-Both are real gaps in `docs/02` § 2, and both want a decision plus a doc
-amendment in the same commit:
-
-- **`Example`, `Examples` and `XmlSerialization` have no module assigned.** Doc
-  13 § 4 exports them as part of the type model, but doc 02's `types/` listing
-  stops at `base.py`. Pick a home (`types/examples.py` is the obvious one) and
-  add the line.
-- **`make_shape` has no module assigned either.** It is the decode entry point
-  and it needs `make_scalar_facet`, so it belongs on the `types/` side of the one
-  permitted edge — but say so in doc 02 rather than leaving it implied.
+11. **`types/` points one way: `shape.py` → `scalars.py`/`complex_.py` →
+    `base.py`.** The builder reaches a concrete kind as the second parameter of
+    `decode_facets`, never as an import. Settled with the module map; doc 02 § 2
+    gives the two alternatives and why they lost.
+12. **`Example`/`Examples`, `XmlSerialization` and `make_shape` each have a
+    module** — `types/examples.py`, `types/xml.py`, `types/shape.py`. Doc 02 § 2
+    was silent on all three until this phase was planned; it is not silent now.
 
 ---
 

@@ -33,7 +33,7 @@ class BaseShape:
 ```python
 class Shape(Protocol):            # the kind-specific half
     base: BaseShape
-    def decode_facets(self, pairs: list[Node]) -> None: ...
+    def decode_facets(self, pairs: list[Node], make_shape: ShapeBuilder) -> None: ...
     def inherit(self, source: Shape) -> Shape: ...
     def alias_to(self, source: Shape) -> Shape: ...
     def check(self) -> None: ...              # is the declaration self-consistent?
@@ -141,8 +141,9 @@ crossing the two tables.
 ## 4. Decoding a declaration
 
 `make_shape(key_node, value_node, location, default_type)` is the single entry
-point. Every property, header, query parameter, body, URI parameter, type
-declaration and inline declaration goes through it.
+point, and it lives in `types/shape.py` with the kind dispatch and
+`make_property`. Every property, header, query parameter, body, URI parameter,
+type declaration and inline declaration goes through it.
 
 ```
 value_node kind?
@@ -164,9 +165,12 @@ value_node kind?
 ```
 
 The leftover `facets` list is then handed to the concrete shape's
-`decode_facets`. pyRAML keeps go-raml's allocation-lean structure here: one pass,
-one list, no intermediate dict, and the concrete shape sees only the keys it
-might handle.
+`decode_facets`, together with `make_shape` itself — `properties:`, `items:` and
+`anyOf` hold declarations, and `types/` points one way, so the builder arrives as
+a parameter rather than as an import back into `shape.py`
+([02](02-architecture.md) § 2). pyRAML keeps go-raml's allocation-lean structure
+here: one pass, one list, no intermediate dict, and the concrete shape sees only
+the keys it might handle.
 
 Any key the concrete shape does not recognise becomes a **custom facet value** in
 `base.custom_facets`. P10 validates those values against the `facets:`
@@ -332,7 +336,9 @@ that each value validates against its declaration, happens in P10
 
 ## 8. `xml:`
 
-Parsed into a small record and retained; nothing consumes it in v1.
+Parsed into a small record and retained; nothing consumes it in v1. It gets its
+own module, `types/xml.py`: it is a leaf with no dependencies and no dependants,
+and it has nothing to do with examples beyond both being facets of a declaration.
 
 ```python
 class XmlSerialization:

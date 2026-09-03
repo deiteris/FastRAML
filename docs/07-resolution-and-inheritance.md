@@ -144,7 +144,10 @@ set at the top level.
 
 Fragments additionally get their `traits`/`resourceTypes`/`securitySchemes`
 definition maps rewritten so that a `!include`d definition is replaced by the
-linked definition object — collapsing the indirection for consumers.
+linked definition object — collapsing the indirection for consumers. Those three
+are still undecoded `_raw_*` nodes until Phases 6 and 7, so P9 has nothing to
+rewrite yet; the step belongs here rather than there, and is written when the
+maps exist.
 
 ### 3.3 Multiple inheritance
 
@@ -190,9 +193,17 @@ survive.
 **target is a union, source is not**: merge the source into every member; any
 member that fails makes the whole inheritance fail.
 
-**both unions** → handled inside `UnionShape.inherit`: for each source member,
-merge it into each type-compatible target member (on a detached copy) and keep the
-survivors; a source member with no compatible target is an error.
+**both unions** → if the target declares no members of its own it takes the
+source's outright, which is the same rule every other facet follows when the
+child is silent about it. Otherwise, for each source member, merge it into each
+type-compatible target member (on a detached copy) and keep the survivors; a
+source member with no compatible target is an error.
+
+The empty case is not an edge case to tidy away: `T: {type: SomeUnion, …}` gives
+`T` the *union* kind, because P7 takes the referent's kind, but no `anyOf` of
+its own. So a child that merely narrows a union reaches this branch, not the
+"source is a union, target is not" one above — which arises only where the two
+kinds genuinely differ.
 
 Detached copies with fresh IDs are essential here — these are genuinely new
 shapes, and reusing the originals would corrupt the declared types.
@@ -241,17 +252,57 @@ check, so a property typed as a recursive back-reference still merges.
 
 ### 3.6 Aliases
 
-`alias_to(source)` copies the source's facets onto the target and then adopts the
-source's `display_name`, `description`, `example(s)`, `inherits`, `default`,
-`required`, `enum`, custom facets, custom facet declarations, annotations and
-`xml`. The target keeps its own `name`, `id`, `location` and positions — that is
-the entire point of an alias.
+An alias is a second name for one type. `alias_to(target, source)` gives the
+target the source's `display_name`, `description`, `example(s)`, `inherits`,
+`default`, `required`, `enum`, custom facets, custom facet declarations,
+annotations and `xml`, plus every field of the kind object.
+
+Two halves, and both are load-bearing:
+
+- **The target keeps its own `name`, `id`, `location` and positions.** That is
+  what makes it an alias rather than a rename: a diagnostic about `X` reports at
+  `X`, and the property `next: Node` reports where `next` was written.
+- **The contents are taken as pointers, not copies.** `X.shape.properties` *is*
+  `Base.shape.properties`. There is one type here under two names, so a later
+  change to the referent has to show through the alias; copying would let the
+  two drift into two types a reader believes are one.
+
+Sharing mutable containers between shapes is otherwise something this document
+warns about — § 3.3's whole reason for a synthetic shape is to stop an
+inheritance merge aliasing a parent's `properties` dict. The difference is that
+inheritance produces a *distinct* type that then gets narrowed, so sharing there
+is a latent corruption; an alias produces the *same* type, so sharing is the
+specification.
+
+The one place that has to know: recursion marking mutates these slots, so it
+must never descend into an alias whose referent is already on the walk — see
+§ 4.
 
 ## 4. Recursion marking
 
-After unwrap, `Node: {properties: {next: Node}}` is an object whose `next`
-property is the *same object*. Any consumer that walks the model naively will
-recurse forever.
+After unwrap, `Node: {properties: {next: Node}}` is an object that leads back to
+itself. Any consumer that walks the model naively will recurse forever.
+
+Not *literally* the same object. `next: Node` is a bare reference and therefore
+an **alias** ([06](06-type-expressions.md) § 3.1): a base of its own, sharing
+`Node`'s contents (§ 3.6).
+
+**The DFS must resolve an alias before descending into it.** If `base.alias` is
+already on the walk, return a marker headed by the *referent* and stop there:
+
+```python
+if base.alias is not None and base.alias._visiting:
+    return make_recursive(base.alias)
+```
+
+Without it, the walk enters the alias and iterates the very `properties` dict it
+is already inside — and the substitution it makes there lands in the referent's
+dict, because they are one dict. For `Node: {properties: {kids: Node[]}}` that
+replaces `Node.kids` with a marker, so the array it was declared as is gone from
+the model and reachable only through `marker.head`. go-raml has no such check
+and reports exactly that. It is the sharing that makes the mistake reachable,
+but the sharing is not the mistake: copying the dict hides this one bug and
+costs the propagation § 3.6 exists for.
 
 `mark_recursions` runs a DFS from every declared type using the same `_visiting`
 flag. On re-entry it does not error (unlike resolution) — it returns a
@@ -284,12 +335,51 @@ performance bug, and picking a too-shallow one is a correctness bug.
 
 | Method | Copies | Use |
 |--------|--------|-----|
-| `clone_shallow()` | the base and its own dicts; children shared | rarely — swapping a shape's kind |
 | `clone(memo)` | deep, but **structure-preserving**: `memo: dict[int, BaseShape]` keyed by shape id, so a diamond stays a diamond and a cycle stays a cycle | the default deep copy |
 | `clone_detached()` | `clone({})` — a fresh memo, so parents, links and aliases are copied too and the result shares nothing | union member merging; validating without mutating the declared model |
 
 `copy.deepcopy` is never used: it would copy the `Raml` back-pointer, the compiled
-regexes and the YAML nodes.
+regexes and the YAML nodes. A test asserts that no module in `pyraml/` imports
+the `copy` module at all.
+
+**There is no `clone_shallow`.** Earlier drafts of this table listed one, for
+"swapping a shape's kind" — but P7 swaps a kind by building a fresh kind object
+on the same base (`attach_kind`), so it never needs a copy, and no other caller
+appeared. go-raml defines `CloneShallow` and calls it from nowhere outside its
+own tests. Seventeen `clone_shallow` methods for an operation with no caller is
+cost without a reader; add it when something needs it.
+
+### 5.1 What a clone shares, and why
+
+Only three things are copied: the `BaseShape`, the kind object, and the
+containers unwrap mutates (`custom_facets`, `annotations`, `custom_facet_defs`,
+`inherits`, and the property/items/anyOf children).
+
+Every facet is shared by reference. A `ScalarFacet` is never mutated in place —
+`inherit` only ever rebinds the field that holds one — so copying them would be
+pure cost, and the compiled `re.Pattern` on a pattern property is immutable.
+
+Per-kind `clone` is written out only for the four kinds that hold something a
+copy must follow: `ObjectShape`, `ArrayShape`, `UnionShape` and
+`RecursiveShape` (whose `head` is a back-edge, and so goes through the memo —
+cloning it afresh would unroll the very cycle the marker exists to close). The
+other thirteen use one implementation on `KindBase` that copies field by field
+off `__slots__`. That is sound only because `__slots__` on every model class is
+a project rule rather than a convention, so the field list cannot go stale.
+
+### 5.2 Identity, and the one thing a clone rewrites
+
+A clone **keeps the original's `id`**, which is what lets `memo` be keyed on it.
+A caller needing a distinct identity assigns a fresh one from `Raml.next_id()`;
+union member merging (§ 3.4) is the one that does. So `id` is unique per parse
+among shapes the *parser* built, not among all shapes that exist.
+
+A clone of a shape with a `link` comes out with `inherits` instead, exactly as
+§ 2's rewrite would produce. go-raml instead shallow-copies the
+`DataTypeFragment` so the copy can hold a cloned shape; here that would mean two
+fragment objects for one file, which invariant I3 rules out. Since unwrap is the
+only reader of `link` and its first act is this rewrite, doing it at copy time
+costs nothing and keeps the fragment cache honest.
 
 Validation (P10) uses this discipline: for each declared shape, if it is not
 already unwrapped, `clone_detached()` then unwrap the copy, caching the result by

@@ -14,23 +14,25 @@ that area has already settled.
    dependencies, not by importance: the type system precedes endpoints, the merge
    precedes templates, validation comes last.
 
-**Current state: Phases 0 to 3 complete.** Phase 0: positions, errors, uris,
+**Current state: Phases 0 to 4 complete.** Phase 0: positions, errors, uris,
 loaders, yamlnode. Phase 1: registry, fragments, includes, namespaces, datanode,
 facets, references, annotations, the entry points and the pass driver (P0–P3).
 Phase 2: the whole `types/` package — `BaseShape`, the seventeen kinds,
 inference, examples, xml, and `make_shape`, wired into `types:`,
 `annotationTypes:`, `baseUriParameters:` and the typed fragments. Phase 3:
 `types/resolve.py` (P7) — the worklist drain and the type-expression visitor,
-which share a module because they are mutually recursive. Two leaf modules were
-built ahead of the critical path: template variables and transforms (Phase 6's)
-and URI template parsing (Phase 5's).
+which share a module because they are mutually recursive. Phase 4:
+`types/inherit.py` and `types/unwrap.py` (P9) — the clone operations, the
+per-kind merge rules, and unwrap with recursion marking, behind
+`ParseOptions(unwrap=True)`. Two leaf modules were built ahead of the critical
+path: template variables and transforms (Phase 6's) and URI template parsing
+(Phase 5's).
 
-**Phase 4, inheritance and unwrap (P9), is next.** `inherit`, `alias_to` and
-`clone` still raise `NotImplementedError` naming their doc section; `link` is
-resolved but not yet rewritten to `inherits`. Everything else still deferred is
-retained as the original `Node` on a `_raw_*` attribute; `grep -rn '_raw_'
-pyraml/` lists every seam, and a comment beside each names the phase that
-decodes it. A brief per phase lives in `docs/briefs/`.
+**Phase 5, endpoints (P4–P6), is next.** `check` and `validate` still raise
+`NotImplementedError` naming Phase 8. Everything else still deferred is retained
+as the original `Node` on a `_raw_*` attribute; `grep -rn '_raw_' pyraml/` lists
+every seam, and a comment beside each names the phase that decodes it. A brief
+per phase lives in `docs/briefs/`.
 
 ## The gate
 
@@ -61,8 +63,13 @@ Full list with the pass that establishes each: `docs/02-architecture.md` § 4.
 - **`__slots__` on every model class**; `@dataclass(slots=True, eq=False)` when a
   dataclass suits. A generated `__eq__` on a recursive model is a correctness
   hazard as well as a cost.
-- **Never `copy.deepcopy`.** Use the three documented clone operations
-  (`docs/07-resolution-and-inheritance.md` § 5).
+- **Never `copy.deepcopy`.** Use `clone(memo)` or `clone_detached()`
+  (`docs/07-resolution-and-inheritance.md` § 5). A test asserts that no module
+  in `pyraml/` imports the `copy` module at all.
+- **An alias shares its referent's containers on purpose**
+  (`docs/07-resolution-and-inheritance.md` § 3.6) — one type under two names.
+  An *inheritance* merge sharing the same containers is a corruption (§ 3.3).
+  Do not "fix" the first into the second; the propagation is the feature.
 - **Accumulate errors; do not fail fast** — except for an unreadable entry file,
   a missing or unrecognised RAML header, a non-mapping root, and a fragment whose
   kind does not match its context.

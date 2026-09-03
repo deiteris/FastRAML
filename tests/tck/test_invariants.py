@@ -152,6 +152,57 @@ class TestI5:
         assert reached > 0, 'the walk found nothing; it would be vacuous'
 
 
+@pytest.fixture(scope='module')
+def unwrapped_corpus() -> list:
+    """The same fixtures, parsed with `unwrap=True`.
+
+    A separate fixture on purpose: I4 and I5 are about the model *before*
+    flattening, so the plain `corpus` must stay un-unwrapped.
+    """
+    from pyraml import ParseOptions, RamlError, parse_from_path
+
+    root = tck_root()
+    if root is None:
+        pytest.skip('no TCK corpus; set PYRAML_TCK_DIR')
+    parsed = []
+    for path in collect_fixtures('valid'):
+        try:
+            parsed.append((fixture_id(root, path), parse_from_path(path, ParseOptions(unwrap=True))))
+        except (RamlError, OSError):
+            continue
+    return parsed
+
+
+class TestI6:
+    """After P9 every reachable shape has `_unwrapped` set and `link` cleared."""
+
+    def test_every_shape_is_flattened_and_unlinked(self, unwrapped_corpus: list):
+        assert unwrapped_corpus, 'no fixture parsed; the check would be vacuous'
+        offenders: list[str] = []
+        for name, raml in unwrapped_corpus:
+            if not raml.is_unwrapped:
+                offenders.append(f'{name}: registry not marked unwrapped')
+            offenders += [
+                f'{name}: shape {shape.id} ({shape.name!r}) unwrapped={shape._unwrapped} link={shape.link}'
+                for shape in raml.shapes
+                if not shape._unwrapped or shape.link is not None
+            ]
+        assert not offenders, '\n'.join(offenders[:20])
+
+    def test_the_reachable_graph_is_finite(self, unwrapped_corpus: list):
+        # Recursion marking turned every cycle into a back-edge, so the walk
+        # from § I5 terminates without its own visited set doing the work.
+        from pyraml.types.complex_ import RecursiveShape
+
+        heads_without_a_head = [
+            f'{name}: shape {base.id}'
+            for name, raml in unwrapped_corpus
+            for base in _reachable(raml).values()
+            if isinstance(base.shape, RecursiveShape) and base.shape.head is None
+        ]
+        assert not heads_without_a_head, '\n'.join(heads_without_a_head[:20])
+
+
 class TestI1:
     """Every `location` is a `file://` or `http(s)://` URI, never an OS path."""
 

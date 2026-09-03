@@ -20,6 +20,7 @@ from pyraml.loaders import build_loader
 from pyraml.parser.fragments import decode_fragment, identify_fragment
 from pyraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml
 from pyraml.types.resolve import resolve_shapes
+from pyraml.types.unwrap import unwrap_shapes
 from pyraml.uris import path_to_file_uri
 from pyraml.yamlnode import decode_source, read_head
 
@@ -132,8 +133,12 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     # alone could not settle now gets one. After this, invariant I5 holds.
     resolve_shapes(raml)
 
-    # P8    — resolve domain extensions against their annotation types.
-    # P9    — unwrap, when options.unwrap.
-    # P10   — validate, when options.validate.
-    _ = options
+    # P8 — resolve domain extensions against their annotation types. Phase 7.
+
+    # P9 — flatten every inheritance chain, then mark the cycles. Opt-in: the
+    # un-flattened model is what a formatter or a doc generator wants.
+    if options.unwrap:
+        unwrap_shapes(raml, max_depth=options.max_type_depth)
+
+    # P10   — validate, when options.validate. Phase 8.
     return raml

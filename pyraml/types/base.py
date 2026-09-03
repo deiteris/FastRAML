@@ -469,12 +469,6 @@ class KindBase:
     def is_scalar(self) -> bool:
         raise NotImplementedError
 
-    def inherit(self, source: Shape) -> Shape:
-        raise NotImplementedError('Phase 4: docs/07-resolution-and-inheritance.md section 3')
-
-    def alias_to(self, source: Shape) -> Shape:
-        raise NotImplementedError('Phase 4: docs/07-resolution-and-inheritance.md section 2')
-
     def check(self) -> None:
         raise NotImplementedError('Phase 8: docs/10-validation.md section 2')
 
@@ -519,10 +513,6 @@ class Shape(Protocol):
         not recognise becomes a custom facet value on `base.custom_facets`.
         """
         ...
-
-    def inherit(self, source: Shape) -> Shape: ...
-
-    def alias_to(self, source: Shape) -> Shape: ...
 
     def check(self) -> None:
         """Is the declaration self-consistent? (P8)"""

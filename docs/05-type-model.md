@@ -34,13 +34,31 @@ class BaseShape:
 class Shape(Protocol):            # the kind-specific half
     base: BaseShape
     def decode_facets(self, pairs: list[Node]) -> None: ...
-    def inherit(self, source: Shape) -> Shape: ...
-    def alias_to(self, source: Shape) -> Shape: ...
     def check(self) -> None: ...              # is the declaration self-consistent?
     def validate(self, value: Any, path: str) -> None: ...  # does data conform?
     def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> Shape: ...
     def is_scalar(self) -> bool: ...
 ```
+
+**`inherit` and `alias_to` are not on this protocol.** Earlier drafts put them
+here, one method per kind, which is where go-raml has them. They live in
+`types/inherit.py` as functions over two `BaseShape`s instead, for two reasons
+that only appear once they are written:
+
+- Merging is **mutually recursive across kinds**. Two objects merge by merging
+  their like-named properties, and a property is a declaration of any kind at
+  all — so a method on `ObjectShape` would have to call back into the
+  base-level driver, which is the callback shape [02](02-architecture.md) § 2
+  rejects.
+- The union rules (§ 3.4 of [07](07-resolution-and-inheritance.md)) **construct
+  a `UnionShape`** when a merge collapses several members, and `base.py` cannot
+  import `complex_.py`.
+
+[02](02-architecture.md) § 2 already listed `types/inherit.py` as the home of
+the per-kind inheritance rules, so the module layout was right and only this
+protocol listing was wrong. `clone` stays on the protocol: it recurses through
+`BaseShape.clone`, never back through a driver, and constructs nothing it
+cannot already see.
 
 Why the split rather than a class per type with inherited common facets?
 

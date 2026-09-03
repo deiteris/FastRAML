@@ -93,37 +93,49 @@ The string values are the spec's own target names (`DocumentationItem`,
 `TypeDeclaration`, …), because `allowedTargets` is written in those terms and the
 comparison should be against the enum's value without a translation table.
 
-### 3.2 Thread a target through `unmarshal_domain_extension`
+### 3.2 Carry the target on the `ParseCtx` stack
 
-Add a required `target: DomainLocation` parameter and a `target` slot on
-`DomainExtension`. Required, not defaulted: a default is how a later phase
-silently records the wrong site, and there is no sensible neutral value.
+`ParseCtx` gains a `target: DomainLocation`; `unmarshal_domain_extension` reads
+`current_ctx().target` the same way it already reads the anchor, and adds a
+`target` slot to `DomainExtension`. A decoder that establishes a narrower site
+wraps itself in `Raml.target_scope(...)`.
 
-Six call sites exist, and six of the seventeen locations are reachable today:
+**This supersedes an explicit `target` parameter**, which is what this brief
+first specified. Two things ruled it out once the code was in front of it. The
+annotated-scalar form is built by `make_scalar_facet`, which has some four dozen
+call sites across `types/` and `parser/` — every one would have to thread a
+value. And § B5's own subtleties need an answer the decode site does not have:
+an annotation inside a trait body records where the trait was *materialised*.
 
-| Call site | `DomainLocation` |
+`target_scope` is a context manager, not a push/pop pair, so a decoder that
+raises mid-construct cannot leave its site behind for the next annotation.
+
+Four scopes are pushed today — `unmarshal_types`, `make_property_map`,
+`make_example`, `decode_documentation_item` — over a per-fragment default keyed
+off `FragmentKind`. Six of the seventeen locations are reachable:
+
+| Where | `DomainLocation` |
 |---|---|
-| `fragments.py` — API root `_decode_key` | `API` |
-| `fragments.py` — `Library.decode` | `LIBRARY` |
-| `documentation.py` | `DOCUMENTATION_ITEM` |
-| `types/examples.py` | `EXAMPLE` |
-| `types/shape.py` — common-facet walk | `ANNOTATION_TYPE` if `base.is_annotation_type` else `TYPE_DECLARATION` |
-| `parser/facets.py` — annotated scalar | see below |
+| API fragment root | `API` |
+| Library fragment root | `LIBRARY` |
+| `unmarshal_types`, `make_property_map` | `TYPE_DECLARATION` |
+| `unmarshal_types(is_annotation=True)` | `ANNOTATION_TYPE` |
+| `decode_documentation_item` | `DOCUMENTATION_ITEM` |
+| `make_example` | `EXAMPLE` |
 
 The remaining eleven (`RESOURCE`, `METHOD`, `RESPONSE`, `REQUEST_BODY`,
 `RESPONSE_BODY`, `RESOURCE_TYPE`, `TRAIT`, `SECURITY_SCHEME`,
 `SECURITY_SCHEME_SETTINGS`, `OVERLAY`, `EXTENSION`) belong to sites Phases 5–7
-create. Define them now so those phases pass an argument rather than extend an
-enum.
+create. Define them now so those phases push a scope rather than extend an enum.
 
 **The annotated-scalar decision.** `resolve_annotated_scalar` builds extensions
 for the `minLength: {value: 10, (a): x}` form, and doc 09's target vocabulary has
 no member for a facet. go-raml is no oracle here — § B5 records that it parses
 `allowedTargets` and ignores it entirely, so there is no behaviour to measure.
-**Decision: the site inherits the enclosing declaration's target**, which means
-`resolve_annotated_scalar` takes the target from its caller. A facet is not
-independently annotatable in the spec's target vocabulary, and the enclosing
-declaration is what the author is annotating. Record this in doc 09 § B5.
+**Decision: the site is the enclosing declaration's**, which the ctx stack gives
+for free — the facet builder pushes nothing, so it reads whatever the
+declaration around it established. A facet is not independently annotatable in
+the spec's vocabulary, and the enclosing declaration is what is being annotated.
 
 ### 3.3 Decode `allowedTargets` (doc 09 § B5)
 
@@ -190,9 +202,8 @@ worse than one that is unbound, because the second fails loudly.
    diagnostic is `annotation not allowed at this target`". This phase decodes
    `allowedTargets` and records the site. It does **not** compare them, and it
    does not validate any annotation *value*. Both are Phase 8a's.
-2. **`target` is required, not defaulted** (§ 3.2).
-3. **The annotated-scalar site inherits its enclosing declaration's target**
-   (§ 3.2).
+2. **The target rides the `ParseCtx` stack, not a parameter** (§ 3.2).
+3. **The annotated-scalar site is its enclosing declaration's** (§ 3.2).
 4. **Absent `allowedTargets` ≠ empty `allowedTargets`** (§ 3.3).
 5. **The pass is unconditional** (§ 3.5).
 6. **The flat `domain_extensions` list is why this is a loop and not a

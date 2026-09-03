@@ -16,13 +16,15 @@ from __future__ import annotations
 
 import itertools
 from collections import deque
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from pyraml.domains import DomainLocation
 from pyraml.loaders import SchemeLoader
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from pyraml.loaders import ResourceLoader
     from pyraml.parser.annotations import DomainExtension
@@ -61,6 +63,12 @@ class ParseCtx:
     """
 
     anchor: ReferenceResolver | None = None
+    #: Where an `(annotation)` written here is being applied. On the stack
+    #: rather than passed to `unmarshal_domain_extension`, because the answer is
+    #: not always known at the decode site: an annotation inside a trait body
+    #: records the site it is *materialised* at, not `Trait`
+    #: (docs/09-security-and-annotations.md section B5).
+    target: DomainLocation = DomainLocation.API
 
 
 _EMPTY_CTX: Final = ParseCtx()
@@ -184,6 +192,21 @@ class Raml:
         if not self._parse_ctx_stack:
             return _EMPTY_CTX
         return self._parse_ctx_stack[-1]
+
+    @contextmanager
+    def target_scope(self, target: DomainLocation) -> Iterator[None]:
+        """Decode a construct that annotations attach to a different thing.
+
+        The anchor is carried over unchanged — this narrows where an annotation
+        is being applied, never which namespace a name resolves in. A context
+        manager rather than a push/pop pair because a decoder that raises
+        mid-construct must not leave the site behind on the stack.
+        """
+        self.push_ctx(replace(self.current_ctx(), target=target))
+        try:
+            yield
+        finally:
+            self.pop_ctx()
 
     # -- stores ---------------------------------------------------------------
 

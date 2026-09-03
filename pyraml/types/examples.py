@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
 from pyraml.datanode import make_data_node
+from pyraml.domains import DomainLocation
 from pyraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
 from pyraml.parser.facets import make_bool_facet, make_string_facet
 from pyraml.positions import UNKNOWN, Position
@@ -90,10 +91,13 @@ def make_example(raml: Raml, value_node: Node, name: str, location: str) -> Exam
         key_pos=value_node.full_position,
         value_pos=value_node.full_position,
     )
-    if value_node.kind is NodeKind.MAPPING and _has_value_key(value_node):
-        _fill_from_wrapper(raml, example, value_node, location)
-    else:
-        example.data = make_data_node(raml, None, value_node, location)
+    # An annotation inside an example targets the example, not the declaration
+    # the example belongs to (docs/09 section B5).
+    with raml.target_scope(DomainLocation.EXAMPLE):
+        if value_node.kind is NodeKind.MAPPING and _has_value_key(value_node):
+            _fill_from_wrapper(raml, example, value_node, location)
+        else:
+            example.data = make_data_node(raml, None, value_node, location)
     return example
 
 

@@ -203,6 +203,43 @@ class TestI6:
         assert not heads_without_a_head, '\n'.join(heads_without_a_head[:20])
 
 
+class TestDomainExtensions:
+    """P8 binds every application; P9 keeps the binding pointing at live shapes.
+
+    The re-binding is the half a unit test cannot reach convincingly: it only
+    matters when unwrap replaced the annotation type with a merged copy, which
+    needs a declaration shaped a particular way. Over the corpus it is ordinary.
+    """
+
+    def test_every_application_is_bound(self, corpus: list):
+        assert corpus, 'no fixture parsed; the check would be vacuous'
+        bound = 0
+        offenders: list[str] = []
+        for name, raml in corpus:
+            for extension in raml.domain_extensions:
+                bound += 1
+                if extension.defined_by is None:
+                    offenders.append(f'{name}: ({extension.name}) at {extension.location}')
+        assert not offenders, '\n'.join(offenders[:20])
+        assert bound > 0, 'no fixture applied an annotation; the check would be vacuous'
+
+    def test_a_binding_survives_unwrap(self, unwrapped_corpus: list):
+        # A stale `defined_by` points at the pre-merge object, which unwrap
+        # dropped when it rebuilt `raml.shapes` (docs/09 section B4).
+        offenders: list[str] = []
+        checked = 0
+        for name, raml in unwrapped_corpus:
+            live = {id(shape) for shape in raml.shapes}
+            for extension in raml.domain_extensions:
+                if extension.defined_by is None:
+                    continue
+                checked += 1
+                if id(extension.defined_by) not in live:
+                    offenders.append(f'{name}: ({extension.name}) bound to a shape unwrap replaced')
+        assert not offenders, '\n'.join(offenders[:20])
+        assert checked > 0, 'nothing was bound; the check would be vacuous'
+
+
 class TestI1:
     """Every `location` is a `file://` or `http(s)://` URI, never an OS path."""
 

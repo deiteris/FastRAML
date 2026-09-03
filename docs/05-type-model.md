@@ -15,6 +15,7 @@ class BaseShape:
         # common facets (spec § Type Declarations)
         "display_name", "description", "default", "required",
         "example", "examples", "enum", "xml",
+        "allowed_targets",   # list[DomainLocation] | None — annotation types only
         # structure
         "inherits",          # list[BaseShape]  — the `type:` parents
         "alias",             # BaseShape | None — pure reference, not inheritance

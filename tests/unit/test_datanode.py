@@ -15,7 +15,9 @@ from pyraml.parser.facets import make_string_facet, resolve_annotated_scalar
 from pyraml.registry import Raml
 from pyraml.yamlnode import compose, pairs
 
-API = '#%RAML 1.0\ntitle: T\n'
+#: Several tests here carry their value on an annotation key, which accepts
+#: anything. P8 binds every application to a declaration, so they are declared.
+API = '#%RAML 1.0\ntitle: T\nannotationTypes:\n  a: any\n  redirectable: any\n  only: any\n'
 
 
 def first_value(raml: Raml, text: str):
@@ -114,7 +116,7 @@ class TestIncludedValues:
         value = raml.entry_point.annotations['a'].value
         assert value.location == path_to_file_uri(root / 'data.yaml')
         assert value.include.path == 'data.yaml'
-        assert value.value_pos.line == 3, 'the value position stays at the !include directive'
+        assert value.value_pos.line == API.count('\n') + 1, 'the value position stays at the !include directive'
 
 
 class TestValueNodeOf:
@@ -158,6 +160,7 @@ class TestAnnotatedScalar:
             {
                 'api.raml': (
                     '#%RAML 1.0\n'
+                    'annotationTypes:\n  a: any\n  b: any\n  c: any\n'
                     'title:\n  value: T\n  (a): 1\n'
                     'version:\n  value: v1\n  (b): 2\n'
                     'baseUri:\n  value: http://e.com\n  (c): 3\n'

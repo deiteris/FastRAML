@@ -137,12 +137,12 @@ class DomainExtension:
         "id",
         "name",
         "value",  # value: DataNode
-        "defined_by",  # BaseShape — the annotation type
+        "defined_by",  # BaseShape — the annotation type, filled by P8
         "location",
         "key_pos",
         "value_pos",
-        "anchor",
-        "_raml",
+        "anchor",  # ReferenceResolver — the scope `name` resolves in
+        "target",  # DomainLocation — where it was applied (§ B5)
     )
 ```
 
@@ -196,6 +196,12 @@ P8 binds each extension's `name` to its declaration via the captured anchor
 an error — spec: "All annotations used in an API specification MUST be declared in
 its annotationTypes node."
 
+`resolve_domain_extensions` runs **unconditionally**, between P7 and P9: an
+undeclared annotation is malformed input whether or not the caller asked to
+unwrap or validate. It fills `defined_by` and nothing else; errors accumulate.
+An extension whose `anchor` is `None` — built outside a fragment decode — falls
+back to `Raml.resolver_at(location)`, exactly as P7 does for a shape.
+
 P10 validates each extension's value against the resolved annotation type's shape,
 after that shape has been unwrapped. Because unwrap replaces shape objects, P9
 re-binds `defined_by` to the unwrapped instance; skipping that step silently
@@ -207,8 +213,23 @@ go-raml parses `allowedTargets` and then ignores it. pyRAML enforces it, because
 "processors MAY ignore annotations" is not licence to accept an annotation the
 author explicitly restricted.
 
-Implementation: each application site passes a `DomainLocation` when it creates
-the extension.
+Implementation: the site rides on the `ParseCtx` stack, in `pyraml/domains.py`.
+`unmarshal_domain_extension` reads `current_ctx().target` the same way it reads
+the anchor, and a decoder that establishes a narrower site wraps itself in
+`Raml.target_scope(...)` — a context manager, so a decode that raises
+mid-construct cannot leave its site behind for the next annotation.
+
+An explicit parameter was the obvious alternative and is wrong twice over. The
+annotated-scalar form (`minLength: {value: 10, (a): x}`) is built by
+`make_scalar_facet`, which has some four dozen call sites across `types/` and
+`parser/` that would each have to thread a value through. And the two subtleties
+below need an answer that the *decode* site does not have: an annotation inside a
+trait body records where the trait was materialised, which is a later pass
+entirely.
+
+The enum is a leaf module of its own because `registry.py` carries it on
+`ParseCtx` and `parser/annotations.py` reads it; either owning it would invert a
+layering direction ([02](02-architecture.md) § 2).
 
 ```python
 class DomainLocation(StrEnum):
@@ -232,11 +253,23 @@ class DomainLocation(StrEnum):
 ```
 
 `allowedTargets` accepts a single string or a sequence; each value must be one of
-the above. In P10, if the annotation type declares targets and the application's
-site is not among them, the diagnostic is
+the above, and a value that is not is `unknown annotation target`, positioned at
+that entry rather than at the `allowedTargets` key — in a sequence of six the key
+says nothing about which one is wrong. In P10, if the annotation type declares
+targets and the application's site is not among them, the diagnostic is
 `annotation not allowed at this target` with both the site and the allowed list.
 
-Two subtleties:
+**Absent and empty are different**, and `BaseShape.allowed_targets` is
+`list[DomainLocation] | None` so they stay that way: absent means any target is
+allowed, empty means none is. Collapsing them would silently permit every
+application of an annotation whose author allowed none.
+
+Three subtleties:
+
+- A facet's annotated-scalar form has no target of its own — the spec's
+  vocabulary has no member for a facet — so it records the **enclosing
+  declaration's** site, which is what falls out of the ctx stack without a rule.
+  An annotation on `minLength:` inside a type is annotating that type.
 
 - An annotation applied inside a **trait or resource type** ends up on the
   operations that use it. Spec § Annotations says such annotations "are also

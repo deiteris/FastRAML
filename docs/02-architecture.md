@@ -78,6 +78,7 @@ pyraml/
 
   errors.py               Diagnostic, StackTrace, Accumulator, ErrorKind
   positions.py            Position (1-based, with end), position helpers
+  domains.py              DomainLocation — where an annotation was applied (doc 09 §B5)
   uris.py                 path↔file:// URI, RFC 3986 reference resolution
   loaders.py              ResourceLoader protocol; File/SafeFile/HTTP/Scheme loaders
 
@@ -133,6 +134,13 @@ exists to prevent. go-raml separates them only because Go's ANTLR runtime wants
 a visitor struct.
 
 Rules on the layout:
+
+- **`registry.py` imports nothing from `parser/` or `types/` at runtime**, which
+  is what keeps the graph acyclic without indirection — every other module
+  imports it. `domains.py` exists because of this rule: `ParseCtx` carries a
+  `DomainLocation` and `parser/annotations.py` reads one, so the enum sits in a
+  leaf both may import rather than in either of them
+  ([09](09-security-and-annotations.md) § B5).
 
 - `types/` imports from `parser/` in exactly three places: `parser/facets.py`, for
   the scalar-facet builders; `parser/annotations.py`, for the two functions

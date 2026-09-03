@@ -23,6 +23,12 @@ def include_node(argument: str) -> Node:
     return Node(NodeKind.SCALAR, TAG_INCLUDE, argument, None, 3, 5, 3, 5 + len(argument))
 
 
+#: These tests hang their `!include`s off annotation keys, because an annotation
+#: accepts any value and so makes the smallest document that includes anything.
+#: P8 binds every application to a declaration, so the declarations are here.
+API = '#%RAML 1.0\ntitle: T\nannotationTypes:\n' + ''.join(f'  {name}: any\n' for name in 'abcde')
+
+
 class TestUriResolution:
     def test_a_relative_argument_resolves_against_the_including_file(self):
         raml = Raml(workspace_root_uri='file:///w')
@@ -73,7 +79,7 @@ class TestCachingAndLimits:
     def test_a_target_referenced_five_times_is_read_once(self, workspace):
         root = workspace(
             {
-                'api.raml': '#%RAML 1.0\ntitle: T\n(a): !include shared.yaml\n'
+                'api.raml': API + '(a): !include shared.yaml\n'
                 '(b): !include shared.yaml\n(c): !include shared.yaml\n'
                 '(d): !include shared.yaml\n(e): !include shared.yaml\n',
                 'shared.yaml': 'k: v\n',
@@ -87,17 +93,19 @@ class TestCachingAndLimits:
         # The cache is about I/O; tooling still wants every document link.
         root = workspace(
             {
-                'api.raml': '#%RAML 1.0\ntitle: T\n(a): !include shared.yaml\n(b): !include shared.yaml\n',
+                'api.raml': API + '(a): !include shared.yaml\n(b): !include shared.yaml\n',
                 'shared.yaml': 'k: v\n',
             }
         )
         raml = parse_from_path(root / 'api.raml')
         refs = raml.include_refs_in(path_to_file_uri(root / 'api.raml'))
         assert [ref.path for ref in refs] == ['shared.yaml', 'shared.yaml']
-        assert refs[0].position.line == 3
+        # Two occurrences, two positions: the point of recording each one.
+        assert refs[0].position.line == API.count('\n') + 1
+        assert refs[1].position.line == refs[0].position.line + 1
 
     def test_an_oversized_include_is_rejected_without_being_read_whole(self, workspace):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: T\n(a): !include big.yaml\n', 'big.yaml': 'k: ' + 'x' * 5000})
+        root = workspace({'api.raml': API + '(a): !include big.yaml\n', 'big.yaml': 'k: ' + 'x' * 5000})
         loader = CountingLoader(root)
         with pytest.raises(RamlError) as caught:
             parse_from_path(root / 'api.raml', ParseOptions(file_loader=loader, max_include_size=64))
@@ -107,7 +115,7 @@ class TestCachingAndLimits:
         assert limits == [64], 'the loader must be asked for limit + 1 bytes, not for the whole file'
 
     def test_a_limit_of_zero_disables_the_check(self, workspace):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: T\n(a): !include big.yaml\n', 'big.yaml': 'k: ' + 'x' * 5000})
+        root = workspace({'api.raml': API + '(a): !include big.yaml\n', 'big.yaml': 'k: ' + 'x' * 5000})
         raml = parse_from_path(root / 'api.raml', ParseOptions(max_include_size=0))
         assert raml.entry_point.annotations['a'].value.raw['k'].endswith('x')
 
@@ -116,7 +124,7 @@ class TestCycles:
     def test_a_scalar_include_cycle_is_reported_with_a_position(self, workspace):
         root = workspace(
             {
-                'api.raml': '#%RAML 1.0\ntitle: T\n(a): !include one.yaml\n',
+                'api.raml': API + '(a): !include one.yaml\n',
                 'one.yaml': 'v: !include two.yaml\n',
                 'two.yaml': 'v: !include one.yaml\n',
             }
@@ -132,7 +140,7 @@ class TestCycles:
     def test_a_diamond_include_is_not_a_cycle(self, workspace):
         root = workspace(
             {
-                'api.raml': '#%RAML 1.0\ntitle: T\n(a): !include one.yaml\n',
+                'api.raml': API + '(a): !include one.yaml\n',
                 'one.yaml': 'l: !include leaf.yaml\nr: !include leaf.yaml\n',
                 'leaf.yaml': 'v: 1\n',
             }
@@ -143,13 +151,13 @@ class TestCycles:
 
 class TestMissingTargets:
     def test_a_missing_include_names_the_file_it_could_not_read(self, workspace):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: T\n(a): !include gone.yaml\n'})
+        root = workspace({'api.raml': API + '(a): !include gone.yaml\n'})
         with pytest.raises(RamlError) as caught:
             parse_from_path(root / 'api.raml')
         assert any('gone.yaml' in message for message in caught.value.messages())
 
     def test_an_include_outside_the_workspace_is_refused(self, workspace, tmp_path: Path):
-        root = workspace({'project/api.raml': '#%RAML 1.0\ntitle: T\n(a): !include ../secret.yaml\n'})
+        root = workspace({'project/api.raml': API + '(a): !include ../secret.yaml\n'})
         (tmp_path / 'secret.yaml').write_text('k: v\n', encoding='utf-8')
         with pytest.raises(RamlError):
             parse_from_path(root / 'project' / 'api.raml')

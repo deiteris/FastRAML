@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pyraml.errors import ErrorKind, RamlError
 from pyraml.loaders import build_loader
+from pyraml.parser.annotations import resolve_domain_extensions
 from pyraml.parser.fragments import decode_fragment, identify_fragment
 from pyraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml
 from pyraml.types.resolve import resolve_shapes
@@ -133,7 +134,10 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     # alone could not settle now gets one. After this, invariant I5 holds.
     resolve_shapes(raml)
 
-    # P8 — resolve domain extensions against their annotation types. Phase 7.
+    # P8 — bind every `(annotation)` application to the type it names.
+    # Unconditional: an undeclared annotation is malformed input whether or not
+    # the caller asked to unwrap or validate.
+    resolve_domain_extensions(raml)
 
     # P9 — flatten every inheritance chain, then mark the cycles. Opt-in: the
     # un-flattened model is what a formatter or a doc generator wants.

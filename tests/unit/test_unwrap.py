@@ -140,13 +140,35 @@ class TestMultipleInheritance:
 
 
 class TestAliases:
+    """docs/07 § 3.6 — a second name for one type: own identity, shared content."""
+
     def test_an_alias_takes_the_referents_facets(self, workspace):
         _raml, types = unwrapped(workspace, '  Source:\n    type: string\n    minLength: 4\n  Named: Source\n')
         assert types['Named'].shape.min_length.value == 4
 
-    def test_an_alias_keeps_its_own_name(self, workspace):
+    def test_an_alias_keeps_its_own_identity(self, workspace):
         _raml, types = unwrapped(workspace, '  Source:\n    type: string\n    minLength: 4\n  Named: Source\n')
-        assert types['Named'].name == 'Named'
+        named = types['Named']
+        assert named is not types['Source']
+        assert named.name == 'Named'
+        assert named.key_pos.line == 6, 'positioned where `Named:` was written'
+
+    def test_the_contents_are_shared_rather_than_copied(self, workspace):
+        # The alias names one type twice, so the two must not be able to drift.
+        # A copy here would pass every other test in this class and still be
+        # wrong the moment anything touched the referent.
+        _raml, types = unwrapped(workspace, '  Source:\n    properties:\n      a: string\n  Named: Source\n')
+        assert types['Named'].shape.properties is types['Source'].shape.properties
+
+    def test_a_change_to_the_referent_shows_through_the_alias(self, workspace):
+        _raml, types = unwrapped(workspace, '  Source:\n    properties:\n      a: string\n  Named: Source\n')
+        del types['Source'].shape.properties['a']
+        assert types['Named'].shape.properties == {}
+
+    def test_two_aliases_of_one_type_share_with_each_other(self, workspace):
+        _raml, types = unwrapped(workspace, '  Source:\n    properties:\n      a: string\n  X: Source\n  Y: Source\n')
+        assert types['X'].shape.properties is types['Y'].shape.properties
+        assert types['X'] is not types['Y']
 
 
 class TestLinks:

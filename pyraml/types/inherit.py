@@ -500,17 +500,14 @@ def alias_to(target: BaseShape, source: BaseShape) -> BaseShape:
 
     # Every kind's alias is the same operation — take all of the source's own
     # fields — so it is one slot copy rather than seventeen methods.
+    #
+    # The values are taken as they stand, containers included: `properties` on
+    # the alias *is* `properties` on the referent. That is the point. The alias
+    # names one type under a second name, so a later change to the referent has
+    # to show through it; copying the dict would let the two drift into two
+    # types that a reader believes are one.
     for name in copyable_slots(type(target_shape)):
-        value = getattr(source_shape, name)
-        # Containers are copied, not shared. An alias is still a declaration of
-        # its own, and recursion marking substitutes into exactly these slots:
-        # sharing the dict would let a marker for the alias land in the
-        # referent's `properties` and corrupt it (docs/07 section 3.6).
-        if isinstance(value, dict):
-            value = dict(value)
-        elif isinstance(value, list):
-            value = list(value)
-        setattr(target_shape, name, value)
+        setattr(target_shape, name, getattr(source_shape, name))
 
     target.display_name = source.display_name
     target.description = source.description
@@ -521,7 +518,7 @@ def alias_to(target: BaseShape, source: BaseShape) -> BaseShape:
     target.enum = source.enum
     target.xml = source.xml
     target.inherits = source.inherits
-    target.custom_facets = dict(source.custom_facets)
-    target.custom_facet_defs = dict(source.custom_facet_defs)
-    target.annotations = dict(source.annotations)
+    target.custom_facets = source.custom_facets
+    target.custom_facet_defs = source.custom_facet_defs
+    target.annotations = source.annotations
     return target

@@ -249,27 +249,57 @@ check, so a property typed as a recursive back-reference still merges.
 
 ### 3.6 Aliases
 
-`alias_to(source)` copies the source's facets onto the target and then adopts the
-source's `display_name`, `description`, `example(s)`, `inherits`, `default`,
-`required`, `enum`, custom facets, custom facet declarations, annotations and
-`xml`. The target keeps its own `name`, `id`, `location` and positions — that is
-the entire point of an alias.
+An alias is a second name for one type. `alias_to(target, source)` gives the
+target the source's `display_name`, `description`, `example(s)`, `inherits`,
+`default`, `required`, `enum`, custom facets, custom facet declarations,
+annotations and `xml`, plus every field of the kind object.
+
+Two halves, and both are load-bearing:
+
+- **The target keeps its own `name`, `id`, `location` and positions.** That is
+  what makes it an alias rather than a rename: a diagnostic about `X` reports at
+  `X`, and the property `next: Node` reports where `next` was written.
+- **The contents are taken as pointers, not copies.** `X.shape.properties` *is*
+  `Base.shape.properties`. There is one type here under two names, so a later
+  change to the referent has to show through the alias; copying would let the
+  two drift into two types a reader believes are one.
+
+Sharing mutable containers between shapes is otherwise something this document
+warns about — § 3.3's whole reason for a synthetic shape is to stop an
+inheritance merge aliasing a parent's `properties` dict. The difference is that
+inheritance produces a *distinct* type that then gets narrowed, so sharing there
+is a latent corruption; an alias produces the *same* type, so sharing is the
+specification.
+
+The one place that has to know: recursion marking mutates these slots, so it
+must never descend into an alias whose referent is already on the walk — see
+§ 4.
 
 ## 4. Recursion marking
 
 After unwrap, `Node: {properties: {next: Node}}` is an object that leads back to
 itself. Any consumer that walks the model naively will recurse forever.
 
-Not *literally* the same object, and the difference matters here. `next: Node`
-is a bare reference and therefore an **alias** ([06](06-type-expressions.md)
-§ 3.1), so unwrap copies `Node`'s facets onto `next`'s own base rather than
-substituting `Node` itself — the property keeps its own name and position, which
-is the point of an alias. The marker must nonetheless name `Node` as its head,
-not the copy, so the DFS follows the `alias` edge that `alias_to` leaves in
-place and marks against the referent. Without that the cycle closes one level
-further in, with a copy as its head — which is what go-raml reports, and only
-because its `alias` shares the referent's `properties` dict outright, so the
-substitution happens to land in both places at once.
+Not *literally* the same object. `next: Node` is a bare reference and therefore
+an **alias** ([06](06-type-expressions.md) § 3.1): a base of its own, sharing
+`Node`'s contents (§ 3.6).
+
+**The DFS must resolve an alias before descending into it.** If `base.alias` is
+already on the walk, return a marker headed by the *referent* and stop there:
+
+```python
+if base.alias is not None and base.alias._visiting:
+    return make_recursive(base.alias)
+```
+
+Without it, the walk enters the alias and iterates the very `properties` dict it
+is already inside — and the substitution it makes there lands in the referent's
+dict, because they are one dict. For `Node: {properties: {kids: Node[]}}` that
+replaces `Node.kids` with a marker, so the array it was declared as is gone from
+the model and reachable only through `marker.head`. go-raml has no such check
+and reports exactly that. It is the sharing that makes the mistake reachable,
+but the sharing is not the mistake: copying the dict hides this one bug and
+costs the propagation § 3.6 exists for.
 
 `mark_recursions` runs a DFS from every declared type using the same `_visiting`
 flag. On re-entry it does not error (unlike resolution) — it returns a

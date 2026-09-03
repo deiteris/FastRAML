@@ -22,7 +22,7 @@ from pyraml.errors import ErrorKind, RamlError
 from pyraml.positions import Position
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
 __all__ = [
     'MAX_DEPTH',
@@ -36,6 +36,7 @@ __all__ = [
     'end_line',
     'is_null',
     'last_leaf',
+    'node_error',
     'pairs',
     'read_head',
 ]
@@ -201,6 +202,24 @@ def duplicate_keys(node: Node) -> list[tuple[str, Node]]:
         else:
             seen.add(key.value)
     return found
+
+
+def node_error(
+    message: str,
+    location: str,
+    node: Node | None = None,
+    *,
+    kind: ErrorKind = ErrorKind.PARSING,
+    info: Mapping[str, object] | None = None,
+) -> RamlError:
+    """Build a diagnostic pointing at `node`'s full span.
+
+    Returned rather than raised, because a decoder more often hands the result
+    to an `Accumulator` than raises it, and because a factory call keeps the
+    message text out of the `raise` statement.
+    """
+    position = node.full_position if node is not None else None
+    return RamlError.new(message, location, position, kind=kind, info=info)
 
 
 def read_head(text: str) -> str:

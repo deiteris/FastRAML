@@ -91,7 +91,7 @@ pyraml/
     includes.py           !include resolution, node cache, size limit
     fragments.py          all fragment classes and their decoders (doc 04)
     references.py         resolve_reference / resolve_library_reference (doc 04)
-    facets.py             scalar-facet decoding, annotated-scalar form
+    facets.py             scalar-facet *builders*, annotated-scalar form
     documentation.py      DocumentationItem
     annotations.py        DomainExtension (doc 09)
     security.py           SecuritySchemeDefinition + settings variants (doc 09)
@@ -121,9 +121,23 @@ pyraml/
 
 Rules on the layout:
 
-- `types/` never imports from `parser/`. Shape construction that needs YAML goes
-  through callbacks the registry hands down, or through functions in `types/`
-  that take `Node` (from `yamlnode.py`, which both layers may import).
+- `types/` imports from `parser/` in exactly one place: `parser/facets.py`, for
+  `make_scalar_facet`. Everything else a shape needs from YAML arrives as a
+  `Node` (from `yamlnode.py`, which both layers may import).
+
+  That one edge is deliberate. `ScalarFacet` is a type-model class and lives in
+  `types/base.py`, but *building* one needs the parser twice over: an `!include`
+  at a facet position has to be read through the include cache, and the
+  annotated-scalar form has to turn `(annotation)` keys into `DomainExtension`s.
+  Every one of the fourteen shapes decodes scalar facets, so the alternative —
+  threading a builder callback through every `decode_facets` — would cost more
+  than the rule protects. The edge cannot cycle: `parser/facets.py` imports
+  `types/base.py` and nothing else from `types/`.
+
+  References in the other direction are free, because they are annotations only:
+  `BaseShape` names `DomainExtension`, `DataNode`, `DataTypeFragment` and
+  `ReferenceResolver` under `TYPE_CHECKING`, which `from __future__ import
+  annotations` keeps as strings and never imports at runtime.
 - `registry.py` imports nothing from `parser/` or `types/` at module level; it
   holds the stores and uses `TYPE_CHECKING` imports for annotations. This keeps
   the import graph acyclic without runtime indirection.

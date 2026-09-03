@@ -73,6 +73,14 @@ def resolve_reference(local: dict[str, T] | None,
    step 3's single library hop enforces this naturally — `files.file-type` is not
    a key in `uses`.
 
+A miss raises `UnresolvedReferenceError(reason, name)` rather than returning a
+diagnostic. The reason is one of `reference not found`, `library not found`,
+`library not resolved`, `invalid reference`; the caller knows the location and
+the position and turns those parts into a positioned `RamlError`. Splitting it
+this way keeps the two resolvers free of location plumbing, and lets
+`reference_annotation_type` catch a miss and retry against `types` without
+manufacturing an error object on the way.
+
 ```python
 def resolve_library_reference(uses, name, pick) -> T
 ```
@@ -258,20 +266,19 @@ bug; the ordering is preserved here.
 ## 6. Fragment cache lifecycle
 
 ```python
-def parse_fragment(self, uri: str, kind: FragmentKind) -> Fragment:
-    if (cached := self.fragments.get(uri)) is not None:
+def parse_fragment(raml, uri: str, kind: FragmentKind) -> Fragment:
+    if (cached := raml.get_fragment(uri)) is not None:
         return cached  # I3: decoded at most once
-    data = self.loader.load(uri)
-    head, body = split_head(data)
-    check_kind(head, kind, uri)
-    frag = make_fragment(kind, uri, self)
-    self.fragments[uri] = frag  # BEFORE decoding — cycles resolve here
-    self.push_ctx(ParseCtx(anchor=frag))
+    text = load_fragment_text(raml, uri)
+    check_fragment_kind(text, uri, kind)
+    frag = make_fragment(raml, kind, uri)
+    raml.put_fragment(uri, frag)  # BEFORE decoding — cycles resolve here
+    raml.push_ctx(ParseCtx(anchor=frag))
     try:
-        frag.decode(compose(body, uri=uri))
+        frag.decode(compose(text, uri=uri))  # the header line is kept, so line numbers hold
     finally:
-        self.pop_ctx()
-    self.resolve_uses(frag.uses, uri)  # recursive, after the body
+        raml.pop_ctx()
+    resolve_uses(raml, frag.uses, uri)  # recursive, after the body
     return frag
 ```
 
@@ -284,3 +291,15 @@ Two ordering details in this sequence control correctness:
   decoding, each `LibraryLink` has `link is None`. Nothing dereferences the link,
   because all name resolution is deferred to P7. Resolving `uses:` first would be
   simpler, but it breaks mutual imports.
+
+`resolve_uses` accumulates rather than stopping at the first failure: an
+unreadable library is reported, and the remaining imports are still resolved. A
+`uses:` value resolves by the same three rules as an `!include` argument
+(`resolve_ref_uri`, [03](03-yaml-and-io.md) § 4.1).
+
+Six fragments declare nothing of their own — DataType, NamedExample,
+DocumentationItem, Trait, ResourceType, SecurityScheme. All six resolve all four
+reference kinds the same way, through `uses:` alone, so that implementation is
+written once and shared rather than copied six times. It is not a capability base
+class: what a fragment *can* do is still discovered by protocol check, and
+`Library` and `APIFragment` override all four methods with the local-table form.

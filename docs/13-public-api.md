@@ -35,7 +35,8 @@ def parse_lenient(...) -> tuple[Raml, RamlError | None]: ...
 
 Same work, but returns the partial model alongside the accumulated error instead
 of raising. This is what an editor integration uses; it is a thin wrapper, not a
-second implementation.
+second implementation. It lands with validation, in Phase 8: until every pass
+accumulates there is little partial model to hand back.
 
 ## 2. Options
 
@@ -73,20 +74,31 @@ together unless you specifically need to inspect un-flattened declarations.
 
 ```python
 class Raml:
-    entry_point: Fragment
-    location: str
+    entry_point: Fragment | None
+    fragments: dict[str, Fragment]  # by URI
+    shapes: list[BaseShape]  # in creation order
+    domain_extensions: list[DomainExtension]
+    endpoints: dict[str, EndPoint]  # by full URI
+    include_refs: dict[str, list[IncludeRef]]
+
+    location: str  # the entry point's, or '' before one is set
     is_unwrapped: bool
 
-    def fragments(self) -> Mapping[str, Fragment]: ...
-    def shapes(self) -> Sequence[BaseShape]: ...
-    def annotations(self) -> Sequence[DomainExtension]: ...
-    def endpoints(self) -> Mapping[str, EndPoint]: ...  # by full URI
     def types_in(self, uri: str) -> Mapping[str, BaseShape]: ...
     def annotation_types_in(self, uri: str) -> Mapping[str, BaseShape]: ...
-    def include_refs(self, uri: str) -> Sequence[IncludeRef]: ...
+    def typedefs_in(self, uri: str) -> Sequence[BaseShape]: ...
+    def include_refs_in(self, uri: str) -> Sequence[IncludeRef]: ...
     def source_node(self, uri: str) -> Node | None: ...  # retain_source only
-    def source_info(self) -> SourceInfo | None: ...  # retain_source only
 ```
+
+The stores named in [02](02-architecture.md) § 3 *are* the read surface. A method
+cannot share its name with the slot that holds the data, and a method that copied
+the dict on every call would buy nothing: § 7 already tells a consumer not to
+mutate what it is handed.
+
+The `*_in(uri)` accessors exist for the indices keyed twice over — by file URI,
+then by declaration name. Each returns an empty mapping for a file that declared
+nothing, rather than raising or returning `None`.
 
 ## 4. The model
 

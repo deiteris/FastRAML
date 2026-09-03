@@ -178,7 +178,7 @@ resource, method, response, type declaration, example, security scheme,
 documentation item, and inside the annotated-scalar form. One helper:
 
 ```python
-def unmarshal_domain_extension(location, key_node, value_node) -> DomainExtension
+def unmarshal_domain_extension(raml, location, key_node, value_node) -> DomainExtension
 ```
 
 It strips the parentheses (an empty name is an error), converts the value to a

@@ -68,14 +68,14 @@ def _run_fixture(path: Path, root: Path, *, expect_error: bool) -> str:
     'pass' means the parser did what the fixture's name promises: a valid
     fixture parsed, or an invalid one produced an error.
     """
-    from pyraml import RamlError, parse_from_path  # type: ignore[attr-defined]
+    from pyraml import ParseOptions, RamlError, parse_from_path
 
     key = skip_reason(fixture_id(root, path))
     if key is not None:
         pytest.skip(key)
 
     try:
-        parse_from_path(path, validate=True, unwrap=True)
+        parse_from_path(path, ParseOptions(validate=True, unwrap=True))
     except RamlError:
         return 'pass' if expect_error else 'fail'
     return 'fail' if expect_error else 'pass'

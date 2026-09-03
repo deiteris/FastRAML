@@ -144,6 +144,19 @@ Rules on the layout:
   else from `types/`, and `parser/annotations.py` imports nothing from `types/`
   at runtime at all.
 
+- **One deferred import exists, in `types/shape.py`, and no other may be added.**
+  `type: !include lib.raml` and `examples: !include e.raml` have to parse a
+  fragment, so `make_shape` needs `parser.fragments.parse_fragment`; and a
+  fragment declares types, so `parser/fragments.py` needs `make_shape`. That
+  recursion is in the language — a type may be a file, and a file declares types
+  — not in the module layout, so no ordering of the two modules removes it. The
+  import therefore sits inside the two functions that link a fragment,
+  `_parse_data_type` and `_parse_named_example`, each with a comment saying why.
+
+  The alternative is to note the include at decode time and link it in P7. It
+  works for `type:`, where a worklist already exists, and reads badly for
+  `examples:`, where none does. If a third such case ever appears, take it.
+
   References in the other direction are free, because they are annotations only:
   `BaseShape` names `DomainExtension`, `DataNode`, `DataTypeFragment` and
   `ReferenceResolver` under `TYPE_CHECKING`, which `from __future__ import

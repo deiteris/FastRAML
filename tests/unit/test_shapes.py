@@ -35,7 +35,7 @@ def value_of(text: str) -> Node:
 
 def make_base(raml: Raml | None = None, **kwargs) -> BaseShape:
     raml = raml or Raml()
-    kwargs.setdefault('location', 'file:///a.raml')
+    kwargs.setdefault('location', LOCATION)
     return BaseShape(id=raml.next_id(), raml=raml, **kwargs)
 
 

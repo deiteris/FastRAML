@@ -21,7 +21,7 @@ read, the annotated-scalar form unwrapped — so the builder stays in
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
 
 from pyraml.datanode import make_data_node
 from pyraml.positions import UNKNOWN, Position
@@ -368,10 +368,6 @@ class Shape(Protocol):
     In Phase 2 only `decode_facets` has a body on the concrete kinds; the rest
     arrive with Phases 4 and 8 (docs/07, docs/10).
     """
-
-    #: Defined only by the kinds that hold declarations. Read it through
-    #: `declaration_facets`, never directly.
-    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]]
 
     base: BaseShape
 

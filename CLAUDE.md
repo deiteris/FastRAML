@@ -14,14 +14,18 @@ that area has already settled.
    dependencies, not by importance: the type system precedes endpoints, the merge
    precedes templates, validation comes last.
 
-**Current state: Phase 0 complete** (positions, errors, uris, loaders, yamlnode),
-plus three leaf modules built ahead of the critical path: the RDT expression
-parser (Phase 3's), template variables and transforms (Phase 6's), and URI
-template parsing (Phase 5's).
+**Current state: Phases 0 and 1 complete.** Phase 0: positions, errors, uris,
+loaders, yamlnode. Phase 1: registry, fragments, includes, namespaces, datanode,
+facets, references, annotations, the entry points and the pass driver (P0–P3;
+P4–P10 are marked no-ops in `parser/entry.py`). Three leaf modules were built
+ahead of the critical path: the RDT expression parser (Phase 3's), template
+variables and transforms (Phase 6's), and URI template parsing (Phase 5's).
 
-**Phase 1 is next.** Start at `docs/briefs/phase-1.md` — it states what exists,
-what to build, the decisions already settled, and the reference line ranges
-worth opening. A brief per phase lives in `docs/briefs/`.
+**Phase 2, the type system, is next.** Everything Phase 1 could not decode is
+retained as the original `Node` on a `_raw_*` attribute — `grep -rn '_raw_'
+pyraml/` lists every seam, and each one names the phase that picks it up. A brief
+per phase lives in `docs/briefs/`; `docs/briefs/phase-1.md` is the record of what
+Phase 1 settled.
 
 ## The gate
 

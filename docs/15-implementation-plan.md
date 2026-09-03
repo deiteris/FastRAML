@@ -39,6 +39,10 @@ a mutually-importing pair of libraries terminates; a counting loader confirms on
 read per file; `Fragments/` and `Libraries/` TCK categories are attempted (many
 will still fail on types).
 
+**Complete.** The TCK baseline it set: 529 of 930 fixtures at the expected
+outcome, `Fragments/` 26 of 41 and `Libraries/` 37 of 49 — the remainder needing
+types, templates, or the v1.1 Overlay and Extension kinds.
+
 ---
 
 ## Phase 2 — The type system

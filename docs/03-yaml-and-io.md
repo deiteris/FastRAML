@@ -54,10 +54,11 @@ class Node:
 def compose(text: str, *, uri: str) -> Node
 ```
 
-Implementation: `yaml.compose(text, Loader=_Loader)` where `_Loader` is
-`yaml.CSafeLoader` when libyaml is present and `yaml.SafeLoader` otherwise, then a
-single recursive conversion of PyYAML's `ScalarNode`/`MappingNode`/`SequenceNode`
-into our `Node`.
+Implementation: `yaml.compose(text, Loader=_RamlLoader)`, then a single recursive
+conversion of PyYAML's `ScalarNode`/`MappingNode`/`SequenceNode` into our `Node`.
+`_RamlLoader` subclasses `yaml.CSafeLoader` when libyaml is present and
+`yaml.SafeLoader` otherwise, and replaces the implicit-resolver table — see
+§ 2.2.
 
 Notes on that conversion:
 
@@ -80,7 +81,58 @@ Notes on that conversion:
   compose time, with a depth/expansion budget to stop billion-laughs expansion,
   and records the fact so error positions still point at the alias site.
 
-### 2.2 Empty documents
+### 2.2 Scalar resolution is YAML 1.2, not PyYAML's 1.1
+
+RAML 1.0 is defined over YAML 1.2. PyYAML implements YAML 1.1. Left alone that
+is not a nicety — it changes values:
+
+| Written | PyYAML (1.1) | YAML 1.2, and go-yaml v3 |
+|---|---|---|
+| `no`, `yes`, `on`, `off` | boolean | **string** |
+| `12:30:00` | integer 45000 | **string** |
+| `190:20:30.15` | float | **string** |
+| `1e3` | string | **float** |
+| `0o17` | string | **integer 15** |
+| `017`, `1_000` | integer | integer (both agree) |
+| `2015-05-23` | timestamp | timestamp (both agree) |
+
+`example: no` on a string type would become `False`, and the spec's own
+`lunchtime: 12:30:00` on a `time-only` type would become a number. Two TCK
+fixtures contain exactly that.
+
+`_RamlLoader` therefore replaces three entries of PyYAML's implicit-resolver
+table — `bool`, `int` and `float` — with `ruamel.yaml`'s YAML 1.2 patterns.
+`null`, `str`, `seq`, `map` and `timestamp` are left alone because they already
+agree. Timestamps stay implicit, as in go-yaml, and the scalar converter keeps
+their text.
+
+**Only the resolver changes; the scanner does not.** That is deliberate. PyYAML
+ships a current libyaml, which since 0.2.2 accepts a colon inside a plain scalar
+in flow context — `authorizationGrants: [ http://example.com ]`, which real RAML
+writes. Implementations that carry an older scanner reject it.
+
+The reference for "what is correct" is the pair of implementations RAML is
+scored against: the spec, and `gopkg.in/yaml.v3`, which go-raml uses. go-yaml is
+1.2 core for booleans, nulls and base-60, and keeps 1.1's underscores and
+timestamps. Our table matches it on every form tested.
+
+The claim is checked, not asserted. `tests/conformance` composes every document
+in the TCK corpus, plus a table of scalar forms in four syntactic positions,
+through both pyRAML and `ruamel.yaml` in YAML 1.2 mode, and fails on any
+disagreement in shape, tag or text. Ruamel is a dev dependency; it never ships,
+and nothing outside that test imports it.
+
+Three gaps remain, all in the scanner and all shared with go-yaml:
+
+- `[ ::vector ]` — a flow scalar beginning with a colon. Valid YAML 1.2, rejected
+  by PyYAML. Not a construct RAML uses.
+- U+2028/U+2029 inside a scalar. YAML 1.1 treats them as line breaks; 1.2 does
+  not. PyYAML rejects them.
+- `title:<TAB>value` parses under libyaml and is **rejected** by the pure-Python
+  scanner. This one is a divergence between our own two backends, not a version
+  question; see [12](12-performance.md) § 19.
+
+### 2.3 Empty documents
 
 A file that is empty after its RAML header line composes to an empty mapping
 node rather than an error; the fragment decoder then decides whether an empty

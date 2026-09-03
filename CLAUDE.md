@@ -14,19 +14,22 @@ that area has already settled.
    dependencies, not by importance: the type system precedes endpoints, the merge
    precedes templates, validation comes last.
 
-**Current state: Phases 0 and 1 complete.** Phase 0: positions, errors, uris,
+**Current state: Phases 0, 1 and 2 complete.** Phase 0: positions, errors, uris,
 loaders, yamlnode. Phase 1: registry, fragments, includes, namespaces, datanode,
-facets, references, annotations, the entry points and the pass driver (P0–P3;
-P4–P10 are marked no-ops in `parser/entry.py`). Three leaf modules were built
-ahead of the critical path: the RDT expression parser (Phase 3's), template
-variables and transforms (Phase 6's), and URI template parsing (Phase 5's).
+facets, references, annotations, the entry points and the pass driver (P0–P3).
+Phase 2: the whole `types/` package — `BaseShape`, the seventeen kinds,
+inference, examples, xml, and `make_shape`, wired into `types:`,
+`annotationTypes:`, `baseUriParameters:` and the typed fragments. Three leaf
+modules were built ahead of the critical path: the RDT expression parser
+(Phase 3's), template variables and transforms (Phase 6's), and URI template
+parsing (Phase 5's).
 
-**Phase 2, the type system, is next.** Start at `docs/briefs/phase-2.md` — it
-states what exists, what to build, the decisions already settled, and the
-reference line ranges worth opening. Everything outside Phase 1's scope is
-retained as the original `Node` on a `_raw_*` attribute; `grep -rn '_raw_'
-pyraml/` lists every seam, and a comment beside each names the phase that decodes
-it. A brief per phase lives in `docs/briefs/`.
+**Phase 3, resolution (P7), is next.** It drains `Raml.unresolved_shapes`:
+parse each type expression, bind each name, and swap the real kind in for every
+`UnknownShape`. Everything still deferred is retained as the original `Node` on
+a `_raw_*` attribute; `grep -rn '_raw_' pyraml/` lists every seam, and a comment
+beside each names the phase that decodes it. A brief per phase lives in
+`docs/briefs/`.
 
 ## The gate
 

@@ -31,6 +31,7 @@ dev = [
     "hypothesis",
     "ruff",
     "types-pyyaml",
+    "ruamel-yaml>=0.18,<0.20",
 ]
 
 [build-system]
@@ -47,6 +48,7 @@ artifacts = ["pyraml/py.typed"]
 testpaths = ["tests"]
 markers = [
     "tck: RAML Test Compliance Kit fixtures (see docs/14-testing.md)",
+    "conformance: differential tests against a YAML 1.2 oracle (see docs/03-yaml-and-io.md)",
 ]
 
 # --- Tooling -----------------------------------------------------------------

@@ -204,9 +204,10 @@ expression→AST cache. See [06](06-type-expressions.md).
 
 | Dependency | Purpose | Required? |
 |-----------|---------|-----------|
-| `PyYAML` (with libyaml if available) | YAML 1.2-ish composition to a node tree | yes |
+| `PyYAML` (with libyaml if available) | composition to a node tree; scalar resolution is replaced with YAML 1.2 ([03](03-yaml-and-io.md) § 2.2) | yes |
 | `jsonschema` + `referencing` | JSON Schema external types | yes |
 | `inflect` (or a vendored irregular-noun table) | `!singularize` / `!pluralize` | yes |
+| `ruamel.yaml` | the YAML 1.2 oracle in `tests/conformance` | dev only |
 | `google-re2` | opt-in linear-time regex engine (D3) | optional |
 | `httpx` / `requests` | remote includes | optional, user-supplied client |
 

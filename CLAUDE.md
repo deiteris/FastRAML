@@ -21,11 +21,12 @@ P4–P10 are marked no-ops in `parser/entry.py`). Three leaf modules were built
 ahead of the critical path: the RDT expression parser (Phase 3's), template
 variables and transforms (Phase 6's), and URI template parsing (Phase 5's).
 
-**Phase 2, the type system, is next.** Everything outside Phase 1's scope is
-retained as the original `Node` on a `_raw_*` attribute. `grep -rn '_raw_'
-pyraml/` lists every seam; a comment beside each names the phase that decodes it.
-A brief per phase lives in `docs/briefs/`; `docs/briefs/phase-1.md` records what
-Phase 1 settled.
+**Phase 2, the type system, is next.** Start at `docs/briefs/phase-2.md` — it
+states what exists, what to build, the decisions already settled, and the
+reference line ranges worth opening. Everything outside Phase 1's scope is
+retained as the original `Node` on a `_raw_*` attribute; `grep -rn '_raw_'
+pyraml/` lists every seam, and a comment beside each names the phase that decodes
+it. A brief per phase lives in `docs/briefs/`.
 
 ## The gate
 

@@ -93,6 +93,13 @@ ignore = [
     "D415",
     "E402",   # false positives for local imports
     "E501",   # line too long
+    # EM101/EM102: a diagnostic's message is a stable *key* that tests and log
+    # grouping match on (docs/11-diagnostics.md section 6), and it is passed to
+    # a factory (`node_error`, `RamlError.new`) rather than to an exception
+    # constructor. Hoisting each one into a local named `message` would add a
+    # line per diagnostic and hide the key from a reader of the raise.
+    "EM101",
+    "EM102",
     "TRY003", # external messages in exceptions are too verbose
     "TD002",
     "TD003",

@@ -73,6 +73,11 @@ So `minLength: 5` is a `ScalarFacet[int]` and "minLength must be ≤ maxLength"
 can point at the exact line. `annotations` holds extensions collected from the
 annotated-scalar form ([03](03-yaml-and-io.md) § 7).
 
+The class lives in `types/base.py`; `make_scalar_facet`, which builds one from a
+key/value pair, lives in `parser/facets.py` and is the single import `types/`
+takes from `parser/` ([02](02-architecture.md) § 2). A shape's `decode_facets`
+calls it once per scalar facet, passing the converter for that facet's type.
+
 The rule: **facets that hold a single scalar use `ScalarFacet[T]`; facets that
 hold arbitrary user data use `DataNode`.** `default`, `enum` members and
 `discriminatorValue` are `DataNode`; `minLength`, `pattern`, `format`,

@@ -30,7 +30,6 @@ from pyraml.loaders import (
 from pyraml.parser.annotations import DomainExtension
 from pyraml.parser.documentation import DocumentationItem
 from pyraml.parser.entry import ParseOptions, parse_from_path, parse_from_string
-from pyraml.parser.facets import ScalarFacet
 from pyraml.parser.fragments import (
     APIFragment,
     DataTypeFragment,
@@ -46,6 +45,7 @@ from pyraml.parser.fragments import (
 from pyraml.parser.includes import IncludeInfo, IncludeRef
 from pyraml.positions import Position
 from pyraml.registry import ParseCtx, Raml
+from pyraml.types.base import ScalarFacet
 from pyraml.uris import file_uri_to_path, path_to_file_uri, resolve_uri_ref
 from pyraml.yamlnode import Node, NodeKind, backend_name, compose
 

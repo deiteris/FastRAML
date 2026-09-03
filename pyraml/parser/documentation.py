@@ -14,12 +14,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
 from pyraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
-from pyraml.parser.facets import ScalarFacet, make_string_facet
+from pyraml.parser.facets import make_string_facet
 from pyraml.positions import UNKNOWN, Position
 from pyraml.yamlnode import NodeKind, node_error, pairs
 
 if TYPE_CHECKING:
     from pyraml.registry import Raml
+    from pyraml.types.base import ScalarFacet
     from pyraml.yamlnode import Node
 
     DocumentationItemFragment = Any

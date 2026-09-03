@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
 from pyraml.parser.documentation import DocumentationItem, decode_documentation_item
-from pyraml.parser.facets import ScalarFacet, make_scalar_facet, make_string_facet, scalar_str
+from pyraml.parser.facets import make_scalar_facet, make_string_facet, scalar_str
 from pyraml.parser.includes import note_include_ref, resolve_ref_uri
 from pyraml.parser.references import resolve_library_reference, resolve_reference
 from pyraml.registry import ParseCtx
@@ -53,6 +53,7 @@ if TYPE_CHECKING:
 
     from pyraml.positions import Position
     from pyraml.registry import Raml
+    from pyraml.types.base import ScalarFacet
 
     # Phase 2 onwards replace these aliases with the real classes.
     BaseShape = Any

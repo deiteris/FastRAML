@@ -11,26 +11,31 @@ Because every scalar facet in the language is built by `make_scalar_facet`, that
 form works at all thirty-odd nodes the spec lists without a line of per-facet
 code. The same is true of `!include` at a facet position.
 
-See docs/03-yaml-and-io.md section 7.
+The builders live here rather than in `types/` because both of those features
+need the parser: an include has to be read through the cache, and an annotation
+has to become a `DomainExtension`. The `ScalarFacet` class itself belongs to the
+type model and lives in `pyraml.types.base`. This module is the one part of
+`parser/` that `types/` may import at runtime — see docs/02-architecture.md
+section 2 and docs/03-yaml-and-io.md section 7.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
-from pyraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
+from pyraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
 from pyraml.parser.includes import IncludeInfo, resolve_include
-from pyraml.positions import UNKNOWN, Position
+from pyraml.positions import UNKNOWN
+from pyraml.types.base import ScalarFacet
 from pyraml.yamlnode import TAG_NULL, Node, NodeKind, node_error, pairs
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from pyraml.parser.annotations import DomainExtension
     from pyraml.registry import Raml
 
 __all__ = [
-    'ScalarFacet',
     'make_scalar_facet',
     'make_seq_facet',
     'make_string_facet',
@@ -40,23 +45,6 @@ __all__ = [
 
 #: The key that carries the value in the annotated-scalar form.
 FACET_VALUE: Final = 'value'
-
-
-@dataclass(slots=True, eq=False)
-class ScalarFacet[T]:
-    """A decoded scalar facet: its value, where it came from, and its annotations."""
-
-    value: T
-    location: str
-    key_pos: Position = UNKNOWN
-    value_pos: Position = UNKNOWN
-    #: Set when the value arrived through `!include`.
-    include: IncludeInfo | None = None
-    #: Annotations collected from the annotated-scalar form.
-    annotations: dict[str, DomainExtension] = field(default_factory=dict)
-
-    def __repr__(self) -> str:
-        return f'ScalarFacet({self.value!r})'
 
 
 def scalar_str(node: Node, location: str) -> str:

@@ -319,6 +319,10 @@ resolved node into a `T`. `scalar_str` serves every string facet; each later
 facet type adds one function. The resulting extensions ride on
 `ScalarFacet.annotations`.
 
+The builder lives in `parser/facets.py` because it needs the include cache and
+the domain-extension constructor; the `ScalarFacet` class it returns belongs to
+the type model and lives in `types/base.py` ([02](02-architecture.md) § 2).
+
 ## 8. URI utilities
 
 ```python

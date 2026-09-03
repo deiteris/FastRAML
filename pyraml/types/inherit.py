@@ -416,6 +416,13 @@ def _narrow_union(target: BaseShape, mine: UnionShape, theirs: UnionShape) -> No
     Each pairing is tried on a detached copy, so a member that fails leaves no
     partial merge behind.
     """
+    if not mine.any_of:
+        # `T: {type: SomeUnion, …}` declares no members of its own, so it takes
+        # the parent's outright — the same rule every other facet follows when
+        # the child is silent about it.
+        mine.any_of = theirs.any_of
+        return
+
     survivors: list[BaseShape] = []
     for parent in theirs.any_of or ():
         matched = False
@@ -494,7 +501,16 @@ def alias_to(target: BaseShape, source: BaseShape) -> BaseShape:
     # Every kind's alias is the same operation — take all of the source's own
     # fields — so it is one slot copy rather than seventeen methods.
     for name in copyable_slots(type(target_shape)):
-        setattr(target_shape, name, getattr(source_shape, name))
+        value = getattr(source_shape, name)
+        # Containers are copied, not shared. An alias is still a declaration of
+        # its own, and recursion marking substitutes into exactly these slots:
+        # sharing the dict would let a marker for the alias land in the
+        # referent's `properties` and corrupt it (docs/07 section 3.6).
+        if isinstance(value, dict):
+            value = dict(value)
+        elif isinstance(value, list):
+            value = list(value)
+        setattr(target_shape, name, value)
 
     target.display_name = source.display_name
     target.description = source.description

@@ -190,9 +190,17 @@ survive.
 **target is a union, source is not**: merge the source into every member; any
 member that fails makes the whole inheritance fail.
 
-**both unions** → handled inside `UnionShape.inherit`: for each source member,
-merge it into each type-compatible target member (on a detached copy) and keep the
-survivors; a source member with no compatible target is an error.
+**both unions** → if the target declares no members of its own it takes the
+source's outright, which is the same rule every other facet follows when the
+child is silent about it. Otherwise, for each source member, merge it into each
+type-compatible target member (on a detached copy) and keep the survivors; a
+source member with no compatible target is an error.
+
+The empty case is not an edge case to tidy away: `T: {type: SomeUnion, …}` gives
+`T` the *union* kind, because P7 takes the referent's kind, but no `anyOf` of
+its own. So a child that merely narrows a union reaches this branch, not the
+"source is a union, target is not" one above — which arises only where the two
+kinds genuinely differ.
 
 Detached copies with fresh IDs are essential here — these are genuinely new
 shapes, and reusing the originals would corrupt the declared types.
@@ -249,9 +257,19 @@ the entire point of an alias.
 
 ## 4. Recursion marking
 
-After unwrap, `Node: {properties: {next: Node}}` is an object whose `next`
-property is the *same object*. Any consumer that walks the model naively will
-recurse forever.
+After unwrap, `Node: {properties: {next: Node}}` is an object that leads back to
+itself. Any consumer that walks the model naively will recurse forever.
+
+Not *literally* the same object, and the difference matters here. `next: Node`
+is a bare reference and therefore an **alias** ([06](06-type-expressions.md)
+§ 3.1), so unwrap copies `Node`'s facets onto `next`'s own base rather than
+substituting `Node` itself — the property keeps its own name and position, which
+is the point of an alias. The marker must nonetheless name `Node` as its head,
+not the copy, so the DFS follows the `alias` edge that `alias_to` leaves in
+place and marks against the referent. Without that the cycle closes one level
+further in, with a copy as its head — which is what go-raml reports, and only
+because its `alias` shares the referent's `properties` dict outright, so the
+substitution happens to land in both places at once.
 
 `mark_recursions` runs a DFS from every declared type using the same `_visiting`
 flag. On re-entry it does not error (unlike resolution) — it returns a

@@ -292,13 +292,14 @@ Two ordering details in this sequence control correctness:
   because all name resolution is deferred to P7. Resolving `uses:` first would be
   simpler, but it breaks mutual imports.
 
-`resolve_uses` accumulates: one unreadable library does not hide the state of the
-others. A `uses:` value resolves by the same three rules as an `!include`
-argument (`resolve_ref_uri`, [03](03-yaml-and-io.md) § 4.1).
+`resolve_uses` accumulates rather than stopping at the first failure: an
+unreadable library is reported, and the remaining imports are still resolved. A
+`uses:` value resolves by the same three rules as an `!include` argument
+(`resolve_ref_uri`, [03](03-yaml-and-io.md) § 4.1).
 
-The six fragments that declare nothing of their own — DataType, NamedExample,
-DocumentationItem, Trait, ResourceType, SecurityScheme — resolve all four
-reference kinds identically, through `uses:` alone, so that implementation is
-written once and shared. This is not a capability base class: what a fragment
-*can* do is still discovered by protocol check, and `Library` and `APIFragment`
-override all four with the local-table form.
+Six fragments declare nothing of their own — DataType, NamedExample,
+DocumentationItem, Trait, ResourceType, SecurityScheme. All six resolve all four
+reference kinds the same way, through `uses:` alone, so that implementation is
+written once and shared rather than copied six times. It is not a capability base
+class: what a fragment *can* do is still discovered by protocol check, and
+`Library` and `APIFragment` override all four methods with the local-table form.

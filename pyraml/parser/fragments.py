@@ -354,12 +354,12 @@ class Library(_BaseFragment):
         self.resource_types: dict[str, ResourceTypeDefinition] = {}
         self.security_schemes: dict[str, SecuritySchemeDefinition] = {}
         self.annotations: dict[str, DomainExtension] = {}
-        # Seams: decoded by later phases, kept as written until then.
-        self._raw_types: Node | None = None
-        self._raw_annotation_types: Node | None = None
-        self._raw_traits: Node | None = None
-        self._raw_resource_types: Node | None = None
-        self._raw_security_schemes: Node | None = None
+        # Seams: kept as written until the phase named beside each decodes them.
+        self._raw_types: Node | None = None  # Phase 2
+        self._raw_annotation_types: Node | None = None  # Phase 2
+        self._raw_traits: Node | None = None  # Phase 6
+        self._raw_resource_types: Node | None = None  # Phase 6
+        self._raw_security_schemes: Node | None = None  # Phase 7
 
     # -- ReferenceResolver / SecuritySchemeResolver ---------------------------
 
@@ -459,15 +459,16 @@ class APIFragment(_BaseFragment):
         self.resource_types: dict[str, ResourceTypeDefinition] = {}
         self.security_schemes: dict[str, SecuritySchemeDefinition] = {}
         self.annotations: dict[str, DomainExtension] = {}
-        # Seams.
-        self._raw_types: Node | None = None
-        self._raw_annotation_types: Node | None = None
-        self._raw_base_uri_parameters: Node | None = None
-        self._raw_traits: Node | None = None
-        self._raw_resource_types: Node | None = None
-        self._raw_security_schemes: Node | None = None
-        self._raw_secured_by: Node | None = None
+        # Seams: kept as written until the phase named beside each decodes them.
+        self._raw_types: Node | None = None  # Phase 2
+        self._raw_annotation_types: Node | None = None  # Phase 2
+        self._raw_base_uri_parameters: Node | None = None  # Phase 2
+        self._raw_traits: Node | None = None  # Phase 6
+        self._raw_resource_types: Node | None = None  # Phase 6
+        self._raw_security_schemes: Node | None = None  # Phase 7
+        self._raw_secured_by: Node | None = None  # Phase 7
         #: `(key, value)` pairs for every `/relativeUri` key, in document order.
+        #: Phase 5 turns them into the stage-1 endpoint IR.
         self._raw_endpoints: list[tuple[Node, Node]] = []
 
     # -- ReferenceResolver / SecuritySchemeResolver ---------------------------

@@ -39,9 +39,10 @@ a mutually-importing pair of libraries terminates; a counting loader confirms on
 read per file; `Fragments/` and `Libraries/` TCK categories are attempted (many
 will still fail on types).
 
-**Complete.** The TCK baseline it set: 529 of 930 fixtures at the expected
-outcome, `Fragments/` 26 of 41 and `Libraries/` 37 of 49 — the remainder needing
-types, templates, or the v1.1 Overlay and Extension kinds.
+**Complete.** TCK baseline recorded: 529 of the 930 fixtures that run behave as
+their name promises — `Fragments/` 26 of 41, `Libraries/` 37 of 49. (930, not
+967: the Overlay and Extension categories are skipped wholesale.) The rest need
+types, templates, or those two v1.1 fragment kinds.
 
 ---
 

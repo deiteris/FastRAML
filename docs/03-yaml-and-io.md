@@ -139,11 +139,13 @@ The workspace-root rule is what makes an "absolute" RAML path portable. Default
 root is the directory of the entry file; `ParseOptions(workspace_root=...)` widens
 it when an API spans sibling directories.
 
-The registry is a parameter because the workspace root lives on it. The same
-three forms apply to a `uses:` value, which is a path but not an `!include`, so
-`uses:` resolution goes through `resolve_ref_uri` too. go-raml resolves a `uses:`
-value with plain RFC 3986 and therefore sends `/libs/a.raml` to the filesystem
-root; sharing one rule here is a deliberate, small divergence.
+The registry is a parameter because the workspace root lives on it.
+
+A `uses:` value is a path but not an `!include`, and the same three forms apply
+to it, so it resolves through `resolve_ref_uri` as well. go-raml instead resolves
+a `uses:` value with plain RFC 3986, which sends `/libs/a.raml` to the filesystem
+root. Sharing one rule is a deliberate divergence from the reference
+implementation, and a small one: a `uses:` path that starts with `/` is rare.
 
 ### 4.2 What an include produces
 
@@ -197,9 +199,10 @@ class ResourceLoader(Protocol):
     def load(self, uri: str, *, max_bytes: int | None = None) -> bytes: ...
 ```
 
-`max_bytes` is how the size limit is enforced without reading an oversized file:
-an implementation that honours it returns at most `max_bytes + 1` bytes, and the
-caller fails when that extra byte materialises.
+`max_bytes` carries the size limit of § 4.3. An implementation that honours it
+returns at most `max_bytes + 1` bytes; returning more wastes memory, returning
+less than the resource holds is wrong, because the caller cannot then tell a
+truncated file from a complete one.
 
 | Loader | Behaviour |
 |--------|-----------|
@@ -256,11 +259,14 @@ class DataNode:
     __slots__ = ("value", "include", "location", "key_pos", "value_pos")
 ```
 
-`scalar` holds the value itself rather than a wrapper, so a YAML null and "this
-is not a scalar" would otherwise be indistinguishable; `ValueNode.is_scalar`
-answers that question instead. A scalar's Python value comes from its **tag and
-its literal text**: `!!timestamp` and any unrecognised tag keep the text, because
-RAML needs the written form of a `date-only` example.
+`scalar` holds the value itself rather than a wrapper object. A YAML null is
+therefore stored as `None`, which is also what the field holds when the value is
+a mapping or a sequence; `ValueNode.is_scalar` is what distinguishes the two
+cases.
+
+A scalar's Python value comes from its **tag and its literal text**.
+`!!timestamp` and any unrecognised tag keep the text, because RAML needs the
+written form of a `date-only` example.
 
 `make_data_node(raml, key_node, value_node, location)` is the single constructor;
 `key_node` is `None` where there is no key, as in a sequence item.
@@ -305,10 +311,13 @@ Because every scalar facet goes through one builder
 def make_scalar_facet(raml, key_node, value_node, location, convert: Callable[[Node, str], T]) -> ScalarFacet[T]
 ```
 
-the form is supported at all 30+ nodes the spec lists without per-facet code, and
-so is `!include` at a facet position. `convert` is what Go gets from its type
-parameter: `scalar_str` for the string facets, one function per facet type after
-that. The resulting extensions ride on `ScalarFacet.annotations`.
+the form is supported at all 30+ nodes the spec lists without per-facet code.
+`!include` at a facet position is supported the same way, by the same builder.
+
+`convert` supplies what Go takes from its type parameter — how to turn the
+resolved node into a `T`. `scalar_str` serves every string facet; each later
+facet type adds one function. The resulting extensions ride on
+`ScalarFacet.annotations`.
 
 ## 8. URI utilities
 

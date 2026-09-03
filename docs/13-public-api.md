@@ -91,12 +91,14 @@ class Raml:
     def source_node(self, uri: str) -> Node | None: ...  # retain_source only
 ```
 
-The stores named in [02](02-architecture.md) § 3 *are* the read surface: a method
-of the same name cannot coexist with the slot that holds the data, and a wrapper
-that copies a dict on every call would be worse than the contract in § 7 that
-already tells a consumer not to mutate what it is handed. The `*_in(uri)`
-accessors exist because those indices are keyed twice over and return an empty
-mapping rather than raising for a file that declared nothing.
+The stores named in [02](02-architecture.md) § 3 *are* the read surface. A method
+cannot share its name with the slot that holds the data, and a method that copied
+the dict on every call would buy nothing: § 7 already tells a consumer not to
+mutate what it is handed.
+
+The `*_in(uri)` accessors exist for the indices keyed twice over — by file URI,
+then by declaration name. Each returns an empty mapping for a file that declared
+nothing, rather than raising or returning `None`.
 
 ## 4. The model
 

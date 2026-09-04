@@ -253,13 +253,41 @@ Each has caused problems for users of the reference implementation.
 
 ## 8. CLI
 
-A thin console script, mirroring the reference tool:
+A thin console script, mirroring the reference tool. Presentation only: no
+parsing rule lives in `pyraml/cli.py`.
 
 ```
-pyraml validate [-w ROOT] [-r] [-v] FILE [FILE ...]
-pyraml info FILE                      # backend, timings, counts
+pyraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
+pyraml info [-w ROOT] [-r] FILE       # backend, timings, counts
 ```
 
-`validate` exits non-zero on the first invalid file and prints the rendered trace
-chains; `-r` enables remote includes; `-w` sets the workspace root; `-v` repeats
-for verbosity. `--json` emits `err.to_dict()` for machine consumption.
+Both parse with `unwrap=True, validate=True`: the CLI's job is to find faults.
+
+- `-w ROOT` sets the workspace root; `--no-workspace-guard` disables the sandbox
+  entirely, as go-raml's flag of the same name does.
+- `-r` enables remote includes. It builds a client from `httpx` or `requests`,
+  whichever is installed — pyRAML depends on neither ([03](03-yaml-and-io.md)
+  § 5), so the CLI is where one has to be produced, and where a user who asks
+  for `-r` without either gets told so.
+- `-v` reports each file and its timing on stdout; `-vv` adds the backend and
+  the model counts.
+- Diagnostics go to **stderr**, everything else to stdout, so `-v` stays
+  pipeable. A valid file with no `-v` prints nothing at all.
+
+**It validates every file and exits 1 at the end**, rather than stopping at the
+first failure — matching `raml validate`, and because the case the tool exists
+for is running it over a directory in CI. An earlier draft of this section said
+"exits non-zero on the first invalid file"; that would have made it useless for
+exactly that.
+
+`--json` emits **one JSON object per file**, JSON Lines:
+
+```json
+{"path": "api.raml", "valid": false, "error": {"traces": [{"stack": [...]}]}}
+```
+
+`error` is `RamlError.to_dict()` or `null`. The wrapper is what `to_dict()` alone
+cannot express — which file, and whether it was valid at all — and the `traces`
+value inside it keeps the reference implementation's shape so the cross-check
+script can diff the two fixture by fixture ([14](14-testing.md) § 1.3). Nothing
+is written to stderr in this mode.

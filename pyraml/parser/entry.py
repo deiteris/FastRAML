@@ -20,6 +20,7 @@ from pyraml.loaders import build_loader
 from pyraml.parser.annotations import resolve_domain_extensions
 from pyraml.parser.endpoint_build import build_endpoints
 from pyraml.parser.fragments import decode_fragment, identify_fragment
+from pyraml.parser.security import apply_security_schemes
 from pyraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml
 from pyraml.types.resolve import resolve_shapes
 from pyraml.types.unwrap import unwrap_shapes
@@ -131,8 +132,11 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
 
     # P4 — build endpoints from the API's resources, in two stages, and P6 —
     # propagate URI parameters down the tree. API only; a Library has none.
-    # P5, applying security schemes, is Phase 7's and sits between them.
     build_endpoints(raml)
+
+    # P5 — resolve `securedBy:` inheritance and bind every reference to the
+    # scheme it names. After P4 because it walks `raml.endpoints`.
+    apply_security_schemes(raml)
 
     # P7 — drain the unknown worklist: every declaration whose kind the document
     # alone could not settle now gets one. After this, invariant I5 holds.

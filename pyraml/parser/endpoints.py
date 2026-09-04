@@ -25,7 +25,7 @@ from pyraml.positions import UNKNOWN, Position
 
 if TYPE_CHECKING:
     from pyraml.parser.annotations import DomainExtension
-    from pyraml.parser.directives import DirectiveRef
+    from pyraml.parser.directives import DirectiveRef, SecurityScheme
     from pyraml.types.base import BaseShape, Property, ScalarFacet
 
 __all__ = [
@@ -108,10 +108,17 @@ class Operation:
     #: Keyed by the status code as written, in declaration order.
     responses: dict[str, Response] = field(default_factory=dict)
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
-    #: The directives as written. Applying them is Phase 6's and Phase 7's; they
-    #: are retained because a consumer wants to know a method carried a trait.
+    #: The trait references as written. They have already been applied; they are
+    #: retained because a consumer wants to know a method carried a trait.
     traits: list[DirectiveRef] = field(default_factory=list)
-    secured_by: list[DirectiveRef] = field(default_factory=list)
+    #: The schemes in force, once P5 has resolved inheritance: this method's own
+    #: if it declared any, otherwise the resource's, otherwise the API's.
+    secured_by: list[SecurityScheme] = field(default_factory=list)
+    #: Whether `securedBy:` was written on this method at all. `[]` from an
+    #: explicit empty sequence and `[]` from silence mean different things, and
+    #: it is what makes `securedBy: [null]` *remove* inherited security
+    #: (docs/09 section A4).
+    explicit_secured_by: bool = False
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
 
@@ -142,7 +149,10 @@ class EndPoint:
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
     resource_type: DirectiveRef | None = None
     traits: list[DirectiveRef] = field(default_factory=list)
-    secured_by: list[DirectiveRef] = field(default_factory=list)
+    #: Applied to this resource's own methods only: spec section Applying
+    #: Security Schemes, "MUST NOT incorporate nested resources".
+    secured_by: list[SecurityScheme] = field(default_factory=list)
+    explicit_secured_by: bool = False
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
 

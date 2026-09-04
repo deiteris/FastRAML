@@ -30,11 +30,13 @@ from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 from pyraml.domains import DomainLocation
 from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
+from pyraml.parser.directives import decode_secured_by, make_security_schemes
 from pyraml.parser.documentation import DocumentationItem, decode_documentation_item
 from pyraml.parser.facets import make_scalar_facet, make_string_facet, scalar_str
 from pyraml.parser.includes import note_include_ref, resolve_ref_uri, strip_uri_suffix
 from pyraml.parser.references import resolve_library_reference, resolve_reference
 from pyraml.parser.resourcetypes import ResourceTypeDefinition, make_resource_type_definition
+from pyraml.parser.security import SecuritySchemeDefinition, make_security_scheme_definition
 from pyraml.parser.traits import TraitDefinition, make_trait_definition
 from pyraml.registry import ParseCtx
 from pyraml.types.examples import Example, make_example
@@ -61,9 +63,6 @@ if TYPE_CHECKING:
     from pyraml.registry import Raml
     from pyraml.types.base import BaseShape, Property, ScalarFacet
 
-    # Phase 7 replaces this alias with the real class.
-    SecuritySchemeDefinition = Any
-
 __all__ = [
     'HEADS',
     'APIFragment',
@@ -80,6 +79,7 @@ __all__ = [
     'SecuritySchemeResolver',
     'TraitFragment',
     'decode_resource_type_definitions',
+    'decode_security_scheme_definitions',
     'decode_trait_definitions',
     'identify_fragment',
     'parse_fragment',
@@ -375,7 +375,6 @@ class Library(_BaseFragment):
     """`#%RAML 1.0 Library` — the only fragment that declares all five kinds."""
 
     __slots__ = (
-        '_raw_security_schemes',
         'annotation_types',
         'annotations',
         'resource_types',
@@ -394,8 +393,6 @@ class Library(_BaseFragment):
         self.resource_types: dict[str, ResourceTypeDefinition] = {}
         self.security_schemes: dict[str, SecuritySchemeDefinition] = {}
         self.annotations: dict[str, DomainExtension] = {}
-        # A seam: kept as written until Phase 7 decodes it.
-        self._raw_security_schemes: Node | None = None  # Phase 7
 
     # -- ReferenceResolver / SecuritySchemeResolver ---------------------------
 
@@ -442,7 +439,7 @@ class Library(_BaseFragment):
                 elif name == FACET_RESOURCE_TYPES:
                     self.resource_types = decode_resource_type_definitions(raml, value, self.location)
                 elif name == FACET_SECURITY_SCHEMES:
-                    self._raw_security_schemes = value
+                    self.security_schemes = decode_security_scheme_definitions(raml, value, self.location)
                 elif is_annotation_key(name):
                     extension = unmarshal_domain_extension(raml, self.location, key, value)
                     self.annotations[extension.name] = extension
@@ -459,7 +456,6 @@ class APIFragment(_BaseFragment):
     __slots__ = (
         '_raw_endpoints',
         '_raw_secured_by',
-        '_raw_security_schemes',
         'annotation_types',
         'annotations',
         'base_uri',
@@ -492,9 +488,9 @@ class APIFragment(_BaseFragment):
         self.security_schemes: dict[str, SecuritySchemeDefinition] = {}
         self.annotations: dict[str, DomainExtension] = {}
         self.base_uri_parameters: dict[str, Property] = {}
-        # Seams: kept as written until the phase named beside each decodes them.
-        self._raw_security_schemes: Node | None = None  # Phase 7
-        self._raw_secured_by: Node | None = None  # Phase 7
+        # A seam: `securedBy:` is harvested before the main loop but decoded
+        # after it, because it names schemes the loop has yet to declare.
+        self._raw_secured_by: Node | None = None
         #: `(key, value)` pairs for every `/relativeUri` key, in document order.
         #: Phase 5 turns them into the stage-1 endpoint IR.
         self._raw_endpoints: list[tuple[Node, Node]] = []
@@ -532,6 +528,13 @@ class APIFragment(_BaseFragment):
         for key, value in remainder:
             try:
                 self._decode_key(key, value, declarations)
+            except RamlError as err:
+                accumulator.add(err)
+
+        if self._raw_secured_by is not None:
+            try:
+                refs = decode_secured_by(self._raw_secured_by, self.location, ParseCtx(anchor=self))
+                self._raml.global_secured_by = make_security_schemes(self._raml, refs)
             except RamlError as err:
                 accumulator.add(err)
 
@@ -590,7 +593,7 @@ class APIFragment(_BaseFragment):
         elif name == FACET_RESOURCE_TYPES:
             self.resource_types = decode_resource_type_definitions(self._raml, value, self.location)
         elif name == FACET_SECURITY_SCHEMES:
-            self._raw_security_schemes = value
+            self.security_schemes = decode_security_scheme_definitions(self._raml, value, self.location)
         else:
             return False
         return True
@@ -614,8 +617,8 @@ class APIFragment(_BaseFragment):
                     self.media_types = self._unmarshal_media_types(key, value)
                     raml.global_media_types = [item.value for item in self.media_types]
                 elif key.value == FACET_SECURED_BY:
-                    # Phase 7 builds SecurityScheme objects from this node and
-                    # fills raml.global_secured_by; the node is kept until then.
+                    # Kept, not decoded: the names it uses are declared by a
+                    # `securitySchemes:` key the main loop has not reached yet.
                     self._raw_secured_by = value
                 else:
                     remainder.append((key, value))
@@ -784,7 +787,7 @@ class ResourceTypeFragment(_DefinitionFragment):
 
 
 class SecuritySchemeFragment(_DefinitionFragment):
-    """`#%RAML 1.0 SecurityScheme`.
+    """`#%RAML 1.0 SecurityScheme` — the whole document is one scheme.
 
     Its shapes are deliberately **not** resolved when the fragment is decoded.
     A `describedBy` body gets embedded into an operation through `securedBy`, so
@@ -794,6 +797,18 @@ class SecuritySchemeFragment(_DefinitionFragment):
     """
 
     __slots__ = ()
+
+    def decode(self, node: Node) -> None:
+        super().decode(node)
+        self.definition = _one_definition(
+            self._raml,
+            None,
+            self._raw_definition,
+            self.location,
+            make_security_scheme_definition,
+            FragmentKind.SECURITY_SCHEME,
+        )
+        self.definition.name = uri_base(self.location)
 
 
 # -- traits: and resourceTypes: -----------------------------------------------
@@ -851,6 +866,10 @@ def decode_trait_definitions(raml: Raml, node: Node, location: str) -> dict[str,
 
 def decode_resource_type_definitions(raml: Raml, node: Node, location: str) -> dict[str, ResourceTypeDefinition]:
     return _definitions(raml, node, location, make_resource_type_definition, FragmentKind.RESOURCE_TYPE)
+
+
+def decode_security_scheme_definitions(raml: Raml, node: Node, location: str) -> dict[str, SecuritySchemeDefinition]:
+    return _definitions(raml, node, location, make_security_scheme_definition, FragmentKind.SECURITY_SCHEME)
 
 
 class _Declarations:

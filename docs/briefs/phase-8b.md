@@ -3,6 +3,39 @@
 A working brief for a fresh session. Read this, then the document it names. It
 exists so you do not have to re-derive what earlier sessions already settled.
 
+---
+
+## 0. What this brief got wrong
+
+Kept for the next brief's author. The phase is complete;
+[15](../15-implementation-plan.md) § Phase 8b holds the outcome.
+
+1. **The three-way split of the 25 open fixtures was wrong.** JSON Schema
+   accounted for 13, not 10, and the row called "type-system corners:
+   discriminator, pattern-property characters, constraint conflicts,
+   `Root/baseuri`, `Methods/protocols-array`" was eleven unrelated conformance
+   rules, most of them a facet value nobody had checked — a method's
+   `protocols:`, a `baseUri` that was never parsed as a URI template, a YAML
+   local tag that was not `!include`. Tracing each one, as § 1 said to, was the
+   right instruction; the grouping around it was noise.
+2. **`allowedTargets` was already enforced.** Phase 8a built `_check_target` in
+   `types/validate.py`, reading all seventeen `DomainLocation`s. The two fixtures
+   § 3.4 was written for were passing before the phase opened. § 1.1's "decoded
+   in Phase 4b, never read" was stale.
+3. **"No schema in query parameters … at those four decoders" is the wrong
+   home.** A parameter may *name* a JSON-schema type rather than declare one
+   inline, and a name is not bound to a kind until P7. The check runs after it,
+   over the built endpoint model.
+4. **"A JSON-schema-typed name in a type expression fails when the array's item
+   inherit runs" is not true.** An item written as a bare reference is an
+   *alias*, so nothing merges and nothing fails. P7's visitor refuses the operand
+   directly.
+5. **The ratchet moved in both directions, as § 6 predicted — but not from
+   compilation.** The one valid fixture lost was
+   `Fragments/namedexample-01/valid.raml`, and it broke because validating an
+   included NamedExample for the first time exposed a defect in the union merge
+   two layers away.
+
 This is the last phase before hardening, and it is three unrelated jobs sharing
 a number: compiling external JSON Schema, the four places a schema is forbidden,
 and enforcing `allowedTargets`. Only the first is large.

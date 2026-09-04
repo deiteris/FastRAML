@@ -542,7 +542,7 @@ The three divergences found in the reference implementation are written up in
 
 ---
 
-## Phase 8b — JSON Schema and the endpoint-facing remainder
+## Phase 8b — JSON Schema and the endpoint-facing remainder — **complete**
 
 **Prerequisites:** Phase 8a. Phase 5 for the four decoders of
 [10](10-validation.md) § 6.2, Phase 7 for the eleven `DomainLocation`s that
@@ -566,6 +566,48 @@ Phases 5–7 create. Normative: [10](10-validation.md) § 6.
 **Done when:** the full TCK runs with `unwrap=True, validate=True`; every
 `*invalid*` fixture outside the skip list produces an error; every `*valid*`
 fixture outside the skip list does not.
+
+**Outcome.** TCK 891 → **914 of 916**, no valid fixture lost. The two that remain
+are the union-facet gap and nothing else ([01](01-scope-and-coverage.md) § 3.7),
+which is an After-v1 item by decision. The skip list is Overlays, Extensions and
+the two network fixtures.
+
+JSON Schema was the smaller half. Thirteen of the twenty-five open fixtures fell
+to compilation; the other ten were eleven separate conformance rules, and the
+brief's classification of them as "type-system corners" was wrong about nearly
+all of them — most were a facet nobody had checked.
+
+Six things were established by measurement rather than by reading:
+
+- **`pattern:` is a full match**, not a search. `Annotations/complex-11`'s two
+  fixtures differ in nothing but `simpleAnnotationValueOnType` versus
+  `simpleAnnotation_value_on_type` under `[a-zA-Z0-9]{8,32}`, and an unanchored
+  search accepts both — so under the old reading the pair tested nothing.
+  `/regex/` property *names* stay unanchored ([10](10-validation.md) § 5.4).
+- **Declaring a pattern property makes the set of them exhaustive.** That reads
+  backwards against `additionalProperties: true`, so the spec's own examples
+  settle it in their own comments ([05](05-type-model.md) § 5.1).
+- **A discriminator on an inline declaration cannot be checked after P9**,
+  because a discriminator is inherited and every subtype then looks like one.
+  go-raml carries this rule as a `FIXME` saying exactly that.
+- **A discriminator value in an example is checked outside the `strict` gate.**
+  `EdgeCases/identifying-discriminator`'s pair sets `strict: false` in both and
+  differs in one word.
+- **An included NamedExample went unvalidated**, because `Examples.values` is
+  empty in that form. Fixing it exposed a second defect: a union's survivors each
+  carried the target's `example`, so every example had to satisfy every member
+  ([07](07-resolution-and-inheritance.md) § 3.4).
+- **`!include` is the only tag RAML defines**, so any other local tag is refused
+  at compose. Otherwise `!includeexample.json` is a valid tag on an empty scalar.
+
+Three go-raml divergences were found and written up: the `pattern` search, the
+pattern-property reading, and two inline schemas in one file compiling against
+the first (`AddResource` returns `ResourceExistsError` and its "the cached entry
+is identical" comment holds only for the external-file case).
+
+Unit tests: 58 in `test_jsonschema.py`, plus additions to `test_check.py`,
+`test_validate.py`, `test_inherit.py`, `test_examples.py`, `test_yamlnode.py`,
+`test_endpoints.py` and `test_fragments.py`.
 
 ---
 

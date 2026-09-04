@@ -148,6 +148,14 @@ outright. Written up in `KNOWN-ISSUES.md` in that checkout, with a reproduction.
 Until then P10 skips the custom-facet check on a union base, with a comment
 saying so, rather than reporting `unknown facet` for something the spec allows.
 
+**This is the only gap the TCK still measures.** After Phase 8b the two fixtures
+it accounts for are the only two that do not do what their name promises:
+
+| Fixture | The facet that goes unenforced |
+|---|---|
+| `Types/Type Expressions/union-with-facets/invalid-not-supported-facet.raml` | one written directly on a union declaration |
+| `Types/types-constraits-conflict/invalid-constraints-conflict.raml` | `minimum`/`maximum` on a subtype of a union, which is the same branch |
+
 ## 4. Deliberate deviations
 
 Each deviation is a decision, not an accident. All are surfaced in the public

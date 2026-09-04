@@ -206,6 +206,7 @@ because they encode decisions rather than behaviour:
 | `inference` | every rule and every conflict in § 4.2 of doc 05 |
 | `expressions` | the full `rdt/examples.txt` corpus; cache identity; alias-vs-inherit discrimination |
 | `structural_merge` | inputs unmutated; node identity preserved; opaque data facets not recursed; sequence dedup |
+| `security` | one test per rejection rule of doc 09 § A2; the three inheritance levels; `securedBy: [null]` removing an inherited scheme; scope narrowing without touching the shared definition |
 | `traits` / `resourcetypes` | the four priority classes; deduplication by name; optional-method filtering in both directions; which namespace a merged node resolves in |
 | `templates` | the index survives a subtree being filtered out; all ten actions; the three irregular plurals; unclosed `<<`; a substituted node is marked caller-scoped and a static one is not |
 | `inherit` | one test per row of the table in doc 07 § 3.5, both directions |

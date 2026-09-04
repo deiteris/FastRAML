@@ -9,6 +9,35 @@ declaration is easy, and knowing which declarations are malformed is the phase.
 
 ---
 
+## 0. What this brief got wrong
+
+Kept rather than rewritten; the corrections have been the most useful part of
+every brief since Phase 5.
+
+1. **"`SecurityScheme` is built *from* a `DirectiveRef`" (§ 3.2) does not say
+   where it lives, and the obvious answer is wrong.** Putting it in
+   `security.py` makes `source_decode.py` — which builds these during stage 2 —
+   import the module that resolves them, and `security.py` already imports
+   `source_decode` for the `describedBy:` decoders. It goes in `directives.py`,
+   beside the reference form it promotes.
+
+2. **"the six settings variants" (§ 3.1) is a count of spec rows, not of
+   classes.** What differs between the six is which keys each accepts and what
+   each then requires — a table and a function. Six classes would name each type
+   twice. `docs/09` §§ A2 and A5 amended, and the `OperationParamsApplier`
+   protocol went with them: with one class there is nothing to dispatch on.
+
+3. **§ 3.2's rule about API-rooted resolution was right and the doc did not
+   contain it.** It is now `docs/09` § A6 rather than only a brief.
+
+4. **Four unit tests had to be corrected, not the code.** Three used a second
+   `securitySchemes:` key in the same document — a YAML duplicate, so the first
+   block silently vanished — and one expected a bespoke "not found" diagnostic
+   where the shared reference resolver already raises a better one. Worth
+   naming because all four failed in the direction that looks like a parser bug.
+
+---
+
 ## 1. Where the project stands
 
 Master is at the Phase 6 merge. The gate passes:

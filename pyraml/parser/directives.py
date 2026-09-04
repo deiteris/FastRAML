@@ -23,14 +23,17 @@ from pyraml.positions import UNKNOWN, Position
 from pyraml.yamlnode import NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
-    from pyraml.registry import ParseCtx
+    from pyraml.parser.security import SecuritySchemeDefinition
+    from pyraml.registry import ParseCtx, Raml
     from pyraml.yamlnode import Node
 
 __all__ = [
     'DirectiveRef',
+    'SecurityScheme',
     'decode_secured_by',
     'decode_trait_refs',
     'decode_type_ref',
+    'make_security_schemes',
 ]
 
 
@@ -151,3 +154,55 @@ def decode_secured_by(node: Node, location: str, scope: ParseCtx | None = None) 
     `securedBy:` at all — the latter inherits from the resource or the API.
     """
     return _ref_list(node, location, scope, what='security scheme')
+
+
+# -- the one reference that survives into the model ---------------------------
+
+NULL_SCHEME_NAME = 'null'
+
+
+@dataclass(slots=True, eq=False)
+class SecurityScheme:
+    """One `securedBy:` entry, promoted for the model to carry.
+
+    The odd one out: applying a trait or a resource type produces a merged tree
+    and leaves nothing on the reference, but applying a security scheme produces
+    a *binding*, and a binding needs somewhere to live. So this sits beside
+    `DirectiveRef` rather than in `security.py` — same reason the three
+    references share this module, and it keeps `source_decode.py` (which builds
+    these in stage 2) from having to import the module that resolves them.
+
+    See docs/09-security-and-annotations.md sections A1, A3 and A5.
+    """
+
+    id: int
+    name: str
+    location: str
+    #: The declaration this names. `None` until P5 binds it.
+    definition: SecuritySchemeDefinition | None = None
+    #: `securedBy: [oauth_2_0: {scopes: [ADMIN]}]` — undigested until P5.
+    params: dict[str, Node] = field(default_factory=dict)
+    #: What the settings made of `params`: OAuth 2.0's narrowed scopes, or None.
+    compiled_params: list[str] | None = None
+    #: `securedBy: [null]` — "may also be called with no scheme". It binds to a
+    #: real definition of type `null`, so nothing downstream tests for absence.
+    is_null: bool = False
+    value_pos: Position = UNKNOWN
+
+    def __repr__(self) -> str:
+        return f'SecurityScheme({self.name!r})'
+
+
+def make_security_schemes(raml: Raml, refs: list[DirectiveRef]) -> list[SecurityScheme]:
+    """Promote the stage-1 `securedBy:` references into scheme references."""
+    return [
+        SecurityScheme(
+            id=raml.next_id(),
+            name=NULL_SCHEME_NAME if ref.is_null_scheme else ref.name,
+            location=ref.location,
+            params=ref.params,
+            is_null=ref.is_null_scheme,
+            value_pos=ref.value_pos,
+        )
+        for ref in refs
+    ]

@@ -14,8 +14,7 @@ that area has already settled.
    dependencies, not by importance: the type system precedes endpoints, the merge
    precedes templates, validation comes last.
 
-**Current state: Phases 0 to 6 complete; security (7) and JSON Schema (8b)
-remain.** Phase 0: positions, errors, uris, loaders, yamlnode. Phase 1:
+**Current state: Phases 0 to 7 complete; JSON Schema (8b) remains.** Phase 0: positions, errors, uris, loaders, yamlnode. Phase 1:
 registry, fragments, includes, namespaces, datanode, facets, references,
 annotations, the entry points and the pass driver (P0–P3).
 Phase 2: the whole `types/` package — `BaseShape`, the seventeen kinds,
@@ -36,13 +35,15 @@ two-stage endpoint build and URI parameter propagation. Phase 6:
 `structural_merge`, `traits`, `resourcetypes` and the provenance overlay — the
 spec's merging algorithm, the four trait priority classes, optional-method
 filtering and resource-type chaining, with stage 2 decoding each merged body
-under the scope its nodes were authored in.
+under the scope its nodes were authored in. Phase 7: `security` (P5) — the six
+scheme types and their settings, `describedBy` through the operation decoders,
+`securedBy` inheritance and OAuth 2.0 scope narrowing.
 
-**Every pass P0–P10 now runs.** What is left is coverage, not machinery: security
-(Phase 7) gives P10 more to validate, and Phase 8b adds JSON Schema. Everything
-still deferred is retained as the original `Node` on a `_raw_*` attribute;
-`grep -rn '_raw_' pyraml/` lists every seam, and a comment beside each names the
-phase that decodes it. A brief per phase lives in `docs/briefs/`.
+**Every pass P0–P10 runs, and every RAML construct is now decoded.** No `_raw_*`
+attribute is a deferred seam any more — the two that remain are working buffers
+within a single decode. What is left is Phase 8b (external JSON Schema) and
+enforcing `allowedTargets` with the rest of validation. A brief per phase lives
+in `docs/briefs/`.
 
 **A TCK `fail` entry means work outstanding and nothing else** (`docs/14` § 1.2).
 Where a fixture is wrong, fix it in the suite — three have been, on branches in

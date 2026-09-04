@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Final
 from pyraml.domains import DomainLocation
 from pyraml.errors import Accumulator, RamlError
 from pyraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
+from pyraml.parser.directives import make_security_schemes
 from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
 from pyraml.parser.facets import make_string_facet, scalar_str
 from pyraml.types.shape import make_body_shape, make_property_map, make_shape
@@ -37,11 +38,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from pyraml.parser.annotations import DomainExtension
+    from pyraml.parser.directives import SecurityScheme
     from pyraml.parser.source_ir import SourceEndPoint, SourceOperation
     from pyraml.registry import Raml
     from pyraml.yamlnode import Node
 
-__all__ = ['decode_source_endpoint']
+__all__ = ['decode_responses', 'decode_source_endpoint']
 
 FACET_DISPLAY_NAME: Final = 'displayName'
 FACET_DESCRIPTION: Final = 'description'
@@ -74,6 +76,18 @@ def _body_scope(raml: Raml, source: SourceEndPoint | SourceOperation) -> Iterato
         yield
     finally:
         raml.pop_ctx()
+
+
+def _secured_by(raml: Raml, source: SourceEndPoint | SourceOperation) -> list[SecurityScheme]:
+    """The unit's own schemes, or the API's global when it declared none.
+
+    The global list is shared rather than copied, as in the reference: the
+    entries carry no per-application parameters, so nothing can diverge
+    (docs/09 section A4).
+    """
+    if not source.explicit_secured_by:
+        return raml.global_secured_by
+    return make_security_schemes(raml, source.secured_by)
 
 
 def _annotation(raml: Raml, into: dict[str, DomainExtension], key: Node, value: Node, location: str) -> None:
@@ -205,7 +219,8 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str) -> Respo
     return response
 
 
-def _decode_responses(raml: Raml, node: Node, location: str) -> dict[str, Response]:
+def decode_responses(raml: Raml, node: Node, location: str) -> dict[str, Response]:
+    """A `responses:` map. Public because `describedBy:` reuses it verbatim."""
     if is_null(node):
         return {}
     location = raml.location_of(node, location)
@@ -249,7 +264,7 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
     elif name == FACET_BODY:
         request.bodies = _decode_bodies(raml, value, location, DomainLocation.REQUEST_BODY)
     elif name == FACET_RESPONSES:
-        operation.responses = _decode_responses(raml, value, location)
+        operation.responses = decode_responses(raml, value, location)
     elif is_annotation_key(name):
         _annotation(raml, operation.annotations, key, value, location)
     else:
@@ -263,7 +278,8 @@ def decode_source_operation(raml: Raml, source: SourceOperation) -> Operation:
         method=source.method,
         location=source.location,
         traits=[*source.rt_traits, *source.traits],
-        secured_by=list(source.secured_by),
+        secured_by=_secured_by(raml, source),
+        explicit_secured_by=source.explicit_secured_by,
         key_pos=source.key_pos,
         value_pos=source.value_pos,
     )
@@ -324,7 +340,8 @@ def decode_source_endpoint(raml: Raml, source: SourceEndPoint) -> EndPoint:
         location=source.location,
         resource_type=source.resource_type,
         traits=[*source.rt_traits, *source.traits],
-        secured_by=list(source.secured_by),
+        secured_by=_secured_by(raml, source),
+        explicit_secured_by=source.explicit_secured_by,
         key_pos=source.key_pos,
         value_pos=source.value_pos,
     )

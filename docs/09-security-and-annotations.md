@@ -10,30 +10,38 @@ reference, and validated against their declaration.
 ### A1. Model
 
 ```python
-class SecuritySchemeDefinition:  # the declaration
-    __slots__ = (
-        "id",
-        "name",
-        "type",
-        "display_name",
-        "description",
-        "described_by",  # SecuritySchemeDescription | None
-        "settings",  # SecuritySchemeSettings | None
-        "link",  # SecuritySchemeFragment | None
-        "annotations",
-        "location",
-        "key_pos",
-        "value_pos",
-        "_raml",
-    )
+@dataclass(slots=True, eq=False)
+class SecuritySchemeDefinition:      # the declaration, in security.py
+    id: int
+    name: str
+    location: str
+    type: str
+    display_name / description: ScalarFacet[str] | None
+    described_by: SecuritySchemeDescription | None
+    settings: SecuritySchemeSettings | None
+    link: SecuritySchemeDefinition | None   # the target of an `!include`
+    link_uri: str | None                    # filled by fragments.py, see below
+    annotations: dict[str, DomainExtension]
+    key_pos / value_pos
 
 
-class SecuritySchemeDescription:  # `describedBy:`
-    __slots__ = ("headers", "query_parameters", "query_string", "responses", "annotations", "location", "position")
+@dataclass(slots=True, eq=False)
+class SecuritySchemeDescription:     # `describedBy:`
+    id, location
+    headers / query_parameters: dict[str, Property]
+    query_string: BaseShape | None
+    responses: dict[str, Response]
+    annotations, value_pos
 
 
-class SecurityScheme:  # a reference from `securedBy:`
-    __slots__ = ("id", "name", "params", "definition", "compiled_params", "location", "value_pos", "_raml")
+@dataclass(slots=True, eq=False)
+class SecurityScheme:                # a reference from `securedBy:`
+    id, name, location
+    definition: SecuritySchemeDefinition | None   # None until P5 binds it
+    params: dict[str, Node]                       # undigested until P5
+    compiled_params: list[str] | None             # what the settings made of them
+    is_null: bool
+    value_pos
 ```
 
 `describedBy` reuses the *same* decoders as an operation: `headers` and
@@ -42,18 +50,30 @@ class SecurityScheme:  # a reference from `securedBy:`
 and the shapes it produces go into `fragment_typedefs` like everything else, so
 they are resolved, unwrapped and validated by the normal passes.
 
+**`SecurityScheme` lives in `parser/directives.py`, not here.** It is the
+directive reference promoted: applying a trait or a resource type produces a
+merged tree and leaves nothing behind on the reference, but applying a scheme
+produces a *binding*, and a binding needs somewhere to live. Putting it beside
+`DirectiveRef` follows the same rule that put the three references there
+([02](02-architecture.md) § 3), and it keeps `source_decode.py` — which builds
+these during stage 2 — from importing the module that resolves them.
+
+**The `!include` is followed in `fragments.py`**, as it is for a trait or a
+resource type: `link_uri` is recorded here and `link` filled in there, because
+following it means parsing a fragment.
+
 ### A2. The six scheme types
 
 Per spec § Security Scheme Types, `type:` must be one of:
 
-| `type:` | Settings class | Required settings |
-|---------|----------------|-------------------|
-| `OAuth 1.0` | `OAuth1Settings` | `requestTokenUri`, `authorizationUri`, `tokenCredentialsUri`; optional `signatures` ⊆ {`HMAC-SHA1`,`RSA-SHA1`,`PLAINTEXT`} |
-| `OAuth 2.0` | `OAuth2Settings` | `accessTokenUri`, `authorizationGrants`; `authorizationUri` required iff a grant is `authorization_code` or `implicit`; optional `scopes` |
-| `Basic Authentication` | `BasicSettings` | none |
-| `Digest Authentication` | `DigestSettings` | none |
-| `Pass Through` | `PassThroughSettings` | none (values come from `describedBy`) |
-| `x-<other>` | `CustomSettings` | none; settings kept as raw data |
+| `type:` | Settings it accepts | What it then requires |
+|---------|--------------------|-----------------------|
+| `OAuth 1.0` | `requestTokenUri`, `authorizationUri`, `tokenCredentialsUri`, `signatures` | all three URIs; `signatures` ⊆ {`HMAC-SHA1`,`RSA-SHA1`,`PLAINTEXT`} |
+| `OAuth 2.0` | `authorizationUri`, `accessTokenUri`, `authorizationGrants`, `scopes` | `accessTokenUri`; `authorizationUri` iff a grant is `authorization_code` or `implicit` |
+| `Basic Authentication` | none | — |
+| `Digest Authentication` | none | — |
+| `Pass Through` | none (values come from `describedBy`) | — |
+| `x-<other>` | none | — |
 
 `authorizationGrants` values are the four RFC 6749 names or **any absolute URI**
 (spec allows extension grants such as
@@ -61,7 +81,15 @@ Per spec § Security Scheme Types, `type:` must be one of:
 
 An unknown `type:` that does not start with `x-` is an error. Settings keys that
 the declared type does not define are an error, so `type: Basic Authentication`
-with an `accessTokenUri` is caught rather than silently ignored.
+with an `accessTokenUri` is caught rather than silently ignored — and so is a
+`settings:` block on a type that has none at all.
+
+**One `SecuritySchemeSettings` class, not six.** An earlier draft of this section
+gave each type a class. But the two things that differ between them are *which
+keys the type accepts* and *what it then requires*, and the first is a table
+(`SCHEME_TYPES`) while the second is one function (`_validate_settings`). Six
+near-empty classes would put each type name in two places and let the two
+disagree; the table is the single place a type is named.
 
 ### A3. `securedBy:` and the null scheme
 
@@ -106,24 +134,38 @@ securedBy: [oauth_2_0: {scopes: [ADMINISTRATOR]}]
 
 Spec § Applying Security Schemes permits custom parameters at the point of
 inclusion; the list of valid ones is "specified by the security scheme type".
-pyRAML implements this as an optional capability on the settings object:
+Only OAuth 2.0 defines any — `scopes`, which must be a subset of the declared
+ones — so this is a check on the settings' type rather than a capability
+protocol. An earlier draft of this section proposed an `OperationParamsApplier`
+protocol implemented by one class out of six; with the six collapsed into one
+(§ A2), the protocol has nothing left to dispatch on.
 
-```python
-class OperationParamsApplier(Protocol):
-    def apply_operation_params(self, params: dict[str, Any]) -> Any: ...
-```
-
-Only `OAuth2Settings` implements it, narrowing `scopes` (the supplied scopes must
-be a subset of the declared ones). The result is stored on
-`SecurityScheme.compiled_params`, leaving the shared definition untouched — the
-same scheme applied to two operations with different scopes must not have the two
-interfere.
+The result is stored on `SecurityScheme.compiled_params`, leaving the shared
+definition untouched — the same scheme applied to two operations with different
+scopes must not have the two interfere.
 
 A `scopes` override on a non-OAuth-2.0 scheme is an error rather than a silent
-no-op.
+no-op: the author believed it did something.
 
 When the definition came in via `!include`, the settings live on the linked
-fragment; resolution follows the link before looking for the applier.
+definition; resolution follows `link` before looking at them.
+
+### A6. Where a scheme name resolves
+
+**Against the API**, and this is the one place security differs from traits and
+resource types, which resolve lexically against the document that wrote the
+reference ([04](04-fragments-and-namespaces.md) § 4).
+
+Only a `Library` and an `APIFragment` declare `securitySchemes:`. A `securedBy:`
+can be written in an API root, a resource, a method, a trait body or a resource
+type body — and of those, the last two live in fragments that have no
+`securitySchemes:` of their own and therefore no lexical namespace that could
+hold one. A lexical lookup from a trait fragment would fail for every scheme the
+API declares. go-raml resolves against the API for the same reason; pyRAML
+matches it.
+
+The API's own `uses:` still applies, so `securedBy: [lib.oauth]` reaches a
+library's scheme by the ordinary qualified-name rule.
 
 ---
 

@@ -175,7 +175,9 @@ class TestApiDecoding:
             {
                 'api.raml': API
                 + 'types:\n  A: string\nannotationTypes:\n  B: string\ntraits:\n  t: {}\n'
-                + 'resourceTypes:\n  r: {}\nsecuritySchemes:\n  s: {}\nbaseUriParameters:\n  p: string\n'
+                + 'resourceTypes:\n  r: {}\n'
+                + 'securitySchemes:\n  s:\n    type: Basic Authentication\n'
+                + 'baseUriParameters:\n  p: string\n'
             }
         )
         api = parse_from_path(root / 'api.raml').entry_point
@@ -183,11 +185,10 @@ class TestApiDecoding:
         assert list(api.types) == ['A']
         assert list(api.annotation_types) == ['B']
         assert list(api.base_uri_parameters) == ['p']
-        # Phase 6 decodes the two templates.
+        # Phase 6 decodes the two templates, Phase 7 the schemes.
         assert list(api.traits) == ['t']
         assert list(api.resource_types) == ['r']
-        # Security schemes are still a seam, waiting on Phase 7.
-        assert api._raw_security_schemes is not None
+        assert list(api.security_schemes) == ['s']
 
 
 class TestGlobalPrePass:
@@ -213,10 +214,16 @@ class TestGlobalPrePass:
             parse_from_path(root / 'api.raml')
         assert 'unknown protocol' in messages(caught.value)[0]
 
-    def test_secured_by_is_retained_for_phase_seven(self, workspace):
-        root = workspace({'api.raml': API + 'securedBy: [oauth]\n'})
-        api = parse_from_path(root / 'api.raml').entry_point
-        assert api._raw_secured_by is not None
+    def test_secured_by_is_harvested_early_and_decoded_late(self, workspace):
+        # It is taken out before the main loop because everything decoded after
+        # it may need it, but it names a scheme the loop has yet to declare, so
+        # the decode itself waits until the end.
+        root = workspace(
+            {'api.raml': API + 'securedBy: [oauth]\nsecuritySchemes:\n  oauth:\n    type: Basic Authentication\n'}
+        )
+        raml = parse_from_path(root / 'api.raml')
+        assert [scheme.name for scheme in raml.global_secured_by] == ['oauth']
+        assert raml.global_secured_by[0].definition.type == 'Basic Authentication'
 
 
 class TestLibrary:
@@ -267,12 +274,12 @@ class TestTypedFragments:
         assert list(fragment.examples) == ['first', 'second']
         assert fragment.examples['first'].data.raw == {'a': 1}
 
-    def test_a_scheme_fragment_keeps_its_body(self, workspace):
-        root = workspace({'f.raml': '#%RAML 1.0 SecurityScheme\ndescription: d\n'})
+    def test_a_scheme_fragment_decodes_its_definition(self, workspace):
+        root = workspace({'f.raml': '#%RAML 1.0 SecurityScheme\ntype: Basic Authentication\n'})
         fragment = parse_from_path(root / 'f.raml').entry_point
         assert isinstance(fragment, SecuritySchemeFragment)
-        assert fragment._raw_definition is not None
-        assert fragment.definition is None, 'the definition itself belongs to Phase 7'
+        assert fragment.definition.name == 'f.raml'
+        assert fragment.definition.type == 'Basic Authentication'
 
     def test_a_trait_fragment_decodes_its_definition(self, workspace):
         root = workspace({'f.raml': '#%RAML 1.0 Trait\ndescription: d\n'})
@@ -365,7 +372,7 @@ class TestProtocolConformance:
                 'ne.raml': '#%RAML 1.0 NamedExample\nfirst: 1\n',
                 'tr.raml': '#%RAML 1.0 Trait\n',
                 'rt.raml': '#%RAML 1.0 ResourceType\n',
-                'ss.raml': '#%RAML 1.0 SecurityScheme\n',
+                'ss.raml': '#%RAML 1.0 SecurityScheme\ntype: Basic Authentication\n',
                 'di.raml': '#%RAML 1.0 DocumentationItem\ntitle: T\ncontent: C\n',
             }
         )

@@ -20,7 +20,7 @@ from pyraml.datanode import make_data_node
 from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.parser.facets import make_bool_facet, make_int_facet, make_string_facet
 from pyraml.types.base import ONE_SHAPE, PROPERTIES, SHAPE_LIST, KindBase, PatternProperty, Property
-from pyraml.types.values import failure, index_path, key_path, type_name, unique_items
+from pyraml.types.values import check_non_negative, failure, index_path, key_path, type_name, unique_items
 from pyraml.yamlnode import node_error
 
 if TYPE_CHECKING:
@@ -67,11 +67,26 @@ def _count_bounds(
     base: BaseShape,
     low: ScalarFacet[int] | None,
     high: ScalarFacet[int] | None,
-    message: str,
+    names: tuple[str, str],
 ) -> None:
-    """`minItems`/`maxItems` and `minProperties`/`maxProperties` (docs/10 § 2)."""
+    """`minItems`/`maxItems` and `minProperties`/`maxProperties` (docs/10 § 2).
+
+    Two rules: each bound is non-negative, and together they are satisfiable.
+    """
+    accumulator = Accumulator()
+    for name, facet in zip(names, (low, high), strict=True):
+        if facet is not None:
+            accumulator.add(check_non_negative(name, facet.value, base.location, facet.value_pos))
     if low is not None and high is not None and low.value > high.value:
-        raise failure(message, base.location, low.key_pos, info={'min': low.value, 'max': high.value})
+        accumulator.add(
+            failure(
+                f'{names[0]} exceeds {names[1]}',
+                base.location,
+                low.key_pos,
+                info={'min': low.value, 'max': high.value},
+            )
+        )
+    accumulator.raise_if_any()
 
 
 def _clone_properties(properties: dict[str, Property] | None, memo: dict[int, BaseShape]) -> dict[str, Property] | None:
@@ -159,7 +174,7 @@ class ObjectShape(ComplexKind):
     def check(self) -> None:
         accumulator = Accumulator()
         try:
-            _count_bounds(self.base, self.min_properties, self.max_properties, 'minProperties exceeds maxProperties')
+            _count_bounds(self.base, self.min_properties, self.max_properties, ('minProperties', 'maxProperties'))
         except RamlError as err:
             accumulator.add(err)
         forbids_extras = self.additional_properties is not None and not self.additional_properties.value
@@ -331,7 +346,7 @@ class ArrayShape(ComplexKind):
     def check(self) -> None:
         accumulator = Accumulator()
         try:
-            _count_bounds(self.base, self.min_items, self.max_items, 'minItems exceeds maxItems')
+            _count_bounds(self.base, self.min_items, self.max_items, ('minItems', 'maxItems'))
         except RamlError as err:
             accumulator.add(err)
         if self.items is not None:
@@ -467,7 +482,7 @@ class JsonShape(ComplexKind):
         super().__init__(base)
         #: The schema exactly as written.
         self.raw = raw
-        # Compilation, and the lazy conversion to a shape, are Phase 8's
+        # Compilation, and the lazy conversion to a shape, are Phase 8b's
         # (docs/10-validation.md section 6).
         self.validator: object | None = None
         self._cached_shape: BaseShape | None = None

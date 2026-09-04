@@ -22,6 +22,7 @@ import binascii
 import re
 from typing import TYPE_CHECKING, ClassVar, Final
 
+from pyraml.errors import Accumulator
 from pyraml.parser.facets import (
     make_fraction_facet,
     make_int_facet,
@@ -34,6 +35,7 @@ from pyraml.types.base import KindBase
 from pyraml.types.values import (
     INTEGER_RANGES,
     as_fraction,
+    check_non_negative,
     failure,
     is_multiple_of,
     parse_rfc2616,
@@ -114,6 +116,18 @@ def _bounds_error(base: BaseShape, message: str, low: ScalarFacet[Any], high: Sc
     # Positioned at the *lower* bound, which is written first, so the reader
     # sees the offending pair from its top.
     return failure(message, base.location, low.key_pos, info={'min': str(low.value), 'max': str(high.value)})
+
+
+def _check_lengths(base: BaseShape, low: ScalarFacet[int] | None, high: ScalarFacet[int] | None) -> None:
+    """`minLength`/`maxLength`: non-negative, and ordered (docs/10 section 2)."""
+    accumulator = Accumulator()
+    for name, facet in (('minLength', low), ('maxLength', high)):
+        if facet is not None:
+            accumulator.add(check_non_negative(name, facet.value, base.location, facet.value_pos))
+    pair = _disordered(low, high)
+    if pair is not None:
+        accumulator.add(_bounds_error(base, 'minLength exceeds maxLength', *pair))
+    accumulator.raise_if_any()
 
 
 def _check_format(base: BaseShape, declared: ScalarFacet[str] | None, allowed: Container[str], kind: str) -> None:
@@ -343,9 +357,7 @@ class StringShape(ScalarKind):
         super().decode_facets(rest)
 
     def check(self) -> None:
-        pair = _disordered(self.min_length, self.max_length)
-        if pair is not None:
-            raise _bounds_error(self.base, 'minLength exceeds maxLength', *pair)
+        _check_lengths(self.base, self.min_length, self.max_length)
 
     def validate(self, value: Any, path: str) -> None:
         if not isinstance(value, str):
@@ -518,9 +530,7 @@ class FileShape(ScalarKind):
         super().decode_facets(rest)
 
     def check(self) -> None:
-        pair = _disordered(self.min_length, self.max_length)
-        if pair is not None:
-            raise _bounds_error(self.base, 'minLength exceeds maxLength', *pair)
+        _check_lengths(self.base, self.min_length, self.max_length)
         for declared in self.file_types or ():
             if declared.value != '*/*' and _MEDIA_TYPE.match(declared.value) is None:
                 raise failure(

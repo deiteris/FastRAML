@@ -47,6 +47,12 @@ validation (§4) and example/default validation (§3).
 
 Per kind:
 
+Every length and count facet — `minLength`, `maxLength`, `minItems`, `maxItems`,
+`minProperties`, `maxProperties` — must be **non-negative**, which the spec
+states per facet as "Value MUST be equal to or greater than 0". A negative bound
+is worse than unsatisfiable: `minLength: -2` accepts every string while reading
+as though it constrains something.
+
 | Kind | Checks |
 |------|--------|
 | string | `minLength ≤ maxLength` |

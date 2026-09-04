@@ -33,6 +33,7 @@ __all__ = [
     'INTEGER_RANGES',
     'TIME_ONLY',
     'as_fraction',
+    'check_non_negative',
     'failure',
     'index_path',
     'is_multiple_of',
@@ -60,6 +61,20 @@ def failure(
 ) -> RamlError:
     """One validation diagnostic. `ErrorKind.VALIDATING` throughout P10."""
     return RamlError.new(message, location, position, kind=ErrorKind.VALIDATING, info=info)
+
+
+def check_non_negative(name: str, value: int, location: str, position: Position | None) -> RamlError | None:
+    """The six length and count facets are non-negative (docs/10 section 2).
+
+    Spec, per facet: "Value MUST be equal to or greater than 0." A negative
+    bound is not merely unsatisfiable — `minLength: -2` accepts everything and
+    reads as though it constrains something.
+
+    Returns rather than raises: every caller is accumulating.
+    """
+    if value < 0:
+        return failure('facet must not be negative', location, position, info={'facet': name, 'value': value})
+    return None
 
 
 def key_path(path: str, key: str) -> str:

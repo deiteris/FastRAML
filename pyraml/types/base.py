@@ -552,14 +552,18 @@ class KindBase:
                 self.base.location,
             )
 
+    # Abstract: every kind supplies all three. They are declared here rather
+    # than left to the `Shape` protocol so that a kind added later fails loudly
+    # instead of silently accepting every value.
+
     def is_scalar(self) -> bool:
         raise NotImplementedError
 
     def check(self) -> None:
-        raise NotImplementedError('Phase 8: docs/10-validation.md section 2')
+        raise NotImplementedError
 
     def validate(self, value: Any, path: str) -> None:
-        raise NotImplementedError('Phase 8: docs/10-validation.md section 3')
+        raise NotImplementedError
 
     def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> Shape:  # noqa: ARG002 - the four kinds that override this need `memo`
         """Copy this kind onto an already-cloned `base` (docs/07 section 5).
@@ -585,8 +589,10 @@ class KindBase:
 class Shape(Protocol):
     """The kind-specific half of a declaration.
 
-    In Phase 2 only `decode_facets` has a body on the concrete kinds; the rest
-    arrive with Phases 4 and 8 (docs/07, docs/10).
+    `inherit` and `alias_to` are deliberately *not* here — they are functions
+    over two `BaseShape`s in `types/inherit.py`, for the two reasons docs/05
+    section 1 gives. `check` and `validate` are, because they dispatch on kind
+    and recurse into their own children rather than through a driver.
     """
 
     base: BaseShape

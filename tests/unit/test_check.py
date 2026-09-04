@@ -47,6 +47,44 @@ class TestString:
         assert parse(workspace, '  T:\n    type: string\n    minLength: 10\n') is None
 
 
+class TestNonNegativeBounds:
+    """Spec, per facet: "Value MUST be equal to or greater than 0."
+
+    A negative bound is worse than unsatisfiable: `minLength: -2` accepts
+    everything while reading as though it constrains something.
+    """
+
+    @pytest.mark.parametrize(
+        ('body', 'facet'),
+        [
+            ('  T:\n    type: string\n    minLength: -2\n', 'minLength'),
+            ('  T:\n    type: string\n    maxLength: -14\n', 'maxLength'),
+            ('  T:\n    type: file\n    maxLength: -1\n', 'maxLength'),
+            ('  T:\n    type: array\n    items: string\n    minItems: -1\n', 'minItems'),
+            ('  T:\n    type: array\n    items: string\n    maxItems: -1\n', 'maxItems'),
+            ('  T:\n    type: object\n    minProperties: -1\n', 'minProperties'),
+            ('  T:\n    type: object\n    maxProperties: -1\n', 'maxProperties'),
+        ],
+        ids=['minLength', 'maxLength', 'file-maxLength', 'minItems', 'maxItems', 'minProperties', 'maxProperties'],
+    )
+    def test_a_negative_bound_is_rejected(self, workspace, body, facet):
+        error = parse(workspace, body)
+        assert error is not None
+        assert 'facet must not be negative' in messages(error)
+        assert traces(error)[0].info['facet'] == facet
+
+    def test_zero_is_allowed(self, workspace):
+        assert parse(workspace, '  T:\n    type: string\n    minLength: 0\n    maxLength: 0\n') is None
+
+    def test_both_negative_bounds_are_reported(self, workspace):
+        # `-1 > -2` is also a disordered pair, so three diagnostics come back;
+        # what this pins is that neither negative bound is swallowed.
+        error = parse(workspace, '  T:\n    type: string\n    minLength: -1\n    maxLength: -2\n')
+        assert error is not None
+        negative = [t.info['facet'] for t in traces(error) if t.message == 'facet must not be negative']
+        assert sorted(negative) == ['maxLength', 'minLength']
+
+
 class TestNumeric:
     @pytest.mark.parametrize('kind', ['number', 'integer'])
     def test_minimum_may_not_exceed_maximum(self, workspace, kind):

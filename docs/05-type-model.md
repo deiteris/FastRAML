@@ -115,7 +115,7 @@ hold arbitrary user data use `DataNode`.** `default`, `enum` members and
 | Kind | Facets | Value types |
 |------|--------|-------------|
 | `object` | `properties`, `patternProperties`*, `minProperties`, `maxProperties`, `additionalProperties`, `discriminator`, `discriminatorValue` | `dict[str, Property]`, `dict[str, PatternProperty]`, `ScalarFacet[int]`×2, `ScalarFacet[bool]`, `ScalarFacet[str]`, `DataNode` |
-| `array` | `items`, `minItems`, `maxItems`, `uniqueItems` | `BaseShape`, `ScalarFacet[int]`×2, `ScalarFacet[bool]` |
+| `array` | `items`*, `minItems`, `maxItems`, `uniqueItems` | `BaseShape`, `ScalarFacet[int]`×2, `ScalarFacet[bool]` |
 | `union` | `anyOf` | `list[BaseShape]` |
 | `string` | `pattern`, `minLength`, `maxLength` | `ScalarFacet[Pattern]`, `ScalarFacet[int]`×2 |
 | `number` | `minimum`, `maximum`, `multipleOf`, `format` | `ScalarFacet[Fraction]`×3, `ScalarFacet[str]` |
@@ -126,6 +126,16 @@ hold arbitrary user data use `DataNode`.** `default`, `enum` members and
 
 \* `patternProperties` is not a RAML facet name; it is where keys of the form
 `/regex/` inside `properties:` are routed (spec § Additional Properties).
+
+\* `items:` takes **a reference or an inline type declaration, never a bare
+sequence**. `items: [Foo, Bar]` is rejected at decode time. The temptation is
+real and the spec reads both ways: a sequence in a `type:` position *is*
+multiple inheritance (§ Multiple Inheritance), and `items:` holds a type
+declaration — so `[Foo, Bar]` looks like a composite. But the `items` facet is
+defined as "a reference to an existing type or an inline type declaration", and
+a sequence is neither. The reference implementation reads it the same way and
+the TCK fixture is named `invalid`. The multiply-inheriting form remains
+available one level in, as `items: {type: [Foo, Bar]}`, which is unambiguous.
 
 ```python
 class Property:  # a named property, a header, a query parameter, a facet def

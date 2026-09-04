@@ -444,6 +444,21 @@ def _split_declarations(
             continue
         match spec.kind:
             case 'shape':
+                if value.kind is NodeKind.SEQUENCE:
+                    # `items: [Foo, Bar]`. A sequence in a `type:` position is
+                    # multiple inheritance, and `items:` *holds* a type
+                    # declaration — so reading it that way is tempting and
+                    # wrong. The spec's `items` facet says "a reference to an
+                    # existing type or an inline type declaration", and a
+                    # sequence is neither; go-raml rejects it here too. The
+                    # multiply-inheriting form stays available one level in, as
+                    # `items: {type: [Foo, Bar]}`.
+                    raise node_error(
+                        'items must be a reference or an inline type declaration',
+                        location,
+                        value,
+                        info={'facet': key.value},
+                    )
                 built[spec.fields[0]] = make_shape(raml, key, value, location)
             case 'shape_list':
                 if value.kind is not NodeKind.SEQUENCE:

@@ -747,7 +747,7 @@
     "Types/complex-used-in-annotations-01/invalid-multiple-errors.raml": "pass",
     "Types/complex-used-in-annotations-01/valid.raml": "pass",
     "Types/custom-facets/valid.raml": "pass",
-    "Types/datatypes-array-01/invalid.raml": "fail",
+    "Types/datatypes-array-01/invalid.raml": "pass",
     "Types/datatypes-array-01/valid.raml": "pass",
     "Types/datatypes-array-02/invalid-wrong-example-types.raml": "pass",
     "Types/datatypes-array-02/valid.raml": "pass",

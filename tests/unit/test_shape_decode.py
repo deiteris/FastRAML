@@ -167,6 +167,21 @@ class TestDeclarationFacetsAreBuiltByShapePy:
         union = shape('T:\n  type: union\n  anyOf: [string, integer]\n').shape
         assert [member.type for member in union.any_of] == ['string', 'integer']
 
+    def test_items_may_not_be_a_bare_sequence(self):
+        # The tempting misreading: a sequence in a `type:` position *is*
+        # multiple inheritance, and `items:` holds a type declaration. But the
+        # spec's `items` facet says "a reference to an existing type or an
+        # inline type declaration", and a sequence is neither.
+        with pytest.raises(RamlError) as caught:
+            shape('T:\n  type: array\n  items: [Foo, Bar]\n')
+        trace = next(iter(caught.value.chains()))[-1]
+        assert trace.message == 'items must be a reference or an inline type declaration'
+        assert trace.position.line == 3
+
+    def test_the_multiply_inheriting_form_is_still_available_one_level_in(self):
+        array = shape('T:\n  type: array\n  items:\n    type: [Foo, Bar]\n').shape
+        assert array.items.type == 'composite'
+
     def test_a_declaration_facet_never_reaches_decode_facets(self):
         obj = shape('T:\n  type: object\n  properties:\n    a: string\n').shape
         assert obj.base.custom_facets == {}, 'properties: is consumed, not filed as a custom facet'

@@ -21,6 +21,9 @@ above `complex_.py` and `scalars.py` and is imported by `shape.py`
 from __future__ import annotations
 
 import json
+import re
+from dataclasses import dataclass
+from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
 
 from jsonschema.exceptions import SchemaError, ValidationError
@@ -29,8 +32,28 @@ from referencing import Registry, Resource
 from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT7, specification_with
 
+from pyraml.datanode import DataNode, value_node_of
 from pyraml.errors import ErrorKind, RamlError
-from pyraml.types.complex_ import ComplexKind
+from pyraml.types.base import (
+    TYPE_ANY,
+    TYPE_ARRAY,
+    TYPE_BOOLEAN,
+    TYPE_INTEGER,
+    TYPE_NIL,
+    TYPE_NUMBER,
+    TYPE_OBJECT,
+    TYPE_RECURSIVE,
+    TYPE_STRING,
+    TYPE_UNION,
+    BaseShape,
+    PatternProperty,
+    Property,
+    ScalarFacet,
+)
+from pyraml.types.complex_ import ArrayShape, ComplexKind, ObjectShape, RecursiveShape, UnionShape
+from pyraml.types.examples import Example, Examples
+from pyraml.types.inherit import inherit
+from pyraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
 from pyraml.yamlnode import node_error
 
 if TYPE_CHECKING:
@@ -38,10 +61,11 @@ if TYPE_CHECKING:
 
     from pyraml.positions import Position
     from pyraml.registry import Raml
-    from pyraml.types.base import BaseShape
+    from pyraml.types.base import Shape
     from pyraml.yamlnode import Node
 
 __all__ = [
+    'CompiledSchema',
     'JsonShape',
     'SchemaRegistry',
     'schema_registry',
@@ -57,6 +81,20 @@ _DATA_KEYWORDS: Final = frozenset({'const', 'default', 'enum', 'example', 'examp
 _SCHEMA_MAPS: Final = frozenset(
     {'$defs', 'definitions', 'dependencies', 'dependentSchemas', 'patternProperties', 'properties'}
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledSchema:
+    """One compiled schema, and the two things the projection needs from it.
+
+    The validator alone would do for `validate()`, but § 6.3 walks the schema
+    document itself and follows its `$ref`s, and both of those live behind
+    private attributes of the validator.
+    """
+
+    validator: Any
+    contents: Any
+    resolver: Resolver[Any]
 
 
 class _LoadFailure(Exception):  # noqa: N818 - not an error surface; a carrier
@@ -95,7 +133,7 @@ class SchemaRegistry:
         """How many distinct URIs have been read. Test surface, not model state."""
         return len(self._resources)
 
-    def compile(self, raw: str, location: str, position: Position | None) -> Any:
+    def compile(self, raw: str, location: str, position: Position | None) -> CompiledSchema:
         """Compile one schema, resolving every reference it names.
 
         `location` may carry a JSON Pointer (`schema.json#/definitions/User`),
@@ -128,7 +166,11 @@ class SchemaRegistry:
             resolved = self._lookup(resolver, '#' + pointer, location, position)
             contents, resolver = resolved.contents, resolved.resolver
         self._prefetch(contents, resolver, specification, location, position, set())
-        return validator_class(contents, registry=registry, _resolver=resolver)
+        return CompiledSchema(
+            validator=validator_class(contents, registry=registry, _resolver=resolver),
+            contents=contents,
+            resolver=resolver,
+        )
 
     # -- reading --------------------------------------------------------------
 
@@ -286,17 +328,19 @@ class JsonShape(ComplexKind):
     `validate=True` would let a broken schema through the default parse.
     """
 
-    __slots__ = ('_cached_defs', '_cached_shape', 'raw', 'validator')
+    __slots__ = ('_cached_defs', '_cached_shape', '_compiled', 'raw', 'validator')
 
     def __init__(self, base: BaseShape, raw: str = '') -> None:
         super().__init__(base)
         #: The schema exactly as written.
         self.raw = raw
         self.validator: Any = None
+        self._compiled: CompiledSchema | None = None
         self._cached_shape: BaseShape | None = None
         self._cached_defs: dict[str, BaseShape] | None = None
         if raw:
-            self.validator = schema_registry(base._raml).compile(raw, base.location, base.key_pos)  # noqa: SLF001
+            self._compiled = schema_registry(base._raml).compile(raw, base.location, base.key_pos)  # noqa: SLF001
+            self.validator = self._compiled.validator
 
     def decode_facets(self, pairs: list[Node]) -> None:
         if pairs:
@@ -333,3 +377,325 @@ class JsonShape(ComplexKind):
             raise SchemaRegistry._reference_error(  # noqa: SLF001 - one diagnostic, two call sites
                 err, str(getattr(err, 'ref', '')), self.base.location, self.base.value_pos
             ) from err
+
+    # -- the projection (docs/10 section 6.3) ---------------------------------
+
+    def as_shape(self) -> BaseShape | None:
+        """The nearest RAML shape to this schema, built once and cached.
+
+        A **view** object, for consumers that want one model rather than two. It
+        is not in `Raml.shapes`, it carries no positions, and it is marked
+        unwrapped. Feeding one back into the parser's own passes is the failure
+        mode to avoid: the model looks right until P9 tries to flatten it.
+        """
+        if self._compiled is None:
+            return None
+        if self._cached_shape is None:
+            defs: dict[str, BaseShape] = {}
+            self._cached_shape = _project(
+                _Projection(self.base, self._compiled.resolver, defs), self._compiled.contents, {}
+            )
+            self._cached_defs = defs
+        return self._cached_shape
+
+    def as_shape_defs(self) -> dict[str, BaseShape] | None:
+        """The named `$ref` targets `as_shape` extracted, in encounter order.
+
+        `None` until `as_shape` has run — the two are one traversal.
+        """
+        return self._cached_defs
+
+
+# -- section 6.3: JSON Schema -> the nearest RAML shape -------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class _Projection:
+    """What every level of the walk shares: where to hang the view shapes."""
+
+    parent: BaseShape
+    resolver: Resolver[Any]
+    defs: dict[str, BaseShape]
+
+    def at(self, resolver: Resolver[Any]) -> _Projection:
+        return _Projection(self.parent, resolver, self.defs)
+
+
+def _unsupported(context: _Projection, what: str) -> RamlError:
+    return RamlError.new(
+        'JSON schema construct has no RAML equivalent',
+        context.parent.location,
+        context.parent.value_pos,
+        kind=ErrorKind.RESOLVING,
+        info={'construct': what},
+    )
+
+
+def _view_base(context: _Projection, name: str | None = None) -> BaseShape:
+    """A `BaseShape` outside the parse's own bookkeeping.
+
+    Deliberately not `put_shape`d and not `put_typedef`d: these are not
+    declarations the document made, and P9 and P10 must never reach them.
+    Marked unwrapped so a consumer serialising the model emits the concrete type
+    inline rather than an inheritance link that leads nowhere.
+    """
+    base = BaseShape(
+        id=context.parent._raml.next_id(),  # noqa: SLF001 - one counter per parse (docs/02 § 3.1)
+        raml=context.parent._raml,  # noqa: SLF001 - as above
+        location=context.parent.location,
+        name=name,
+    )
+    base._unwrapped = True  # noqa: SLF001 - a view shape has nothing left to flatten
+    return base
+
+
+def _project(context: _Projection, contents: Any, visiting: dict[int, BaseShape]) -> BaseShape:
+    """One schema node, as the table in docs/10 section 6.3 maps it."""
+    if contents is False:
+        raise _unsupported(context, 'false schema')
+    if contents is True or not isinstance(contents, dict):
+        return _kind(_view_base(context), TYPE_ANY, AnyShape)
+
+    reference = contents.get('$ref')
+    if isinstance(reference, str):
+        return _project_reference(context, reference, visiting)
+    if 'if' in contents:
+        raise _unsupported(context, 'if/then/else')
+
+    base = _decorate(_view_base(context), contents)
+    visiting[id(contents)] = base
+    try:
+        return _project_body(context, contents, base, visiting)
+    finally:
+        del visiting[id(contents)]
+
+
+def _project_reference(context: _Projection, reference: str, visiting: dict[int, BaseShape]) -> BaseShape:
+    resolved = context.resolver.lookup(reference)
+    head = visiting.get(id(resolved.contents))
+    if head is not None:
+        # The back-edge of a cycle, which is exactly what P9 produces for a
+        # recursive RAML type (docs/07 section 4).
+        base = _view_base(context, head.name)
+        base.type = TYPE_RECURSIVE
+        base.shape = RecursiveShape(base, head)
+        return base
+
+    name = _definition_name(reference)
+    if name is not None:
+        existing = context.defs.get(name)
+        if existing is not None:
+            return existing
+    built = _project(context.at(resolved.resolver), resolved.contents, visiting)
+    if name is not None:
+        built.name = name
+        context.defs[name] = built
+    return built
+
+
+def _definition_name(reference: str) -> str | None:
+    """The last segment of a pointer that names a definition, if it does.
+
+    `#/definitions/User` names `User`; `#` and `other.json` name nothing, and a
+    shape built for one of those is inlined rather than registered.
+    """
+    pointer = reference.partition('#')[2]
+    if not pointer.startswith('/'):
+        return None
+    segment = pointer.rsplit('/', 1)[-1]
+    return segment or None
+
+
+def _project_body(context: _Projection, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+    if contents.get('allOf'):
+        return _project_all_of(context, contents['allOf'], base, visiting)
+    for keyword in ('oneOf', 'anyOf'):
+        # `oneOf`'s exactly-one semantics is lost. RAML's union is "at least
+        # one" and there is nothing nearer; doc 10 § 6.3 records the loss.
+        members = contents.get(keyword)
+        if members:
+            return _project_union(context, members, base, visiting)
+
+    declared = contents.get('type')
+    if declared is None:
+        return _kind(base, TYPE_ANY, AnyShape)
+    if isinstance(declared, list):
+        if len(declared) == 1:
+            return _project_type(context, str(declared[0]), contents, base, visiting)
+        # Each member carries only its type; the constraints stay on the union
+        # base, because a JSON Schema states them once for every member.
+        members = [_project_type(context, str(name), {}, _view_base(context), visiting) for name in declared]
+        return _kind(base, TYPE_UNION, UnionShape, any_of=members)
+    return _project_type(context, str(declared), contents, base, visiting)
+
+
+def _project_all_of(context: _Projection, members: list, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+    """Sequential inheritance, which is the nearest thing RAML has to `allOf`."""
+    merged = _project(context, members[0], visiting)
+    for member in members[1:]:
+        merged = inherit(merged, _project(context, member, visiting))
+    # The wrapper's own title, description, default and enum still apply.
+    _decorate(merged, {})
+    for field_name in ('display_name', 'description', 'default', 'enum'):
+        value = getattr(base, field_name)
+        if value is not None:
+            setattr(merged, field_name, value)
+    return merged
+
+
+def _project_union(context: _Projection, members: list, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+    return _kind(base, TYPE_UNION, UnionShape, any_of=[_project(context, member, visiting) for member in members])
+
+
+def _project_type(  # noqa: PLR0911 - one return per row of the table in docs/10 § 6.3
+    context: _Projection, declared: str, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]
+) -> BaseShape:
+    match declared:
+        case 'object':
+            return _project_object(context, contents, base, visiting)
+        case 'array':
+            return _project_array(context, contents, base, visiting)
+        case 'string':
+            shape = StringShape(base)
+            shape.min_length = _int_facet(base, contents.get('minLength'))
+            shape.max_length = _int_facet(base, contents.get('maxLength'))
+            shape.pattern = _pattern_facet(base, contents.get('pattern'))
+            return _attach(base, TYPE_STRING, shape)
+        case 'integer':
+            integer = IntegerShape(base)
+            integer.minimum = _int_facet(base, contents.get('minimum'))
+            integer.maximum = _int_facet(base, contents.get('maximum'))
+            integer.multiple_of = _fraction_facet(base, contents.get('multipleOf'))
+            return _attach(base, TYPE_INTEGER, integer)
+        case 'number':
+            number = NumberShape(base)
+            number.minimum = _fraction_facet(base, contents.get('minimum'))
+            number.maximum = _fraction_facet(base, contents.get('maximum'))
+            number.multiple_of = _fraction_facet(base, contents.get('multipleOf'))
+            return _attach(base, TYPE_NUMBER, number)
+        case 'boolean':
+            return _kind(base, TYPE_BOOLEAN, BooleanShape)
+        case 'null':
+            return _kind(base, TYPE_NIL, NilShape)
+        case _:
+            raise _unsupported(context, f'type: {declared}')
+
+
+def _project_object(context: _Projection, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+    extras = contents.get('additionalProperties')
+    if isinstance(extras, dict):
+        raise _unsupported(context, 'schema-form additionalProperties')
+
+    required = set(contents.get('required') or ())
+    properties = {
+        name: Property(name=name, base=_project(context, schema, visiting), required=name in required)
+        for name, schema in (contents.get('properties') or {}).items()
+    }
+    patterns: dict[str, PatternProperty] = {}
+    for text, schema in (contents.get('patternProperties') or {}).items():
+        compiled = _compile(context, text)
+        patterns[f'/{text}/'] = PatternProperty(pattern=compiled, base=_project(context, schema, visiting))
+
+    shape = ObjectShape(base, properties=properties or None, pattern_properties=patterns or None)
+    shape.min_properties = _int_facet(base, contents.get('minProperties'))
+    shape.max_properties = _int_facet(base, contents.get('maxProperties'))
+    if isinstance(extras, bool):
+        shape.additional_properties = ScalarFacet(value=extras, location=base.location)
+    return _attach(base, TYPE_OBJECT, shape)
+
+
+def _project_array(context: _Projection, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+    items = contents.get('items')
+    if isinstance(items, list):
+        raise _unsupported(context, 'tuple-form items')
+
+    shape = ArrayShape(base, items=None if items is None else _project(context, items, visiting))
+    shape.min_items = _int_facet(base, contents.get('minItems'))
+    shape.max_items = _int_facet(base, contents.get('maxItems'))
+    if contents.get('uniqueItems'):
+        shape.unique_items = ScalarFacet(value=True, location=base.location)
+    return _attach(base, TYPE_ARRAY, shape)
+
+
+def _decorate(base: BaseShape, contents: dict) -> BaseShape:
+    """The five annotation-ish keywords that map onto common RAML facets."""
+    title = contents.get('title')
+    if isinstance(title, str):
+        base.display_name = ScalarFacet(value=title, location=base.location)
+    description = contents.get('description')
+    if isinstance(description, str):
+        base.description = ScalarFacet(value=description, location=base.location)
+    if 'default' in contents:
+        base.default = _data(base, contents['default'])
+    enum = contents.get('enum')
+    if isinstance(enum, list):
+        base.enum = [_data(base, member) for member in enum]
+    examples = contents.get('examples')
+    if isinstance(examples, list) and examples:
+        base.examples = Examples(
+            location=base.location,
+            values={
+                str(index): Example(
+                    id=base._raml.next_id(),  # noqa: SLF001 - one counter per parse
+                    name=str(index),
+                    location=base.location,
+                    data=_data(base, value),
+                )
+                for index, value in enumerate(examples)
+            },
+        )
+    return base
+
+
+def _data(base: BaseShape, value: Any) -> DataNode:
+    return DataNode(value=value_node_of(value), location=base.location)
+
+
+def _int_facet(base: BaseShape, value: Any) -> ScalarFacet[int] | None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        return None
+    return ScalarFacet(value=value, location=base.location)
+
+
+def _fraction_facet(base: BaseShape, value: Any) -> ScalarFacet[Fraction] | None:
+    """A bound as an exact `Fraction`, never through `float`.
+
+    `json.loads` already made a `float` of `1.1`, so the conversion goes through
+    its decimal text: `Fraction(repr(v))` recovers `11/10`, while the binary
+    ratio would not divide evenly by anything the author wrote (docs/10 § 5.3).
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return ScalarFacet(
+        value=Fraction(value) if isinstance(value, int) else Fraction(repr(value)), location=base.location
+    )
+
+
+def _pattern_facet(base: BaseShape, value: Any) -> ScalarFacet[re.Pattern[str]] | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        compiled = re.compile(value)
+    except re.error:
+        # A pattern the schema library accepts under ECMA-262 semantics may not
+        # compile here. The projection is a view, so the constraint is dropped
+        # rather than the whole shape refused; `validate()` still enforces it.
+        return None
+    return ScalarFacet(value=compiled, location=base.location)
+
+
+def _compile(context: _Projection, text: str) -> re.Pattern[str]:
+    try:
+        return re.compile(text)
+    except re.error as err:
+        raise _unsupported(context, f'patternProperties: {text}') from err
+
+
+def _attach(base: BaseShape, kind: str, shape: Shape) -> BaseShape:
+    base.type = kind
+    base.shape = shape
+    return base
+
+
+def _kind(base: BaseShape, kind: str, cls: Any, **built: Any) -> BaseShape:
+    return _attach(base, kind, cls(base, **built))

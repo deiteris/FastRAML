@@ -24,7 +24,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
 from pyraml.errors import Accumulator, ErrorKind, RamlError
-from pyraml.types.base import TYPE_UNION, BaseShape, copyable_slots
+from pyraml.types.base import TYPE_JSON, TYPE_UNION, BaseShape, copyable_slots
 from pyraml.types.complex_ import (
     ArrayShape,
     ObjectShape,
@@ -32,7 +32,6 @@ from pyraml.types.complex_ import (
     UnionShape,
     UnknownShape,
 )
-from pyraml.types.jsonschema_ import JsonShape
 from pyraml.types.scalars import (
     AnyShape,
     DateTimeShape,
@@ -271,6 +270,12 @@ def _narrow(target: BaseShape, target_shape: Shape, source_shape: Shape) -> None
     rule = _RULES.get(type(target_shape))
     if rule is not None:
         rule(target, target_shape, source_shape)
+    elif target.type == TYPE_JSON:
+        # Dispatched by kind name rather than by class, because `JsonShape` sits
+        # *above* this module (docs/02 § 3) — it needs the loader and, for the
+        # § 6.3 projection, this module. The rule reads `raw` and `validator`
+        # and nothing else, so no import is needed to run it.
+        _narrow_json(target, target_shape, source_shape)
 
 
 def _bound(  # noqa: PLR0913, PLR0917 - one narrowing rule needs all six
@@ -447,7 +452,7 @@ def _narrow_union(target: BaseShape, mine: UnionShape, theirs: UnionShape) -> No
     mine.any_of = survivors
 
 
-def _narrow_json(target: BaseShape, mine: JsonShape, theirs: JsonShape) -> None:
+def _narrow_json(target: BaseShape, mine: Any, theirs: Any) -> None:
     if mine.raw and theirs.raw and mine.raw != theirs.raw:
         raise RamlError.new(
             'cannot inherit from a different JSON schema',
@@ -471,7 +476,6 @@ _RULES: dict[type, Callable[[BaseShape, Any, Any], None]] = {
     ArrayShape: _narrow_array,
     ObjectShape: _narrow_object,
     UnionShape: _narrow_union,
-    JsonShape: _narrow_json,
 }
 
 

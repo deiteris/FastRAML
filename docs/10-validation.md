@@ -201,8 +201,13 @@ An external JSON Schema becomes a `JsonShape`, in `types/jsonschema_.py`:
 
 ```python
 class JsonShape:
-    __slots__ = ("base", "raw", "validator", "_cached_shape", "_cached_defs")
+    __slots__ = ("base", "raw", "validator", "_compiled", "_cached_shape", "_cached_defs")
 ```
+
+`_compiled` is a `CompiledSchema` — the validator, the schema document and the
+`referencing` resolver rooted at it. The validator alone is enough for
+`validate()`, but § 6.3 walks the document and follows its `$ref`s, and the
+library keeps both of those behind private attributes.
 
 ### 6.1 Compilation
 
@@ -290,7 +295,7 @@ Mappings:
 |-------------|------|
 | `type: object` (+ properties, required, patternProperties, min/maxProperties, boolean `additionalProperties`) | `ObjectShape` |
 | `type: array` (+ items, min/maxItems, uniqueItems) | `ArrayShape` |
-| `type: string/integer/number/boolean/null` | corresponding scalar |
+| `type: string/integer/number/boolean/null` | corresponding scalar (+ min/maxLength, pattern, min/maximum, multipleOf) |
 | `type: [a, b]` | union of bare members |
 | `anyOf` / `oneOf` | `UnionShape` (`oneOf`'s exactly-one semantics is lost — documented) |
 | `allOf` | sequential `inherit` merge |
@@ -300,7 +305,20 @@ Mappings:
 | schema-form `additionalProperties` | error |
 | tuple-form `items` | error |
 | `false` schema | error |
+| `true` schema, or no `type` and no combinator | `AnyShape` |
+
+`title`, `description`, `default`, `enum` and `examples` map onto the common
+facets of whatever shape the row above produced. A numeric bound goes through
+`Fraction(repr(value))`, not through `float` — `json` has already made a binary
+approximation of `1.1` by the time it is read (§ 5.3).
 
 The shapes produced here are *view* objects: they are not registered in
-`Raml.shapes`, they skip the three always-empty ordered maps, and they are marked
-unwrapped. They must never be fed back into the parser's own passes.
+`Raml.shapes` or in `Raml.fragment_typedefs`, they carry no positions, and they
+are marked unwrapped. They must never be fed back into the parser's own passes —
+the model looks right until P9 tries to flatten it. (go-raml also skips three
+always-empty ordered maps here; in Python those are plain dicts and there is
+nothing to skip.)
+
+A `patternProperties` regex that this engine cannot compile is an error, because
+the key would be lost; a `pattern` on a string that it cannot compile is dropped
+instead, because the view is a view and `validate()` still enforces the schema.

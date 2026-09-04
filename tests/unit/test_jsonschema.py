@@ -14,6 +14,7 @@ network.
 from __future__ import annotations
 
 import json
+from fractions import Fraction
 from typing import ClassVar
 
 import pytest
@@ -306,3 +307,154 @@ class TestParameterDeclarations:
     def test_an_ordinary_parameter_is_untouched(self, workspace):
         body = '/r:\n  get:\n    headers:\n      H: string\n'
         assert parse(workspace, {'api.raml': API + body}) is None
+
+
+def project(workspace, schema: dict, **files: str):
+    """`as_shape()` of a type declared by `schema`."""
+    raml = parsed(workspace, {'api.raml': API + 'types:\n  T: |\n' + indent(json.dumps(schema)), **files})
+    return raml.types_in(raml.location)['T'].shape.as_shape()
+
+
+class TestProjection:
+    """Section 6.3, one test per row of its table."""
+
+    def test_an_object_carries_its_properties_and_bounds(self, workspace):
+        shape = project(
+            workspace,
+            {
+                'type': 'object',
+                'required': ['a'],
+                'properties': {'a': {'type': 'string'}, 'b': {'type': 'integer'}},
+                'minProperties': 1,
+                'maxProperties': 4,
+                'additionalProperties': False,
+            },
+        )
+        assert shape.type == 'object'
+        assert list(shape.shape.properties) == ['a', 'b']
+        assert shape.shape.properties['a'].required is True
+        assert shape.shape.properties['b'].required is False
+        assert shape.shape.min_properties.value == 1
+        assert shape.shape.max_properties.value == 4
+        assert shape.shape.additional_properties.value is False
+
+    def test_pattern_properties_become_slash_delimited_keys(self, workspace):
+        shape = project(workspace, {'type': 'object', 'patternProperties': {'^x': {'type': 'number'}}})
+        assert list(shape.shape.pattern_properties) == ['/^x/']
+
+    def test_an_array_carries_items_and_bounds(self, workspace):
+        shape = project(
+            workspace, {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1, 'maxItems': 3, 'uniqueItems': True}
+        )
+        assert shape.type == 'array'
+        assert shape.shape.items.type == 'string'
+        assert (shape.shape.min_items.value, shape.shape.max_items.value) == (1, 3)
+        assert shape.shape.unique_items.value is True
+
+    @pytest.mark.parametrize(
+        ('declared', 'expected'),
+        [('string', 'string'), ('integer', 'integer'), ('number', 'number'), ('boolean', 'boolean'), ('null', 'nil')],
+    )
+    def test_each_scalar_maps_to_its_kind(self, workspace, declared, expected):
+        assert project(workspace, {'type': declared}).type == expected
+
+    def test_scalar_constraints_carry_over(self, workspace):
+        text = project(workspace, {'type': 'string', 'minLength': 2, 'maxLength': 8, 'pattern': '^a'})
+        assert (text.shape.min_length.value, text.shape.max_length.value) == (2, 8)
+        assert text.shape.pattern.value.pattern == '^a'
+
+    def test_a_numeric_bound_never_passes_through_float(self, workspace):
+        # `1.1` decoded by `json` is a binary approximation. The bound is built
+        # from its decimal text, so it is exactly 11/10 (docs/10 § 5.3).
+        number = project(workspace, {'type': 'number', 'multipleOf': 1.1})
+        assert number.shape.multiple_of.value == Fraction(11, 10)
+
+    def test_a_type_list_becomes_a_union_of_bare_members(self, workspace):
+        shape = project(workspace, {'type': ['string', 'null']})
+        assert shape.type == 'union'
+        assert [member.type for member in shape.shape.any_of] == ['string', 'nil']
+
+    @pytest.mark.parametrize('keyword', ['anyOf', 'oneOf'])
+    def test_any_of_and_one_of_both_become_a_union(self, workspace, keyword):
+        # `oneOf` is "exactly one" and RAML's union is "at least one"; the
+        # difference is a documented loss, not an oversight.
+        shape = project(workspace, {keyword: [{'type': 'string'}, {'type': 'integer'}]})
+        assert shape.type == 'union'
+        assert [member.type for member in shape.shape.any_of] == ['string', 'integer']
+
+    def test_all_of_merges_sequentially(self, workspace):
+        shape = project(
+            workspace,
+            {
+                'allOf': [
+                    {'type': 'object', 'properties': {'a': {'type': 'string'}}},
+                    {'type': 'object', 'properties': {'b': {'type': 'integer'}}},
+                ]
+            },
+        )
+        assert shape.type == 'object'
+        assert sorted(shape.shape.properties) == ['a', 'b']
+
+    def test_a_named_ref_target_is_registered_in_the_defs(self, workspace):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API
+                + 'types:\n  T: |\n'
+                + indent(
+                    json.dumps(
+                        {
+                            'type': 'object',
+                            'properties': {'u': {'$ref': '#/definitions/User'}},
+                            'definitions': {'User': {'type': 'object', 'properties': {'n': {'type': 'string'}}}},
+                        }
+                    )
+                )
+            },
+        )
+        json_shape = raml.types_in(raml.location)['T'].shape
+        shape = json_shape.as_shape()
+        assert list(json_shape.as_shape_defs()) == ['User']
+        assert shape.shape.properties['u'].base.name == 'User'
+
+    def test_as_shape_defs_is_none_before_as_shape_runs(self, workspace):
+        raml = parsed(workspace, {'api.raml': API + 'types:\n  T: |\n' + indent(PERSON)})
+        assert raml.types_in(raml.location)['T'].shape.as_shape_defs() is None
+
+    def test_a_cyclic_ref_becomes_a_recursive_shape(self, workspace):
+        shape = project(workspace, {'type': 'object', 'properties': {'next': {'$ref': '#'}}})
+        assert shape.shape.properties['next'].base.type == 'recursive'
+        assert shape.shape.properties['next'].base.shape.head is shape
+
+    def test_the_result_is_cached(self, workspace):
+        raml = parsed(workspace, {'api.raml': API + 'types:\n  T: |\n' + indent(PERSON)})
+        json_shape = raml.types_in(raml.location)['T'].shape
+        assert json_shape.as_shape() is json_shape.as_shape()
+
+    def test_a_view_shape_is_marked_unwrapped_and_unregistered(self, workspace):
+        """They must never be fed back into the parser's own passes.
+
+        The model looks right until P9 tries to flatten it, which is exactly the
+        kind of failure that shows up far from its cause.
+        """
+        raml = parsed(workspace, {'api.raml': API + 'types:\n  T: |\n' + indent(PERSON)})
+        shape = raml.types_in(raml.location)['T'].shape.as_shape()
+        assert shape._unwrapped
+        assert shape not in raml.shapes
+        assert all(shape not in declared for declared in raml.fragment_typedefs.values())
+
+    @pytest.mark.parametrize(
+        ('schema', 'construct'),
+        [
+            ({'if': {'type': 'string'}, 'then': {'maxLength': 1}}, 'if/then/else'),
+            ({'type': 'object', 'additionalProperties': {'type': 'string'}}, 'schema-form additionalProperties'),
+            ({'type': 'array', 'items': [{'type': 'string'}]}, 'tuple-form items'),
+            ({'type': 'object', 'properties': {'p': False}}, 'false schema'),
+        ],
+        ids=['if-then-else', 'additionalProperties', 'tuple-items', 'false-schema'],
+    )
+    def test_the_four_constructs_with_no_raml_equivalent_are_errors(self, workspace, schema, construct):
+        with pytest.raises(RamlError) as caught:
+            project(workspace, schema)
+        assert 'JSON schema construct has no RAML equivalent' in messages(caught.value)
+        assert construct in str(caught.value)

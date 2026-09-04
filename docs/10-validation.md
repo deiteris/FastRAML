@@ -161,8 +161,10 @@ reject `bool` explicitly (`type(v) is bool`). A missed check here means
 1. missing required properties — reported as one message listing all of them;
 2. declared properties present in the data, **in declaration order** (so the
    first error is deterministic and matches the document);
-3. everything else in the data: if `additionalProperties: false` → error; else try
-   pattern properties in declaration order, first match validates.
+3. everything else in the data: pattern properties in declaration order, first
+   match validates. If patterns are declared and none matches → error, because
+   declaring any makes the set exhaustive ([05](05-type-model.md) § 5.1). If none
+   are declared, `additionalProperties: false` → error and `true` → accepted.
 
 ### 5.2 `uniqueItems`
 

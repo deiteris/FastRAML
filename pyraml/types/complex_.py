@@ -302,6 +302,23 @@ class ObjectShape(ComplexKind):
             if pattern.pattern.search(name) is not None:
                 pattern.base.validate_at(item, key_path(path, name))
                 return
+        if self.pattern_properties:
+            # Spec § Property Declarations, in the words of its own example:
+            # pattern properties are "restricting the property names of any
+            # additional properties", and `//` is how you "force all additional
+            # properties to be a string". So declaring any pattern makes the
+            # set of them exhaustive — a key matching none is refused whatever
+            # `additionalProperties` says (docs/05 section 5.1).
+            raise failure(
+                'property name matches no pattern property',
+                self.base.location,
+                self.base.value_pos,
+                info={
+                    'path': path,
+                    'property': name,
+                    'patterns': [pattern.pattern.pattern for pattern in self.pattern_properties.values()],
+                },
+            )
         if self.additional_properties is not None and not self.additional_properties.value:
             raise failure(
                 'additional properties are not allowed',

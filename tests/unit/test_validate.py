@@ -252,6 +252,26 @@ class TestObject:
         assert shape.validate({'n_1': 5}) is None
         assert shape.validate({'n_1': 'x'}) is not None
 
+    def test_declaring_a_pattern_makes_the_set_of_them_exhaustive(self, workspace):
+        """Spec § Property Declarations, per its own examples' comments.
+
+        `additionalProperties` defaults to true, so this reads backwards until
+        you notice that `additional-properties.raml` writes the empty pattern
+        `//` to "force all additional properties to be a string" — which is only
+        worth writing if a non-empty pattern restricts what is allowed.
+        """
+        shape = declared(workspace, '  T:\n    properties:\n      a: string\n      /^n_/: integer\n')
+        assert shape.validate({'a': 'x', 'n_1': 5}) is None
+        assert shape.validate({'a': 'x', 'z': 5}) is not None
+
+    def test_the_empty_pattern_lets_everything_through(self, workspace):
+        shape = declared(workspace, '  T:\n    properties:\n      a: string\n      //: string\n')
+        assert shape.validate({'a': 'x', 'anything': 'y'}) is None
+        assert shape.validate({'a': 'x', 'anything': 5}) is not None
+
+    def test_an_object_with_no_patterns_still_allows_extras(self, workspace):
+        assert declared(workspace, '  T:\n    properties:\n      a: string\n').validate({'a': 'x', 'z': 1}) is None
+
     def test_property_counts(self, workspace):
         shape = declared(workspace, '  T:\n    type: object\n    minProperties: 1\n    maxProperties: 2\n')
         assert shape.validate({'a': 1}) is None

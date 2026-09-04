@@ -318,6 +318,19 @@ property. Rules:
   `pattern_properties` must be an ordered mapping (free in Python).
 - `additionalProperties: false` together with pattern properties is rejected, per
   spec § Additional Properties. (JSON Schema would allow it; the spec does not.)
+- **Declaring any pattern makes the set of them exhaustive.** A key that matches
+  no declared property and no pattern is refused, whatever `additionalProperties`
+  says. The regex is matched **unanchored**, unlike the `pattern:` facet
+  ([10](10-validation.md) § 5.4) — a pattern property is matched *against* a key
+  rather than describing one, and `/^x/` is how they are written.
+
+  That is not the reading `additionalProperties: true` suggests, and the
+  reference implementation does not do it. The spec's own examples decide it, in
+  their own comments: `types-pattern-properties.raml` says pattern properties
+  are "restricting the property names of any additional properties", and
+  `additional-properties.raml` uses the empty pattern `//` to "force all
+  additional properties to be a string" — which is only a thing you would need
+  to write if the non-empty patterns restricted what is allowed.
 
 ## 6. Examples
 

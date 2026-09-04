@@ -703,6 +703,16 @@ In rough priority order:
    middleware. All are consumers of the model, not changes to it; `retain_source`
    and the `TypeExprRef`/`IncludeRef` indices exist so none of them requires a
    parser change.
+6. **Per-entity tolerance across passes**, for `parse_lenient`. Today it stops
+   where a strict parse stops and returns the partial model
+   ([13](13-public-api.md) § 1). Running the later passes anyway was built in
+   Phase 9 and measured: it turns one missing library into 41 diagnostics,
+   because P7 re-reports what P1–P3 said and P9 re-reports P7. The independent
+   diagnostics are real and worth having — a security-scheme error and an
+   unrelated bad example are not the same fault — but reaching them means P9 and
+   P10 skipping the *declarations* whose resolution failed, which is invariant I5
+   restated as a filter rather than an assertion. That is a change inside those
+   passes, not in the driver, which is why it is here and not in Phase 9.
 
 ## Risk register
 

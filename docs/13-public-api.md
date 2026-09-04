@@ -30,13 +30,58 @@ def parse_from_string(
   that wants partial results on failure uses `parse_lenient` (below).
 
 ```python
-def parse_lenient(...) -> tuple[Raml, RamlError | None]: ...
+def parse_lenient(
+    path: str | os.PathLike[str], options: ParseOptions | None = None
+) -> tuple[Raml, RamlError | None]: ...
 ```
 
 Same work, but returns the partial model alongside the accumulated error instead
 of raising. This is what an editor integration uses; it is a thin wrapper, not a
-second implementation. It lands with validation, in Phase 8: until every pass
-accumulates there is little partial model to hand back.
+second implementation. It runs the same passes in the same order and stops where
+a strict parse stops — **the model is the deliverable, not extra diagnostics.**
+The error is the one `parse_from_path` would have raised, complete for the pass
+that failed at the granularity [11](11-diagnostics.md) § 2 gives.
+
+### Why it does not continue past the failing pass
+
+It was built that way first, and measured. The passes consume each other's
+output, so a pass walking state an earlier one already reported as broken
+re-derives the same fault rather than finding a new one:
+
+| Input | strict | continuing past each failure |
+|-------|--------|------------------------------|
+| one dangling type name, unused | 1 | 2 |
+| one dangling type name, 50 dependents | 51 | 102 |
+| **a missing library used by 20 types** | **1** | **41** |
+| a library with a syntax error, 20 users | 1 | 41 |
+
+P7 re-reports what P1–P3 said, then P9 re-reports P7. Forty-one squiggles for one
+unsaved import is worse for an editor than one. The genuinely independent
+diagnostics — a security-scheme error *and* an unrelated type error — are
+recoverable, but only by skipping the broken **entities** inside P9 and P10
+rather than the passes, which is machinery those passes do not have. It is
+After-v1 item 6 in [15](15-implementation-plan.md).
+
+### What still raises
+
+Four failures, because none leaves anything to hand back: an unreadable entry
+file, a missing or unrecognised RAML header, a root that is not a mapping, and a
+fragment whose kind does not match its context.
+
+They are matched on the **head** of the error. Two reasons, and the second is not
+obvious. First, the same problem in an *included* file arrives wrapped in the
+diagnostic for the include and is a local failure — a library whose root is a
+sequence should not abandon a parse of the document that used it. Second, the
+tidier-looking test, `raml.entry_point is None`, is wrong in both directions: a
+root that is not a mapping fails *after* the fragment is registered so it would
+look recoverable, and a bad type declaration fails *before* `entry_point` is
+assigned so it would look fatal. The latter is the commonest state an editor
+sees, and `decode_fragment` registers the fragment before decoding its body
+precisely so that there is something to return.
+
+There is no string-input variant. An editor holding an unsaved buffer supplies a
+`file_loader` that shadows it (§ 2) and parses by path, which is also how the
+buffer becomes visible to `!include` from other files.
 
 ## 2. Options
 

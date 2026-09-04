@@ -29,7 +29,7 @@ from pyraml.loaders import (
 )
 from pyraml.parser.annotations import DomainExtension
 from pyraml.parser.documentation import DocumentationItem
-from pyraml.parser.entry import ParseOptions, parse_from_path, parse_from_string
+from pyraml.parser.entry import ParseOptions, parse_from_path, parse_from_string, parse_lenient
 from pyraml.parser.fragments import (
     APIFragment,
     DataTypeFragment,
@@ -94,6 +94,7 @@ __all__ = [
     'file_uri_to_path',
     'parse_from_path',
     'parse_from_string',
+    'parse_lenient',
     'path_to_file_uri',
     'resolve_uri_ref',
 ]

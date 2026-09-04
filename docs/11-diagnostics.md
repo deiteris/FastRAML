@@ -78,7 +78,17 @@ kind does not match the context.
 
 Accumulation improves more than the error messages. A broken file still yields a
 usable partial model, which is what an editor integration needs on every
-keystroke.
+keystroke — and `parse_lenient` ([13](13-public-api.md) § 1) is what hands that
+model back.
+
+**The table above is the whole of the tolerance, and deliberately so.** Tolerance
+is *within* a pass, at the granularity each pass can defend. It is not between
+passes: a pass that ran on state an earlier one reported as broken re-derives the
+same fault instead of finding a new one, and measurement puts the cost at 41
+diagnostics for one missing library ([13](13-public-api.md) § 1). So
+`parse_lenient` stops where a strict parse stops and returns the half-built model
+— which is the rule at the top of this section applied one level up: tolerate
+what is independent, stop at what invalidates the rest.
 
 ## 3. Positions everywhere
 

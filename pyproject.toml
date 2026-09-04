@@ -12,8 +12,11 @@ dependencies = [
     # Landed in Phase 8; declared now so the lockfile is stable.
     "jsonschema>=4.21",
     "referencing>=0.35",
-    # The !singularize / !pluralize template actions.
-    "inflect>=7.0",
+    # The !singularize / !pluralize template actions. A port of the same
+    # JavaScript library the reference implementation's Go port wraps, so the
+    # two agree by construction rather than by a maintained override table.
+    # See docs/08 section 7.3.
+    "pluralizer>=2.0",
 ]
 
 [project.optional-dependencies]

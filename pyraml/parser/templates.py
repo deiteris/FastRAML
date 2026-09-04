@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
-import inflect
+from pluralizer import Pluralizer
 
 from pyraml.errors import ErrorKind, RamlError
 from pyraml.yamlnode import TAG_STR, Node, NodeKind
@@ -94,18 +94,35 @@ _WORD_SPLIT: Final = re.compile(r'[ _\-]+')
 _BEFORE_CAP_UNDERSCORE: Final = re.compile(r'(?<!^)(?<!_)(?=[A-Z])')
 _BEFORE_CAP_HYPHEN: Final = re.compile(r'(?<!^)(?<!-)(?=[A-Z])')
 
-# The RAML TCK fixtures depend on these three inflecting; general pluralisers
-# treat `medium` as uncountable and have no rule for the other two (go-raml
-# trait.go carries the identical override list).
+# `!singularize` and `!pluralize` are the only two actions that need a
+# dictionary rather than a rule, and English gives no way to derive one. The
+# reference implementation uses `go-pluralize`, a port of Blake Embrey's
+# JavaScript `pluralize`; `pluralizer` is a port of that same library, so the
+# two agree by construction. Pairing a *different* pluraliser with a hand-kept
+# override table does not and cannot: doing so diverged on 298 of 758 answers
+# over go-pluralize's own irregular and uncountable tables.
+#
+# These four restore exact parity. The first three are what go-raml adds on top
+# of the library (`trait.go`); `sms` is in go-pluralize's own irregular table
+# and absent from the Python port's, which tracks an earlier release of the
+# shared JavaScript source. See docs/08 section 7.3.
 _IRREGULAR: Final[tuple[tuple[str, str], ...]] = (
     ('medium', 'media'),
     ('memorandum', 'memoranda'),
     ('vortex', 'vortices'),
+    ('sms', 'sms'),
 )
-_PLURAL_OF: Final[dict[str, str]] = dict(_IRREGULAR)
-_SINGULAR_OF: Final[dict[str, str]] = {plural: singular for singular, plural in _IRREGULAR}
 
-_INFLECT: Final = inflect.engine()
+
+def _build_pluralizer() -> Pluralizer:
+    engine = Pluralizer()
+    for singular, plural in _IRREGULAR:
+        # Registers both directions, and keeps the input's casing.
+        engine.add_irregular_rule(singular, plural)
+    return engine
+
+
+_PLURALIZER: Final = _build_pluralizer()
 
 
 def _words(value: str) -> list[str]:
@@ -148,20 +165,11 @@ def _lower_hyphen_case(value: str) -> str:
 
 
 def _singularize(value: str) -> str:
-    if not value:
-        return value
-    if value in _SINGULAR_OF:
-        return _SINGULAR_OF[value]
-    result = _INFLECT.singular_noun(value)
-    return result or value
+    return _PLURALIZER.singular(value) if value else value
 
 
 def _pluralize(value: str) -> str:
-    if not value:
-        return value
-    if value in _PLURAL_OF:
-        return _PLURAL_OF[value]
-    return _INFLECT.plural(value)
+    return _PLURALIZER.plural(value) if value else value
 
 
 #: Module-level dispatch table (docs/12-performance.md section 18): every

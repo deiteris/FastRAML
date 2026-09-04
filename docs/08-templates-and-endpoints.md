@@ -452,12 +452,30 @@ Scan for `<<`, find `>>`, split the content on `|`, strip spaces:
 | `!uppercamelcase` / `!lowercamelcase` | split on ` _-`, recase |
 | `!upperunderscorecase` / `!lowerunderscorecase` | insert `_` before internal capitals, then case |
 | `!upperhyphencase` / `!lowerhyphencase` | same with `-` |
-| `!singularize` / `!pluralize` | `inflect`, plus a fixed irregular table |
+| `!singularize` / `!pluralize` | `pluralizer`, plus four irregular rules |
 
-The irregular table exists because the go-raml TCK fixtures depend on
-`medium↔media`, `memorandum↔memoranda`, `vortex↔vortices`, which general
-pluralizers get wrong or treat as uncountable. pyRAML ships the same overrides so
-TCK results are comparable.
+Eight of the ten are rules. The other two need a **dictionary**, because English
+supplies no rule that turns `criterion` into `criteria` — so the only way to
+agree with the reference implementation is to share its dictionary, not to patch
+a different one.
+
+go-raml uses `go-pluralize`, a port of Blake Embrey's JavaScript `pluralize`.
+pyRAML uses `pluralizer`, a port of the *same* library, so the two agree by
+construction. An earlier draft of this section instead paired `inflect` with a
+three-word override table, chosen because three TCK fixtures named those three
+words. Measured against go-raml's own `applyTemplateAction` over go-pluralize's
+whole irregular and uncountable tables, that pairing was wrong on **298 of 758
+answers** — `index→indexes`, `cactus→cactuses`, `radii→radii`,
+`curriculum→curriculums` — while passing every test that named only the three
+words it had been built around.
+
+Four irregular rules are registered on top. Three are what go-raml adds
+(`trait.go`): `medium↔media`, `memorandum↔memoranda`, `vortex↔vortices`. The
+fourth, `sms↔sms`, is in go-pluralize's own irregular table and absent from the
+Python port's, which tracks an earlier release of the shared JavaScript source.
+With those four, the two implementations agree on every one of the 618 answers
+in `tests/unit/data/pluralize_parity.tsv` — a table generated from go-raml
+itself, and the test that reads it is the guard against this drifting again.
 
 `!singularize`/`!pluralize` on an empty string return the empty string.
 

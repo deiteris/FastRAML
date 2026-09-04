@@ -283,7 +283,7 @@ have. The `ParseCtx` stack already solved exactly this problem for the anchor.
 
 ---
 
-## Phase 5 — Endpoints (stage 1 and 2, no templates)
+## Phase 5 — Endpoints (stage 1 and 2, no templates) — **complete**
 
 **Prerequisites:** Phase 2 — a body, a header and a query parameter are all
 shapes, so `make_shape` and `make_body_shape` must exist. **Not** Phase 3 or 4:
@@ -311,6 +311,36 @@ and stored, not applied.
 
 **Done when:** `Resources/`, `Methods/`, `Responses/`, `MethodResponses/` TCK
 categories pass except for fixtures using traits or resource types.
+
+**Outcome.** TCK 740 → 807 of **918**, no valid fixture lost on merit. The
+denominator moved because `skip_reason` now matches the RAML header as well as
+the path: `EdgeCases/overlay-overrides-resources/valid.raml` is an Overlay filed
+outside `Overlays/`, and matching on the path alone had been running it — along
+with ten more, four of which were *passing* because an unsupported-fragment-kind
+rejection scored as a correct rejection of an `invalid-` fixture.
+
+Two fixtures turned out to be wrong in the suite rather than here, and were
+fixed there (`KNOWN-ISSUES.md` in the go-raml checkout, entries 4 and 5):
+`Annotations/target-locations/valid-response.raml` declared `allowedTargets:
+Method` while applying the annotation at a response, and the two files under
+`Fragments/namedexample-01/examples/` are `!include` targets named as though
+they were documents. [14](14-testing.md) § 1.2 now states the policy that came
+out of it: a `fail` entry means work outstanding and nothing else.
+
+Two things the plan did not say. `parser/directives.py` holds one
+`DirectiveRef` for all three of `type:`, `is:` and `securedBy:`, rather than a
+class each in the three modules [02](02-architecture.md) § 2 assigns them to —
+stage 1 needs all three, two phases before those modules exist. And doc 09 § B5
+stated the body-annotation rule too simply: `RequestBody`/`ResponseBody` is the
+*media-type* node, while a `body:` written without media-type keys is a
+`TypeDeclaration`. Both are pinned by fixtures that regress in opposite
+directions.
+
+One defect surfaced in Phase 2's code: `_decode_type_node` returned
+`TYPE_STRING` where it meant `default_type`. The two coincide for a `type:`
+written with no value, so it stayed invisible until `make_body_shape` passed a
+different default and `body: {application/json:}` came out `string` instead of
+`any`.
 
 ---
 

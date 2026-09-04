@@ -278,7 +278,24 @@ Three subtleties:
   for annotations *inside* the template body. An annotation on the template
   declaration itself records Trait/ResourceType.
 - `RequestBody` vs `ResponseBody` vs `TypeDeclaration` are distinguished by which
-  decoder creates the extension, not by inspecting the shape afterwards.
+  decoder creates the extension, not by inspecting the shape afterwards — and
+  `body:` has **two spellings**, which decide between them:
+
+  ```yaml
+  body:                     # RequestBody / ResponseBody: the media-type node
+    application/json:       #   is what the table above calls "the body node"
+      (annotation): here
+
+  body:                     # TypeDeclaration: with no media-type key the body
+    type: User[]            #   *is* the type declaration
+    (annotation): here
+  ```
+
+  The spec's table defines `RequestBody` as "the body node of a method", which
+  in the media-type spelling is the node one level down. Both readings are
+  pinned by fixtures — `Annotations/target-locations/valid-request-body.raml`
+  and `valid-response-body.raml` for the first, `Annotations/complex-01/valid.raml`
+  for the second — and getting it wrong regresses them in opposite directions.
 
 ### B6. Annotations and inheritance
 

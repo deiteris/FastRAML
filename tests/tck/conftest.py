@@ -28,6 +28,15 @@ SKIPPED_CATEGORIES: dict[str, str] = {
     'Extensions/': 'extensions are planned for v1.1 (docs/01 section 3.5)',
 }
 
+#: The same two kinds, identified by what a document *is* rather than where it
+#: sits. `EdgeCases/overlay-overrides-resources/valid.raml` is an Overlay filed
+#: outside `Overlays/`, and matching on the path alone let it through as a
+#: failure that read like missing coverage.
+SKIPPED_HEADS: dict[str, str] = {
+    '#%RAML 1.0 Overlay': SKIPPED_CATEGORIES['Overlays/'],
+    '#%RAML 1.0 Extension': SKIPPED_CATEGORIES['Extensions/'],
+}
+
 _ENV_VAR = 'PYRAML_TCK_DIR'
 _DEFAULT_RELATIVE = Path('..') / 'go-raml-main' / 'raml-tck'
 
@@ -68,10 +77,17 @@ def collect_fixtures(kind: str) -> list[Path]:
     return sorted(matches)
 
 
-def skip_reason(fixture_key: str) -> str | None:
+def skip_reason(fixture_key: str, path: Path | None = None) -> str | None:
+    """Why this fixture is skipped, by directory or by its RAML header."""
     for prefix, reason in SKIPPED_CATEGORIES.items():
         if fixture_key.startswith(prefix):
             return reason
+    if path is not None:
+        try:
+            head = path.read_text(encoding='utf-8', errors='replace').partition('\n')[0].strip()
+        except OSError:
+            return None
+        return SKIPPED_HEADS.get(head)
     return None
 
 

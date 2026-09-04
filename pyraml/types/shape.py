@@ -378,7 +378,12 @@ def _decode_type_node(
         base.link = _parse_data_type(raml, type_node, location)
         return '', None
     if type_node.tag == TAG_NULL:
-        return TYPE_STRING, None
+        # `default_type`, not `TYPE_STRING`: for a `type:` written with no value
+        # the two are the same, but a `body:` declared with nothing under it is
+        # `any` — spec section Determine Default Types, "the default type `any`
+        # is applied to any body node that does not contain properties, type, or
+        # schema".
+        return default_type, None
     if type_node.tag != TAG_STR:
         raise node_error('type must be a string', location, type_node)
 

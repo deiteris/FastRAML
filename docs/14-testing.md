@@ -81,6 +81,31 @@ The ratchet makes coverage progress verifiable rather than asserted, and it lets
 the full TCK run from the first commit instead of waiting for the parser to be
 complete.
 
+**A `fail` entry means work outstanding, and nothing else.** The list is not a
+place to park a fixture we disagree with: a disagreement is either a bug in the
+suite, which gets fixed there, or a bug here. Three cases have come up, and each
+was fixed at its cause rather than recorded:
+
+- `Annotations/target-locations/valid-response.raml` declared
+  `allowedTargets: Method` while applying the annotation under a `200:` key —
+  a copy of `valid-method.raml` with the site changed and the declaration left
+  behind. The spec's Target Locations table defines `Response` as "a declaration
+  of the responses node, whose key is an HTTP status code". **Fixed in the
+  fixture.**
+- `Fragments/namedexample-01/examples/{invalid-one-example,valid-multiple-examples}.raml`
+  are `!include` targets, not documents; the first is invalid only in the
+  context of its parent. Named by the `*valid*` convention, a name-driven
+  harness picked them up as entry points. **Renamed in the suite**, includers
+  updated.
+- `EdgeCases/overlay-overrides-resources/valid.raml` is an Overlay filed outside
+  `Overlays/`. **Fixed here**: `skip_reason` now also matches on the RAML header,
+  so an Overlay or Extension is skipped wherever it sits. That caught ten more,
+  four of which had been *passing* — an unsupported-fragment-kind rejection
+  scoring as a correct rejection of an `invalid-` fixture, which is credit for
+  the wrong reason.
+
+Skipping by header rather than by path is why the corpus is 918 rather than 930.
+
 ### 1.3 Cross-checking against go-raml
 
 A developer-only script runs `raml validate --json` from the reference

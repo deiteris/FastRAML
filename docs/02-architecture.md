@@ -99,10 +99,12 @@ pyraml/
     templates.py          variable index, substitution, transform functions (doc 08)
     traits.py             TraitDefinition / Trait reference (doc 08)
     resourcetypes.py      ResourceTypeDefinition / ResourceType reference (doc 08)
+    directives.py         DirectiveRef: the type:/is:/securedBy: reference form
     source_ir.py          stage-1 SourceEndPoint / SourceOperation (doc 08)
     structural_merge.py   spec merging algorithm + provenance overlay (doc 08)
     source_decode.py      stage-2 materialization (doc 08)
     endpoints.py          EndPoint, Operation, Request, Response, Body
+    endpoint_build.py     P4 and P6: both stages, then URI parameter propagation
     uritemplates.py       RFC 6570 L1/L2 parsing and parameter synthesis
 
   types/
@@ -135,6 +137,15 @@ exists to prevent. go-raml separates them only because Go's ANTLR runtime wants
 a visitor struct.
 
 Rules on the layout:
+
+- **The three directive references share `parser/directives.py`.** An earlier
+  draft of the list above put the `Trait` reference in `traits.py`, the
+  `ResourceType` reference in `resourcetypes.py` and the scheme reference in
+  `security.py`, each beside the *definition* it points at. But stage 1 decodes
+  all three and runs two phases before either of those modules exists, and the
+  three have one shape — a name, optional parameters, a position — differing
+  only in how the name resolves and what applying it does. One `DirectiveRef`
+  rather than three near-identical classes in three near-empty modules.
 
 - **`registry.py` imports nothing from `parser/` or `types/` at runtime**, which
   is what keeps the graph acyclic without indirection — every other module

@@ -31,14 +31,22 @@ template variables and transforms (Phase 6's) and URI template parsing
 
 Phase 8a: `types/values.py` and `types/validate.py` (P10) — `check` and
 `validate` on all seventeen kinds, examples, defaults, custom facets and
-annotation values, behind `ParseOptions(validate=True)`.
+annotation values, behind `ParseOptions(validate=True)`. Phase 5: `directives`,
+`source_ir`, `endpoints`, `source_decode`, `endpoint_build` (P4, P6) — the
+two-stage endpoint build and URI parameter propagation. Directive resolution is
+parsed and stored, not applied; that is Phase 6's.
 
-**Every pass P0–P10 now runs.** What is left is not a pass but coverage:
-endpoints and templates (Phases 5–7) give P10 more to validate, and Phase 8b
-adds JSON Schema. Everything still deferred is retained as the original `Node`
-on a `_raw_*` attribute; `grep -rn '_raw_' pyraml/` lists every seam, and a
-comment beside each names the phase that decodes it. A brief per phase lives in
+**Every pass P0–P10 now runs.** What is left is coverage, not machinery:
+templates and security (Phases 6–7) give P10 more to validate, and Phase 8b adds
+JSON Schema. Everything still deferred is retained as the original `Node` on a
+`_raw_*` attribute; `grep -rn '_raw_' pyraml/` lists every seam, and a comment
+beside each names the phase that decodes it. A brief per phase lives in
 `docs/briefs/`.
+
+**A TCK `fail` entry means work outstanding and nothing else** (`docs/14` § 1.2).
+Where a fixture is wrong, fix it in the suite — three have been, on branches in
+the go-raml checkout, alongside `KNOWN-ISSUES.md` recording what that
+implementation gets wrong. Never park a disagreement in the ratchet.
 
 ## The gate
 

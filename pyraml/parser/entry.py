@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pyraml.errors import ErrorKind, RamlError
 from pyraml.loaders import build_loader
 from pyraml.parser.annotations import resolve_domain_extensions
+from pyraml.parser.endpoint_build import build_endpoints
 from pyraml.parser.fragments import decode_fragment, identify_fragment
 from pyraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml
 from pyraml.types.resolve import resolve_shapes
@@ -128,8 +129,10 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     # happen inside decode_fragment, which owns their ordering.
     raml.entry_point = decode_fragment(raml, uri, kind, text)
 
-    # P4-P6 — endpoints, security schemes, URI parameter propagation. API only.
-    # Phases 5 to 7; the order is fixed by docs/02 section 1.
+    # P4 — build endpoints from the API's resources, in two stages, and P6 —
+    # propagate URI parameters down the tree. API only; a Library has none.
+    # P5, applying security schemes, is Phase 7's and sits between them.
+    build_endpoints(raml)
 
     # P7 — drain the unknown worklist: every declaration whose kind the document
     # alone could not settle now gets one. After this, invariant I5 holds.

@@ -70,7 +70,7 @@ def _run_fixture(path: Path, root: Path, *, expect_error: bool) -> str:
     """
     from pyraml import ParseOptions, RamlError, parse_from_path
 
-    key = skip_reason(fixture_id(root, path))
+    key = skip_reason(fixture_id(root, path), path)
     if key is not None:
         pytest.skip(key)
 
@@ -132,6 +132,17 @@ class TestDiscovery:
     def test_skip_list_matches_by_category_prefix(self):
         assert skip_reason('Overlays/basic/valid.raml') is not None
         assert skip_reason('Types/array-types/valid.raml') is None
+
+    def test_an_overlay_outside_its_category_is_skipped_by_its_header(self, tmp_path):
+        # `EdgeCases/overlay-overrides-resources/valid.raml` is an Overlay filed
+        # elsewhere. Matching on the path alone read it as missing coverage.
+        overlay = tmp_path / 'valid.raml'
+        overlay.write_text('#%RAML 1.0 Overlay\ntitle: T\nextends: base.raml\n', encoding='utf-8')
+        assert skip_reason('EdgeCases/somewhere/valid.raml', overlay) is not None
+
+        api = tmp_path / 'api.raml'
+        api.write_text('#%RAML 1.0\ntitle: T\n', encoding='utf-8')
+        assert skip_reason('EdgeCases/somewhere/api.raml', api) is None
 
 
 class TestRatchetFile:

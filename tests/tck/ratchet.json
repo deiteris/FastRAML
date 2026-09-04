@@ -15,7 +15,7 @@
     "Annotations/complex-08/valid-annotation-lib.raml": "pass",
     "Annotations/complex-10/invalid-wrong-type.raml": "pass",
     "Annotations/complex-10/valid-lib-annotation.raml": "pass",
-    "Annotations/complex-11/invalid-multiple-annots.raml": "fail",
+    "Annotations/complex-11/invalid-multiple-annots.raml": "pass",
     "Annotations/complex-11/valid-multiple-annots.raml": "pass",
     "Annotations/other-02/invalid-prop-type.raml": "pass",
     "Annotations/other-02/valid-prop-type.raml": "pass",

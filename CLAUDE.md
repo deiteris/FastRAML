@@ -14,8 +14,8 @@ that area has already settled.
    dependencies, not by importance: the type system precedes endpoints, the merge
    precedes templates, validation comes last.
 
-**Current state: Phases 0 to 8c complete; Phase 9 (hardening and release) is
-next.** Phase 0: positions, errors, uris, loaders, yamlnode. Phase 1:
+**Current state: Phases 0 to 9 complete. The plan is done; what remains is the
+After-v1 list in `docs/15`.** Phase 0: positions, errors, uris, loaders, yamlnode. Phase 1:
 registry, fragments, includes, namespaces, datanode, facets, references,
 annotations, the entry points and the pass driver (P0–P3).
 Phase 2: the whole `types/` package — `BaseShape`, the seventeen kinds,
@@ -51,9 +51,16 @@ Phase 8c: facets written beside `type: A | B`, distributed to the members at P9
 **Every pass P0–P10 runs, every RAML construct is decoded, and the TCK stands at
 916 of 916** — every fixture outside the skip list does what its name promises.
 No `_raw_*` attribute is a deferred seam any more; the two that remain are
-working buffers within a single decode. What is left is Phase 9: benchmarks,
-depth guards, `re2`, `parse_lenient`, the CLI and the public-API export list. A
-brief per phase lives in `docs/briefs/`.
+working buffers within a single decode. Phase 9 added the `bench/` suite and its
+baselines, one recursion ceiling in place of three, `re2` over every regex the
+parser compiles, `parse_lenient`, the `pyraml` CLI and the widened export list. A
+brief per phase lives in `docs/briefs/`, each with a section at its top recording
+what it got wrong.
+
+**Benchmarks are a gate, not a report.** `python -m bench compare` before and
+after anything that touches a hot path; the commit message carries the delta
+(`docs/12` Part 4). Linearity is asserted in CI, absolute time is not — it is a
+property of the machine.
 
 **A TCK `fail` entry means work outstanding and nothing else** (`docs/14` § 1.2).
 Where a fixture is wrong, fix it in the suite — three have been, on branches in

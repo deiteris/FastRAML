@@ -681,6 +681,42 @@ peak RSS under 400 MB; `mypy --strict` clean; the deviation list in
 [01](01-scope-and-coverage.md) § 4 matches reality; the skip list contains only
 Overlays, Extensions and XSD.
 
+**Outcome — complete.** Every criterion met except the last clause, which was
+wrong when written and is amended rather than met: the skip list also holds the
+two fixtures that `!include` a gist, skipped as suite policy since Phase 6.
+
+Measured: linearity **1.040** (+4.0 %) against a half-size corpus; `bench_large`
+**353 ms** and **98 MB** peak RSS, against go-raml's published ~280 ms on a
+corpus of the same size and a 400 MB ceiling. The full table is in
+[12](12-performance.md) Part 4.
+
+Four things the phase found that the plan did not anticipate:
+
+1. **The JSON Schema walk had no depth guard at all** — the brief said it had
+   one with its own constant. A 200-level schema exhausted CPython's stack inside
+   the schema library's own meta-schema validation and surfaced as a raw
+   `RecursionError`, which [12](12-performance.md) § 14 forbids outright. Fixing
+   it is what turned "reconcile three ceilings" from tidying into a bug fix.
+2. **`parse_lenient` cannot continue past the failing pass.** Built that way
+   first and measured: one missing library used by twenty types produced 41
+   diagnostics instead of one, because each pass re-derives the fault the
+   previous one reported. It now stops where a strict parse stops and returns the
+   partial model, which is what [13](13-public-api.md) § 1 described all along.
+   The recoverable part is After-v1 item 6.
+3. **Deviation D1 was documented and never implemented.** `!include x.xsd` was
+   rejected — by the header check, as `unknown fragment kind: head: <?xml
+   version="1.0"?>`. True, useless, and pointing the author at the wrong thing.
+   D1 also claimed to match go-raml, which has no XSD handling at all.
+4. **`pyproject.toml` had declared the `pyraml` console script since Phase 0**,
+   pointing at a module that did not exist. Installing the package gave an
+   `ImportError`.
+
+The export list was widened to what a consumer narrows against or walks, and no
+further; the reasoning and what was deliberately left out are in
+[13](13-public-api.md) § 4. The API is stated as unstable before 1.0 rather than
+frozen — there is no consumer yet to tell us which of the remaining names anyone
+needs.
+
 ---
 
 ## After v1

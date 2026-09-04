@@ -6,7 +6,7 @@ Five layers, each answering a question the others cannot.
 |-------|----------|------|
 | Unit | does this function do what the doc says? | many, fast |
 | Golden | does the whole model come out right for this input? | ~100 |
-| TCK | do we agree with the spec's own compliance kit? | 967 fixtures |
+| TCK | do we agree with the spec's own compliance kit? | 965 fixtures |
 | Property | do the algebraic laws hold on generated input? | ~10 properties |
 | Benchmark | is it linear, and how fast? | 5 benches |
 
@@ -23,21 +23,26 @@ pyRAML runs against **that same copy** rather than a second one, so a
 disagreement between the two parsers is always a pyRAML bug or a documented
 deviation, never a fixture difference. The harness locates it through
 `PYRAML_TCK_DIR`, falling back to a sibling go-raml checkout; when neither is
-present the TCK tests skip. Vendoring is deferred to Phase 9, when the
-repository needs to build without a sibling checkout.
+present the TCK tests skip.
+
+**Vendoring is still deferred**, and no longer to a phase. It was pencilled in
+for Phase 9 as an engineering task; it is a licensing one, and this repository's
+own licence is undecided. It stays out until both are settled.
 
 Convention (from its README):
 
 - `*valid*.raml` → must parse, unwrap and validate without error;
 - `*invalid*.raml` → must produce at least one error.
 
-Current inventory: **496 valid** and **471 invalid** fixtures, 967 in total,
-across Annotations, EdgeCases, Examples, Fragments, Libraries, MethodResponses,
-Methods, Overlays, Resources, ResourceTypes, Responses, Root, SecuritySchemes,
-TemplateFunctions, Types and spec-examples.
+Current inventory, counted at the end of Phase 9: **495 valid** and **470
+invalid** fixtures, 965 in total, out of 1172 `.raml` files — the remainder are
+includes and libraries rather than entry points. They span Annotations,
+EdgeCases, Examples, Fragments, Libraries, MethodResponses, Methods, Overlays,
+Resources, ResourceTypes, Responses, Root, SecuritySchemes, TemplateFunctions,
+Types and spec-examples.
 
 Note when counting these yourself: `invalid` contains `valid` as a substring, so
-a `*valid*` glob returns all 967. The harness filters the negative fixtures out
+a `*valid*` glob returns all 965. The harness filters the negative fixtures out
 of the positive set, and a test asserts the two sets do not overlap.
 
 ### 1.1 Harness
@@ -105,17 +110,24 @@ was fixed at its cause rather than recorded:
   scoring as a correct rejection of an `invalid-` fixture, which is credit for
   the wrong reason.
 
-Skipping by header rather than by path is why the corpus is 918 rather than 930.
+Skipping by header rather than by path is why the ratchet holds 916 of the 965,
+with 49 skipped.
 
 ### 1.3 Cross-checking against go-raml
 
-A developer-only script runs `raml validate --json` from the reference
-implementation and `pyraml validate --json` over the same fixture, then diffs the
-trace chains. Each disagreement is triaged as a pyRAML bug, a go-raml bug, or a
-documented deviation ([01](01-scope-and-coverage.md) § 4).
+**Not built.** The design is: a developer-only script runs `raml validate
+--json` from the reference implementation and `pyraml validate --json` over the
+same fixture, then diffs the trace chains, and each disagreement is triaged as a
+pyRAML bug, a go-raml bug, or a documented deviation
+([01](01-scope-and-coverage.md) § 4). It needs a Go toolchain, so it would not
+run in CI.
 
-The script needs a Go toolchain, so it does not run in CI. It is the fastest way
-to diagnose a TCK failure.
+It was meant to be the fastest way to diagnose a TCK failure, and there are none
+— the ratchet is 916 of 916. Every disagreement that did arise was settled by
+running go-raml directly against a throwaway Go test, which is what
+`CLAUDE.md` prescribes and which needs no script. The half that was missing,
+`pyraml validate --json`, exists as of Phase 9, so this is a short job whenever a
+regression makes it worth doing.
 
 ### 1.4 Differential conformance: the YAML 1.2 oracle
 
@@ -214,6 +226,11 @@ because they encode decisions rather than behaviour:
 | `inherit` | one test per row of the table in doc 07 § 3.5, both directions |
 | `validate` | `bool` rejected as `integer`; `Fraction` exactness for `multipleOf: 1.1`; `uniqueItems` at n=20 and n=21 |
 | `depth_guard` | one option raises all four ceilings; each guard's own message key; a deep type graph needs a *flat* document to be reachable at all; a `$ref` to a deep schema; 300 references are not 300 levels |
+| `regex_engine` | `re2` is selected and used for facets, pattern properties and the § 6.3 projection; a backreference is accepted by `re` and refused by `re2`; validation *inside* a JSON Schema is not covered |
+| `lenient` | the error equals a strict parse's, chain for chain; a decode-time failure still yields an entry point; the same failure in an included file is not fatal |
+| `cli` | exit codes; diagnostics on stderr and nothing else there under `--json`; every file reported, not only the first; the reference trace shape survives |
+| `deviations` | one class per D in doc 01 § 4 that has no more natural home — the `.xsd` message, the two numeric-format tables being disjoint, the 64 KiB default, declaration order |
+| `public_api` | every name in `__all__` resolves; no concrete kind is missing from it; the docstring claims no phase |
 | `errors` | wrap/append composition; `to_dict()` shape matches the reference's |
 
 ## 4. Property-based tests

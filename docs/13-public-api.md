@@ -177,10 +177,30 @@ six ([09](09-security-and-annotations.md) § A2).
 **I/O** — `ResourceLoader`, `FileLoader`, `SafeFileLoader`, `HTTPLoader`,
 `SchemeLoader`.
 
-**Not all of these are re-exported from `pyraml` yet.** The top-level `__all__`
-currently carries the entry points, the options, the errors, the loaders and the
-fragment classes; everything else is reached through its own module. Widening it
-is Phase 9's, with the rest of the public-API work.
+**What `pyraml` re-exports, and what it does not.** Phase 9 widened `__all__`
+from 45 names to 70 — the entry points, options, errors, loaders and fragments as
+before, plus everything a consumer **narrows against or walks**: all seventeen
+concrete shapes, `BaseShape`, `Property`, `PatternProperty`, and
+`EndPoint`/`Operation`/`Request`/`Response`/`Body`. `isinstance` narrowing is
+what § 6 tells a caller to do, and needing `from pyraml.types.complex_ import
+ObjectShape` to do it — a module named with a trailing underscore precisely
+because it is internal — was a poor advertisement for a supported API.
+
+The rest stay in their own modules **on purpose, not by omission**:
+`TypeExprRef`, `DirectiveRef`, `SecurityScheme`, `DomainLocation`, the three
+template and security *definition* classes, `Example`/`Examples`,
+`XmlSerialization`, and the JSON Schema registry. No consumer exists yet — the
+LSP server and the converters are After-v1 item 5 in
+[15](15-implementation-plan.md) — and they are what will say which of these a
+caller actually reaches for. Exporting them today is a guess, and an exported
+name is one you have to keep.
+
+**The surface is not stable before 1.0.** That is stated in the package
+docstring and the README rather than left to be inferred from the version, and
+it is what makes the paragraph above a working decision rather than a promise.
+`tests/unit/test_public_api.py` pins the two properties that would be defects at
+any version: every name in `__all__` resolves, and no concrete kind is missing
+from it.
 
 ## 5. Data validation
 

@@ -159,9 +159,20 @@ docs and, where user-visible, in the error message.
 
 ### D1 — No XSD
 
-`!include x.xsd` fails with `xml schema external types are not supported`. Users
-pre-convert to JSON Schema or RAML types. Rationale: a conformant XSD validator is
-a project of comparable size to this parser.
+`!include x.xsd` where a type or fragment is expected fails with
+`xml schema external types are not supported`. Users pre-convert to JSON Schema
+or RAML types. Rationale: a conformant XSD validator is a project of comparable
+size to this parser.
+
+Two corrections from the Phase 9 reconciliation. This section used to say
+"matching go-raml"; **go-raml has no XSD handling at all** and the TCK ships no
+`.xsd` fixture, so there was nothing to match — the message is pyRAML's own.
+And until Phase 9 there was no such message: the file reached the header check
+and produced `unknown fragment kind: head: <?xml version="1.0"?>`, which is true,
+useless, and points the author at the wrong thing to fix.
+
+Only `.xsd` is rejected. `!include foo.xml` at a value position is an ordinary
+non-YAML scalar include and may perfectly well be an example.
 
 ### D2 — Numeric formats are not cross-compatible
 

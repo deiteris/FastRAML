@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pyraml.errors import ErrorKind, RamlError
 from pyraml.loaders import build_loader
@@ -26,7 +26,7 @@ from pyraml.types.resolve import resolve_shapes
 from pyraml.types.unwrap import unwrap_shapes
 from pyraml.types.validate import check_declared_discriminators, validate_shapes
 from pyraml.uris import path_to_file_uri
-from pyraml.yamlnode import decode_source, read_head
+from pyraml.yamlnode import DEFAULT_MAX_DEPTH, decode_source, read_head
 
 if TYPE_CHECKING:
     from pyraml.loaders import ResourceLoader
@@ -35,6 +35,7 @@ __all__ = [
     'ParseOptions',
     'parse_from_path',
     'parse_from_string',
+    'parse_lenient',
 ]
 
 
@@ -58,7 +59,11 @@ class ParseOptions:
     #: Supply a client to enable `http(s)` includes; without one they are refused.
     http_client: Any | None = None
     regex_engine: Literal['re', 're2'] = 're'
-    max_type_depth: int = 200
+    #: One ceiling for every recursive descent bounded only by the input — the
+    #: document conversion in P0, unwrap and recursion-marking in P9, the walks
+    #: in P10, and the JSON Schema walks. They defend the same C stack, so one
+    #: number governs them all (docs/12-performance.md section 14).
+    max_depth: int = DEFAULT_MAX_DEPTH
 
 
 _DEFAULT_OPTIONS = ParseOptions()
@@ -72,6 +77,11 @@ def parse_from_path(path: str | os.PathLike[str], options: ParseOptions | None =
     and the base for RAML-absolute includes.
     """
     options = options or _DEFAULT_OPTIONS
+    return _parse(*_open(path, options), options)
+
+
+def _open(path: str | os.PathLike[str], options: ParseOptions) -> tuple[Raml, str, str]:
+    """Build the registry and read the entry file. Raises in both modes."""
     entry = Path(path)
     if not entry.is_absolute():
         entry = Path.cwd() / entry
@@ -82,7 +92,7 @@ def parse_from_path(path: str | os.PathLike[str], options: ParseOptions | None =
         text = decode_source(raml.loader.load(uri))
     except OSError as err:
         raise RamlError.wrap('load resource', err, uri, kind=ErrorKind.READING) from err
-    return _parse(raml, uri, text, options)
+    return raml, uri, text
 
 
 def parse_from_string(
@@ -114,7 +124,78 @@ def _new_registry(options: ParseOptions, *, default_root: str) -> Raml:
         max_include_size=options.max_include_size,
         retain_source=options.retain_source,
         regex_engine=options.regex_engine,
+        max_depth=options.max_depth,
     )
+
+
+def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = None) -> tuple[Raml, RamlError | None]:
+    """Parse `path`, returning the partial model **and** the error, never raising.
+
+    What an editor integration wants: a document with a mistake in it should
+    still yield the fragments, the endpoints, the types that were fine and their
+    positions, so that completion and go-to-definition keep working while the
+    author is mid-edit.
+
+    A thin wrapper. It runs the same passes in the same order and stops where a
+    strict parse stops; the difference is that it hands back the half-built
+    `Raml` instead of dropping it. Every pass already accumulates internally, so
+    the error returned is the same one `parse_from_path` would have raised —
+    complete for the pass that failed, at the granularity docs/11 § 2 gives.
+
+    **Continuing past the failing pass was tried, measured, and rejected.** The
+    passes consume each other's output, so a later pass walking state an earlier
+    one reported as broken re-derives the same fault instead of finding a new
+    one. Measured: a missing library used by twenty types goes from **1
+    diagnostic to 41**, and a single dangling type name doubles, because P7
+    re-reports what P1-P3 said and P9 re-reports P7. Recovering the genuinely
+    independent diagnostics means skipping the *entities* known to be broken
+    rather than the passes, which is real machinery inside P9 and P10; it is
+    recorded as an After-v1 item in docs/15 rather than approximated here.
+
+    Four failures still raise, because none of them leaves anything to hand back
+    (`_FATAL`, and docs/13-public-api.md § 1): an unreadable entry file, a
+    missing or unrecognised RAML header, a root that is not a mapping, and a
+    fragment whose kind does not match its context.
+    """
+    options = options or _DEFAULT_OPTIONS
+    raml, uri, text = _open(path, options)
+    try:
+        _parse(raml, uri, text, options)
+    except RamlError as err:
+        if err.head.message in _FATAL:
+            raise
+        # P1-P3 failing leaves `entry_point` unassigned, but `decode_fragment`
+        # registers the fragment before decoding its body — so a document whose
+        # `uses:` or whose type declarations failed still has a partial one to
+        # hand back, which is the commonest state an editor sees.
+        if raml.entry_point is None:
+            raml.entry_point = raml.get_fragment(uri)
+        return raml, err
+    return raml, None
+
+
+#: The failures `parse_lenient` re-raises. Each leaves either no model at all or
+#: an empty shell that would misrepresent the file more than an exception does.
+#:
+#: Matched on the **head** of the error, which is where all four are raised. The
+#: same problem in an *included* file arrives wrapped in the trace for the
+#: include, and is a local failure: a library whose root is a sequence should not
+#: abandon a parse of the document that used it.
+#:
+#: A `raml.entry_point is None` test would be tidier and is wrong. A root that is
+#: not a mapping fails *after* the fragment is registered, so it would look
+#: recoverable; a bad type declaration fails *before* `entry_point` is assigned,
+#: so it would look fatal. The two need telling apart and only the message does
+#: it.
+_FATAL: Final = frozenset(
+    {
+        'load resource',  # the entry file could not be read
+        'unknown fragment kind',  # no RAML header, or one nothing recognises
+        'fragment kind not supported',  # Overlay and Extension, until v1.1
+        'unexpected fragment kind',  # the header contradicts the context
+        'must be map',  # the root is not a mapping
+    }
+)
 
 
 def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
@@ -128,6 +209,12 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
 
     # P1 to P3 — compose, decode, and resolve `uses:` recursively. All three
     # happen inside decode_fragment, which owns their ordering.
+    #
+    # Assigned in two steps rather than one so that a lenient caller gets the
+    # partial fragment: `decode_fragment` registers it before decoding its body,
+    # so a failure inside the body still leaves something worth reading. A root
+    # that is not a mapping fails *before* the registration, which is what makes
+    # `entry_point is None` the test for "nothing to hand back".
     raml.entry_point = decode_fragment(raml, uri, kind, text)
 
     # P4 — build endpoints from the API's resources, in two stages, and P6 —
@@ -160,11 +247,11 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     # P9 — flatten every inheritance chain, then mark the cycles. Opt-in: the
     # un-flattened model is what a formatter or a doc generator wants.
     if options.unwrap:
-        unwrap_shapes(raml, max_depth=options.max_type_depth)
+        unwrap_shapes(raml)
 
     # P10 — check every declaration and validate every example, default,
     # custom facet and annotation value. Opt-in; when P9 did not run, each
     # declaration is validated against a private unwrapped copy of itself.
     if options.validate:
-        validate_shapes(raml, max_depth=options.max_type_depth)
+        validate_shapes(raml)
     return raml

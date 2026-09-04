@@ -30,13 +30,58 @@ def parse_from_string(
   that wants partial results on failure uses `parse_lenient` (below).
 
 ```python
-def parse_lenient(...) -> tuple[Raml, RamlError | None]: ...
+def parse_lenient(
+    path: str | os.PathLike[str], options: ParseOptions | None = None
+) -> tuple[Raml, RamlError | None]: ...
 ```
 
 Same work, but returns the partial model alongside the accumulated error instead
 of raising. This is what an editor integration uses; it is a thin wrapper, not a
-second implementation. It lands with validation, in Phase 8: until every pass
-accumulates there is little partial model to hand back.
+second implementation. It runs the same passes in the same order and stops where
+a strict parse stops — **the model is the deliverable, not extra diagnostics.**
+The error is the one `parse_from_path` would have raised, complete for the pass
+that failed at the granularity [11](11-diagnostics.md) § 2 gives.
+
+### Why it does not continue past the failing pass
+
+It was built that way first, and measured. The passes consume each other's
+output, so a pass walking state an earlier one already reported as broken
+re-derives the same fault rather than finding a new one:
+
+| Input | strict | continuing past each failure |
+|-------|--------|------------------------------|
+| one dangling type name, unused | 1 | 2 |
+| one dangling type name, 50 dependents | 51 | 102 |
+| **a missing library used by 20 types** | **1** | **41** |
+| a library with a syntax error, 20 users | 1 | 41 |
+
+P7 re-reports what P1–P3 said, then P9 re-reports P7. Forty-one squiggles for one
+unsaved import is worse for an editor than one. The genuinely independent
+diagnostics — a security-scheme error *and* an unrelated type error — are
+recoverable, but only by skipping the broken **entities** inside P9 and P10
+rather than the passes, which is machinery those passes do not have. It is
+After-v1 item 6 in [15](15-implementation-plan.md).
+
+### What still raises
+
+Four failures, because none leaves anything to hand back: an unreadable entry
+file, a missing or unrecognised RAML header, a root that is not a mapping, and a
+fragment whose kind does not match its context.
+
+They are matched on the **head** of the error. Two reasons, and the second is not
+obvious. First, the same problem in an *included* file arrives wrapped in the
+diagnostic for the include and is a local failure — a library whose root is a
+sequence should not abandon a parse of the document that used it. Second, the
+tidier-looking test, `raml.entry_point is None`, is wrong in both directions: a
+root that is not a mapping fails *after* the fragment is registered so it would
+look recoverable, and a bad type declaration fails *before* `entry_point` is
+assigned so it would look fatal. The latter is the commonest state an editor
+sees, and `decode_fragment` registers the fragment before decoding its body
+precisely so that there is something to return.
+
+There is no string-input variant. An editor holding an unsaved buffer supplies a
+`file_loader` that shadows it (§ 2) and parses by path, which is also how the
+buffer becomes visible to `!include` from other files.
 
 ## 2. Options
 
@@ -51,7 +96,7 @@ class ParseOptions:
     file_loader: ResourceLoader | None = None
     http_client: Any | None = None  # enables http(s) includes
     regex_engine: Literal["re", "re2"] = "re"
-    max_type_depth: int = 200
+    max_depth: int = 200
 ```
 
 | Option | Effect |
@@ -63,8 +108,8 @@ class ParseOptions:
 | `max_include_size` | per-file cap for `!include` targets. |
 | `file_loader` | replace the `file://` loader (e.g. to shadow unsaved buffers). **Disables the built-in sandbox** — see [03](03-yaml-and-io.md) § 5. |
 | `http_client` | supply a client to enable remote includes. Absent ⇒ `http(s)` URIs are rejected. |
-| `regex_engine` | `"re"` (default, ECMA-ish, backtracking) or `"re2"` (linear time; requires `google-re2`). Use `"re2"` for untrusted input. |
-| `max_type_depth` | guard against pathological nesting ([12](12-performance.md) § 14). |
+| `regex_engine` | `"re"` (default, ECMA-ish, backtracking) or `"re2"` (linear time; requires `google-re2`). Use `"re2"` for untrusted input — noting that it covers every regex pyRAML compiles but **not** the ones executed inside an external JSON Schema ([01](01-scope-and-coverage.md) D3). |
+| `max_depth` | one ceiling for **every** recursive descent bounded only by the input — document conversion, unwrap, recursion-marking and the JSON Schema walks. They defend the same C stack ([12](12-performance.md) § 14). |
 
 **Recommendation, stated in the docstring:** pass `unwrap=True, validate=True`
 together unless you specifically need to inspect un-flattened declarations.
@@ -132,10 +177,30 @@ six ([09](09-security-and-annotations.md) § A2).
 **I/O** — `ResourceLoader`, `FileLoader`, `SafeFileLoader`, `HTTPLoader`,
 `SchemeLoader`.
 
-**Not all of these are re-exported from `pyraml` yet.** The top-level `__all__`
-currently carries the entry points, the options, the errors, the loaders and the
-fragment classes; everything else is reached through its own module. Widening it
-is Phase 9's, with the rest of the public-API work.
+**What `pyraml` re-exports, and what it does not.** Phase 9 widened `__all__`
+from 45 names to 70 — the entry points, options, errors, loaders and fragments as
+before, plus everything a consumer **narrows against or walks**: all seventeen
+concrete shapes, `BaseShape`, `Property`, `PatternProperty`, and
+`EndPoint`/`Operation`/`Request`/`Response`/`Body`. `isinstance` narrowing is
+what § 6 tells a caller to do, and needing `from pyraml.types.complex_ import
+ObjectShape` to do it — a module named with a trailing underscore precisely
+because it is internal — was a poor advertisement for a supported API.
+
+The rest stay in their own modules **on purpose, not by omission**:
+`TypeExprRef`, `DirectiveRef`, `SecurityScheme`, `DomainLocation`, the three
+template and security *definition* classes, `Example`/`Examples`,
+`XmlSerialization`, and the JSON Schema registry. No consumer exists yet — the
+LSP server and the converters are After-v1 item 5 in
+[15](15-implementation-plan.md) — and they are what will say which of these a
+caller actually reaches for. Exporting them today is a guess, and an exported
+name is one you have to keep.
+
+**The surface is not stable before 1.0.** That is stated in the package
+docstring and the README rather than left to be inferred from the version, and
+it is what makes the paragraph above a working decision rather than a promise.
+`tests/unit/test_public_api.py` pins the two properties that would be defects at
+any version: every name in `__all__` resolves, and no concrete kind is missing
+from it.
 
 ## 5. Data validation
 
@@ -208,13 +273,41 @@ Each has caused problems for users of the reference implementation.
 
 ## 8. CLI
 
-A thin console script, mirroring the reference tool:
+A thin console script, mirroring the reference tool. Presentation only: no
+parsing rule lives in `pyraml/cli.py`.
 
 ```
-pyraml validate [-w ROOT] [-r] [-v] FILE [FILE ...]
-pyraml info FILE                      # backend, timings, counts
+pyraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
+pyraml info [-w ROOT] [-r] FILE       # backend, timings, counts
 ```
 
-`validate` exits non-zero on the first invalid file and prints the rendered trace
-chains; `-r` enables remote includes; `-w` sets the workspace root; `-v` repeats
-for verbosity. `--json` emits `err.to_dict()` for machine consumption.
+Both parse with `unwrap=True, validate=True`: the CLI's job is to find faults.
+
+- `-w ROOT` sets the workspace root; `--no-workspace-guard` disables the sandbox
+  entirely, as go-raml's flag of the same name does.
+- `-r` enables remote includes. It builds a client from `httpx` or `requests`,
+  whichever is installed — pyRAML depends on neither ([03](03-yaml-and-io.md)
+  § 5), so the CLI is where one has to be produced, and where a user who asks
+  for `-r` without either gets told so.
+- `-v` reports each file and its timing on stdout; `-vv` adds the backend and
+  the model counts.
+- Diagnostics go to **stderr**, everything else to stdout, so `-v` stays
+  pipeable. A valid file with no `-v` prints nothing at all.
+
+**It validates every file and exits 1 at the end**, rather than stopping at the
+first failure — matching `raml validate`, and because the case the tool exists
+for is running it over a directory in CI. An earlier draft of this section said
+"exits non-zero on the first invalid file"; that would have made it useless for
+exactly that.
+
+`--json` emits **one JSON object per file**, JSON Lines:
+
+```json
+{"path": "api.raml", "valid": false, "error": {"traces": [{"stack": [...]}]}}
+```
+
+`error` is `RamlError.to_dict()` or `null`. The wrapper is what `to_dict()` alone
+cannot express — which file, and whether it was valid at all — and the `traces`
+value inside it keeps the reference implementation's shape so the cross-check
+script can diff the two fixture by fixture ([14](14-testing.md) § 1.3). Nothing
+is written to stderr in this mode.

@@ -74,6 +74,7 @@ Two orderings are required for correctness:
 ```
 pyraml/
   __init__.py             public API re-exports (see doc 13)
+  cli.py                  the `pyraml` console script (doc 13 section 8)
   py.typed
 
   errors.py               Diagnostic, StackTrace, Accumulator, ErrorKind
@@ -88,7 +89,7 @@ pyraml/
   registry.py             Raml — the central store, caches, id counter, ParseCtx stack
 
   parser/
-    entry.py              parse_from_path/parse_from_string; the P0–P10 driver
+    entry.py              parse_from_path/parse_from_string/parse_lenient; the P0–P10 driver
     includes.py           !include resolution, node cache, size limit
     fragments.py          all fragment classes and their decoders (doc 04)
     references.py         resolve_reference / resolve_library_reference (doc 04)
@@ -327,6 +328,7 @@ class Raml:
         "loader",  # ResourceLoader
         "workspace_root_uri",  # str, file:// URI of the sandbox root
         "max_include_size",  # int, 0 = unlimited
+        "max_depth",  # int, the one recursion ceiling (docs/12 section 14)
         "retain_source",  # bool, keep raw node trees + entity index
         "regex_engine",  # "re" | "re2"
         # --- caches (the reason this class exists) -------------------------

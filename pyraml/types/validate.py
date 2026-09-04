@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
-from pyraml.types.unwrap import DEFAULT_MAX_DEPTH, mark_recursions, unwrap_shape
+from pyraml.types.unwrap import mark_recursions, unwrap_shape
 from pyraml.types.values import failure
 
 if TYPE_CHECKING:
@@ -120,7 +120,7 @@ def _check_declared(base: BaseShape, named: set[int], acc: Accumulator, seen: se
             _check_declared(member, named, acc, seen)
 
 
-def validate_shapes(raml: Raml, *, max_depth: int = DEFAULT_MAX_DEPTH) -> None:
+def validate_shapes(raml: Raml) -> None:
     """Check every declaration, then every annotation application.
 
     One accumulator across both halves: a document with a bad example and an
@@ -128,17 +128,17 @@ def validate_shapes(raml: Raml, *, max_depth: int = DEFAULT_MAX_DEPTH) -> None:
     """
     cache: dict[int, BaseShape] = {}
     accumulator = Accumulator()
-    _validate_types(raml, cache, accumulator, max_depth)
-    _validate_domain_extensions(raml, cache, accumulator, max_depth)
+    _validate_types(raml, cache, accumulator)
+    _validate_domain_extensions(raml, cache, accumulator)
     accumulator.raise_if_any()
 
 
-def _validate_types(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator, max_depth: int) -> None:
-    known = _discriminator_values(raml, cache, max_depth)
+def _validate_types(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator) -> None:
+    known = _discriminator_values(raml, cache)
     for location, shapes in raml.fragment_typedefs.items():
         for base in shapes:
             try:
-                flattened = _ensure_unwrapped(raml, base, cache, max_depth)
+                flattened = _ensure_unwrapped(raml, base, cache)
             except RamlError as err:
                 acc.add(RamlError.wrap('unwrap for validation', err, location, base.key_pos))
                 continue
@@ -149,7 +149,7 @@ def _validate_types(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator, m
             _validate_commons(flattened, known, acc, set())
 
 
-def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape], max_depth: int) -> BaseShape:
+def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) -> BaseShape:
     """The flattened form of `base`, without flattening the caller's model.
 
     This is why `validate=True` works without `unwrap=True`: an un-unwrapped
@@ -166,8 +166,8 @@ def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape], 
     cached = cache.get(base.id)
     if cached is not None:
         return cached
-    copy = unwrap_shape(raml, base.clone_detached(), max_depth=max_depth)
-    mark_recursions(raml, roots=[copy], max_depth=max_depth)
+    copy = unwrap_shape(raml, base.clone_detached())
+    mark_recursions(raml, roots=[copy])
     cache[base.id] = copy
     return copy
 
@@ -205,7 +205,7 @@ def _validate_commons(base: BaseShape, known: DiscriminatorIndex, acc: Accumulat
 # -- discriminator values (docs/05 section 9) ----------------------------------
 
 
-def _discriminator_values(raml: Raml, cache: dict[int, BaseShape], max_depth: int) -> DiscriminatorIndex:
+def _discriminator_values(raml: Raml, cache: dict[int, BaseShape]) -> DiscriminatorIndex:
     """Discriminator name → every value that names a type declaring it.
 
     `discriminatorValue` defaults to the type's own name, so a type that carries
@@ -229,7 +229,7 @@ def _discriminator_values(raml: Raml, cache: dict[int, BaseShape], max_depth: in
         for declared in source.values():
             for name, base in declared.items():
                 try:
-                    flattened = _ensure_unwrapped(raml, base, cache, max_depth)
+                    flattened = _ensure_unwrapped(raml, base, cache)
                 except RamlError:
                     # The failure is reported by the pass that unwraps for
                     # validation; this index simply has nothing to add.
@@ -268,7 +268,7 @@ def _walk_discriminators(  # noqa: PLR0913, PLR0917 - a data walk carries shape,
     path: str,
     depth: int,
 ) -> None:
-    if depth > DEFAULT_MAX_DEPTH:
+    if depth > base._raml.max_depth:  # noqa: SLF001 - the parse's ceiling (docs/12 § 14)
         return
     shape = base.shape
     if isinstance(shape, RecursiveShape):
@@ -391,7 +391,7 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
     declared: dict[str, Property] = {}
     current: BaseShape | None = base.inherits[0] if base.inherits else None
     depth = 0
-    while current is not None and depth < DEFAULT_MAX_DEPTH:
+    while current is not None and depth < base._raml.max_depth:  # noqa: SLF001 - as above
         for name, prop in current.custom_facet_defs.items():
             if name in declared:
                 acc.add(
@@ -454,7 +454,7 @@ def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
 # -- annotations (docs/09 sections B4 and B5) ----------------------------------
 
 
-def _validate_domain_extensions(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator, max_depth: int) -> None:
+def _validate_domain_extensions(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator) -> None:
     """P8 bound each application; this is the only consumer of that binding."""
     for extension in raml.domain_extensions:
         if extension.defined_by is None:
@@ -462,7 +462,7 @@ def _validate_domain_extensions(raml: Raml, cache: dict[int, BaseShape], acc: Ac
             # undeclared annotation in the output.
             continue
         try:
-            declared = _ensure_unwrapped(raml, extension.defined_by, cache, max_depth)
+            declared = _ensure_unwrapped(raml, extension.defined_by, cache)
         except RamlError as err:
             acc.add(RamlError.wrap('unwrap annotation type', err, extension.location, extension.key_pos))
             continue

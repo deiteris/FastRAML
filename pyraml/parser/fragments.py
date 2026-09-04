@@ -964,8 +964,18 @@ def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> None:
     """
     # The extension is taken past a `#pointer`: `order.json#/definitions/Item`
     # is a JSON include, not an include of something ending `.json#`.
-    if kind is FragmentKind.DATA_TYPE and strip_uri_suffix(uri).lower().endswith('.json'):
+    path = strip_uri_suffix(uri).lower()
+    if kind is FragmentKind.DATA_TYPE and path.endswith('.json'):
         return
+    if path.endswith('.xsd'):
+        # Deviation D1. Reported here rather than left to the header check,
+        # which would tell the author their XSD has an unrecognised RAML
+        # header — true, unhelpful, and the wrong thing to go and fix. Only
+        # `.xsd`: an `!include` of `.xml` is a scalar include and may well be a
+        # legitimate example.
+        raise RamlError.new(
+            'xml schema external types are not supported', uri, info={'path': uri}, kind=ErrorKind.PARSING
+        )
 
     head = read_head(text)
     found = identify_fragment(head)
@@ -1019,7 +1029,7 @@ def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Frag
         raml.put_resolver(uri, anchor)
     raml.push_ctx(ParseCtx(anchor=anchor, target=FRAGMENT_TARGETS[kind]))
     try:
-        root = compose(text, uri=uri)
+        root = compose(text, uri=uri, max_depth=raml.max_depth)
         raml.store_source_node(uri, root)
         fragment.decode(root)
     finally:

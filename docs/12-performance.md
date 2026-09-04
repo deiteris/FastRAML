@@ -170,14 +170,51 @@ frame is expensive. Deeply nested schemas (JSON Schema conversions are the usual
 culprit) will hit it.
 
 **Rule:** any traversal whose depth is bounded only by user input uses an explicit
-stack, or carries a depth counter and raises a positioned
-`type nesting too deep` diagnostic before CPython raises `RecursionError`.
+stack, or carries a depth counter and raises a positioned diagnostic before
+CPython raises `RecursionError`.
 
 The traversals in question: `mark_graft`, structural merge, `Node`→`ValueNode`
 conversion, `mark_recursions`, `unwrap_shape`, and JSON-Schema→shape conversion.
 Of these, `mark_graft` and the value conversion are the easiest to make iterative
 and the most likely to be deep, so they are iterative from the start; the rest get
 a depth guard with a configurable ceiling (default 200).
+
+**One ceiling, not one per pass.** They all defend the same C stack, so one
+number governs them: `DEFAULT_MAX_DEPTH` in `yamlnode.py`, surfaced as
+`ParseOptions.max_depth`, carried on `Raml.max_depth`, and read at each guard.
+It lives in `yamlnode` because that is the lowest layer needing it, not because
+nesting is a YAML idea. Phase 9 reconciled three separate 200s into it; before
+that, raising the option raised the type ceiling and left the document and
+schema ones where they were.
+
+Each guard keeps its **own message key**, so a document that trips one says
+which traversal refused it, and every one of them carries the limit in `info`:
+
+| Message | Pass | What it bounds |
+|---------|------|----------------|
+| `document nesting too deep` | P0 | YAML levels in one composed file |
+| `type nesting too deep` | P9 | levels of `unwrap_shape` / `mark_recursions` |
+| `JSON schema nesting too deep` | P2/P7 | levels of a decoded schema, and of a `$ref` chain |
+
+Three details that are not obvious and each cost something to find:
+
+- **The document guard fires first for anything written inline.** One level of
+  inline type nesting costs at least two YAML levels (`properties:` and the
+  property name), so a 66-deep inline type already exceeds 200 document levels.
+  The type guard is reachable only through a *flat* document whose declarations
+  name each other — which is what the test for it has to generate.
+- **The JSON Schema guard measures the document before anything walks it.**
+  A 200-level schema exhausts the stack inside the schema library's own
+  meta-schema validation, which is not a recursion this parser can guard from
+  the inside; it surfaced as a raw `RecursionError`, which this section forbids.
+  Measuring the decoded document is one iterative pass and makes the library's
+  recursion, `_prefetch` and the § 6.3 projection safe at once. A `$ref` target
+  is decoded through the same path, so a shallow schema cannot reach the stack
+  by pointing at a deep one.
+- **Documents visited and levels open are different counts.** `_prefetch`'s
+  `seen` set stops a `$ref` cycle and never shrinks; a schema naming 300 distinct
+  targets is ordinary and nests two levels. Comparing the size of that set
+  against the ceiling rejects valid input, and a test says so.
 
 ### 15. Interfaces vs protocols
 
@@ -284,6 +321,36 @@ Each runs in four configurations (`parse only`, `+unwrap`, `+validate`,
 `+unwrap+validate`) and records wall time and peak RSS
 (`tracemalloc` for allocation counts, `resource`/`psutil` for RSS).
 
+Built in Phase 9 as the `bench/` package. `corpus.py` generates, `harness.py`
+measures, `__main__.py` drives:
+
+```bash
+python -m bench run                          # every bench, every configuration
+python -m bench run --bench large --scale .5
+python -m bench baseline                     # record bench/baselines.json
+python -m bench compare                      # fail on a >25 % regression
+python -m bench linearity                    # the hard requirement, measured
+```
+
+Three implementation decisions the specification above did not settle, each of
+which a simpler harness gets wrong:
+
+- **Time and allocations are measured in separate runs.** `tracemalloc` hooks
+  every allocation and roughly triples the wall time of a parse, which is
+  allocation-bound. One run reporting both numbers reports one true number.
+- **Wall time is the minimum of the repeats, not the mean.** Scheduling noise is
+  one-sided. The minimum estimates the parser; the mean mostly estimates the
+  machine. A `--repeat 1` run additionally measures the cold file cache, which
+  on the 150-file corpus is worth more than the parse.
+- **Each measurement runs in a fresh subprocess.** `ru_maxrss` is a process
+  high-water mark, monotonic and never reset, so two benches in one interpreter
+  cannot both report their own peak. The subprocess also stops a warm intern
+  table or a filled expression cache from flattering whichever bench ran second.
+
+RSS comes from `resource` on POSIX and from `K32GetProcessMemoryInfo` through
+`ctypes` on Windows, rather than from `psutil`: the numbers are identical and it
+keeps the dev dependency list where it is.
+
 ### Targets
 
 - **Linearity is the hard requirement.** `bench_large` must be within 15 % of
@@ -292,6 +359,39 @@ Each runs in four configurations (`parse only`, `+unwrap`, `+validate`,
 - **Absolute time:** aim within 10× of go-raml on the same corpus with libyaml
   present. This is a goal, not a gate.
 - **Memory:** peak RSS under 400 MB on `bench_large`.
+
+**All three are met.** Measured at the end of Phase 9, Windows / CPython 3.12 /
+libyaml, 7000 types across 150 libraries:
+
+| Bench | parse | +unwrap | +validate | +both | alloc (parse) | peak RSS (parse) |
+|-------|-------|---------|-----------|-------|---------------|------------------|
+| `small` | 5 ms | 5 ms | 10 ms | 6 ms | 0.6 MB | 27 MB |
+| `large` | 353 ms | 385 ms | 638 ms | 429 ms | 30 MB | 98 MB |
+| `endpoints` | 336 ms | 349 ms | 439 ms | 363 ms | 35 MB | 114 MB |
+| `validate` | 1074 ms | 1125 ms | 1523 ms | 1159 ms | 129 MB | 425 MB |
+| `jsonschema` | 89 ms | 89 ms | 93 ms | 88 ms | 1.3 MB | 30 MB |
+
+- Linearity: **1.040**, +4.0 % against a half-size corpus. Inside 15 %.
+- Absolute: **353 ms against go-raml's published ~280 ms** on a corpus of the
+  same size — 1.3×, where the goal was 10×. The techniques in Parts 1–3 are
+  where that comes from; none of it is CPython being fast.
+- Memory on `bench_large`: **98 MB**, against a 400 MB ceiling.
+
+Two numbers in that table are worth reading rather than skimming.
+
+**`+validate` alone is slower than `+unwrap +validate`** — 638 ms against
+429 ms on `bench_large`. That is § 7's copy discipline showing up as a
+measurement: `validate=True, unwrap=False` clones every declaration it checks,
+and `unwrap=True` costs less than the clones it saves. It is the reason
+[13](13-public-api.md) § 2 tells a caller to pass both.
+
+**`bench_validate` peaks at 425 MB of RSS for 129 MB of traced allocations.**
+The corpus is 1000 types × (50 properties + a 50-key example), so ~100 000 live
+model objects and about the same number of `Node`s; the gap between the two
+numbers is allocator arenas that were freed and not returned to the OS, not live
+data. It is above the 400 MB figure, which is a `bench_large` ceiling and not a
+general one — but it is the one bench where a memory question is worth asking
+first if one ever arises.
 
 ### Profiling protocol
 

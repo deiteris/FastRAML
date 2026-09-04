@@ -47,6 +47,7 @@ __all__ = [
     'make_scalar_facet',
     'make_seq_facet',
     'make_string_facet',
+    'regex_engine',
     'resolve_annotated_scalar',
     'scalar_bool',
     'scalar_fraction',
@@ -104,6 +105,25 @@ def scalar_fraction(node: Node, location: str) -> Fraction:
         raise node_error('expected a number value', location, node, info={'value': node.value}) from err
 
 
+def regex_engine(raml: Raml) -> Any:
+    """The `re`-compatible module this parse compiles patterns with.
+
+    Every regex pyRAML compiles goes through here, so that `regex_engine='re2'`
+    means what it says. Raises `ImportError` when `re2` was asked for and the
+    package is absent; each caller turns that into a diagnostic positioned where
+    it actually is, which is why this does not do it for them.
+
+    What it cannot cover: the regexes *inside* an external JSON Schema, at
+    validation time. The schema library calls `re.search` directly and offers no
+    hook to replace it (docs/01 deviation D3).
+    """
+    if raml.regex_engine != 're2':
+        return re
+    import re2  # noqa: PLC0415 - optional dependency, imported on demand
+
+    return re2
+
+
 def compile_pattern(raml: Raml, text: str, node: Node, location: str) -> re.Pattern[str]:
     """Compile a RAML pattern with the engine this parse asked for.
 
@@ -111,13 +131,10 @@ def compile_pattern(raml: Raml, text: str, node: Node, location: str) -> re.Patt
     so a parse that asks for it without the package installed says so rather
     than quietly backtracking (docs/13-public-api.md section 2).
     """
-    engine: Any = re
-    if raml.regex_engine == 're2':
-        try:
-            import re2  # noqa: PLC0415 - optional dependency, imported on demand
-        except ImportError as exc:
-            raise node_error('re2 engine requested but google-re2 is not installed', location, node) from exc
-        engine = re2
+    try:
+        engine = regex_engine(raml)
+    except ImportError as exc:
+        raise node_error('re2 engine requested but google-re2 is not installed', location, node) from exc
     try:
         compiled: re.Pattern[str] = engine.compile(text)
     except Exception as exc:

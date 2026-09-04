@@ -6,11 +6,12 @@ Five layers, each answering a question the others cannot.
 |-------|----------|------|
 | Unit | does this function do what the doc says? | many, fast |
 | Golden | does the whole model come out right for this input? | ~100 |
-| TCK | do we agree with the spec's own compliance kit? | 967 fixtures |
+| TCK | do we agree with the spec's own compliance kit? | 965 fixtures |
 | Property | do the algebraic laws hold on generated input? | ~10 properties |
 | Benchmark | is it linear, and how fast? | 5 benches |
 
-Runner: `pytest`, with `pytest-benchmark` for layer 5.
+Runner: `pytest` for layers 1–4. Layer 5 is a standalone `bench/` package driven
+by `python -m bench`, for the reason § 5 gives.
 
 ## 1. The TCK is the primary compliance gate
 
@@ -22,21 +23,26 @@ pyRAML runs against **that same copy** rather than a second one, so a
 disagreement between the two parsers is always a pyRAML bug or a documented
 deviation, never a fixture difference. The harness locates it through
 `PYRAML_TCK_DIR`, falling back to a sibling go-raml checkout; when neither is
-present the TCK tests skip. Vendoring is deferred to Phase 9, when the
-repository needs to build without a sibling checkout.
+present the TCK tests skip.
+
+**Vendoring is still deferred**, and no longer to a phase. It was pencilled in
+for Phase 9 as an engineering task; it is a licensing one, and this repository's
+own licence is undecided. It stays out until both are settled.
 
 Convention (from its README):
 
 - `*valid*.raml` → must parse, unwrap and validate without error;
 - `*invalid*.raml` → must produce at least one error.
 
-Current inventory: **496 valid** and **471 invalid** fixtures, 967 in total,
-across Annotations, EdgeCases, Examples, Fragments, Libraries, MethodResponses,
-Methods, Overlays, Resources, ResourceTypes, Responses, Root, SecuritySchemes,
-TemplateFunctions, Types and spec-examples.
+Current inventory, counted at the end of Phase 9: **495 valid** and **470
+invalid** fixtures, 965 in total, out of 1172 `.raml` files — the remainder are
+includes and libraries rather than entry points. They span Annotations,
+EdgeCases, Examples, Fragments, Libraries, MethodResponses, Methods, Overlays,
+Resources, ResourceTypes, Responses, Root, SecuritySchemes, TemplateFunctions,
+Types and spec-examples.
 
 Note when counting these yourself: `invalid` contains `valid` as a substring, so
-a `*valid*` glob returns all 967. The harness filters the negative fixtures out
+a `*valid*` glob returns all 965. The harness filters the negative fixtures out
 of the positive set, and a test asserts the two sets do not overlap.
 
 ### 1.1 Harness
@@ -104,17 +110,24 @@ was fixed at its cause rather than recorded:
   scoring as a correct rejection of an `invalid-` fixture, which is credit for
   the wrong reason.
 
-Skipping by header rather than by path is why the corpus is 918 rather than 930.
+Skipping by header rather than by path is why the ratchet holds 916 of the 965,
+with 49 skipped.
 
 ### 1.3 Cross-checking against go-raml
 
-A developer-only script runs `raml validate --json` from the reference
-implementation and `pyraml validate --json` over the same fixture, then diffs the
-trace chains. Each disagreement is triaged as a pyRAML bug, a go-raml bug, or a
-documented deviation ([01](01-scope-and-coverage.md) § 4).
+**Not built.** The design is: a developer-only script runs `raml validate
+--json` from the reference implementation and `pyraml validate --json` over the
+same fixture, then diffs the trace chains, and each disagreement is triaged as a
+pyRAML bug, a go-raml bug, or a documented deviation
+([01](01-scope-and-coverage.md) § 4). It needs a Go toolchain, so it would not
+run in CI.
 
-The script needs a Go toolchain, so it does not run in CI. It is the fastest way
-to diagnose a TCK failure.
+It was meant to be the fastest way to diagnose a TCK failure, and there are none
+— the ratchet is 916 of 916. Every disagreement that did arise was settled by
+running go-raml directly against a throwaway Go test, which is what
+`CLAUDE.md` prescribes and which needs no script. The half that was missing,
+`pyraml validate --json`, exists as of Phase 9, so this is a short job whenever a
+regression makes it worth doing.
 
 ### 1.4 Differential conformance: the YAML 1.2 oracle
 
@@ -212,6 +225,12 @@ because they encode decisions rather than behaviour:
 | `jsonschema` | a relative `$ref` resolves against the RAML file; an offline parse refuses a remote `$ref`; a shared `$ref` target is read once; a `$ref` inside a `default` is data; one test per error row of doc 10 § 6.3 |
 | `inherit` | one test per row of the table in doc 07 § 3.5, both directions |
 | `validate` | `bool` rejected as `integer`; `Fraction` exactness for `multipleOf: 1.1`; `uniqueItems` at n=20 and n=21 |
+| `depth_guard` | one option raises all four ceilings; each guard's own message key; a deep type graph needs a *flat* document to be reachable at all; a `$ref` to a deep schema; 300 references are not 300 levels |
+| `regex_engine` | `re2` is selected and used for facets, pattern properties and the § 6.3 projection; a backreference is accepted by `re` and refused by `re2`; validation *inside* a JSON Schema is not covered |
+| `lenient` | the error equals a strict parse's, chain for chain; a decode-time failure still yields an entry point; the same failure in an included file is not fatal |
+| `cli` | exit codes; diagnostics on stderr and nothing else there under `--json`; every file reported, not only the first; the reference trace shape survives |
+| `deviations` | one class per D in doc 01 § 4 that has no more natural home — the `.xsd` message, the two numeric-format tables being disjoint, the 64 KiB default, declaration order |
+| `public_api` | every name in `__all__` resolves; no concrete kind is missing from it; the docstring claims no phase |
 | `errors` | wrap/append composition; `to_dict()` shape matches the reference's |
 
 ## 4. Property-based tests
@@ -241,18 +260,44 @@ Laws 2 to 4 are implemented in `tests/property/test_merge_laws.py`.
    `key_pos <= value_pos`.
 9. **Determinism** — two parses of the same input produce identical golden
    projections.
-10. **No `RecursionError`** — generated nesting up to `max_type_depth + 50`
+10. **No `RecursionError`** — generated nesting up to `max_depth + 50`
     produces a positioned diagnostic, never a `RecursionError`.
 
 ## 5. Benchmarks
 
-As specified in [12](12-performance.md) § Part 4. They run in CI on every PR with
-a generous threshold (fail at >25 % regression against the stored baseline) and
-nightly with the full corpus and RSS measurement.
+As specified in [12](12-performance.md) § Part 4, and built as `bench/`. They run
+in CI on every PR with a generous threshold (fail at >25 % regression against the
+stored baseline) and nightly with the full corpus and RSS measurement.
 
 `bench_large`'s 7000-type corpus is **generated** by a script in the repo, not
 vendored, so it stays a few kilobytes of source and can be regenerated at other
 sizes to check linearity.
+
+**Not `pytest-benchmark`.** Two of the three measurement decisions in
+[12](12-performance.md) Part 4 are outside what it does: peak RSS needs a fresh
+process per measurement, and corpus generation has to sit outside the timed
+region rather than inside a fixture. A standalone runner does both and needs no
+dev dependency.
+
+Two things nevertheless run under `pytest`, because they are assertions rather
+than measurements:
+
+| File | Gate | When |
+|------|------|------|
+| `tests/bench/test_corpus.py` | every generated corpus is valid RAML in **all four** configurations, generation is deterministic, and `bench_large`'s diamond really does reach one `common.raml` | always; tiny scale, milliseconds |
+| `tests/bench/test_linearity.py` | `bench_large` within 15 % of linear against a half-size corpus | `PYRAML_BENCH=1` only |
+
+The first of those is not ceremony. The first draft of `write_small` had a
+required property its own example omitted: `parse` and `unwrap` were happy, and
+the two configurations that exercise P10 were quietly measuring an exception.
+
+Absolute wall-clock is **not** asserted in any test. It is a property of the
+machine; it is recorded in `bench/baselines.json` against a fingerprint
+(interpreter, platform, YAML backend), and `python -m bench compare` declines to
+compare across a fingerprint change rather than reporting a "regression" that is
+really a different computer. CI records its own baseline per matrix cell.
+Superlinearity is the exception, and is asserted: it means a cache is being
+missed, which is a bug on every machine.
 
 ## 6. CI matrix
 
@@ -261,10 +306,14 @@ sizes to check linearity.
 | Python | 3.12, 3.13 |
 | OS | Linux, Windows (path/URI handling differs materially) |
 | YAML backend | libyaml **and** pure-Python. Not optional: the two scanners already disagree on `title:<TAB>value` ([12](12-performance.md) § 19), so a libyaml-only run would ship that divergence. |
-| Regex engine | `re` always; `re2` in one job |
+| Regex engine | `re` always; `re2` in one job (`uv sync --all-extras`) |
 
 Plus, on every PR: `ruff check`, `ruff format --check`, `mypy --strict pyraml/`,
-and the TCK ratchet.
+the TCK ratchet, and `tests/bench` with `PYRAML_BENCH=1` for the linearity gate.
+
+The `re2` job installs `google-re2` rather than merely allowing it. Its tests
+`importorskip`, so without a job that installs the package the whole option is
+tested by reading it — the failure mode of every optional dependency.
 
 ## 7. What is deliberately not tested
 

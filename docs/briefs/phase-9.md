@@ -1,5 +1,32 @@
 # Phase 9 brief — hardening and release
 
+**Phase 9 is complete. This brief is kept for what it got wrong**, which is the
+convention since Phase 5. The outcome is recorded in
+[15](../15-implementation-plan.md) § Phase 9; read that first.
+
+What this brief said that was not true:
+
+- **§ 1.1: "the JSON Schema walk, which uses `DEFAULT_MAX_DEPTH`".** It had no
+  depth guard at all. A 200-level schema raised `RecursionError` from inside the
+  schema library's meta-schema validation. Reconciling the ceilings was a bug
+  fix, not a tidy-up.
+- **§ 1 and § 4.4: "TCK 914 of 916" and "the union-facet gap stays open".** Both
+  were overtaken before the phase started — Phase 8c closed the gap and the TCK
+  is 916 of 916.
+- **§ 3.3 implied `parse_lenient` would collect more diagnostics than a strict
+  parse.** It cannot: continuing past a failing pass turns one missing library
+  into 41 diagnostics. Measured, reverted, recorded as After-v1 item 6.
+- **It did not mention deviation D1**, which was documented and unimplemented,
+  or the `pyraml` console script, which `pyproject.toml` had declared since
+  Phase 0 pointing at a module that did not exist.
+
+Its § 5 — "a performance phase invites changes that break an invariant no
+benchmark measures" — was the right warning aimed at the wrong phase. Nothing
+here was a micro-optimisation; the risky changes were the ones that altered what
+a diagnostic says.
+
+---
+
 A working brief for a fresh session. Read this, then the documents it names. It
 exists so you do not have to re-derive what earlier sessions already settled.
 

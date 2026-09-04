@@ -159,9 +159,20 @@ docs and, where user-visible, in the error message.
 
 ### D1 — No XSD
 
-`!include x.xsd` fails with `xml schema external types are not supported`. Users
-pre-convert to JSON Schema or RAML types. Rationale: a conformant XSD validator is
-a project of comparable size to this parser.
+`!include x.xsd` where a type or fragment is expected fails with
+`xml schema external types are not supported`. Users pre-convert to JSON Schema
+or RAML types. Rationale: a conformant XSD validator is a project of comparable
+size to this parser.
+
+Two corrections from the Phase 9 reconciliation. This section used to say
+"matching go-raml"; **go-raml has no XSD handling at all** and the TCK ships no
+`.xsd` fixture, so there was nothing to match — the message is pyRAML's own.
+And until Phase 9 there was no such message: the file reached the header check
+and produced `unknown fragment kind: head: <?xml version="1.0"?>`, which is true,
+useless, and points the author at the wrong thing to fix.
+
+Only `.xsd` is rejected. `!include foo.xml` at a value position is an ordinary
+non-YAML scalar include and may perfectly well be an example.
 
 ### D2 — Numeric formats are not cross-compatible
 
@@ -188,6 +199,22 @@ vulnerable to catastrophic backtracking on a hostile `pattern:` facet.
   that parse untrusted RAML should select `"re2"`.
 - Document that `re` is used, so users know backreferences work here but not in
   go-raml — a compatibility note in both directions.
+
+**What `re2` covers, exactly.** Every regex pyRAML compiles goes through one
+function, `parser/facets.py::regex_engine`: `pattern:` facets, `/re/` pattern
+properties, and the patterns the § 6.3 JSON Schema projection builds. A pattern
+the engine will not take is a positioned `invalid pattern` for a RAML facet, and
+is dropped from the *view* for a projected one — the projection is a convenience
+over a schema that still validates, so refusing the whole type would lose more
+than it protects.
+
+**What it cannot cover**, and this is the boundary a security-conscious consumer
+needs: the regexes executed *inside* an external JSON Schema at validation time.
+`jsonschema` calls `re.search` directly for `pattern` and `patternProperties`
+and offers no hook to replace the engine. So under `regex_engine="re2"` a
+backreference in a `pattern:` facet is refused and the same backreference inside
+an `!include`d schema still runs on `re`. A test asserts this rather than
+leaving it to be discovered.
 
 ### D4 — Typed fragments are self-contained
 

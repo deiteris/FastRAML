@@ -1,0 +1,149 @@
+{
+  "fingerprint": {
+    "platform": "Windows-AMD64",
+    "python": "3.12",
+    "yaml_backend": "libyaml"
+  },
+  "measurements": {
+    "endpoints/parse": {
+      "allocated_bytes": 34574015,
+      "bench": "endpoints",
+      "config": "parse",
+      "max_rss_bytes": 114180096,
+      "seconds": 0.3361945003271103
+    },
+    "endpoints/unwrap": {
+      "allocated_bytes": 34574015,
+      "bench": "endpoints",
+      "config": "unwrap",
+      "max_rss_bytes": 115060736,
+      "seconds": 0.3485303996130824
+    },
+    "endpoints/unwrap+validate": {
+      "allocated_bytes": 34574015,
+      "bench": "endpoints",
+      "config": "unwrap+validate",
+      "max_rss_bytes": 115179520,
+      "seconds": 0.36313299974426627
+    },
+    "endpoints/validate": {
+      "allocated_bytes": 43981842,
+      "bench": "endpoints",
+      "config": "validate",
+      "max_rss_bytes": 141025280,
+      "seconds": 0.4384668003767729
+    },
+    "jsonschema/parse": {
+      "allocated_bytes": 1328309,
+      "bench": "jsonschema",
+      "config": "parse",
+      "max_rss_bytes": 29757440,
+      "seconds": 0.08922079997137189
+    },
+    "jsonschema/unwrap": {
+      "allocated_bytes": 1327980,
+      "bench": "jsonschema",
+      "config": "unwrap",
+      "max_rss_bytes": 29806592,
+      "seconds": 0.08911959966644645
+    },
+    "jsonschema/unwrap+validate": {
+      "allocated_bytes": 1323938,
+      "bench": "jsonschema",
+      "config": "unwrap+validate",
+      "max_rss_bytes": 29904896,
+      "seconds": 0.08824279997497797
+    },
+    "jsonschema/validate": {
+      "allocated_bytes": 1659145,
+      "bench": "jsonschema",
+      "config": "validate",
+      "max_rss_bytes": 30736384,
+      "seconds": 0.09266599966213107
+    },
+    "large/parse": {
+      "allocated_bytes": 30312201,
+      "bench": "large",
+      "config": "parse",
+      "max_rss_bytes": 97787904,
+      "seconds": 0.3531068000011146
+    },
+    "large/unwrap": {
+      "allocated_bytes": 30312295,
+      "bench": "large",
+      "config": "unwrap",
+      "max_rss_bytes": 98045952,
+      "seconds": 0.38457039976492524
+    },
+    "large/unwrap+validate": {
+      "allocated_bytes": 30312154,
+      "bench": "large",
+      "config": "unwrap+validate",
+      "max_rss_bytes": 98091008,
+      "seconds": 0.42894050013273954
+    },
+    "large/validate": {
+      "allocated_bytes": 62024528,
+      "bench": "large",
+      "config": "validate",
+      "max_rss_bytes": 169500672,
+      "seconds": 0.6378500000573695
+    },
+    "small/parse": {
+      "allocated_bytes": 590708,
+      "bench": "small",
+      "config": "parse",
+      "max_rss_bytes": 27414528,
+      "seconds": 0.005061000119894743
+    },
+    "small/unwrap": {
+      "allocated_bytes": 590452,
+      "bench": "small",
+      "config": "unwrap",
+      "max_rss_bytes": 27635712,
+      "seconds": 0.005363600328564644
+    },
+    "small/unwrap+validate": {
+      "allocated_bytes": 590708,
+      "bench": "small",
+      "config": "unwrap+validate",
+      "max_rss_bytes": 27557888,
+      "seconds": 0.006184000056236982
+    },
+    "small/validate": {
+      "allocated_bytes": 959062,
+      "bench": "small",
+      "config": "validate",
+      "max_rss_bytes": 28323840,
+      "seconds": 0.00981750013306737
+    },
+    "validate/parse": {
+      "allocated_bytes": 129274469,
+      "bench": "validate",
+      "config": "parse",
+      "max_rss_bytes": 425230336,
+      "seconds": 1.0735738999210298
+    },
+    "validate/unwrap": {
+      "allocated_bytes": 129274725,
+      "bench": "validate",
+      "config": "unwrap",
+      "max_rss_bytes": 425111552,
+      "seconds": 1.1248625996522605
+    },
+    "validate/unwrap+validate": {
+      "allocated_bytes": 129274725,
+      "bench": "validate",
+      "config": "unwrap+validate",
+      "max_rss_bytes": 425418752,
+      "seconds": 1.1586794001050293
+    },
+    "validate/validate": {
+      "allocated_bytes": 129274469,
+      "bench": "validate",
+      "config": "validate",
+      "max_rss_bytes": 443437056,
+      "seconds": 1.5224729999899864
+    }
+  }
+}

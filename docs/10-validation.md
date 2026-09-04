@@ -270,6 +270,15 @@ default parse. `check()` therefore has nothing left to do.
   `default` is a value that happens to look like a reference — and treats
   `properties`, `patternProperties`, `definitions`, `$defs` and the two
   `dependencies` keywords as maps *of* schemas rather than as schemas.
+- **Nesting is measured before anything walks the schema.** One iterative pass
+  over the decoded document, against `Raml.max_depth`, reporting
+  `JSON schema nesting too deep`. It has to happen first because the deepest
+  recursion over a schema is not ours: the schema library's own meta-schema
+  validation exhausts CPython's stack at around 200 levels and surfaces as a
+  raw `RecursionError`, which [12](12-performance.md) § 14 forbids. Checking
+  once at decode makes that, the eager `$ref` walk and the § 6.3 projection all
+  safe. A `$ref` target is decoded through the same path, so a shallow schema
+  cannot reach the stack by pointing at a deep one.
 - Draft is taken from `$schema`; absent, the default draft is 7 (matching the
   reference implementation's meta-schema validation). Unlike go-raml, which
   validates every schema against the draft-07 meta-schema whatever it declares,

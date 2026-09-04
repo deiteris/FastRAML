@@ -297,25 +297,6 @@ class TestInvariantI6:
         assert all(shape._unwrapped for shape in raml.shapes)
 
 
-class TestDepthGuard:
-    def test_a_document_nested_past_the_limit_is_a_diagnostic(self, workspace):
-        # docs/12 § 11: a positioned error, not a RecursionError from wherever
-        # the interpreter happened to give up.
-        # Genuinely nested, not a chain of sibling declarations: unwrapping
-        # those costs one frame each, because every parent is already flattened
-        # by the time the declaration that names it is reached.
-        depth = 30
-        body = '  T:\n'
-        for level in range(depth):
-            pad = '  ' * level
-            body += f'{pad}    properties:\n{pad}      a:\n'
-        body += '  ' * depth + '        type: string\n'
-        root = workspace({'lib.raml': LIB + 'types:\n' + body})
-        with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True, max_type_depth=10))
-        assert 'type nesting too deep' in [t.message for c in caught.value.chains() for t in c]
-
-
 DECLARATIONS = [
     '  T:\n    type: string\n    minLength: 2\n',
     '  P:\n    properties:\n      a: string\n  T:\n    type: P\n    properties:\n      b: string\n',

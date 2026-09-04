@@ -61,7 +61,7 @@ def merge_structural(
     `target` is the explicit one — the method, the resource — and wins wherever
     the two disagree. With no `overlay` this is the pure structural merge.
 
-    Recursion is bounded by `yamlnode.MAX_DEPTH`, which the composer enforces
+    Recursion is bounded by `Raml.max_depth`, which the composer enforces
     before any of this runs.
     """
     if target is None:

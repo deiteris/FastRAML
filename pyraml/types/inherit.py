@@ -211,6 +211,15 @@ def _inherit_from_union(target: BaseShape, source: UnionShape) -> BaseShape:
 
     target.type = TYPE_UNION
     target.shape = UnionShape(target, any_of=survivors)
+    for survivor in survivors:
+        # Each survivor is a clone of the target, so it arrived carrying the
+        # target's own example, examples and default. Those were written about
+        # the union as a whole and are validated on it; left on the members they
+        # would require every example to satisfy *every* member, which is the
+        # opposite of what a union means.
+        survivor.example = None
+        survivor.examples = None
+        survivor.default = None
     return target
 
 

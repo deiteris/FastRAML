@@ -253,7 +253,7 @@ def _check_slash_free(prop: Property) -> RamlError | None:
     if base.examples is not None:
         candidates += [
             (f'examples.{name}', example.data.raw)
-            for name, example in base.examples.values.items()
+            for name, example in base.examples.entries().items()
             if example.data is not None
         ]
     candidates += [(f'enum[{index}]', member.raw) for index, member in enumerate(base.enum or ())]

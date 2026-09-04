@@ -358,6 +358,11 @@ explicitly — which is exactly what the spec's own example does and comments on
 `NamedExample` fragment. `example` and `examples` on the same declaration are
 mutually exclusive.
 
+In the included form the examples live on the fragment and `Examples.values` is
+empty, so **read `Examples.entries()`, never `values` directly**. That is not a
+convenience: a consumer reading `values` sees no examples at all, which is how
+an included NamedExample went unvalidated by P10 until Phase 8b.
+
 ## 7. Custom (user-defined) facets
 
 `facets:` declares new facets that subtypes must/may provide. Its value is a

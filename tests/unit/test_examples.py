@@ -77,6 +77,51 @@ class TestTheAmbiguity:
         assert (ex.data.raw, ex.strict.value) == (1, True)
 
 
+class TestIncludedNamedExamples:
+    """`examples: !include e.raml` — the examples are on the fragment.
+
+    `Examples.values` is empty in that form, so a consumer reading it directly
+    sees no examples and validates none. `entries()` is the one accessor.
+    """
+
+    API = '#%RAML 1.0\ntitle: T\n'
+
+    def parse(self, workspace, files):
+        from pyraml import ParseOptions, parse_from_path
+
+        root = workspace(files)
+        try:
+            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        except RamlError as err:
+            return err
+        return None
+
+    def test_an_included_example_that_does_not_conform_is_reported(self, workspace):
+        error = self.parse(
+            workspace,
+            {
+                'api.raml': self.API
+                + 'types:\n  T:\n    properties:\n      a: integer\n    examples: !include e.raml\n',
+                'e.raml': '#%RAML 1.0 NamedExample\nfirst:\n  a: not a number\n',
+            },
+        )
+        assert error is not None
+        assert 'invalid example' in str(error)
+
+    def test_a_conforming_included_example_passes(self, workspace):
+        assert (
+            self.parse(
+                workspace,
+                {
+                    'api.raml': self.API
+                    + 'types:\n  T:\n    properties:\n      a: integer\n    examples: !include e.raml\n',
+                    'e.raml': '#%RAML 1.0 NamedExample\nfirst:\n  a: 3\n',
+                },
+            )
+            is None
+        )
+
+
 class TestIdentity:
     def test_each_example_takes_an_id_from_the_parse(self):
         raml = Raml()

@@ -201,7 +201,7 @@ def _validate_examples(base: BaseShape, acc: Accumulator) -> None:
     if base.example is not None:
         _validate_example(base, base.example, acc)
     if base.examples is not None:
-        for example in base.examples.values.values():
+        for example in base.examples.entries().values():
             _validate_example(base, example, acc)
     if base.default is not None:
         # No `strict` for a default: an unusable default is always a defect,

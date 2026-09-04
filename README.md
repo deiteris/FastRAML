@@ -40,9 +40,10 @@ pyraml info api.raml               # YAML backend, timing, model counts
 
 ## Why it is fast
 
-7000 types across 150 libraries parse in **353 ms** using **98 MB**, against the
-reference implementation's published ~280 ms in Go — and strictly linear in input
-size, which is the property that is gated in CI rather than the wall clock.
+7000 types across 150 libraries parse, unwrap and validate in **429 ms** using
+**98 MB**, against the reference implementation's published ~280 ms in Go for the
+same work — and strictly linear in input size, which is the property gated in CI
+rather than the wall clock.
 
 That comes from structural decisions, not from Python: a two-stage endpoint build
 that merges traits and resource types on YAML trees before any type resolution,

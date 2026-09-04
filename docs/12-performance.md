@@ -289,6 +289,54 @@ half of the YAML layer is pinned by `tests/conformance`
 ([03](03-yaml-and-io.md) § 2.2); this is the syntax half, and it has no oracle
 yet.
 
+### 19a. The composition callbacks
+
+Profiling `bench_validate` — 1000 types, 50 properties and a 50-key example each
+— puts **42 % of the whole parse in the YAML layer**, and almost none of it in
+the places a reader would guess. Per *node*, 208 000 times:
+
+| Was | Now |
+|-----|-----|
+| `Resolver.resolve`, a Python callback from libyaml, doing two dict lookups and `resolvers + wildcard_resolvers` — a fresh list per scalar, to concatenate one that is always empty here | `_RamlLoader.resolve`, specialised: one lookup, `value[:1]` folding in the empty-string case, no concatenation |
+| `_short_tag` then `_check_local_tag`: three `startswith` calls to answer a question the first had already settled, since a tag in the standard namespace cannot be an unknown local tag | `_Converter._tag_of`, one pass |
+| `_mark_position(node)`, a call building a 4-tuple the caller immediately unpacked | six additions inline |
+
+Measured end to end: **-7 to -8 %** on `bench_validate`, -2 to -4.5 % on
+`bench_large`, ~-1 % on `bench_endpoints`. The spread is the point — the win
+scales with scalar density, which is what a per-node change should do, and is
+how you tell it from noise.
+
+Overriding `resolve` is safe only because the table has no wildcard (`None`) key
+and no path resolver is registered. Both are asserted at **import**, not per
+scalar: if a future PyYAML adds either, the short path would quietly stop
+consulting it and a scalar would resolve to the wrong tag. `tests/conformance`
+would catch that across the corpus; `TestSpecialisedResolver` catches it at the
+function, by checking our `resolve` against `BaseResolver.resolve` over a table
+of scalars in every `implicit` combination.
+
+### 19b. Two hypotheses the profile refuted
+
+Recorded because both are plausible, both were proposed, and the measurement
+says no — which is worth more than the two paragraphs it costs.
+
+**The date and time regexes are not a hot path.** `datetime.date.fromisoformat`
+really is about twice as fast as `DATE_ONLY.fullmatch` (76 ns against 138 ns),
+and `datetime.datetime.fromisoformat` beats `_RFC3339.fullmatch` 83 ns to 220 ns.
+But composing the YAML scalar that carries the value costs ~3 µs — fifty times
+the difference. On a corpus of 6000 date, time, datetime-only and datetime
+examples, no date function appears anywhere in the profile, and the whole
+substitution would be worth **0.09 %**. Against that, `fromisoformat` accepts
+forms RFC 3339 does not, so the change would trade conformance for nothing.
+
+**Replacing a regex with a Python algorithm is usually the wrong direction**
+anyway; that is § 12's rule, and it applies to our own regexes as much as to
+go-raml's byte loops. What the profile rewarded was removing *calls and
+allocations* around the regexes, not the matching itself.
+
+*Corollary for the corpora*: neither `bench_large` nor `bench_validate` contains
+a date, so the suite could not have answered this. A benchmark suite is only
+evidence about the code its corpora exercise.
+
 ### 20. Expression AST cache
 
 Type expressions are memoised on their text ([06](06-type-expressions.md) § 2.3).
@@ -372,10 +420,16 @@ libyaml, 7000 types across 150 libraries:
 | `jsonschema` | 89 ms | 89 ms | 93 ms | 88 ms | 1.3 MB | 30 MB |
 
 - Linearity: **1.040**, +4.0 % against a half-size corpus. Inside 15 %.
-- Absolute: **353 ms against go-raml's published ~280 ms** on a corpus of the
-  same size — 1.3×, where the goal was 10×. The techniques in Parts 1–3 are
-  where that comes from; none of it is CPython being fast.
+- Absolute: **429 ms against go-raml's published ~280 ms** — 1.5×, where the
+  goal was 10×. The techniques in Parts 1–3 are where that comes from; none of
+  it is CPython being fast.
 - Memory on `bench_large`: **98 MB**, against a 400 MB ceiling.
+
+**Compare like with like.** go-raml's ~280 ms is a *full* parse — unwrap and
+validate included — so the cell to read against it is `+unwrap+validate`, 429 ms,
+not `parse`. An earlier draft of this section quoted the 353 ms parse-only figure
+beside it and claimed 1.3×. The real number is still comfortably inside the goal,
+but it was the wrong comparison and it flattered us.
 
 Two numbers in that table are worth reading rather than skimming.
 
@@ -384,6 +438,15 @@ Two numbers in that table are worth reading rather than skimming.
 measurement: `validate=True, unwrap=False` clones every declaration it checks,
 and `unwrap=True` costs less than the clones it saves. It is the reason
 [13](13-public-api.md) § 2 tells a caller to pass both.
+
+It is also the whole of the "validation doubles the time and the memory" effect,
+and it is worth being precise about, because the headline invites the wrong
+conclusion. Validation *itself* is cheap: `+unwrap` is 385 ms and
+`+unwrap+validate` is 429 ms, so P10 costs **44 ms — 11 % — and zero extra
+allocations** (30.3 MB either way). The doubling belongs entirely to the private
+copy taken when `unwrap=False`, which is one `clone_detached` per declared type:
+allocations go 30 MB → 62 MB and RSS 98 MB → 170 MB. Both numbers are the
+documented cost of a documented option, not a defect in P10.
 
 **`bench_validate` peaks at 425 MB of RSS for 129 MB of traced allocations.**
 The corpus is 1000 types × (50 properties + a 50-key example), so ~100 000 live

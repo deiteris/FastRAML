@@ -15,9 +15,10 @@ from __future__ import annotations
 import re
 import sys
 from enum import IntEnum
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 import yaml
+from yaml.nodes import ScalarNode
 
 from pyraml.errors import ErrorKind, RamlError
 from pyraml.positions import Position
@@ -103,10 +104,33 @@ _YAML_1_2_RESOLVERS: Final = (
 class _RamlLoader(_Loader):  # type: ignore[valid-type, misc]
     """`_Loader` with YAML 1.2 scalar resolution.
 
-    Only the implicit-resolver table changes. The scanner is untouched, which
-    matters: PyYAML ships a current libyaml, so `[ http://example.com ]` — a
-    colon inside a plain scalar in flow context — already parses correctly.
+    Only the implicit-resolver table and `resolve` itself change. The scanner is
+    untouched, which matters: PyYAML ships a current libyaml, so
+    `[ http://example.com ]` — a colon inside a plain scalar in flow context —
+    already parses correctly.
     """
+
+    def resolve(self, kind: Any, value: str, implicit: Any) -> Any:
+        """`BaseResolver.resolve`, specialised to the two cases RAML uses.
+
+        This is a Python callback from libyaml, once per scalar — 208 000 times
+        on the validation benchmark, and the largest single item in its profile
+        after our own node conversion. The stock implementation does two dict
+        lookups and then `resolvers + wildcard_resolvers`, which allocates a new
+        list for every scalar in the document to concatenate a list that is
+        always empty here.
+
+        Two preconditions make the short path safe, and `_assert_resolver_shape`
+        checks both at import rather than trusting them: the table has no
+        wildcard (`None`) key, and no path resolvers are registered. Slicing
+        rather than indexing folds in the empty-string case for free.
+        """
+        if kind is ScalarNode and implicit[0]:
+            for tag, regexp in self.yaml_implicit_resolvers.get(value[:1], ()):
+                if regexp.match(value):
+                    return tag
+            return self.DEFAULT_SCALAR_TAG
+        return super().resolve(kind, value, implicit)
 
 
 _REPLACED: Final = frozenset(tag for tag, _pattern, _first in _YAML_1_2_RESOLVERS)
@@ -116,6 +140,25 @@ _RamlLoader.yaml_implicit_resolvers = {
 }
 for _tag, _pattern, _first_chars in _YAML_1_2_RESOLVERS:
     _RamlLoader.add_implicit_resolver(_tag, _pattern, list(_first_chars))
+
+
+def _assert_resolver_shape() -> None:
+    """The two preconditions `_RamlLoader.resolve`'s short path relies on.
+
+    Checked once at import, not per scalar. If a future PyYAML registers a
+    wildcard resolver or a path resolver, the specialised `resolve` would
+    silently stop consulting it — a scalar resolving to the wrong tag, which is
+    the quietest possible failure. Better to refuse to import.
+    """
+    if None in _RamlLoader.yaml_implicit_resolvers:
+        message = 'PyYAML registered a wildcard implicit resolver; yamlnode.resolve must handle it'
+        raise RuntimeError(message)
+    if _RamlLoader.yaml_path_resolvers:
+        message = 'PyYAML registered a path resolver; yamlnode.resolve must handle it'
+        raise RuntimeError(message)
+
+
+_assert_resolver_shape()
 
 
 def backend_name() -> str:
@@ -312,13 +355,6 @@ def read_head(text: str) -> str:
     return line.rstrip('\r \t')
 
 
-def _short_tag(tag: str) -> str:
-    """`tag:yaml.org,2002:str` becomes `!!str`; custom tags pass through."""
-    if tag.startswith(_STANDARD_TAG_PREFIX):
-        return '!!' + tag[len(_STANDARD_TAG_PREFIX) :]
-    return tag
-
-
 def _mark_position(node: yaml.Node) -> tuple[int, int, int, int]:
     """PyYAML marks are 0-based; the model is 1-based."""
     start = node.start_mark
@@ -367,11 +403,18 @@ class _Converter:
                 info={'limit': self._max_nodes},
             )
 
-        line, column, stop_line, stop_column = _mark_position(node)
+        # Inlined rather than `_mark_position(node)`: this is the hottest line
+        # in the parser, once per node, and the call plus the tuple it built and
+        # the caller unpacked cost more than the six additions.
+        start = node.start_mark
+        end = node.end_mark
+        line = start.line + 1
+        column = start.column + 1
+        stop_line = end.line + 1
+        stop_column = end.column + 1
 
         if isinstance(node, yaml.ScalarNode):
-            tag = _short_tag(node.tag)
-            self._check_local_tag(tag, line, column, stop_line, stop_column)
+            tag = self._tag_of(node.tag, line, column, stop_line, stop_column)
             # The raw text is kept even for resolved scalars: RAML needs the
             # literal form of a `date-only` example, and `!!int` bounds are
             # parsed exactly rather than through float.
@@ -414,18 +457,27 @@ class _Converter:
         finally:
             self._in_progress.discard(identity)
 
-        tag = _short_tag(node.tag)
-        self._check_local_tag(tag, line, column, stop_line, stop_column)
+        tag = self._tag_of(node.tag, line, column, stop_line, stop_column)
         return Node(kind, tag, '', content, line, column, stop_line, stop_column)
 
-    def _check_local_tag(self, tag: str, line: int, column: int, stop_line: int, stop_column: int) -> None:
-        """`!include` is the only tag RAML defines (spec § Includes).
+    def _tag_of(self, tag: str, line: int, column: int, stop_line: int, stop_column: int) -> str:
+        """Shorten the tag and reject an unknown local one, in a single pass.
 
-        Without this, `!includeexample.json` — an `!include` missing its space —
-        is a perfectly good YAML local tag on an empty scalar, and the document
+        `tag:yaml.org,2002:str` becomes `!!str`; anything else passes through.
+
+        The rejection: `!include` is the only tag RAML defines (spec § Includes).
+        Without it, `!includeexample.json` — an `!include` missing its space — is
+        a perfectly good YAML local tag on an empty scalar, and the document
         parses with an empty value where a file was meant. The failure is silent
-        and the typo is invisible, which is why the TCK has a fixture for it.
+        and the typo invisible, which is why the TCK has a fixture for it.
+
+        The two were separate functions, and the common case paid three
+        `startswith` calls to answer a question the first one had settled: a tag
+        in the standard namespace can never be an unknown local tag. Folding
+        them removes two string scans and a method call per node.
         """
+        if tag.startswith(_STANDARD_TAG_PREFIX):
+            return '!!' + tag[len(_STANDARD_TAG_PREFIX) :]
         if tag.startswith('!') and not tag.startswith('!!') and tag != TAG_INCLUDE:
             raise RamlError.new(
                 'unknown tag',
@@ -434,6 +486,7 @@ class _Converter:
                 kind=ErrorKind.PARSING,
                 info={'tag': tag},
             )
+        return tag
 
 
 def _empty_mapping() -> Node:

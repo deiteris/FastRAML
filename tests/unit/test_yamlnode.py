@@ -353,3 +353,72 @@ class TestLineSeparators:
         with pytest.raises(RamlError) as caught:
             compose('a: [1,', uri='file:///a.raml')
         assert next(iter(caught.value.chains()))[-1].message != 'unquoted line separator character'
+
+
+class TestSpecialisedResolver:
+    """`_RamlLoader.resolve` replaces PyYAML's, so it has to agree with it.
+
+    The specialisation is a performance change (docs/12 § 19a) on the hottest
+    callback in the parser, and its failure mode is the quietest one there is: a
+    scalar silently resolving to the wrong tag. `tests/conformance` would catch
+    that across the corpus; this catches it at the function, which is where it
+    would be introduced.
+    """
+
+    SCALARS = (
+        '',
+        'k0',
+        'v0-12',
+        'true',
+        'True',
+        'TRUE',
+        'false',
+        'yes',
+        'no',
+        'on',
+        'off',
+        'null',
+        '~',
+        '42',
+        '-42',
+        '+42',
+        '0x1f',
+        '0o17',
+        '0b1011',
+        '1_000',
+        '1.5',
+        '-1.5e10',
+        '.inf',
+        '.nan',
+        '2024-03-17',
+        '12:30:00',
+        '1e3',
+        'a longer plain scalar with spaces',
+        'http://example.com',
+        '!include foo.raml',
+    )
+
+    def test_it_agrees_with_pyyamls_own_implementation(self):
+        from yaml.nodes import MappingNode, ScalarNode, SequenceNode
+        from yaml.resolver import BaseResolver
+
+        from pyraml.yamlnode import _RamlLoader
+
+        loader = _RamlLoader.__new__(_RamlLoader)
+        for value in self.SCALARS:
+            for implicit in ((True, False), (False, True), (False, False)):
+                ours = _RamlLoader.resolve(loader, ScalarNode, value, implicit)
+                stock = BaseResolver.resolve(loader, ScalarNode, value, implicit)
+                assert ours == stock, (value, implicit)
+        for kind in (SequenceNode, MappingNode):
+            assert _RamlLoader.resolve(loader, kind, '', (True, False)) == BaseResolver.resolve(
+                loader, kind, '', (True, False)
+            )
+
+    def test_the_preconditions_it_relies_on_are_checked_at_import(self):
+        """A wildcard or path resolver would be skipped silently otherwise."""
+        from pyraml.yamlnode import _assert_resolver_shape, _RamlLoader
+
+        _assert_resolver_shape()  # the real table
+        assert None not in _RamlLoader.yaml_implicit_resolvers
+        assert not _RamlLoader.yaml_path_resolvers

@@ -242,6 +242,46 @@ class TestDiscriminator:
         assert error is not None
         assert traces(error)[0].info == {'property': 'kind'}
 
+    def test_an_inline_declaration_may_not_declare_one(self, workspace):
+        # Spec § Using Discriminator. Checked between P7 and P9, because a
+        # discriminator is *inherited*: after unwrap every subtype of a
+        # discriminated type carries one.
+        body = (
+            '  Person:\n    properties:\n      kind: string\n'
+            '/p:\n  get:\n    responses:\n      200:\n        body:\n'
+            '          application/json:\n            discriminator: kind\n'
+            '            properties:\n              kind: string\n'
+        )
+        root = workspace({'api.raml': API + 'types:\n' + body})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        assert 'discriminator on an inline type declaration' in str(caught.value)
+
+    def test_a_body_that_inherits_a_discriminated_type_is_fine(self, workspace):
+        """The false positive the ordering exists to avoid.
+
+        The reference implementation carries this rule as a `FIXME` and enforces
+        nothing, for exactly this reason.
+        """
+        body = (
+            '  Person:\n    discriminator: kind\n    properties:\n      kind: string\n'
+            '/p:\n  get:\n    responses:\n      200:\n        body:\n'
+            '          application/json: Person\n'
+        )
+        root = workspace({'api.raml': API + 'types:\n' + body})
+        assert parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
+
+    def test_an_inline_declaration_may_not_declare_a_discriminator_value(self, workspace):
+        body = (
+            '  Person:\n    discriminator: kind\n    properties:\n      kind: string\n'
+            '/p:\n  get:\n    responses:\n      200:\n        body:\n'
+            '          application/json:\n            type: Person\n            discriminatorValue: p\n'
+        )
+        root = workspace({'api.raml': API + 'types:\n' + body})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        assert 'discriminator on an inline type declaration' in str(caught.value)
+
     def test_an_inherited_property_counts(self, workspace):
         # The reason this rule is checked in P10 and not at decode time.
         assert (

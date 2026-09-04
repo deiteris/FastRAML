@@ -401,7 +401,20 @@ Checks (spec § Using Discriminator):
   property's type;
 - neither facet may appear on a union type (checked at decode time — a union has
   no properties, so it can never become valid later);
-- `discriminator` without any `properties` is an error.
+- `discriminator` without any `properties` is an error;
+- neither facet may appear on an **inline** type declaration — anything that is
+  not a named type in `types:`, `schemas:`, `annotationTypes:` or a DataType
+  fragment's root.
+
+**That last rule runs between P7 and P9, not with the others**, and the ordering
+is the whole of it. A discriminator is *inherited*: a body written
+`application/json: Person` against a discriminated `Person` carries one after
+unwrap, and it is inline — so on the flattened model every correct document
+reports as broken. On the declared model a discriminator is present only where it
+was written. `check_declared_discriminators` in `types/validate.py` is the pass;
+the reference implementation carries the same rule as a `FIXME` ("need to
+validate on which level the discriminator is applied to avoid potential false
+positives") and enforces nothing.
 
 `discriminatorValue` defaults to the type's name; the default is computed on read,
 not materialised at parse time.

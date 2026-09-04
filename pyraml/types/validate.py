@@ -29,7 +29,88 @@ if TYPE_CHECKING:
     from pyraml.types.base import BaseShape, Property
     from pyraml.types.examples import Example
 
-__all__ = ['validate_shapes']
+__all__ = ['check_declared_discriminators', 'validate_shapes']
+
+
+# -- a rule that cannot wait for P10 (docs/05 section 9) -----------------------
+
+
+def check_declared_discriminators(raml: Raml) -> None:
+    """Spec § Using Discriminator: neither facet may be used on an **inline**
+    type declaration.
+
+    Run between P7 and P9, not with the rest of P10, and that ordering is the
+    whole difficulty. `discriminator` is inherited: a body written `type: Person`
+    against a discriminated `Person` carries one after unwrap, and it is inline —
+    so the flattened model reports every correct document as broken. The
+    reference implementation carries this as a `FIXME` for exactly that reason
+    and enforces nothing.
+
+    On the declared model the question is decidable: a discriminator is present
+    only where it was written. "Inline" is then everything that is not a named
+    type — `types:`, `schemas:`, `annotationTypes:` or a DataType fragment's
+    root.
+    """
+    named = _named_type_ids(raml)
+    accumulator = Accumulator()
+    seen: set[int] = set()
+    for shapes in raml.fragment_typedefs.values():
+        for base in shapes:
+            _check_declared(base, named, accumulator, seen)
+    accumulator.raise_if_any()
+
+
+def _named_type_ids(raml: Raml) -> set[int]:
+    """Every shape a document gave a name to.
+
+    Keyed by `id` rather than by object, because `clone` preserves it and a
+    caller may hold a copy (docs/07 section 5).
+    """
+    ids = {
+        shape.id
+        for index in (raml.fragment_types, raml.fragment_annotations)
+        for declared in index.values()
+        for shape in declared.values()
+    }
+    for fragment in raml.fragments.values():
+        shape = getattr(fragment, 'shape', None)
+        if shape is not None:
+            ids.add(shape.id)
+    return ids
+
+
+def _check_declared(base: BaseShape, named: set[int], acc: Accumulator, seen: set[int]) -> None:
+    if id(base) in seen:
+        return
+    seen.add(id(base))
+
+    shape = base.shape
+    if isinstance(shape, ObjectShape) and base.id not in named:
+        for facet, position in (
+            ('discriminator', shape.discriminator.key_pos if shape.discriminator is not None else None),
+            (
+                'discriminatorValue',
+                shape.discriminator_value.key_pos if shape.discriminator_value is not None else None,
+            ),
+        ):
+            if position is not None:
+                acc.add(
+                    failure(
+                        'discriminator on an inline type declaration', base.location, position, info={'facet': facet}
+                    )
+                )
+
+    if isinstance(shape, ObjectShape):
+        for prop in (shape.properties or {}).values():
+            _check_declared(prop.base, named, acc, seen)
+        for pattern in (shape.pattern_properties or {}).values():
+            _check_declared(pattern.base, named, acc, seen)
+    elif isinstance(shape, ArrayShape):
+        if shape.items is not None:
+            _check_declared(shape.items, named, acc, seen)
+    elif isinstance(shape, UnionShape):
+        for member in shape.any_of or ():
+            _check_declared(member, named, acc, seen)
 
 
 def validate_shapes(raml: Raml, *, max_depth: int = DEFAULT_MAX_DEPTH) -> None:

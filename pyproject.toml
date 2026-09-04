@@ -30,7 +30,6 @@ pyraml = "pyraml.cli:main"
 dev = [
     "mypy",
     "pytest",
-    "pytest-benchmark",
     "hypothesis",
     "ruff",
     "types-pyyaml",
@@ -129,6 +128,9 @@ multiline-quotes = "double"
 # The loaders are the only module allowed to touch the filesystem directly, and
 # they need low-level os primitives that the security rules flag by default.
 "pyraml/loaders.py" = ["S603", "PTH", "PLR0911"]
+# Both of these *are* command-line programs; stdout is their output channel.
+"bench/__main__.py" = ["T201"]
+"pyraml/cli.py" = ["T201"]
 # Tests import lazily to keep a module optional, and assert on private state.
 "tests/*.py" = [
     "S101", "ARG", "FBT", "PLR2004", "S311", "ANN", "T201", "SLF001", "BLE001",

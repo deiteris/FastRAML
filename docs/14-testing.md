@@ -10,7 +10,8 @@ Five layers, each answering a question the others cannot.
 | Property | do the algebraic laws hold on generated input? | ~10 properties |
 | Benchmark | is it linear, and how fast? | 5 benches |
 
-Runner: `pytest`, with `pytest-benchmark` for layer 5.
+Runner: `pytest` for layers 1–4. Layer 5 is a standalone `bench/` package driven
+by `python -m bench`, for the reason § 5 gives.
 
 ## 1. The TCK is the primary compliance gate
 
@@ -246,13 +247,39 @@ Laws 2 to 4 are implemented in `tests/property/test_merge_laws.py`.
 
 ## 5. Benchmarks
 
-As specified in [12](12-performance.md) § Part 4. They run in CI on every PR with
-a generous threshold (fail at >25 % regression against the stored baseline) and
-nightly with the full corpus and RSS measurement.
+As specified in [12](12-performance.md) § Part 4, and built as `bench/`. They run
+in CI on every PR with a generous threshold (fail at >25 % regression against the
+stored baseline) and nightly with the full corpus and RSS measurement.
 
 `bench_large`'s 7000-type corpus is **generated** by a script in the repo, not
 vendored, so it stays a few kilobytes of source and can be regenerated at other
 sizes to check linearity.
+
+**Not `pytest-benchmark`.** Two of the three measurement decisions in
+[12](12-performance.md) Part 4 are outside what it does: peak RSS needs a fresh
+process per measurement, and corpus generation has to sit outside the timed
+region rather than inside a fixture. A standalone runner does both and needs no
+dev dependency.
+
+Two things nevertheless run under `pytest`, because they are assertions rather
+than measurements:
+
+| File | Gate | When |
+|------|------|------|
+| `tests/bench/test_corpus.py` | every generated corpus is valid RAML in **all four** configurations, generation is deterministic, and `bench_large`'s diamond really does reach one `common.raml` | always; tiny scale, milliseconds |
+| `tests/bench/test_linearity.py` | `bench_large` within 15 % of linear against a half-size corpus | `PYRAML_BENCH=1` only |
+
+The first of those is not ceremony. The first draft of `write_small` had a
+required property its own example omitted: `parse` and `unwrap` were happy, and
+the two configurations that exercise P10 were quietly measuring an exception.
+
+Absolute wall-clock is **not** asserted in any test. It is a property of the
+machine; it is recorded in `bench/baselines.json` against a fingerprint
+(interpreter, platform, YAML backend), and `python -m bench compare` declines to
+compare across a fingerprint change rather than reporting a "regression" that is
+really a different computer. CI records its own baseline per matrix cell.
+Superlinearity is the exception, and is asserted: it means a cache is being
+missed, which is a bug on every machine.
 
 ## 6. CI matrix
 

@@ -81,6 +81,17 @@ The ratchet makes coverage progress verifiable rather than asserted, and it lets
 the full TCK run from the first commit instead of waiting for the parser to be
 complete.
 
+It also holds the few fixtures we have decided **not** to satisfy. An entry
+recorded as `fail` is not always work outstanding; the suite has bugs of its own,
+and disagreeing with one has to be a recorded decision rather than a silent
+divergence. Each is listed here with its reason.
+
+| Fixture | Why it stays `fail` |
+|---|---|
+| `Annotations/target-locations/valid-response.raml` | A copy-paste bug in the fixture. Every sibling `valid-<target>.raml` declares `allowedTargets: <that target>`; this one alone declares `Method` while applying the annotation directly under a `200:` response key. The spec's Target Locations table defines `Response` as "a declaration of the responses node, whose key is an HTTP status code", so rejecting it is correct. Its own sibling `invalid-response-used-in-api.raml` confirms `Response` is a target the suite tests. |
+| `Fragments/namedexample-01/examples/invalid-one-example.raml` | Not a document — an *include*, swept up by the harness's `**/*.raml` glob. It is only invalid in the context of the parent that includes it as `examples:`; parsed alone it is well-formed, and the reference implementation accepts it standalone too. |
+| `EdgeCases/overlay-overrides-resources/valid.raml` | An Overlay fixture outside `Overlays/`, so the prefix-based skip list misses it. Rejecting it is correct until overlays land in v1.1. |
+
 ### 1.3 Cross-checking against go-raml
 
 A developer-only script runs `raml validate --json` from the reference

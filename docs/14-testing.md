@@ -81,16 +81,30 @@ The ratchet makes coverage progress verifiable rather than asserted, and it lets
 the full TCK run from the first commit instead of waiting for the parser to be
 complete.
 
-It also holds the few fixtures we have decided **not** to satisfy. An entry
-recorded as `fail` is not always work outstanding; the suite has bugs of its own,
-and disagreeing with one has to be a recorded decision rather than a silent
-divergence. Each is listed here with its reason.
+**A `fail` entry means work outstanding, and nothing else.** The list is not a
+place to park a fixture we disagree with: a disagreement is either a bug in the
+suite, which gets fixed there, or a bug here. Three cases have come up, and each
+was fixed at its cause rather than recorded:
 
-| Fixture | Why it stays `fail` |
-|---|---|
-| `Annotations/target-locations/valid-response.raml` | A copy-paste bug in the fixture. Every sibling `valid-<target>.raml` declares `allowedTargets: <that target>`; this one alone declares `Method` while applying the annotation directly under a `200:` response key. The spec's Target Locations table defines `Response` as "a declaration of the responses node, whose key is an HTTP status code", so rejecting it is correct. Its own sibling `invalid-response-used-in-api.raml` confirms `Response` is a target the suite tests. |
-| `Fragments/namedexample-01/examples/invalid-one-example.raml` | Not a document — an *include*, swept up by the harness's `**/*.raml` glob. It is only invalid in the context of the parent that includes it as `examples:`; parsed alone it is well-formed, and the reference implementation accepts it standalone too. |
-| `EdgeCases/overlay-overrides-resources/valid.raml` | An Overlay fixture outside `Overlays/`, so the prefix-based skip list misses it. Rejecting it is correct until overlays land in v1.1. |
+- `Annotations/target-locations/valid-response.raml` declared
+  `allowedTargets: Method` while applying the annotation under a `200:` key —
+  a copy of `valid-method.raml` with the site changed and the declaration left
+  behind. The spec's Target Locations table defines `Response` as "a declaration
+  of the responses node, whose key is an HTTP status code". **Fixed in the
+  fixture.**
+- `Fragments/namedexample-01/examples/{invalid-one-example,valid-multiple-examples}.raml`
+  are `!include` targets, not documents; the first is invalid only in the
+  context of its parent. Named by the `*valid*` convention, a name-driven
+  harness picked them up as entry points. **Renamed in the suite**, includers
+  updated.
+- `EdgeCases/overlay-overrides-resources/valid.raml` is an Overlay filed outside
+  `Overlays/`. **Fixed here**: `skip_reason` now also matches on the RAML header,
+  so an Overlay or Extension is skipped wherever it sits. That caught ten more,
+  four of which had been *passing* — an unsupported-fragment-kind rejection
+  scoring as a correct rejection of an `invalid-` fixture, which is credit for
+  the wrong reason.
+
+Skipping by header rather than by path is why the corpus is 918 rather than 930.
 
 ### 1.3 Cross-checking against go-raml
 

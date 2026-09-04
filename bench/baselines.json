@@ -6,144 +6,144 @@
   },
   "measurements": {
     "endpoints/parse": {
-      "allocated_bytes": 34574015,
+      "allocated_bytes": 34573219,
       "bench": "endpoints",
       "config": "parse",
-      "max_rss_bytes": 114180096,
-      "seconds": 0.3361945003271103
+      "max_rss_bytes": 114319360,
+      "seconds": 0.3348354999907315
     },
     "endpoints/unwrap": {
-      "allocated_bytes": 34574015,
+      "allocated_bytes": 34573219,
       "bench": "endpoints",
       "config": "unwrap",
-      "max_rss_bytes": 115060736,
-      "seconds": 0.3485303996130824
+      "max_rss_bytes": 115290112,
+      "seconds": 0.3484660000540316
     },
     "endpoints/unwrap+validate": {
-      "allocated_bytes": 34574015,
+      "allocated_bytes": 34573219,
       "bench": "endpoints",
       "config": "unwrap+validate",
-      "max_rss_bytes": 115179520,
-      "seconds": 0.36313299974426627
+      "max_rss_bytes": 114810880,
+      "seconds": 0.37260950030758977
     },
     "endpoints/validate": {
-      "allocated_bytes": 43981842,
+      "allocated_bytes": 43981046,
       "bench": "endpoints",
       "config": "validate",
-      "max_rss_bytes": 141025280,
-      "seconds": 0.4384668003767729
+      "max_rss_bytes": 141049856,
+      "seconds": 0.4698863001540303
     },
     "jsonschema/parse": {
-      "allocated_bytes": 1328309,
+      "allocated_bytes": 1326712,
       "bench": "jsonschema",
       "config": "parse",
-      "max_rss_bytes": 29757440,
-      "seconds": 0.08922079997137189
+      "max_rss_bytes": 30085120,
+      "seconds": 0.08958069980144501
     },
     "jsonschema/unwrap": {
-      "allocated_bytes": 1327980,
+      "allocated_bytes": 1326759,
       "bench": "jsonschema",
       "config": "unwrap",
       "max_rss_bytes": 29806592,
-      "seconds": 0.08911959966644645
+      "seconds": 0.09030070016160607
     },
     "jsonschema/unwrap+validate": {
-      "allocated_bytes": 1323938,
+      "allocated_bytes": 1326242,
       "bench": "jsonschema",
       "config": "unwrap+validate",
-      "max_rss_bytes": 29904896,
-      "seconds": 0.08824279997497797
+      "max_rss_bytes": 29741056,
+      "seconds": 0.08797140000388026
     },
     "jsonschema/validate": {
-      "allocated_bytes": 1659145,
+      "allocated_bytes": 1658723,
       "bench": "jsonschema",
       "config": "validate",
-      "max_rss_bytes": 30736384,
-      "seconds": 0.09266599966213107
+      "max_rss_bytes": 30400512,
+      "seconds": 0.0919174998998642
     },
     "large/parse": {
-      "allocated_bytes": 30312201,
+      "allocated_bytes": 30311507,
       "bench": "large",
       "config": "parse",
-      "max_rss_bytes": 97787904,
-      "seconds": 0.3531068000011146
+      "max_rss_bytes": 98222080,
+      "seconds": 0.3545798002742231
     },
     "large/unwrap": {
-      "allocated_bytes": 30312295,
+      "allocated_bytes": 30311460,
       "bench": "large",
       "config": "unwrap",
-      "max_rss_bytes": 98045952,
-      "seconds": 0.38457039976492524
+      "max_rss_bytes": 97726464,
+      "seconds": 0.3651370001025498
     },
     "large/unwrap+validate": {
-      "allocated_bytes": 30312154,
+      "allocated_bytes": 30311601,
       "bench": "large",
       "config": "unwrap+validate",
-      "max_rss_bytes": 98091008,
-      "seconds": 0.42894050013273954
+      "max_rss_bytes": 98304000,
+      "seconds": 0.41953610023483634
     },
     "large/validate": {
-      "allocated_bytes": 62024528,
+      "allocated_bytes": 62023740,
       "bench": "large",
       "config": "validate",
-      "max_rss_bytes": 169500672,
-      "seconds": 0.6378500000573695
+      "max_rss_bytes": 169717760,
+      "seconds": 0.6339517999440432
     },
     "small/parse": {
-      "allocated_bytes": 590708,
+      "allocated_bytes": 589920,
       "bench": "small",
       "config": "parse",
-      "max_rss_bytes": 27414528,
-      "seconds": 0.005061000119894743
+      "max_rss_bytes": 27844608,
+      "seconds": 0.004737399984151125
     },
     "small/unwrap": {
-      "allocated_bytes": 590452,
+      "allocated_bytes": 589920,
       "bench": "small",
       "config": "unwrap",
       "max_rss_bytes": 27635712,
-      "seconds": 0.005363600328564644
+      "seconds": 0.005115600302815437
     },
     "small/unwrap+validate": {
-      "allocated_bytes": 590708,
+      "allocated_bytes": 589920,
       "bench": "small",
       "config": "unwrap+validate",
-      "max_rss_bytes": 27557888,
-      "seconds": 0.006184000056236982
+      "max_rss_bytes": 27725824,
+      "seconds": 0.005869199987500906
     },
     "small/validate": {
-      "allocated_bytes": 959062,
+      "allocated_bytes": 958133,
       "bench": "small",
       "config": "validate",
-      "max_rss_bytes": 28323840,
-      "seconds": 0.00981750013306737
+      "max_rss_bytes": 28241920,
+      "seconds": 0.007731100078672171
     },
     "validate/parse": {
-      "allocated_bytes": 129274469,
+      "allocated_bytes": 129273859,
       "bench": "validate",
       "config": "parse",
-      "max_rss_bytes": 425230336,
-      "seconds": 1.0735738999210298
+      "max_rss_bytes": 425291776,
+      "seconds": 0.9986409000121057
     },
     "validate/unwrap": {
-      "allocated_bytes": 129274725,
+      "allocated_bytes": 129273859,
       "bench": "validate",
       "config": "unwrap",
-      "max_rss_bytes": 425111552,
-      "seconds": 1.1248625996522605
+      "max_rss_bytes": 425500672,
+      "seconds": 1.0432428000494838
     },
     "validate/unwrap+validate": {
-      "allocated_bytes": 129274725,
+      "allocated_bytes": 129273859,
       "bench": "validate",
       "config": "unwrap+validate",
-      "max_rss_bytes": 425418752,
-      "seconds": 1.1586794001050293
+      "max_rss_bytes": 425390080,
+      "seconds": 1.1018854002468288
     },
     "validate/validate": {
-      "allocated_bytes": 129274469,
+      "allocated_bytes": 129273859,
       "bench": "validate",
       "config": "validate",
-      "max_rss_bytes": 443437056,
-      "seconds": 1.5224729999899864
+      "max_rss_bytes": 443125760,
+      "seconds": 1.4101334000006318
     }
   }
 }

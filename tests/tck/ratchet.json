@@ -132,7 +132,7 @@
     "EdgeCases/include-empty-file/invalid-include-invalid-raml.raml": "pass",
     "EdgeCases/include-empty-file/invalid-user.raml": "pass",
     "EdgeCases/include-empty-file/valid.raml": "pass",
-    "EdgeCases/include-no-whitespace/invalid-include-no-whitespace.raml": "fail",
+    "EdgeCases/include-no-whitespace/invalid-include-no-whitespace.raml": "pass",
     "EdgeCases/include-no-whitespace/valid.raml": "pass",
     "EdgeCases/includes-resolution/invalid-include-inexisting-file.raml": "pass",
     "EdgeCases/includes-resolution/valid.raml": "pass",

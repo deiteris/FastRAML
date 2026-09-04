@@ -135,10 +135,31 @@ class TestString:
         assert shape.validate('a') is not None
         assert shape.validate('abcde') is not None
 
-    def test_a_pattern_is_unanchored_unless_written_so(self, workspace):
-        # ECMA-262 semantics: `pattern: b` matches anywhere in the value.
-        assert declared(workspace, '  T:\n    type: string\n    pattern: b\n').validate('abc') is None
+    def test_a_pattern_describes_the_whole_value(self, workspace):
+        """`pattern:` is a full match, not a search.
+
+        This test asserted the opposite until Phase 8b, on ECMA-262 semantics.
+        The TCK decides it: `Annotations/complex-11`'s valid and invalid
+        fixtures differ only in `simpleAnnotationValueOnType` versus
+        `simpleAnnotation_value_on_type` against `[a-zA-Z0-9]{8,32}`, and an
+        unanchored search accepts both — the first sixteen characters match.
+        """
+        assert declared(workspace, '  T:\n    type: string\n    pattern: b\n').validate('abc') is not None
+        assert declared(workspace, '  T:\n    type: string\n    pattern: a.c\n').validate('abc') is None
+
+    def test_an_author_written_anchor_still_works(self, workspace):
+        # `^`/`$` are redundant under a full match rather than wrong, and real
+        # documents are full of them.
+        assert declared(workspace, '  T:\n    type: string\n    pattern: ^abc$\n').validate('abc') is None
         assert declared(workspace, '  T:\n    type: string\n    pattern: ^b\n').validate('abc') is not None
+
+    def test_a_pattern_property_name_is_still_matched_unanchored(self, workspace):
+        # The other direction, and the reason the change is not global: a
+        # `/regex/` key is matched *against* a property name rather than
+        # describing one, and `/^x/` is how they are written (docs/05 § 5.1).
+        shape = declared(workspace, '  T:\n    properties:\n      /^x/: integer\n')
+        assert shape.validate({'xylophone': 1}) is None
+        assert shape.validate({'xylophone': 'no'}) is not None
 
 
 class TestArray:

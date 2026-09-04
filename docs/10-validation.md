@@ -138,7 +138,7 @@ Per kind:
 | any | anything | — |
 | nil | `None` | — |
 | boolean | `bool` | — |
-| string | `str` | `minLength`, `maxLength`, `pattern` |
+| string | `str` | `minLength`, `maxLength`, `pattern` (a **full match**, § 5.4) |
 | integer | `int`, `Decimal`/`float` with integral value, `str` from a number-preserving decoder | `minimum`, `maximum`, `multipleOf`, `format` range |
 | number | `int`, `float`, `Decimal` | `minimum`, `maximum`, `multipleOf` |
 | date-only | `str` matching `YYYY-MM-DD` | strict parse |
@@ -194,6 +194,25 @@ rejected — the precise failure the no-`float` rule exists to prevent. `repr`
 recovers the shortest decimal that round-trips, which is the author's text in
 every case that matters; the reference implementation converts through
 `big.Rat.SetString(fmt.Sprintf("%v", v))` for the same reason.
+
+### 5.4 `pattern` is a full match
+
+A `pattern:` facet describes the **whole** string: `re.fullmatch`, not
+`re.search`. An earlier draft of this section said the opposite, on ECMA-262
+semantics, and the reference implementation does the same (`MatchString`, which
+is Go's unanchored search).
+
+The TCK decides it. `Annotations/complex-11`'s valid and invalid fixtures differ
+in one character class: `simpleAnnotationValueOnType` against
+`simpleAnnotation_value_on_type`, both under `pattern: "[a-zA-Z0-9]{8,32}"`. An
+unanchored search accepts both, because the first sixteen characters match — so
+under the old reading the pair tests nothing at all.
+
+**`/regex/` property names stay unanchored** ([05](05-type-model.md) § 5.1). The
+two are different jobs: a `pattern:` facet *describes* a value, while a pattern
+property is matched *against* a key it does not own, and `/^x/` is how those are
+written in practice. An author-written `^…$` is redundant under a full match
+rather than wrong, which is what keeps the change compatible with real documents.
 
 ## 6. External JSON Schema
 

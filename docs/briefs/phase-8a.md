@@ -179,6 +179,13 @@ rules. The last one — a supplied value with no declaration anywhere is `unknow
 facet` — is what turns `maxLenght: 5` into an error, because an unrecognised
 facet key became a custom facet *value* during decoding (doc 05 § 4).
 
+**Start the walk at `inherits[0]`, not at the shape.** A `facets:` block
+declares what *subtypes* must supply: the declaring type neither has to satisfy
+its own required facets nor may supply a value for one, and supplying one is
+`unknown facet`. Both halves are measured — `validate.go`'s
+`validateShapeFacets` walks from `base.Inherits[0]`. Getting this wrong regresses
+fifteen valid fixtures and every one of them looks like a different bug.
+
 **The chain walk follows `inherits[0]` only.** That is an inherited limitation,
 it is documented in doc 10 § 4 as a v1.1 item, and it must be **pinned by a
 test** so the eventual fix is visible rather than silent.
@@ -285,8 +292,13 @@ Phase 8a is doc 10 §§ 1–5. It does **not** include:
 - **§ 6, external JSON Schema** — the shared registry, `JsonShape` compilation
   and the schema → shape projection. That is Phase 8b; ~8 fixtures, and the only
   part with a third-party dependency (`jsonschema`, `referencing`, both already
-  in `pyproject.toml`). `JsonShape.check()` and `.validate()` should raise
-  `NotImplementedError` naming it, as the rest of the tree does.
+  in `pyproject.toml`).
+
+  `JsonShape.check()` and `.validate()` **accept everything** rather than
+  raising `NotImplementedError`, which is what this brief first said. A raise is
+  right for a seam nothing reaches; this one is reached by every valid document
+  that declares a JSON-schema type, and raising would reject it. Deferring
+  validation means not validating, not failing.
 - **Doc 10 § 6.2's four decoders** — "no schema in query parameters, query
   string, URI parameters or headers". Three of the four do not exist until
   Phase 5.

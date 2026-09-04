@@ -29,14 +29,15 @@ per-kind merge rules, and unwrap with recursion marking, behind
 template variables and transforms (Phase 6's) and URI template parsing
 (Phase 5's).
 
-**P0 through P9 all run; only P10 is a no-op.** `check` and `validate` raise
-`NotImplementedError` naming Phase 8, which `docs/15` now splits: steps 1–5
-(everything but JSON Schema) need nothing from Phases 5–7 and are the largest
-lever left in the TCK — 325 of the 336 recorded failures are *invalid* fixtures
-the parser does not reject, and 133 of those declare no resource and no
-template. Everything else still deferred is retained as the original `Node` on a
-`_raw_*` attribute; `grep -rn '_raw_' pyraml/` lists every seam, and a comment
-beside each names the phase that decodes it. A brief per phase lives in
+Phase 8a: `types/values.py` and `types/validate.py` (P10) — `check` and
+`validate` on all seventeen kinds, examples, defaults, custom facets and
+annotation values, behind `ParseOptions(validate=True)`.
+
+**Every pass P0–P10 now runs.** What is left is not a pass but coverage:
+endpoints and templates (Phases 5–7) give P10 more to validate, and Phase 8b
+adds JSON Schema. Everything still deferred is retained as the original `Node`
+on a `_raw_*` attribute; `grep -rn '_raw_' pyraml/` lists every seam, and a
+comment beside each names the phase that decodes it. A brief per phase lives in
 `docs/briefs/`.
 
 ## The gate
@@ -71,6 +72,10 @@ Full list with the pass that establishes each: `docs/02-architecture.md` § 4.
 - **Never `copy.deepcopy`.** Use `clone(memo)` or `clone_detached()`
   (`docs/07-resolution-and-inheritance.md` § 5). A test asserts that no module
   in `pyraml/` imports the `copy` module at all.
+- **A `facets:` block declares what *subtypes* must supply.** The chain walk in
+  P10 starts at `inherits[0]`, so the declaring type neither has to satisfy its
+  own required facets nor may supply a value for one — the latter is `unknown
+  facet` (`docs/10` § 4). Nobody guesses this; it cost fifteen valid fixtures.
 - **Where an annotation was applied rides `ParseCtx`, not a parameter.** A
   decoder that establishes a new site wraps itself in `Raml.target_scope(...)`;
   everything inside reads it, including the annotated-scalar form four dozen
@@ -83,8 +88,11 @@ Full list with the pass that establishes each: `docs/02-architecture.md` § 4.
 - **Accumulate errors; do not fail fast** — except for an unreadable entry file,
   a missing or unrecognised RAML header, a non-mapping root, and a fragment whose
   kind does not match its context.
-- **Numeric facets never pass through `float`.** `Fraction` is built from the raw
-  scalar text.
+- **Numbers never pass through `float`, on either side of a comparison.** A
+  facet's `Fraction` is built from the raw scalar text; a *value* is converted
+  through its decimal text too (`Fraction(repr(v))`), because the YAML decoder
+  already made it a float and `as_integer_ratio()` would recover the binary
+  approximation. `multipleOf: 1.1` must accept `2.2`, and that is the test.
 - **No per-character Python loops** where a compiled regex or a C-level string
   method will do. go-raml's byte loops are correct in Go and slow here
   (`docs/12-performance.md` § 12).

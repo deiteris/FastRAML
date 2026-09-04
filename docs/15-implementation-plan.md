@@ -373,7 +373,7 @@ application site is a security scheme.
 
 ---
 
-## Phase 8 — Validation and JSON Schema
+## Phase 8a — Validation, everything but JSON Schema — **complete**
 
 **Prerequisites:** Phase 4 — validation runs against unwrapped shapes, and
 `validate=True` without `unwrap=True` unwraps a private copy. Phase 4b for
@@ -411,8 +411,59 @@ with them.
 
 **Done when:** every `*invalid*` fixture outside the skip list that declares no
 resource and no template produces an error, and no `*valid*` fixture regresses —
-the whole-corpus form of that criterion needs Phase 7 and is Phase 8's second
-half.
+the whole-corpus form of that criterion needs Phase 7 and is Phase 8b's.
+
+**Outcome.** TCK 595 → 735 of 930, **no valid fixture lost** — the largest single
+move in the project and the first phase that could have gone backwards. 117 unit
+tests across `test_check.py` and `test_validate.py`, plus law 7 under hypothesis.
+
+Three things were established by *running* the reference implementation after a
+regression, not by reading the spec, and each is now written down where the rule
+lives:
+
+- A `facets:` block declares what **subtypes** must supply. The chain walk starts
+  at `inherits[0]`, so the declaring type neither satisfies its own required
+  facets nor may supply one — the second half is `unknown facet`, which is not
+  what anyone would guess. This alone accounted for 15 of 19 regressed valid
+  fixtures ([10](10-validation.md) § 4).
+- Facets on a union declaration go unenforced (§ 3.7 of
+  [01](01-scope-and-coverage.md)), because they land in `custom_facets` with no
+  kind to be decoded against. Recorded as a tracked gap rather than left
+  implicit.
+- `as_fraction` must convert a value through its **decimal text**, not
+  `as_integer_ratio()`. [10](10-validation.md) § 5.3 specified the latter, which
+  made `multipleOf: 1.1` reject `2.2` — the exact failure the no-`float` rule
+  exists to prevent. Doc amended.
+
+One Phase 2 defect surfaced: `decode_fragment` tested the raw URI for a `.json`
+extension, so `schema.json#/definitions/User` decoded as RAML with `$schema` as a
+custom facet. `check_fragment_kind` twenty lines above already stripped the
+pointer. Invisible until something read `custom_facets`.
+
+The three divergences found in the reference implementation are written up in
+`KNOWN-ISSUES.md` in that checkout, each with a reproduction.
+
+---
+
+## Phase 8b — JSON Schema and the endpoint-facing remainder
+
+**Prerequisites:** Phase 8a. Phase 5 for the four decoders of
+[10](10-validation.md) § 6.2, Phase 7 for the eleven `DomainLocation`s that
+Phases 5–7 create. Normative: [10](10-validation.md) § 6.
+
+**Build:**
+
+1. The shared JSON Schema registry, one per `Raml`; `JsonShape` compilation and
+   the § 6.2 restrictions; the schema → shape projection. `JsonShape.check()` and
+   `.validate()` currently accept everything rather than raising, so that a
+   JSON-schema-typed declaration parses — they become real here.
+2. Doc 10 § 6.2's "no schema in query parameters, query string, URI parameters or
+   headers", at the four decoders.
+3. `allowedTargets` at the sites Phases 5–7 build.
+
+**Done when:** the full TCK runs with `unwrap=True, validate=True`; every
+`*invalid*` fixture outside the skip list produces an error; every `*valid*`
+fixture outside the skip list does not.
 
 ---
 

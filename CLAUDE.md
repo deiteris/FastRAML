@@ -14,7 +14,7 @@ that area has already settled.
    dependencies, not by importance: the type system precedes endpoints, the merge
    precedes templates, validation comes last.
 
-**Current state: Phases 0 to 8b complete; Phase 9 (hardening and release) is
+**Current state: Phases 0 to 8c complete; Phase 9 (hardening and release) is
 next.** Phase 0: positions, errors, uris, loaders, yamlnode. Phase 1:
 registry, fragments, includes, namespaces, datanode, facets, references,
 annotations, the entry points and the pass driver (P0–P3).
@@ -45,12 +45,15 @@ eager `$ref` resolution through `ResourceLoader`, and the projection of a
 compiled schema onto the nearest RAML shape; plus the last eight conformance
 rules the corpus was still measuring.
 
+Phase 8c: facets written beside `type: A | B`, distributed to the members at P9
+— the last conformance gap the corpus measured.
+
 **Every pass P0–P10 runs, every RAML construct is decoded, and the TCK stands at
-914 of 916.** No `_raw_*` attribute is a deferred seam any more — the two that
-remain are working buffers within a single decode. The two open fixtures are the
-union-facet gap and nothing else (`docs/01` § 3.7), an After-v1 item by decision.
-What is left is Phase 9: benchmarks, depth guards, `re2`, `parse_lenient`, the
-CLI and the public-API export list. A brief per phase lives in `docs/briefs/`.
+916 of 916** — every fixture outside the skip list does what its name promises.
+No `_raw_*` attribute is a deferred seam any more; the two that remain are
+working buffers within a single decode. What is left is Phase 9: benchmarks,
+depth guards, `re2`, `parse_lenient`, the CLI and the public-API export list. A
+brief per phase lives in `docs/briefs/`.
 
 **A TCK `fail` entry means work outstanding and nothing else** (`docs/14` § 1.2).
 Where a fixture is wrong, fix it in the suite — three have been, on branches in

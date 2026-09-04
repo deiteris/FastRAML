@@ -62,7 +62,7 @@ Legend: **v1** = required for the first release · **v1.1** = planned follow-up 
 | `array`: `items`, `minItems`, `maxItems`, `uniqueItems` | v1 | |
 | Scalars: `string`, `number`, `integer`, `boolean`, `date-only`, `time-only`, `datetime-only`, `datetime`, `file`, `nil` | v1 | |
 | Union types (`\|`) | v1 | Union+`enum` interaction: v1.1 (go-raml also defers it) |
-| Facets written on a union declaration | **v1.1** | Parsed, **not enforced**. See below |
+| Facets written on a union declaration | v1 | Distributed to the members at P9. See § 3.7 |
 | JSON Schema external types | v1 | Draft 4/6/7/2019-09/2020-12 as supported by the chosen library |
 | XML Schema external types | out | Documented deviation |
 | References to inner schema elements (`file.json#/definitions/Foo`) | v1 | JSON Pointer only |
@@ -119,42 +119,38 @@ Legend: **v1** = required for the first release · **v1.1** = planned follow-up 
 | Annotating scalar-valued nodes (the `value:` map form) | v1 |
 | `allowedTargets` enforcement | **v1** (go-raml leaves this unimplemented; pyRAML implements it — see [09](09-security-and-annotations.md) § Targets) |
 
-### 3.7 Known gap: facets on a union declaration
+### 3.7 Facets on a union declaration
 
-`T: {type: A | B, maximum: 2}` is parsed and the `maximum` is **not enforced**.
+`T: {type: A | B, maximum: 2}` constrains **both** branches. This section
+recorded it as a known gap through Phase 8b — parsed and not enforced — because
+the failure mode is silent: a document that looks constrained was not. It is
+implemented, and the section is kept because the shape of the answer is not
+obvious.
 
-This is a gap, not a deviation: § 4 below lists decisions we would defend, and
-this is not one. It is recorded here because the failure mode is silent — a
-document that looks constrained is not.
+The spec. § Union Type: an instance is valid "if and only if it is a valid
+instance of at least one of the super types obtained by expanding all unions in
+that type hierarchy", so the facet constrains each expanded branch.
 
-The spec is clear. § Union Type: an instance is valid "if and only if it is a
-valid instance of at least one of the super types obtained by expanding all
-unions in that type hierarchy", so the facet constrains each expanded branch.
-Conformant behaviour is to distribute it to the members.
+**A union recognises no facets of its own, and it cannot.** Whether `minimum` is
+a built-in facet, a custom one or a mistake is a question only a *member* can
+answer, and the members may answer differently — the TCK's
+`union-with-facets/valid-custom-facet.raml` has `integer | number | string` where
+`minimum` is built-in for two members and a `facets:` declaration on the third.
+So `UnionShape` keeps the facets as YAML (`pending_facets`) rather than digesting
+them, and P9 hands them to each member to decode
+([07](07-resolution-and-inheritance.md) § 3.4). A facet no member can place
+surfaces as `unknown facet` positioned on the member it could not be placed on.
 
-Why it is not done yet. P7 gives the declaration the *union* kind, and
-`UnionShape` recognises no scalar facets, so `maximum` reaches `KindBase` and is
-filed under `custom_facets` — where P10 would call it `unknown facet`. Doing it
-properly means `UnionShape` retaining the undigested nodes and P9 decoding them
-against each member once `anyOf` is settled, cloning the members first: the
-empty-union branch of the merge adopts the parent's member objects by reference
-([07](07-resolution-and-inheritance.md) § 3.4), so decoding in place would
-mutate the parent for every other subtype. That is P7/P9 work.
+**Each member is replaced by a subtype of itself, never modified in place.** Two
+independent reasons: the merge's "both unions" branch adopts the parent's member
+objects by reference, so writing to one would narrow the parent type for every
+other subtype of it; and only a subtype makes the member's own `facets:`
+declarations visible to P10, which walks from `inherits[0]`.
 
-The reference implementation has the same gap and a worse one: its
+The reference implementation still has the gap, and a worse one: its
 `UnionShape.unmarshalYAMLNodes` discards every facet but `discriminator`
-outright. Written up in `KNOWN-ISSUES.md` in that checkout, with a reproduction.
-
-Until then P10 skips the custom-facet check on a union base, with a comment
-saying so, rather than reporting `unknown facet` for something the spec allows.
-
-**This is the only gap the TCK still measures.** After Phase 8b the two fixtures
-it accounts for are the only two that do not do what their name promises:
-
-| Fixture | The facet that goes unenforced |
-|---|---|
-| `Types/Type Expressions/union-with-facets/invalid-not-supported-facet.raml` | one written directly on a union declaration |
-| `Types/types-constraits-conflict/invalid-constraints-conflict.raml` | `minimum`/`maximum` on a subtype of a union, which is the same branch |
+outright, so the constraint is not merely unenforced but unrecoverable. Written
+up as entry 1 of `KNOWN-ISSUES.md` in that checkout, with a reproduction.
 
 ## 4. Deliberate deviations
 

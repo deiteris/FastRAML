@@ -526,7 +526,7 @@ lives:
 - Facets on a union declaration go unenforced (§ 3.7 of
   [01](01-scope-and-coverage.md)), because they land in `custom_facets` with no
   kind to be decoded against. Recorded as a tracked gap rather than left
-  implicit.
+  implicit — and closed in Phase 8c, from that record.
 - `as_fraction` must convert a value through its **decimal text**, not
   `as_integer_ratio()`. [10](10-validation.md) § 5.3 specified the latter, which
   made `multipleOf: 1.1` reject `2.2` — the exact failure the no-`float` rule
@@ -567,10 +567,10 @@ Phases 5–7 create. Normative: [10](10-validation.md) § 6.
 `*invalid*` fixture outside the skip list produces an error; every `*valid*`
 fixture outside the skip list does not.
 
-**Outcome.** TCK 891 → **914 of 916**, no valid fixture lost. The two that remain
-are the union-facet gap and nothing else ([01](01-scope-and-coverage.md) § 3.7),
-which is an After-v1 item by decision. The skip list is Overlays, Extensions and
-the two network fixtures.
+**Outcome.** TCK 891 → **914 of 916**, no valid fixture lost. The two that
+remained were the union-facet gap and nothing else, closed immediately
+afterwards by Phase 8c below. The skip list is Overlays, Extensions and the two
+network fixtures.
 
 JSON Schema was the smaller half. Fourteen of the twenty-three fixtures moved
 fell to compilation and § 6.2's restrictions; the other nine took **eight
@@ -612,6 +612,54 @@ Unit tests: 58 in `test_jsonschema.py`, plus additions to `test_check.py`,
 
 ---
 
+## Phase 8c — Facets on a union declaration — **complete**
+
+**Prerequisites:** Phase 8b, and only because it made this the last thing left.
+Promoted from After-v1 item 2 once it was the sole remaining conformance gap.
+Normative: [01](01-scope-and-coverage.md) § 3.7,
+[07](07-resolution-and-inheritance.md) § 3.4.
+
+**Build:**
+
+1. `UnionShape.pending_facets` — keep the facets as YAML rather than digesting
+   them into `custom_facets`, because decoding one means decoding it against a
+   *member's* kind and that needs the nodes.
+2. `_distribute_union_facets` in P9, after the merge: replace each member with a
+   subtype of itself carrying the facets.
+3. Remove P10's skip of the custom-facet check on a union base, which was the
+   workaround.
+
+**Done when:** all five fixtures in the three directories that test this do what
+their names promise, and no other valid fixture moves.
+
+**Outcome.** TCK 914 → **916 of 916**. The whole corpus outside the skip list now
+does what it says.
+
+The scope was settled by measuring before building rather than by estimating: a
+survey of all 666 valid TCK documents found **three** carrying a facet on a union
+declaration, all three in the two directories built to test the feature. That
+turned an open-ended "conformance work" item into five fixtures with a known
+blast radius.
+
+Two things the earlier design notes had right and one they did not.
+
+Right: the members must be copied, not modified, because the merge's "both
+unions" branch adopts the parent's member objects by reference. Right: this has
+to run after `inherit`, since a child narrowing a union has no `anyOf` until then.
+
+Wrong: "clone the members" is not enough. A clone is the member, and a facet the
+member itself *declared* — `facets: {minimum: number}` — may then not be supplied
+to it, by the rule in [10](10-validation.md) § 4 that a `facets:` block describes
+what subtypes must supply. `union-with-facets/valid-custom-facet.raml` is exactly
+that case. Each member is therefore replaced by a genuine **subtype**: a fresh
+`BaseShape` with `inherits = [member]`, the member's own kind class, and the
+facets decoded onto it, merged with `inherit`. The `inherits` edge is what makes
+the member's `facets:` visible to P10, and running `inherit` is what makes a
+facet that *widens* the member's own bound an error rather than a silent
+overwrite.
+
+---
+
 ## Phase 9 — Hardening and release
 
 **Prerequisites:** Phases 0–8. A benchmark is meaningless against a parser that
@@ -646,18 +694,12 @@ In rough priority order:
    additional post-merge behaviour-invariance check for overlays. The `extends`
    chain, the "all overlays share one master" constraint, and the allowed-
    differences table are the work. Estimated: one phase.
-2. **Facets on a union declaration** ([01](01-scope-and-coverage.md) § 3.7).
-   Parsed and not enforced today, which is silent: a document that looks
-   constrained is not. The work is in P7/P9 — `UnionShape` retains the
-   undigested nodes and the merge decodes them against each member, cloning
-   first ([07](07-resolution-and-inheritance.md) § 3.4). The reference
-   implementation discards them outright; written up in its `KNOWN-ISSUES.md`.
-3. **Multi-parent custom facet chain walk** — the known limitation in
+2. **Multi-parent custom facet chain walk** — the known limitation in
    [10](10-validation.md) § 4.
-4. **Union `enum` semantics** — spec § Union Type's enum rules, which the
+3. **Union `enum` semantics** — spec § Union Type's enum rules, which the
    reference implementation also defers.
-5. **Finer provenance granularity** — [08](08-templates-and-endpoints.md) § 6.4.
-6. **Downstream packages** — LSP server, JSON Schema / OpenAPI converters,
+4. **Finer provenance granularity** — [08](08-templates-and-endpoints.md) § 6.4.
+5. **Downstream packages** — LSP server, JSON Schema / OpenAPI converters,
    middleware. All are consumers of the model, not changes to it; `retain_source`
    and the `TypeExprRef`/`IncludeRef` indices exist so none of them requires a
    parser change.

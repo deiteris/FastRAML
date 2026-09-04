@@ -457,21 +457,67 @@ class TestCustomFacets:
         )
 
 
-class TestUnionFacetsAreNotEnforced:
-    """docs/01 section 3.7 — a known gap, pinned so it cannot go silent."""
+class TestUnionFacetsAreDistributed:
+    """A facet beside `type: A | B` constrains each expanded branch.
+
+    Spec § Union Type. This class pinned the *gap* until the distribution landed
+    — `test_and_is_not_applied` asserted that `maximum: 2` did nothing to an
+    `example: 99999`, so that the silence could not go unnoticed. It is now the
+    first case below, inverted.
+    """
 
     def test_a_facet_on_a_union_is_accepted(self, workspace):
         assert parse_validating(workspace, '  U: integer | number\n  T:\n    type: U\n    maximum: 2\n') is None
 
-    def test_and_is_not_applied(self, workspace):
-        # The failure mode this records: a document that looks constrained is
-        # not. When the conformant fix lands this test should start failing.
+    def test_and_is_applied_to_every_member(self, workspace):
+        error = parse_validating(
+            workspace, '  U: integer | number\n  T:\n    type: U\n    maximum: 2\n    example: 99999\n'
+        )
+        assert error is not None
+        assert 'invalid example' in messages(error)
+
+    def test_a_conforming_example_still_passes(self, workspace):
         assert (
-            parse_validating(
-                workspace, '  U: integer | number\n  T:\n    type: U\n    maximum: 2\n    example: 99999\n'
-            )
+            parse_validating(workspace, '  U: integer | number\n  T:\n    type: U\n    maximum: 2\n    example: 1\n')
             is None
         )
+
+    def test_a_facet_no_member_supports_is_an_unknown_facet(self, workspace):
+        # `minimum` is not a facet of `string`, and nothing declares it as a
+        # custom one — so distributing it reports where it landed.
+        error = parse_validating(workspace, '  U: integer | string\n  T:\n    type: U\n    minimum: 1\n')
+        assert error is not None
+        assert 'unknown facet' in messages(error)
+
+    def test_a_member_may_declare_it_as_a_custom_facet(self, workspace):
+        body = (
+            '  S:\n    type: string\n    facets:\n      minimum: number\n  T:\n    type: integer | S\n    minimum: 1\n'
+        )
+        assert parse_validating(workspace, body) is None
+
+    def test_conflicting_bounds_are_caught_on_the_members(self, workspace):
+        error = parse_validating(
+            workspace, '  U: integer | number\n  T:\n    type: U\n    maximum: 1\n    minimum: 2\n'
+        )
+        assert error is not None
+        assert 'minimum exceeds maximum' in messages(error)
+
+    def test_the_declared_union_is_not_mutated(self, workspace):
+        """The corruption this design exists to avoid.
+
+        The "both unions" branch of the merge adopts the parent's member objects
+        by reference, so decoding a facet in place would narrow `U` itself — and
+        with it every other subtype of `U`.
+        """
+        root = workspace(
+            {
+                'api.raml': API
+                + 'types:\n  U: integer | number\n'
+                + '  Narrow:\n    type: U\n    maximum: 2\n'
+                + '  Wide:\n    type: U\n    example: 99999\n'
+            }
+        )
+        assert parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
 
 
 class TestPublicSurface:

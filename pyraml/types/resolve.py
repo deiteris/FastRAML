@@ -137,7 +137,7 @@ def _resolve_link(raml: Raml, base: BaseShape, target: UnknownShape) -> None:
     if linked is None:
         raise RamlError.new('linked data type declares no shape', base.location, base.key_pos, kind=ErrorKind.RESOLVING)
     resolve_shape(raml, linked)
-    attach_kind(raml, base, linked.type, target.facets, from_mapping=target.from_mapping)
+    attach_kind(raml, base, linked.type, target.pending_facets, from_mapping=target.from_mapping)
 
 
 def _resolve_multiple_inheritance(raml: Raml, base: BaseShape, target: UnknownShape) -> None:
@@ -150,7 +150,7 @@ def _resolve_multiple_inheritance(raml: Raml, base: BaseShape, target: UnknownSh
         raise RamlError.new('type must name at least one parent', base.location, base.key_pos, kind=ErrorKind.RESOLVING)
     for parent in base.inherits:
         resolve_shape(raml, parent)
-    attach_kind(raml, base, base.inherits[0].type, target.facets, from_mapping=target.from_mapping)
+    attach_kind(raml, base, base.inherits[0].type, target.pending_facets, from_mapping=target.from_mapping)
 
 
 def _parse(raml: Raml, base: BaseShape) -> RdtNode:
@@ -185,7 +185,7 @@ def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
     is a separate declaration and must not see it.
     """
     base = target.base
-    facets, from_mapping = target.facets, target.from_mapping
+    facets, from_mapping = target.pending_facets, target.from_mapping
 
     match node:
         case Primitive():

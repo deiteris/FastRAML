@@ -11,6 +11,22 @@ is what keeps `types/` pointing one way (docs/02-architecture.md section 2).
 be settled yet keeps its undigested facet list and goes on the worklist for P7
 (docs/07 section 1).
 
+**`pending_facets` — one pattern, two users.** `make_shape` hands every kind the
+flat `[k0, v0, …]` list its declaration carried, and fourteen of them digest it
+on the spot. Two cannot, and both keep it as YAML rather than as `custom_facets`,
+because digesting into a `DataNode` throws away what a later pass needs to decode
+it properly:
+
+- `UnknownShape`, because the kind is unknown, so *which* of these are facets at
+  all is unknown. Consumed by P7's `attach_kind`.
+- `UnionShape`, because the kind is known and recognises none of them — they
+  belong to the members, which are not settled until P9. Consumed by
+  `_distribute_union_facets`.
+
+The reference implementation threads the same list (`shapeFacets`) through every
+shape and stores it in exactly one place, `UnknownShape.facets`; the union case
+is the gap it still has (docs/01 § 3.7).
+
 `JsonShape` is the fourth structured kind and lives in `jsonschema_.py`, which
 sits above this module: compiling a schema needs the loader, and the section 6.3
 projection builds object, array and union shapes from what it finds.
@@ -422,13 +438,19 @@ class ArrayShape(ComplexKind):
 class UnionShape(ComplexKind):
     """`union`. Its members arrive built, one declaration each."""
 
-    __slots__ = ('any_of',)
+    __slots__ = ('any_of', 'pending_facets')
 
     DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {'anyOf': SHAPE_LIST}
 
     def __init__(self, base: BaseShape, *, any_of: list[BaseShape] | None = None) -> None:
         super().__init__(base)
         self.any_of = any_of
+        #: The other `pending_facets` (see the module docstring): facets written
+        #: beside `type: A | B`. A union recognises none of its own — every one
+        #: of them belongs to the *members*, and which member decides whether
+        #: `minimum` is a built-in facet or a custom one. P9 distributes them
+        #: once `any_of` is settled (docs/07 section 3.4).
+        self.pending_facets: list[Node] = []
 
     def decode_facets(self, pairs: list[Node]) -> None:
         rest: list[Node] = []
@@ -444,7 +466,11 @@ class UnionShape(ComplexKind):
                     info={'facet': key.value},
                 )
             rest += (key, value)
-        super().decode_facets(rest)
+        # Deliberately *not* `super().decode_facets(rest)`: filing these under
+        # `custom_facets` would digest them into `DataNode`s, and distributing
+        # one to a member means decoding it against that member's kind, which
+        # needs the YAML nodes it was written as.
+        self.pending_facets = rest
 
     def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> UnionShape:
         clone = cast('UnionShape', super().clone(base, memo))
@@ -489,25 +515,26 @@ class UnionShape(ComplexKind):
 class UnknownShape(ComplexKind):
     """A declaration whose kind is not settled yet.
 
-    Its facets are kept undigested, because which of them are facets at all
-    depends on the kind. P7 resolves the type, builds the real kind and hands it
-    this list (docs/07 section 1).
+    One of the two kinds that keep `pending_facets` (see the module docstring):
+    here because which of these are facets *at all* depends on a kind nobody
+    knows yet. P7 resolves the type, builds the real kind and hands it this list
+    (docs/07 section 1).
     """
 
-    __slots__ = ('facets', 'from_mapping')
+    __slots__ = ('from_mapping', 'pending_facets')
 
     def __init__(self, base: BaseShape, facets: list[Node] | None = None, *, from_mapping: bool = True) -> None:
         super().__init__(base)
-        self.facets: list[Node] = facets if facets is not None else []
+        self.pending_facets: list[Node] = facets if facets is not None else []
         #: Was the declaration a mapping (`Foo: {type: Bar}`) rather than a bare
         #: scalar (`Foo: Bar`)? It is the only thing that tells P7 whether a
         #: reference is inheritance or an alias, so it is recorded rather than
-        #: inferred from `facets` being empty — a mapping carrying nothing but
-        #: `type:` also leaves this list empty (docs/06 section 3.1).
+        #: inferred from `pending_facets` being empty — a mapping carrying
+        #: nothing but `type:` also leaves this list empty (docs/06 section 3.1).
         self.from_mapping = from_mapping
 
     def decode_facets(self, pairs: list[Node]) -> None:
-        self.facets = pairs
+        self.pending_facets = pairs
 
     def check(self) -> None:
         # Always fails. Reaching it means P7 was skipped, and a silent pass here

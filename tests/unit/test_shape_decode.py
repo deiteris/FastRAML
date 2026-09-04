@@ -190,7 +190,7 @@ class TestDeclarationFacetsAreBuiltByShapePy:
         # The kind is not known, so which keys are facets is not known either.
         base = shape('T:\n  type: Person\n  properties:\n    a: string\n')
         assert isinstance(base.shape, UnknownShape)
-        assert [node.value for node in base.shape.facets[::2]] == ['properties']
+        assert [node.value for node in base.shape.pending_facets[::2]] == ['properties']
 
 
 class TestCustomFacets:
@@ -284,7 +284,7 @@ class TestAliasVersusInheritance:
         base = shape('T:\n  type: Other\n')
         assert isinstance(base.shape, UnknownShape)
         assert base.shape.from_mapping is True
-        assert base.shape.facets == []
+        assert base.shape.pending_facets == []
 
     def test_a_mapping_with_sibling_facets_is_a_mapping(self):
         base = shape('T:\n  type: Other\n  minLength: 5\n')

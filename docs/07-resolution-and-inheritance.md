@@ -210,21 +210,35 @@ its own. So a child that merely narrows a union reaches this branch, not the
 "source is a union, target is not" one above — which arises only where the two
 kinds genuinely differ.
 
-**The `…` in that form is an open gap.** Facets written beside `type: SomeUnion`
-have no kind to be decoded against, because `UnionShape` recognises none, so
-they reach `KindBase` and are filed under `custom_facets`. Nothing then applies
-them, and P10 skips them rather than calling them `unknown facet`
-([01](01-scope-and-coverage.md) § 3.7). Conformant behaviour is to distribute
-them to the members.
+**The `…` in that form is where the union's own facets go.** Facets written
+beside `type: SomeUnion` have no kind to be decoded against, because
+`UnionShape` recognises none and cannot: whether `minimum` is a built-in facet,
+a custom one or a mistake is a question only a *member* can answer, and the
+members may answer differently. `UnionShape` therefore keeps them as YAML
+(`pending_facets`) rather than filing them under `custom_facets`, and
+`_distribute_union_facets` in P9 gives each member the nodes to decode
+([01](01-scope-and-coverage.md) § 3.7).
 
-Doing that lands here. `UnionShape` retains the undigested nodes, and this
-branch decodes them against each member once `anyOf` is settled — **after
-cloning the members**. `mine.any_of = theirs.any_of` above adopts the parent's
-member objects by reference, so decoding a facet in place would narrow the
-parent type for every other subtype of it: § 3.3's corruption, one level down.
+**It runs after the merge, not before.** A child that merely narrows a union has
+no `anyOf` of its own until `inherit` has adopted the parent's, which is the
+branch above.
 
-Detached copies with fresh IDs are essential here — these are genuinely new
-shapes, and reusing the originals would corrupt the declared types.
+**Each member is replaced by a subtype of itself, never modified in place.**
+`mine.any_of = theirs.any_of` adopts the parent's member objects by reference,
+so decoding a facet in place would narrow the parent type for every other
+subtype of it: § 3.3's corruption, one level down. The subtype is a fresh
+`BaseShape` with a fresh id, the member's own kind class, `inherits = [member]`,
+and the pending facets decoded onto it; `inherit` then merges the member in, so
+a facet that *widens* what the member allows is caught by the ordinary narrowing
+rules rather than silently replacing it.
+
+That `inherits` edge is load-bearing a second time over: P10's custom-facet walk
+starts at `inherits[0]`, so it is what lets a member's own `facets:` declaration
+cover a facet the union supplied — the TCK's
+`union-with-facets/valid-custom-facet.raml` turns on exactly that.
+
+A union with no members at all keeps its facets as `custom_facets`, so P10
+reports them rather than letting a constraint vanish.
 
 ### 3.5 Per-kind inheritance rules
 

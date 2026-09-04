@@ -217,6 +217,18 @@ Any key the concrete shape does not recognise becomes a **custom facet value** i
 `base.custom_facets`. P10 validates those values against the `facets:`
 declarations found in the inheritance chain.
 
+**Two kinds keep the list as YAML instead — `pending_facets`.** Digesting a facet
+into a `DataNode` discards the source node, and both of these need it later:
+
+| Kind | Why it cannot digest now | Who consumes it |
+|------|--------------------------|-----------------|
+| `UnknownShape` | the kind is unknown, so *which* of these are facets at all is unknown | P7's `attach_kind` |
+| `UnionShape` | the kind is known and recognises none of them — they belong to the members, and the members are not settled until the merge | P9's `_distribute_union_facets` ([07](07-resolution-and-inheritance.md) § 3.4) |
+
+The reference implementation threads the same list through every shape and
+stores it in exactly one place, its `UnknownShape`; the union case is the gap it
+still has ([01](01-scope-and-coverage.md) § 3.7).
+
 ### 4.1 Determining the type
 
 ```

@@ -410,19 +410,13 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
 
 
 def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
-    if isinstance(base.shape, UnionShape):
-        # A facet written on a union declaration — `T: {type: A|B, maximum: 2}`
-        # — has no kind to be decoded against, so it lands in `custom_facets`
-        # even though it is a built-in facet of the members. Checking it here
-        # would report `unknown facet` for something the spec allows.
-        #
-        # The constraint is currently parsed and **not enforced**, which is what
-        # the reference implementation does (its `UnionShape.unmarshalYAMLNodes`
-        # drops every facet but `discriminator`, measured, not inferred).
-        # Distributing them to the members is the conformant behaviour and is
-        # tracked as a v1.1 item; it belongs to P7/P9, not here
-        # (docs/01 section 3.7, docs/07 section 3.4).
-        return
+    # A union is checked like anything else. Until the distribution landed it
+    # was skipped, because a facet written beside `type: A|B` had no kind to be
+    # decoded against and reached `custom_facets` even when it was a built-in
+    # facet of the members — so `unknown facet` here would have rejected what
+    # the spec allows. P9 now hands each facet to the members instead, and what
+    # reaches this point on a union is a facet with nowhere to go
+    # (docs/07 section 3.4).
     declared = _facet_declarations(base, acc)
     for name, prop in declared.items():
         if prop.required and name not in base.custom_facets:

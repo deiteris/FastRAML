@@ -18,10 +18,10 @@ parents, so there is no graph traversal and no visited set at the top level.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from pyraml.errors import Accumulator, ErrorKind, RamlError
-from pyraml.types.base import TYPE_RECURSIVE, BaseShape, Property
+from pyraml.types.base import TYPE_RECURSIVE, BaseShape, KindBase, Property
 from pyraml.types.complex_ import (
     ArrayShape,
     ObjectShape,
@@ -33,9 +33,11 @@ from pyraml.types.shape import KIND_TO_CLASS
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from typing import Any
 
     from pyraml.registry import Raml
     from pyraml.types.base import Shape
+    from pyraml.yamlnode import Node
 
 __all__ = [
     'mark_recursions',
@@ -149,9 +151,72 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
     _unwrap_custom_facet_defs(walk, base, depth)
 
     result = inherit(base, source) if source is not None else base
+    # After the merge, never before: the "both unions" branch adopts the
+    # parent's `anyOf`, so a child that merely narrows a union has no members of
+    # its own until `inherit` has run (docs/07 section 3.4).
+    _distribute_union_facets(walk, result, depth)
     walk.done[base.id] = result
     walk.raml.put_shape(result)
     return result
+
+
+def _distribute_union_facets(walk: _Walk, base: BaseShape, depth: int) -> None:
+    """A facet written beside `type: A | B` belongs to the members.
+
+    Spec § Union Type: an instance is valid "if and only if it is a valid
+    instance of at least one of the super types obtained by expanding all unions
+    in that type hierarchy", so the facet constrains each expanded branch. A
+    union recognises no facets of its own, and *which member* decides whether
+    `minimum` is a built-in facet or a custom one — so the only way to read one
+    is to give each member the YAML nodes and let its kind decode them.
+
+    Each member is replaced by a **subtype** of itself rather than modified.
+    Two reasons, and both are corruption if ignored: the "both unions" branch of
+    the merge adopts the parent's member objects by reference, so decoding in
+    place would narrow the parent type for every other subtype of it; and a
+    subtype is what makes the member's own `facets:` declarations visible to
+    P10, which walks from `inherits[0]`.
+    """
+    shape = base.shape
+    if not isinstance(shape, UnionShape) or not shape.pending_facets:
+        return
+    pending, shape.pending_facets = shape.pending_facets, []
+    if not shape.any_of:
+        # No members to distribute to — a union that declared none and inherited
+        # none. Keep the facets rather than dropping them, so P10 still reports
+        # them as unknown instead of a constraint vanishing silently.
+        KindBase.decode_facets(shape, pending)
+        return
+    shape.any_of = [_narrowed_member(walk, base, member, pending, depth) for member in shape.any_of]
+
+
+def _narrowed_member(walk: _Walk, base: BaseShape, member: BaseShape, pending: list[Node], depth: int) -> BaseShape:
+    """One member of a union, with the union's facets applied as a subtype."""
+    narrowed = BaseShape(
+        id=walk.raml.next_id(),
+        raml=walk.raml,
+        location=base.location,
+        name=member.name,
+        key_pos=base.key_pos,
+        value_pos=base.value_pos,
+        anchor=base.anchor,
+    )
+    # The member's own kind class, so no dispatch table is needed and a member
+    # that is itself a union stays one.
+    narrowed.type = member.type
+    # The `Shape` protocol declares no constructor, so the class has to be taken
+    # dynamically; every kind's is `(base, **declaration_facets)`.
+    kind_class = cast('Any', type(member.shape))
+    narrowed.shape = kind_class(narrowed) if member.shape is not None else None
+    narrowed.inherits = [member]
+    narrowed._unwrapped = True  # noqa: SLF001 - built during P9, from parts P9 has already flattened
+    if narrowed.shape is not None:
+        narrowed.shape.decode_facets(list(pending))
+    merged = inherit(narrowed, member)
+    # A member that is itself a union has just stashed the facets in turn.
+    _distribute_union_facets(walk, merged, depth + 1)
+    walk.raml.put_shape(merged)
+    return merged
 
 
 def _link_to_inherits(base: BaseShape) -> None:

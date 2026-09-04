@@ -109,13 +109,17 @@ That last rule is what turns a typo (`maxLenght: 5`) into an error: unrecognised
 facet keys become custom facet *values* during decoding
 ([05](05-type-model.md) § 4), and this is where they are caught.
 
-**Skipped on a union base.** A facet written beside `type: A | B` arrives in
-`custom_facets` for the same reason a typo does, but it is not one — it is a
-real facet of the members that had no kind to be decoded against. Reporting
-`unknown facet` there would reject what the spec allows, so the check is
-skipped and the constraint goes unenforced. Tracked as a v1.1 conformance item
-([01](01-scope-and-coverage.md) § 3.7, [07](07-resolution-and-inheritance.md)
-§ 3.4).
+**A union is checked like anything else**, and that is recent. A facet written
+beside `type: A | B` used to arrive here in `custom_facets` for the same reason a
+typo does, though it is not one — it is a real facet of the members that had no
+kind to be decoded against — so the check was skipped and the constraint went
+unenforced. P9 now hands each facet to the members instead
+([07](07-resolution-and-inheritance.md) § 3.4), so what reaches this point on a
+union is a facet with nowhere to go, and `unknown facet` is the right answer.
+
+The member it could not be placed on is where the diagnostic lands, because the
+distributed facet is decoded onto a subtype of that member — which is also what
+lets a member's own `facets:` declaration cover it.
 
 Known limitation, inherited: the chain walk follows `inherits[0]` only, so a facet
 declared on the second parent of a multiply-inheriting type is not seen. Fixing it

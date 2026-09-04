@@ -428,11 +428,9 @@ def _bind(raml: Raml, scheme: SecurityScheme, resolver: Any) -> None:
     try:
         definition = resolver.security_scheme_definition(scheme.name)
     except LookupError as err:
-        raise RamlError.wrap('get security scheme definition', err, scheme.location, scheme.value_pos) from err
-    if definition is None:
-        raise RamlError.new(
-            'security scheme not found', scheme.location, scheme.value_pos, info={'scheme': scheme.name}
-        )
+        raise RamlError.wrap(
+            'get security scheme definition', err, scheme.location, scheme.value_pos, info={'scheme': scheme.name}
+        ) from err
     scheme.definition = definition
     if scheme.params:
         _apply_params(scheme, definition.resolved())

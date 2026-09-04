@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
 __all__ = [
-    'MAX_DEPTH',
+    'DEFAULT_MAX_DEPTH',
     'MAX_NODES',
     'Node',
     'NodeKind',
@@ -152,10 +152,16 @@ _STANDARD_TAG_PREFIX: Final = 'tag:yaml.org,2002:'
 #: split across lines and then fails somewhere else entirely. Deviation D10.
 _LINE_SEPARATORS: Final = ('\u2028', '\u2029')
 
-#: Maximum nesting depth accepted while converting a document. Guards CPython's
-#: recursion limit: a hostile or generated file must produce a positioned
-#: diagnostic, never a `RecursionError`. See docs/12-performance.md section 14.
-MAX_DEPTH: Final = 200
+#: The ceiling on **every** recursive descent whose depth is bounded only by the
+#: input: document conversion here, unwrap and recursion-marking in P9, the
+#: discriminator and custom-facet walks in P10, and the JSON Schema walks. They
+#: all defend the same C stack, so they share one number, surfaced to a caller as
+#: `ParseOptions.max_depth` and carried on `Raml.max_depth`
+#: (docs/12-performance.md section 14).
+#:
+#: It lives here because `yamlnode` is the lowest layer that needs it and can
+#: import nothing above itself, not because nesting depth is a YAML idea.
+DEFAULT_MAX_DEPTH: Final = 200
 
 #: Maximum number of nodes one document may expand to. YAML aliases are expanded
 #: rather than shared (see `compose`), so this is what bounds a "billion laughs"
@@ -450,7 +456,7 @@ def compose(
     source: str,
     *,
     uri: str,
-    max_depth: int = MAX_DEPTH,
+    max_depth: int = DEFAULT_MAX_DEPTH,
     max_nodes: int = MAX_NODES,
 ) -> Node:
     """Parse one YAML document into a `Node` tree.

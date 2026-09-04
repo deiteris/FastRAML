@@ -359,6 +359,7 @@ Python-specific: these DFS walks are the ones most likely to blow the 1000-frame
 recursion limit on a deeply nested schema. See [12](12-performance.md) § 11 —
 they use an explicit stack, or a depth guard that reports
 `type nesting too deep` with a position rather than raising `RecursionError`.
+The ceiling is `Raml.max_depth`, shared with every other input-bounded descent.
 
 ## 5. Copying
 

@@ -45,11 +45,6 @@ __all__ = [
     'unwrap_shapes',
 ]
 
-#: Ceiling on how deep unwrap and recursion marking will descend. A schema
-#: nested past this reports a positioned diagnostic instead of raising
-#: `RecursionError` from somewhere unhelpful (docs/12 section 11).
-DEFAULT_MAX_DEPTH = 200
-
 
 class _Walk:
     """The state one unwrap pass carries.
@@ -64,13 +59,16 @@ class _Walk:
 
     __slots__ = ('done', 'max_depth', 'raml')
 
-    def __init__(self, raml: Raml, max_depth: int) -> None:
+    def __init__(self, raml: Raml) -> None:
         self.raml = raml
-        self.max_depth = max_depth
+        # Read once per pass rather than per level: the ceiling is one number
+        # for the whole parse (docs/12 section 14), and the guard is on a hot
+        # recursive path.
+        self.max_depth = raml.max_depth
         self.done: dict[int, BaseShape] = {}
 
 
-def unwrap_shapes(raml: Raml, *, max_depth: int = DEFAULT_MAX_DEPTH) -> None:
+def unwrap_shapes(raml: Raml) -> None:
     """Flatten every declared type, then mark recursion (docs/07 sections 3-4).
 
     `Raml.shapes` is rebuilt rather than appended to. After flattening, the old
@@ -79,7 +77,7 @@ def unwrap_shapes(raml: Raml, *, max_depth: int = DEFAULT_MAX_DEPTH) -> None:
     graph entirely — so keeping them would leave the index describing shapes no
     consumer can reach.
     """
-    walk = _Walk(raml, max_depth)
+    walk = _Walk(raml)
     raml.shapes = []
     accumulator = Accumulator()
 
@@ -105,13 +103,13 @@ def unwrap_shapes(raml: Raml, *, max_depth: int = DEFAULT_MAX_DEPTH) -> None:
             extension.defined_by = walk.done.get(extension.defined_by.id, extension.defined_by)
 
     accumulator.raise_if_any()
-    mark_recursions(raml, max_depth=max_depth)
+    mark_recursions(raml)
     raml.unwrapped = True
 
 
-def unwrap_shape(raml: Raml, base: BaseShape, *, max_depth: int = DEFAULT_MAX_DEPTH) -> BaseShape:
+def unwrap_shape(raml: Raml, base: BaseShape) -> BaseShape:
     """Flatten one declaration. **Use the return value** — it may differ."""
-    return _unwrap(_Walk(raml, max_depth), base, 0)
+    return _unwrap(_Walk(raml), base, 0)
 
 
 def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
@@ -337,9 +335,7 @@ def _unwrap_custom_facet_defs(walk: _Walk, base: BaseShape, depth: int) -> None:
 # -- recursion marking (docs/07 section 4) ------------------------------------
 
 
-def mark_recursions(
-    raml: Raml, *, roots: Iterable[BaseShape] | None = None, max_depth: int = DEFAULT_MAX_DEPTH
-) -> None:
+def mark_recursions(raml: Raml, *, roots: Iterable[BaseShape] | None = None) -> None:
     """Close every type cycle with a `RecursiveShape`.
 
     Runs after unwrap, from the same roots. On re-entry this does *not* error —
@@ -350,6 +346,7 @@ def mark_recursions(
     validation unwraps a private *copy* of a declaration, and that copy needs
     marking without the registry's own shapes being walked again (docs/10 § 1).
     """
+    max_depth = raml.max_depth
     if roots is not None:
         for base in roots:
             _mark(raml, base, 0, max_depth)

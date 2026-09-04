@@ -327,6 +327,7 @@ class Raml:
         "loader",  # ResourceLoader
         "workspace_root_uri",  # str, file:// URI of the sandbox root
         "max_include_size",  # int, 0 = unlimited
+        "max_depth",  # int, the one recursion ceiling (docs/12 section 14)
         "retain_source",  # bool, keep raw node trees + entity index
         "regex_engine",  # "re" | "re2"
         # --- caches (the reason this class exists) -------------------------

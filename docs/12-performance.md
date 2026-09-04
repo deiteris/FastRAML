@@ -170,14 +170,51 @@ frame is expensive. Deeply nested schemas (JSON Schema conversions are the usual
 culprit) will hit it.
 
 **Rule:** any traversal whose depth is bounded only by user input uses an explicit
-stack, or carries a depth counter and raises a positioned
-`type nesting too deep` diagnostic before CPython raises `RecursionError`.
+stack, or carries a depth counter and raises a positioned diagnostic before
+CPython raises `RecursionError`.
 
 The traversals in question: `mark_graft`, structural merge, `Node`→`ValueNode`
 conversion, `mark_recursions`, `unwrap_shape`, and JSON-Schema→shape conversion.
 Of these, `mark_graft` and the value conversion are the easiest to make iterative
 and the most likely to be deep, so they are iterative from the start; the rest get
 a depth guard with a configurable ceiling (default 200).
+
+**One ceiling, not one per pass.** They all defend the same C stack, so one
+number governs them: `DEFAULT_MAX_DEPTH` in `yamlnode.py`, surfaced as
+`ParseOptions.max_depth`, carried on `Raml.max_depth`, and read at each guard.
+It lives in `yamlnode` because that is the lowest layer needing it, not because
+nesting is a YAML idea. Phase 9 reconciled three separate 200s into it; before
+that, raising the option raised the type ceiling and left the document and
+schema ones where they were.
+
+Each guard keeps its **own message key**, so a document that trips one says
+which traversal refused it, and every one of them carries the limit in `info`:
+
+| Message | Pass | What it bounds |
+|---------|------|----------------|
+| `document nesting too deep` | P0 | YAML levels in one composed file |
+| `type nesting too deep` | P9 | levels of `unwrap_shape` / `mark_recursions` |
+| `JSON schema nesting too deep` | P2/P7 | levels of a decoded schema, and of a `$ref` chain |
+
+Three details that are not obvious and each cost something to find:
+
+- **The document guard fires first for anything written inline.** One level of
+  inline type nesting costs at least two YAML levels (`properties:` and the
+  property name), so a 66-deep inline type already exceeds 200 document levels.
+  The type guard is reachable only through a *flat* document whose declarations
+  name each other — which is what the test for it has to generate.
+- **The JSON Schema guard measures the document before anything walks it.**
+  A 200-level schema exhausts the stack inside the schema library's own
+  meta-schema validation, which is not a recursion this parser can guard from
+  the inside; it surfaced as a raw `RecursionError`, which this section forbids.
+  Measuring the decoded document is one iterative pass and makes the library's
+  recursion, `_prefetch` and the § 6.3 projection safe at once. A `$ref` target
+  is decoded through the same path, so a shallow schema cannot reach the stack
+  by pointing at a deep one.
+- **Documents visited and levels open are different counts.** `_prefetch`'s
+  `seen` set stops a `$ref` cycle and never shrinks; a schema naming 300 distinct
+  targets is ordinary and nests two levels. Comparing the size of that set
+  against the ceiling rejects valid input, and a test says so.
 
 ### 15. Interfaces vs protocols
 

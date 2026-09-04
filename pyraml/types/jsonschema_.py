@@ -174,13 +174,43 @@ class SchemaRegistry:
 
     # -- reading --------------------------------------------------------------
 
-    def _decode(self, raw: str, location: str, position: Position | None) -> Any:
+    def _decode(self, raw: str | bytes, location: str, position: Position | None = None) -> Any:
         try:
-            return json.loads(raw)
+            contents = json.loads(raw)
         except ValueError as err:
             raise RamlError.new(
                 'invalid JSON in schema', location, position, kind=ErrorKind.PARSING, info={'error': str(err)}
             ) from err
+        self._check_nesting(contents, location, position)
+        return contents
+
+    def _check_nesting(self, contents: Any, location: str, position: Position | None) -> None:
+        """Refuse a schema nested past the parse's ceiling, before anything walks it.
+
+        Three separate recursions run over a decoded schema — `check_schema`
+        inside the schema library, `_prefetch` here, and the § 6.3 projection —
+        and the first of them is not ours to guard from the inside. A 200-level
+        schema exhausts CPython's stack inside `jsonschema`'s meta-schema
+        validation and surfaces as `RecursionError`, which docs/12 section 14
+        forbids outright. Measuring the depth first is one iterative pass over a
+        document already in memory, and it makes all three safe at once.
+        """
+        limit = self._raml.max_depth
+        stack: list[tuple[Any, int]] = [(contents, 0)]
+        while stack:
+            node, depth = stack.pop()
+            if depth > limit:
+                raise RamlError.new(
+                    'JSON schema nesting too deep',
+                    location,
+                    position,
+                    kind=ErrorKind.PARSING,
+                    info={'limit': limit},
+                )
+            if isinstance(node, dict):
+                stack.extend((value, depth + 1) for value in node.values())
+            elif isinstance(node, list):
+                stack.extend((item, depth + 1) for item in node)
 
     def _retrieve(self, uri: str) -> Resource[Any]:
         """`referencing`'s hook: every `$ref` target is read through the loader."""
@@ -202,11 +232,12 @@ class SchemaRegistry:
                 )
             )
         try:
-            contents = json.loads(data)
-        except ValueError as err:
-            raise _LoadFailure(
-                RamlError.new('invalid JSON in schema', uri, kind=ErrorKind.PARSING, info={'error': str(err)})
-            ) from err
+            # The same decode as the entry schema's, so a `$ref` target is held
+            # to the nesting ceiling too: without that, a shallow schema could
+            # point at a 500-level one and reach the stack anyway.
+            contents = self._decode(data, uri)
+        except RamlError as err:
+            raise _LoadFailure(err) from err
         resource = Resource.from_contents(contents, default_specification=DRAFT7)
         self._resources[uri] = resource
         return resource
@@ -250,6 +281,7 @@ class SchemaRegistry:
         location: str,
         position: Position | None,
         seen: set[int],
+        depth: int = 0,
     ) -> None:
         """Resolve every `$ref` now rather than at first validation.
 
@@ -260,10 +292,26 @@ class SchemaRegistry:
         data (`_DATA_KEYWORDS`) and the ones whose values are maps of subschemas
         (`_SCHEMA_MAPS`), which is enough to keep a user value that looks like a
         reference from being resolved as one.
+
+        `depth` counts levels of this recursion and `seen` counts documents; they
+        are not interchangeable. `seen` stops a `$ref` cycle from running away
+        and never shrinks, so a schema with 300 distinct references — perfectly
+        ordinary — has a `seen` of 300 at a depth of two.
         """
+        if depth > self._raml.max_depth:
+            # `_check_nesting` already bounded each document on its own. What is
+            # left to bound is a chain of `$ref`s through many shallow documents,
+            # which nests as deep as the chain is long.
+            raise RamlError.new(
+                'JSON schema nesting too deep',
+                location,
+                position,
+                kind=ErrorKind.PARSING,
+                info={'limit': self._raml.max_depth},
+            )
         if isinstance(node, list):
             for item in node:
-                self._prefetch(item, resolver, specification, location, position, seen)
+                self._prefetch(item, resolver, specification, location, position, seen, depth + 1)
             return
         if not isinstance(node, dict):
             return
@@ -277,16 +325,16 @@ class SchemaRegistry:
             resolved = self._lookup(resolver, ref, location, position)
             if id(resolved.contents) not in seen:
                 seen.add(id(resolved.contents))
-                self._prefetch(resolved.contents, resolved.resolver, specification, location, position, seen)
+                self._prefetch(resolved.contents, resolved.resolver, specification, location, position, seen, depth + 1)
 
         for key, value in node.items():
             if key == '$ref' or key in _DATA_KEYWORDS:
                 continue
             if key in _SCHEMA_MAPS and isinstance(value, dict):
                 for member in value.values():
-                    self._prefetch(member, resolver, specification, location, position, seen)
+                    self._prefetch(member, resolver, specification, location, position, seen, depth + 1)
             else:
-                self._prefetch(value, resolver, specification, location, position, seen)
+                self._prefetch(value, resolver, specification, location, position, seen, depth + 1)
 
 
 def _specification_of(contents: Any) -> Any:
@@ -451,6 +499,19 @@ def _view_base(context: _Projection, name: str | None = None) -> BaseShape:
 
 def _project(context: _Projection, contents: Any, visiting: dict[int, BaseShape]) -> BaseShape:
     """One schema node, as the table in docs/10 section 6.3 maps it."""
+    # `visiting` holds one entry per level currently open — it is added to
+    # before descending and removed in a `finally` — so its size *is* the depth,
+    # and the guard costs a `len`. Each document was already bounded by
+    # `_check_nesting`; what this catches is a chain of `$ref`s across many
+    # shallow documents, which nests as deep as the chain is long.
+    if len(visiting) > context.parent._raml.max_depth:  # noqa: SLF001 - the parse's ceiling (docs/12 § 14)
+        raise RamlError.new(
+            'JSON schema nesting too deep',
+            context.parent.location,
+            context.parent.value_pos,
+            kind=ErrorKind.RESOLVING,
+            info={'limit': context.parent._raml.max_depth},  # noqa: SLF001 - as above
+        )
     if contents is False:
         raise _unsupported(context, 'false schema')
     if contents is True or not isinstance(contents, dict):

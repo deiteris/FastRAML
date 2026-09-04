@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pyraml.domains import DomainLocation
 from pyraml.loaders import SchemeLoader
-from pyraml.yamlnode import NodeKind
+from pyraml.yamlnode import DEFAULT_MAX_DEPTH, NodeKind
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
@@ -93,6 +93,7 @@ class Raml:
     __slots__ = (  # noqa: RUF023 - grouped by role, not sorted
         # --- configuration ---------------------------------------------------
         'loader',
+        'max_depth',
         'max_include_size',
         'regex_engine',
         'retain_source',
@@ -127,12 +128,13 @@ class Raml:
         'unwrapped',
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - the parse's configuration, keyword-only, one field each
         self,
         *,
         loader: ResourceLoader | None = None,
         workspace_root_uri: str = '',
         max_include_size: int = DEFAULT_MAX_INCLUDE_SIZE,
+        max_depth: int = DEFAULT_MAX_DEPTH,
         retain_source: bool = False,
         regex_engine: Literal['re', 're2'] = 're',
     ) -> None:
@@ -141,6 +143,7 @@ class Raml:
         self.loader: ResourceLoader = loader if loader is not None else SchemeLoader({})
         self.workspace_root_uri = workspace_root_uri
         self.max_include_size = max_include_size
+        self.max_depth = max_depth
         self.retain_source = retain_source
         self.regex_engine = regex_engine
 

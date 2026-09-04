@@ -213,6 +213,7 @@ because they encode decisions rather than behaviour:
 | `jsonschema` | a relative `$ref` resolves against the RAML file; an offline parse refuses a remote `$ref`; a shared `$ref` target is read once; a `$ref` inside a `default` is data; one test per error row of doc 10 § 6.3 |
 | `inherit` | one test per row of the table in doc 07 § 3.5, both directions |
 | `validate` | `bool` rejected as `integer`; `Fraction` exactness for `multipleOf: 1.1`; `uniqueItems` at n=20 and n=21 |
+| `depth_guard` | one option raises all four ceilings; each guard's own message key; a deep type graph needs a *flat* document to be reachable at all; a `$ref` to a deep schema; 300 references are not 300 levels |
 | `errors` | wrap/append composition; `to_dict()` shape matches the reference's |
 
 ## 4. Property-based tests
@@ -242,7 +243,7 @@ Laws 2 to 4 are implemented in `tests/property/test_merge_laws.py`.
    `key_pos <= value_pos`.
 9. **Determinism** — two parses of the same input produce identical golden
    projections.
-10. **No `RecursionError`** — generated nesting up to `max_type_depth + 50`
+10. **No `RecursionError`** — generated nesting up to `max_depth + 50`
     produces a positioned diagnostic, never a `RecursionError`.
 
 ## 5. Benchmarks

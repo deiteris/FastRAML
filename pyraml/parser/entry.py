@@ -26,7 +26,7 @@ from pyraml.types.resolve import resolve_shapes
 from pyraml.types.unwrap import unwrap_shapes
 from pyraml.types.validate import check_declared_discriminators, validate_shapes
 from pyraml.uris import path_to_file_uri
-from pyraml.yamlnode import decode_source, read_head
+from pyraml.yamlnode import DEFAULT_MAX_DEPTH, decode_source, read_head
 
 if TYPE_CHECKING:
     from pyraml.loaders import ResourceLoader
@@ -58,7 +58,11 @@ class ParseOptions:
     #: Supply a client to enable `http(s)` includes; without one they are refused.
     http_client: Any | None = None
     regex_engine: Literal['re', 're2'] = 're'
-    max_type_depth: int = 200
+    #: One ceiling for every recursive descent bounded only by the input — the
+    #: document conversion in P0, unwrap and recursion-marking in P9, the walks
+    #: in P10, and the JSON Schema walks. They defend the same C stack, so one
+    #: number governs them all (docs/12-performance.md section 14).
+    max_depth: int = DEFAULT_MAX_DEPTH
 
 
 _DEFAULT_OPTIONS = ParseOptions()
@@ -114,6 +118,7 @@ def _new_registry(options: ParseOptions, *, default_root: str) -> Raml:
         max_include_size=options.max_include_size,
         retain_source=options.retain_source,
         regex_engine=options.regex_engine,
+        max_depth=options.max_depth,
     )
 
 
@@ -160,11 +165,11 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     # P9 — flatten every inheritance chain, then mark the cycles. Opt-in: the
     # un-flattened model is what a formatter or a doc generator wants.
     if options.unwrap:
-        unwrap_shapes(raml, max_depth=options.max_type_depth)
+        unwrap_shapes(raml)
 
     # P10 — check every declaration and validate every example, default,
     # custom facet and annotation value. Opt-in; when P9 did not run, each
     # declaration is validated against a private unwrapped copy of itself.
     if options.validate:
-        validate_shapes(raml, max_depth=options.max_type_depth)
+        validate_shapes(raml)
     return raml

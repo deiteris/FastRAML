@@ -135,7 +135,7 @@ def resolve_include(raml: Raml, node: Node, location: str) -> tuple[str, Node]:
         return target, cached
 
     data = _load(raml, node, target, location)
-    content = _compose_include(node, data, target)
+    content = _compose_include(raml, node, data, target)
     raml.include_nodes[target] = content
     return target, content
 
@@ -155,12 +155,12 @@ def _load(raml: Raml, node: Node, target: str, location: str) -> bytes:
     return data
 
 
-def _compose_include(node: Node, data: bytes, target: str) -> Node:
+def _compose_include(raml: Raml, node: Node, data: bytes, target: str) -> Node:
     text = decode_source(data)
     extension = posixpath.splitext(strip_uri_suffix(node.value))[1].lower()
     if extension in _YAML_EXTENSIONS:
         # YAML 1.2 is a superset of JSON, so .json composes correctly too.
-        return compose(text, uri=target)
+        return compose(text, uri=target, max_depth=raml.max_depth)
     # Spec section Resolving Includes: any other file is included as a scalar.
     return Node(NodeKind.SCALAR, TAG_STR, text)
 

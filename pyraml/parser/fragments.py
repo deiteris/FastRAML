@@ -1019,7 +1019,7 @@ def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Frag
         raml.put_resolver(uri, anchor)
     raml.push_ctx(ParseCtx(anchor=anchor, target=FRAGMENT_TARGETS[kind]))
     try:
-        root = compose(text, uri=uri)
+        root = compose(text, uri=uri, max_depth=raml.max_depth)
         raml.store_source_node(uri, root)
         fragment.decode(root)
     finally:

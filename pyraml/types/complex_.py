@@ -6,10 +6,14 @@
 passes them to the constructor; nothing here calls back into `shape.py`, which
 is what keeps `types/` pointing one way (docs/02-architecture.md section 2).
 
-`JsonShape`, `UnknownShape` and `RecursiveShape` are not names a document may
-write. `UnknownShape` is the one Phase 2 produces most: a declaration whose kind
-cannot be settled yet keeps its undigested facet list and goes on the worklist
-for P7 (docs/07 section 1).
+`UnknownShape` and `RecursiveShape` are not names a document may write.
+`UnknownShape` is the one Phase 2 produces most: a declaration whose kind cannot
+be settled yet keeps its undigested facet list and goes on the worklist for P7
+(docs/07 section 1).
+
+`JsonShape` is the fourth structured kind and lives in `jsonschema_.py`, which
+sits above this module: compiling a schema needs the loader, and the section 6.3
+projection builds object, array and union shapes from what it finds.
 """
 
 from __future__ import annotations
@@ -38,7 +42,6 @@ if TYPE_CHECKING:
 __all__ = [
     'ArrayShape',
     'ComplexKind',
-    'JsonShape',
     'ObjectShape',
     'RecursiveShape',
     'UnionShape',
@@ -464,47 +467,6 @@ class UnionShape(ComplexKind):
         raise RamlError.wrap(
             message, combined, self.base.location, self.base.value_pos, kind=ErrorKind.VALIDATING, info=info
         )
-
-
-class JsonShape(ComplexKind):
-    """A type declared by an external or inline JSON Schema.
-
-    Spec section Using XML and JSON Schemas: such a type "MUST NOT participate
-    in type inheritance or specialization". Half of that is enforced here — any
-    sibling facet is an error. The wrapper facets the spec does allow
-    (`displayName`, `description`, annotations, `example`/`examples`) are common
-    facets, so `shape.py` has already taken them and they never arrive here.
-    """
-
-    __slots__ = ('_cached_defs', '_cached_shape', 'raw', 'validator')
-
-    def __init__(self, base: BaseShape, raw: str = '') -> None:
-        super().__init__(base)
-        #: The schema exactly as written.
-        self.raw = raw
-        # Compilation, and the lazy conversion to a shape, are Phase 8b's
-        # (docs/10-validation.md section 6).
-        self.validator: object | None = None
-        self._cached_shape: BaseShape | None = None
-        self._cached_defs: dict[str, BaseShape] | None = None
-
-    def decode_facets(self, pairs: list[Node]) -> None:
-        if pairs:
-            raise node_error(
-                'cannot define facets on a JSON schema type',
-                self.base.location,
-                pairs[0],
-                info={'facet': pairs[0].value},
-            )
-
-    def check(self) -> None:
-        # Accepts rather than raises: compiling the schema is Phase 8b
-        # (docs/10 section 6), and until then a JSON-schema-typed declaration is
-        # simply unvalidated. Raising here would reject documents that are fine.
-        return
-
-    def validate(self, value: Any, path: str) -> None:  # noqa: ARG002 - unvalidated until the schema is compiled
-        return
 
 
 class UnknownShape(ComplexKind):

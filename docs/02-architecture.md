@@ -113,12 +113,12 @@ pyraml/
     resolve.py            P7: the worklist drain *and* the AST → shape visitor (docs 06 §3, 07 §§1–2)
     inference.py          identify_shape_type, default-type rules (doc 05)
     scalars.py            String/Number/Integer/Boolean/Date*/File/Nil shapes
-    complex_.py           Object/Array/Union/Any/Json/Unknown/Recursive shapes
+    complex_.py           Object/Array/Union/Unknown/Recursive shapes
     examples.py           Example, Examples (doc 05 §6)
     xml.py                XmlSerialization (doc 05 §8)
     inherit.py            per-kind inheritance rules (doc 07)
     unwrap.py             unwrap driver + recursion marking (doc 07)
-    jsonschema_.py        external JSON Schema types (doc 10 §6)
+    jsonschema_.py        JsonShape + the shared schema registry (doc 10 §6)
     values.py             numeric comparison, uniqueItems, date grammars (doc 10 §§5.2–5.3)
     validate.py           the P10 driver: examples, defaults, facets, annotations (doc 10)
     expressions/
@@ -235,11 +235,20 @@ Rules on the layout:
   validation does: `check` and `validate` dispatch on kind and recurse into
   their own children, which is what a method is.
 
-- **Inside `types/`, dependencies point one way: `shape.py` → `scalars.py` /
-  `complex_.py` → `base.py`.** `shape.py` imports the concrete kinds to dispatch
-  on kind, so the kinds must not import `shape.py` back. But three kinds hold
-  declarations — object `properties`, array `items`, union `anyOf` — and only
-  `make_shape` can build a declaration.
+- **Inside `types/`, dependencies point one way: `shape.py` → `jsonschema_.py` →
+  `scalars.py` / `complex_.py` → `base.py`.** `shape.py` imports the concrete
+  kinds to dispatch on kind, so the kinds must not import `shape.py` back. But
+  three kinds hold declarations — object `properties`, array `items`, union
+  `anyOf` — and only `make_shape` can build a declaration.
+
+  `JsonShape` sits one layer above the other kinds rather than beside them
+  because it needs things they do not: `Raml.loader` and `referencing` to compile
+  a schema, and — for the § 6.3 projection — the object, array and union classes
+  to build a view of one. Putting it in `complex_.py` would point that module at
+  the loader; leaving the compiler out of `types/` would put schema knowledge in
+  `registry.py`, which imports nothing from `types/` at runtime. The projection
+  builds its shapes directly rather than through `make_shape`, so no edge runs
+  back up.
 
   **The kinds declare what they hold; `shape.py` decides how to build it.** Each
   declaration-holding kind carries a class-level table, and nothing else:
@@ -324,7 +333,7 @@ class Raml:
         "fragments",  # uri -> Fragment      (one parse per file)
         "include_nodes",  # uri -> Node          (one compose per file)
         "expr_cache",  # str -> RdtNode | RamlError (one parse per expression)
-        "json_schema_registry",  # shared JSON Schema compiler/registry
+        "json_schema_registry",  # SchemaRegistry | None, built on first use
         # --- indices -------------------------------------------------------
         "fragment_types",  # uri -> {name: BaseShape}
         "fragment_annotations",  # uri -> {name: BaseShape}

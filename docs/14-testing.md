@@ -208,7 +208,8 @@ because they encode decisions rather than behaviour:
 | `structural_merge` | inputs unmutated; node identity preserved; opaque data facets not recursed; sequence dedup |
 | `security` | one test per rejection rule of doc 09 § A2; the three inheritance levels; `securedBy: [null]` removing an inherited scheme; scope narrowing without touching the shared definition |
 | `traits` / `resourcetypes` | the four priority classes; deduplication by name; optional-method filtering in both directions; which namespace a merged node resolves in |
-| `templates` | the index survives a subtree being filtered out; all ten actions; the three irregular plurals; unclosed `<<`; a substituted node is marked caller-scoped and a static one is not |
+| `templates` | the index survives a subtree being filtered out; all ten actions; the 618-row pluralization parity table generated from go-raml; unclosed `<<`; a substituted node is marked caller-scoped and a static one is not |
+| `jsonschema` | a relative `$ref` resolves against the RAML file; an offline parse refuses a remote `$ref`; a shared `$ref` target is read once; a `$ref` inside a `default` is data; one test per error row of doc 10 § 6.3 |
 | `inherit` | one test per row of the table in doc 07 § 3.5, both directions |
 | `validate` | `bool` rejected as `integer`; `Fraction` exactness for `multipleOf: 1.1`; `uniqueItems` at n=20 and n=21 |
 | `errors` | wrap/append composition; `to_dict()` shape matches the reference's |

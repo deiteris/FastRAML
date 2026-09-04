@@ -27,12 +27,12 @@ from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.types.base import TYPE_UNION, BaseShape, copyable_slots
 from pyraml.types.complex_ import (
     ArrayShape,
-    JsonShape,
     ObjectShape,
     RecursiveShape,
     UnionShape,
     UnknownShape,
 )
+from pyraml.types.jsonschema_ import JsonShape
 from pyraml.types.scalars import (
     AnyShape,
     DateTimeShape,

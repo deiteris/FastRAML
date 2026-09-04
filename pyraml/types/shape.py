@@ -39,13 +39,13 @@ from pyraml.types.base import (
 )
 from pyraml.types.complex_ import (
     ArrayShape,
-    JsonShape,
     ObjectShape,
     UnionShape,
     UnknownShape,
 )
 from pyraml.types.examples import Examples, make_example
 from pyraml.types.inference import identify_shape_type
+from pyraml.types.jsonschema_ import JsonShape
 from pyraml.types.scalars import (
     AnyShape,
     BooleanShape,

@@ -197,7 +197,7 @@ every case that matters; the reference implementation converts through
 
 ## 6. External JSON Schema
 
-An external JSON Schema becomes a `JsonShape`:
+An external JSON Schema becomes a `JsonShape`, in `types/jsonschema_.py`:
 
 ```python
 class JsonShape:
@@ -206,19 +206,45 @@ class JsonShape:
 
 ### 6.1 Compilation
 
-- One **shared registry** per `Raml` instance. A `$ref` target used by 40 schemas
-  is fetched and compiled once. This is `jsonSchemaCompiler` in go-raml and it is
-  the difference between linear and quadratic on a schema-heavy project.
+A schema is compiled **where it is declared**, in `JsonShape.__init__`, not at
+`check()`. Malformed JSON in a `type:` is a syntax error in the document, and
+reporting it only under `validate=True` would let a broken schema through the
+default parse. `check()` therefore has nothing left to do.
+
+- One **shared registry** per `Raml` instance — `SchemaRegistry`, built on first
+  use because `registry.py` imports nothing from `types/` at runtime. A `$ref`
+  target used by 40 schemas is read and parsed once. This is
+  `jsonSchemaCompiler` in go-raml and it is the difference between linear and
+  quadratic on a schema-heavy project.
+
+  The memo has to live on `SchemaRegistry` rather than in `referencing`:
+  `Registry` is a persistent structure whose `get_or_retrieve` returns a *new*
+  registry holding the retrieved resource, so a cache kept there is discarded
+  with the copy that made it.
 - The schema is registered under the **RAML file's URI**, so relative `$ref`s
-  resolve against the file containing the inline schema.
+  resolve against the file containing the inline schema. Each compilation gets
+  its own `Registry` rooted at that URI, so two inline schemas in one file do not
+  collide. go-raml registers both into one shared compiler under the same URI and
+  reuses the first for the second; that is `AddResource` returning
+  `ResourceExistsError`, whose comment — "the cached entry is identical" — holds
+  only for the external-file case it was written for.
 - `$ref` resolution goes through the same `ResourceLoader` as everything else, so
   the workspace sandbox and the remote-includes switch apply. A `$ref` to
   `http://json-schema.org/...` in an offline parse fails loudly rather than
   silently reaching the network.
-- Re-registering an already-registered URI is not an error — the cached entry is
-  identical.
+- **References are resolved eagerly**, by walking the schema at compile time. The
+  Python library resolves lazily, so a reference to a missing file in a type
+  nothing validates against would never be reported; go-raml's compiler is eager
+  and the TCK expects that. The walk skips `const`, `default`, `enum`, `example`
+  and `examples`, whose values are user data — a `$ref` written inside a
+  `default` is a value that happens to look like a reference — and treats
+  `properties`, `patternProperties`, `definitions`, `$defs` and the two
+  `dependencies` keywords as maps *of* schemas rather than as schemas.
 - Draft is taken from `$schema`; absent, the default draft is 7 (matching the
-  reference implementation's meta-schema validation).
+  reference implementation's meta-schema validation). Unlike go-raml, which
+  validates every schema against the draft-07 meta-schema whatever it declares,
+  the schema is checked against **its own** draft's meta-schema — so a draft-04
+  document may write `exclusiveMinimum: true` and a draft-07 one may not.
 
 ### 6.2 Restrictions
 

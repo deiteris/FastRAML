@@ -137,7 +137,12 @@ KNOWN_DIVERGENCES: dict[str, str] = {}
 #: TCK ships deliberately malformed fixtures, so this is never zero — but it is
 #: bounded, because a change that silently stopped comparing half the corpus
 #: would otherwise look like a pass.
-MAX_UNCOMPARABLE = 6
+#:
+#: The seventh is `EdgeCases/include-no-whitespace/invalid-include-no-whitespace.raml`.
+#: Phase 8b made an unrecognised local tag an error, and `!includeexample.json`
+#: is one; both YAML libraries still compose it, so it is this parser that now
+#: refuses, deliberately.
+MAX_UNCOMPARABLE = 7
 
 
 def _oracle_compose(text: str) -> Any:

@@ -145,6 +145,23 @@ class TestTags:
         root = parse('get:\nx: ~\n')
         assert all(is_null(v) for _, v in pairs(root))
 
+    @pytest.mark.parametrize(
+        'source',
+        ['x: !includeexample.json', 'x: !foo bar', 'x: !foo [1, 2]', 'x: !foo {a: 1}'],
+        ids=['run-together-include', 'scalar', 'sequence', 'mapping'],
+    )
+    def test_an_unrecognised_local_tag_is_rejected(self, source):
+        # `!include` is the only tag RAML defines. `!includeexample.json` is
+        # otherwise a perfectly good local tag on an empty scalar, so the
+        # document would parse with an empty value where a file was meant.
+        with pytest.raises(RamlError) as caught:
+            parse(source + '\n')
+        assert 'unknown tag' in str(caught.value)
+
+    def test_yamls_own_tags_are_not_local_tags(self):
+        _, value = next(pairs(parse('x: !!str 5\n')))
+        assert value.tag == TAG_STR
+
     def test_merge_keys_are_preserved_not_expanded(self):
         # RAML gives `<<` no meaning. Preserving it lets a decoder report
         # `unknown field: <<` rather than silently absorbing the merged keys.

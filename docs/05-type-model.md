@@ -436,3 +436,19 @@ positives") and enforces nothing.
 
 `discriminatorValue` defaults to the type's name; the default is computed on read,
 not materialised at parse time.
+
+**A discriminator value in an example must name a type that exists**, and that
+check runs **outside the `strict` gate**. `strict: false` waives conformance —
+"this example deliberately does not validate" — and a value naming no type is a
+different question: it is about the declaration graph, not about the instance.
+The TCK's `EdgeCases/identifying-discriminator` pair turns on exactly this, its
+two fixtures differing in one word with `strict: false` set in both.
+
+The index is keyed by the **discriminator's name**, not by the parent shape.
+After P9 a subtype carries its parent's discriminator but has no `inherits` edge
+left to find the parent by, and the shape that needs the lookup is usually
+anonymous — `type: Person[]` gives its items a nameless shape. One distinction is
+lost: two unrelated hierarchies that both discriminate on `kind` share a set, so
+an instance of one may borrow the other's value. That error is permissive and
+never a false rejection, which is the right direction for a check no `strict`
+can turn off.

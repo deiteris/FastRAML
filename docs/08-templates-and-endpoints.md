@@ -68,9 +68,9 @@ Stage 1 consumes exactly four kinds of key and leaves everything else alone:
 
 | Key | Action |
 |-----|--------|
-| `type:` (on a resource) | build a `ResourceType` reference (name + params) |
-| `is:` | build `Trait` references (names + params) |
-| `securedBy:` | build `SecurityScheme` references; set `explicit_secured_by` |
+| `type:` (on a resource) | build a `DirectiveRef` (name + params) |
+| `is:` | build `DirectiveRef`s (names + params) |
+| `securedBy:` | build `DirectiveRef`s; set `explicit_secured_by` |
 | an HTTP method | recurse into `make_source_operation` |
 | a `/subresource` | recurse into `make_source_endpoint` |
 | **anything else** | appended verbatim to the retained `body` mapping |

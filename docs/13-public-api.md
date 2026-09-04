@@ -112,13 +112,18 @@ Exported model classes, all read-oriented, all slotted, all carrying
 **API structure** — `EndPoint`, `Operation`, `Request`, `Response`, `Body`,
 `DocumentationItem`.
 
-**Types** — `BaseShape` plus the fourteen concrete shapes, `Property`,
+**Types** — `BaseShape` plus the seventeen concrete shapes, `Property`,
 `PatternProperty`, `Example`, `Examples`, `ScalarFacet`, `DataNode`, `ValueNode`,
 `XmlSerialization`.
 
-**Templates and security** — `TraitDefinition`, `Trait`,
-`ResourceTypeDefinition`, `ResourceType`, `SecuritySchemeDefinition`,
-`SecurityScheme`, and the settings classes.
+**Templates and security** — `TraitDefinition`, `ResourceTypeDefinition`,
+`SecuritySchemeDefinition`, `SecuritySchemeDescription`,
+`SecuritySchemeSettings`, and the two reference forms: `DirectiveRef` for
+`type:`/`is:`/`securedBy:`, and `SecurityScheme` for a `securedBy:` entry once
+P5 has bound it. An earlier draft of this list named a `Trait` and a
+`ResourceType` reference class; neither was built, for the reason
+[02](02-architecture.md) § 3 gives, and there is one settings class rather than
+six ([09](09-security-and-annotations.md) § A2).
 
 **Annotations** — `DomainExtension`, `DomainLocation`.
 
@@ -126,6 +131,11 @@ Exported model classes, all read-oriented, all slotted, all carrying
 
 **I/O** — `ResourceLoader`, `FileLoader`, `SafeFileLoader`, `HTTPLoader`,
 `SchemeLoader`.
+
+**Not all of these are re-exported from `pyraml` yet.** The top-level `__all__`
+currently carries the entry points, the options, the errors, the loaders and the
+fragment classes; everything else is reached through its own module. Widening it
+is Phase 9's, with the rest of the public-API work.
 
 ## 5. Data validation
 

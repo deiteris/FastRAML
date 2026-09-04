@@ -100,6 +100,13 @@ directive resolution can graft type-bearing subtrees from templates, and all of
 them must exist before the single decode pass, so that every shape they produce
 lands in the P7 worklist.
 
+Two facet rules the stage-2 decoders enforce and are easy to leave out, because
+in each case the API root already enforces the same thing on its own copy of the
+facet: a `responses:` key must be a **3-digit** status code (`2xx` is not RAML),
+and `protocols:` may name only `HTTP` or `HTTPS`, compared case-insensitively.
+`VALID_PROTOCOLS` lives on `parser/endpoints.py` so the root and the method share
+one definition rather than two that can drift.
+
 ## 4. The structural merge
 
 ```python
@@ -516,7 +523,10 @@ Malformed templates report at the exact byte: unclosed `{`, nested `{`,
 unexpected `}`, empty expression, invalid characters in a varname (RFC 6570
 `varname = varchar *( "." 1*varchar )`), malformed pct-encoding.
 
-The same routine serves `baseUri` + `baseUriParameters`.
+The same routine parses `baseUri`, at the API root's own decode: `http://{myapi.com`
+is an unclosed expression, not a hostname. Only the *template* half is shared —
+`baseUriParameters` are not cross-checked against it the way a resource's are,
+because `{version}` is legal there with nothing declaring it.
 
 **Propagation** (P6): each endpoint's parameter map is rewritten to
 ancestor-declared parameters first, then its own. A nested resource therefore

@@ -138,7 +138,7 @@ Per kind:
 | any | anything | — |
 | nil | `None` | — |
 | boolean | `bool` | — |
-| string | `str` | `minLength`, `maxLength`, `pattern` |
+| string | `str` | `minLength`, `maxLength`, `pattern` (a **full match**, § 5.4) |
 | integer | `int`, `Decimal`/`float` with integral value, `str` from a number-preserving decoder | `minimum`, `maximum`, `multipleOf`, `format` range |
 | number | `int`, `float`, `Decimal` | `minimum`, `maximum`, `multipleOf` |
 | date-only | `str` matching `YYYY-MM-DD` | strict parse |
@@ -161,8 +161,10 @@ reject `bool` explicitly (`type(v) is bool`). A missed check here means
 1. missing required properties — reported as one message listing all of them;
 2. declared properties present in the data, **in declaration order** (so the
    first error is deterministic and matches the document);
-3. everything else in the data: if `additionalProperties: false` → error; else try
-   pattern properties in declaration order, first match validates.
+3. everything else in the data: pattern properties in declaration order, first
+   match validates. If patterns are declared and none matches → error, because
+   declaring any makes the set exhaustive ([05](05-type-model.md) § 5.1). If none
+   are declared, `additionalProperties: false` → error and `true` → accepted.
 
 ### 5.2 `uniqueItems`
 
@@ -195,30 +197,80 @@ recovers the shortest decimal that round-trips, which is the author's text in
 every case that matters; the reference implementation converts through
 `big.Rat.SetString(fmt.Sprintf("%v", v))` for the same reason.
 
+### 5.4 `pattern` is a full match
+
+A `pattern:` facet describes the **whole** string: `re.fullmatch`, not
+`re.search`. An earlier draft of this section said the opposite, on ECMA-262
+semantics, and the reference implementation does the same (`MatchString`, which
+is Go's unanchored search).
+
+The TCK decides it. `Annotations/complex-11`'s valid and invalid fixtures differ
+in one character class: `simpleAnnotationValueOnType` against
+`simpleAnnotation_value_on_type`, both under `pattern: "[a-zA-Z0-9]{8,32}"`. An
+unanchored search accepts both, because the first sixteen characters match — so
+under the old reading the pair tests nothing at all.
+
+**`/regex/` property names stay unanchored** ([05](05-type-model.md) § 5.1). The
+two are different jobs: a `pattern:` facet *describes* a value, while a pattern
+property is matched *against* a key it does not own, and `/^x/` is how those are
+written in practice. An author-written `^…$` is redundant under a full match
+rather than wrong, which is what keeps the change compatible with real documents.
+
 ## 6. External JSON Schema
 
-An external JSON Schema becomes a `JsonShape`:
+An external JSON Schema becomes a `JsonShape`, in `types/jsonschema_.py`:
 
 ```python
 class JsonShape:
-    __slots__ = ("base", "raw", "validator", "_cached_shape", "_cached_defs")
+    __slots__ = ("base", "raw", "validator", "_compiled", "_cached_shape", "_cached_defs")
 ```
+
+`_compiled` is a `CompiledSchema` — the validator, the schema document and the
+`referencing` resolver rooted at it. The validator alone is enough for
+`validate()`, but § 6.3 walks the document and follows its `$ref`s, and the
+library keeps both of those behind private attributes.
 
 ### 6.1 Compilation
 
-- One **shared registry** per `Raml` instance. A `$ref` target used by 40 schemas
-  is fetched and compiled once. This is `jsonSchemaCompiler` in go-raml and it is
-  the difference between linear and quadratic on a schema-heavy project.
+A schema is compiled **where it is declared**, in `JsonShape.__init__`, not at
+`check()`. Malformed JSON in a `type:` is a syntax error in the document, and
+reporting it only under `validate=True` would let a broken schema through the
+default parse. `check()` therefore has nothing left to do.
+
+- One **shared registry** per `Raml` instance — `SchemaRegistry`, built on first
+  use because `registry.py` imports nothing from `types/` at runtime. A `$ref`
+  target used by 40 schemas is read and parsed once. This is
+  `jsonSchemaCompiler` in go-raml and it is the difference between linear and
+  quadratic on a schema-heavy project.
+
+  The memo has to live on `SchemaRegistry` rather than in `referencing`:
+  `Registry` is a persistent structure whose `get_or_retrieve` returns a *new*
+  registry holding the retrieved resource, so a cache kept there is discarded
+  with the copy that made it.
 - The schema is registered under the **RAML file's URI**, so relative `$ref`s
-  resolve against the file containing the inline schema.
+  resolve against the file containing the inline schema. Each compilation gets
+  its own `Registry` rooted at that URI, so two inline schemas in one file do not
+  collide. go-raml registers both into one shared compiler under the same URI and
+  reuses the first for the second; that is `AddResource` returning
+  `ResourceExistsError`, whose comment — "the cached entry is identical" — holds
+  only for the external-file case it was written for.
 - `$ref` resolution goes through the same `ResourceLoader` as everything else, so
   the workspace sandbox and the remote-includes switch apply. A `$ref` to
   `http://json-schema.org/...` in an offline parse fails loudly rather than
   silently reaching the network.
-- Re-registering an already-registered URI is not an error — the cached entry is
-  identical.
+- **References are resolved eagerly**, by walking the schema at compile time. The
+  Python library resolves lazily, so a reference to a missing file in a type
+  nothing validates against would never be reported; go-raml's compiler is eager
+  and the TCK expects that. The walk skips `const`, `default`, `enum`, `example`
+  and `examples`, whose values are user data — a `$ref` written inside a
+  `default` is a value that happens to look like a reference — and treats
+  `properties`, `patternProperties`, `definitions`, `$defs` and the two
+  `dependencies` keywords as maps *of* schemas rather than as schemas.
 - Draft is taken from `$schema`; absent, the default draft is 7 (matching the
-  reference implementation's meta-schema validation).
+  reference implementation's meta-schema validation). Unlike go-raml, which
+  validates every schema against the draft-07 meta-schema whatever it declares,
+  the schema is checked against **its own** draft's meta-schema — so a draft-04
+  document may write `exclusiveMinimum: true` and a draft-07 one may not.
 
 ### 6.2 Restrictions
 
@@ -231,11 +283,25 @@ expression". Enforced:
   annotations, `example`/`examples`;
 - `JsonShape.inherit(source)` errors unless the source carries the identical raw
   schema;
-- a JSON-schema-typed name used in an expression (`Person[]`) fails when the
-  array's item inherit runs.
+- a JSON-schema-typed name used in an expression (`Person[]`, `Person?`,
+  `Person | string`) is refused by P7's visitor, at the operand. An earlier draft
+  of this section said it "fails when the array's item inherit runs", which it
+  does not: an item written as a bare reference is an *alias*, not a subtype
+  ([06](06-type-expressions.md) § 3.1), so nothing merges and nothing failed.
+  A bare reference on its own stays legal — it is another name for the same
+  type, not an expression.
 
 Spec also forbids XML/JSON schemas "in any declaration of query parameters, query
-string, URI parameters, and headers" — enforced at those four decoders.
+string, URI parameters, and headers". `baseUriParameters` are URI parameters and
+are covered by the same rule.
+
+Enforced by `check_parameter_schemas` in `parser/endpoint_build.py`, run after
+P7 — **not** at the four decoders, as an earlier draft of
+[15](15-implementation-plan.md) said. A parameter may *name* a JSON-schema type
+rather than declare one inline, and a name is not bound to a kind until P7. By
+then the four declarations are four fields of a model that is already built, so
+the rule has one home rather than four; the module already holds the other
+parameter-only rule, `_check_slash_free`.
 
 Inner-element references (`!include elements.json#/definitions/Foo`) are handled
 by the JSON Pointer fragment of the URI, resolved by the schema library.
@@ -250,7 +316,7 @@ Mappings:
 |-------------|------|
 | `type: object` (+ properties, required, patternProperties, min/maxProperties, boolean `additionalProperties`) | `ObjectShape` |
 | `type: array` (+ items, min/maxItems, uniqueItems) | `ArrayShape` |
-| `type: string/integer/number/boolean/null` | corresponding scalar |
+| `type: string/integer/number/boolean/null` | corresponding scalar (+ min/maxLength, pattern, min/maximum, multipleOf) |
 | `type: [a, b]` | union of bare members |
 | `anyOf` / `oneOf` | `UnionShape` (`oneOf`'s exactly-one semantics is lost — documented) |
 | `allOf` | sequential `inherit` merge |
@@ -260,7 +326,20 @@ Mappings:
 | schema-form `additionalProperties` | error |
 | tuple-form `items` | error |
 | `false` schema | error |
+| `true` schema, or no `type` and no combinator | `AnyShape` |
+
+`title`, `description`, `default`, `enum` and `examples` map onto the common
+facets of whatever shape the row above produced. A numeric bound goes through
+`Fraction(repr(value))`, not through `float` — `json` has already made a binary
+approximation of `1.1` by the time it is read (§ 5.3).
 
 The shapes produced here are *view* objects: they are not registered in
-`Raml.shapes`, they skip the three always-empty ordered maps, and they are marked
-unwrapped. They must never be fed back into the parser's own passes.
+`Raml.shapes` or in `Raml.fragment_typedefs`, they carry no positions, and they
+are marked unwrapped. They must never be fed back into the parser's own passes —
+the model looks right until P9 tries to flatten it. (go-raml also skips three
+always-empty ordered maps here; in Python those are plain dicts and there is
+nothing to skip.)
+
+A `patternProperties` regex that this engine cannot compile is an error, because
+the key would be lost; a `pattern` on a string that it cannot compile is dropped
+instead, because the view is a view and `validate()` still enforces the schema.

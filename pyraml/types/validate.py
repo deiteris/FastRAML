@@ -19,17 +19,105 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pyraml.errors import Accumulator, ErrorKind, RamlError
-from pyraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
+from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from pyraml.types.unwrap import DEFAULT_MAX_DEPTH, mark_recursions, unwrap_shape
 from pyraml.types.values import failure
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from typing import Any
+
+    from pyraml.datanode import DataNode
     from pyraml.parser.annotations import DomainExtension
     from pyraml.registry import Raml
     from pyraml.types.base import BaseShape, Property
     from pyraml.types.examples import Example
 
-__all__ = ['validate_shapes']
+__all__ = ['check_declared_discriminators', 'validate_shapes']
+
+#: Discriminator facet name → every value that names a type declaring it.
+type DiscriminatorIndex = dict[str, set[str]]
+
+
+# -- a rule that cannot wait for P10 (docs/05 section 9) -----------------------
+
+
+def check_declared_discriminators(raml: Raml) -> None:
+    """Spec § Using Discriminator: neither facet may be used on an **inline**
+    type declaration.
+
+    Run between P7 and P9, not with the rest of P10, and that ordering is the
+    whole difficulty. `discriminator` is inherited: a body written `type: Person`
+    against a discriminated `Person` carries one after unwrap, and it is inline —
+    so the flattened model reports every correct document as broken. The
+    reference implementation carries this as a `FIXME` for exactly that reason
+    and enforces nothing.
+
+    On the declared model the question is decidable: a discriminator is present
+    only where it was written. "Inline" is then everything that is not a named
+    type — `types:`, `schemas:`, `annotationTypes:` or a DataType fragment's
+    root.
+    """
+    named = _named_type_ids(raml)
+    accumulator = Accumulator()
+    seen: set[int] = set()
+    for shapes in raml.fragment_typedefs.values():
+        for base in shapes:
+            _check_declared(base, named, accumulator, seen)
+    accumulator.raise_if_any()
+
+
+def _named_type_ids(raml: Raml) -> set[int]:
+    """Every shape a document gave a name to.
+
+    Keyed by `id` rather than by object, because `clone` preserves it and a
+    caller may hold a copy (docs/07 section 5).
+    """
+    ids = {
+        shape.id
+        for index in (raml.fragment_types, raml.fragment_annotations)
+        for declared in index.values()
+        for shape in declared.values()
+    }
+    for fragment in raml.fragments.values():
+        shape = getattr(fragment, 'shape', None)
+        if shape is not None:
+            ids.add(shape.id)
+    return ids
+
+
+def _check_declared(base: BaseShape, named: set[int], acc: Accumulator, seen: set[int]) -> None:
+    if id(base) in seen:
+        return
+    seen.add(id(base))
+
+    shape = base.shape
+    if isinstance(shape, ObjectShape) and base.id not in named:
+        for facet, position in (
+            ('discriminator', shape.discriminator.key_pos if shape.discriminator is not None else None),
+            (
+                'discriminatorValue',
+                shape.discriminator_value.key_pos if shape.discriminator_value is not None else None,
+            ),
+        ):
+            if position is not None:
+                acc.add(
+                    failure(
+                        'discriminator on an inline type declaration', base.location, position, info={'facet': facet}
+                    )
+                )
+
+    if isinstance(shape, ObjectShape):
+        for prop in (shape.properties or {}).values():
+            _check_declared(prop.base, named, acc, seen)
+        for pattern in (shape.pattern_properties or {}).values():
+            _check_declared(pattern.base, named, acc, seen)
+    elif isinstance(shape, ArrayShape):
+        if shape.items is not None:
+            _check_declared(shape.items, named, acc, seen)
+    elif isinstance(shape, UnionShape):
+        for member in shape.any_of or ():
+            _check_declared(member, named, acc, seen)
 
 
 def validate_shapes(raml: Raml, *, max_depth: int = DEFAULT_MAX_DEPTH) -> None:
@@ -46,6 +134,7 @@ def validate_shapes(raml: Raml, *, max_depth: int = DEFAULT_MAX_DEPTH) -> None:
 
 
 def _validate_types(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator, max_depth: int) -> None:
+    known = _discriminator_values(raml, cache, max_depth)
     for location, shapes in raml.fragment_typedefs.items():
         for base in shapes:
             try:
@@ -57,7 +146,7 @@ def _validate_types(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator, m
                 flattened.check()
             except RamlError as err:
                 acc.add(err)
-            _validate_commons(flattened, acc, set())
+            _validate_commons(flattened, known, acc, set())
 
 
 def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape], max_depth: int) -> BaseShape:
@@ -83,7 +172,7 @@ def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape], 
     return copy
 
 
-def _validate_commons(base: BaseShape, acc: Accumulator, seen: set[int]) -> None:
+def _validate_commons(base: BaseShape, known: DiscriminatorIndex, acc: Accumulator, seen: set[int]) -> None:
     """Examples, defaults and custom facets, at this level and below.
 
     `seen` is by `BaseShape` identity rather than `id`: after unwrap a cycle is
@@ -94,33 +183,156 @@ def _validate_commons(base: BaseShape, acc: Accumulator, seen: set[int]) -> None
         return
     seen.add(id(base))
 
-    _validate_examples(base, acc)
+    _validate_examples(base, known, acc)
     _validate_custom_facets(base, acc)
 
     shape = base.shape
     if isinstance(shape, ObjectShape):
         for prop in (shape.properties or {}).values():
-            _validate_commons(prop.base, acc, seen)
+            _validate_commons(prop.base, known, acc, seen)
         for pattern in (shape.pattern_properties or {}).values():
-            _validate_commons(pattern.base, acc, seen)
+            _validate_commons(pattern.base, known, acc, seen)
     elif isinstance(shape, ArrayShape):
         if shape.items is not None:
-            _validate_commons(shape.items, acc, seen)
+            _validate_commons(shape.items, known, acc, seen)
     elif isinstance(shape, UnionShape):
         for member in shape.any_of or ():
-            _validate_commons(member, acc, seen)
+            _validate_commons(member, known, acc, seen)
     for prop in base.custom_facet_defs.values():
-        _validate_commons(prop.base, acc, seen)
+        _validate_commons(prop.base, known, acc, seen)
+
+
+# -- discriminator values (docs/05 section 9) ----------------------------------
+
+
+def _discriminator_values(raml: Raml, cache: dict[int, BaseShape], max_depth: int) -> DiscriminatorIndex:
+    """Discriminator name → every value that names a type declaring it.
+
+    `discriminatorValue` defaults to the type's own name, so a type that carries
+    a discriminator is always in its own set.
+
+    **Keyed by the facet's name, not by the parent shape.** After P9 a type has
+    its parent's discriminator but no `inherits` edge left to find the parent
+    by, and the shape that actually needs the lookup is usually anonymous —
+    `type: Person[]` gives its items a nameless shape. Keying by name loses one
+    distinction: two unrelated hierarchies that both discriminate on `kind`
+    share a set, so an instance of one may borrow the other's value. That error
+    is permissive, never a false rejection, which is the right direction for a
+    check that runs whatever `strict` says.
+
+    The shapes are unwrapped through the same cache the validation pass uses, so
+    the copies are shared rather than made twice, and so the index is the same
+    with `unwrap=True` and without it.
+    """
+    index: DiscriminatorIndex = {}
+    for source in (raml.fragment_types, raml.fragment_annotations):
+        for declared in source.values():
+            for name, base in declared.items():
+                try:
+                    flattened = _ensure_unwrapped(raml, base, cache, max_depth)
+                except RamlError:
+                    # The failure is reported by the pass that unwraps for
+                    # validation; this index simply has nothing to add.
+                    continue
+                shape = flattened.shape
+                if not isinstance(shape, ObjectShape) or shape.discriminator is None:
+                    continue
+                value = str(shape.discriminator_value.raw) if shape.discriminator_value is not None else name
+                index.setdefault(shape.discriminator.value, set()).add(value)
+    return index
+
+
+def _check_discriminator_values(
+    base: BaseShape, data: DataNode | None, known: DiscriminatorIndex, acc: Accumulator
+) -> None:
+    """Every discriminator value in an example must name a type that exists.
+
+    Run **outside** the `strict` gate. `strict: false` waives conformance --
+    "this example deliberately does not validate" -- and a value that names no
+    type is a different question: it is about the declaration graph, not about
+    the instance. The TCK's `EdgeCases/identifying-discriminator` pair turns on
+    exactly that, its two fixtures differing in one word with `strict: false`
+    set in both.
+    """
+    if data is None or not known:
+        return
+    _walk_discriminators(base, data.raw, known, data, acc, '$', 0)
+
+
+def _walk_discriminators(  # noqa: PLR0913, PLR0917 - a data walk carries shape, value, index and position
+    base: BaseShape,
+    value: Any,
+    known: DiscriminatorIndex,
+    data: DataNode,
+    acc: Accumulator,
+    path: str,
+    depth: int,
+) -> None:
+    if depth > DEFAULT_MAX_DEPTH:
+        return
+    shape = base.shape
+    if isinstance(shape, RecursiveShape):
+        _walk_discriminators(shape.head, value, known, data, acc, path, depth + 1)
+        return
+    if isinstance(shape, ArrayShape) and isinstance(value, list) and shape.items is not None:
+        for index, item in enumerate(value):
+            _walk_discriminators(shape.items, item, known, data, acc, f'{path}[{index}]', depth + 1)
+        return
+    if not isinstance(shape, ObjectShape) or not isinstance(value, dict):
+        return
+
+    if shape.discriminator is not None:
+        _check_one(shape.discriminator.value, value, known, data, acc, path)
+    for name, prop in (shape.properties or {}).items():
+        if name in value:
+            _walk_discriminators(prop.base, value[name], known, data, acc, f'{path}.{name}', depth + 1)
+
+
+def _check_one(  # noqa: PLR0913, PLR0917 - as above
+    discriminator: str,
+    value: dict,
+    known: DiscriminatorIndex,
+    data: DataNode,
+    acc: Accumulator,
+    path: str,
+) -> None:
+    written = value.get(discriminator)
+    if not isinstance(written, str):
+        # Absent, or the wrong type: both are ordinary validation's business.
+        return
+    allowed = known.get(discriminator)
+    if not allowed or written in allowed:
+        return
+    acc.add(
+        failure(
+            'discriminator value names no known type',
+            data.location,
+            data.value_pos,
+            info={'path': path, 'discriminator': discriminator, 'value': written, 'known': sorted(allowed)},
+        )
+    )
 
 
 # -- examples, defaults, enums (docs/10 section 3) -----------------------------
 
 
-def _validate_examples(base: BaseShape, acc: Accumulator) -> None:
+def _each_example(base: BaseShape) -> Iterator[Example]:
+    if base.example is not None:
+        yield base.example
+    if base.examples is not None:
+        yield from base.examples.entries().values()
+
+
+def _validate_examples(base: BaseShape, known: DiscriminatorIndex, acc: Accumulator) -> None:
+    for example in _each_example(base):
+        # Before the `strict` gate, and outside it: naming a type that does not
+        # exist is not a conformance failure the author may waive (§ 9 of
+        # docs/05-type-model.md).
+        _check_discriminator_values(base, example.data, known, acc)
     if base.example is not None:
         _validate_example(base, base.example, acc)
     if base.examples is not None:
-        for example in base.examples.values.values():
+        for example in base.examples.entries().values():
             _validate_example(base, example, acc)
     if base.default is not None:
         # No `strict` for a default: an unusable default is always a defect,

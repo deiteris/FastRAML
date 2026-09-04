@@ -14,7 +14,8 @@ that area has already settled.
    dependencies, not by importance: the type system precedes endpoints, the merge
    precedes templates, validation comes last.
 
-**Current state: Phases 0 to 7 complete; JSON Schema (8b) remains.** Phase 0: positions, errors, uris, loaders, yamlnode. Phase 1:
+**Current state: Phases 0 to 8b complete; Phase 9 (hardening and release) is
+next.** Phase 0: positions, errors, uris, loaders, yamlnode. Phase 1:
 registry, fragments, includes, namespaces, datanode, facets, references,
 annotations, the entry points and the pass driver (P0–P3).
 Phase 2: the whole `types/` package — `BaseShape`, the seventeen kinds,
@@ -39,11 +40,17 @@ under the scope its nodes were authored in. Phase 7: `security` (P5) — the six
 scheme types and their settings, `describedBy` through the operation decoders,
 `securedBy` inheritance and OAuth 2.0 scope narrowing.
 
-**Every pass P0–P10 runs, and every RAML construct is now decoded.** No `_raw_*`
-attribute is a deferred seam any more — the two that remain are working buffers
-within a single decode. What is left is Phase 8b (external JSON Schema) and
-enforcing `allowedTargets` with the rest of validation. A brief per phase lives
-in `docs/briefs/`.
+Phase 8b: `types/jsonschema_.py` — `JsonShape`, the per-parse `SchemaRegistry`,
+eager `$ref` resolution through `ResourceLoader`, and the projection of a
+compiled schema onto the nearest RAML shape; plus the last eight conformance
+rules the corpus was still measuring.
+
+**Every pass P0–P10 runs, every RAML construct is decoded, and the TCK stands at
+914 of 916.** No `_raw_*` attribute is a deferred seam any more — the two that
+remain are working buffers within a single decode. The two open fixtures are the
+union-facet gap and nothing else (`docs/01` § 3.7), an After-v1 item by decision.
+What is left is Phase 9: benchmarks, depth guards, `re2`, `parse_lenient`, the
+CLI and the public-API export list. A brief per phase lives in `docs/briefs/`.
 
 **A TCK `fail` entry means work outstanding and nothing else** (`docs/14` § 1.2).
 Where a fixture is wrong, fix it in the suite — three have been, on branches in
@@ -114,6 +121,20 @@ Full list with the pass that establishes each: `docs/02-architecture.md` § 4.
   through its decimal text too (`Fraction(repr(v))`), because the YAML decoder
   already made it a float and `as_integer_ratio()` would recover the binary
   approximation. `multipleOf: 1.1` must accept `2.2`, and that is the test.
+- **A `pattern:` facet is `fullmatch`; a `/regex/` property name is `search`.**
+  The two look like one rule and are not: a facet *describes* a value, a pattern
+  property is matched *against* a key it does not own, and `/^x/` is how those
+  are written. Unifying them either way breaks a fixture
+  (`docs/10-validation.md` § 5.4).
+- **A discriminator is inherited, so the inline-declaration rule runs before
+  P9.** After unwrap every subtype of a discriminated type carries one and looks
+  inline. go-raml has the same rule as a `FIXME` for this reason. The check on
+  *values* runs in P10 and outside the `strict` gate, because naming a type that
+  does not exist is not a conformance failure an author may waive
+  (`docs/05` § 9).
+- **Read `Examples.entries()`, never `Examples.values`.** With `examples:
+  !include e.raml` the examples live on the fragment and `values` is empty — so
+  reading it directly does not fail, it silently sees nothing.
 - **No per-character Python loops** where a compiled regex or a C-level string
   method will do. go-raml's byte loops are correct in Go and slow here
   (`docs/12-performance.md` § 12).

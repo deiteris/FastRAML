@@ -208,6 +208,18 @@ class TestGlobalPrePass:
             parse_from_path(root / 'api.raml')
         assert 'invalid media type' in messages(caught.value)[0]
 
+    def test_a_malformed_base_uri_template_is_rejected(self, workspace):
+        # A base URI is a URI template like a resource's own, so `{myapi.com`
+        # is an unclosed expression rather than part of a hostname.
+        root = workspace({'api.raml': API + 'baseUri: http://{myapi.com\n'})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml')
+        assert "unclosed '{'" in messages(caught.value)[0]
+
+    def test_a_well_formed_base_uri_template_is_accepted(self, workspace):
+        root = workspace({'api.raml': API + 'version: v1\nbaseUri: http://api.example.com/{version}\n'})
+        assert parse_from_path(root / 'api.raml') is not None
+
     def test_an_unknown_protocol_is_rejected(self, workspace):
         root = workspace({'api.raml': API + 'protocols: [FTP]\n'})
         with pytest.raises(RamlError) as caught:

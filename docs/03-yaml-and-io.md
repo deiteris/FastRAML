@@ -12,7 +12,11 @@ positions are computed.
   but a load also discards…
 - **Positions.** Every diagnostic must point at a line and column.
 - **Tags.** `!include` is a YAML tag on a scalar; it must be intercepted, not
-  resolved to a string.
+  resolved to a string. It is also the *only* tag RAML defines, so any other
+  local tag (`!foo`, as opposed to YAML's own `!!str`) is rejected at compose.
+  Without that rule `!includeexample.json` — an `!include` missing its space —
+  is a valid local tag on an empty scalar, and the document parses with an empty
+  value where a file was meant.
 - **Comments.** The first line — `#%RAML 1.0 Trait` — is a comment and is
   semantically required. Spec § Markup Language: "processors SHALL NOT completely
   ignore all YAML comments."
@@ -335,8 +339,8 @@ a mapping or a sequence; `ValueNode.is_scalar` is what distinguishes the two
 cases.
 
 A scalar's Python value comes from its **tag and its literal text**.
-`!!timestamp` and any unrecognised tag keep the text, because RAML needs the
-written form of a `date-only` example.
+`!!timestamp` and any tag with no conversion of its own keep the text, because
+RAML needs the written form of a `date-only` example.
 
 `make_data_node(raml, key_node, value_node, location)` is the single constructor;
 `key_node` is `None` where there is no key, as in a sequence item.

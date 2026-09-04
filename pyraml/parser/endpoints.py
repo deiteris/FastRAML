@@ -19,7 +19,7 @@ See docs/08-templates-and-endpoints.md section 8 and docs/13-public-api.md § 4.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pyraml.positions import UNKNOWN, Position
 
@@ -29,12 +29,19 @@ if TYPE_CHECKING:
     from pyraml.types.base import BaseShape, Property, ScalarFacet
 
 __all__ = [
+    'VALID_PROTOCOLS',
     'Body',
     'EndPoint',
     'Operation',
     'Request',
     'Response',
 ]
+
+#: Spec § Protocols: "the value is an array of strings, of values `HTTP` and/or
+#: `HTTPS`". Compared case-insensitively, and stored upper-cased. Here rather
+#: than in either decoder because both the API root and a method declare the
+#: facet, and the rule has to be the same in both.
+VALID_PROTOCOLS: Final = frozenset({'http', 'https'})
 
 
 @dataclass(slots=True, eq=False)

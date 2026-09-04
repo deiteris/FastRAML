@@ -318,6 +318,19 @@ property. Rules:
   `pattern_properties` must be an ordered mapping (free in Python).
 - `additionalProperties: false` together with pattern properties is rejected, per
   spec § Additional Properties. (JSON Schema would allow it; the spec does not.)
+- **Declaring any pattern makes the set of them exhaustive.** A key that matches
+  no declared property and no pattern is refused, whatever `additionalProperties`
+  says. The regex is matched **unanchored**, unlike the `pattern:` facet
+  ([10](10-validation.md) § 5.4) — a pattern property is matched *against* a key
+  rather than describing one, and `/^x/` is how they are written.
+
+  That is not the reading `additionalProperties: true` suggests, and the
+  reference implementation does not do it. The spec's own examples decide it, in
+  their own comments: `types-pattern-properties.raml` says pattern properties
+  are "restricting the property names of any additional properties", and
+  `additional-properties.raml` uses the empty pattern `//` to "force all
+  additional properties to be a string" — which is only a thing you would need
+  to write if the non-empty patterns restricted what is allowed.
 
 ## 6. Examples
 
@@ -357,6 +370,11 @@ explicitly — which is exactly what the spec's own example does and comments on
 `examples:` (plural) is a mapping of name → single example, or an `!include` of a
 `NamedExample` fragment. `example` and `examples` on the same declaration are
 mutually exclusive.
+
+In the included form the examples live on the fragment and `Examples.values` is
+empty, so **read `Examples.entries()`, never `values` directly**. That is not a
+convenience: a consumer reading `values` sees no examples at all, which is how
+an included NamedExample went unvalidated by P10 until Phase 8b.
 
 ## 7. Custom (user-defined) facets
 
@@ -401,7 +419,36 @@ Checks (spec § Using Discriminator):
   property's type;
 - neither facet may appear on a union type (checked at decode time — a union has
   no properties, so it can never become valid later);
-- `discriminator` without any `properties` is an error.
+- `discriminator` without any `properties` is an error;
+- neither facet may appear on an **inline** type declaration — anything that is
+  not a named type in `types:`, `schemas:`, `annotationTypes:` or a DataType
+  fragment's root.
+
+**That last rule runs between P7 and P9, not with the others**, and the ordering
+is the whole of it. A discriminator is *inherited*: a body written
+`application/json: Person` against a discriminated `Person` carries one after
+unwrap, and it is inline — so on the flattened model every correct document
+reports as broken. On the declared model a discriminator is present only where it
+was written. `check_declared_discriminators` in `types/validate.py` is the pass;
+the reference implementation carries the same rule as a `FIXME` ("need to
+validate on which level the discriminator is applied to avoid potential false
+positives") and enforces nothing.
 
 `discriminatorValue` defaults to the type's name; the default is computed on read,
 not materialised at parse time.
+
+**A discriminator value in an example must name a type that exists**, and that
+check runs **outside the `strict` gate**. `strict: false` waives conformance —
+"this example deliberately does not validate" — and a value naming no type is a
+different question: it is about the declaration graph, not about the instance.
+The TCK's `EdgeCases/identifying-discriminator` pair turns on exactly this, its
+two fixtures differing in one word with `strict: false` set in both.
+
+The index is keyed by the **discriminator's name**, not by the parent shape.
+After P9 a subtype carries its parent's discriminator but has no `inherits` edge
+left to find the parent by, and the shape that needs the lookup is usually
+anonymous — `type: Person[]` gives its items a nameless shape. One distinction is
+lost: two unrelated hierarchies that both discriminate on `kind` share a set, so
+an instance of one may borrow the other's value. That error is permissive and
+never a false rejection, which is the right direction for a check no `strict`
+can turn off.

@@ -18,13 +18,13 @@ from typing import TYPE_CHECKING, Any, Literal
 from pyraml.errors import ErrorKind, RamlError
 from pyraml.loaders import build_loader
 from pyraml.parser.annotations import resolve_domain_extensions
-from pyraml.parser.endpoint_build import build_endpoints
+from pyraml.parser.endpoint_build import build_endpoints, check_parameter_schemas
 from pyraml.parser.fragments import decode_fragment, identify_fragment
 from pyraml.parser.security import apply_security_schemes
 from pyraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml
 from pyraml.types.resolve import resolve_shapes
 from pyraml.types.unwrap import unwrap_shapes
-from pyraml.types.validate import validate_shapes
+from pyraml.types.validate import check_declared_discriminators, validate_shapes
 from pyraml.uris import path_to_file_uri
 from pyraml.yamlnode import decode_source, read_head
 
@@ -141,6 +141,16 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     # P7 — drain the unknown worklist: every declaration whose kind the document
     # alone could not settle now gets one. After this, invariant I5 holds.
     resolve_shapes(raml)
+
+    # Doc 10 § 6.2's last rule: no external schema in a query parameter, query
+    # string, URI parameter or header. After P7, because a parameter may *name*
+    # a JSON-schema type rather than declare one inline.
+    check_parameter_schemas(raml)
+
+    # And the one declaration rule that cannot wait for P10: a discriminator is
+    # inherited, so after P9 every subtype of a discriminated type looks like an
+    # inline declaration that wrote one (docs/05 § 9).
+    check_declared_discriminators(raml)
 
     # P8 — bind every `(annotation)` application to the type it names.
     # Unconditional: an undeclared annotation is malformed input whether or not

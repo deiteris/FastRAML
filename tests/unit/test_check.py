@@ -242,6 +242,46 @@ class TestDiscriminator:
         assert error is not None
         assert traces(error)[0].info == {'property': 'kind'}
 
+    def test_an_inline_declaration_may_not_declare_one(self, workspace):
+        # Spec § Using Discriminator. Checked between P7 and P9, because a
+        # discriminator is *inherited*: after unwrap every subtype of a
+        # discriminated type carries one.
+        body = (
+            '  Person:\n    properties:\n      kind: string\n'
+            '/p:\n  get:\n    responses:\n      200:\n        body:\n'
+            '          application/json:\n            discriminator: kind\n'
+            '            properties:\n              kind: string\n'
+        )
+        root = workspace({'api.raml': API + 'types:\n' + body})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        assert 'discriminator on an inline type declaration' in str(caught.value)
+
+    def test_a_body_that_inherits_a_discriminated_type_is_fine(self, workspace):
+        """The false positive the ordering exists to avoid.
+
+        The reference implementation carries this rule as a `FIXME` and enforces
+        nothing, for exactly this reason.
+        """
+        body = (
+            '  Person:\n    discriminator: kind\n    properties:\n      kind: string\n'
+            '/p:\n  get:\n    responses:\n      200:\n        body:\n'
+            '          application/json: Person\n'
+        )
+        root = workspace({'api.raml': API + 'types:\n' + body})
+        assert parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
+
+    def test_an_inline_declaration_may_not_declare_a_discriminator_value(self, workspace):
+        body = (
+            '  Person:\n    discriminator: kind\n    properties:\n      kind: string\n'
+            '/p:\n  get:\n    responses:\n      200:\n        body:\n'
+            '          application/json:\n            type: Person\n            discriminatorValue: p\n'
+        )
+        root = workspace({'api.raml': API + 'types:\n' + body})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        assert 'discriminator on an inline type declaration' in str(caught.value)
+
     def test_an_inherited_property_counts(self, workspace):
         # The reason this rule is checked in P10 and not at decode time.
         assert (
@@ -293,6 +333,66 @@ class TestDiscriminator:
         error = parse(workspace, '  T:\n    type: string | integer\n    discriminator: kind\n')
         assert error is not None
         assert 'discriminator cannot be used with union type' in messages(error)
+
+
+class TestDiscriminatorValuesInExamples:
+    """A discriminator value must name a type that exists (docs/05 § 9).
+
+    The declaration graph, not conformance — which is why `strict: false` does
+    not waive it.
+    """
+
+    HIERARCHY = (
+        '  Person:\n    type: object\n    discriminator: kind\n'
+        '    properties:\n      name: string\n      kind: string\n'
+        '  Employee:\n    type: Person\n    discriminatorValue: employee\n'
+        '    properties:\n      employeeId: string\n'
+        '  User:\n    type: Person\n    discriminatorValue: user\n    properties:\n      userId: string\n'
+    )
+
+    def parse(self, workspace, tail: str):
+        root = workspace({'api.raml': API + 'types:\n' + self.HIERARCHY + tail})
+        try:
+            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        except RamlError as err:
+            return err
+        return None
+
+    def test_a_declared_subtype_value_is_accepted(self, workspace):
+        tail = '  Roster:\n    type: Person[]\n    example:\n      - name: A\n        kind: employee\n'
+        assert self.parse(workspace, tail) is None
+
+    def test_the_base_types_own_name_is_accepted(self, workspace):
+        # `discriminatorValue` defaults to the type's name.
+        tail = '  Roster:\n    type: Person[]\n    example:\n      - name: A\n        kind: Person\n'
+        assert self.parse(workspace, tail) is None
+
+    def test_a_value_naming_nothing_is_rejected(self, workspace):
+        tail = '  Roster:\n    type: Person[]\n    example:\n      - name: A\n        kind: administrator\n'
+        error = self.parse(workspace, tail)
+        assert error is not None
+        assert 'discriminator value names no known type' in messages(error)
+
+    def test_strict_false_does_not_waive_it(self, workspace):
+        """The TCK's `EdgeCases/identifying-discriminator` pair sets it in both.
+
+        Its two fixtures differ in one word, so if `strict` suppressed this the
+        pair would test nothing.
+        """
+        tail = (
+            '  Roster:\n    type: Person[]\n    example:\n      value:\n'
+            '        - name: A\n          kind: administrator\n      strict: false\n'
+        )
+        error = self.parse(workspace, tail)
+        assert error is not None
+        assert 'discriminator value names no known type' in messages(error)
+
+    def test_strict_false_still_waives_ordinary_conformance(self, workspace):
+        tail = (
+            '  Roster:\n    type: Person[]\n    example:\n      value:\n'
+            '        - name: 12\n          kind: employee\n      strict: false\n'
+        )
+        assert self.parse(workspace, tail) is None
 
 
 class TestAccumulation:

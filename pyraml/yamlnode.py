@@ -364,12 +364,14 @@ class _Converter:
         line, column, stop_line, stop_column = _mark_position(node)
 
         if isinstance(node, yaml.ScalarNode):
+            tag = _short_tag(node.tag)
+            self._check_local_tag(tag, line, column, stop_line, stop_column)
             # The raw text is kept even for resolved scalars: RAML needs the
             # literal form of a `date-only` example, and `!!int` bounds are
             # parsed exactly rather than through float.
             return Node(
                 NodeKind.SCALAR,
-                _short_tag(node.tag),
+                tag,
                 node.value,
                 None,
                 line,
@@ -406,7 +408,26 @@ class _Converter:
         finally:
             self._in_progress.discard(identity)
 
-        return Node(kind, _short_tag(node.tag), '', content, line, column, stop_line, stop_column)
+        tag = _short_tag(node.tag)
+        self._check_local_tag(tag, line, column, stop_line, stop_column)
+        return Node(kind, tag, '', content, line, column, stop_line, stop_column)
+
+    def _check_local_tag(self, tag: str, line: int, column: int, stop_line: int, stop_column: int) -> None:
+        """`!include` is the only tag RAML defines (spec § Includes).
+
+        Without this, `!includeexample.json` — an `!include` missing its space —
+        is a perfectly good YAML local tag on an empty scalar, and the document
+        parses with an empty value where a file was meant. The failure is silent
+        and the typo is invisible, which is why the TCK has a fixture for it.
+        """
+        if tag.startswith('!') and not tag.startswith('!!') and tag != TAG_INCLUDE:
+            raise RamlError.new(
+                'unknown tag',
+                self._uri,
+                Position(line, column, stop_line, stop_column),
+                kind=ErrorKind.PARSING,
+                info={'tag': tag},
+            )
 
 
 def _empty_mapping() -> Node:

@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from pyraml.parser.includes import IncludeRef
     from pyraml.parser.structural_merge import ProvenanceOverlay
     from pyraml.types.expressions import ExprCache
+    from pyraml.types.jsonschema_ import SchemaRegistry
     from pyraml.yamlnode import Node
 
     # Phase 2 onwards replace these aliases with the real classes. They are
@@ -148,7 +149,9 @@ class Raml:
         # One parse per distinct expression text, not per occurrence. Held here
         # rather than on the expression parser so it dies with the parse.
         self.expr_cache: ExprCache = {}
-        self.json_schema_registry: dict[Any, Any] = {}
+        # Built on first use by `types/jsonschema_.py`: this module imports
+        # nothing from `types/` at runtime (docs/02 section 3).
+        self.json_schema_registry: SchemaRegistry | None = None
 
         self.fragment_types: dict[str, dict[str, BaseShape]] = {}
         self.fragment_annotations: dict[str, dict[str, BaseShape]] = {}

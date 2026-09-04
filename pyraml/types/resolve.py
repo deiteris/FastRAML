@@ -32,6 +32,7 @@ from pyraml.parser.references import UnresolvedReferenceError, cut_last
 from pyraml.types.base import (
     TYPE_ARRAY,
     TYPE_COMPOSITE,
+    TYPE_JSON,
     TYPE_NIL,
     TYPE_UNION,
     BaseShape,
@@ -197,6 +198,7 @@ def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
         case Array():
             items = _anonymous(raml, base)
             _build(raml, items, node.item)
+            _reject_schema_operand(base, items.base, node.item)
             attach_kind(raml, base, TYPE_ARRAY, facets, from_mapping=from_mapping)
             # KIND_TO_CLASS maps `array` to ArrayShape by construction.
             # An `items:` facet written beside an array expression is overridden
@@ -207,6 +209,7 @@ def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
             # `T?` is sugar for `T | nil` (docs/06 section 1).
             member = _anonymous(raml, base)
             _build(raml, member, node.inner)
+            _reject_schema_operand(base, member.base, node.inner)
             _attach_union(raml, base, facets, [member.base, _nil(raml, base)], from_mapping=from_mapping)
 
         case Union():
@@ -214,8 +217,31 @@ def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
             for item in node.members:
                 member = _anonymous(raml, base)
                 _build(raml, member, item)
+                _reject_schema_operand(base, member.base, item)
                 members.append(member.base)
             _attach_union(raml, base, facets, members, from_mapping=from_mapping)
+
+
+def _reject_schema_operand(base: BaseShape, member: BaseShape, node: RdtNode) -> None:
+    """Spec section Using XML and JSON Schemas, via docs/10 section 6.2.
+
+    A type defined by an external schema "MUST NOT participate in type
+    inheritance or specialization, or effectively in any type expression". A
+    bare reference is not a type expression — it is a second name for the same
+    type, and the spec's own examples use one — so only the operands of `[]`,
+    `?` and `|` are refused here. Inheritance is refused by `JsonShape.inherit`.
+    """
+    if member.type != TYPE_JSON:
+        return
+    raise RamlError.new(
+        'a JSON schema type cannot be used in a type expression',
+        base.location,
+        # Only a `Reference` can name a schema type, and only `Primitive` and
+        # `Reference` carry a column (docs/06 section 2.2).
+        _column(base, node.col if isinstance(node, Reference) else 0),
+        kind=ErrorKind.RESOLVING,
+        info={'type': base.type},
+    )
 
 
 def _build_reference(raml: Raml, base: BaseShape, node: Reference, facets: list[Node], *, from_mapping: bool) -> None:

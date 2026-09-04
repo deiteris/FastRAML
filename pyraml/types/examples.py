@@ -81,6 +81,17 @@ class Examples:
     def __repr__(self) -> str:
         return f'Examples({list(self.values)!r})' if self.link is None else 'Examples(link)'
 
+    def entries(self) -> dict[str, Example]:
+        """The examples this facet holds, following an `!include` if there is one.
+
+        Every consumer wants both forms. Reading `values` directly is how a
+        linked NamedExample went unvalidated: the map is empty and the examples
+        are one hop away on the fragment.
+        """
+        if self.link is not None:
+            return self.link.examples
+        return self.values
+
 
 def make_example(raml: Raml, value_node: Node, name: str, location: str) -> Example:
     """Build one example, choosing between the two forms by the `value` key."""

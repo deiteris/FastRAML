@@ -188,7 +188,12 @@ survive.
 - zero survivors → `failed to find compatible union member`, with each member's
   failure attached as detail;
 - one survivor → the target *becomes* that single shape (simplification);
-- several → the target becomes a union of the survivors.
+- several → the target becomes a union of the survivors, and **`example`,
+  `examples` and `default` are cleared from each survivor**. Every survivor is a
+  clone of the target and so arrives carrying them; the union keeps them, and it
+  is the union they were written about. Left on the members, P10 requires each
+  example to satisfy *every* member — the opposite of what a union means, and it
+  reads as several contradictory failures on a correct document.
 
 **target is a union, source is not**: merge the source into every member; any
 member that fails makes the whole inheritance fail.

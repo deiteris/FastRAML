@@ -372,6 +372,28 @@ class TestUnionRules:
             workspace, '    type: string | integer\n', '    type: string\n'
         )
 
+    def test_the_targets_example_stays_on_the_union_and_not_on_its_members(self, workspace):
+        """An example describes the union, and satisfies *one* member.
+
+        Each survivor is a clone of the target and so arrives carrying its
+        example. Left there, P10 would require every example to satisfy every
+        member — which is the opposite of what a union means, and reads as two
+        contradictory "missing required properties" errors on a correct
+        document.
+        """
+        declared = shapes(
+            workspace,
+            '  Child:\n    type: string\n    example: hi\n  Parent:\n    type: string | string\n',
+        )
+        merged = inherit(declared['Child'], declared['Parent'])
+        assert merged.example is not None
+        assert all(member.example is None for member in merged.shape.any_of)
+
+    def test_a_single_survivor_keeps_the_example(self, workspace):
+        # It *becomes* the target, so it has to carry what the target declared.
+        child = merge(workspace, '    type: string\n    example: hi\n', '    type: string | integer\n')
+        assert child.example is not None
+
     def test_merging_a_union_does_not_mutate_the_declared_members(self, workspace):
         declared = shapes(
             workspace,

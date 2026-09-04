@@ -69,6 +69,13 @@ class TestOperations:
         raml = parse(workspace, '/users:\n  get:\n    protocols: [http, https]\n')
         assert raml.endpoints['/users'].operations['get'].protocols == ['HTTP', 'HTTPS']
 
+    def test_an_unknown_protocol_on_a_method_is_rejected(self, workspace):
+        # The same rule the API root applies to its own `protocols:`; a method
+        # accepted anything until it was shared.
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, '/users:\n  get:\n    protocols: [HTTP, FTP]\n')
+        assert 'unknown protocol' in str(caught.value)
+
     def test_headers_and_query_parameters_are_properties(self, workspace):
         raml = parse(
             workspace,

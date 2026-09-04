@@ -34,12 +34,14 @@ from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
 from pyraml.parser.directives import decode_secured_by, make_security_schemes
 from pyraml.parser.documentation import DocumentationItem, decode_documentation_item
+from pyraml.parser.endpoints import VALID_PROTOCOLS
 from pyraml.parser.facets import make_scalar_facet, make_string_facet, scalar_str
 from pyraml.parser.includes import note_include_ref, resolve_ref_uri, strip_uri_suffix
 from pyraml.parser.references import resolve_library_reference, resolve_reference
 from pyraml.parser.resourcetypes import ResourceTypeDefinition, make_resource_type_definition
 from pyraml.parser.security import SecuritySchemeDefinition, make_security_scheme_definition
 from pyraml.parser.traits import TraitDefinition, make_trait_definition
+from pyraml.parser.uritemplates import extract_uri_template_params
 from pyraml.registry import ParseCtx
 from pyraml.types.examples import Example, make_example
 from pyraml.types.shape import make_property_map, make_shape, unmarshal_types
@@ -167,11 +169,6 @@ FACET_BASE_URI_PARAMETERS: Final = 'baseUriParameters'
 FACET_MEDIA_TYPE: Final = 'mediaType'
 FACET_PROTOCOLS: Final = 'protocols'
 FACET_DOCUMENTATION: Final = 'documentation'
-
-_VALID_PROTOCOLS: Final = frozenset({'http', 'https'})
-
-
-# -- protocols ----------------------------------------------------------------
 
 
 @runtime_checkable
@@ -572,7 +569,12 @@ class APIFragment(_BaseFragment):
         elif name == FACET_VERSION:
             self.version = make_string_facet(raml, key, value, self.location)
         elif name == FACET_BASE_URI:
-            self.base_uri = make_string_facet(raml, key, value, self.location)
+            facet = make_string_facet(raml, key, value, self.location)
+            # A base URI is a URI template like a resource's own, so it gets the
+            # same parse: `http://{myapi.com` is an unclosed expression, not a
+            # hostname (docs/08 section 8.2).
+            extract_uri_template_params(facet.value, self.location, facet.value_pos)
+            self.base_uri = facet
         elif name == FACET_DOCUMENTATION:
             self.documentation = unmarshal_documentation_items(raml, key, value, self.location)
         elif name == FACET_USES:
@@ -636,7 +638,7 @@ class APIFragment(_BaseFragment):
         protocols = []
         for item in node.content:
             facet = make_scalar_facet(self._raml, None, item, self.location, scalar_str)
-            if facet.value.lower() not in _VALID_PROTOCOLS:
+            if facet.value.lower() not in VALID_PROTOCOLS:
                 raise node_error('unknown protocol', self.location, item, info={'protocol': facet.value})
             protocols.append(facet)
         return protocols

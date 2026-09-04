@@ -182,6 +182,15 @@ about:
 - the `preference?` / `preference??` property-name corner cases;
 - `securedBy: [null]` overriding an inherited scheme.
 
+**Not built yet.** There is no `tests/golden/` and no `--update-golden`; the
+harness lands with Phase 9. Until then the cases above are pinned as unit tests
+where the phase that owns them has run — the trait/resource-type priority
+classes, optional-method filtering, the collection merge, and the three-way
+provenance example are in `tests/unit/test_traits.py`,
+`test_resourcetypes.py` and `test_structural_merge.py`. A unit test asserts the
+one thing it names; a golden asserts everything at once, which is why these
+cases are still listed here.
+
 ## 3. Unit tests
 
 Per-module, exercising the documented contract. The ones that matter most,
@@ -197,7 +206,8 @@ because they encode decisions rather than behaviour:
 | `inference` | every rule and every conflict in § 4.2 of doc 05 |
 | `expressions` | the full `rdt/examples.txt` corpus; cache identity; alias-vs-inherit discrimination |
 | `structural_merge` | inputs unmutated; node identity preserved; opaque data facets not recursed; sequence dedup |
-| `templates` | index/substitution walks agree; all ten actions; the three irregular plurals; unclosed `<<` |
+| `traits` / `resourcetypes` | the four priority classes; deduplication by name; optional-method filtering in both directions; which namespace a merged node resolves in |
+| `templates` | the index survives a subtree being filtered out; all ten actions; the three irregular plurals; unclosed `<<`; a substituted node is marked caller-scoped and a static one is not |
 | `inherit` | one test per row of the table in doc 07 § 3.5, both directions |
 | `validate` | `bool` rejected as `integer`; `Fraction` exactness for `multipleOf: 1.1`; `uniqueItems` at n=20 and n=21 |
 | `errors` | wrap/append composition; `to_dict()` shape matches the reference's |
@@ -209,9 +219,15 @@ because they encode decisions rather than behaviour:
 1. **Idempotence** — `unwrap(unwrap(x)) == unwrap(x)`.
 2. **Merge identity** — `merge(t, None) is t` and `merge(None, s) is s`.
 3. **Merge target-wins** — every key in the target survives the merge with its
-   own value or a merge of it; no target key is lost.
+   own value or a merge of it; no target key is lost. Note what this does *not*
+   say: a target mapping recurses and a target sequence unions, so only a target
+   *scalar* keeps its value untouched.
 4. **Merge purity** — a deep structural snapshot of both inputs is unchanged
-   afterwards.
+   afterwards. Alongside it, **node identity**: every scalar in the result is one
+   of the inputs' own objects, because a copied one would silently drop its
+   provenance mark and the merge would still look correct.
+
+Laws 2 to 4 are implemented in `tests/property/test_merge_laws.py`.
 5. **Order preservation** — declaration order of properties, types, endpoints,
    methods and responses round-trips.
 6. **Cache soundness** — parsing with a counting loader reads each file exactly

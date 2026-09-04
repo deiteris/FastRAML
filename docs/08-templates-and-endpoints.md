@@ -317,35 +317,51 @@ container that carries no mark of its own.
 
 ### 6.3 Reading the overlay in stage 2
 
+Four methods on `Raml`, because the overlay lives there and every reader already
+holds one:
+
 ```python
-def decode_body_scoped(self, node, overlay):
-    prev, self._raml._active_overlay = self._raml._active_overlay, overlay
-    try:
-        for key, value in pairs(node):
-            scope = overlay.get(value)
-            if scope:
-                self._raml.push_ctx(scope)
-            try:
-                acc.add(self.decode_field(key, value))
-            finally:
-                if scope:
-                    self._raml.pop_ctx()
-    finally:
-        self._raml._active_overlay = prev
+with raml.active_overlay(source.provenance), _body_scope(raml, source):
+    for key, value in pairs(source.body):
+        with raml.provenance_scope(value):
+            decode_field(raml, key, value, location)
 ```
 
-Two lookups feed off the active overlay, both one layer deeper than this loop:
+- **`active_overlay(overlay)`** makes one unit's marks readable. Saved and
+  restored rather than set: an endpoint's own body decode encloses each of its
+  operations'.
+- **`_body_scope`** picks the base scope. Normally the unit's own — but the body
+  *root* may itself be a boundary, as it is for an operation with no body of its
+  own whose whole body was grafted from a trait, and then the trait's scope is
+  what every unmarked node beneath it inherits.
+- **`provenance_scope(node)`** pushes the mark for one facet value, if it has one.
 
-- **`provenance_scope_for(value_node)`**, called by the shape builder. It checks
-  the `type:`/`schema:` facet *value* of a mapping first, then the mapping itself.
-  Most-specific wins: a caller-substituted `type:` scalar inside a grafted body
-  must beat the graft's own mark.
+Two more lookups feed off the active overlay, both one layer deeper than that
+loop — which is what makes them survive the containers the merge synthesised:
+
+- **`scope_for(node)`**, called by `make_shape`. It checks the `type:`/`schema:`
+  facet *value* of a mapping first, then the mapping itself. Most-specific wins:
+  a caller-substituted `type:` scalar inside a grafted body must beat the graft's
+  own mark. The scope is pushed around the *whole* shape build, so nested facets
+  inherit it.
 - **`location_of(node, default)`**, called by every entity constructor and
-  structural helper (`unmarshal_headers`, `make_responses`, `make_body`,
-  `make_request`, `make_shape`). It answers "which file does this node belong to?"
-  so an error inside a trait-contributed response reports the trait's path, not
-  the API's. Doing it at the constructor rather than in the loop above is what
-  makes it survive merge-synthesised intermediate containers.
+  structural helper (`make_property_map`, `_decode_responses`, `_decode_bodies`,
+  `make_shape`). It answers "which file does this node belong to?", so an error
+  inside a trait-contributed response reports the trait's path, not the API's.
+
+**The two deliberately disagree, and a test that asserts otherwise is wrong.**
+`body: {application/json: {type: <<item>>}}` inside a library's resource type
+produces a shape whose `location` is the library — the body was authored there —
+and whose `anchor` is the applying document, because `<<item>>` came from the
+caller and its value names a type in the caller's namespace. Both are right;
+that is what most-specific-first means.
+
+One thing the overlay does *not* do is establish a scope where none existed.
+`build_endpoints` runs after the API's own decode has popped its context, so the
+driver pushes `ParseCtx(anchor=resolver_at(api.location))` around both stages.
+Without it every endpoint shape is built with `anchor=None` and leans on P7's
+`resolver_at` fallback — which gives the same answer for a document that declares
+everything itself, and the wrong one for anything a template contributed.
 
 ### 6.4 Granularity limit: one scope per shape
 

@@ -367,12 +367,51 @@ and `_raw_resource_types` seams, plus the `TraitFragment` and
    resource-type chaining (§ 5).
 5. `resourcePathName` and the parameter rules (§§ 5.3, 7.4).
 
-This is the phase with the highest defect risk. It lands with the full golden set
-from [14](14-testing.md) § 2 and the merge property tests from § 4.
+This is the phase with the highest defect risk. It lands with the merge property
+tests from [14](14-testing.md) § 4.
 
 **Done when:** `Traits/`, `ResourceTypes/`, `TemplateFunctions/` pass; the
-three-way provenance golden is green; merge purity and target-wins hold under
+three-way provenance case is green; merge purity and target-wins hold under
 hypothesis.
+
+**Outcome.** TCK 807 → **869 of 916**. Every remaining failure is an `invalid-`
+fixture, and they cluster on work that is still outstanding: security schemes
+(Phase 7), JSON Schema (Phase 8b), and the documented `allowedTargets` and
+union-facet gaps. The denominator moved by two: `Root/include-02/valid-https.raml`
+and its negative twin `!include` a gist, and following the include is what made
+them visible. They are skipped by name — `http(s)` includes work when
+`ParseOptions.http_client` supplies a client, so this is a suite policy, not a
+coverage gap, and the negative one had been passing offline for the wrong reason
+anyway (an unregistered URI scheme errors just as an unreachable host does).
+
+Four things the plan did not say.
+
+**The variable index cannot be positional.** § 5.1 step 3 removes optional
+methods from the body *between* the scan and its use, so every node after the
+removal shifts and the index describes a tree that no longer exists. This is the
+spec's own `corpResource` / `/queues` example, and go-raml fails it in both
+directions — it demands `TextAboutPost` from a resource with no `post`, and once
+that is supplied, leaves `<<TextAboutGet>>` unsubstituted in the model
+(`KNOWN-ISSUES.md` entry 6, measured). The index is now keyed by node identity,
+which removes that fault and the non-injectivity one together, and with it the
+risk-register entry below: there are no longer two walks to keep in agreement.
+[08](08-templates-and-endpoints.md) § 7.1 amended.
+
+**`build_endpoints` had no parse context.** P4 runs after the API's own decode
+has popped its own, so until this phase every endpoint shape was built with
+`anchor=None` and leaned on P7's `resolver_at` fallback. That gives the right
+answer for a document that declares everything itself and the wrong one for
+anything a template contributes — invisible for two phases because nothing had
+contributed anything yet.
+
+**`location` and `anchor` are allowed to disagree**, and a corpus test that
+asserts otherwise is wrong. See [08](08-templates-and-endpoints.md) § 6.3.
+
+**Two conformance gaps surfaced by running the fixtures**, both measured against
+go-raml rather than traced: a response key must be a 3-digit status code (`2xx`
+is not RAML), and `is:` must be a sequence. The spec says MUST for the second,
+no valid fixture writes a bare scalar, and go-raml accepts one — which is why
+`Traits/is-node-format/invalid-is-single-value.raml` fails there.
 
 ---
 
@@ -551,8 +590,8 @@ In rough priority order:
 
 | Risk | Where | Mitigation |
 |------|-------|------------|
-| Provenance is subtly wrong; types resolve in the wrong namespace | Phase 6 | The three-way golden; a test that asserts the *location* of every shape produced by a template, not just that it resolved |
-| The two index walks (`collect_variables_index` / substitution) drift apart | Phase 6 | **Closed.** One shared walker (`iter_indexed`); a fixture with nested sequences asserts they agree. The index was also made injective — go-raml's `idx + i` rule is not, and the collision is reachable (docs/08 § 7.1) |
+| Provenance is subtly wrong; types resolve in the wrong namespace | Phase 6 | **Closed.** docs/08 § 6.1's three-way example whole, in `tests/unit/test_traits.py`; over the corpus, every endpoint shape has an anchor and names a file the parse read, with a third test proving the pair non-vacuous |
+| The two index walks (`collect_variables_index` / substitution) drift apart | Phase 6 | **Closed by removing the walks.** The index is keyed by node identity, so there is nothing to keep in agreement — and nothing for the optional-method filtering of § 5.1 to invalidate, which is the failure a positional index actually produced (docs/08 § 7.1) |
 | Parent-shape mutation during multiple inheritance | Phase 4 | Explicit test: two children inherit one parent, assert the parent is byte-identical after |
 | `RecursionError` on deep user input | Phases 4, 6, 8 | Depth guard + hypothesis property 10 |
 | Performance regressions creep in unnoticed | all | Benchmarks in CI from Phase 9, baselines committed |

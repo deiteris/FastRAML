@@ -10,6 +10,47 @@ property tests are not the finishing touch, they are how you find out.
 
 ---
 
+## 0. What this brief got wrong
+
+Kept rather than rewritten; the corrections have been the most useful part of
+every brief since Phase 5.
+
+1. **"`iter_indexed` is already written this way" (§ 1.1, § 4.5).** The
+   positional index was the wrong design, injective or not. § 5.1 step 3 filters
+   optional methods out of the body *between* the scan and its use, so every
+   node after the removal shifts and the index describes a tree that no longer
+   exists. The index is now keyed by node identity; `iter_indexed` is gone and
+   `iter_nodes` replaces it. go-raml fails the spec's own `corpResource` /
+   `/queues` example both ways because of this — measured, and recorded as
+   `KNOWN-ISSUES.md` entry 6.
+
+2. **"the definitions, from both the inline seam and the fragment" (§ 3.3) does
+   not say where the `!include` is followed.** It cannot be followed in
+   `traits.py` or `resourcetypes.py`: following it means parsing a fragment,
+   which `fragments.py` owns, and `docs/02` § 3 forbids both the reverse import
+   and a deferred one. The definition records the target URI; `fragments.py`
+   fills in `link`.
+
+3. **Nothing in the brief mentions the parse context.** `build_endpoints` runs
+   after the API's own decode has popped its own, so *every* endpoint shape was
+   being built with `anchor=None`. It went unnoticed for two phases because P7's
+   `resolver_at` fallback gives the same answer for a document that declares
+   everything itself. The driver now pushes the API's `ParseCtx` around both
+   stages; without it the whole overlay has nothing to be more specific *than*.
+
+4. **The golden set (§ 6) was not built.** There is no `tests/golden/` harness
+   and Phase 9 owns it. The three-way provenance case is a unit test instead
+   (`tests/unit/test_traits.py`), which is weaker — it asserts the things it
+   names rather than the whole model — and `docs/14` § 2 now says so.
+
+5. **"84 fixtures waiting" was optimistic in one direction and pessimistic in
+   another.** 62 moved; two more came from conformance gaps the fixtures
+   exposed on the way (status codes, `is:` as a sequence). Two left the
+   denominator: `Root/include-02/valid-https.raml` and its negative twin fetch a
+   gist, and following the include is what made them visible.
+
+---
+
 ## 1. Where the project stands
 
 Master is at the Phase 5 merge. The gate passes:

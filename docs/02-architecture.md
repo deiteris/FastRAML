@@ -97,8 +97,8 @@ pyraml/
     annotations.py        DomainExtension (doc 09)
     security.py           SecuritySchemeDefinition + settings variants (doc 09)
     templates.py          variable index, substitution, transform functions (doc 08)
-    traits.py             TraitDefinition / Trait reference (doc 08)
-    resourcetypes.py      ResourceTypeDefinition / ResourceType reference (doc 08)
+    traits.py             TraitDefinition + applying traits to an operation (doc 08)
+    resourcetypes.py      ResourceTypeDefinition + applying one to a resource (doc 08)
     directives.py         DirectiveRef: the type:/is:/securedBy: reference form
     source_ir.py          stage-1 SourceEndPoint / SourceOperation (doc 08)
     structural_merge.py   spec merging algorithm + provenance overlay (doc 08)
@@ -147,12 +147,21 @@ Rules on the layout:
   only in how the name resolves and what applying it does. One `DirectiveRef`
   rather than three near-identical classes in three near-empty modules.
 
+- **A template definition's `!include` is followed in `fragments.py`**, not in
+  the module that owns the definition. Following it means parsing a fragment,
+  which `fragments.py` owns; `traits.py` and `resourcetypes.py` record the target
+  URI and let it fill in `link`. The reverse import is what the rule below
+  forbids, and a deferred one is the indirection this section exists to prevent.
+
 - **`registry.py` imports nothing from `parser/` or `types/` at runtime**, which
   is what keeps the graph acyclic without indirection — every other module
   imports it. `domains.py` exists because of this rule: `ParseCtx` carries a
   `DomainLocation` and `parser/annotations.py` reads one, so the enum sits in a
   leaf both may import rather than in either of them
-  ([09](09-security-and-annotations.md) § B5).
+  ([09](09-security-and-annotations.md) § B5). It does import `yamlnode`, which
+  is below it: the provenance overlay lives on `Raml` and its four readers
+  (§ 6.3 of [08](08-templates-and-endpoints.md)) need to tell a mapping from a
+  scalar.
 
 - `types/` imports from `parser/` in exactly three places: `parser/facets.py`, for
   the scalar-facet builders; `parser/annotations.py`, for the two functions

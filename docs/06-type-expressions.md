@@ -237,4 +237,12 @@ an expression is a string.
 Spec § Using XML and JSON Schemas: a type that wraps an external schema "MUST NOT
 participate in type inheritance or specialization, or effectively in any type
 expression". Enforced by `JsonShape.inherit` rejecting anything but an identical
-schema, and by `JsonShape.decode_facets` rejecting any sibling facet.
+schema, by `JsonShape.decode_facets` rejecting any sibling facet, and — in the
+visitor of § 3 — by refusing a schema type as an operand of `[]`, `?` or `|`.
+
+**A bare reference is not a type expression.** `chair: Person` naming a
+schema-typed `Person` is a second name for the same type, and the spec's own
+examples use one; the visitor records it as an alias (§ 3.1) and `JsonShape`'s
+alias rule copies the compiled validator across. Only a *composed* expression is
+refused, which is why the check sits on the three composite cases rather than on
+`_build_reference`.

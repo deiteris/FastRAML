@@ -14,6 +14,7 @@ network.
 from __future__ import annotations
 
 import json
+from typing import ClassVar
 
 import pytest
 
@@ -257,3 +258,51 @@ class TestRestrictions:
         error = parse(workspace, {'api.raml': API + body})
         assert error is not None
         assert 'cannot inherit from a different JSON schema' in messages(error)
+
+    @pytest.mark.parametrize(
+        'expression', ['Person[]', 'Person?', 'Person | string'], ids=['array', 'optional', 'union']
+    )
+    def test_a_schema_type_cannot_appear_in_a_type_expression(self, workspace, expression):
+        body = 'types:\n  Person: |\n' + indent(PERSON) + f'  Board:\n    properties:\n      members: {expression}\n'
+        error = parse(workspace, {'api.raml': API + body})
+        assert error is not None
+        assert 'a JSON schema type cannot be used in a type expression' in messages(error)
+
+    def test_a_bare_reference_to_a_schema_type_is_allowed(self, workspace):
+        """The spec's own examples use one: a name is not a type expression."""
+        body = 'types:\n  Person: |\n' + indent(PERSON) + '  Board:\n    properties:\n      chair: Person\n'
+        assert parse(workspace, {'api.raml': API + body}) is None
+
+
+class TestParameterDeclarations:
+    """Section 6.2's other half: four places a schema may not be used at all.
+
+    Checked after P7 rather than at the decoders, because a parameter may name a
+    JSON-schema type instead of declaring one inline.
+    """
+
+    RESOURCE: ClassVar[dict[str, str]] = {
+        'headers': '/r:\n  get:\n    headers:\n      H: {ref}\n',
+        'queryParameters': '/r:\n  get:\n    queryParameters:\n      q: {ref}\n',
+        'queryString': '/r:\n  get:\n    queryString: {ref}\n',
+        'uriParameters': '/r/{{id}}:\n  uriParameters:\n    id: {ref}\n  get:\n',
+        'responseHeaders': '/r:\n  get:\n    responses:\n      200:\n        headers:\n          H: {ref}\n',
+        'baseUriParameters': 'baseUriParameters:\n  h: {ref}\n',
+    }
+
+    @pytest.mark.parametrize('facet', sorted(RESOURCE))
+    def test_a_named_schema_type_is_refused(self, workspace, facet):
+        body = 'types:\n  Person: |\n' + indent(PERSON) + self.RESOURCE[facet].format(ref='Person')
+        error = parse(workspace, {'api.raml': API + 'baseUri: http://x/{h}\n' + body})
+        assert error is not None
+        assert 'a JSON schema type is not allowed here' in messages(error)
+
+    def test_an_inline_schema_is_refused_too(self, workspace):
+        body = '/r:\n  get:\n    headers:\n      H:\n        type: |\n' + indent(PERSON, 10)
+        error = parse(workspace, {'api.raml': API + body})
+        assert error is not None
+        assert 'a JSON schema type is not allowed here' in messages(error)
+
+    def test_an_ordinary_parameter_is_untouched(self, workspace):
+        body = '/r:\n  get:\n    headers:\n      H: string\n'
+        assert parse(workspace, {'api.raml': API + body}) is None

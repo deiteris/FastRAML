@@ -257,11 +257,25 @@ expression". Enforced:
   annotations, `example`/`examples`;
 - `JsonShape.inherit(source)` errors unless the source carries the identical raw
   schema;
-- a JSON-schema-typed name used in an expression (`Person[]`) fails when the
-  array's item inherit runs.
+- a JSON-schema-typed name used in an expression (`Person[]`, `Person?`,
+  `Person | string`) is refused by P7's visitor, at the operand. An earlier draft
+  of this section said it "fails when the array's item inherit runs", which it
+  does not: an item written as a bare reference is an *alias*, not a subtype
+  ([06](06-type-expressions.md) § 3.1), so nothing merges and nothing failed.
+  A bare reference on its own stays legal — it is another name for the same
+  type, not an expression.
 
 Spec also forbids XML/JSON schemas "in any declaration of query parameters, query
-string, URI parameters, and headers" — enforced at those four decoders.
+string, URI parameters, and headers". `baseUriParameters` are URI parameters and
+are covered by the same rule.
+
+Enforced by `check_parameter_schemas` in `parser/endpoint_build.py`, run after
+P7 — **not** at the four decoders, as an earlier draft of
+[15](15-implementation-plan.md) said. A parameter may *name* a JSON-schema type
+rather than declare one inline, and a name is not bound to a kind until P7. By
+then the four declarations are four fields of a model that is already built, so
+the rule has one home rather than four; the module already holds the other
+parameter-only rule, `_check_slash_free`.
 
 Inner-element references (`!include elements.json#/definitions/Foo`) are handled
 by the JSON Pointer fragment of the URI, resolved by the schema library.

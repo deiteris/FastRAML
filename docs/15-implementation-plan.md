@@ -555,8 +555,13 @@ Phases 5–7 create. Normative: [10](10-validation.md) § 6.
    `.validate()` currently accept everything rather than raising, so that a
    JSON-schema-typed declaration parses — they become real here.
 2. Doc 10 § 6.2's "no schema in query parameters, query string, URI parameters or
-   headers", at the four decoders.
-3. `allowedTargets` at the sites Phases 5–7 build.
+   headers". *Not* at the four decoders, as this line first said: a parameter may
+   name a schema type instead of declaring one inline, so the check runs after
+   P7, over the built endpoint model ([10](10-validation.md) § 6.2).
+3. `allowedTargets` at the sites Phases 5–7 build. Already done: Phase 8a built
+   `_check_target` in `types/validate.py` and it reads every one of the seventeen
+   `DomainLocation`s, so the two fixtures this line was written for were already
+   passing when the phase opened.
 
 **Done when:** the full TCK runs with `unwrap=True, validate=True`; every
 `*invalid*` fixture outside the skip list produces an error; every `*valid*`

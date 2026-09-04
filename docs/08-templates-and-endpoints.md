@@ -373,40 +373,48 @@ keys alive. Using the node itself as the key does both.
 A template body is scanned **once, at declaration time**, producing:
 
 - `declared_variables: set[str]`
-- `node_variable_index: dict[int, list[VariableInfo]]`
+- `node_variable_index: dict[Node, list[VariableInfo]]`
 
-The `int` key is a **positional index** from a deterministic walk. Substitution
-repeats the same walk and looks up by index. This avoids storing a per-node map
-and avoids re-scanning strings at every application site — a resource type
-applied to 200 endpoints scans its body once.
+Scanning once is the point: a resource type applied to 200 endpoints scans its
+body once, and every application looks the results up.
 
-The walk must be *exactly* the same in both functions, so it is one helper
-(`iter_indexed`) called by both `collect_variables_index` and
-`compile_source_provenance`. A test asserts they agree on a fixture with nested
-sequences and mappings.
+**The key is the node itself, and this is a deliberate divergence from the
+reference.** go-raml keys by a *positional index* computed as "a node has index
+`idx`, its i-th child has `idx + i`" (`template.go`, `collectVariablesIndex`).
+That has two faults, and pyRAML's earlier design fixed only the first:
 
-**The index is a unique preorder sequence**, and this is a deliberate divergence
-from the reference. go-raml computes it as "a node has index `idx`, its i-th
-child has `idx + i`" (`template.go`, `collectVariablesIndex`). That rule is not
-injective: a node and its own first child both receive `idx`. On a small trait
-body of 17 nodes it collapses onto 7 distinct indices.
+1. **The numbering is not injective.** A node and its own first child both
+   receive `idx`; a trait body of 17 nodes collapses onto 7 indices. Substitution
+   tolerates it, because replacing an absent substring is a no-op, but
+   `collect_required_variables` returns *names* from a subtree, so a collision
+   makes it demand a parameter the template never used. A unique preorder
+   sequence fixes this, and pyRAML used one until the second fault surfaced.
 
-Substitution tolerates the collision, because replacing a substring that is not
-present is a no-op. Two other consumers do not:
+2. **Any numbering is invalidated by § 5.1 step 3.** Optional-method filtering
+   removes whole subtrees from the body *between* the scan and its use, so every
+   node after the removal shifts. The index then describes a tree that no longer
+   exists. This is not theoretical: it is the spec's own `corpResource` /
+   `/queues` example, and go-raml fails it in both directions —
 
-- `collect_required_variables` returns the variable *names* in a subtree, so a
-  collision makes it demand a parameter the template never used. This is how the
-  fault was found — a `200` response key under `get:` shared an index with
-  `<<TextAboutPost>>` under `post:`.
-- `compile_source_provenance` replaces a whole node when a **complex**
-  (non-scalar) parameter matches an indexed variable, and it does not first check
-  that the node's own text mentions that variable. A colliding node is therefore
-  overwritten by an unrelated parameter value.
+   ```
+   missing required parameter: parameter: TextAboutPost
+   ```
 
-pyRAML assigns each node the next integer in a depth-first, left-to-right walk.
-Uniqueness costs nothing, and it removes the class of fault rather than relying
-on `str.replace` being a no-op. The walk is iterative, so template depth cannot
-reach CPython's recursion limit.
+   for a resource with no `post` at all, and, once that parameter is supplied to
+   silence the error, `<<TextAboutGet>>` survives *unsubstituted* into the model,
+   because the index entry it looks up now belongs to a different node.
+   Recorded as `KNOWN-ISSUES.md` entry 6.
+
+Keying by node identity removes both at once. There are no two walks to keep in
+agreement, so the `docs/15` risk register entry "the two index walks drift apart"
+no longer describes anything; and filtering a subtree out cannot disturb the
+entries for the subtrees that remain. `Node` already hashes by identity, for the
+provenance overlay's sake (§ 6.5), so the map costs one pointer per
+variable-bearing scalar and nothing per application.
+
+`iter_nodes` is the one traversal both `collect_variables_index` and
+`collect_required_variables` use. It is iterative, so template depth cannot reach
+CPython's recursion limit.
 
 `VariableInfo` is `(name, substring, actions)` where `substring` is the literal
 `<<name | !action>>` text, so substitution is `str.replace(substring, value, 1)`

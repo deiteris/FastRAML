@@ -2,9 +2,10 @@
 
 These tests pin: the `<<name | !action>>` grammar, the ten transform
 functions (including the compound-word and irregular-plural cases the spec's
-own examples give), and — the detail the section calls out as risky — that
-`collect_variables_index` and any future walk built on `iter_indexed` compute
-the identical positional index for the identical node.
+own examples give), and — the detail the section calls out as risky —
+that the variable index survives the optional-method filtering that happens
+between the scan and its use, and that substitution records which values came
+from the caller.
 """
 
 from __future__ import annotations
@@ -18,12 +19,15 @@ from pyraml.parser.templates import (
     apply_template_action,
     collect_required_variables,
     collect_variables_index,
-    iter_indexed,
+    compile_source_provenance,
+    iter_nodes,
     parse_template_variables,
 )
+from pyraml.registry import ParseCtx
 from pyraml.yamlnode import TAG_STR, Node, NodeKind, compose, pairs
 
 LOCATION = 'file:///t/api.raml'
+CALLER = ParseCtx()
 
 
 def parse(text: str) -> Node:
@@ -150,13 +154,21 @@ class TestApplyTemplateAction:
 
 
 class TestVariablesIndex:
-    def test_collects_declared_variables_and_positional_index(self):
+    def test_collects_declared_variables_and_the_occurrences(self):
         root = parse('description: Create a new <<resourcePathName | !singularize>>\n')
         declared, index = collect_variables_index(root, LOCATION)
         assert declared == {'resourcePathName'}
         assert list(index.values()) == [
             [VariableInfo('resourcePathName', '<<resourcePathName | !singularize>>', ('!singularize',))]
         ]
+
+    def test_the_key_is_the_scalar_node_itself(self):
+        # `Node` is identity-hashable by design (docs/03 section 2), so the node
+        # is a safe dict key: no `id()`, and nothing to keep alive separately.
+        root = parse('description: <<foo>>\n')
+        _declared, index = collect_variables_index(root, LOCATION)
+        ((_key, value),) = pairs(root)
+        assert list(index) == [value]
 
     def test_only_str_scalars_are_scanned(self):
         # A non-!!str scalar that happens to contain "<<...>>" text is left
@@ -169,7 +181,7 @@ class TestVariablesIndex:
 
         assert declared == {'realVar'}
 
-    def test_indexer_agrees_with_an_independent_walk_over_nested_structure(self):
+    def test_every_variable_bearing_scalar_of_a_nested_body_is_found(self):
         # Nested sequences and mappings, several levels deep, mirroring the
         # shape a resource type / trait body actually has.
         root = parse("""
@@ -186,18 +198,11 @@ responses:
 """)
         declared, index = collect_variables_index(root, LOCATION)
 
-        # A stand-in for a future substitution pass: it knows nothing about
-        # `collect_variables_index`'s internals, but it uses the same shared
-        # walk helper and the same "!!str scalar" filter. If the two walks
-        # ever computed different indices for the same node, this would fail.
-        mirrored: dict[int, list[VariableInfo]] = {}
-        for idx, node in iter_indexed(root):
-            if node.kind is not NodeKind.SCALAR or node.tag != TAG_STR:
-                continue
-            variables = parse_template_variables(node.value, LOCATION)
-            if variables:
-                mirrored[idx] = variables
-
+        mirrored = {
+            node: parse_template_variables(node.value, LOCATION)
+            for node in iter_nodes(root)
+            if node.kind is NodeKind.SCALAR and node.tag == TAG_STR and parse_template_variables(node.value, LOCATION)
+        }
         assert mirrored == index
         assert declared == {'queryParamName', 'traitName'}
 
@@ -211,109 +216,101 @@ responses:
 
 class TestCollectRequiredVariables:
     def test_scopes_to_the_given_subtree(self):
-        # A shallow mapping with two direct children: one whose value carries
-        # a variable, one whose value does not. Kept shallow deliberately —
-        # the `idx + i` scheme is positional, not a unique node id (docs/08
-        # section 7.1), so two *different* nodes several levels apart can
-        # legitimately compute the same index. A deep fixture here would
-        # exercise that collision instead of the subtree-scoping behaviour
-        # this test targets.
         root = parse('a: <<foo>>\nb: plain\n')
         _declared, index = collect_variables_index(root, LOCATION)
-
         (_a_key, a_value), (_b_key, b_value) = pairs(root)
-        # `Node` is identity-hashable by design (docs/03 section 2), so the
-        # node itself is a safe dict key: no `id()`, nothing to keep alive
-        # separately.
-        idx_of_node = {node: idx for idx, node in iter_indexed(root)}
 
-        a_required = collect_required_variables(a_value, idx_of_node[a_value], index)
-        b_required = collect_required_variables(b_value, idx_of_node[b_value], index)
+        assert collect_required_variables(a_value, index) == {'foo'}
+        assert collect_required_variables(b_value, index) == set()
 
-        assert a_required == {'foo'}
-        assert b_required == set()
+    def test_a_sibling_branch_does_not_report_another_branch_variable(self):
+        # The failure a positional index caused: `get` has no variables, but a
+        # non-injective numbering had its `200` key sharing an index with
+        # `<<TextAboutPost>>` (docs/08 section 7.1).
+        root = parse(
+            'post:\n'
+            '  body:\n'
+            '    application/json:\n'
+            '      example: <<TextAboutPost>>\n'
+            'get:\n'
+            '  responses:\n'
+            '    200:\n'
+            '      description: ok\n'
+        )
+        _declared, index = collect_variables_index(root, LOCATION)
+        get_value = next(value for key, value in pairs(root) if key.value == 'get')
+        post_value = next(value for key, value in pairs(root) if key.value == 'post')
 
-    def test_scopes_to_a_standalone_compiled_tree(self):
-        # Mirrors the spec's own corpResource/queues example (docs/08 section
-        # 5.1 step 4): required variables are recollected "from the filtered
-        # tree" — a template's own compiled subtree, indexed from its own
-        # root (idx 0) — not from a random subtree of a larger shared
-        # document sharing one global numbering.
-        post_tree = parse('body:\n  application/json:\n    example: <<TextAboutPost>>\n')
-        queues_tree = parse('body:\n  application/json:\n    example: static text\n')
+        assert collect_required_variables(get_value, index) == set()
+        assert collect_required_variables(post_value, index) == {'TextAboutPost'}
 
-        _declared_post, post_index = collect_variables_index(post_tree, LOCATION)
-        _declared_queues, queues_index = collect_variables_index(queues_tree, LOCATION)
+    def test_the_index_survives_a_subtree_being_filtered_out(self):
+        # docs/08 section 5.1: optional methods are removed from the tree
+        # *before* the required variables are recollected. A positional index
+        # does not survive that removal — every later node shifts — which is why
+        # go-raml demands `<<TextAboutPost>>` from a resource that has no `post`
+        # (KNOWN-ISSUES.md). Identity keys are unaffected by it.
+        root = parse('post:\n  description: <<TextAboutPost>>\nget:\n  description: <<TextAboutGet>>\n')
+        _declared, index = collect_variables_index(root, LOCATION)
+        filtered = Node(NodeKind.MAPPING, root.tag, root.value, list(root.content[2:]))
 
-        assert collect_required_variables(post_tree, 0, post_index) == {'TextAboutPost'}
-        assert collect_required_variables(queues_tree, 0, queues_index) == set()
+        assert collect_required_variables(filtered, index) == {'TextAboutGet'}
 
     def test_no_variables_returns_empty_set(self):
         root = parse('description: nothing to see here\n')
         _declared, index = collect_variables_index(root, LOCATION)
-        assert collect_required_variables(root, 0, index) == set()
+        assert collect_required_variables(root, index) == set()
 
 
-class TestIndexUniqueness:
-    """The positional index must be injective.
+class TestCompileSourceProvenance:
+    """Substitution, and the marks that say which namespace a value resolves in."""
 
-    go-raml's `idx + i` rule is not: a node and its first child share an index.
-    Substitution tolerates that (replacing an absent substring is a no-op), but
-    a required-variable scan does not — it reports variables from unrelated
-    branches. See `iter_indexed`.
-    """
+    def compile(self, text: str, params: dict[str, str] | None = None, complex_params: dict | None = None):
+        root = parse(text)
+        _declared, index = collect_variables_index(root, LOCATION)
+        nodes = {name: Node(NodeKind.SCALAR, TAG_STR, value) for name, value in (params or {}).items()}
+        nodes.update(complex_params or {})
+        overlay: dict = {}
+        return root, compile_source_provenance(root, nodes, index, CALLER, overlay), overlay
 
-    def test_every_node_gets_a_distinct_index(self):
-        from pyraml.parser.templates import iter_indexed
-        from pyraml.yamlnode import compose
+    def test_a_variable_is_replaced_in_place(self):
+        _root, compiled, _overlay = self.compile('description: about <<what>>\n', {'what': 'queues'})
+        assert compiled.content[1].value == 'about queues'
 
-        node = compose(
-            'post:\n'
-            '  body:\n'
-            '    application/json:\n'
-            '      example: <<TextAboutPost>>\n'
-            'get:\n'
-            '  responses:\n'
-            '    200:\n'
-            '      description: ok\n',
-            uri='file:///t.raml',
+    def test_actions_apply_in_order(self):
+        _root, compiled, _overlay = self.compile(
+            'description: <<name | !singularize | !uppercase>>\n', {'name': 'queues'}
         )
-        pairs_seen = list(iter_indexed(node))
-        indices = [i for i, _ in pairs_seen]
-        assert len(indices) == len(set(indices)), 'positional indices collided'
-        assert indices == list(range(len(indices))), 'indices are not a dense preorder sequence'
+        assert compiled.content[1].value == 'QUEUE'
 
-    def test_a_sibling_branch_does_not_report_another_branch_variable(self):
-        # The concrete failure the collision caused: `get` has no variables, but
-        # under `idx + i` its `200` key shared an index with `<<TextAboutPost>>`.
-        from pyraml.parser.templates import collect_required_variables, collect_variables_index, iter_indexed
-        from pyraml.yamlnode import compose, pairs
+    def test_several_variables_in_one_scalar(self):
+        _root, compiled, _overlay = self.compile('a: <<x>>/<<y>>\n', {'x': 'one', 'y': 'two'})
+        assert compiled.content[1].value == 'one/two'
 
-        node = compose(
-            'post:\n'
-            '  body:\n'
-            '    application/json:\n'
-            '      example: <<TextAboutPost>>\n'
-            'get:\n'
-            '  responses:\n'
-            '    200:\n'
-            '      description: ok\n',
-            uri='file:///t.raml',
-        )
-        _declared, index = collect_variables_index(node, 'file:///t.raml')
-        by_index = {id(n): i for i, n in iter_indexed(node)}
-        get_value = next(v for k, v in pairs(node) if k.value == 'get')
-        assert collect_required_variables(get_value, by_index[id(get_value)], index) == set()
+    def test_an_unsupplied_variable_is_left_as_written(self):
+        # The parameter checks of section 5 catch this; substitution does not
+        # get to invent a value, and must not mark the node as caller-scoped.
+        root, compiled, overlay = self.compile('a: <<missing>>\n')
+        assert compiled is root
+        assert overlay == {}
 
-    def test_the_owning_branch_still_reports_its_variable(self):
-        from pyraml.parser.templates import collect_required_variables, collect_variables_index, iter_indexed
-        from pyraml.yamlnode import compose, pairs
+    def test_a_static_body_is_returned_by_identity(self):
+        root, compiled, overlay = self.compile('a: 1\nb: {c: d}\n')
+        assert compiled is root
+        assert overlay == {}
 
-        node = compose(
-            'post:\n  body:\n    example: <<TextAboutPost>>\nget:\n  description: ok\n',
-            uri='file:///t.raml',
-        )
-        _declared, index = collect_variables_index(node, 'file:///t.raml')
-        by_index = {id(n): i for i, n in iter_indexed(node)}
-        post_value = next(v for k, v in pairs(node) if k.value == 'post')
-        assert collect_required_variables(post_value, by_index[id(post_value)], index) == {'TextAboutPost'}
+    def test_neither_the_input_nor_its_untouched_branches_are_rebuilt(self):
+        root, compiled, _overlay = self.compile('a: <<x>>\nb: {c: static}\n', {'x': 'v'})
+        assert compiled is not root
+        assert root.content[1].value == '<<x>>', 'the template body stays reusable'
+        assert compiled.content[3] is root.content[3], 'an untouched branch keeps its identity'
+
+    def test_a_substituted_scalar_is_marked_caller_scoped(self):
+        _root, compiled, overlay = self.compile('a: <<x>>\n', {'x': 'v'})
+        assert overlay[compiled.content[1]] is CALLER
+
+    def test_a_complex_parameter_replaces_the_node_and_is_marked(self):
+        value = parse('type: Foo\n')
+        _root, compiled, overlay = self.compile('a: <<x>>\n', complex_params={'x': value})
+        assert compiled.content[1] is value
+        assert overlay[value] is CALLER

@@ -42,7 +42,7 @@ scheme types and their settings, `describedBy` through the operation decoders,
 
 Phase 8b: `types/jsonschema_.py` — `JsonShape`, the per-parse `SchemaRegistry`,
 eager `$ref` resolution through `ResourceLoader`, and the projection of a
-compiled schema onto the nearest RAML shape; plus the last eleven conformance
+compiled schema onto the nearest RAML shape; plus the last eight conformance
 rules the corpus was still measuring.
 
 **Every pass P0–P10 runs, every RAML construct is decoded, and the TCK stands at

@@ -11,9 +11,9 @@ Kept for the next brief's author. The phase is complete;
 [15](../15-implementation-plan.md) § Phase 8b holds the outcome.
 
 1. **The three-way split of the 25 open fixtures was wrong.** JSON Schema
-   accounted for 13, not 10, and the row called "type-system corners:
+   accounted for 14, not 10, and the row called "type-system corners:
    discriminator, pattern-property characters, constraint conflicts,
-   `Root/baseuri`, `Methods/protocols-array`" was eleven unrelated conformance
+   `Root/baseuri`, `Methods/protocols-array`" was eight unrelated conformance
    rules, most of them a facet value nobody had checked — a method's
    `protocols:`, a `baseUri` that was never parsed as a URI template, a YAML
    local tag that was not `!include`. Tracing each one, as § 1 said to, was the

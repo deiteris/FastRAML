@@ -572,10 +572,11 @@ are the union-facet gap and nothing else ([01](01-scope-and-coverage.md) § 3.7)
 which is an After-v1 item by decision. The skip list is Overlays, Extensions and
 the two network fixtures.
 
-JSON Schema was the smaller half. Thirteen of the twenty-five open fixtures fell
-to compilation; the other ten were eleven separate conformance rules, and the
-brief's classification of them as "type-system corners" was wrong about nearly
-all of them — most were a facet nobody had checked.
+JSON Schema was the smaller half. Fourteen of the twenty-three fixtures moved
+fell to compilation and § 6.2's restrictions; the other nine took **eight
+unrelated conformance rules**, and the brief's classification of them as
+"type-system corners" was wrong about nearly all of them — most were a facet
+value nobody had checked.
 
 Six things were established by measurement rather than by reading:
 

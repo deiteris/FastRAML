@@ -29,7 +29,7 @@ from pyraml.domains import DomainLocation
 from pyraml.errors import Accumulator, RamlError
 from pyraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
 from pyraml.parser.directives import make_security_schemes
-from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
+from pyraml.parser.endpoints import VALID_PROTOCOLS, Body, EndPoint, Operation, Request, Response
 from pyraml.parser.facets import make_string_facet, scalar_str
 from pyraml.types.shape import make_body_shape, make_property_map, make_shape
 from pyraml.yamlnode import NodeKind, is_null, node_error, pairs
@@ -96,9 +96,16 @@ def _annotation(raml: Raml, into: dict[str, DomainExtension], key: Node, value: 
 
 
 def _protocols(node: Node, location: str) -> list[str]:
+    """`protocols:` on a method. The same rule the API root applies to its own."""
     if node.kind is not NodeKind.SEQUENCE:
         raise node_error('protocols must be a sequence', location, node)
-    return [scalar_str(item, location).upper() for item in node.content]
+    protocols = []
+    for item in node.content:
+        text = scalar_str(item, location)
+        if text.lower() not in VALID_PROTOCOLS:
+            raise node_error('unknown protocol', location, item, info={'protocol': text})
+        protocols.append(text.upper())
+    return protocols
 
 
 # -- bodies and media types (docs/08 section 8.3) ------------------------------

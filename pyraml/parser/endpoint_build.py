@@ -1,11 +1,12 @@
 """P4 and P6 — the endpoint driver.
 
 P4 runs both stages over `APIFragment._raw_endpoints`: stage 1 decodes every
-resource into IR, then stage 2 materializes every one of them. **Both loops run
-over the whole tree before the other starts** (docs/08 section 3), because
-Phase 6's directive resolution grafts type-bearing subtrees from templates and
-all of them must exist before the single decode pass — otherwise a shape a trait
-contributed never joins the P7 worklist.
+resource into IR, directive resolution merges the templates in, then stage 2
+materializes every one of them. **Each loop runs over the whole tree before the
+next starts** (docs/08 section 3), because directive resolution grafts
+type-bearing subtrees from templates and all of them must exist before the
+single decode pass — otherwise a shape a trait contributed never joins the P7
+worklist.
 
 P6 then rewrites each endpoint's URI parameter map to ancestor-declared
 parameters first, so a nested resource exposes the full set needed to build its
@@ -18,15 +19,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pyraml.domains import DomainLocation
 from pyraml.errors import Accumulator, RamlError
+from pyraml.parser.resourcetypes import apply_resource_type
 from pyraml.parser.source_decode import decode_source_endpoint
 from pyraml.parser.source_ir import make_source_endpoint
+from pyraml.parser.traits import apply_traits
 from pyraml.parser.uritemplates import extract_uri_template_params
+from pyraml.registry import ParseCtx
 from pyraml.types.base import TYPE_STRING, BaseShape, Property
 from pyraml.types.shape import attach_kind
 
 if TYPE_CHECKING:
     from pyraml.parser.endpoints import EndPoint
+    from pyraml.parser.source_ir import SourceEndPoint
     from pyraml.registry import Raml
 
 __all__ = ['build_endpoints']
@@ -45,25 +51,64 @@ def build_endpoints(raml: Raml) -> None:
     location = api.location
     accumulator = Accumulator()
 
-    # Stage 1, over the whole tree.
-    sources = []
-    for key, value in raw:
-        try:
-            sources.append(make_source_endpoint(raml, key, value, location))
-        except RamlError as err:
-            accumulator.add(err)
+    # This pass runs after the API's own decode has popped its context, so it
+    # re-establishes one. Everything below it — a directive name, a type name in
+    # a body — resolves in the API's namespace unless the provenance overlay
+    # says otherwise, and nothing here has a namespace of its own.
+    raml.push_ctx(ParseCtx(anchor=raml.resolver_at(location), target=DomainLocation.API))
+    try:
+        # Stage 1, over the whole tree.
+        sources = []
+        for key, value in raw:
+            try:
+                sources.append(make_source_endpoint(raml, key, value, location))
+            except RamlError as err:
+                accumulator.add(err)
 
-    # Phase 6 resolves `type:` and `is:` here, between the two stages. Until it
-    # does, an endpoint's directives are parsed and carried, never applied.
+        # Between the two stages: resolve `type:` and `is:`. Every subtree a
+        # template contributes therefore exists before the single decode pass,
+        # so every shape it produces joins the P7 worklist.
+        for source in sources:
+            _resolve_directives(raml, source, accumulator)
 
-    # Stage 2, over the whole tree.
-    for source in sources:
-        try:
-            _walk(raml, decode_source_endpoint(raml, source), accumulator, inherited={})
-        except RamlError as err:
-            accumulator.add(err)
+        # Stage 2, over the whole tree.
+        for source in sources:
+            try:
+                _walk(raml, decode_source_endpoint(raml, source), accumulator, inherited={})
+            except RamlError as err:
+                accumulator.add(err)
+    finally:
+        raml.pop_ctx()
 
     accumulator.raise_if_any()
+
+
+def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) -> None:
+    """Apply the resource-type chain, then the traits, then recurse.
+
+    Resource types first: they contribute `is:` entries of their own, which
+    `apply_traits` then orders behind the resource's and the method's
+    (docs/08 section 5.2).
+    """
+    if source.resource_type is not None:
+        try:
+            apply_resource_type(raml, source, source.resource_type, set())
+        except RamlError as err:
+            acc.add(
+                RamlError.wrap(
+                    'apply resource type',
+                    err,
+                    source.location,
+                    source.resource_type.value_pos,
+                    info={'resourceType': source.resource_type.name},
+                )
+            )
+    try:
+        apply_traits(source)
+    except RamlError as err:
+        acc.add(err)
+    for child in source.endpoints.values():
+        _resolve_directives(raml, child, acc)
 
 
 def _walk(raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[str, Property]) -> None:

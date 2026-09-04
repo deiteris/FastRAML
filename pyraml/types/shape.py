@@ -152,6 +152,27 @@ def make_shape(
     default_type: str = TYPE_STRING,
 ) -> BaseShape:
     """Build one declaration. `default_type` applies when nothing else settles it."""
+    scope = raml.scope_for(value_node)
+    if scope is None:
+        return _make_shape(raml, key_node, value_node, raml.location_of(value_node, location), default_type)
+    # A node produced by parameter substitution, or grafted from a trait or a
+    # resource type, resolves its unqualified names in the namespace recorded
+    # for it — not the applying document's (docs/08 section 6.3). Pushed around
+    # the whole build, so nested facets inherit it.
+    raml.push_ctx(scope)
+    try:
+        return _make_shape(raml, key_node, value_node, raml.location_of(value_node, location), default_type)
+    finally:
+        raml.pop_ctx()
+
+
+def _make_shape(
+    raml: Raml,
+    key_node: Node | None,
+    value_node: Node,
+    location: str,
+    default_type: str,
+) -> BaseShape:
     position_node = key_node if key_node is not None else value_node
     base = BaseShape(
         id=raml.next_id(),
@@ -546,13 +567,16 @@ def make_property_map(raml: Raml, value_node: Node, location: str) -> dict[str, 
         return {}
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('parameter declarations must be a mapping', location, value_node)
+    location = raml.location_of(value_node, location)
     declared: dict[str, Property] = {}
     # Each parameter is a type declaration, whatever holds the map.
     with raml.target_scope(DomainLocation.TYPE_DECLARATION):
         for key, value in pairs(value_node):
             prop = make_property(raml, key, value, location)
             declared[prop.name] = prop
-            raml.put_typedef(location, prop.base)
+            # Indexed under the shape's own file, which provenance may have made
+            # a different one from the map's.
+            raml.put_typedef(prop.base.location, prop.base)
     return declared
 
 

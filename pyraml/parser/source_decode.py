@@ -9,11 +9,20 @@ that makes P9 and P10 reach a body, a header or a query parameter without either
 pass knowing endpoints exist — `unwrap_shapes` and `validate_shapes` both
 iterate `fragment_typedefs` and nothing else.
 
-See docs/08-templates-and-endpoints.md sections 3 and 8.
+The other half of what runs here is the provenance overlay (docs/08 section
+6.3). A merged body holds nodes authored in up to three files, so the decode
+pushes a scope per boundary root, and every entity constructor asks
+`Raml.location_of` which file its node came from. Without that, a type name a
+trait contributed resolves in the applying document's namespace — and still
+parses, which is why this is the phase's characteristic silent failure.
+
+See docs/08-templates-and-endpoints.md sections 3, 6 and 8.
 """
 
 from __future__ import annotations
 
+import re
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Final
 
 from pyraml.domains import DomainLocation
@@ -25,6 +34,8 @@ from pyraml.types.shape import make_body_shape, make_property_map, make_shape
 from pyraml.yamlnode import NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from pyraml.parser.annotations import DomainExtension
     from pyraml.parser.source_ir import SourceEndPoint, SourceOperation
     from pyraml.registry import Raml
@@ -41,6 +52,28 @@ FACET_RESPONSES: Final = 'responses'
 FACET_BODY: Final = 'body'
 FACET_PROTOCOLS: Final = 'protocols'
 FACET_URI_PARAMETERS: Final = 'uriParameters'
+
+
+@contextmanager
+def _body_scope(raml: Raml, source: SourceEndPoint | SourceOperation) -> Iterator[None]:
+    """Decode this unit's body in the namespace it belongs to.
+
+    Normally that is the unit's own declaration scope. But the body root may
+    itself be a provenance boundary — an operation with no body of its own,
+    whose entire body was grafted from a trait — and then the trait's scope is
+    the base every unmarked node beneath it inherits.
+    """
+    scope = source.scope
+    if source.body is not None:
+        scope = source.provenance.get(source.body, scope)
+    if scope is None:
+        yield
+        return
+    raml.push_ctx(scope)
+    try:
+        yield
+    finally:
+        raml.pop_ctx()
 
 
 def _annotation(raml: Raml, into: dict[str, DomainExtension], key: Node, value: Node, location: str) -> None:
@@ -73,6 +106,7 @@ def _decode_bodies(raml: Raml, node: Node, location: str, target: DomainLocation
     """`body:` in either spelling (docs/08 section 8.3)."""
     if is_null(node):
         return {}
+    location = raml.location_of(node, location)
     bodies: dict[str, Body] = {}
 
     if _is_media_type_map(node):
@@ -81,7 +115,7 @@ def _decode_bodies(raml: Raml, node: Node, location: str, target: DomainLocation
         with raml.target_scope(target):
             for key, value in pairs(node):
                 shape = make_body_shape(raml, key, value, location)
-                raml.put_typedef(location, shape)
+                raml.put_typedef(shape.location, shape)
                 bodies[key.value] = Body(
                     id=raml.next_id(),
                     media_type=key.value,
@@ -112,7 +146,7 @@ def _decode_bodies(raml: Raml, node: Node, location: str, target: DomainLocation
         # P7 and P10 are concerned, and sharing one would alias their facets.
         for media_type in raml.global_media_types:
             shape = make_body_shape(raml, None, node, location)
-            raml.put_typedef(location, shape)
+            raml.put_typedef(shape.location, shape)
             bodies[media_type] = Body(
                 id=raml.next_id(),
                 media_type=media_type,
@@ -125,8 +159,17 @@ def _decode_bodies(raml: Raml, node: Node, location: str, target: DomainLocation
 
 # -- responses -----------------------------------------------------------------
 
+#: Spec section Responses: a response key is an HTTP status code. `2xx` and
+#: other wildcard spellings are not RAML; nor is a code outside 1xx-5xx.
+_STATUS_CODE: Final = re.compile(r'^[1-5][0-9][0-9]$')
+
+
+def _is_status_code(value: str) -> bool:
+    return _STATUS_CODE.match(value) is not None
+
 
 def _decode_response(raml: Raml, key: Node, value: Node, location: str) -> Response:
+    location = raml.location_of(value, location)
     response = Response(
         id=raml.next_id(),
         code=key.value,
@@ -165,12 +208,15 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str) -> Respo
 def _decode_responses(raml: Raml, node: Node, location: str) -> dict[str, Response]:
     if is_null(node):
         return {}
+    location = raml.location_of(node, location)
     if node.kind is not NodeKind.MAPPING:
         raise node_error('responses must be a mapping', location, node)
     responses: dict[str, Response] = {}
     accumulator = Accumulator()
     for key, value in pairs(node):
         try:
+            if not _is_status_code(key.value):
+                raise node_error('status code must be a 3-digit number', location, key, info={'code': key.value})
             if key.value in responses:
                 raise node_error('duplicate response', location, key, info={'response': key.value})
             responses[key.value] = _decode_response(raml, key, value, location)
@@ -183,9 +229,34 @@ def _decode_responses(raml: Raml, node: Node, location: str) -> dict[str, Respon
 # -- operations ----------------------------------------------------------------
 
 
-def decode_source_operation(  # noqa: PLR0912 - one pass over the method's key vocabulary
-    raml: Raml, source: SourceOperation
-) -> Operation:
+def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the method's key vocabulary
+    raml: Raml, operation: Operation, request: Request, key: Node, value: Node, location: str
+) -> None:
+    name = key.value
+    if name == FACET_DISPLAY_NAME:
+        operation.display_name = make_string_facet(raml, key, value, location)
+    elif name == FACET_DESCRIPTION:
+        operation.description = make_string_facet(raml, key, value, location)
+    elif name == FACET_PROTOCOLS:
+        operation.protocols = _protocols(value, location)
+    elif name == FACET_HEADERS:
+        request.headers = make_property_map(raml, value, location)
+    elif name == FACET_QUERY_PARAMETERS:
+        request.query_parameters = make_property_map(raml, value, location)
+    elif name == FACET_QUERY_STRING:
+        request.query_string = make_shape(raml, key, value, location)
+        raml.put_typedef(request.query_string.location, request.query_string)
+    elif name == FACET_BODY:
+        request.bodies = _decode_bodies(raml, value, location, DomainLocation.REQUEST_BODY)
+    elif name == FACET_RESPONSES:
+        operation.responses = _decode_responses(raml, value, location)
+    elif is_annotation_key(name):
+        _annotation(raml, operation.annotations, key, value, location)
+    else:
+        raise node_error('unknown field', location, key, info={'field': name})
+
+
+def decode_source_operation(raml: Raml, source: SourceOperation) -> Operation:
     """One method's retained tree into an `Operation`."""
     operation = Operation(
         id=raml.next_id(),
@@ -202,31 +273,15 @@ def decode_source_operation(  # noqa: PLR0912 - one pass over the method's key v
     location = source.location
     request = Request(id=raml.next_id(), location=location, value_pos=source.value_pos)
     accumulator = Accumulator()
-    with raml.target_scope(DomainLocation.METHOD):
+    with raml.active_overlay(source.provenance), _body_scope(raml, source), raml.target_scope(DomainLocation.METHOD):
         for key, value in pairs(source.body):
-            name = key.value
             try:
-                if name == FACET_DISPLAY_NAME:
-                    operation.display_name = make_string_facet(raml, key, value, location)
-                elif name == FACET_DESCRIPTION:
-                    operation.description = make_string_facet(raml, key, value, location)
-                elif name == FACET_PROTOCOLS:
-                    operation.protocols = _protocols(value, location)
-                elif name == FACET_HEADERS:
-                    request.headers = make_property_map(raml, value, location)
-                elif name == FACET_QUERY_PARAMETERS:
-                    request.query_parameters = make_property_map(raml, value, location)
-                elif name == FACET_QUERY_STRING:
-                    request.query_string = make_shape(raml, key, value, location)
-                    raml.put_typedef(location, request.query_string)
-                elif name == FACET_BODY:
-                    request.bodies = _decode_bodies(raml, value, location, DomainLocation.REQUEST_BODY)
-                elif name == FACET_RESPONSES:
-                    operation.responses = _decode_responses(raml, value, location)
-                elif is_annotation_key(name):
-                    _annotation(raml, operation.annotations, key, value, location)
-                else:
-                    raise node_error('unknown field', location, key, info={'field': name})
+                # A facet value that is a provenance boundary root decodes under
+                # the scope recorded for it; anything below it is reached
+                # through `Raml.scope_for` and `Raml.location_of` instead, which
+                # survive the containers the merge synthesised.
+                with raml.provenance_scope(value):
+                    _decode_operation_field(raml, operation, request, key, value, location)
             except RamlError as err:
                 accumulator.add(err)
 
@@ -239,6 +294,20 @@ def decode_source_operation(  # noqa: PLR0912 - one pass over the method's key v
 
 
 # -- endpoints -----------------------------------------------------------------
+
+
+def _decode_endpoint_field(raml: Raml, endpoint: EndPoint, key: Node, value: Node, location: str) -> None:
+    name = key.value
+    if name == FACET_DISPLAY_NAME:
+        endpoint.display_name = make_string_facet(raml, key, value, location)
+    elif name == FACET_DESCRIPTION:
+        endpoint.description = make_string_facet(raml, key, value, location)
+    elif name == FACET_URI_PARAMETERS:
+        endpoint.uri_parameters = make_property_map(raml, value, location)
+    elif is_annotation_key(name):
+        _annotation(raml, endpoint.annotations, key, value, location)
+    else:
+        raise node_error('unknown field', location, key, info={'field': name})
 
 
 def decode_source_endpoint(raml: Raml, source: SourceEndPoint) -> EndPoint:
@@ -263,20 +332,15 @@ def decode_source_endpoint(raml: Raml, source: SourceEndPoint) -> EndPoint:
     accumulator = Accumulator()
 
     if source.body is not None:
-        with raml.target_scope(DomainLocation.RESOURCE):
+        with (
+            raml.active_overlay(source.provenance),
+            _body_scope(raml, source),
+            raml.target_scope(DomainLocation.RESOURCE),
+        ):
             for key, value in pairs(source.body):
-                name = key.value
                 try:
-                    if name == FACET_DISPLAY_NAME:
-                        endpoint.display_name = make_string_facet(raml, key, value, location)
-                    elif name == FACET_DESCRIPTION:
-                        endpoint.description = make_string_facet(raml, key, value, location)
-                    elif name == FACET_URI_PARAMETERS:
-                        endpoint.uri_parameters = make_property_map(raml, value, location)
-                    elif is_annotation_key(name):
-                        _annotation(raml, endpoint.annotations, key, value, location)
-                    else:
-                        raise node_error('unknown field', location, key, info={'field': name})
+                    with raml.provenance_scope(value):
+                        _decode_endpoint_field(raml, endpoint, key, value, location)
                 except RamlError as err:
                     accumulator.add(err)
 

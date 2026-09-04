@@ -127,7 +127,15 @@ def decode_type_ref(node: Node, location: str, scope: ParseCtx | None = None) ->
 
 
 def decode_trait_refs(node: Node, location: str, scope: ParseCtx | None = None) -> list[DirectiveRef]:
-    """`is:` — a sequence of trait references."""
+    """`is:` — a sequence of trait references, and a sequence it must be.
+
+    Spec section Traits: "The value MUST be an array of any number of elements".
+    A bare `is: chargeable` reads as though it should work and no valid TCK
+    fixture writes one; go-raml accepts it, which is why
+    `Traits/is-node-format/invalid-is-single-value.raml` fails there.
+    """
+    if not is_null(node) and node.kind is not NodeKind.SEQUENCE:
+        raise node_error('is must be a sequence', location, node)
     refs = _ref_list(node, location, scope, what='trait')
     for ref in refs:
         if ref.is_null_scheme:

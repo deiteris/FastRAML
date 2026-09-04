@@ -51,8 +51,14 @@ class TestDirectivesAreConsumed:
         endpoint = source('/users:\n  is: [paged]\n')
         assert endpoint.traits[0].params == {}
 
-    def test_a_single_trait_need_not_be_a_sequence(self):
-        assert [t.name for t in source('/users:\n  is: paged\n').traits] == ['paged']
+    def test_a_single_trait_must_still_be_a_sequence(self):
+        # Spec section Traits: "The value MUST be an array of any number of
+        # elements". `is: paged` reads as though it should work, and go-raml
+        # accepts it — `Traits/is-node-format/invalid-is-single-value.raml` is
+        # the fixture that says otherwise.
+        with pytest.raises(RamlError) as caught:
+            source('/users:\n  is: paged\n')
+        assert 'is must be a sequence' in str(caught.value)
 
     def test_a_resource_type_may_not_be_a_sequence(self):
         # A sequence in a `type:` position is multiple inheritance for a *type

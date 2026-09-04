@@ -317,35 +317,51 @@ container that carries no mark of its own.
 
 ### 6.3 Reading the overlay in stage 2
 
+Four methods on `Raml`, because the overlay lives there and every reader already
+holds one:
+
 ```python
-def decode_body_scoped(self, node, overlay):
-    prev, self._raml._active_overlay = self._raml._active_overlay, overlay
-    try:
-        for key, value in pairs(node):
-            scope = overlay.get(value)
-            if scope:
-                self._raml.push_ctx(scope)
-            try:
-                acc.add(self.decode_field(key, value))
-            finally:
-                if scope:
-                    self._raml.pop_ctx()
-    finally:
-        self._raml._active_overlay = prev
+with raml.active_overlay(source.provenance), _body_scope(raml, source):
+    for key, value in pairs(source.body):
+        with raml.provenance_scope(value):
+            decode_field(raml, key, value, location)
 ```
 
-Two lookups feed off the active overlay, both one layer deeper than this loop:
+- **`active_overlay(overlay)`** makes one unit's marks readable. Saved and
+  restored rather than set: an endpoint's own body decode encloses each of its
+  operations'.
+- **`_body_scope`** picks the base scope. Normally the unit's own — but the body
+  *root* may itself be a boundary, as it is for an operation with no body of its
+  own whose whole body was grafted from a trait, and then the trait's scope is
+  what every unmarked node beneath it inherits.
+- **`provenance_scope(node)`** pushes the mark for one facet value, if it has one.
 
-- **`provenance_scope_for(value_node)`**, called by the shape builder. It checks
-  the `type:`/`schema:` facet *value* of a mapping first, then the mapping itself.
-  Most-specific wins: a caller-substituted `type:` scalar inside a grafted body
-  must beat the graft's own mark.
+Two more lookups feed off the active overlay, both one layer deeper than that
+loop — which is what makes them survive the containers the merge synthesised:
+
+- **`scope_for(node)`**, called by `make_shape`. It checks the `type:`/`schema:`
+  facet *value* of a mapping first, then the mapping itself. Most-specific wins:
+  a caller-substituted `type:` scalar inside a grafted body must beat the graft's
+  own mark. The scope is pushed around the *whole* shape build, so nested facets
+  inherit it.
 - **`location_of(node, default)`**, called by every entity constructor and
-  structural helper (`unmarshal_headers`, `make_responses`, `make_body`,
-  `make_request`, `make_shape`). It answers "which file does this node belong to?"
-  so an error inside a trait-contributed response reports the trait's path, not
-  the API's. Doing it at the constructor rather than in the loop above is what
-  makes it survive merge-synthesised intermediate containers.
+  structural helper (`make_property_map`, `_decode_responses`, `_decode_bodies`,
+  `make_shape`). It answers "which file does this node belong to?", so an error
+  inside a trait-contributed response reports the trait's path, not the API's.
+
+**The two deliberately disagree, and a test that asserts otherwise is wrong.**
+`body: {application/json: {type: <<item>>}}` inside a library's resource type
+produces a shape whose `location` is the library — the body was authored there —
+and whose `anchor` is the applying document, because `<<item>>` came from the
+caller and its value names a type in the caller's namespace. Both are right;
+that is what most-specific-first means.
+
+One thing the overlay does *not* do is establish a scope where none existed.
+`build_endpoints` runs after the API's own decode has popped its context, so the
+driver pushes `ParseCtx(anchor=resolver_at(api.location))` around both stages.
+Without it every endpoint shape is built with `anchor=None` and leans on P7's
+`resolver_at` fallback — which gives the same answer for a document that declares
+everything itself, and the wrong one for anything a template contributed.
 
 ### 6.4 Granularity limit: one scope per shape
 
@@ -373,40 +389,48 @@ keys alive. Using the node itself as the key does both.
 A template body is scanned **once, at declaration time**, producing:
 
 - `declared_variables: set[str]`
-- `node_variable_index: dict[int, list[VariableInfo]]`
+- `node_variable_index: dict[Node, list[VariableInfo]]`
 
-The `int` key is a **positional index** from a deterministic walk. Substitution
-repeats the same walk and looks up by index. This avoids storing a per-node map
-and avoids re-scanning strings at every application site — a resource type
-applied to 200 endpoints scans its body once.
+Scanning once is the point: a resource type applied to 200 endpoints scans its
+body once, and every application looks the results up.
 
-The walk must be *exactly* the same in both functions, so it is one helper
-(`iter_indexed`) called by both `collect_variables_index` and
-`compile_source_provenance`. A test asserts they agree on a fixture with nested
-sequences and mappings.
+**The key is the node itself, and this is a deliberate divergence from the
+reference.** go-raml keys by a *positional index* computed as "a node has index
+`idx`, its i-th child has `idx + i`" (`template.go`, `collectVariablesIndex`).
+That has two faults, and pyRAML's earlier design fixed only the first:
 
-**The index is a unique preorder sequence**, and this is a deliberate divergence
-from the reference. go-raml computes it as "a node has index `idx`, its i-th
-child has `idx + i`" (`template.go`, `collectVariablesIndex`). That rule is not
-injective: a node and its own first child both receive `idx`. On a small trait
-body of 17 nodes it collapses onto 7 distinct indices.
+1. **The numbering is not injective.** A node and its own first child both
+   receive `idx`; a trait body of 17 nodes collapses onto 7 indices. Substitution
+   tolerates it, because replacing an absent substring is a no-op, but
+   `collect_required_variables` returns *names* from a subtree, so a collision
+   makes it demand a parameter the template never used. A unique preorder
+   sequence fixes this, and pyRAML used one until the second fault surfaced.
 
-Substitution tolerates the collision, because replacing a substring that is not
-present is a no-op. Two other consumers do not:
+2. **Any numbering is invalidated by § 5.1 step 3.** Optional-method filtering
+   removes whole subtrees from the body *between* the scan and its use, so every
+   node after the removal shifts. The index then describes a tree that no longer
+   exists. This is not theoretical: it is the spec's own `corpResource` /
+   `/queues` example, and go-raml fails it in both directions —
 
-- `collect_required_variables` returns the variable *names* in a subtree, so a
-  collision makes it demand a parameter the template never used. This is how the
-  fault was found — a `200` response key under `get:` shared an index with
-  `<<TextAboutPost>>` under `post:`.
-- `compile_source_provenance` replaces a whole node when a **complex**
-  (non-scalar) parameter matches an indexed variable, and it does not first check
-  that the node's own text mentions that variable. A colliding node is therefore
-  overwritten by an unrelated parameter value.
+   ```
+   missing required parameter: parameter: TextAboutPost
+   ```
 
-pyRAML assigns each node the next integer in a depth-first, left-to-right walk.
-Uniqueness costs nothing, and it removes the class of fault rather than relying
-on `str.replace` being a no-op. The walk is iterative, so template depth cannot
-reach CPython's recursion limit.
+   for a resource with no `post` at all, and, once that parameter is supplied to
+   silence the error, `<<TextAboutGet>>` survives *unsubstituted* into the model,
+   because the index entry it looks up now belongs to a different node.
+   Recorded as `KNOWN-ISSUES.md` entry 6.
+
+Keying by node identity removes both at once. There are no two walks to keep in
+agreement, so the `docs/15` risk register entry "the two index walks drift apart"
+no longer describes anything; and filtering a subtree out cannot disturb the
+entries for the subtrees that remain. `Node` already hashes by identity, for the
+provenance overlay's sake (§ 6.5), so the map costs one pointer per
+variable-bearing scalar and nothing per application.
+
+`iter_nodes` is the one traversal both `collect_variables_index` and
+`collect_required_variables` use. It is iterative, so template depth cannot reach
+CPython's recursion limit.
 
 `VariableInfo` is `(name, substring, actions)` where `substring` is the literal
 `<<name | !action>>` text, so substitution is `str.replace(substring, value, 1)`

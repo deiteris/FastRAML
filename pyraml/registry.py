@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pyraml.domains import DomainLocation
 from pyraml.loaders import SchemeLoader
+from pyraml.yamlnode import NodeKind
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
     from pyraml.parser.annotations import DomainExtension
     from pyraml.parser.fragments import Fragment, ReferenceResolver
     from pyraml.parser.includes import IncludeRef
+    from pyraml.parser.structural_merge import ProvenanceOverlay
     from pyraml.types.expressions import ExprCache
     from pyraml.yamlnode import Node
 
@@ -39,8 +41,12 @@ if TYPE_CHECKING:
     BaseShape = Any
     EndPoint = Any
     SecurityScheme = Any
-    ProvenanceOverlay = Any
     SourceInfo = Any
+
+#: The two facets whose *value* names a type. `provenance_scope_for` consults
+#: them before the mapping that holds them, because a caller-substituted `type:`
+#: must beat the scope of the grafted body it now sits inside.
+_TYPE_FACETS: Final = frozenset({'type', 'schema'})
 
 __all__ = [
     'DEFAULT_MAX_INCLUDE_SIZE',
@@ -162,6 +168,8 @@ class Raml:
         self.global_secured_by: list[SecurityScheme] = []
 
         self._parse_ctx_stack: list[ParseCtx] = []
+        # The overlay of the IR unit currently being materialized, or None
+        # outside stage 2 — which is where all but endpoint decoding happens.
         self._active_overlay: ProvenanceOverlay | None = None
         self._id_counter = itertools.count(1)
         self.entry_point: Fragment | None = None
@@ -207,6 +215,75 @@ class Raml:
             yield
         finally:
             self.pop_ctx()
+
+    # -- the provenance overlay (docs/08 section 6.3) --------------------------
+
+    @contextmanager
+    def active_overlay(self, overlay: ProvenanceOverlay) -> Iterator[None]:
+        """Decode one IR unit's body with its provenance marks readable.
+
+        Saved and restored rather than set, because an endpoint's own body
+        decode encloses each of its operations'.
+        """
+        previous = self._active_overlay
+        self._active_overlay = overlay
+        try:
+            yield
+        finally:
+            self._active_overlay = previous
+
+    @contextmanager
+    def provenance_scope(self, node: Node) -> Iterator[None]:
+        """Push the scope the active overlay records for `node`, if it records one.
+
+        A node with no mark is one the enclosing unit wrote itself, and the
+        scope already in effect is the right one for it.
+        """
+        overlay = self._active_overlay
+        scope = None if overlay is None else overlay.get(node)
+        if scope is None:
+            yield
+            return
+        self.push_ctx(scope)
+        try:
+            yield
+        finally:
+            self.pop_ctx()
+
+    def scope_for(self, node: Node) -> ParseCtx | None:
+        """The scope a type-bearing node should be decoded under, most specific first.
+
+        The `type:`/`schema:` facet value of a mapping beats the mapping itself:
+        a value the caller substituted is more specific than the grafted body it
+        was substituted into.
+        """
+        overlay = self._active_overlay
+        if overlay is None:
+            return None
+        if node.kind is NodeKind.MAPPING:
+            content = node.content
+            for index in range(0, len(content) - 1, 2):
+                if content[index].value in _TYPE_FACETS:
+                    scope = overlay.get(content[index + 1])
+                    if scope is not None:
+                        return scope
+        return overlay.get(node)
+
+    def location_of(self, node: Node, default: str) -> str:
+        """Which file `node` was authored in.
+
+        The single answer to that question, consulted by every entity
+        constructor: a diagnostic inside a trait-contributed response names the
+        trait's path, not the API's, even when the node sits below a
+        merge-synthesised container that carries no mark of its own.
+        """
+        overlay = self._active_overlay
+        if overlay is None:
+            return default
+        scope = overlay.get(node)
+        if scope is not None and scope.anchor is not None:
+            return scope.anchor.location
+        return default
 
     # -- stores ---------------------------------------------------------------
 

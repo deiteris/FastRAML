@@ -147,9 +147,9 @@ def make_source_operation(raml: Raml, method: str, key: Node, value: Node, locat
     for child_key, child_value in pairs(value):
         # A method takes two of the three directives: `type:` is a resource's.
         if child_key.value == FACET_IS:
-            operation.traits = decode_trait_refs(child_value, location)
+            operation.traits = decode_trait_refs(child_value, location, operation.scope)
         elif child_key.value == FACET_SECURED_BY:
-            operation.secured_by = decode_secured_by(child_value, location)
+            operation.secured_by = decode_secured_by(child_value, location, operation.scope)
             operation.explicit_secured_by = True
         else:
             kept += (child_key, child_value)
@@ -184,11 +184,11 @@ def make_source_endpoint(raml: Raml, key: Node, value: Node, location: str, *, p
         name = child_key.value
         try:
             if name == FACET_TYPE:
-                endpoint.resource_type = decode_type_ref(child_value, location)
+                endpoint.resource_type = decode_type_ref(child_value, location, endpoint.scope)
             elif name == FACET_IS:
-                endpoint.traits = decode_trait_refs(child_value, location)
+                endpoint.traits = decode_trait_refs(child_value, location, endpoint.scope)
             elif name == FACET_SECURED_BY:
-                endpoint.secured_by = decode_secured_by(child_value, location)
+                endpoint.secured_by = decode_secured_by(child_value, location, endpoint.scope)
                 endpoint.explicit_secured_by = True
             elif name in METHODS:
                 if name in endpoint.operations:

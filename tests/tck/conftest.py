@@ -37,6 +37,18 @@ SKIPPED_HEADS: dict[str, str] = {
     '#%RAML 1.0 Extension': SKIPPED_CATEGORIES['Extensions/'],
 }
 
+#: Individual fixtures skipped, with the reason. Not a coverage gap: `http(s)`
+#: includes work when `ParseOptions.http_client` supplies a client, and these
+#: two `!include` a gist. Running them would make the suite depend on the
+#: network — and the negative one would go on "passing" offline for the wrong
+#: reason, because an unreachable host and an unregistered URI scheme both
+#: produce an error.
+_NO_NETWORK = 'fetches an https include; the suite must not touch the network'
+SKIPPED_FIXTURES: dict[str, str] = {
+    'Root/include-02/valid-https.raml': _NO_NETWORK,
+    'Root/include-02/invalid-https.raml': _NO_NETWORK,
+}
+
 _ENV_VAR = 'PYRAML_TCK_DIR'
 _DEFAULT_RELATIVE = Path('..') / 'go-raml-main' / 'raml-tck'
 
@@ -78,7 +90,10 @@ def collect_fixtures(kind: str) -> list[Path]:
 
 
 def skip_reason(fixture_key: str, path: Path | None = None) -> str | None:
-    """Why this fixture is skipped, by directory or by its RAML header."""
+    """Why this fixture is skipped, by name, by directory, or by its RAML header."""
+    named = SKIPPED_FIXTURES.get(fixture_key)
+    if named is not None:
+        return named
     for prefix, reason in SKIPPED_CATEGORIES.items():
         if fixture_key.startswith(prefix):
             return reason

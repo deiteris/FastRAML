@@ -14,9 +14,10 @@ that area has already settled.
    dependencies, not by importance: the type system precedes endpoints, the merge
    precedes templates, validation comes last.
 
-**Current state: Phases 0 to 4b complete.** Phase 0: positions, errors, uris,
-loaders, yamlnode. Phase 1: registry, fragments, includes, namespaces, datanode,
-facets, references, annotations, the entry points and the pass driver (P0–P3).
+**Current state: Phases 0 to 6 complete; security (7) and JSON Schema (8b)
+remain.** Phase 0: positions, errors, uris, loaders, yamlnode. Phase 1:
+registry, fragments, includes, namespaces, datanode, facets, references,
+annotations, the entry points and the pass driver (P0–P3).
 Phase 2: the whole `types/` package — `BaseShape`, the seventeen kinds,
 inference, examples, xml, and `make_shape`, wired into `types:`,
 `annotationTypes:`, `baseUriParameters:` and the typed fragments. Phase 3:
@@ -25,23 +26,23 @@ which share a module because they are mutually recursive. Phase 4:
 `types/inherit.py` and `types/unwrap.py` (P9) — the clone operations, the
 per-kind merge rules, and unwrap with recursion marking, behind
 `ParseOptions(unwrap=True)`. Phase 4b: `resolve_domain_extensions` (P8) and
-`DomainLocation`. Two leaf modules were built ahead of the critical path:
-template variables and transforms (Phase 6's) and URI template parsing
-(Phase 5's).
+`DomainLocation`.
 
 Phase 8a: `types/values.py` and `types/validate.py` (P10) — `check` and
 `validate` on all seventeen kinds, examples, defaults, custom facets and
 annotation values, behind `ParseOptions(validate=True)`. Phase 5: `directives`,
 `source_ir`, `endpoints`, `source_decode`, `endpoint_build` (P4, P6) — the
-two-stage endpoint build and URI parameter propagation. Directive resolution is
-parsed and stored, not applied; that is Phase 6's.
+two-stage endpoint build and URI parameter propagation. Phase 6:
+`structural_merge`, `traits`, `resourcetypes` and the provenance overlay — the
+spec's merging algorithm, the four trait priority classes, optional-method
+filtering and resource-type chaining, with stage 2 decoding each merged body
+under the scope its nodes were authored in.
 
-**Every pass P0–P10 now runs.** What is left is coverage, not machinery:
-templates and security (Phases 6–7) give P10 more to validate, and Phase 8b adds
-JSON Schema. Everything still deferred is retained as the original `Node` on a
-`_raw_*` attribute; `grep -rn '_raw_' pyraml/` lists every seam, and a comment
-beside each names the phase that decodes it. A brief per phase lives in
-`docs/briefs/`.
+**Every pass P0–P10 now runs.** What is left is coverage, not machinery: security
+(Phase 7) gives P10 more to validate, and Phase 8b adds JSON Schema. Everything
+still deferred is retained as the original `Node` on a `_raw_*` attribute;
+`grep -rn '_raw_' pyraml/` lists every seam, and a comment beside each names the
+phase that decodes it. A brief per phase lives in `docs/briefs/`.
 
 **A TCK `fail` entry means work outstanding and nothing else** (`docs/14` § 1.2).
 Where a fixture is wrong, fix it in the suite — three have been, on branches in
@@ -89,6 +90,17 @@ Full list with the pass that establishes each: `docs/02-architecture.md` § 4.
   everything inside reads it, including the annotated-scalar form four dozen
   facet builders down (`docs/09` § B5). A missing scope is silent — it records
   the enclosing site — so a new application site needs a test that names it.
+- **A shape's `location` and its `anchor`'s location may differ, and that is
+  not a bug.** `location` is the file a node was authored in; the anchor is the
+  namespace its *names* resolve in. A resource type in a library whose body
+  reads `type: <<item>>` produces a shape located in the library and anchored at
+  the applying document, because `<<item>>`'s value is a name the caller wrote
+  (`docs/08` § 6.3). A corpus test that asserts they agree is the wrong test.
+- **A template's variable index is keyed by node identity, never by position.**
+  Optional-method filtering removes subtrees from the body between the scan and
+  its use, so any numbering is stale by the time it is read. go-raml's is, and
+  it fails the spec's own `corpResource`/`/queues` example both ways
+  (`docs/08` § 7.1).
 - **An alias shares its referent's containers on purpose**
   (`docs/07-resolution-and-inheritance.md` § 3.6) — one type under two names.
   An *inheritance* merge sharing the same containers is a corruption (§ 3.3).

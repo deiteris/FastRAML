@@ -1,15 +1,16 @@
 """Template variables: `<<name | !action | !action>>`.
 
 Implements docs/08-templates-and-endpoints.md section 7. A resource-type or
-trait body is scanned **once**, at declaration time, producing a positional
-index that a later substitution pass (section 6/8, not implemented here) can
-look up without re-scanning the same strings for every application site.
+trait body is scanned **once**, at declaration time, producing an index that
+substitution looks up without re-scanning the same strings at every application
+site — a resource type applied to 200 endpoints scans its body once.
 
-The critical detail (docs/08 section 7.1, docs/15 risk register: "the two
-index walks drift apart") is that the indexer and the future substituter must
-compute the *exact same* positional index for the *exact same* node. Both
-therefore call one walk helper, `iter_indexed`, rather than each carrying its
-own copy of the traversal.
+The index is keyed by **node identity**, not by position. An earlier design
+numbered the nodes in a preorder walk, which made every consumer depend on two
+walks agreeing; go-raml still does, and the walks do not agree, because step 3
+of section 5.1 filters optional methods out of the tree before step 4 re-reads
+the index. Identity keys survive that filtering by construction, and `Node`
+already hashes by identity for the provenance overlay's sake. See section 7.1.
 
 See ../../CLAUDE.md and docs/12-performance.md section 12: no per-character
 Python loops. The recasing functions below use `str.split`/slicing and
@@ -30,16 +31,41 @@ from pyraml.yamlnode import TAG_STR, Node, NodeKind
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
+    from pyraml.parser.structural_merge import ProvenanceOverlay
+    from pyraml.registry import ParseCtx
+
 __all__ = [
     'KNOWN_ACTIONS',
+    'RESERVED_PARAMETERS',
     'TEMPLATE_ACTIONS',
+    'VariableIndex',
     'VariableInfo',
     'apply_template_action',
     'collect_required_variables',
     'collect_variables_index',
-    'iter_indexed',
+    'compile_source_provenance',
+    'iter_nodes',
+    'parameter_node',
     'parse_template_variables',
 ]
+
+#: The three parameters the parser injects at every application site. They are
+#: always accepted and never required of the author (docs/08 sections 5.1, 5.2).
+RESERVED_PARAMETERS: Final = frozenset({'resourcePath', 'resourcePathName', 'methodName'})
+
+
+def parameter_node(value: str) -> Node:
+    """A template parameter value as a plain string scalar.
+
+    Read-only, and never inserted into a compiled tree by pointer, so one node
+    can serve every application site of a resource.
+    """
+    return Node(NodeKind.SCALAR, TAG_STR, value)
+
+
+#: What one scan of a template body produces: every `<<...>>` bearing scalar,
+#: keyed by the node itself.
+type VariableIndex = dict[Node, list[VariableInfo]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,54 +250,34 @@ def _parse_variable_content(content: str, location: str) -> tuple[str, list[str]
     return name, actions
 
 
-# -- section 7.1: the positional index ----------------------------------------
+# -- section 7.1: the variable index ------------------------------------------
 
 
-def iter_indexed(node: Node, idx: int = 0) -> Iterator[tuple[int, Node]]:
-    """Walk `node` and its descendants, pairing each with its positional index.
+def iter_nodes(node: Node) -> Iterator[Node]:
+    """`node` and every descendant, depth-first and left to right.
 
-    Indices are a **unique** preorder sequence: the root gets `idx`, and every
-    subsequent node in depth-first, left-to-right order gets the next integer.
-
-    This walk must be *exactly* the same every time it runs, because
-    `collect_variables_index` and a later substitution pass look each other's
-    results up by index. Both call this one helper, so they cannot drift apart
-    (docs/08 section 7.1; docs/15 risk register).
-
-    go-raml computes the index as "a node has index `idx`, its i-th child has
-    `idx + i`" (`template.go`, `collectVariablesIndex`). That rule is not
-    injective — a node and its own first child both get `idx`, so a body of 17
-    nodes can collapse onto 7 indices. Substitution survives it because
-    replacing a substring that is absent is a no-op, but two consumers do not:
-    a required-variable scan reports variables from an unrelated branch, and a
-    complex (non-scalar) parameter can splice itself into a colliding node,
-    which go-raml grafts without first checking that the node's text mentions
-    the variable. A unique index removes the whole class of fault, at no cost.
-
-    Iterative rather than recursive, so template depth cannot reach CPython's
-    recursion limit (docs/12-performance.md section 14).
+    One helper rather than a copy of the traversal in each consumer. Iterative,
+    so template depth cannot reach CPython's recursion limit
+    (docs/12-performance.md section 14).
     """
     stack = [node]
-    index = idx
     while stack:
         current = stack.pop()
-        yield index, current
-        index += 1
+        yield current
         stack.extend(reversed(current.content))
 
 
-def collect_variables_index(
-    node: Node,
-    location: str,
-) -> tuple[set[str], dict[int, list[VariableInfo]]]:
-    """Scan a template body once, producing the declared-variable set and the
-    index that a later substitution pass looks up by position (`iter_indexed`).
+def collect_variables_index(node: Node, location: str) -> tuple[set[str], VariableIndex]:
+    """Scan a template body once: the declared variables, and where each occurs.
 
-    Only `!!str` scalars are scanned for variables.
+    Only `!!str` scalars are scanned. The result is keyed by the node itself,
+    which `Node`'s identity hashing makes exact and which nothing downstream can
+    invalidate — including the optional-method filtering of section 5.1, which
+    removes whole subtrees between this scan and its use.
     """
     declared_variables: set[str] = set()
-    node_variable_index: dict[int, list[VariableInfo]] = {}
-    for idx, current in iter_indexed(node):
+    index: VariableIndex = {}
+    for current in iter_nodes(node):
         if current.kind is not NodeKind.SCALAR or current.tag != TAG_STR:
             continue
         try:
@@ -282,27 +288,97 @@ def collect_variables_index(
         if not variables:
             continue
         declared_variables.update(variable.name for variable in variables)
-        node_variable_index[idx] = variables
-    return declared_variables, node_variable_index
+        index[current] = variables
+    return declared_variables, index
 
 
-def collect_required_variables(
-    node: Node,
-    idx: int,
-    index: dict[int, list[VariableInfo]],
-) -> set[str]:
+def collect_required_variables(node: Node, index: VariableIndex) -> set[str]:
     """The variable names reachable from the subtree rooted at `node`.
 
-    `idx` is `node`'s own positional index (as produced by
-    `collect_variables_index`, reachable again through `iter_indexed`). Used
-    to decide which parameters an application must still supply once optional
-    methods have been filtered out of the tree (docs/08 section 5.1 step 4).
+    Which parameters an application must supply, asked *after* optional methods
+    have been filtered out of the tree (docs/08 section 5.1 step 4): the spec's
+    own `corpResource` declares `<<TextAboutPost>>` inside a `post?`, and
+    `/queues` — which has no `post` — must not be required to supply it.
     """
     names: set[str] = set()
-    for current_idx, current in iter_indexed(node, idx):
-        if current.kind is not NodeKind.SCALAR:
-            continue
-        variables = index.get(current_idx)
+    for current in iter_nodes(node):
+        variables = index.get(current)
         if variables:
             names.update(variable.name for variable in variables)
     return names
+
+
+# -- sections 6.2 and 7: substitution, recording where each value came from ----
+
+
+def compile_source_provenance(
+    node: Node,
+    params: dict[str, Node],
+    index: VariableIndex,
+    caller_scope: ParseCtx,
+    overlay: ProvenanceOverlay,
+) -> Node:
+    """Substitute `params` into a template body, marking what the caller supplied.
+
+    Static content is left **unmarked** and therefore keeps the template's own
+    declaration scope; only nodes that received a value are recorded, as
+    `caller_scope`. That is the whole of decision D2 (docs/08 section 6.2):
+    static goes to the declaration site, dynamic to the application site.
+
+    Unchanged node pointers are shared with the input, so the result is still a
+    valid key set for the overlay and for the merge that follows.
+    """
+    if node.kind is NodeKind.SCALAR:
+        return _compile_scalar(node, params, index, caller_scope, overlay)
+
+    modified = False
+    content: list[Node] = []
+    for child in node.content:
+        compiled = compile_source_provenance(child, params, index, caller_scope, overlay)
+        modified = modified or compiled is not child
+        content.append(compiled)
+    if not modified:
+        # A container is structural: it keeps the enclosing scope, and reusing
+        # it keeps every mark already recorded against it reachable.
+        return node
+    return Node(node.kind, node.tag, node.value, content, node.line, node.column, node.end_line, node.end_column)
+
+
+def _compile_scalar(
+    node: Node,
+    params: dict[str, Node],
+    index: VariableIndex,
+    caller_scope: ParseCtx,
+    overlay: ProvenanceOverlay,
+) -> Node:
+    variables = index.get(node)
+    if not variables:
+        return node
+
+    for variable in variables:
+        param = params.get(variable.name)
+        if param is not None and param.kind is not NodeKind.SCALAR:
+            # A complex parameter replaces the node rather than being spliced
+            # into its text. The subtree came from the caller, so it resolves
+            # there — and the mark on its root stops `mark_graft` descending.
+            overlay[param] = caller_scope
+            return param
+
+    text = node.value
+    substituted = False
+    for variable in variables:
+        param = params.get(variable.name)
+        if param is None:
+            continue
+        value = param.value
+        for action in variable.actions:
+            value = apply_template_action(value, action)
+        text = text.replace(variable.substring, value, 1)
+        substituted = True
+    if not substituted:
+        # An unsubstituted scalar is static: it keeps the declaration scope.
+        return node
+
+    compiled = Node(node.kind, node.tag, text, None, node.line, node.column, node.end_line, node.end_column)
+    overlay[compiled] = caller_scope
+    return compiled

@@ -17,9 +17,11 @@ A typed fragment's decoder pushes its **own** `ParseCtx`, never its caller's.
 That is what makes the fragment cache sound: without it the same file would mean
 different things at different inclusion sites.
 
-Phase 1 decodes what it owns and keeps everything else as the original `Node`
-subtree, on an attribute named `_raw_*`. Those are the seams later phases pick
-up; `grep _raw_` finds all of them.
+Every declaration is now decoded here. The two `_raw_*` attributes that remain
+are working buffers rather than seams: `_raw_endpoints` is handed to P4, which
+runs after every fragment is decoded, and `_raw_secured_by` is harvested before
+the main loop but decoded after it, because it names schemes the loop has yet to
+declare.
 """
 
 from __future__ import annotations

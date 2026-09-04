@@ -415,7 +415,7 @@ no valid fixture writes a bare scalar, and go-raml accepts one — which is why
 
 ---
 
-## Phase 7 — Security and annotations
+## Phase 7 — Security and annotations — **complete**
 
 **Prerequisites:** Phase 5 for the operations schemes attach to, and Phase 6 if a
 scheme arrives through a trait. The `_raw_security_schemes` and `_raw_secured_by`
@@ -439,6 +439,34 @@ is Phase 8's, with the rest of validation.
 
 **Done when:** `SecuritySchemes/` passes, and the `Annotations/` fixtures whose
 application site is a security scheme.
+
+**Outcome.** TCK 869 → **891 of 916**. All 22 are `invalid-` fixtures and no
+valid one moved in either direction, which is the shape the phase's risk
+register predicted: nothing here can be silently wrong, only wrongly rejected.
+`SecuritySchemes/`, `Fragments/` and the security `EdgeCases/` are green.
+After this phase `grep -rn '_raw_' pyraml/` returns only Phase 8b's seams.
+
+Three things the plan did not say, all recorded in
+[09](09-security-and-annotations.md).
+
+**One settings class, not six** (§ A2). The six types differ in which keys they
+accept and what they then require; the first is a table and the second is one
+function. Six near-empty classes would name each type twice and let the two
+names disagree. § A5's `OperationParamsApplier` protocol went with them — with
+one class there is nothing left to dispatch on, and only OAuth 2.0 has any
+parameters to apply.
+
+**`SecurityScheme` lives in `parser/directives.py`** (§ A1). It is the one
+directive reference that survives into the model, because applying a scheme
+produces a binding rather than a merged tree. Keeping it beside `DirectiveRef`
+follows the rule that put the three references there, and it is what lets
+`source_decode.py` build these in stage 2 without importing the module that
+resolves them.
+
+**A scheme name resolves against the API, not lexically** (§ A6) — the one place
+this differs from a trait or a resource type. Only a `Library` and an
+`APIFragment` declare `securitySchemes:`, so a `securedBy:` written inside a
+trait fragment has no lexical namespace that could hold one.
 
 ---
 

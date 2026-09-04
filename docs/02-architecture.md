@@ -95,11 +95,11 @@ pyraml/
     facets.py             scalar-facet *builders*, annotated-scalar form
     documentation.py      DocumentationItem
     annotations.py        DomainExtension (doc 09)
-    security.py           SecuritySchemeDefinition + settings variants (doc 09)
+    security.py           SecuritySchemeDefinition, its settings, and P5 (doc 09)
     templates.py          variable index, substitution, transform functions (doc 08)
     traits.py             TraitDefinition + applying traits to an operation (doc 08)
     resourcetypes.py      ResourceTypeDefinition + applying one to a resource (doc 08)
-    directives.py         DirectiveRef: the type:/is:/securedBy: reference form
+    directives.py         DirectiveRef and SecurityScheme: the reference forms
     source_ir.py          stage-1 SourceEndPoint / SourceOperation (doc 08)
     structural_merge.py   spec merging algorithm + provenance overlay (doc 08)
     source_decode.py      stage-2 materialization (doc 08)
@@ -146,6 +146,13 @@ Rules on the layout:
   three have one shape — a name, optional parameters, a position — differing
   only in how the name resolves and what applying it does. One `DirectiveRef`
   rather than three near-identical classes in three near-empty modules.
+
+  The same module holds `SecurityScheme`, the one reference that survives into
+  the model. Applying a trait or a resource type produces a merged tree and
+  leaves nothing on the reference; applying a scheme produces a *binding*, which
+  needs somewhere to live. Keeping it here rather than in `security.py` is also
+  what lets `source_decode.py` build these in stage 2 without importing the
+  module that resolves them.
 
 - **A template definition's `!include` is followed in `fragments.py`**, not in
   the module that owns the definition. Following it means parsing a fragment,

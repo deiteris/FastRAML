@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     'KNOWN_ACTIONS',
+    'RESERVED_PARAMETERS',
     'TEMPLATE_ACTIONS',
     'VariableIndex',
     'VariableInfo',
@@ -44,8 +45,23 @@ __all__ = [
     'collect_variables_index',
     'compile_source_provenance',
     'iter_nodes',
+    'parameter_node',
     'parse_template_variables',
 ]
+
+#: The three parameters the parser injects at every application site. They are
+#: always accepted and never required of the author (docs/08 sections 5.1, 5.2).
+RESERVED_PARAMETERS: Final = frozenset({'resourcePath', 'resourcePathName', 'methodName'})
+
+
+def parameter_node(value: str) -> Node:
+    """A template parameter value as a plain string scalar.
+
+    Read-only, and never inserted into a compiled tree by pointer, so one node
+    can serve every application site of a resource.
+    """
+    return Node(NodeKind.SCALAR, TAG_STR, value)
+
 
 #: What one scan of a template body produces: every `<<...>>` bearing scalar,
 #: keyed by the node itself.

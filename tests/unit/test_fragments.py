@@ -183,11 +183,11 @@ class TestApiDecoding:
         assert list(api.types) == ['A']
         assert list(api.annotation_types) == ['B']
         assert list(api.base_uri_parameters) == ['p']
-        # The rest are still seams, each waiting on the phase named beside it.
-        assert api._raw_traits is not None
-        assert api._raw_resource_types is not None
+        # Phase 6 decodes the two templates.
+        assert list(api.traits) == ['t']
+        assert list(api.resource_types) == ['r']
+        # Security schemes are still a seam, waiting on Phase 7.
         assert api._raw_security_schemes is not None
-        assert api.traits == {}
 
 
 class TestGlobalPrePass:
@@ -267,19 +267,19 @@ class TestTypedFragments:
         assert list(fragment.examples) == ['first', 'second']
         assert fragment.examples['first'].data.raw == {'a': 1}
 
-    @pytest.mark.parametrize(
-        ('head', 'cls'),
-        [
-            ('#%RAML 1.0 Trait', TraitFragment),
-            ('#%RAML 1.0 SecurityScheme', SecuritySchemeFragment),
-        ],
-    )
-    def test_a_definition_fragment_keeps_its_body(self, workspace, head: str, cls: type):
-        root = workspace({'f.raml': f'{head}\ndescription: d\n'})
+    def test_a_scheme_fragment_keeps_its_body(self, workspace):
+        root = workspace({'f.raml': '#%RAML 1.0 SecurityScheme\ndescription: d\n'})
         fragment = parse_from_path(root / 'f.raml').entry_point
-        assert isinstance(fragment, cls)
+        assert isinstance(fragment, SecuritySchemeFragment)
         assert fragment._raw_definition is not None
-        assert fragment.definition is None, 'the definition itself belongs to a later phase'
+        assert fragment.definition is None, 'the definition itself belongs to Phase 7'
+
+    def test_a_trait_fragment_decodes_its_definition(self, workspace):
+        root = workspace({'f.raml': '#%RAML 1.0 Trait\ndescription: d\n'})
+        fragment = parse_from_path(root / 'f.raml').entry_point
+        assert isinstance(fragment, TraitFragment)
+        assert fragment.definition.name == 'f.raml'
+        assert [key.value for key in fragment.definition.source.content[::2]] == ['description']
 
     def test_a_documentation_item_fragment_decodes_title_and_content(self, workspace):
         root = workspace({'d.raml': '#%RAML 1.0 DocumentationItem\ntitle: T\ncontent: C\n'})

@@ -34,6 +34,8 @@ from pyraml.parser.documentation import DocumentationItem, decode_documentation_
 from pyraml.parser.facets import make_scalar_facet, make_string_facet, scalar_str
 from pyraml.parser.includes import note_include_ref, resolve_ref_uri, strip_uri_suffix
 from pyraml.parser.references import resolve_library_reference, resolve_reference
+from pyraml.parser.resourcetypes import ResourceTypeDefinition, make_resource_type_definition
+from pyraml.parser.traits import TraitDefinition, make_trait_definition
 from pyraml.registry import ParseCtx
 from pyraml.types.examples import Example, make_example
 from pyraml.types.shape import make_property_map, make_shape, unmarshal_types
@@ -59,10 +61,8 @@ if TYPE_CHECKING:
     from pyraml.registry import Raml
     from pyraml.types.base import BaseShape, Property, ScalarFacet
 
-    # Later phases replace these aliases with the real classes.
-    ResourceTypeDefinition = Any
+    # Phase 7 replaces this alias with the real class.
     SecuritySchemeDefinition = Any
-    TraitDefinition = Any
 
 __all__ = [
     'HEADS',
@@ -79,6 +79,8 @@ __all__ = [
     'SecuritySchemeFragment',
     'SecuritySchemeResolver',
     'TraitFragment',
+    'decode_resource_type_definitions',
+    'decode_trait_definitions',
     'identify_fragment',
     'parse_fragment',
     'parse_library',
@@ -373,9 +375,7 @@ class Library(_BaseFragment):
     """`#%RAML 1.0 Library` — the only fragment that declares all five kinds."""
 
     __slots__ = (
-        '_raw_resource_types',
         '_raw_security_schemes',
-        '_raw_traits',
         'annotation_types',
         'annotations',
         'resource_types',
@@ -394,9 +394,7 @@ class Library(_BaseFragment):
         self.resource_types: dict[str, ResourceTypeDefinition] = {}
         self.security_schemes: dict[str, SecuritySchemeDefinition] = {}
         self.annotations: dict[str, DomainExtension] = {}
-        # Seams: kept as written until the phase named beside each decodes them.
-        self._raw_traits: Node | None = None  # Phase 6
-        self._raw_resource_types: Node | None = None  # Phase 6
+        # A seam: kept as written until Phase 7 decodes it.
         self._raw_security_schemes: Node | None = None  # Phase 7
 
     # -- ReferenceResolver / SecuritySchemeResolver ---------------------------
@@ -440,9 +438,9 @@ class Library(_BaseFragment):
                 elif name == FACET_ANNOTATION_TYPES:
                     self.annotation_types = unmarshal_types(raml, value, self.location, is_annotation=True)
                 elif name == FACET_TRAITS:
-                    self._raw_traits = value
+                    self.traits = decode_trait_definitions(raml, value, self.location)
                 elif name == FACET_RESOURCE_TYPES:
-                    self._raw_resource_types = value
+                    self.resource_types = decode_resource_type_definitions(raml, value, self.location)
                 elif name == FACET_SECURITY_SCHEMES:
                     self._raw_security_schemes = value
                 elif is_annotation_key(name):
@@ -460,10 +458,8 @@ class APIFragment(_BaseFragment):
 
     __slots__ = (
         '_raw_endpoints',
-        '_raw_resource_types',
         '_raw_secured_by',
         '_raw_security_schemes',
-        '_raw_traits',
         'annotation_types',
         'annotations',
         'base_uri',
@@ -497,8 +493,6 @@ class APIFragment(_BaseFragment):
         self.annotations: dict[str, DomainExtension] = {}
         self.base_uri_parameters: dict[str, Property] = {}
         # Seams: kept as written until the phase named beside each decodes them.
-        self._raw_traits: Node | None = None  # Phase 6
-        self._raw_resource_types: Node | None = None  # Phase 6
         self._raw_security_schemes: Node | None = None  # Phase 7
         self._raw_secured_by: Node | None = None  # Phase 7
         #: `(key, value)` pairs for every `/relativeUri` key, in document order.
@@ -592,9 +586,9 @@ class APIFragment(_BaseFragment):
         elif name == FACET_BASE_URI_PARAMETERS:
             self.base_uri_parameters = make_property_map(self._raml, value, self.location)
         elif name == FACET_TRAITS:
-            self._raw_traits = value
+            self.traits = decode_trait_definitions(self._raml, value, self.location)
         elif name == FACET_RESOURCE_TYPES:
-            self._raw_resource_types = value
+            self.resource_types = decode_resource_type_definitions(self._raml, value, self.location)
         elif name == FACET_SECURITY_SCHEMES:
             self._raw_security_schemes = value
         else:
@@ -740,8 +734,9 @@ class DocumentationItemFragment(_UsesOnlyFragment):
 class _DefinitionFragment(_UsesOnlyFragment):
     """A fragment whose body is one template or scheme definition.
 
-    Trait, ResourceType and SecurityScheme differ only in which builder Phase 6
-    or 7 hands the retained body to, so the Phase 1 decode is shared.
+    Trait, ResourceType and SecurityScheme differ only in which builder the body
+    goes to, so stripping `uses:` is shared. The first two override `decode` to
+    build their definition; SecurityScheme keeps the seam until Phase 7.
     """
 
     __slots__ = ('_raw_definition', 'definition')
@@ -758,15 +753,34 @@ class _DefinitionFragment(_UsesOnlyFragment):
 
 
 class TraitFragment(_DefinitionFragment):
-    """`#%RAML 1.0 Trait`."""
+    """`#%RAML 1.0 Trait` — the whole document is one trait definition."""
 
     __slots__ = ()
+
+    def decode(self, node: Node) -> None:
+        super().decode(node)
+        self.definition = _one_definition(
+            self._raml, None, self._raw_definition, self.location, make_trait_definition, FragmentKind.TRAIT
+        )
+        self.definition.name = uri_base(self.location)
 
 
 class ResourceTypeFragment(_DefinitionFragment):
-    """`#%RAML 1.0 ResourceType`."""
+    """`#%RAML 1.0 ResourceType` — the whole document is one definition."""
 
     __slots__ = ()
+
+    def decode(self, node: Node) -> None:
+        super().decode(node)
+        self.definition = _one_definition(
+            self._raml,
+            None,
+            self._raw_definition,
+            self.location,
+            make_resource_type_definition,
+            FragmentKind.RESOURCE_TYPE,
+        )
+        self.definition.name = uri_base(self.location)
 
 
 class SecuritySchemeFragment(_DefinitionFragment):
@@ -780,6 +794,63 @@ class SecuritySchemeFragment(_DefinitionFragment):
     """
 
     __slots__ = ()
+
+
+# -- traits: and resourceTypes: -----------------------------------------------
+#
+# The definitions live in `traits.py` and `resourcetypes.py`; only the two
+# functions below are here, because following a definition's `!include` means
+# parsing a fragment, which this module owns. docs/02 section 3 forbids the
+# reverse import and rules out a deferred one.
+
+
+def _one_definition(  # noqa: PLR0913, PLR0917 - `make` and `kind` are what let one function serve two
+    raml: Raml,
+    key: Node | None,
+    value: Node | None,
+    location: str,
+    make: Callable[[Raml, Node | None, Node, str], Any],
+    kind: FragmentKind,
+) -> Any:
+    """Build one definition, following an `!include` to the linked fragment's."""
+    if value is None:
+        value = Node(NodeKind.SCALAR, TAG_NULL)
+    definition = make(raml, key, value, location)
+    if definition.link_uri:
+        fragment = parse_fragment(raml, definition.link_uri, kind)
+        definition.link = getattr(fragment, 'definition', None)
+    return definition
+
+
+def _definitions(
+    raml: Raml,
+    node: Node,
+    location: str,
+    make: Callable[[Raml, Node | None, Node, str], Any],
+    kind: FragmentKind,
+) -> dict[str, Any]:
+    """Decode a `traits:` or `resourceTypes:` map, one definition per name."""
+    if node.tag == TAG_NULL:
+        return {}
+    if node.kind is not NodeKind.MAPPING:
+        raise node_error(f'{kind} declarations must be a mapping', location, node)
+    declared: dict[str, Any] = {}
+    accumulator = Accumulator()
+    for key, value in pairs(node):
+        try:
+            declared[key.value] = _one_definition(raml, key, value, location, make, kind)
+        except RamlError as err:
+            accumulator.add(err)
+    accumulator.raise_if_any()
+    return declared
+
+
+def decode_trait_definitions(raml: Raml, node: Node, location: str) -> dict[str, TraitDefinition]:
+    return _definitions(raml, node, location, make_trait_definition, FragmentKind.TRAIT)
+
+
+def decode_resource_type_definitions(raml: Raml, node: Node, location: str) -> dict[str, ResourceTypeDefinition]:
+    return _definitions(raml, node, location, make_resource_type_definition, FragmentKind.RESOURCE_TYPE)
 
 
 class _Declarations:

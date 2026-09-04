@@ -127,7 +127,7 @@
     "EdgeCases/enum-numbers/valid-enum-numbers.raml": "pass",
     "EdgeCases/enum-strings/invalid-wrong-enum-item-type.raml": "pass",
     "EdgeCases/enum-strings/valid-enum-strings.raml": "pass",
-    "EdgeCases/identifying-discriminator/invalid-inexisting-descriminator.raml": "fail",
+    "EdgeCases/identifying-discriminator/invalid-inexisting-descriminator.raml": "pass",
     "EdgeCases/identifying-discriminator/valid.raml": "pass",
     "EdgeCases/include-empty-file/invalid-include-invalid-raml.raml": "pass",
     "EdgeCases/include-empty-file/invalid-user.raml": "pass",

@@ -1,7 +1,40 @@
-# Phase 5 brief — endpoints, stages 1 and 2 (P4, P6)
+# Phase 5 brief — endpoints, stages 1 and 2 (P4, P6) — **complete**
 
 A working brief for a fresh session. Read this, then the document it names. It
 exists so you do not have to re-derive what earlier sessions already settled.
+
+---
+
+## 0. What this brief got wrong
+
+Kept rather than rewritten, because the corrections are the useful part.
+
+1. **§ 3.1 assumed the directive references live in `traits.py`,
+   `resourcetypes.py` and `security.py`**, where [02](../02-architecture.md) § 2
+   assigns them. They do not: stage 1 decodes all three and runs two phases
+   before any of those modules exists, and the three have one shape — a name,
+   optional parameters, a position. `parser/directives.py` holds a single
+   `DirectiveRef`. Doc 02 amended.
+
+2. **§ 3.8 listed `REQUEST_BODY` and `RESPONSE_BODY` as though a `body:` had one
+   spelling.** It has two, and they choose different targets: the *media-type
+   node* is the body node the spec's table names, while a `body:` written
+   without media-type keys **is** the type declaration. Get it wrong and
+   `target-locations/valid-*-body.raml` and `Annotations/complex-01/valid.raml`
+   regress in opposite directions. Doc 09 § B5 amended.
+
+3. **The ratchet expectation said "in both directions" and meant it.** Two
+   fixtures regressed, and *both* were bugs in the suite rather than here —
+   fixed there, not recorded here ([14](../14-testing.md) § 1.2). The corpus is
+   918 rather than 930 because `skip_reason` now matches the RAML header:
+   eleven Overlay/Extension fixtures sit outside their categories, and four of
+   them had been *passing* on an unsupported-fragment-kind rejection.
+
+4. **A defect this phase surfaced in Phase 2's code**, worth knowing because the
+   same shape of bug can hide anywhere a default is threaded:
+   `_decode_type_node` returned `TYPE_STRING` where it meant `default_type`. The
+   two coincide for a `type:` written with no value, so it survived three phases
+   until `make_body_shape` passed a different default.
 
 ---
 

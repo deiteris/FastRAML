@@ -203,6 +203,60 @@ class TestI6:
         assert not heads_without_a_head, '\n'.join(heads_without_a_head[:20])
 
 
+def _endpoint_shapes(raml):  # noqa: PLR0912 - one branch per place a shape can hang off an endpoint
+    """Every shape an endpoint decode created, with the endpoint that holds it."""
+    stack = list(raml.endpoints.values())
+    seen: set[int] = set()
+    while stack:
+        endpoint = stack.pop()
+        if id(endpoint) in seen:
+            continue
+        seen.add(id(endpoint))
+        stack += endpoint.endpoints.values()
+
+        for prop in endpoint.uri_parameters.values():
+            yield endpoint, prop.base
+        for operation in endpoint.operations.values():
+            request = operation.request
+            if request is not None:
+                for prop in (*request.headers.values(), *request.query_parameters.values()):
+                    yield endpoint, prop.base
+                if request.query_string is not None:
+                    yield endpoint, request.query_string
+                for body in request.bodies.values():
+                    if body.shape is not None:
+                        yield endpoint, body.shape
+            for response in operation.responses.values():
+                for prop in response.headers.values():
+                    yield endpoint, prop.base
+                for body in response.bodies.values():
+                    if body.shape is not None:
+                        yield endpoint, body.shape
+
+
+class TestEndpointShapesAreRegistered:
+    """Every shape a stage-2 decode creates is in `fragment_typedefs`.
+
+    `unwrap_shapes` and `validate_shapes` iterate that index and nothing else,
+    so a shape that skips `put_typedef` is silently never flattened and never
+    validated. Nothing else in the suite would notice: the model still holds
+    the shape, and reading it looks correct.
+    """
+
+    def test_every_endpoint_shape_reaches_the_later_passes(self, corpus: list):
+        assert corpus, 'no fixture parsed; the check would be vacuous'
+        offenders: list[str] = []
+        checked = 0
+        for name, raml in corpus:
+            registered = {id(shape) for shapes in raml.fragment_typedefs.values() for shape in shapes}
+            for endpoint, shape in _endpoint_shapes(raml):
+                checked += 1
+                if id(shape) not in registered:
+                    offenders.append(f'{name}: {endpoint.full_uri} holds shape {shape.id} ({shape.name!r})')
+        assert not offenders, '\n'.join(offenders[:20])
+        assert checked > 0, 'no endpoint declared a shape; the check would be vacuous'
+
+
 class TestDomainExtensions:
     """P8 binds every application; P9 keeps the binding pointing at live shapes.
 

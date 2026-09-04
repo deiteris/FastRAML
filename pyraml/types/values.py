@@ -98,10 +98,17 @@ INTEGER_RANGES: Final[dict[str, tuple[int, int]]] = {
 def as_fraction(value: Any) -> Fraction | None:  # noqa: PLR0911 - one return per accepted type reads better than nesting
     """A number as an exact `Fraction`, or `None` if it is not a number.
 
-    `float` is converted through `as_integer_ratio`, which is exact for the
-    binary value the decoder actually produced — unlike `Fraction(str(value))`,
-    which would re-round. A `Decimal` or a numeric string goes through its text,
-    which is what makes `multipleOf: 1.1` accept `2.2`.
+    **Every conversion goes through decimal text, never through the binary
+    value.** `2.2` in a document is the *text* `2.2`; the YAML decoder turned it
+    into a float on the way in, and `float.as_integer_ratio()` would recover the
+    binary approximation `2476979795053773/1125899906842624` rather than `11/5`.
+    Since `multipleOf: 1.1` is built from its own raw text as `11/10`, the two
+    would never divide evenly and `multipleOf: 1.1` would reject `2.2` — the
+    exact failure the no-`float` rule exists to prevent (docs/10 section 5.3).
+
+    `repr` gives the shortest decimal that round-trips to the same float, which
+    is the author's text in every case that matters. go-raml does the same thing
+    with `big.Rat.SetString(fmt.Sprintf("%v", v))`.
 
     `bool` is not a number here even though Python says it is a subclass of
     `int`; callers reject it before asking, and this is the second line of
@@ -112,10 +119,10 @@ def as_fraction(value: Any) -> Fraction | None:  # noqa: PLR0911 - one return pe
     if isinstance(value, int):
         return Fraction(value)
     if isinstance(value, float):
-        # `inf` and `nan` have no ratio; they are not valid RAML numbers.
+        # `inf` and `nan` have no decimal form; they are not RAML numbers.
         if value != value or value in (float('inf'), float('-inf')):  # noqa: PLR0124 - the NaN test
             return None
-        return Fraction(*value.as_integer_ratio())
+        return Fraction(repr(value))
     if isinstance(value, Decimal):
         try:
             return Fraction(str(value))

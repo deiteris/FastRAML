@@ -450,12 +450,18 @@ In rough priority order:
    additional post-merge behaviour-invariance check for overlays. The `extends`
    chain, the "all overlays share one master" constraint, and the allowed-
    differences table are the work. Estimated: one phase.
-2. **Multi-parent custom facet chain walk** — the known limitation in
+2. **Facets on a union declaration** ([01](01-scope-and-coverage.md) § 3.7).
+   Parsed and not enforced today, which is silent: a document that looks
+   constrained is not. The work is in P7/P9 — `UnionShape` retains the
+   undigested nodes and the merge decodes them against each member, cloning
+   first ([07](07-resolution-and-inheritance.md) § 3.4). The reference
+   implementation discards them outright; written up in its `KNOWN-ISSUES.md`.
+3. **Multi-parent custom facet chain walk** — the known limitation in
    [10](10-validation.md) § 4.
-3. **Union `enum` semantics** — spec § Union Type's enum rules, which the
+4. **Union `enum` semantics** — spec § Union Type's enum rules, which the
    reference implementation also defers.
-4. **Finer provenance granularity** — [08](08-templates-and-endpoints.md) § 6.4.
-5. **Downstream packages** — LSP server, JSON Schema / OpenAPI converters,
+5. **Finer provenance granularity** — [08](08-templates-and-endpoints.md) § 6.4.
+6. **Downstream packages** — LSP server, JSON Schema / OpenAPI converters,
    middleware. All are consumers of the model, not changes to it; `retain_source`
    and the `TypeExprRef`/`IncludeRef` indices exist so none of them requires a
    parser change.

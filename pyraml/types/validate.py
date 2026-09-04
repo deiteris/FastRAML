@@ -209,7 +209,7 @@ def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
         # drops every facet but `discriminator`, measured, not inferred).
         # Distributing them to the members is the conformant behaviour and is
         # tracked as a v1.1 item; it belongs to P7/P9, not here
-        # (docs/01 section 4 deviation D4, docs/07 section 3.4).
+        # (docs/01 section 3.7, docs/07 section 3.4).
         return
     declared = _facet_declarations(base, acc)
     for name, prop in declared.items():

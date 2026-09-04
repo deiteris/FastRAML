@@ -205,6 +205,19 @@ its own. So a child that merely narrows a union reaches this branch, not the
 "source is a union, target is not" one above — which arises only where the two
 kinds genuinely differ.
 
+**The `…` in that form is an open gap.** Facets written beside `type: SomeUnion`
+have no kind to be decoded against, because `UnionShape` recognises none, so
+they reach `KindBase` and are filed under `custom_facets`. Nothing then applies
+them, and P10 skips them rather than calling them `unknown facet`
+([01](01-scope-and-coverage.md) § 3.7). Conformant behaviour is to distribute
+them to the members.
+
+Doing that lands here. `UnionShape` retains the undigested nodes, and this
+branch decodes them against each member once `anyOf` is settled — **after
+cloning the members**. `mine.any_of = theirs.any_of` above adopts the parent's
+member objects by reference, so decoding a facet in place would narrow the
+parent type for every other subtype of it: § 3.3's corruption, one level down.
+
 Detached copies with fresh IDs are essential here — these are genuinely new
 shapes, and reusing the originals would corrupt the declared types.
 

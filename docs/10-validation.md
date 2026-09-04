@@ -83,7 +83,14 @@ paragraph records the trade-off so it can be revisited with data.
 
 ## 4. Custom facet validation
 
-Walk the inheritance chain collecting `facets:` declarations, then:
+Walk the inheritance chain collecting `facets:` declarations — **starting at
+`inherits[0]`, not at the shape itself**. A `facets:` block declares what
+*subtypes* must supply, so the declaring type neither has to satisfy its own
+required facets nor may supply a value for one; supplying one is `unknown
+facet`. Both halves were measured against the reference implementation, whose
+`validateShapeFacets` walks from `base.Inherits[0]`.
+
+Then:
 
 - a facet name declared twice in one chain → `duplicate custom facet`;
 - a declared facet that is `required` and has no value on the shape →
@@ -95,6 +102,14 @@ Walk the inheritance chain collecting `facets:` declarations, then:
 That last rule is what turns a typo (`maxLenght: 5`) into an error: unrecognised
 facet keys become custom facet *values* during decoding
 ([05](05-type-model.md) § 4), and this is where they are caught.
+
+**Skipped on a union base.** A facet written beside `type: A | B` arrives in
+`custom_facets` for the same reason a typo does, but it is not one — it is a
+real facet of the members that had no kind to be decoded against. Reporting
+`unknown facet` there would reject what the spec allows, so the check is
+skipped and the constraint goes unenforced. Tracked as a v1.1 conformance item
+([01](01-scope-and-coverage.md) § 3.7, [07](07-resolution-and-inheritance.md)
+§ 3.4).
 
 Known limitation, inherited: the chain walk follows `inherits[0]` only, so a facet
 declared on the second parent of a multiply-inheriting type is not seen. Fixing it
@@ -158,11 +173,21 @@ The hash must be **order-independent for mappings** (sort keys) and
 ### 5.3 Numeric comparison
 
 Never compare a decoded `float` to a `Fraction` bound via `float()`. Convert the
-value: `int` stays `int`; `float` becomes `Fraction(*value.as_integer_ratio())`;
-`Decimal`/numeric string becomes `Fraction(text)`. Fast path: if both bound and
-value are `int`, compare directly.
+value **through its decimal text, never through its binary value**: `int` stays
+`int`; `float` becomes `Fraction(repr(value))`; `Decimal`/numeric string becomes
+`Fraction(text)`. Fast path: if both bound and value are `int`, compare directly.
 
 `multipleOf`: `Fraction(value) / multiple_of` must have denominator 1.
+
+`as_integer_ratio()` is the wrong conversion here and was specified in an earlier
+draft of this section. A bound is built from the raw scalar text, so
+`multipleOf: 1.1` is exactly `11/10`; a value arrives as a `float` because the
+YAML decoder made one, and its exact binary ratio is
+`2476979795053773/1125899906842624`. Those never divide evenly, so `2.2` would be
+rejected — the precise failure the no-`float` rule exists to prevent. `repr`
+recovers the shortest decimal that round-trips, which is the author's text in
+every case that matters; the reference implementation converts through
+`big.Rat.SetString(fmt.Sprintf("%v", v))` for the same reason.
 
 ## 6. External JSON Schema
 

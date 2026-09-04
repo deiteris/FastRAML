@@ -257,6 +257,51 @@ class TestEndpointShapesAreRegistered:
         assert checked > 0, 'no endpoint declared a shape; the check would be vacuous'
 
 
+class TestTemplateProvenance:
+    """A shape a template contributed knows which file it came from.
+
+    The phase's characteristic failure: a type name resolved in the applying
+    document's namespace instead of the template's *still parses*, and produces
+    a model that looks right. What is checkable over the corpus is the two
+    things that failure destroys — an anchor, and a location naming a file this
+    parse actually read (docs/08 section 6.3).
+    """
+
+    def test_every_endpoint_shape_has_an_anchor(self, corpus: list):
+        # A shape with none falls back to `resolver_at(location)`, which agrees
+        # with the anchor only for a document that declares everything itself.
+        assert corpus, 'no fixture parsed; the check would be vacuous'
+        offenders: list[str] = []
+        checked = 0
+        for name, raml in corpus:
+            for endpoint, shape in _endpoint_shapes(raml):
+                checked += 1
+                if shape.anchor is None:
+                    offenders.append(f'{name}: {endpoint.full_uri} shape {shape.id} ({shape.name!r})')
+        assert not offenders, '\n'.join(offenders[:20])
+        assert checked > 0, 'no endpoint declared a shape; the check would be vacuous'
+
+    def test_every_endpoint_shape_is_attributed_to_a_file_that_was_read(self, corpus: list):
+        offenders = [
+            f'{name}: {endpoint.full_uri} shape {shape.id} ({shape.name!r}) at {shape.location}'
+            for name, raml in corpus
+            for endpoint, shape in _endpoint_shapes(raml)
+            if shape.location not in raml.fragments
+        ]
+        assert not offenders, '\n'.join(offenders[:20])
+
+    def test_some_endpoint_shape_comes_from_another_file(self, corpus: list):
+        # Non-vacuity for the two above: without provenance every endpoint shape
+        # would be attributed to the entry point, and both would still pass.
+        from_elsewhere = sum(
+            1
+            for _name, raml in corpus
+            for _endpoint, shape in _endpoint_shapes(raml)
+            if shape.location != raml.location
+        )
+        assert from_elsewhere > 0, 'no template contributed a shape; the checks above are vacuous'
+
+
 class TestDomainExtensions:
     """P8 binds every application; P9 keeps the binding pointing at live shapes.
 

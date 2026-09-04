@@ -32,6 +32,8 @@ from pyraml.types.inherit import alias_to, inherit
 from pyraml.types.shape import KIND_TO_CLASS
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from pyraml.registry import Raml
     from pyraml.types.base import Shape
 
@@ -270,13 +272,23 @@ def _unwrap_custom_facet_defs(walk: _Walk, base: BaseShape, depth: int) -> None:
 # -- recursion marking (docs/07 section 4) ------------------------------------
 
 
-def mark_recursions(raml: Raml, *, max_depth: int = DEFAULT_MAX_DEPTH) -> None:
+def mark_recursions(
+    raml: Raml, *, roots: Iterable[BaseShape] | None = None, max_depth: int = DEFAULT_MAX_DEPTH
+) -> None:
     """Close every type cycle with a `RecursiveShape`.
 
     Runs after unwrap, from the same roots. On re-entry this does *not* error —
     unlike resolution, where a cycle is a genuine mistake — it returns a marker
     the caller substitutes into the slot it came from.
+
+    `roots` narrows the walk to shapes that are not in `fragment_typedefs`:
+    validation unwraps a private *copy* of a declaration, and that copy needs
+    marking without the registry's own shapes being walked again (docs/10 § 1).
     """
+    if roots is not None:
+        for base in roots:
+            _mark(raml, base, 0, max_depth)
+        return
     for shapes in raml.fragment_typedefs.values():
         for base in shapes:
             _mark(raml, base, 0, max_depth)

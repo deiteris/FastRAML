@@ -62,6 +62,7 @@ Legend: **v1** = required for the first release · **v1.1** = planned follow-up 
 | `array`: `items`, `minItems`, `maxItems`, `uniqueItems` | v1 | |
 | Scalars: `string`, `number`, `integer`, `boolean`, `date-only`, `time-only`, `datetime-only`, `datetime`, `file`, `nil` | v1 | |
 | Union types (`\|`) | v1 | Union+`enum` interaction: v1.1 (go-raml also defers it) |
+| Facets written on a union declaration | **v1.1** | Parsed, **not enforced**. See below |
 | JSON Schema external types | v1 | Draft 4/6/7/2019-09/2020-12 as supported by the chosen library |
 | XML Schema external types | out | Documented deviation |
 | References to inner schema elements (`file.json#/definitions/Foo`) | v1 | JSON Pointer only |
@@ -117,6 +118,35 @@ Legend: **v1** = required for the first release · **v1.1** = planned follow-up 
 | Applying annotations, value validation against the annotation type | v1 |
 | Annotating scalar-valued nodes (the `value:` map form) | v1 |
 | `allowedTargets` enforcement | **v1** (go-raml leaves this unimplemented; pyRAML implements it — see [09](09-security-and-annotations.md) § Targets) |
+
+### 3.7 Known gap: facets on a union declaration
+
+`T: {type: A | B, maximum: 2}` is parsed and the `maximum` is **not enforced**.
+
+This is a gap, not a deviation: § 4 below lists decisions we would defend, and
+this is not one. It is recorded here because the failure mode is silent — a
+document that looks constrained is not.
+
+The spec is clear. § Union Type: an instance is valid "if and only if it is a
+valid instance of at least one of the super types obtained by expanding all
+unions in that type hierarchy", so the facet constrains each expanded branch.
+Conformant behaviour is to distribute it to the members.
+
+Why it is not done yet. P7 gives the declaration the *union* kind, and
+`UnionShape` recognises no scalar facets, so `maximum` reaches `KindBase` and is
+filed under `custom_facets` — where P10 would call it `unknown facet`. Doing it
+properly means `UnionShape` retaining the undigested nodes and P9 decoding them
+against each member once `anyOf` is settled, cloning the members first: the
+empty-union branch of the merge adopts the parent's member objects by reference
+([07](07-resolution-and-inheritance.md) § 3.4), so decoding in place would
+mutate the parent for every other subtype. That is P7/P9 work.
+
+The reference implementation has the same gap and a worse one: its
+`UnionShape.unmarshalYAMLNodes` discards every facet but `discriminator`
+outright. Written up in `KNOWN-ISSUES.md` in that checkout, with a reproduction.
+
+Until then P10 skips the custom-facet check on a union base, with a comment
+saying so, rather than reporting `unknown facet` for something the spec allows.
 
 ## 4. Deliberate deviations
 

@@ -24,7 +24,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
 
 from pyraml.datanode import make_data_node
+from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.positions import UNKNOWN, Position
+from pyraml.types.values import same_value as _same_value
 
 if TYPE_CHECKING:
     import re
@@ -362,6 +364,79 @@ class BaseShape:
         per call, which is why the default is `clone` with a shared memo.
         """
         return self.clone({})
+
+    # -- validation (docs/10-validation.md) -----------------------------------
+
+    def check(self) -> None:
+        """Is this declaration self-consistent? Raises; does not return a flag.
+
+        The base-level half is `enum`: every member is validated against this
+        shape, so `type: integer, enum: [1, "two"]` fails at the declaration
+        rather than at first use. The kind's own facet rules follow.
+        """
+        if self.shape is None:
+            raise RamlError.new('declaration has no shape', self.location, self.key_pos, kind=ErrorKind.VALIDATING)
+        accumulator = Accumulator()
+        for index, member in enumerate(self.enum or ()):
+            try:
+                # `self.shape.validate`, not `self.validate_at`: the latter
+                # short-circuits on enum membership, which would make every
+                # member trivially valid against the enum it belongs to.
+                self.shape.validate(member.raw, f'enum[{index}]')
+            except RamlError as err:
+                accumulator.add(
+                    RamlError.wrap(
+                        'invalid enum member',
+                        err,
+                        member.location,
+                        member.value_pos,
+                        kind=ErrorKind.VALIDATING,
+                        info={'index': index},
+                    )
+                )
+        try:
+            self.shape.check()
+        except RamlError as err:
+            accumulator.add(err)
+        accumulator.raise_if_any()
+
+    def validate_at(self, value: Any, path: str) -> None:
+        """Does `value` conform? The internal entry point; raises on failure.
+
+        **Enum first** (docs/10 section 5): when a shape has an `enum`,
+        membership is the whole check, because `check()` already validated every
+        member against the shape's facets.
+        """
+        if self.shape is None:
+            raise RamlError.new('declaration has no shape', self.location, self.key_pos, kind=ErrorKind.VALIDATING)
+        if self.enum:
+            if not any(_same_value(value, member.raw) for member in self.enum):
+                raise RamlError.new(
+                    'value is not one of the allowed values',
+                    self.location,
+                    self.value_pos,
+                    kind=ErrorKind.VALIDATING,
+                    info={'path': path, 'allowed': [member.raw for member in self.enum]},
+                )
+            return
+        self.shape.validate(value, path)
+
+    def validate(self, value: Any) -> RamlError | None:
+        """The public data-validation entry point (docs/13 section 5).
+
+        Returns the failure rather than raising it: the common use is a
+        boolean-ish check in a request handler, where an exception is the wrong
+        control flow. `validate_or_raise` is the other case.
+        """
+        try:
+            self.validate_at(value, '$')
+        except RamlError as err:
+            return err
+        return None
+
+    def validate_or_raise(self, value: Any) -> None:
+        """`validate`, for callers who would only re-raise what it returns."""
+        self.validate_at(value, '$')
 
 
 @dataclass(slots=True, eq=False)

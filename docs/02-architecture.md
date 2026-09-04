@@ -116,8 +116,9 @@ pyraml/
     xml.py                XmlSerialization (doc 05 §8)
     inherit.py            per-kind inheritance rules (doc 07)
     unwrap.py             unwrap driver + recursion marking (doc 07)
-    jsonschema_.py        external JSON Schema types (doc 10 §5)
-    validate.py           check() and validate() (doc 10)
+    jsonschema_.py        external JSON Schema types (doc 10 §6)
+    values.py             numeric comparison, uniqueItems, date grammars (doc 10 §§5.2–5.3)
+    validate.py           the P10 driver: examples, defaults, facets, annotations (doc 10)
     expressions/
       lexer.py            RDT tokenizer (doc 06)
       parser.py           RDT recursive-descent parser; memoised on a caller-supplied cache
@@ -193,6 +194,19 @@ Rules on the layout:
   `BaseShape` names `DomainExtension`, `DataNode`, `DataTypeFragment` and
   `ReferenceResolver` under `TYPE_CHECKING`, which `from __future__ import
   annotations` keeps as strings and never imports at runtime.
+
+- **The per-kind `check`/`validate` are methods; the P10 driver is
+  `types/validate.py`; what they share is `types/values.py`, a leaf.** The split
+  is forced, not stylistic. `validate.py` reaches `unwrap.py` through
+  `_ensure_unwrapped`, and `unwrap.py` imports `complex_.py` — so a kind
+  importing a helper *from the driver* closes a cycle. `values.py` imports
+  `base.py` and nothing else in the package, and both sides import it.
+
+  This is the opposite call from `inherit`/`alias_to`, which Phase 4 moved *off*
+  the kinds into free functions. The difference is that merging constructs a
+  `UnionShape` and recurses through a base-level driver, neither of which
+  validation does: `check` and `validate` dispatch on kind and recurse into
+  their own children, which is what a method is.
 
 - **Inside `types/`, dependencies point one way: `shape.py` → `scalars.py` /
   `complex_.py` → `base.py`.** `shape.py` imports the concrete kinds to dispatch

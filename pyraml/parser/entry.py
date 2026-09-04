@@ -22,6 +22,7 @@ from pyraml.parser.fragments import decode_fragment, identify_fragment
 from pyraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml
 from pyraml.types.resolve import resolve_shapes
 from pyraml.types.unwrap import unwrap_shapes
+from pyraml.types.validate import validate_shapes
 from pyraml.uris import path_to_file_uri
 from pyraml.yamlnode import decode_source, read_head
 
@@ -144,5 +145,9 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     if options.unwrap:
         unwrap_shapes(raml, max_depth=options.max_type_depth)
 
-    # P10   — validate, when options.validate. Phase 8.
+    # P10 — check every declaration and validate every example, default,
+    # custom facet and annotation value. Opt-in; when P9 did not run, each
+    # declaration is validated against a private unwrapped copy of itself.
+    if options.validate:
+        validate_shapes(raml, max_depth=options.max_type_depth)
     return raml

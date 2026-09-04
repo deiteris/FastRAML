@@ -189,6 +189,22 @@ vulnerable to catastrophic backtracking on a hostile `pattern:` facet.
 - Document that `re` is used, so users know backreferences work here but not in
   go-raml — a compatibility note in both directions.
 
+**What `re2` covers, exactly.** Every regex pyRAML compiles goes through one
+function, `parser/facets.py::regex_engine`: `pattern:` facets, `/re/` pattern
+properties, and the patterns the § 6.3 JSON Schema projection builds. A pattern
+the engine will not take is a positioned `invalid pattern` for a RAML facet, and
+is dropped from the *view* for a projected one — the projection is a convenience
+over a schema that still validates, so refusing the whole type would lose more
+than it protects.
+
+**What it cannot cover**, and this is the boundary a security-conscious consumer
+needs: the regexes executed *inside* an external JSON Schema at validation time.
+`jsonschema` calls `re.search` directly for `pattern` and `patternProperties`
+and offers no hook to replace the engine. So under `regex_engine="re2"` a
+backreference in a `pattern:` facet is refused and the same backreference inside
+an `!include`d schema still runs on `re`. A test asserts this rather than
+leaving it to be discovered.
+
 ### D4 — Typed fragments are self-contained
 
 A `Trait`, `ResourceType`, `DataType`, `SecurityScheme` or `NamedExample`

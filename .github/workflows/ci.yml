@@ -61,6 +61,35 @@ jobs:
       - run: uv run python -c "import pyraml; assert pyraml.backend_name() == 'python', pyraml.backend_name()"
       - run: uv run pytest -q
 
+  # `regex_engine="re2"` is what a server parsing untrusted RAML selects, so it
+  # needs a job that actually installs google-re2. Without one the re2 tests
+  # skip everywhere and the option is only tested by reading it.
+  test-re2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras --dev
+      - run: uv run python -c "import re2"
+      - run: uv run pytest -q -rs
+
+  # Linearity is a property of the parser, not of the runner, so it is a gate.
+  # Absolute wall-clock is not asserted anywhere; see docs/14 section 5.
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --dev
+      - name: bench_large must stay linear in input size
+        env:
+          PYRAML_BENCH: '1'
+        run: uv run pytest tests/bench -q -rs
+
   tck:
     runs-on: ubuntu-latest
     steps:

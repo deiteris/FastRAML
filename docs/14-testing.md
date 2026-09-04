@@ -289,10 +289,14 @@ missed, which is a bug on every machine.
 | Python | 3.12, 3.13 |
 | OS | Linux, Windows (path/URI handling differs materially) |
 | YAML backend | libyaml **and** pure-Python. Not optional: the two scanners already disagree on `title:<TAB>value` ([12](12-performance.md) § 19), so a libyaml-only run would ship that divergence. |
-| Regex engine | `re` always; `re2` in one job |
+| Regex engine | `re` always; `re2` in one job (`uv sync --all-extras`) |
 
 Plus, on every PR: `ruff check`, `ruff format --check`, `mypy --strict pyraml/`,
-and the TCK ratchet.
+the TCK ratchet, and `tests/bench` with `PYRAML_BENCH=1` for the linearity gate.
+
+The `re2` job installs `google-re2` rather than merely allowing it. Its tests
+`importorskip`, so without a job that installs the package the whole option is
+tested by reading it — the failure mode of every optional dependency.
 
 ## 7. What is deliberately not tested
 

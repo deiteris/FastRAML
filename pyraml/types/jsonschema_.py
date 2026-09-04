@@ -21,7 +21,6 @@ above `complex_.py` and `scalars.py` and is imported by `shape.py`
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
@@ -34,6 +33,7 @@ from referencing.jsonschema import DRAFT7, specification_with
 
 from pyraml.datanode import DataNode, value_node_of
 from pyraml.errors import ErrorKind, RamlError
+from pyraml.parser.facets import regex_engine
 from pyraml.types.base import (
     TYPE_ANY,
     TYPE_ARRAY,
@@ -57,6 +57,11 @@ from pyraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape,
 from pyraml.yamlnode import node_error
 
 if TYPE_CHECKING:
+    # Annotations only. Since Phase 9 this module compiles no pattern itself:
+    # every one goes through `regex_engine`, so the parse's choice applies here
+    # too (docs/01 deviation D3).
+    import re
+
     from referencing._core import Resolver
 
     from pyraml.positions import Position
@@ -736,20 +741,25 @@ def _pattern_facet(base: BaseShape, value: Any) -> ScalarFacet[re.Pattern[str]] 
     if not isinstance(value, str):
         return None
     try:
-        compiled = re.compile(value)
-    except re.error:
+        compiled = regex_engine(base._raml).compile(value)  # noqa: SLF001 - the parse's engine (docs/01 D3)
+    except ImportError:
+        raise
+    except Exception:  # noqa: BLE001 - whatever the selected engine raises
         # A pattern the schema library accepts under ECMA-262 semantics may not
-        # compile here. The projection is a view, so the constraint is dropped
-        # rather than the whole shape refused; `validate()` still enforces it.
+        # compile here, and `re2` rejects strictly more than `re` does. The
+        # projection is a view, so the constraint is dropped rather than the
+        # whole shape refused; `validate()` still enforces it.
         return None
     return ScalarFacet(value=compiled, location=base.location)
 
 
 def _compile(context: _Projection, text: str) -> re.Pattern[str]:
+    engine = regex_engine(context.parent._raml)  # noqa: SLF001 - as above
     try:
-        return re.compile(text)
-    except re.error as err:
+        compiled: re.Pattern[str] = engine.compile(text)
+    except Exception as err:
         raise _unsupported(context, f'patternProperties: {text}') from err
+    return compiled
 
 
 def _attach(base: BaseShape, kind: str, shape: Shape) -> BaseShape:

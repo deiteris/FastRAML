@@ -63,7 +63,7 @@ class ParseOptions:
 | `max_include_size` | per-file cap for `!include` targets. |
 | `file_loader` | replace the `file://` loader (e.g. to shadow unsaved buffers). **Disables the built-in sandbox** — see [03](03-yaml-and-io.md) § 5. |
 | `http_client` | supply a client to enable remote includes. Absent ⇒ `http(s)` URIs are rejected. |
-| `regex_engine` | `"re"` (default, ECMA-ish, backtracking) or `"re2"` (linear time; requires `google-re2`). Use `"re2"` for untrusted input. |
+| `regex_engine` | `"re"` (default, ECMA-ish, backtracking) or `"re2"` (linear time; requires `google-re2`). Use `"re2"` for untrusted input — noting that it covers every regex pyRAML compiles but **not** the ones executed inside an external JSON Schema ([01](01-scope-and-coverage.md) D3). |
 | `max_depth` | one ceiling for **every** recursive descent bounded only by the input — document conversion, unwrap, recursion-marking and the JSON Schema walks. They defend the same C stack ([12](12-performance.md) § 14). |
 
 **Recommendation, stated in the docstring:** pass `unwrap=True, validate=True`

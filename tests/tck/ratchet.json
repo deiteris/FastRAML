@@ -658,7 +658,7 @@
     "Types/ObjectTypes/pattern-property-and-explicit/valid.raml": "pass",
     "Types/ObjectTypes/pattern-property-asterisk/invalid-wrong-type.raml": "pass",
     "Types/ObjectTypes/pattern-property-asterisk/valid.raml": "pass",
-    "Types/ObjectTypes/pattern-property-chars/invalid-does-not-match-pattern.raml": "fail",
+    "Types/ObjectTypes/pattern-property-chars/invalid-does-not-match-pattern.raml": "pass",
     "Types/ObjectTypes/pattern-property-chars/valid.raml": "pass",
     "Types/ObjectTypes/pattern-property-or/invalid-no-additionalProperties.raml": "pass",
     "Types/ObjectTypes/pattern-property-or/valid.raml": "pass",

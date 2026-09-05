@@ -375,3 +375,43 @@ class TestEveryTypeRenders:
                     offenders.append(f'{name}: not loadable: {str(err)[:80]}')
         assert rendered > 1000, f'the corpus was not found ({rendered} rendered)'
         assert not offenders, '\n'.join(offenders[:20])
+
+    def test_every_endpoint_renders_as_loadable_yaml(self):
+        """The endpoint view has more ways to emit something unloadable: a media
+        type as a key, and a `securedBy` flow sequence that once carried an
+        explanatory `#` inside the brackets, where it is a syntax error rather
+        than a comment. Seven fixtures caught that one.
+        """
+        import yaml
+
+        from pyraml import ParseOptions, RamlError, parse_from_path
+        from pyraml.graph import build_graph
+        from pyraml.render import Sources, render_endpoint
+
+        root = _root_or_skip()
+        options = ParseOptions(unwrap=True)
+        rendered = 0
+        offenders: list[str] = []
+        for path in collect_fixtures('valid'):
+            try:
+                raml = parse_from_path(path, options)
+            except (RamlError, OSError):
+                continue
+            graph, sources = build_graph(raml), Sources.of(raml)
+            for iri in graph.nodes:
+                endpoint = graph.endpoint_at(iri)
+                if endpoint is None:
+                    continue
+                name = f'{fixture_id(root, path)} {endpoint.full_uri}'
+                try:
+                    text = '\n'.join(render_endpoint(endpoint, depth=2, root=graph.root, sources=sources))
+                except Exception as err:  # any failure at all is the finding
+                    offenders.append(f'{name}: {type(err).__name__}: {err}')
+                    continue
+                rendered += 1
+                try:
+                    yaml.safe_load(text)
+                except yaml.YAMLError as err:
+                    offenders.append(f'{name}: not loadable: {str(err)[:80]}')
+        assert rendered > 200, f'the corpus was not found ({rendered} rendered)'
+        assert not offenders, '\n'.join(offenders[:20])

@@ -289,7 +289,7 @@ pyraml info [-w ROOT] [-r] FILE       # backend, timings, counts
 pyraml graph [--format nt|turtle|dot|json] FILE
 pyraml refs FILE NAME                 # what uses this type, and by what route
 pyraml deps FILE NAME                 # what this type is made of
-pyraml show FILE NAME [--depth N]     # the effective view of one type
+pyraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
 pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
 ```
 
@@ -367,6 +367,12 @@ Admin:                # api.raml:46
       type: string
       maxLength: 36
 ```
+
+`NAME` may be a **type or an endpoint**. An endpoint is the harder case and the
+one this helps most: it shows the resource type and traits applied, security
+after inheritance, ancestor URI parameters, and every merged-in header, query
+parameter and body — each tagged with the trait or resource type that supplied
+it where that can be established exactly ([16](16-graph.md) § 9.4).
 
 The output is loadable YAML, so it pastes back into a document and two versions
 diff. `--depth` expands nested types; the default of 1 names them instead, which

@@ -31,13 +31,17 @@ from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, Union
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from pyraml.parser.directives import SecurityScheme
+    from pyraml.parser.endpoints import Body, EndPoint, Operation
+    from pyraml.positions import Position
+    from pyraml.registry import Raml
     from pyraml.types.base import BaseShape, Property
 
-__all__ = ['render']
+__all__ = ['Sources', 'render', 'render_endpoint', 'render_operation']
 
 #: A property name that needs no quoting as a YAML key. Deliberately narrow:
 #: quoting something that did not need it is harmless, and the reverse is not.
-_PLAIN_KEY = re.compile(r'[A-Za-z_][A-Za-z0-9_.-]*\??')
+_PLAIN_KEY = re.compile(r'[A-Za-z_/][A-Za-z0-9_./+*^$\[\]-]*\??')
 
 #: Facets whose RAML spelling is not just the camel case of the slot name.
 _SPELLINGS = {'multiple_of': 'multipleOf', 'unique_items': 'uniqueItems', 'file_types': 'fileTypes'}
@@ -90,6 +94,84 @@ class _Level:
         return self.depth > 1 and base.id not in self.seen and _has_structure(base)
 
 
+@dataclass(frozen=True, slots=True)
+class Sources:
+    """Where each trait and resource type was declared, so a merged-in item can
+    name the thing that contributed it.
+
+    A trait's body is merged into the operation before anything is decoded, so
+    a query parameter it supplied ends up on the operation carrying the
+    **trait's** file and line. That is the provenance, and it is free; turning
+    it back into a name needs the span the line falls in.
+
+    The span is exact, not inferred: `key_pos.line` to `value_pos.end_line`,
+    both of which the parser records. An earlier version guessed the end as
+    "until the next declaration in the same file" and mis-attributed a method's
+    own query parameter to the resource type declared above it, because the
+    last declaration in a file has no next one to stop at.
+
+    The narrowest containing span wins, so a nested declaration beats the
+    enclosing one. Attribution is *also* gated on the site having applied the
+    declaration — a confident wrong name is worse than none, and one bound
+    checking the other is cheap.
+    """
+
+    #: file URI -> (start line, end line, name), narrowest first.
+    spans: dict[str, list[tuple[int, int, str]]]
+
+    @classmethod
+    def of(cls, raml: Raml) -> Sources:
+        spans: dict[str, list[tuple[int, int, str]]] = {}
+        for location, fragment in raml.fragments.items():
+            found: list[tuple[int, int, str]] = []
+            for group in ('traits', 'resource_types', 'types', 'annotation_types', 'security_schemes'):
+                for name, declared in (getattr(fragment, group, None) or {}).items():
+                    start, end = getattr(declared, 'key_pos', None), getattr(declared, 'value_pos', None)
+                    if start is not None and start.is_known and end is not None and end.end_line >= start.line:
+                        found.append((start.line, end.end_line, name))
+            if found:
+                spans[location] = sorted(found, key=lambda span: (span[1] - span[0], span[0]))
+        return cls(spans=spans)
+
+    def containing(self, location: str, line: int) -> str | None:
+        """The narrowest declaration whose span covers `line`."""
+        for start, end, name in self.spans.get(location, ()):
+            if start <= line <= end:
+                return name
+        return None
+
+
+def _contributor(base: BaseShape, sources: Sources | None, applied: frozenset[str]) -> str | None:
+    """The trait or resource type that supplied this, when it was not written here.
+
+    Reported **only** when the containing declaration is one this site actually
+    applied. `Sources` already bounds the span exactly, so this is the second of
+    two independent checks rather than the only one — and it is what stops a
+    coincidence inside an unrelated declaration from being reported as a fact.
+    """
+    if sources is None or not applied or not base.key_pos.is_known:
+        return None
+    found = sources.containing(base.location, base.key_pos.line)
+    return found if found in applied else None
+
+
+def _note(base: BaseShape, sources: Sources | None, applied: frozenset[str], root: str) -> str:
+    parts = (_contributor(base, sources, applied), _at(base.location, base.key_pos, root))
+    return ', '.join(part for part in parts if part)
+
+
+def _at(location: str, position: Position, root: str) -> str:
+    if not position.is_known:
+        return ''
+    return f'{location.removeprefix(root) or location}:{position.line}'
+
+
+def _aligned(lines: list[_Line]) -> Iterator[str]:
+    width = max((len(line.text) for line in lines if line.note), default=0)
+    for line in lines:
+        yield f'{line.text:<{width}}  # {line.note}' if line.note else line.text
+
+
 def render(base: BaseShape, *, depth: int = 1, root: str = '') -> Iterator[str]:
     """The declaration as RAML, one line at a time.
 
@@ -105,10 +187,7 @@ def render(base: BaseShape, *, depth: int = 1, root: str = '') -> Iterator[str]:
     is small; the whole point is that a person reads the result.
     """
     level = _Level(depth=depth, root=root, indent='  ', seen=frozenset({base.id}))
-    lines = [_Line(f'{base.name or "<anonymous>"}:', _where(base, root)), *_body(base, level)]
-    width = max((len(line.text) for line in lines if line.note), default=0)
-    for line in lines:
-        yield f'{line.text:<{width}}  # {line.note}' if line.note else line.text
+    yield from _aligned([_Line(f'{base.name or "<anonymous>"}:', _where(base, root)), *_body(base, level)])
 
 
 def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
@@ -253,9 +332,7 @@ def _where(base: BaseShape, root: str) -> str:
     `lib/a/common.raml` and `lib/b/common.raml` is exactly the kind that needs
     this view, and printing `common.raml` for both would point at neither.
     """
-    if not base.key_pos.is_known:
-        return ''
-    return f'{base.location.removeprefix(root) or base.location}:{base.key_pos.line}'
+    return _at(base.location, base.key_pos, root)
 
 
 def _facets(base: BaseShape, indent: str) -> Iterator[_Line]:
@@ -318,3 +395,139 @@ def _number(value: Fraction) -> str:
         digits += 1
     text = str(abs(scaled.numerator)).rjust(digits + 1, '0')
     return f'{"-" if scaled.numerator < 0 else ""}{text[:-digits]}.{text[-digits:]}'
+
+
+# -- endpoints ----------------------------------------------------------------
+
+
+def render_endpoint(
+    endpoint: EndPoint, *, depth: int = 1, root: str = '', sources: Sources | None = None
+) -> Iterator[str]:
+    """One resource as RAML, with everything that reached it already applied.
+
+    The endpoint is the entity that needs this most. It accumulates a resource
+    type, any number of traits, security inherited from the API root, and URI
+    parameters propagated down from every ancestor — none of which is visible at
+    the place it is written. `sources` is what lets a merged-in item name the
+    trait it came from; without it the item still carries a file and a line.
+    """
+    level = _Level(depth=depth, root=root, indent='  ', seen=frozenset())
+    lines = [_Line(f'{endpoint.full_uri}:', _at(endpoint.location, endpoint.key_pos, root))]
+    lines += list(_endpoint_body(endpoint, level, sources))
+    yield from _aligned(lines)
+
+
+def render_operation(
+    operation: Operation, path: str, *, depth: int = 1, root: str = '', sources: Sources | None = None
+) -> Iterator[str]:
+    """One method, under the resource it belongs to."""
+    level = _Level(depth=depth, root=root, indent='  ', seen=frozenset())
+    lines = [_Line(f'{path}:')]
+    lines += list(_operation(operation, level, sources))
+    yield from _aligned(lines)
+
+
+def _endpoint_body(endpoint: EndPoint, level: _Level, sources: Sources | None) -> Iterator[_Line]:
+    applied = _applied(endpoint)
+    if endpoint.resource_type is not None:
+        yield _Line(f'{level.indent}type: {endpoint.resource_type.name}')
+    if endpoint.traits:
+        yield _Line(f'{level.indent}is: [{", ".join(ref.name for ref in endpoint.traits)}]')
+    yield from _secured(endpoint.secured_by, level)
+    # Ancestor-declared parameters come first and are the ones a reader is least
+    # likely to have in mind: they are written on a resource further up the path.
+    yield from _parameters(endpoint.uri_parameters, 'uriParameters', level, sources, applied)
+    for operation in endpoint.operations.values():
+        yield from _operation(operation, level, sources, applied)
+
+
+def _operation(
+    operation: Operation, level: _Level, sources: Sources | None, inherited: frozenset[str] = frozenset()
+) -> Iterator[_Line]:
+    applied = inherited | {ref.name for ref in operation.traits}
+    inner = replace(level, indent=level.indent + '  ')
+    yield _Line(f'{level.indent}{operation.method}:', _at(operation.location, operation.key_pos, level.root))
+    if operation.traits:
+        yield _Line(f'{inner.indent}is: [{", ".join(ref.name for ref in operation.traits)}]')
+    yield from _secured(operation.secured_by, inner)
+
+    request = operation.request
+    if request is not None:
+        yield from _parameters(request.headers, 'headers', inner, sources, applied)
+        yield from _parameters(request.query_parameters, 'queryParameters', inner, sources, applied)
+        if request.query_string is not None:
+            yield _Line(f'{inner.indent}queryString: {_type_name(request.query_string)}')
+        yield from _bodies(request.bodies, inner, sources, applied)
+
+    if operation.responses:
+        yield _Line(f'{inner.indent}responses:')
+        for response in operation.responses.values():
+            code = replace(inner, indent=inner.indent + '  ')
+            yield _Line(f'{code.indent}{response.code}:', _at(response.location, response.key_pos, level.root))
+            body = replace(code, indent=code.indent + '  ')
+            yield from _parameters(response.headers, 'headers', body, sources, applied)
+            yield from _bodies(response.bodies, body, sources, applied)
+
+
+def _bodies(
+    bodies: dict[str, Body], level: _Level, sources: Sources | None, applied: frozenset[str]
+) -> Iterator[_Line]:
+    if not bodies:
+        return
+    inner = replace(level, indent=level.indent + '  ')
+    yield _Line(f'{level.indent}body:')
+    for media, body in bodies.items():
+        if body.shape is None:
+            yield _Line(f'{inner.indent}{_key(media)}: any')
+            continue
+        note = _note(body.shape, sources, applied, level.root)
+        if level.opens(body.shape):
+            yield _Line(f'{inner.indent}{_key(media)}:', note)
+            yield from _body(body.shape, inner.inside(body.shape))
+        else:
+            yield _Line(f'{inner.indent}{_key(media)}: {_type_name(body.shape)}', note)
+
+
+def _parameters(
+    parameters: dict[str, Property], label: str, level: _Level, sources: Sources | None, applied: frozenset[str]
+) -> Iterator[_Line]:
+    if not parameters:
+        return
+    yield _Line(f'{level.indent}{label}:')
+    for name, prop in parameters.items():
+        key = name if prop.required else f'{name}?'
+        yield from _one(key, prop.base, _contributor(prop.base, sources, applied), level)
+
+
+def _secured(schemes: list[SecurityScheme], level: _Level) -> Iterator[_Line]:
+    if not schemes:
+        return
+    rendered = []
+    removed = False
+    for scheme in schemes:
+        if scheme.is_null:
+            # `securedBy: [null]` *removes* inherited security (docs/09 § A3),
+            # and `null` is how RAML spells that — so it round-trips as itself.
+            # The explanation goes in the line's note, never inside the flow
+            # sequence: a `#` there is not a comment, it is a syntax error.
+            rendered.append('null')
+            removed = True
+        elif scheme.compiled_params:
+            rendered.append(f'{scheme.name} ({", ".join(scheme.compiled_params)})')
+        else:
+            rendered.append(scheme.name)
+    yield _Line(
+        f'{level.indent}securedBy: [{", ".join(rendered)}]', 'null removes inherited security' if removed else ''
+    )
+
+
+def _applied(endpoint: EndPoint) -> frozenset[str]:
+    """The declarations in force on this resource, by name.
+
+    What bounds attribution: a merged-in item may only be credited to something
+    this resource or its methods actually applied.
+    """
+    names = {ref.name for ref in endpoint.traits}
+    if endpoint.resource_type is not None:
+        names.add(endpoint.resource_type.name)
+    return frozenset(names)

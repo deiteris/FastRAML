@@ -202,3 +202,132 @@ class TestOutputContract:
         reaching a reader would be this module's defect all the same.
         """
         assert 'multipleOf: 1.1' in shown('Priced')
+
+
+API = """#%RAML 1.0
+title: Store
+securitySchemes:
+  oauth:
+    type: OAuth 2.0
+    settings:
+      authorizationUri: https://e.test/a
+      accessTokenUri: https://e.test/t
+      authorizationGrants: [authorization_code]
+      scopes: [read, write]
+traits:
+  paged:
+    queryParameters:
+      offset?: integer
+    headers:
+      X-Trait: string
+resourceTypes:
+  collection:
+    get:
+      queryParameters:
+        shared?:
+          type: string
+          description: from the resource type
+        fromType?: string
+types:
+  Item:
+    type: object
+    properties:
+      sku: string
+securedBy: [oauth]
+/items:
+  type: collection
+  get:
+    is: [paged]
+    queryParameters:
+      shared?:
+        type: string
+        description: from the method itself
+    responses:
+      200:
+        body:
+          application/json: Item
+/open:
+  get:
+    securedBy: [null]
+    responses:
+      204:
+"""
+
+
+@pytest.fixture
+def endpoint(workspace):
+    from pyraml.graph import build_graph
+    from pyraml.render import Sources, render_endpoint
+
+    root = workspace({'api.raml': API})
+    raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+    graph = build_graph(raml)
+    sources = Sources.of(raml)
+
+    def show(path: str, depth: int = 1) -> str:
+        found = graph.endpoint_at(graph.find(path)[0])
+        assert found is not None, f'{path} is not an endpoint'
+        return '\n'.join(render_endpoint(found, depth=depth, root=graph.root, sources=sources))
+
+    return show
+
+
+class TestTheEndpointView:
+    """The entity that needs this most: a resource accumulates a resource type,
+    traits, inherited security and ancestor URI parameters, none of which is
+    visible where it is written.
+    """
+
+    def test_the_applied_directives_are_named(self, endpoint):
+        text = endpoint('/items')
+        assert 'type: collection' in text
+        assert 'is: [paged]' in text
+
+    def test_everything_merged_in_is_present(self, endpoint):
+        """Four sources, one list: the method, the trait, the resource type."""
+        shown = loaded(endpoint('/items'))['/items']['get']
+        assert set(shown['queryParameters']) == {'shared?', 'fromType?', 'offset?'}
+        assert set(shown['headers']) == {'X-Trait'}
+
+    def test_a_trait_contributed_parameter_names_the_trait(self, endpoint):
+        assert 'paged,' in TestOrigins.notes(endpoint('/items'))['offset?']
+
+    def test_a_resource_type_contributed_parameter_names_it(self, endpoint):
+        assert 'collection,' in TestOrigins.notes(endpoint('/items'))['fromType?']
+
+    def test_a_parameter_the_method_won_is_not_attributed_elsewhere(self, endpoint):
+        """`shared?` is declared by the resource type *and* by the method, and
+        the method wins. Naming the resource type here would answer the reader's
+        actual question — which description applies — wrongly.
+
+        An earlier version did exactly that, because it guessed a declaration's
+        span as "until the next one" and the last declaration in a file has no
+        next one.
+        """
+        text = endpoint('/items')
+        assert loaded(text)['/items']['get']['queryParameters']['shared?']['description'] == 'from the method itself'
+        assert 'collection' not in TestOrigins.notes(text)['shared?']
+
+    def test_inherited_security_is_shown_where_it_applies(self, endpoint):
+        assert 'securedBy: [oauth]' in endpoint('/items')
+
+    def test_securedby_null_round_trips_as_null(self, endpoint):
+        """It *removes* inherited security (docs/09 § A3), and `null` is how
+        RAML spells that. An explanatory `#` inside the flow sequence is not a
+        comment, it is a syntax error — seven corpus fixtures caught that.
+        """
+        text = endpoint('/open')
+        assert loaded(text)['/open']['get']['securedBy'] == [None]
+
+    def test_a_response_body_names_its_type(self, endpoint):
+        body = loaded(endpoint('/items'))['/items']['get']['responses'][200]['body']
+        assert body == {'application/json': 'Item'}
+
+    def test_depth_opens_the_body_type(self, endpoint):
+        body = loaded(endpoint('/items', depth=2))['/items']['get']['responses'][200]['body']
+        assert set(body['application/json']['properties']) == {'sku'}
+
+    @pytest.mark.parametrize('path', ['/items', '/open'])
+    @pytest.mark.parametrize('depth', [1, 3])
+    def test_it_is_valid_yaml(self, endpoint, path, depth):
+        assert loaded(endpoint(path, depth=depth)) is not None

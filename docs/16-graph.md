@@ -552,7 +552,50 @@ when three of them mention it — is still not available; the parser knows at
 merge time and does not retain it (After-v1 item 4 in
 [15](15-implementation-plan.md)).
 
-### 9.4 Depth
+### 9.4 Endpoints, not only types
+
+An endpoint is the entity that needs this most. It accumulates a resource type,
+any number of traits, security inherited from the API root, and URI parameters
+propagated down from every ancestor — and none of that is visible at the place
+it is written.
+
+```
+/items:                    # api.raml:27
+  type: collection
+  get:                     # api.raml:29
+    is: [first, second]
+    headers:
+      X-Trait: string      # first, api.raml:12
+    queryParameters:
+      shared?:             # api.raml:32
+        type: string
+        description: from the method itself
+      fromType?: string    # collection, api.raml:26
+      onlyFirst?: string   # first, api.raml:10
+      onlySecond?: string  # second, api.raml:18
+```
+
+That is the four trait priority classes of [08](08-templates-and-endpoints.md),
+resolved and attributed, in one screen.
+
+**`shared?` carries no attribution, and that is the interesting one.** The
+resource type and the method both declare it, and the method wins; naming
+`collection` there would answer the reader's actual question — which description
+applies — with the wrong one.
+
+Getting that right needs an exact span. `Sources` maps a merged-in item's line
+back to a declaration using `key_pos.line` to `value_pos.end_line`, both of
+which the parser records. An earlier version guessed the end as "until the next
+declaration in the same file"; the last declaration in a file has no next one,
+so its span ran to the bottom of the document and swallowed every endpoint below
+it. Attribution is *also* gated on the site having applied the declaration, so
+two independent checks have to agree before a name is printed.
+
+Per-facet provenance is still out of reach (§ 9.3), and the same caution applies
+here: this says which declaration a key was written in, not which one supplied
+the value that won a merge.
+
+### 9.5 Depth
 
 `--depth` counts levels of *expansion*. The default of 1 shows the type's own
 effective properties and names their types rather than opening them, because a

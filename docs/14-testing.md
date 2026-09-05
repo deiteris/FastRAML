@@ -307,6 +307,15 @@ The laws. Section 4.1 records where each is checked and over what input —
     dangling edge, or merging two types into one node. Each was found by the
     check that names it, and the last was found because go-raml's converter
     carries the same regression net.
+13. **Every type and every endpoint has an effective view** — `render` raises on
+    nothing the corpus declares, and its output **loads as YAML**
+    ([16](16-graph.md) § 9). The second half is the one that rots quietly: a
+    renderer that emits a key it forgot to quote produces something that looks
+    right and will not parse. It has caught two, both of which the unit fixtures
+    missed — `//:`, the spec's way to constrain every additional property, whose
+    pattern is empty and so whose key was empty; and an explanatory `#` written
+    inside a `securedBy` flow sequence, where it is a syntax error rather than a
+    comment.
 
 ### 4.1 Where each law lives, and why
 
@@ -372,7 +381,7 @@ than measurements:
 | File | Gate | When |
 |------|------|------|
 | `tests/unit/test_graph.py` | the graph projection: IRI stability, the edges that answer the questions it exists for, and both RDF serialisations **checked by a real RDF parser** ([16](16-graph.md)) | always; the RDF cases skip without `pyoxigraph` |
-| `tests/unit/test_render.py` | the effective view: inherited properties present, each attributed to the right declaration, output loadable as YAML ([16](16-graph.md) § 9) | always |
+| `tests/unit/test_render.py` | the effective view of a type and of an endpoint: everything merged in is present, each item attributed to the declaration that really supplied it, output loadable as YAML ([16](16-graph.md) § 9) | always |
 | `tests/unit/test_queries.py` | every catalogue query is valid SPARQL, **returns rows on a fixture written to trigger all of them**, and answers the right question ([16](16-graph.md) § 6) | always; skips without `pyoxigraph` |
 | `tests/bench/test_corpus.py` | every generated corpus is valid RAML in **all four** configurations, generation is deterministic, and `bench_large`'s diamond really does reach one `common.raml` | always; tiny scale, milliseconds |
 | `tests/bench/test_linearity.py` | `bench_large` within 15 % of linear against a half-size corpus | `PYRAML_BENCH=1` only |

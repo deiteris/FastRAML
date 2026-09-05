@@ -78,7 +78,7 @@ pyraml/
   cli.py                  the `pyraml` console script (doc 13 section 8)
   graph.py                the effective model as a queryable graph (doc 16)
   queries.py              the named SPARQL analysis catalogue (doc 16 section 6)
-  render.py               the effective view of one type, as RAML (doc 16 section 9)
+  render.py               the effective view of a type or endpoint, as RAML (doc 16 section 9)
   py.typed
 
   errors.py               Diagnostic, StackTrace, Accumulator, ErrorKind

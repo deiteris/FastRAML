@@ -218,9 +218,10 @@ def _report(raml: Raml, elapsed: float, *, path: str | None = None) -> None:
 
 
 def _graph(args: argparse.Namespace) -> int:
-    graph = _built(args)
-    if graph is None:
+    built = _built(args)
+    if built is None:
         return EXIT_INVALID
+    graph, _ = built
     if args.format == 'json':
         import json  # noqa: PLC0415 - only JSON output needs the encoder
 
@@ -239,21 +240,31 @@ def _show_type(args: argparse.Namespace) -> int:
     turns `NAME` into one declaration. The projection drops facet detail on
     purpose, so rendering from it would show a lossy copy (docs/16 § 9).
     """
-    from pyraml.render import render  # noqa: PLC0415 - graph commands only
+    from pyraml.render import Sources, render, render_endpoint, render_operation  # noqa: PLC0415 - graph commands only
 
-    graph = _built(args)
-    if graph is None:
+    built = _built(args)
+    if built is None:
         return EXIT_INVALID
+    graph, raml = built
     iri = _resolve(graph, args.name)
     if iri is None:
         return EXIT_INVALID
-    shape = graph.shape_at(iri)
-    if shape is None:
-        # A trait, a security scheme, an endpoint: real nodes with no type
-        # behind them. Saying which it is beats "not found", which is false.
-        print(f'{args.name}: {graph.kind_of(iri)} is not a type; try `pyraml refs`', file=sys.stderr)
+
+    depth, root = max(1, args.depth), graph.root
+    endpoint, operation, shape = graph.endpoint_at(iri), graph.operation_at(iri), graph.shape_at(iri)
+    if endpoint is not None:
+        lines = render_endpoint(endpoint, depth=depth, root=root, sources=Sources.of(raml))
+    elif operation is not None:
+        path = str(graph.nodes[iri].attributes.get('path') or '')
+        lines = render_operation(operation, path, depth=depth, root=root, sources=Sources.of(raml))
+    elif shape is not None:
+        lines = render(shape, depth=depth, root=root)
+    else:
+        # A trait, a security scheme, a payload: real nodes with nothing of
+        # their own to show. Naming the kind beats "not found", which is false.
+        print(f'{args.name}: nothing to show for a {graph.kind_of(iri)}; try `pyraml refs`', file=sys.stderr)
         return EXIT_INVALID
-    for line in render(shape, depth=max(1, args.depth), root=graph.root):
+    for line in lines:
         print(line)
     return EXIT_OK
 
@@ -266,9 +277,10 @@ def _walk(args: argparse.Namespace) -> int:
     """
     from pyraml.graph import TYPE_EDGES, USE_EDGES  # noqa: PLC0415 - graph commands only
 
-    graph = _built(args)
-    if graph is None:
+    built = _built(args)
+    if built is None:
         return EXIT_INVALID
+    graph, _ = built
     origin = _resolve(graph, args.name)
     if origin is None:
         return EXIT_INVALID
@@ -314,8 +326,8 @@ def _query(args: argparse.Namespace) -> int:
     if not args.files:
         print('query needs a FILE', file=sys.stderr)
         return EXIT_INVALID
-    graph = _built(args)
-    return EXIT_INVALID if graph is None else _run_sparql(graph, text, json_lines=args.json)
+    built = _built(args)
+    return EXIT_INVALID if built is None else _run_sparql(built[0], text, json_lines=args.json)
 
 
 def _run_sparql(graph: Graph, text: str, *, json_lines: bool) -> int:
@@ -364,8 +376,12 @@ def _run_sparql(graph: Graph, text: str, *, json_lines: bool) -> int:
     return EXIT_OK
 
 
-def _built(args: argparse.Namespace) -> Graph | None:
+def _built(args: argparse.Namespace) -> tuple[Graph, Raml] | None:
     """Parse and project, or report why not.
+
+    Returns the model as well as the graph. The graph answers "which entity did
+    you mean"; several verbs then need the model to say anything detailed about
+    it, and re-parsing to get it back would be absurd.
 
     `validate` is off here and on for `validate`/`info`: a document with a bad
     example still has a graph worth reading, and refusing to draw one would make
@@ -382,7 +398,7 @@ def _built(args: argparse.Namespace) -> Graph | None:
         print(f'{path}: invalid', file=sys.stderr)
         print(err, file=sys.stderr)
         return None
-    return build_graph(raml)
+    return build_graph(raml), raml
 
 
 def _resolve(graph: Graph, name: str) -> str | None:

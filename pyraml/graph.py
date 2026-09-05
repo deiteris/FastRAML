@@ -28,6 +28,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import quote
 
+from pyraml.parser.endpoints import EndPoint, Operation
 from pyraml.parser.fragments import APIFragment, Library
 from pyraml.types.base import ScalarFacet
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
 
     from pyraml.parser.annotations import DomainExtension
     from pyraml.parser.directives import DirectiveRef, SecurityScheme
-    from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
+    from pyraml.parser.endpoints import Body, Request, Response
     from pyraml.parser.fragments import Fragment
     from pyraml.positions import Position
     from pyraml.registry import Raml
@@ -201,15 +202,17 @@ class Graph:
     most of what a navigation question turns out to be.
     """
 
-    __slots__ = ('_incoming', '_outgoing', '_shapes', 'base', 'edges', 'nodes', 'root')
+    __slots__ = ('_entities', '_incoming', '_outgoing', '_shapes', 'base', 'edges', 'nodes', 'root')
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - five independent indices, all built by one walk
         self,
         base: str,
         nodes: dict[str, GraphNode],
         edges: list[Edge],
+        *,
         shapes: dict[str, BaseShape] | None = None,
         root: str = '',
+        entities: dict[str, EndPoint | Operation] | None = None,
     ) -> None:
         self.base = base
         #: The entry document's directory URI. What the IRIs above are
@@ -223,6 +226,11 @@ class Graph:
         #: Navigation finds a node here and then asks the model the detailed
         #: question, which is the split docs/16 § 5 describes.
         self._shapes = shapes or {}
+        #: The same way back for the entities that are not types. An endpoint
+        #: is the entity a reader most needs resolved — it accumulates a
+        #: resource type, traits, security and ancestor URI parameters — and
+        #: none of that is a `BaseShape` (docs/16 § 9.5).
+        self._entities: dict[str, EndPoint | Operation] = entities or {}
         self._outgoing: dict[str, list[Edge]] = {}
         self._incoming: dict[str, list[Edge]] = {}
         for edge in edges:
@@ -243,6 +251,16 @@ class Graph:
         """Edges arriving at `iri`. The half a tree walk cannot give you."""
         edges = self._incoming.get(iri, [])
         return edges if predicates is None else [e for e in edges if e.predicate in predicates]
+
+    def endpoint_at(self, iri: str) -> EndPoint | None:
+        """The resource behind a node, or `None`. See `shape_at`."""
+        found = self._entities.get(iri)
+        return found if isinstance(found, EndPoint) else None
+
+    def operation_at(self, iri: str) -> Operation | None:
+        """The method behind a node, or `None`. See `shape_at`."""
+        found = self._entities.get(iri)
+        return found if isinstance(found, Operation) else None
 
     def shape_at(self, iri: str) -> BaseShape | None:
         """The declaration behind a node, or `None` for a node that is not a type.
@@ -464,7 +482,14 @@ def build_graph(raml: Raml, *, base: str = DEFAULT_BASE) -> Graph:
     """Project a parsed model. Use `ParseOptions(unwrap=True)` — see the module docstring."""
     builder = _Builder(raml, base)
     builder.run()
-    return Graph(base, builder.nodes, builder.edges, builder.shapes, builder.root)
+    return Graph(
+        base,
+        builder.nodes,
+        builder.edges,
+        shapes=builder.shapes,
+        root=builder.root,
+        entities=builder.entities,
+    )
 
 
 class _Builder:
@@ -475,7 +500,19 @@ class _Builder:
     for exactly this reason (`converter/jsonld.go`, `preRegisterTypes`).
     """
 
-    __slots__ = ('_segments', 'base', 'claimed', 'edges', 'emitted', 'nodes', 'raml', 'root', 'shape_iris', 'shapes')
+    __slots__ = (
+        '_segments',
+        'base',
+        'claimed',
+        'edges',
+        'emitted',
+        'entities',
+        'nodes',
+        'raml',
+        'root',
+        'shape_iris',
+        'shapes',
+    )
 
     def __init__(self, raml: Raml, base: str) -> None:
         self.raml = raml
@@ -485,6 +522,7 @@ class _Builder:
         self.shape_iris: dict[int, str] = {}
         #: The inverse of `shape_iris`, by IRI, for `Graph.shape_at`.
         self.shapes: dict[str, BaseShape] = {}
+        self.entities: dict[str, EndPoint | Operation] = {}
         #: IRI → the `BaseShape.id` holding it. Two shapes given the same
         #: structural name would otherwise merge into one node in silence; see
         #: `claim`.
@@ -642,6 +680,7 @@ class _Builder:
             description=_text(endpoint.description),
         )
         self.positioned(iri, endpoint.location, endpoint.key_pos)
+        self.entities[iri] = endpoint
         self.edge(api, 'endpoint', iri)
 
         parent = endpoint.full_uri[: -len(endpoint.uri)] if endpoint.uri and endpoint.full_uri != endpoint.uri else ''
@@ -703,6 +742,7 @@ class _Builder:
             description=_text(operation.description),
         )
         self.positioned(iri, operation.location, operation.key_pos)
+        self.entities[iri] = operation
         self.edge(endpoint, 'supportedOperation', iri)
         for trait in operation.traits:
             self.applies(iri, 'appliesTrait', 'traits', trait, operation.location)

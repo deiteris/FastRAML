@@ -235,7 +235,8 @@ because they encode decisions rather than behaviour:
 
 ## 4. Property-based tests
 
-`hypothesis`, over a small generator of RAML documents. The laws:
+The laws. Section 4.1 records where each is checked and over what input —
+`hypothesis` for some, the TCK corpus for others.
 
 1. **Idempotence** — `unwrap(unwrap(x)) == unwrap(x)`.
 2. **Merge identity** — `merge(t, None) is t` and `merge(None, s) is s`.
@@ -248,7 +249,6 @@ because they encode decisions rather than behaviour:
    of the inputs' own objects, because a copied one would silently drop its
    provenance mark and the merge would still look correct.
 
-Laws 2 to 4 are implemented in `tests/property/test_merge_laws.py`.
 5. **Order preservation** — declaration order of properties, types, endpoints,
    methods and responses round-trips.
 6. **Cache soundness** — parsing with a counting loader reads each file exactly
@@ -262,6 +262,54 @@ Laws 2 to 4 are implemented in `tests/property/test_merge_laws.py`.
    projections.
 10. **No `RecursionError`** — generated nesting up to `max_depth + 50`
     produces a positioned diagnostic, never a `RecursionError`.
+11. **The two validation paths agree** — `validate=True` with and without
+    `unwrap=True` reaches the same verdict on the same document. Not in the
+    original list; added in Phase 9 because it is the only check that compares
+    the private-copy path of docs/13 § 2 against the real one. Every other test
+    picks a configuration and stays in it, so a copy that had diverged would be
+    invisible — each configuration agreeing with itself.
+
+### 4.1 Where each law lives, and why
+
+| Laws | Where | Input |
+|------|-------|-------|
+| 2–4, node identity | `tests/property/test_merge_laws.py` | hypothesis |
+| 1, 7 | `tests/unit/test_unwrap.py`, `tests/unit/test_validate.py` | hypothesis over a table of declarations |
+| 10 | `tests/unit/test_depth_guard.py` | constructed, one case per guard |
+| 5, 6, 8, 9, 11 | `tests/tck/test_properties.py` | **the corpus** |
+
+The last row is a deliberate substitution for the hypothesis generator this
+section originally called for. A generator writes the documents someone thought
+to describe; the corpus holds the ones people actually wrote, including the
+awkward ones nobody would think to generate. For a law that is a *comparison* —
+parse it twice, parse it two ways — the corpus is both stronger and cheaper.
+Laws needing input nobody wrote down, like the merge algebra, still need a
+generator.
+
+Laws 6 and 8 are checked in the form that fails **silently**, which is not the
+form the sentence above suggests:
+
+- Law 6 as **canonicalisation** — no file reachable under two URIs. A cache miss
+  from `./a/../b.raml` not matching `b.raml` decodes the file twice and gives one
+  declaration two shape identities; the parse still succeeds, and the model is
+  quietly wrong. The counting loader in `test_includes.py` covers the other half.
+- Law 8 as **positions inside their own file**. Every other test asserts on a
+  diagnostic's message, so a position that is merely plausible — 1-based, wrong
+  line — is invisible to all of them.
+
+### 4.2 These are checked against mutation
+
+A corpus test asserting "no offenders" passes just as quietly when the loop
+iterates nothing or the comparison can never be non-empty.
+`TestTheseChecksSeeSomething` pins that the fixtures are populated, that both
+verdicts occur, and that law 11's one permitted difference is a live branch
+rather than dead code.
+
+Beyond that, each was confirmed to go **red** under a mutation of the parser
+that breaks the property it watches — a position shifted past end of file, the
+declaration order reversed, an ordering made to vary per parse, and the
+validation copy stripped of its `inherits`. A green suite is evidence only if it
+can go red.
 
 ## 5. Benchmarks
 

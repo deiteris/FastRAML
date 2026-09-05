@@ -41,7 +41,12 @@ if TYPE_CHECKING:
 BASELINE_PATH = Path(__file__).parent / 'baselines.json'
 
 #: The four configurations docs/12 Part 4 requires of every bench.
-CONFIGS: tuple[str, ...] = ('parse', 'unwrap', 'validate', 'unwrap+validate')
+#: `unwrap+graph` measures the whole consumer path: parse, unwrap, then project
+#: (docs/16). It is here rather than left to an ad-hoc script because a number
+#: worth publishing is a number the harness produced — two benches sharing one
+#: interpreter inflated the projection's cost by more than 2x, which is exactly
+#: what the fresh subprocess exists to prevent.
+CONFIGS: tuple[str, ...] = ('parse', 'unwrap', 'validate', 'unwrap+validate', 'unwrap+graph')
 
 #: docs/14 section 5. Generous on purpose: the gate is for a change that made
 #: something an order of magnitude slower, not for a noisy machine.
@@ -98,6 +103,10 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     from pyraml import ParseOptions, parse_from_path  # noqa: PLC0415 - see module docstring
 
     options = ParseOptions(unwrap='unwrap' in config, validate='validate' in config)
+    if 'graph' in config:
+        from pyraml.graph import build_graph  # noqa: PLC0415 - as above
+
+        return measure(bench, config, lambda: build_graph(parse_from_path(entry, options)), repeat=repeat)
     return measure(bench, config, lambda: parse_from_path(entry, options), repeat=repeat)
 
 
@@ -156,12 +165,28 @@ def _key(result: Measurement) -> str:
 
 
 def write_baseline(results: Sequence[Measurement]) -> None:
-    document = {
-        'fingerprint': fingerprint(),
-        'measurements': {_key(result): result.as_dict() for result in results},
-    }
+    """Record the measurements, **merging** into what is already there.
+
+    Merging rather than replacing, because `baseline --bench small` otherwise
+    silently deletes the other four benches' rows: the driver only ever passes
+    what it just ran. Replacing is right only when the whole suite ran, and the
+    function cannot tell whether it did.
+
+    A fingerprint change *does* replace. Rows recorded on another interpreter or
+    platform are not comparable and keeping them would let `compare` mix them.
+    """
+    current = fingerprint()
+    kept: dict[str, object] = {}
+    if BASELINE_PATH.exists():
+        document = json.loads(BASELINE_PATH.read_text(encoding='utf-8'))
+        if document.get('fingerprint') == current:
+            kept = document.get('measurements', {})
+        else:
+            print('fingerprint changed; the previous baseline is discarded rather than merged')
+    measurements = {**kept, **{_key(result): result.as_dict() for result in results}}
+    document = {'fingerprint': current, 'measurements': measurements}
     BASELINE_PATH.write_text(json.dumps(document, indent=2, sort_keys=True) + '\n', encoding='utf-8')
-    print(f'wrote {BASELINE_PATH}')
+    print(f'wrote {BASELINE_PATH}: {len(results)} recorded, {len(measurements)} total')
 
 
 def compare(results: Sequence[Measurement], tolerance: float) -> int:

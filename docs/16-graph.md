@@ -330,43 +330,51 @@ Where SPARQL clearly wins:
   under a `COUNT(DISTINCT)` and a `GROUP BY`. This is the case with no tidy
   imperative equivalent, and it is the most useful query in the list.
 
-Where it does not win: everything already covered by `refs`/`deps`, plus the
-cases where the query is a flat filter — `required-query-parameters` is no
-shorter than a loop, and the loop is readable by more people.
+SPARQL wins nothing on two kinds of question: anything `refs` and `deps` already
+answer, and flat filters. `required-query-parameters` is no shorter than a loop,
+and more people can read the loop.
 
-### 6.2 What writing them exposed
+### 6.2 Three queries were wrong, and still returned rows
 
-Three of the seventeen were wrong on first run, in the way that returns rows and
-looks fine.
+`multiple-inheritance`, `unbounded-strings` and `type-fan-in` each matched every
+`Type` node instead of every *declared* type.
 
-`multiple-inheritance`, `unbounded-strings` and `type-fan-in` all matched every
-`Type` node rather than every *declared* type. Since a response body that
-resolves to `Admin` carries `Admin`'s parents, the un-restricted form reported
-one row per **use** of a problem instead of one row per problem — and labelled
-most of them `application/json`, which names nothing an author can go and fix.
-`GROUP BY ?name` then merged the declaration with its uses. All three are now
-anchored on `?u raml:declares ?t` and grouped by the node.
+A response body that resolves to `Admin` carries `Admin`'s parents. The
+unrestricted queries therefore returned one row per **use** of a problem instead
+of one row per problem, and labelled most of those rows `application/json`,
+which names nothing an author can go and fix. `GROUP BY ?name` then merged each
+declaration with its uses. All three now match on `?u raml:declares ?t` and
+group by the node.
 
-This is the argument for a catalogue rather than a section of example queries:
-the wrong version of each ran, returned output, and would have been copied.
+Each wrong version ran, returned plausible output, and would have been copied.
+That is the argument for a tested catalogue over a section of example queries.
 
 ### 6.3 Cost at scale
 
-Every query against `bench_large` (7000 types, 268 951 triples) and
-`bench_endpoints` (2000 endpoints, 239 547 triples), on the machine of § 8:
+Read these figures as orders of magnitude, not as measurements of a real API.
+Neither benchmark corpus exercises the whole catalogue: `bench_large` declares
+7000 types and no endpoints, and `bench_endpoints` declares 2000 endpoints over
+a handful of types. Most queries therefore match nothing on a given corpus, and
+a query that matches nothing returns in microseconds. The table below counts
+only the queries that match, because averaging in the others would report the
+corpus's shape as if it were the query's speed.
+
+Each corpus ran in its own process. Each timing is the fastest of five runs
+after a warm-up.
 
 | | `bench_endpoints` | `bench_large` |
 |---|---|---|
-| slowest query | `type-fan-in`, 30 ms | `type-fan-in`, 101 ms |
-| median query | 8 ms | 0.1 ms |
-| loading the store | 397 ms | 445 ms |
+| triples | 239 547 | 268 951 |
+| queries that match anything | 8 of 17 | 3 of 17 |
+| slowest | `type-fan-in`, 28 ms | `unbounded-strings`, 72 ms |
+| median of those | 7 ms | 42 ms |
+| serialising to N-Triples | 153 ms | 161 ms |
+| **loading the store** | **410 ms** | **440 ms** |
 
-**The store load dominates every query, by a factor of four at worst.** That is
-the number that matters for how this gets used: `pyraml query` reloads per
-invocation, so a session asking several questions should hold one store rather
-than shell out repeatedly. The queries themselves are not the cost, and the one
-that is slowest — transitive closure plus aggregation — is precisely the one
-hardest to replace with code.
+**Loading the store costs about six times the slowest query.** That decides how
+the tool should be used. `pyraml query` builds and loads the graph on every
+invocation, so a session that asks several questions should hold one store
+rather than run the command repeatedly. The queries themselves are not the cost.
 
 ## 7. AMF was assessed and not adopted
 
@@ -413,20 +421,43 @@ is a consumer's rule set, not a parser's.
 
 ## 8. Cost
 
-On `bench_large` (7000 types, 150 libraries):
+`bench_large`, 7000 types over 150 libraries. Both columns come from one
+`bench run` invocation, because a difference taken across two sessions measures
+the sessions as much as the code:
 
-| | |
-|---|---|
-| parse + unwrap | ~945 ms |
-| projection | ~237 ms |
-| nodes / edges | 41 359 / 61 307 |
-| N-Triples | 268 951 statements, ~144 ms to serialise |
+| | parse + unwrap | + projection | the projection's share |
+|---|---|---|---|
+| time | 365 ms | 590 ms | **+225 ms, ~62 %** |
+| allocated | 30.3 MB | 60.5 MB | **+30 MB, ~100 %** |
+| peak RSS | 100 MB | 172 MB | **+72 MB, ~72 %** |
 
-The projection is roughly a quarter of the parse it follows, which is the right
-order for a single walk over a model already in memory. It is **not** benchmarked
-in `bench/` and not a CI gate: it is not on the parse hot path, and docs/12 Part 4
-gates what the parser costs, not what a consumer of it costs.
+The graph holds 41 359 nodes and 61 307 edges. Serialising it produces 268 951
+N-Triples statements in 161 ms.
 
-A quarter of a million triples is also the honest argument for `pyoxigraph` over
-`rdflib` when the document set is large, and for reading the `Graph` directly
-when the question is a walk rather than a join.
+**The projection costs about two thirds of the parse and doubles the
+allocation.** That is more than a single walk over an in-memory model should
+need. The graph is a second materialised representation of the document, about
+the size of the model it was built from, and this section says so rather than
+calling it cheap. Code that needs one question answered should call `Graph`
+methods on a document it has already parsed, not add the projection to a hot
+path.
+
+A quarter of a million triples is also the argument for `pyoxigraph` over
+`rdflib` on a large document set, and for reading the `Graph` directly when the
+question is a walk rather than a join.
+
+### 8.1 How these figures are measured, and why that matters
+
+The projection is the `unwrap+graph` benchmark configuration
+([12](12-performance.md) Part 4). It is not a CI gate, because the projection is
+a consumer rather than a pass. Its figures still come from the harness, which
+runs each measurement in a fresh subprocess and takes the fastest of several
+runs.
+
+That is not a formality. The first version of this section reported the parse at
+945 ms and the projection at "roughly a quarter" of it. Both figures came from a
+script that ran two benchmarks in one interpreter while a 240 000-triple RDF
+store stayed in memory. The parse figure was inflated by 2.5x, and the ratio was
+wrong by a factor of nearly three: the projection costs two thirds of the parse,
+not a quarter. `bench/harness.py` uses a fresh subprocess to prevent exactly
+this, and its docstring says so.

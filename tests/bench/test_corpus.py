@@ -9,6 +9,8 @@ the two configurations that matter for P10 were measuring an exception.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from bench import corpus
@@ -60,3 +62,55 @@ def test_large_reaches_common_by_two_spellings(tmp_path):
     raml = parse_from_path(entry)
     common = [uri for uri in raml.fragments if uri.endswith('/common.raml')]
     assert len(common) == 1
+
+
+class TestBaselinesMerge:
+    """`baseline --bench small` must not delete the other four benches' rows.
+
+    `write_baseline` is only ever handed what the driver just ran, so replacing
+    the file wholesale silently discards every row the current invocation did
+    not measure — and the loss is invisible until `compare` reports "new, no
+    baseline" for something that had one.
+    """
+
+    @staticmethod
+    def written(tmp_path, monkeypatch, results):
+        from bench import __main__ as driver
+
+        monkeypatch.setattr(driver, 'BASELINE_PATH', tmp_path / 'baselines.json')
+        driver.write_baseline(results)
+        return json.loads((tmp_path / 'baselines.json').read_text(encoding='utf-8'))
+
+    @staticmethod
+    def measurement(bench, config, seconds=1.0):
+        from bench.harness import Measurement
+
+        return Measurement(bench=bench, config=config, seconds=seconds, allocated_bytes=1, max_rss_bytes=2)
+
+    def test_a_partial_run_keeps_the_rows_it_did_not_measure(self, tmp_path, monkeypatch):
+        first = self.written(tmp_path, monkeypatch, [self.measurement('large', 'parse')])
+        assert set(first['measurements']) == {'large/parse'}
+
+        second = self.written(tmp_path, monkeypatch, [self.measurement('small', 'unwrap')])
+        assert set(second['measurements']) == {'large/parse', 'small/unwrap'}
+
+    def test_a_rerun_of_the_same_key_replaces_it(self, tmp_path, monkeypatch):
+        self.written(tmp_path, monkeypatch, [self.measurement('large', 'parse', seconds=1.0)])
+        again = self.written(tmp_path, monkeypatch, [self.measurement('large', 'parse', seconds=2.0)])
+        assert again['measurements']['large/parse']['seconds'] == 2.0
+
+    def test_a_fingerprint_change_discards_rather_than_merges(self, tmp_path, monkeypatch, capsys):
+        """Rows from another interpreter are not comparable; keeping them would
+        let `compare` mix two machines in one report.
+        """
+        from bench import __main__ as driver
+
+        path = tmp_path / 'baselines.json'
+        monkeypatch.setattr(driver, 'BASELINE_PATH', path)
+        path.write_text(
+            json.dumps({'fingerprint': 'some other machine', 'measurements': {'large/parse': {}}}),
+            encoding='utf-8',
+        )
+        driver.write_baseline([self.measurement('small', 'parse')])
+        assert set(json.loads(path.read_text(encoding='utf-8'))['measurements']) == {'small/parse'}
+        assert 'discarded' in capsys.readouterr().out

@@ -386,9 +386,19 @@ None of the above is worth anything unmeasured.
 | `bench_validate` | 1000 types each with a 50-key example | P10 |
 | `bench_jsonschema` | 200 schemas sharing 20 `$ref` targets | the shared registry |
 
-Each runs in four configurations (`parse only`, `+unwrap`, `+validate`,
-`+unwrap+validate`) and records wall time and peak RSS
+Each runs in five configurations (`parse`, `unwrap`, `validate`,
+`unwrap+validate`, `unwrap+graph`) and records wall time and peak RSS
 (`tracemalloc` for allocation counts, `resource`/`psutil` for RSS).
+
+`unwrap+graph` measures the graph projection of [16](16-graph.md) on top of the
+parse. Subtract `unwrap` from it to get the projection's own cost.
+
+It is not a gate: the projection is a consumer rather than a pass, and no CI job
+fails on it. It belongs in the harness anyway, because a number worth publishing
+is a number the harness produced. The projection's cost was first reported from
+a script that ran two benchmarks in one interpreter. That inflated the parse it
+was compared against by 2.5x, and made the projection look like a quarter of the
+parse when it is about two thirds.
 
 Built in Phase 9 as the `bench/` package. `corpus.py` generates, `harness.py`
 measures, `__main__.py` drives:

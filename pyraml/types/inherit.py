@@ -471,6 +471,13 @@ def _narrow_json(target: BaseShape, mine: Any, theirs: Any) -> None:
         )
     mine.raw = theirs.raw
     mine.validator = theirs.validator
+    # And the compiled schema. Carrying `raw` and `validator` without it left
+    # `as_shape()` returning None on every *declared* schema type once P9 had
+    # run — the § 6.3 projection unreachable at exactly the shape a consumer
+    # holds, because the compiled form lives only on the shape the `!include`
+    # produced. Assigned through the slot name the kind declares, since this
+    # module must not import `JsonShape` (docs/02 § 3).
+    mine._compiled = theirs._compiled  # noqa: SLF001 - one kind's field, set by name to avoid the import
 
 
 #: Kind to its narrowing rule. A kind absent from the table constrains nothing

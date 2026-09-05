@@ -576,6 +576,25 @@ emits a key it forgot to quote produces something that looks right and will not
 load. Three fixtures do exactly that: `//:`, the spec's way to constrain every
 additional property, has an empty pattern and so an empty key.
 
+**The shape is written by hand; every value is emitted by PyYAML.** The split is
+the point. An emitter cannot produce comments, and the aligned `# origin` column
+is the whole reason this view beats the source it came from — so the document
+structure is assembled here. Deciding when a *scalar* needs quoting is a
+different job, it is not a short rule, and this module has no business owning
+one.
+
+It did own one, briefly: a denylist of `': '`, `' #'` and a few leading
+characters. That was right about punctuation and silently wrong about every
+string that merely *reads* as another type — `yes`, `null` and `1.0` all emitted
+bare and loaded back as a bool, a null and a float. The same hole existed on the
+key side, where a property named `yes` became the key `True`. Both are gone:
+`_dumped()` hands the value to `yaml.safe_dump` and takes the scalar back.
+
+Only strings take that path. A `Fraction` is still expanded by hand, because
+numbers never pass through `float` here (docs/10 § 5.2); and routing an `int`
+through the string path once turned `maxLength: 36` into the string `"36"`,
+which PyYAML then quoted to preserve — correctly, and uselessly.
+
 ### 9.3 Where a property came from
 
 Each property is attributed to the **furthest** ancestor that declares it at the
@@ -647,6 +666,30 @@ expands into far more than fits on a screen.
 Depth alone does not open a scalar: `level:` followed by `type: integer` is two
 lines saying what one line said. Only something with structure is opened, and a
 type cycle stops at its first re-entry however deep the walk was asked to go.
+
+### 9.6 A JSON-schema type opens like any other
+
+Through `JsonShape.as_shape()` — the § 6.3 projection of
+[10](10-validation.md), built "for consumers that want a uniform model", and
+this is one. `_projected()` substitutes it for structure *and* for facets, so a
+schema type shows its properties, its `required` flags and its bounds instead of
+a bare name.
+
+Without it `_has_structure` tested for object, array and union and fell through
+to `False` for every `JsonShape`, so `--depth` could never open one. On a
+schema-heavy document — where that is *every* type — the flag did nothing at all
+and `show` printed `errorScheme` however deep it was asked to go.
+
+Rendering only. The projection is a view: not in `Raml.shapes`, carrying no
+positions, and never fed back into a pass, which `as_shape`'s own docstring names
+as the failure mode to avoid. So a property inside a schema gets no `file:line`
+note — there is no RAML declaration to point at.
+
+One defect was underneath, found only by making the path reachable:
+**`_narrow_json` dropped the compiled schema.** It carried `raw` and `validator`
+into the subtype and not `_compiled`, which is what `as_shape()` reads — so the
+projection returned `None` on every *declared* schema type once P9 had run, which
+is exactly the shape a consumer holds. Fixed in `types/inherit.py`.
 
 ## 10. What changed, and what it breaks
 

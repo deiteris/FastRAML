@@ -331,3 +331,193 @@ class TestTheEndpointView:
     @pytest.mark.parametrize('depth', [1, 3])
     def test_it_is_valid_yaml(self, endpoint, path, depth):
         assert loaded(endpoint(path, depth=depth)) is not None
+
+
+SCHEMA_API = """#%RAML 1.0
+title: Schemas
+types:
+  errorScheme: !include err.json
+  uuid: !include uuid.json
+"""
+
+ERR_JSON = """{
+  "type": "object",
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {"type": "integer"},
+        "message": {"type": "string", "maxLength": 200},
+        "domain": {"type": "string", "enum": ["auth", "billing"]}
+      }
+    },
+    "trace": {"type": "array", "items": {"type": "string"}}
+  }
+}"""
+
+UUID_JSON = '{"type": "string", "minLength": 36, "maxLength": 36}'
+
+
+class TestJsonSchemaTypesExpand:
+    """docs/16 § 9.6. `--depth` could never open a `JsonShape`.
+
+    `_has_structure` tested for Object/Array/Union and fell through to `False`,
+    so on a schema-heavy document — where that is *every* type — `show` printed
+    a bare name at any depth and the flag did nothing.
+    """
+
+    @pytest.fixture
+    def schema_shown(self, workspace):
+        root = workspace({'api.raml': SCHEMA_API, 'err.json': ERR_JSON, 'uuid.json': UUID_JSON})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        graph = build_graph(raml)
+
+        def show(name: str, depth: int = 1) -> str:
+            shape = graph.shape_at(graph.find(name)[0])
+            assert shape is not None
+            return '\n'.join(render(shape, depth=depth, root=graph.root))
+
+        return show
+
+    def test_the_schema_properties_are_shown(self, schema_shown):
+        assert set(loaded(schema_shown('errorScheme'))['errorScheme']['properties']) == {'error', 'trace?'}
+
+    def test_required_survives_the_projection(self, schema_shown):
+        """`required: ["error"]` is a sibling list in JSON Schema and a flag per
+        property in RAML. Losing it would silently make everything optional.
+        """
+        properties = loaded(schema_shown('errorScheme'))['errorScheme']['properties']
+        assert 'error' in properties, 'required properties carry no `?`'
+        assert 'trace?' in properties
+
+    def test_depth_opens_a_nested_schema_object(self, schema_shown):
+        inner = loaded(schema_shown('errorScheme', depth=2))['errorScheme']['properties']['error']
+        assert set(inner['properties']) == {'code?', 'message?', 'domain?'}
+
+    def test_facets_inside_the_schema_survive(self, schema_shown):
+        inner = loaded(schema_shown('errorScheme', depth=2))['errorScheme']['properties']['error']
+        assert inner['properties']['message?']['maxLength'] == 200
+        assert inner['properties']['domain?']['enum'] == ['auth', 'billing']
+
+    def test_a_scalar_schema_shows_its_bounds(self, schema_shown):
+        shown = loaded(schema_shown('uuid'))['uuid']
+        assert shown['minLength'] == 36
+        assert shown['maxLength'] == 36
+
+    def test_it_is_still_loadable_yaml(self, schema_shown):
+        assert loaded(schema_shown('errorScheme', depth=3))
+
+    def test_the_projection_survives_unwrap(self, workspace):
+        """The bug underneath. `_narrow_json` carried `raw` and `validator` but
+        not the compiled schema, so `as_shape()` returned None on every declared
+        schema type once P9 had run — unreachable at the shape a consumer holds.
+        """
+        root = workspace({'api.raml': SCHEMA_API, 'err.json': ERR_JSON, 'uuid.json': UUID_JSON})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        declared = raml.types_in(raml.location)['errorScheme']
+        assert declared.shape.as_shape() is not None
+
+
+class TestOneFactOnce:
+    def test_a_sole_named_parent_is_not_repeated_as_inherits(self, shown):
+        """`type:` already prints the sole parent's name, so `inherits: [User]`
+        beneath it says the same thing twice.
+        """
+        assert 'inherits' not in loaded(shown('UserList'))['UserList']
+
+    def test_two_parents_still_get_the_line(self, shown):
+        """`type:` cannot show both, which is what the line is for."""
+        assert loaded(shown('Admin'))['Admin']['inherits'] == ['User', 'Audited']
+
+
+QUOTING = """#%RAML 1.0 Library
+types:
+  Colon:
+    type: string
+    description: 'Indication of the BOT type. Example: Overeenkomst'
+  Hash:
+    type: string
+    description: 'issue #42 is tracked here'
+  Plain:
+    type: string
+    maxLength: 36
+    pattern: '[0-9a-f]{8}-[0-9a-f]{4}'
+    description: a plain sentence
+  Comma:
+    type: string
+    enum: ['Amsterdam, NL', London]
+  Looks:
+    type: object
+    properties:
+      yes: string
+      no: string
+      null: string
+      on: string
+  Values:
+    type: string
+    enum: [yes, 'null', '1.0']
+"""
+
+
+class TestScalarsAreQuotedWhenPlainWouldNotParse:
+    """Emitted by PyYAML, not by a rule written here — docs/16 § 9.2.
+
+    A first attempt owned the rule: a denylist of `': '`, `' #'` and a few
+    leading characters. It was right about punctuation and silently wrong about
+    every string that merely *reads* as another type, on both sides of the
+    colon. These pin the cases that denylist got wrong.
+
+    The `: ` case itself was caught by corpus law 12, not by any fixture here.
+    """
+
+    @pytest.fixture
+    def quoted(self, workspace):
+        root = workspace({'lib.raml': QUOTING})
+        graph = build_graph(parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True)))
+
+        def show(name: str) -> dict:
+            shape = graph.shape_at(graph.find(name)[0])
+            assert shape is not None
+            return loaded('\n'.join(render(shape, root=graph.root)))[name]
+
+        return show
+
+    def test_a_colon_in_a_description_stays_loadable(self, quoted):
+        assert quoted('Colon')['description'].endswith('Overeenkomst')
+
+    def test_a_hash_in_a_description_is_not_read_as_a_comment(self, quoted):
+        assert quoted('Hash')['description'] == 'issue #42 is tracked here'
+
+    def test_an_ordinary_description_is_left_unquoted(self, quoted):
+        """Quoting everything would be safe and unreadable."""
+        assert quoted('Plain')['description'] == 'a plain sentence'
+
+    def test_an_enum_member_with_a_comma_survives(self, quoted):
+        """`enum: [a, b]` is a flow sequence, so a comma inside a member splits
+        one value into two and the reader cannot tell.
+        """
+        assert quoted('Comma')['enum'] == ['Amsterdam, NL', 'London']
+
+    def test_a_property_named_like_a_bool_stays_a_string_key(self, quoted):
+        """A key is a value too. `yes:` loads back as `True`, so a property
+        called `yes` silently became a boolean key — the same defect as the
+        description one, on the other side of the colon.
+        """
+        assert set(quoted('Looks')['properties']) == {'yes', 'no', 'null', 'on'}
+
+    def test_an_enum_member_that_reads_as_another_type_stays_a_string(self, quoted):
+        assert quoted('Values')['enum'] == ['yes', 'null', '1.0']
+
+    def test_a_pattern_renders_as_the_regex_and_not_its_repr(self, quoted):
+        """The facet holds a *compiled* pattern, and `str()` of one is
+        `re.compile('...')` — Python's repr where the author's regex belongs.
+        """
+        assert quoted('Plain')['pattern'] == '[0-9a-f]{8}-[0-9a-f]{4}'
+
+    def test_a_numeric_facet_is_still_a_number(self, quoted):
+        """The counterweight. Routing every value through the string path made
+        `maxLength: 36` the *string* "36" — PyYAML quoting it to preserve what
+        it was handed, correctly and uselessly.
+        """
+        assert quoted('Plain')['maxLength'] == 36

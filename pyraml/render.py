@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from pyraml.types.base import ScalarFacet
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from pyraml.types.jsonschema_ import JsonShape
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -39,12 +40,12 @@ if TYPE_CHECKING:
 
 __all__ = ['Sources', 'render', 'render_endpoint', 'render_operation']
 
-#: A property name that needs no quoting as a YAML key. Deliberately narrow:
-#: quoting something that did not need it is harmless, and the reverse is not.
-_PLAIN_KEY = re.compile(r'[A-Za-z_/][A-Za-z0-9_./+*^$\[\]-]*\??')
-
 #: Facets whose RAML spelling is not just the camel case of the slot name.
 _SPELLINGS = {'multiple_of': 'multipleOf', 'unique_items': 'uniqueItems', 'file_types': 'fileTypes'}
+
+#: Wide enough that PyYAML never folds a value onto a second line: a wrapped
+#: scalar would break the one-value-per-line shape everything here assumes.
+_UNWRAPPED = 1 << 30
 
 #: Never rendered as a facet: printed by the caller, or structure rather than
 #: constraint.
@@ -191,15 +192,23 @@ def render(base: BaseShape, *, depth: int = 1, root: str = '') -> Iterator[str]:
 
 
 def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
-    shape = base.shape
-    yield _Line(f'{level.indent}type: {_type_name(base)}')
-    if base.inherits:
-        parents = ', '.join(parent.name or '<anonymous>' for parent in base.inherits)
-        yield _Line(f'{level.indent}inherits: [{parents}]')
+    named = _type_name(base)
+    yield _Line(f'{level.indent}type: {named}')
+    parents = [parent.name or '<anonymous>' for parent in base.inherits]
+    # `inherits: [User]` under `type: User` is the same fact twice — `_type_name`
+    # returns the sole parent's name by construction. Two parents or more is
+    # where the line earns its place, because `type:` cannot show both.
+    if parents and parents != [named]:
+        yield _Line(f'{level.indent}inherits: [{", ".join(parents)}]')
     yield from _facets(base, level.indent)
 
+    # The structure is read from the *projected* shape, so a type defined by a
+    # JSON schema opens like any other. Its own facets above are the RAML ones,
+    # which for a schema type is nothing: the schema carries the constraints.
+    view = _projected(base)
+    shape = view.shape
     if isinstance(shape, ObjectShape):
-        yield from _properties(base, shape, level)
+        yield from _properties(view, shape, level)
     elif isinstance(shape, ArrayShape) and shape.items is not None:
         yield from _member(shape.items, 'items', level)
     elif isinstance(shape, UnionShape) and shape.any_of:
@@ -248,12 +257,14 @@ def _one(name: str, base: BaseShape, origin: str | None, level: _Level) -> Itera
 def _key(name: str) -> str:
     """A property name as a YAML key, quoted when it would not parse plain.
 
-    Pattern properties force this. `/^x-/` is fine bare, but `//` renders as an
-    empty key once the slashes are the only content, and an empty plain key is
-    not valid YAML — which broke three corpus fixtures and, with them, this
-    module's claim that its output pastes back.
+    Emitted by PyYAML for the reason `_dumped` gives. The allowlist this used
+    instead was safe against punctuation — pattern properties are why it exists,
+    since `//` strips to an empty key, which broke three corpus fixtures — and
+    silently wrong against a name that merely *reads* as another type: a
+    property called `yes`, `no`, `on` or `null` matched the allowlist, emitted
+    bare, and loaded back as a bool or a null. A key is a value too.
     """
-    return name if _PLAIN_KEY.fullmatch(name) else "'" + name.replace("'", "''") + "'"
+    return _dumped(name)
 
 
 def _member(base: BaseShape, key: str, level: _Level) -> Iterator[_Line]:
@@ -267,9 +278,28 @@ def _member(base: BaseShape, key: str, level: _Level) -> Iterator[_Line]:
 # -- reading the model --------------------------------------------------------
 
 
+def _projected(base: BaseShape) -> BaseShape:
+    """A JSON-schema type seen as the nearest RAML shape; anything else as itself.
+
+    `docs/10` § 6.3 built `as_shape()` "for consumers that want a uniform model",
+    and this is one. Without it `_has_structure` fell through to `False` for
+    every `JsonShape`, so `--depth` could never open one — on a schema-heavy
+    document that is every type in it, and `show` printed a bare name at any
+    depth.
+
+    Rendering only. The projection is a **view**: not in `Raml.shapes`, carrying
+    no positions, and never fed back into a pass (`as_shape`'s own docstring
+    names that as the failure mode). Cached there, so re-entering the same type
+    yields the same object and the `seen` set still terminates a cycle.
+    """
+    if isinstance(base.shape, JsonShape):
+        return base.shape.as_shape() or base
+    return base
+
+
 def _has_structure(base: BaseShape) -> bool:
     """Whether this type contains anything an extra level would reveal."""
-    shape = base.shape
+    shape = _projected(base).shape
     if isinstance(shape, ObjectShape):
         return bool(shape.properties or shape.pattern_properties)
     if isinstance(shape, ArrayShape):
@@ -341,8 +371,13 @@ def _facets(base: BaseShape, indent: str) -> Iterator[_Line]:
     Read off `__slots__` rather than from a table, for the reason the golden
     projector does (docs/14 § 2): a facet added to a kind has to show up here
     without this module being edited, or the view silently omits a constraint.
+
+    Through the projection, so a scalar JSON schema shows its bounds. A
+    `JsonShape` holds no facet slots of its own — the constraints are inside the
+    compiled schema — so without this a `uuid` defined as
+    `{"type": "string", "minLength": 36}` rendered as bare `string`.
     """
-    shape = base.shape
+    shape = _projected(base).shape
     if shape is not None:
         for slot in _slots(type(shape)):
             if slot in _NOT_A_FACET:
@@ -351,9 +386,12 @@ def _facets(base: BaseShape, indent: str) -> Iterator[_Line]:
             if isinstance(value, ScalarFacet):
                 yield _Line(f'{indent}{_SPELLINGS.get(slot, _camel(slot))}: {_scalar(value.value)}')
     if base.enum is not None:
-        yield _Line(f'{indent}enum: [{", ".join(str(member.raw) for member in base.enum)}]')
+        # Dumped as a list, so the flow context quotes a member containing a
+        # comma rather than silently splitting it into two.
+        yield _Line(f'{indent}enum: {_dumped([str(member.raw) for member in base.enum])}')
     if base.description is not None and base.description.value:
-        yield _Line(f'{indent}description: {base.description.value.strip().splitlines()[0]}')
+        first = base.description.value.strip().splitlines()[0]
+        yield _Line(f'{indent}description: {_dumped(first)}')
 
 
 def _slots(cls: type) -> Iterator[str]:
@@ -377,7 +415,36 @@ def _scalar(value: Any) -> str:
         return 'true' if value else 'false'
     if isinstance(value, Fraction):
         return _number(value)
-    return str(value)
+    if isinstance(value, re.Pattern):
+        # The facet holds a *compiled* pattern, and `str()` of one is
+        # `re.compile('…')` — Python's repr where the author's regex belongs.
+        # Invisible until schema types began rendering their facets, because
+        # `pattern:` reaches a reader through `uuid` far more often than
+        # through a RAML declaration.
+        value = value.pattern
+    # Not `str(value)` first: that turns `maxLength: 36` into the *string* "36",
+    # which PyYAML then quotes to preserve — correctly, and uselessly.
+    return _dumped(value if isinstance(value, str | int | float) else str(value))
+
+
+def _dumped(value: Any) -> str:
+    """One value as YAML, emitted by PyYAML rather than by a rule written here.
+
+    Deciding when a scalar needs quoting is not a short rule and this module has
+    no business owning one. A first attempt did — a denylist of `': '`, `' #'`
+    and a few leading characters — and it was wrong for every string that merely
+    *looks* like something else: `yes`, `null` and `1.0` all round-tripped as a
+    bool, a null and a float. PyYAML is already a hard dependency and gets all of
+    those, plus tabs and the flow-context comma, right by construction.
+
+    Only the values go through it. The document's *shape* is still written by
+    hand, because the whole point of this view is the aligned `# origin` column
+    and an emitter cannot produce comments (§ 9.2).
+    """
+    import yaml  # noqa: PLC0415 - only the effective view formats values
+
+    text = yaml.safe_dump(value, default_flow_style=True, width=_UNWRAPPED, allow_unicode=True)
+    return text.rstrip('\n').removesuffix('\n...').rstrip()
 
 
 def _number(value: Fraction) -> str:

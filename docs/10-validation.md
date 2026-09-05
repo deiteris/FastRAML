@@ -336,6 +336,14 @@ by the JSON Pointer fragment of the URI, resolved by the schema library.
 
 `JsonShape.as_shape()` lazily converts a compiled JSON Schema into the nearest
 RAML shape, for consumers that want a uniform model. Cached on first call.
+
+**It survives unwrap, and that took a fix.** `_narrow_json` in `types/inherit.py`
+carried `raw` and `validator` into the subtype and not `_compiled`, which is what
+this reads — so after P9 it returned `None` on every *declared* schema type,
+which is precisely the shape a consumer is handed. Nothing noticed until the
+effective view ([16](16-graph.md) § 9.6) became the first caller to want the
+projection rather than the validator.
+
 Mappings:
 
 | JSON Schema | RAML |

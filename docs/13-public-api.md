@@ -344,8 +344,11 @@ Operation   get -returns-> 200 -payload-> application/json -range-> ... -inherit
 That is the output a property path cannot produce ([16](16-graph.md) § 5), and
 it is the reason these are not simply a canned SPARQL query.
 
-`NAME` is a declared name or a whole node IRI. Two libraries may declare the same
-name; the verb then lists the candidates and exits 1 rather than picking one.
+`NAME` is a declared name or a whole node IRI. A **declaration** wins over any
+node inside one that happens to carry the same name ([16](16-graph.md) § 3.3).
+Two libraries declaring one name is a real ambiguity: the verb lists the
+candidates and exits 1 rather than picking one, and the IRI it prints is what you
+pass back.
 
 `query` runs SPARQL, and needs **`pyoxigraph`**, which pyRAML does not depend on
 — `pip install pyraml[graph]`, or the verb tells you so and exits 1. All four

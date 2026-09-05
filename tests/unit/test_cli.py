@@ -229,6 +229,31 @@ class TestGraphVerbs:
         assert main(['refs', graphed, 'Nope']) == EXIT_INVALID
         assert 'no such node' in capsys.readouterr().err
 
+    def test_a_multi_parent_type_does_not_make_its_parents_ambiguous(self, workspace, capsys):
+        """The end-to-end form of the defect `Graph.find` now rules out.
+
+        `Admin: [User, Entity]` builds a synthetic parent per branch carrying
+        the parent's name, so `refs Entity` reported an ambiguity between two
+        nodes that are the same type. It exited 1 on a three-type document.
+        """
+        path = str(
+            workspace(
+                {
+                    'api.raml': API + 'types:\n'
+                    '  Entity:\n    type: object\n    properties:\n      id: string\n'
+                    '  User:\n    type: Entity\n    properties:\n      name: string\n'
+                    '  Admin:\n    type: [User, Entity]\n    properties:\n      level: integer\n'
+                    '/admins:\n  get:\n    responses:\n      200:\n        body:\n'
+                    '          application/json:\n            type: Admin\n'
+                }
+            )
+            / 'api.raml'
+        )
+        assert main(['refs', path, 'Entity']) == EXIT_OK
+        out = capsys.readouterr()
+        assert 'ambiguous' not in out.err
+        assert 'Operation' in out.out, 'the walk should reach the operation that returns Admin'
+
     def test_an_invalid_document_exits_one(self, files, capsys):
         """A document that will not *parse* has no graph. One that merely fails
         validation does — the graph verbs run with `validate=False`.

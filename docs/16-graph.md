@@ -206,7 +206,28 @@ an application is never invisible and **no edge ever dangles**. That last part i
 also a corpus law: an edge to a node that does not exist is a traversal that
 silently ends early.
 
-### 3.1 Ordering
+### 3.3 Looking a name up: a declaration wins
+
+`Graph.find` turns a name into an IRI, and more than one node can carry the same
+name. `Admin: [User, Entity]` builds a synthetic parent per branch, and each one
+carries the name of the type it resolves to — so `Entity` matches both its own
+declaration and `…/types/Admin/inherits/Entity`.
+
+**A declaration wins.** The two are the same type, and only the declaration is
+somewhere an author can go, so reporting the pair as an ambiguity helps nobody.
+A declaration is told from a node inside one by depth: its tail after
+`#/declarations/` is `<bucket>/<name>` and nothing more, and a name contributes
+no `/` of its own because every segment is escaped.
+
+Two *declarations* of one name — the same type declared in two libraries — stay
+ambiguous, and `find` returns both. That question only the caller can answer,
+which is why a whole IRI is also accepted as a name.
+
+Without this rule `pyraml refs Entity` exited 1 on a three-type document. It was
+found by asking what navigation still needed, not by a test, which is why one
+now names it.
+
+### 3.4 Ordering
 
 RDF is a set of triples and declaration order is an invariant everywhere the
 model is exposed (docs/02 § 4). The two are reconciled by **not** reconciling

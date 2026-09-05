@@ -109,6 +109,22 @@ USE_EDGES: Final = (
 
 _XSD: Final = 'http://www.w3.org/2001/XMLSchema#'
 
+#: Opens the tail of every declaration IRI (§ 3).
+_DECLARATIONS: Final = '#/declarations/'
+
+
+def _is_declaration(iri: str) -> bool:
+    """Whether `iri` names a declaration rather than a node inside one.
+
+    Told apart by depth. A declaration's tail is `<bucket>/<name>` and nothing
+    more — `types/User` — while a node beneath it keeps going:
+    `types/Admin/inherits/User`. A name cannot contribute a `/` of its own,
+    because every segment is percent-escaped.
+    """
+    _, marker, tail = iri.partition(_DECLARATIONS)
+    return bool(marker) and tail.count('/') == 1
+
+
 #: The `#/declarations/<bucket>/` segments that hold something a `type:`, `is:`
 #: or `securedBy:` entry can name, and the node kind each one declares. A
 #: `Literal` rather than `str` so the lookup below is total and mypy says so.
@@ -227,13 +243,29 @@ class Graph:
         return iri.rsplit('/', 1)[-1] or iri
 
     def find(self, name: str, kinds: Sequence[str] | None = None) -> list[str]:
-        """Every node whose IRI or `name` matches, for turning a CLI word into an IRI."""
-        exact = [iri for iri, node in self.nodes.items() if node.attributes.get('name') == name]
-        if not exact:
-            exact = [iri for iri in self.nodes if iri == name or iri.endswith('/' + name)]
+        """Every node matching `name`, for turning a CLI word into an IRI.
+
+        **A declaration wins over a node beneath one.** A synthetic parent
+        carries the name of the type it resolves to, so `Admin: [User, Entity]`
+        makes `Entity` match both its own declaration and
+        `…/types/Admin/inherits/Entity`. Reporting that pair as an ambiguity is
+        useless: they are the same type, and only one of them is somewhere an
+        author can go. Without this rule `refs Entity` fails on a two-type
+        document, which is how the rule was found.
+
+        Two *declarations* of one name — the same type declared in two libraries
+        — stay ambiguous. That one the caller has to resolve, and the whole IRI
+        is accepted here so that it can.
+        """
+        matched = [iri for iri, node in self.nodes.items() if node.attributes.get('name') == name]
+        if not matched:
+            matched = [iri for iri in self.nodes if iri == name or iri.endswith('/' + name)]
+        declared = [iri for iri in matched if _is_declaration(iri)]
+        if declared:
+            matched = declared
         if kinds is None:
-            return exact
-        return [iri for iri in exact if self.nodes[iri].kinds[0] in kinds]
+            return matched
+        return [iri for iri in matched if self.nodes[iri].kinds[0] in kinds]
 
     # -- traversal ------------------------------------------------------------
 

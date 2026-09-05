@@ -124,6 +124,58 @@ class TestIris:
         assert paths == {'/users', '/users/{userId}'}
         assert f'{DEFAULT_BASE}#/web-api/endpoint/%2Fusers%2F%7BuserId%7D' in graph.nodes
 
+    def test_a_declaration_wins_over_a_synthetic_node_of_the_same_name(self, workspace):
+        """`refs Entity` used to fail on a document this small.
+
+        `Admin: [User, Entity]` builds a synthetic parent per branch, and each
+        carries the name of the type it resolves to. So `Entity` matched both
+        its own declaration and `…/types/Admin/inherits/Entity`, and the CLI
+        reported an ambiguity between two nodes that are the same type — only
+        one of which is somewhere an author can go.
+        """
+        root = workspace(
+            {
+                'lib.raml': '#%RAML 1.0 Library\ntypes:\n'
+                '  Entity:\n    type: object\n    properties:\n      id: string\n'
+                '  User:\n    type: Entity\n    properties:\n      name: string\n'
+                '  Admin:\n    type: [User, Entity]\n    properties:\n      level: integer\n'
+            }
+        )
+        graph = build_graph(parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True)))
+        assert len([iri for iri, n in graph.nodes.items() if n.attributes.get('name') == 'Entity']) > 1, (
+            'the collision this rule exists for must actually occur, or the test is vacuous'
+        )
+        assert graph.find('Entity') == [f'{DEFAULT_BASE}#/declarations/types/Entity']
+        assert graph.find('User') == [f'{DEFAULT_BASE}#/declarations/types/User']
+
+    def test_one_name_declared_in_two_libraries_stays_ambiguous(self, workspace):
+        """The rule above must not paper over a real ambiguity.
+
+        Two *declarations* of one name are a question only the caller can
+        answer, so both are returned and the CLI lists them.
+        """
+        shared = '#%RAML 1.0 Library\ntypes:\n  Thing:\n    type: object\n    properties:\n      a: string\n'
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: D\nuses:\n  one: one.raml\n  two: two.raml\n'
+                'types:\n  Uses:\n    type: object\n    properties:\n'
+                '      x: one.Thing\n      y: two.Thing\n',
+                'one.raml': shared,
+                'two.raml': shared,
+            }
+        )
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        assert sorted(graph.find('Thing')) == [
+            f'{DEFAULT_BASE}/one.raml#/declarations/types/Thing',
+            f'{DEFAULT_BASE}/two.raml#/declarations/types/Thing',
+        ]
+
+    def test_a_whole_iri_resolves_including_one_inside_a_declaration(self, graph):
+        """Which is how a caller resolves the ambiguity above."""
+        inner = f'{DEFAULT_BASE}/lib.raml#/declarations/types/User/property/name'
+        assert inner in graph.nodes, 'fixture moved; pick another node inside a declaration'
+        assert graph.find(inner) == [inner]
+
     def test_two_shapes_with_one_structural_name_get_two_iris(self, workspace):
         """`type1: [string, string]` — RAML does not promise names are distinct.
 

@@ -233,10 +233,15 @@ types:
     type: object
     properties:
       sku: string
+      tag: string | nil
 securedBy: [oauth]
 /items:
+  description: Everything on sale.
   type: collection
   get:
+    displayName: ListItems
+    description: Page through the catalogue.
+    protocols: [HTTPS]
     is: [paged]
     queryParameters:
       shared?:
@@ -244,6 +249,7 @@ securedBy: [oauth]
         description: from the method itself
     responses:
       200:
+        description: One page of items.
         body:
           application/json: Item
 /open:
@@ -325,7 +331,7 @@ class TestTheEndpointView:
 
     def test_depth_opens_the_body_type(self, endpoint):
         body = loaded(endpoint('/items', depth=2))['/items']['get']['responses'][200]['body']
-        assert set(body['application/json']['properties']) == {'sku'}
+        assert set(body['application/json']['properties']) == {'sku', 'tag'}
 
     @pytest.mark.parametrize('path', ['/items', '/open'])
     @pytest.mark.parametrize('depth', [1, 3])
@@ -521,3 +527,55 @@ class TestScalarsAreQuotedWhenPlainWouldNotParse:
         it was handed, correctly and uselessly.
         """
         assert quoted('Plain')['maxLength'] == 36
+
+
+class TestProseIsPartOfTheView:
+    """`description` and `displayName` were on the model and never rendered.
+
+    They are half of why a reader opens an endpoint: a resource's description
+    says what it is for, and a response's says what the status code *means* —
+    which a bare `404:` cannot. On a trait-heavy document the description is
+    often the only part of a response that differs between two operations
+    sharing one body.
+    """
+
+    def test_a_resource_description_is_shown(self, endpoint):
+        assert loaded(endpoint('/items'))['/items']['description'] == 'Everything on sale.'
+
+    def test_an_operation_carries_both_prose_facets(self, endpoint):
+        get = loaded(endpoint('/items'))['/items']['get']
+        assert get['displayName'] == 'ListItems'
+        assert get['description'] == 'Page through the catalogue.'
+
+    def test_a_response_description_is_shown(self, endpoint):
+        """The one this was asked for: a status code with no gloss is a number."""
+        assert loaded(endpoint('/items'))['/items']['get']['responses'][200]['description'] == 'One page of items.'
+
+    def test_protocols_narrowing_the_api_is_shown(self, endpoint):
+        """Nothing else in the view answers "is this method HTTPS-only?"."""
+        assert loaded(endpoint('/items'))['/items']['get']['protocols'] == ['HTTPS']
+
+    def test_a_response_without_one_gets_no_empty_key(self, endpoint):
+        assert loaded(endpoint('/open'))['/open']['get']['responses'][204] is None
+
+
+class TestAUnionNamesItsMembers:
+    """`type: union` at the depth limit tells a reader nothing.
+
+    Naming is not expansion, so it is not gated on `--depth`. JSON Schema makes
+    this the common case rather than a corner: every nullable field is a `oneOf`
+    of the type and `null`, so a schema-typed document is full of them.
+    """
+
+    def test_a_declared_union_names_its_members(self, shown):
+        assert loaded(shown('Either'))['Either']['type'] == 'string | integer'
+
+    def test_a_union_property_names_them_at_depth_one(self, endpoint):
+        body = loaded(endpoint('/items', depth=2))['/items']['get']['responses'][200]['body']
+        assert body['application/json']['properties']['tag'] == 'string | nil'
+
+    def test_a_named_union_still_reads_as_its_name(self, shown):
+        """`_type_name` prefers the alias, so naming the members is the fallback
+        for an anonymous one rather than a replacement for the declared name.
+        """
+        assert loaded(shown('UserList'))['UserList']['items'] == 'User'

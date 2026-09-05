@@ -309,7 +309,7 @@ def _has_structure(base: BaseShape) -> bool:
     return False
 
 
-def _type_name(base: BaseShape) -> str:
+def _type_name(base: BaseShape, *, nested: bool = False) -> str:
     """What to call this type in one word.
 
     `alias` first, and that is not a detail: `address: Address` and
@@ -319,6 +319,16 @@ def _type_name(base: BaseShape) -> str:
 
     A recursion marker names the type it closes back to. Its own `type` is
     `recursive`, which tells the reader nothing about which cycle they are in.
+
+    An **anonymous union names its members** — `integer | nil`, not `union`.
+    That is naming and not expansion, so it is not gated on `--depth`: a union
+    reaching the depth limit as the bare word `union` tells the reader nothing
+    at all, and one more level was showing the member names they wanted. JSON
+    Schema makes this the common case rather than a corner — every nullable
+    field is a `oneOf` of the type and `null`.
+
+    `nested` stops the join one level down, so a union of unions reads
+    `union | string` instead of unrolling an arbitrary tree onto one line.
     """
     if isinstance(base.shape, RecursiveShape):
         return base.shape.head.name or 'recursive'
@@ -326,6 +336,9 @@ def _type_name(base: BaseShape) -> str:
         return base.alias.name
     if len(base.inherits) == 1 and base.inherits[0].name:
         return base.inherits[0].name
+    shape = _projected(base).shape
+    if not nested and isinstance(shape, UnionShape) and shape.any_of:
+        return ' | '.join(_type_name(member, nested=True) for member in shape.any_of)
     return base.type or 'any'
 
 
@@ -494,8 +507,28 @@ def render_operation(
     yield from _aligned(lines)
 
 
+def _prose(owner: Any, indent: str) -> Iterator[_Line]:
+    """`displayName` and `description`, wherever the model carries them.
+
+    Omitted until now, and they are half of why a reader opens an endpoint at
+    all: a resource's `description` says what it is for, and a response's says
+    what the status code *means*, which no other line here conveys. A trait
+    supplies most of them on a real document, so they are exactly the kind of
+    thing this view exists to gather up.
+
+    First line only, as everywhere else here: a description may be a paragraph,
+    and the view is meant to fit a screen.
+    """
+    for facet in ('display_name', 'description'):
+        value = getattr(owner, facet, None)
+        if value is not None and value.value and value.value.strip():
+            first = value.value.strip().splitlines()[0]
+            yield _Line(f'{indent}{_SPELLINGS.get(facet, _camel(facet))}: {_dumped(first)}')
+
+
 def _endpoint_body(endpoint: EndPoint, level: _Level, sources: Sources | None) -> Iterator[_Line]:
     applied = _applied(endpoint)
+    yield from _prose(endpoint, level.indent)
     if endpoint.resource_type is not None:
         yield _Line(f'{level.indent}type: {endpoint.resource_type.name}')
     if endpoint.traits:
@@ -514,6 +547,12 @@ def _operation(
     applied = inherited | {ref.name for ref in operation.traits}
     inner = replace(level, indent=level.indent + '  ')
     yield _Line(f'{level.indent}{operation.method}:', _at(operation.location, operation.key_pos, level.root))
+    yield from _prose(operation, inner.indent)
+    if operation.protocols:
+        # Narrows the API's own list for this method, and nothing else in the
+        # view says so — a reader looking for "is this one HTTPS-only?" has no
+        # other line to read.
+        yield _Line(f'{inner.indent}protocols: [{", ".join(operation.protocols)}]')
     if operation.traits:
         yield _Line(f'{inner.indent}is: [{", ".join(ref.name for ref in operation.traits)}]')
     yield from _secured(operation.secured_by, inner)
@@ -532,6 +571,10 @@ def _operation(
             code = replace(inner, indent=inner.indent + '  ')
             yield _Line(f'{code.indent}{response.code}:', _at(response.location, response.key_pos, level.root))
             body = replace(code, indent=code.indent + '  ')
+            # What the code *means* — the one thing a bare `404:` cannot say,
+            # and on a trait-heavy document the description is the only part of
+            # the response that differs between two operations sharing a body.
+            yield from _prose(response, body.indent)
             yield from _parameters(response.headers, 'headers', body, sources, applied)
             yield from _bodies(response.bodies, body, sources, applied)
 

@@ -667,7 +667,28 @@ Depth alone does not open a scalar: `level:` followed by `type: integer` is two
 lines saying what one line said. Only something with structure is opened, and a
 type cycle stops at its first re-entry however deep the walk was asked to go.
 
-### 9.6 A JSON-schema type opens like any other
+### 9.6 What is rendered
+
+Everything the model carries for the entity, which for a while was less than it
+sounds. `displayName`, `description` and `protocols` were on `EndPoint`,
+`Operation` and `Response` and none of them reached the page — so a status code
+appeared as a bare `404:` with no gloss, and a resource's own statement of what
+it is for was missing entirely. On a trait-heavy document the description is
+frequently the *only* part of a response that differs between two operations
+sharing one body, which makes it the opposite of decoration.
+
+First line only, as with a type's description: these may be paragraphs and the
+view is meant to fit a screen.
+
+**A union names its members** — `string | nil`, not `union`. Naming is not
+expansion, so it is not gated on `--depth`: a union reaching the limit as the
+bare word `union` says nothing, and one more level was showing exactly the
+member names the reader wanted. JSON Schema makes this the common case rather
+than a corner, since every nullable field projects to a union of the type and
+`nil`. The join stops one level down, so a union of unions reads
+`union | string` rather than unrolling a tree onto one line.
+
+### 9.7 A JSON-schema type opens like any other
 
 Through `JsonShape.as_shape()` — the § 6.3 projection of
 [10](10-validation.md), built "for consumers that want a uniform model", and

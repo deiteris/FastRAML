@@ -282,8 +282,8 @@ def _narrow(target: BaseShape, target_shape: Shape, source_shape: Shape) -> None
     elif target.type == TYPE_JSON:
         # Dispatched by kind name rather than by class, because `JsonShape` sits
         # *above* this module (docs/02 § 3) — it needs the loader and, for the
-        # § 6.3 projection, this module. The rule reads `raw` and `validator`
-        # and nothing else, so no import is needed to run it.
+        # § 6.3 projection, this module. The rule copies the kind's slots by
+        # name, so no import is needed to run it.
         _narrow_json(target, target_shape, source_shape)
 
 
@@ -469,15 +469,15 @@ def _narrow_json(target: BaseShape, mine: Any, theirs: Any) -> None:
             target.value_pos,
             kind=ErrorKind.UNWRAPPING,
         )
-    mine.raw = theirs.raw
-    mine.validator = theirs.validator
-    # And the compiled schema. Carrying `raw` and `validator` without it left
-    # `as_shape()` returning None on every *declared* schema type once P9 had
-    # run — the § 6.3 projection unreachable at exactly the shape a consumer
-    # holds, because the compiled form lives only on the shape the `!include`
-    # produced. Assigned through the slot name the kind declares, since this
-    # module must not import `JsonShape` (docs/02 § 3).
-    mine._compiled = theirs._compiled  # noqa: SLF001 - one kind's field, set by name to avoid the import
+    # Every slot the kind declares, not a list written here. The list was
+    # `raw` and `validator`; `_compiled` was added to the kind and not to the
+    # list, so `as_shape()` returned None on every *declared* schema type once
+    # P9 had run — the § 6.3 projection unreachable at exactly the shape a
+    # consumer holds. `copyable_slots` is what `clone` and `alias_to` already
+    # use so that a field added to a kind cannot be missed, and it needs no
+    # import of `JsonShape`, which this module may not have (docs/02 § 3).
+    for slot in copyable_slots(type(mine)):
+        setattr(mine, slot, getattr(theirs, slot))
 
 
 #: Kind to its narrowing rule. A kind absent from the table constrains nothing

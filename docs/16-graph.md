@@ -707,10 +707,16 @@ as the failure mode to avoid. So a property inside a schema gets no `file:line`
 note — there is no RAML declaration to point at.
 
 One defect was underneath, found only by making the path reachable:
-**`_narrow_json` dropped the compiled schema.** It carried `raw` and `validator`
-into the subtype and not `_compiled`, which is what `as_shape()` reads — so the
-projection returned `None` on every *declared* schema type once P9 had run, which
-is exactly the shape a consumer holds. Fixed in `types/inherit.py`.
+**`_narrow_json` dropped the compiled schema.** It carried a hand-written field
+list into the subtype — `raw` and `validator`, but not `_compiled`, which is what
+`as_shape()` reads — so the projection returned `None` on every *declared* schema
+type once P9 had run, which is exactly the shape a consumer holds. It now copies
+every slot the kind declares, via the `copyable_slots` helper that exists so a
+hand list cannot go stale.
+
+The substitution itself lives in `types/jsonschema_.py` as `projected(base)`, not
+here: it is a statement about what a schema type *is* to any consumer walking
+structure, and this module is one consumer of several.
 
 ### 9.8 What each security scheme adds, and why it is not merged
 

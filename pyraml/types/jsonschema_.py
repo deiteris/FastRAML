@@ -471,6 +471,25 @@ class JsonShape(ComplexKind):
         return self._cached_defs
 
 
+def projected(base: BaseShape) -> BaseShape:
+    """`base` as a consumer walking structure should see it.
+
+    A JSON-schema type through its § 6.3 projection, anything else unchanged.
+    One function rather than the same `isinstance(shape, JsonShape)` in every
+    consumer, because a consumer that forgets it does not fail — it sees a leaf
+    with no properties, no items and no facets, and reports that a schema type
+    is made of nothing.
+
+    Lives here rather than on `BaseShape`, which cannot import this module, and
+    rather than in a consumer, which would make the substitution one module's
+    private opinion. Rendering and traversal only: `as_shape` explains why a
+    view must never be fed back into a pass.
+    """
+    if isinstance(base.shape, JsonShape):
+        return base.shape.as_shape() or base
+    return base
+
+
 # -- section 6.3: JSON Schema -> the nearest RAML shape -------------------------
 
 

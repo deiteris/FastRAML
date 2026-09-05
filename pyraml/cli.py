@@ -336,19 +336,22 @@ def _list(args: argparse.Namespace) -> int:
         wanted = args.pattern.casefold()
         entries = [entry for entry in entries if wanted in entry[1].casefold()]
 
-    for kind, name, iri in entries:
-        if args.json:
-            import json  # noqa: PLC0415 - only JSON output needs the encoder
-
-            print(json.dumps({'kind': kind, 'name': name, 'iri': iri, 'at': _position_of(graph, iri)}))
-            continue
-        print(f'{kind:<16} {_position_of(graph, iri):<22} {name}')
-
     if not entries:
-        sys.stdout.flush()
+        # No `flush` here, unlike `_walk`: nothing has been written to stdout on
+        # this path, so there is nothing for the note to arrive ahead of.
         detail = f' matching {args.pattern!r}' if args.pattern else ''
         print(f'nothing{detail}', file=sys.stderr)
         return EXIT_INVALID
+
+    if args.json:
+        import json  # noqa: PLC0415 - only JSON output needs the encoder
+
+        for kind, name, iri in entries:
+            print(json.dumps({'kind': kind, 'name': name, 'iri': iri, 'at': _position_of(graph, iri)}))
+        return EXIT_OK
+
+    for kind, name, iri in entries:
+        print(f'{kind:<16} {_position_of(graph, iri):<22} {name}')
     return EXIT_OK
 
 

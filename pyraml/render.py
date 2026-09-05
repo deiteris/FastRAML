@@ -23,17 +23,20 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from fractions import Fraction
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 from pyraml.types.base import ScalarFacet
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
-from pyraml.types.jsonschema_ import JsonShape
+from pyraml.types.jsonschema_ import projected
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from pyraml.parser.directives import SecurityScheme
-    from pyraml.parser.endpoints import Body, EndPoint, Operation
+    from pyraml.parser.endpoints import Body, EndPoint, Operation, Response
     from pyraml.parser.security import SecuritySchemeDescription
     from pyraml.positions import Position
     from pyraml.registry import Raml
@@ -206,7 +209,7 @@ def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
     # The structure is read from the *projected* shape, so a type defined by a
     # JSON schema opens like any other. Its own facets above are the RAML ones,
     # which for a schema type is nothing: the schema carries the constraints.
-    view = _projected(base)
+    view = projected(base)
     shape = view.shape
     if isinstance(shape, ObjectShape):
         yield from _properties(view, shape, level)
@@ -279,28 +282,9 @@ def _member(base: BaseShape, key: str, level: _Level) -> Iterator[_Line]:
 # -- reading the model --------------------------------------------------------
 
 
-def _projected(base: BaseShape) -> BaseShape:
-    """A JSON-schema type seen as the nearest RAML shape; anything else as itself.
-
-    `docs/10` § 6.3 built `as_shape()` "for consumers that want a uniform model",
-    and this is one. Without it `_has_structure` fell through to `False` for
-    every `JsonShape`, so `--depth` could never open one — on a schema-heavy
-    document that is every type in it, and `show` printed a bare name at any
-    depth.
-
-    Rendering only. The projection is a **view**: not in `Raml.shapes`, carrying
-    no positions, and never fed back into a pass (`as_shape`'s own docstring
-    names that as the failure mode). Cached there, so re-entering the same type
-    yields the same object and the `seen` set still terminates a cycle.
-    """
-    if isinstance(base.shape, JsonShape):
-        return base.shape.as_shape() or base
-    return base
-
-
 def _has_structure(base: BaseShape) -> bool:
     """Whether this type contains anything an extra level would reveal."""
-    shape = _projected(base).shape
+    shape = projected(base).shape
     if isinstance(shape, ObjectShape):
         return bool(shape.properties or shape.pattern_properties)
     if isinstance(shape, ArrayShape):
@@ -337,7 +321,7 @@ def _type_name(base: BaseShape, *, nested: bool = False) -> str:
         return base.alias.name
     if len(base.inherits) == 1 and base.inherits[0].name:
         return base.inherits[0].name
-    shape = _projected(base).shape
+    shape = projected(base).shape
     if not nested and isinstance(shape, UnionShape) and shape.any_of:
         return ' | '.join(_type_name(member, nested=True) for member in shape.any_of)
     return base.type or 'any'
@@ -391,7 +375,7 @@ def _facets(base: BaseShape, indent: str) -> Iterator[_Line]:
     compiled schema — so without this a `uuid` defined as
     `{"type": "string", "minLength": 36}` rendered as bare `string`.
     """
-    shape = _projected(base).shape
+    shape = projected(base).shape
     if shape is not None:
         for slot in _slots(type(shape)):
             if slot in _NOT_A_FACET:
@@ -454,9 +438,29 @@ def _dumped(value: Any) -> str:
     Only the values go through it. The document's *shape* is still written by
     hand, because the whole point of this view is the aligned `# origin` column
     and an emitter cannot produce comments (§ 9.2).
-    """
-    import yaml  # noqa: PLC0415 - only the effective view formats values
 
+    A scalar is memoised, because `safe_dump` builds an emitter, a serialiser
+    and a resolver per call — 13.7 µs against the 0.15 µs of the rule it
+    replaced — and the inputs repeat almost perfectly: property names, `string`,
+    `true`, the same bounds and media types over and over. Rendering the whole
+    benchmark corpus measured 664 ms down to 254 ms off a thirteen-entry cache.
+    Lists — `enum` is the only one — are not hashable and fall through.
+    """
+    if type(value) in (str, int, float):
+        return _dumped_scalar(value)
+    return _emit(value)
+
+
+@lru_cache(maxsize=4096)
+def _dumped_scalar(value: str | float) -> str:
+    """`type(...) in`, not `isinstance`, above: `bool` is a subclass of `int`
+    and `hash(True) == hash(1)`, so the two would share one cache entry and the
+    first of them to arrive would decide whether the other reads `true` or `1`.
+    """
+    return _emit(value)
+
+
+def _emit(value: Any) -> str:
     text = yaml.safe_dump(value, default_flow_style=True, width=_UNWRAPPED, allow_unicode=True)
     return text.rstrip('\n').removesuffix('\n...').rstrip()
 
@@ -534,7 +538,7 @@ def _endpoint_body(endpoint: EndPoint, level: _Level, sources: Sources | None) -
         yield _Line(f'{level.indent}type: {endpoint.resource_type.name}')
     if endpoint.traits:
         yield _Line(f'{level.indent}is: [{", ".join(ref.name for ref in endpoint.traits)}]')
-    yield from _secured(endpoint.secured_by, level, sources)
+    yield from _secured(endpoint.secured_by, level)
     # Ancestor-declared parameters come first and are the ones a reader is least
     # likely to have in mind: they are written on a resource further up the path.
     yield from _parameters(endpoint.uri_parameters, 'uriParameters', level, sources, applied)
@@ -556,28 +560,51 @@ def _operation(
         yield _Line(f'{inner.indent}protocols: [{", ".join(operation.protocols)}]')
     if operation.traits:
         yield _Line(f'{inner.indent}is: [{", ".join(ref.name for ref in operation.traits)}]')
-    yield from _secured(operation.secured_by, inner, sources)
+    yield from _secured(operation.secured_by, inner)
 
-    request = operation.request
-    if request is not None:
-        yield from _parameters(request.headers, 'headers', inner, sources, applied)
-        yield from _parameters(request.query_parameters, 'queryParameters', inner, sources, applied)
-        if request.query_string is not None:
-            yield _Line(f'{inner.indent}queryString: {_type_name(request.query_string)}')
-        yield from _bodies(request.bodies, inner, sources, applied)
+    if operation.request is not None:
+        yield from _message(operation.request, inner, sources, applied)
+    yield from _responses(operation.responses, inner, sources, applied)
 
-    if operation.responses:
-        yield _Line(f'{inner.indent}responses:')
-        for response in operation.responses.values():
-            code = replace(inner, indent=inner.indent + '  ')
-            yield _Line(f'{code.indent}{response.code}:', _at(response.location, response.key_pos, level.root))
-            body = replace(code, indent=code.indent + '  ')
-            # What the code *means* — the one thing a bare `404:` cannot say,
-            # and on a trait-heavy document the description is the only part of
-            # the response that differs between two operations sharing a body.
-            yield from _prose(response, body.indent)
-            yield from _parameters(response.headers, 'headers', body, sources, applied)
-            yield from _bodies(response.bodies, body, sources, applied)
+
+def _message(owner: Any, level: _Level, sources: Sources | None, applied: frozenset[str]) -> Iterator[_Line]:
+    """What a caller sends: headers, query and body.
+
+    Shared because a `Request` and a security scheme's `describedBy` carry the
+    same four fields — `SecuritySchemeDescription`'s own docstring calls it "the
+    same node vocabulary as an operation", so this follows the model rather than
+    a coincidence.
+    """
+    yield from _parameters(owner.headers, 'headers', level, sources, applied)
+    yield from _parameters(owner.query_parameters, 'queryParameters', level, sources, applied)
+    if owner.query_string is not None:
+        yield _Line(f'{level.indent}queryString: {_type_name(owner.query_string)}')
+    yield from _bodies(getattr(owner, 'bodies', None) or {}, level, sources, applied)
+
+
+def _responses(
+    responses: dict[str, Response], level: _Level, sources: Sources | None, applied: frozenset[str]
+) -> Iterator[_Line]:
+    """Every response, for an operation and for a scheme's `describedBy` alike.
+
+    One function because the two were written twice and had already started to
+    drift: `_prose` had to be added to both copies by hand, and a third addition
+    reaching only one of them would be invisible — the output stays loadable
+    RAML, just missing a line, so corpus law 13 would not catch it either.
+    """
+    if not responses:
+        return
+    yield _Line(f'{level.indent}responses:')
+    for response in responses.values():
+        code = replace(level, indent=level.indent + '  ')
+        yield _Line(f'{code.indent}{response.code}:', _at(response.location, response.key_pos, level.root))
+        body = replace(code, indent=code.indent + '  ')
+        # What the code *means* — the one thing a bare `404:` cannot say, and on
+        # a trait-heavy document the description is the only part of a response
+        # that differs between two operations sharing a body.
+        yield from _prose(response, body.indent)
+        yield from _parameters(response.headers, 'headers', body, sources, applied)
+        yield from _bodies(response.bodies, body, sources, applied)
 
 
 def _bodies(
@@ -621,7 +648,7 @@ def _label(scheme: SecurityScheme) -> str:
     return scheme.name
 
 
-def _secured(schemes: list[SecurityScheme], level: _Level, sources: Sources | None = None) -> Iterator[_Line]:
+def _secured(schemes: list[SecurityScheme], level: _Level) -> Iterator[_Line]:
     """`securedBy:`, and what each scheme adds to the request.
 
     A scheme's `describedBy` declares headers, query parameters and responses
@@ -658,7 +685,12 @@ def _secured(schemes: list[SecurityScheme], level: _Level, sources: Sources | No
             continue
         where = _at(description.location, description.value_pos, level.root) if description.value_pos else ''
         yield _Line(f'{inner.indent}{_key(_label(scheme))}:', where)
-        yield from _described_body(description, replace(inner, indent=inner.indent + '  '), sources)
+        # No `sources`: attribution names the trait or resource type a merged-in
+        # item came from, and nothing here was merged in — a scheme's headers
+        # are the scheme's, which the block it sits in already says.
+        body = replace(inner, indent=inner.indent + '  ')
+        yield from _message(description, body, None, frozenset())
+        yield from _responses(description.responses, body, None, frozenset())
 
 
 def _described(scheme: SecurityScheme) -> SecuritySchemeDescription | None:
@@ -669,23 +701,6 @@ def _described(scheme: SecurityScheme) -> SecuritySchemeDescription | None:
         return None
     has_content = description.headers or description.query_parameters or description.responses
     return description if has_content or description.query_string is not None else None
-
-
-def _described_body(description: SecuritySchemeDescription, level: _Level, sources: Sources | None) -> Iterator[_Line]:
-    empty: frozenset[str] = frozenset()
-    yield from _parameters(description.headers, 'headers', level, sources, empty)
-    yield from _parameters(description.query_parameters, 'queryParameters', level, sources, empty)
-    if description.query_string is not None:
-        yield _Line(f'{level.indent}queryString: {_type_name(description.query_string)}')
-    if description.responses:
-        yield _Line(f'{level.indent}responses:')
-        for response in description.responses.values():
-            code = replace(level, indent=level.indent + '  ')
-            yield _Line(f'{code.indent}{response.code}:', _at(response.location, response.key_pos, level.root))
-            body = replace(code, indent=code.indent + '  ')
-            yield from _prose(response, body.indent)
-            yield from _parameters(response.headers, 'headers', body, sources, empty)
-            yield from _bodies(response.bodies, body, sources, empty)
 
 
 def _applied(endpoint: EndPoint) -> frozenset[str]:

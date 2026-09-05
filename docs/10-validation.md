@@ -338,11 +338,19 @@ by the JSON Pointer fragment of the URI, resolved by the schema library.
 RAML shape, for consumers that want a uniform model. Cached on first call.
 
 **It survives unwrap, and that took a fix.** `_narrow_json` in `types/inherit.py`
-carried `raw` and `validator` into the subtype and not `_compiled`, which is what
-this reads — so after P9 it returned `None` on every *declared* schema type,
-which is precisely the shape a consumer is handed. Nothing noticed until the
-effective view ([16](16-graph.md) § 9.6) became the first caller to want the
-projection rather than the validator.
+carried a hand-written list of fields into the subtype — `raw` and `validator`,
+but not `_compiled`, which is what this reads — so after P9 it returned `None` on
+every *declared* schema type, which is precisely the shape a consumer is handed.
+Nothing noticed until the effective view ([16](16-graph.md) § 9.7) became the
+first caller to want the projection rather than the validator. It now copies
+`copyable_slots(type(shape))`, the same mechanism `clone` and `alias_to` use so
+that a field added to a kind cannot be missed — the hand list *was* the defect.
+
+`projected(base)` beside it is the substitution a consumer walking structure
+wants: a schema type through this projection, anything else unchanged. One
+function rather than the same `isinstance` in every consumer, because a consumer
+that forgets it does not fail — it sees a leaf with no properties and reports
+that a schema type is made of nothing.
 
 Mappings:
 

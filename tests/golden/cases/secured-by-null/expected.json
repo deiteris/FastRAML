@@ -1,0 +1,73 @@
+{
+  "annotations": [],
+  "endpoints": {
+    "/closed": {
+      "operations": {
+        "get": {
+          "responses": {},
+          "secured_by": [
+            {
+              "bound": true,
+              "is_null": false,
+              "name": "oauth",
+              "scopes": [
+                "read"
+              ]
+            }
+          ]
+        }
+      },
+      "secured_by": [
+        {
+          "bound": true,
+          "is_null": false,
+          "name": "oauth",
+          "scopes": null
+        }
+      ]
+    },
+    "/open": {
+      "operations": {
+        "get": {
+          "responses": {},
+          "secured_by": [
+            {
+              "bound": true,
+              "is_null": true,
+              "name": "null",
+              "scopes": null
+            }
+          ]
+        },
+        "post": {
+          "description": "inherits oauth",
+          "responses": {},
+          "secured_by": [
+            {
+              "bound": true,
+              "is_null": false,
+              "name": "oauth",
+              "scopes": null
+            }
+          ]
+        }
+      },
+      "secured_by": [
+        {
+          "bound": true,
+          "is_null": false,
+          "name": "oauth",
+          "scopes": null
+        }
+      ]
+    }
+  },
+  "entry_point": {
+    "base_uri": "https://example.test",
+    "kind": "APIFragment",
+    "media_types": [],
+    "protocols": [],
+    "title": "Golden"
+  },
+  "types": {}
+}

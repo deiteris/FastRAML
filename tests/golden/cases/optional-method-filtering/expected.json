@@ -1,0 +1,35 @@
+{
+  "annotations": [],
+  "endpoints": {
+    "/has-post": {
+      "operations": {
+        "get": {
+          "description": "always present",
+          "responses": {}
+        },
+        "post": {
+          "description": "only where the resource declares post",
+          "display_name": "declared",
+          "responses": {}
+        }
+      },
+      "secured_by": []
+    },
+    "/no-post": {
+      "operations": {
+        "get": {
+          "description": "always present",
+          "responses": {}
+        }
+      },
+      "secured_by": []
+    }
+  },
+  "entry_point": {
+    "kind": "APIFragment",
+    "media_types": [],
+    "protocols": [],
+    "title": "Golden"
+  },
+  "types": {}
+}

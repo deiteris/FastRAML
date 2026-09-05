@@ -1,0 +1,15 @@
+#%RAML 1.0 Library
+types:
+  Node:
+    type: object
+    properties:
+      value: string
+      child?: Node
+  Tree:
+    type: object
+    properties:
+      children: Tree[]
+  Chain:
+    type: object
+    properties:
+      next?: Chain | nil

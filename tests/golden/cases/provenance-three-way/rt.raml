@@ -1,0 +1,13 @@
+#%RAML 1.0 ResourceType
+uses:
+  own: own.raml
+get:
+  responses:
+    200:
+      body:
+        application/json:
+          type: <<item>>
+    201:
+      body:
+        application/json:
+          type: own.OwnType

@@ -1,0 +1,15 @@
+#%RAML 1.0
+title: Golden
+traits:
+  platformed:
+    queryParameters:
+      platform?:
+        type: string
+        enum: [unix, win]
+/downloads:
+  get:
+    is: [platformed]
+    queryParameters:
+      platform?:
+        type: string
+        enum: [mac, unix]

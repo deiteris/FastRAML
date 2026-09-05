@@ -1,0 +1,10 @@
+#%RAML 1.0
+title: Golden
+uses:
+  caller: caller.raml
+resourceTypes:
+  paged: !include rt.raml
+/things:
+  type:
+    paged:
+      item: caller.CallerType

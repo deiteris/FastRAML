@@ -1,0 +1,20 @@
+#%RAML 1.0
+title: Golden
+baseUri: https://example.test
+securitySchemes:
+  oauth:
+    type: OAuth 2.0
+    settings:
+      authorizationUri: https://example.test/authorize
+      accessTokenUri: https://example.test/token
+      authorizationGrants: [authorization_code]
+      scopes: [read, write]
+securedBy: [oauth]
+/open:
+  get:
+    securedBy: [null]
+  post:
+    description: inherits oauth
+/closed:
+  get:
+    securedBy: [oauth: {scopes: [read]}]

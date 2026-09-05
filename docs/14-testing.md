@@ -5,7 +5,7 @@ Five layers, each answering a question the others cannot.
 | Layer | Question | Size |
 |-------|----------|------|
 | Unit | does this function do what the doc says? | many, fast |
-| Golden | does the whole model come out right for this input? | ~100 |
+| Golden | does the whole model come out right for this input? | 10 cases |
 | TCK | do we agree with the spec's own compliance kit? | 965 fixtures |
 | Property | do the algebraic laws hold on generated input? | ~10 properties |
 | Benchmark | is it linear, and how fast? | 5 benches |
@@ -195,14 +195,40 @@ about:
 - the `preference?` / `preference??` property-name corner cases;
 - `securedBy: [null]` overriding an inherited scheme.
 
-**Not built yet.** There is no `tests/golden/` and no `--update-golden`; the
-harness lands with Phase 9. Until then the cases above are pinned as unit tests
-where the phase that owns them has run — the trait/resource-type priority
-classes, optional-method filtering, the collection merge, and the three-way
-provenance example are in `tests/unit/test_traits.py`,
-`test_resourcetypes.py` and `test_structural_merge.py`. A unit test asserts the
-one thing it names; a golden asserts everything at once, which is why these
-cases are still listed here.
+**Built**, as `tests/golden/`, with a case per bullet above. Each case is a
+directory holding its own RAML and an `expected.json`; every case parses with
+`unwrap=True, validate=True`, because a golden of an un-flattened model would
+pin the declaration rather than the type, and the declaration is what the unit
+tests already cover.
+
+`tests/golden/project.py` is the walker. **It is driven off `__slots__`**, using
+the same `copyable_slots` walk as `KindBase.clone`, for the reason docs/05 § 1
+gives there: `__slots__` on every model class is a project rule rather than a
+convention, so the field list cannot go stale. A facet added to a kind and not
+wired in by hand would otherwise be invisible to the goldens — which is the
+exact failure this layer exists to catch, so the layer must not have it.
+
+Two things a reader of this section should know, both learned by getting them
+wrong first:
+
+- **A golden must contain the thing its case is named after.** The first draft
+  projected endpoints as lists of parameter *names*, so
+  `collection-merge-enum` — the case that exists to pin the spec's own
+  `[mac, unix, win]` — asserted nothing at all, because the merged `enum` lives
+  on the query parameter's shape. It passed, and it was cover rather than a
+  test. The projection now carries parameter and body shapes in full.
+- **`getattr(x, 'name', default)` in a projector turns a wrong field name into a
+  plausible answer.** `SecurityScheme` has `compiled_params`, not `scopes`, so
+  every OAuth scope narrowing projected as `[]` and looked deliberate.
+
+The goldens are checked against mutation like the corpus properties (§ 4.2):
+disabling sequence deduplication in the structural merge, and disabling
+optional-method filtering, each turn them red.
+
+Regenerate with `pytest tests/golden --update-golden`. **Read the diff before
+committing it.** A regenerated golden accepted unread asserts whatever the code
+happened to do that day, which is worse than having no golden, because it looks
+like one.
 
 ## 3. Unit tests
 
@@ -235,7 +261,8 @@ because they encode decisions rather than behaviour:
 
 ## 4. Property-based tests
 
-`hypothesis`, over a small generator of RAML documents. The laws:
+The laws. Section 4.1 records where each is checked and over what input —
+`hypothesis` for some, the TCK corpus for others.
 
 1. **Idempotence** — `unwrap(unwrap(x)) == unwrap(x)`.
 2. **Merge identity** — `merge(t, None) is t` and `merge(None, s) is s`.
@@ -248,7 +275,6 @@ because they encode decisions rather than behaviour:
    of the inputs' own objects, because a copied one would silently drop its
    provenance mark and the merge would still look correct.
 
-Laws 2 to 4 are implemented in `tests/property/test_merge_laws.py`.
 5. **Order preservation** — declaration order of properties, types, endpoints,
    methods and responses round-trips.
 6. **Cache soundness** — parsing with a counting loader reads each file exactly
@@ -262,6 +288,54 @@ Laws 2 to 4 are implemented in `tests/property/test_merge_laws.py`.
    projections.
 10. **No `RecursionError`** — generated nesting up to `max_depth + 50`
     produces a positioned diagnostic, never a `RecursionError`.
+11. **The two validation paths agree** — `validate=True` with and without
+    `unwrap=True` reaches the same verdict on the same document. Not in the
+    original list; added in Phase 9 because it is the only check that compares
+    the private-copy path of docs/13 § 2 against the real one. Every other test
+    picks a configuration and stays in it, so a copy that had diverged would be
+    invisible — each configuration agreeing with itself.
+
+### 4.1 Where each law lives, and why
+
+| Laws | Where | Input |
+|------|-------|-------|
+| 2–4, node identity | `tests/property/test_merge_laws.py` | hypothesis |
+| 1, 7 | `tests/unit/test_unwrap.py`, `tests/unit/test_validate.py` | hypothesis over a table of declarations |
+| 10 | `tests/unit/test_depth_guard.py` | constructed, one case per guard |
+| 5, 6, 8, 9, 11 | `tests/tck/test_properties.py` | **the corpus** |
+
+The last row is a deliberate substitution for the hypothesis generator this
+section originally called for. A generator writes the documents someone thought
+to describe; the corpus holds the ones people actually wrote, including the
+awkward ones nobody would think to generate. For a law that is a *comparison* —
+parse it twice, parse it two ways — the corpus is both stronger and cheaper.
+Laws needing input nobody wrote down, like the merge algebra, still need a
+generator.
+
+Laws 6 and 8 are checked in the form that fails **silently**, which is not the
+form the sentence above suggests:
+
+- Law 6 as **canonicalisation** — no file reachable under two URIs. A cache miss
+  from `./a/../b.raml` not matching `b.raml` decodes the file twice and gives one
+  declaration two shape identities; the parse still succeeds, and the model is
+  quietly wrong. The counting loader in `test_includes.py` covers the other half.
+- Law 8 as **positions inside their own file**. Every other test asserts on a
+  diagnostic's message, so a position that is merely plausible — 1-based, wrong
+  line — is invisible to all of them.
+
+### 4.2 These are checked against mutation
+
+A corpus test asserting "no offenders" passes just as quietly when the loop
+iterates nothing or the comparison can never be non-empty.
+`TestTheseChecksSeeSomething` pins that the fixtures are populated, that both
+verdicts occur, and that law 11's one permitted difference is a live branch
+rather than dead code.
+
+Beyond that, each was confirmed to go **red** under a mutation of the parser
+that breaks the property it watches — a position shifted past end of file, the
+declaration order reversed, an ordering made to vary per parse, and the
+validation copy stripped of its `inherits`. A green suite is evidence only if it
+can go red.
 
 ## 5. Benchmarks
 

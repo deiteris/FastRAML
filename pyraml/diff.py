@@ -41,6 +41,17 @@ _POSITIONAL: Final = frozenset({'column', 'definedIn', 'line'})
 #: Attributes nobody consumes at runtime. Reported, graded `cosmetic`.
 _PROSE: Final = frozenset({'description', 'displayName', 'usage'})
 
+#: Edges that name something declared elsewhere, rather than containing it.
+#: These are the only ones worth diffing: a containment edge cannot change
+#: without the node at its end being added or removed, so diffing it repeats
+#: what the node already said. A **reference** can change while every node stays
+#: exactly where it was — swapping an operation's `securedBy` from one scheme to
+#: another alters no node and no attribute, and went unreported until a test
+#: swapped OAuth 2.0 for an API key and this said the document was unchanged.
+_REFERENCE_EDGES: Final = frozenset(
+    {'aliasOf', 'annotation', 'appliesResourceType', 'appliesTrait', 'inherits', 'recursionHead', 'securedBy'}
+)
+
 #: Derived, never independently meaningful. A node's `name` is either part of
 #: its own IRI — so a rename arrives as a removal and an addition, not as an
 #: attribute change — or it is inherited from its owner. Left in, it reports
@@ -64,11 +75,11 @@ class Change:
     first, which is not even stable, let alone right.
     """
 
-    kind: Literal['added', 'removed', 'changed']
+    kind: Literal['added', 'removed', 'changed', 'linked', 'unlinked']
     iri: str
     node_kind: str
     directions: frozenset[Direction]
-    #: Set for `changed` only.
+    #: The attribute for `changed`, or the predicate for `linked`/`unlinked`.
     attribute: str | None = None
     before: object = None
     after: object = None
@@ -107,7 +118,49 @@ def diff(old: Graph, new: Graph) -> list[Change]:
         for iri, node in new.nodes.items()
         if iri not in old.nodes
     )
+    changes.extend(_relinked(old, new))
     return _without_subsumed(changes)
+
+
+def _relinked(old: Graph, new: Graph) -> Iterator[Change]:
+    """References that now point somewhere else, or nowhere.
+
+    Compared per (subject, predicate) so a swap arrives as one `unlinked` and
+    one `linked` rather than as an opaque "changed": which target went and which
+    arrived is exactly what decides whether the swap is breaking.
+    """
+    before, after = _references(old), _references(new)
+    for key in sorted(before.keys() | after.keys()):
+        iri, predicate = key
+        was, now = before.get(key, frozenset()), after.get(key, frozenset())
+        node = new.nodes.get(iri) or old.nodes.get(iri)
+        graph = new if iri in new.nodes else old
+        for gone in sorted(was - now):
+            yield Change(
+                kind='unlinked',
+                iri=iri,
+                node_kind=node.kinds[0] if node else 'Unknown',
+                directions=_sides(graph, iri),
+                attribute=predicate,
+                before=gone,
+            )
+        for arrived in sorted(now - was):
+            yield Change(
+                kind='linked',
+                iri=iri,
+                node_kind=node.kinds[0] if node else 'Unknown',
+                directions=_sides(graph, iri),
+                attribute=predicate,
+                after=arrived,
+            )
+
+
+def _references(graph: Graph) -> dict[tuple[str, str], frozenset[str]]:
+    found: dict[tuple[str, str], set[str]] = {}
+    for edge in graph.edges:
+        if edge.predicate in _REFERENCE_EDGES:
+            found.setdefault((edge.subject, edge.predicate), set()).add(edge.object)
+    return {key: frozenset(targets) for key, targets in found.items()}
 
 
 def _without_subsumed(changes: list[Change]) -> list[Change]:
@@ -213,6 +266,8 @@ RULES: Final[dict[str, Rule]] = {
         Rule('security-removed', 'safe', 'a credential that was required is merely ignored'),
         Rule('type-changed', 'breaking', 'the wire format is not the one either side agreed'),
         Rule('documentation-changed', 'cosmetic', 'nothing on the wire changed'),
+        Rule('reference-retargeted', 'risky', 'it now names something else; the two may not agree'),
+        Rule('reference-dropped', 'risky', 'it no longer names what it did'),
         Rule('other', 'risky', 'not covered by a rule; read it yourself'),
     )
 }
@@ -244,11 +299,26 @@ def classify(change: Change) -> Rule:
 
 
 def _rule_for(change: Change, direction: Direction) -> Rule:
+    if change.kind in ('linked', 'unlinked'):
+        return RULES[_link_rule(change)]
     if change.kind == 'removed':
         return RULES['entity-removed' if change.node_kind in _REMOVED_ENTITY else _removed_rule(change, direction)]
     if change.kind == 'added':
         return RULES[_added_rule(change, direction)]
     return RULES[_changed_rule(change, direction)]
+
+
+def _link_rule(change: Change) -> str:
+    """A reference gained or lost.
+
+    `securedBy` is graded outright: requiring a credential where none was
+    required refuses every existing caller, and dropping one refuses nobody.
+    Everything else is `risky` — an inheritance or annotation now naming
+    something different is a real change whose effect this cannot compute.
+    """
+    if change.attribute == 'securedBy':
+        return 'security-added' if change.kind == 'linked' else 'security-removed'
+    return 'reference-retargeted' if change.kind == 'linked' else 'reference-dropped'
 
 
 def _removed_rule(change: Change, direction: Direction) -> str:

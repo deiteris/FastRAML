@@ -214,3 +214,87 @@ class TestDirectionIsComputed:
         """
         change = self.both_ways(workspace, ('      a: string', '      a?: string'))
         assert classify(change).severity == 'breaking'
+
+
+SECURED = """#%RAML 1.0
+title: T
+securitySchemes:
+  oauth:
+    type: OAuth 2.0
+    settings:
+      authorizationUri: https://e.test/a
+      accessTokenUri: https://e.test/t
+      authorizationGrants: [authorization_code]
+  apiKey:
+    type: Pass Through
+    describedBy:
+      headers:
+        X-Key: string
+types:
+  Ref: string
+  Other: string
+/things:
+  get:
+    securedBy: [oauth]
+    responses:
+      200:
+        body:
+          application/json: Ref
+"""
+
+
+class TestReferencesAreDiffedToo:
+    """Edges, not only nodes and attributes.
+
+    A reference can change while every node stays exactly where it was. Swapping
+    an operation's `securedBy` from OAuth 2.0 to an API key alters no node and no
+    attribute — and the first version of this reported no changes at all and
+    exited 0, which for a tool whose contract is "exit 1 if breaking" is the
+    worst answer available.
+    """
+
+    @staticmethod
+    def graded(workspace, replacements: list[tuple[str, str]]):
+        after = SECURED
+        for old, new in replacements:
+            assert old in after, old
+            after = after.replace(old, new)
+        root = workspace({'v1.raml': SECURED, 'v2.raml': after})
+        options = ParseOptions(unwrap=True)
+        old_graph = build_graph(parse_from_path(root / 'v1.raml', options))
+        new_graph = build_graph(parse_from_path(root / 'v2.raml', options))
+        return {classify(change).name: change for change in diff(old_graph, new_graph)}
+
+    def test_a_swapped_security_scheme_is_breaking(self, workspace):
+        found = self.graded(workspace, [('securedBy: [oauth]', 'securedBy: [apiKey]')])
+        assert 'security-added' in found
+        assert RULES['security-added'].severity == 'breaking'
+
+    def test_requiring_no_credential_where_one_was_required_is_safe(self, workspace):
+        found = self.graded(workspace, [('    securedBy: [oauth]\n', '')])
+        assert 'security-removed' in found
+        assert RULES['security-removed'].severity == 'safe'
+        assert 'security-added' not in found
+
+    def test_a_retargeted_reference_is_reported(self, workspace):
+        """`Ref` and `Other` are both `string`, so no node and no attribute
+        differ — only the edge naming which one the body uses.
+        """
+        found = self.graded(workspace, [('application/json: Ref', 'application/json: Other')])
+        assert 'reference-retargeted' in found
+        assert found['reference-retargeted'].attribute == 'aliasOf'
+
+    def test_a_swap_arrives_as_a_drop_and_an_arrival(self, workspace):
+        """Not as an opaque "changed": which target went and which came is what
+        decides whether the swap breaks anyone.
+        """
+        found = self.graded(workspace, [('securedBy: [oauth]', 'securedBy: [apiKey]')])
+        assert found['security-removed'].kind == 'unlinked'
+        assert found['security-added'].kind == 'linked'
+
+    def test_containment_edges_are_not_diffed(self, workspace):
+        """They cannot change without the node at the end being added or
+        removed, so diffing them would repeat what the node already said.
+        """
+        found = self.graded(workspace, [('  Other: string\n', '')])
+        assert not any(change.attribute in ('property', 'payload', 'returns') for change in found.values())

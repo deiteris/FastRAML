@@ -687,11 +687,35 @@ documented", which is genuinely org-specific. The structure keeps both true:
 the change list is the contract, `--json` carries it whole, and the grading is
 one consumer of it.
 
-### 10.4 What it does not do
+### 10.4 Edges are diffed, not only nodes
+
+A **reference** can change while every node stays exactly where it was.
+Swapping an operation's `securedBy` from OAuth 2.0 to an API key alters no node
+and no attribute; so does replacing a body's type with a structurally identical
+one. The first version compared nodes and their attributes only, reported *no
+changes at all* for both edits, and exited 0 — for a tool whose contract is
+"exit 1 if breaking", the worst answer available.
+
+Only reference edges are compared: `securedBy`, `inherits`, `aliasOf`,
+`appliesTrait`, `appliesResourceType`, `annotation`, `recursionHead`. A
+containment edge — `property`, `payload`, `returns` — cannot change without the
+node at its end being added or removed, so diffing it would repeat what the node
+already said.
+
+A swap arrives as an `unlinked` and a `linked`, not as an opaque "changed":
+which target went and which arrived is exactly what decides whether the swap
+breaks anyone. `securedBy` is graded outright — requiring a credential where
+none was required refuses every existing caller. The rest are `risky`: an
+inheritance or annotation now naming something else is a real change whose
+effect this cannot compute.
+
+### 10.5 What it does not do
 
 - **A rename reads as a removal and an addition.** No similarity matching:
   correct, noisy, and better than a confident wrong guess about which old name
   became which new one.
-- **Semantic equivalence.** `type: string | nil` and `type?: string` may mean
-  the same thing to a reader and will diff as different.
+- **Structural equality is not semantic equality.** Two types with identical
+  properties and facets are indistinguishable here even if they mean different
+  things to a reader — replacing `Ref` with `Other`, both `type: string`, is
+  reported as a retargeted reference and graded `risky` rather than judged.
 - **Examples and descriptions** are `cosmetic`. Nothing on the wire changed.

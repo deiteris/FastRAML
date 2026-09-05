@@ -379,7 +379,7 @@ def _diff(args: argparse.Namespace) -> int:
         # same sentence are not.
         groups: dict[tuple[str, str, str], list[Change]] = {}
         for rule, change in shown:
-            key = (rule.name, str(change.attribute or ''), f'{_plain(change.before)!r} -> {_plain(change.after)!r}')
+            key = (rule.name, str(change.attribute or ''), f'{_value(change.before)} -> {_value(change.after)}')
             groups.setdefault(key, []).append(change)
         for (name, attribute, values), members in groups.items():
             detail = f'  {attribute}: {values}' if attribute else ''
@@ -394,6 +394,17 @@ def _diff(args: argparse.Namespace) -> int:
 
 def _plain(value: object) -> object:
     return list(value) if isinstance(value, tuple) else value
+
+
+def _value(value: object) -> str:
+    """One side of a change, for a person. An IRI is shown as its path.
+
+    A reference change carries node IRIs, and printing those raw would undo the
+    work `_pretty` does everywhere else in this output.
+    """
+    if isinstance(value, str) and value.startswith(('pyraml://', 'file://', 'http')):
+        return _pretty(value)
+    return repr(_plain(value))
 
 
 def _record(rule: Rule, change: Change) -> dict[str, object]:

@@ -141,10 +141,10 @@ compares nodes, attributes and reference edges, saw **no change at all** when a
 whole response schema was replaced. On a schema-heavy document that is every
 type in it.
 
-It costs what it represents: the benchmark's schema corpus goes from 401 nodes
-to 6001, and `unwrap+graph` on it from about 93 ms to 140 ms. That is 15× the
-graph for 1.5× the time, and it is the price of the questions above having
-answers.
+The cost is proportional to the structure gained. On the benchmark's schema
+corpus the graph goes from 401 nodes to 6001, and `unwrap+graph` from about
+93 ms to 140 ms: 15× the graph for 1.5× the time. That is what makes the
+questions above answerable.
 
 ### 2.5 Literals
 
@@ -699,10 +699,12 @@ sharing one body, which makes it the opposite of decoration.
 First line only, as with a type's description: these may be paragraphs and the
 view is meant to fit a screen.
 
-**Custom facets and annotations are shown.** A `facets:` block says what a
-subtype must supply; the *value* is supplied far from there, usually in a
-subtype, and an annotation is RAML's main extension point. None of the three was
-rendered. An application round-trips in its written form, `(name): value`.
+**Custom facets and annotations are shown**, and none of the three used to be.
+A `facets:` block states what a subtype must supply, and the value that
+satisfies it is written somewhere else entirely — which is exactly the pair a
+reader cannot hold in their head. Annotations are RAML's main extension point;
+one real document applies 187 of them. An application round-trips in the form it
+was written, `(name): value`.
 
 **A union names its members** — `string | nil`, not `union`. Naming is not
 expansion, so it is not gated on `--depth`: a union reaching the limit as the

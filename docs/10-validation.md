@@ -352,24 +352,30 @@ function rather than the same `isinstance` in every consumer, because a consumer
 that forgets it does not fail — it sees a leaf with no properties and reports
 that a schema type is made of nothing.
 
-A subschema with no `type` is projected by the kind its keywords imply, and
-that is **a projection decision rather than JSON Schema semantics**. In JSON
-Schema a keyword is an assertion applied *conditionally on the instance type*:
-`{"properties": {…}, "required": ["a"]}` does not say the instance is an object,
-it says that if it is one then `a` must be present — against `"hello"` it passes
-vacuously. Validation is unaffected, because it goes to the real validator.
+**A subschema with no `type` is projected by the kind its keywords imply. That
+is a decision this projection makes, not JSON Schema semantics.**
 
-The projection has to pick a kind, since RAML cannot spell "a constraint that
-applies only to objects and is otherwise silent". When every keyword present
-points at one kind, that kind is the least-lossy pick; when they point at more
-than one — `{"properties": {…}, "minLength": 3}` constrains objects *and*
-strings, which is legal — the shape stays `any` rather than silently choosing.
+In JSON Schema a keyword is an assertion applied *conditionally on the instance
+type*. `{"properties": {…}, "required": ["a"]}` does not say the instance is an
+object; it says that if the instance is an object, it must have an `a` property.
+Against the string `"hello"` the same schema passes, vacuously. Validation here
+is unaffected, because it runs against the compiled schema.
 
-The keyword table is **not** RAML's `FACET_TYPE_HINT`. That one maps `fileTypes`
-and `discriminator`, which JSON Schema does not have, omits `patternProperties`,
-`required`, `dependencies`, `contains` and `exclusiveMinimum`, which it does,
-and its `identify_shape_type` *raises* on two hints — so reusing it would reject
-schemas that are valid.
+The projection still has to choose a kind, because RAML cannot express "a
+constraint that applies only to objects and is otherwise silent". When every
+keyword present points at one kind, that kind is the least lossy choice. When
+they point at more than one, the shape stays `any` rather than choose silently —
+`{"properties": {…}, "minLength": 3}` constrains objects *and* strings, which is
+legal, and losing constraints is better than claiming the wrong kind.
+
+The keyword table is **not** RAML's `FACET_TYPE_HINT`, which is wrong here in
+three ways:
+
+- it maps `fileTypes` and `discriminator`, which are not JSON Schema keywords;
+- it omits `patternProperties`, `required`, `dependencies`, `contains` and
+  `exclusiveMinimum`, which are;
+- its `identify_shape_type` *raises* when two kinds are hinted, so reusing it
+  would reject valid schemas.
 
 Mappings:
 

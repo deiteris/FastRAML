@@ -374,17 +374,18 @@ the output a property path cannot produce ([16](16-graph.md) § 5), and it is th
 reason these are not simply a canned SPARQL query.
 
 **Bound the output.** One type at a real scale produces thousands of routes,
-which scrolls the answer off the screen as surely as printing nothing —
-`refs errorScheme` on a 149-endpoint API is 1902 lines. `--limit` therefore
-defaults to 50 and reports the remainder on stderr, so a piped run is
-unaffected and `--limit 0` still means all. `--kind` keeps only results of a
-given kind and is repeatable (`--kind Operation --kind EndPoint`); `--depth`
-stops the walk after N hops.
+which scrolls the answer off the screen as surely as printing nothing:
+`refs errorScheme` on a 149-endpoint API is 1902 lines.
 
-`deps` follows type structure for a type and containment for anything else. An
-endpoint's own edges are `supportedOperation`, `parameter` and `securedBy`, so
-the type closure alone reported that every endpoint and every operation in a
-document is made of nothing.
+`--limit` therefore defaults to 50. The remainder is reported on stderr, so a
+piped run is unaffected, and `--limit 0` still means all. `--kind` keeps only
+results of a given kind and is repeatable (`--kind Operation --kind EndPoint`).
+`--depth` stops the walk after N hops.
+
+`deps` follows type structure for a type, and containment for anything else. An
+endpoint's own edges are `supportedOperation`, `parameter` and `securedBy`, none
+of which the type closure follows — so before this rule, `deps` reported that
+every endpoint and every operation in a document was made of nothing.
 
 `NAME` is a declared name or a whole node IRI. A **declaration** wins over any
 node inside one that happens to carry the same name ([16](16-graph.md) § 3.3).
@@ -422,20 +423,22 @@ Admin:                # api.raml:46
       maxLength: 36
 ```
 
-`NAME` may be a **type, an endpoint or an operation** — an operation renders
-under the resource it hangs off, read back over the `supportedOperation` edge,
-because the operation node carries no path of its own and reading one there
-produced a bare `:` for the resource key and output that would not load.
+`NAME` may be a **type, an endpoint or an operation**.
 
-A trait or a resource type has no effective form of its own — it is a template
-applied elsewhere — so `show` names where it was written and how many sites
-apply it, and points at `refs`, rather than only refusing.
+An endpoint is the harder case and the one this helps most: it shows the
+resource type and traits applied, security after inheritance, ancestor URI
+parameters, and every merged-in header, query parameter and body — each tagged
+with the trait or resource type that supplied it where that can be established
+exactly ([16](16-graph.md) § 9.4).
 
-`NAME` may be a **type or an endpoint**. An endpoint is the harder case and the
-one this helps most: it shows the resource type and traits applied, security
-after inheritance, ancestor URI parameters, and every merged-in header, query
-parameter and body — each tagged with the trait or resource type that supplied
-it where that can be established exactly ([16](16-graph.md) § 9.4).
+An operation renders under the resource it hangs off. The operation node carries
+no path of its own, so the path is read back over the `supportedOperation` edge;
+reading one off the operation produced an empty resource key, and output that
+would not load.
+
+A trait or a resource type has no effective form of its own, because it is a
+template applied elsewhere. For those, `show` reports where the declaration was
+written and how many sites apply it, then points at `refs`.
 
 Each security scheme's `describedBy` appears as its own block under
 `securedBy:`, so the `Authorization` header a caller must send is visible.

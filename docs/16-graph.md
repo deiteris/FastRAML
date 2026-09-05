@@ -359,22 +359,30 @@ a query that matches nothing returns in microseconds. The table below counts
 only the queries that match, because averaging in the others would report the
 corpus's shape as if it were the query's speed.
 
-Each corpus ran in its own process. Each timing is the fastest of five runs
-after a warm-up.
+**These are the only figures in this document that the harness did not
+produce.** Running a query needs an RDF store, and `pyoxigraph` is an optional
+extra that `bench/` does not depend on, so there is no `bench` configuration for
+them. They come from a script instead: one corpus per process, on a clean
+checkout, each timing the fastest of five runs after a warm-up. Treat them as
+weaker evidence than § 8's, and re-measure before relying on any single one.
 
 | | `bench_endpoints` | `bench_large` |
 |---|---|---|
 | triples | 239 547 | 268 951 |
 | queries that match anything | 8 of 17 | 3 of 17 |
-| slowest | `type-fan-in`, 28 ms | `unbounded-strings`, 72 ms |
-| median of those | 7 ms | 42 ms |
-| serialising to N-Triples | 153 ms | 161 ms |
-| **loading the store** | **410 ms** | **440 ms** |
+| slowest | `type-fan-in`, 29 ms | `unbounded-strings`, 73 ms |
+| median of those | 7 ms | 44 ms |
+| serialising to N-Triples | 152 ms | 162 ms |
+| **loading the store** | **421 ms** | **443 ms** |
 
 **Loading the store costs about six times the slowest query.** That decides how
 the tool should be used. `pyraml query` builds and loads the graph on every
 invocation, so a session that asks several questions should hold one store
 rather than run the command repeatedly. The queries themselves are not the cost.
+
+That conclusion is a ratio of about six to one, which survives the measurement
+noise the figures above carry. No individual millisecond count here should be
+quoted on its own.
 
 ## 7. AMF was assessed and not adopted
 

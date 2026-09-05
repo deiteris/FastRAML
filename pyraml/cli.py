@@ -240,24 +240,42 @@ def _walk(args: argparse.Namespace) -> int:
 
 
 def _query(args: argparse.Namespace) -> int:
-    store = _store(args)
-    if store is None:
+    """SPARQL over the graph.
+
+    `pyoxigraph` is optional the way `google-re2` and the HTTP client are: the
+    package never imports it at module scope, so a user who does not query never
+    installs it. Everything it provides is used through it here rather than
+    behind a helper, because the three result classes are what the dispatch
+    below needs and they are only in scope once the import has succeeded.
+    """
+    try:
+        import pyoxigraph  # noqa: PLC0415 - optional: a module-level import would make it required
+    except ImportError:
+        print('query needs an RDF store: install pyoxigraph', file=sys.stderr)
         return EXIT_INVALID
+
+    graph = _built(args)
+    if graph is None:
+        return EXIT_INVALID
+    store = pyoxigraph.Store()
+    store.load(io.StringIO('\n'.join(graph.to_ntriples())), format=pyoxigraph.RdfFormat.N_TRIPLES)
+
     text = args.sparql if args.sparql is not None else Path(args.query_file).read_text(encoding='utf-8')
     result = store.query(text)
 
-    # SPARQL has three result shapes and the store returns a different type for
-    # each: solutions for SELECT, triples for CONSTRUCT/DESCRIBE, a boolean for
-    # ASK. Handling only the first turns a valid query into a traceback, and the
-    # boolean is *not* a `bool` — it is a wrapper, so it is identified by what
-    # the other two have rather than by its own type.
-    if not hasattr(result, 'variables'):
-        if hasattr(result, '__iter__'):
-            for triple in result:
-                print(f'{triple.subject} {triple.predicate} {triple.object} .')
-            return EXIT_OK
+    # SPARQL has three result shapes and the store returns a different class for
+    # each: `QuerySolutions` for SELECT, `QueryTriples` for CONSTRUCT/DESCRIBE,
+    # `QueryBoolean` for ASK. Handling only the first turns a valid query into a
+    # traceback. The ASK result is *not* a `bool` — it is a wrapper that converts
+    # to one — which is why this dispatches on the class and not on `isinstance`
+    # of `bool`.
+    if isinstance(result, pyoxigraph.QueryBoolean):
         answer = bool(result)
         print(json.dumps({'ask': answer}) if args.json else str(answer).lower())
+        return EXIT_OK
+    if isinstance(result, pyoxigraph.QueryTriples):
+        for triple in result:
+            print(f'{triple.subject} {triple.predicate} {triple.object} .')
         return EXIT_OK
 
     names = [str(name).lstrip('?') for name in result.variables]
@@ -267,25 +285,6 @@ def _query(args: argparse.Namespace) -> int:
         else:
             print('\t'.join(_term(row[name]) or '' for name in names))
     return EXIT_OK
-
-
-def _store(args: argparse.Namespace) -> Any:
-    """The graph loaded into an RDF store, or `None` with a diagnostic.
-
-    `pyoxigraph` is optional the way `google-re2` and the HTTP client are: the
-    package never imports it, so a user who does not query never installs it.
-    """
-    try:
-        from pyoxigraph import RdfFormat, Store  # noqa: PLC0415 - optional: a module-level import would require it
-    except ImportError:
-        print('query needs an RDF store: install pyoxigraph', file=sys.stderr)
-        return None
-    graph = _built(args)
-    if graph is None:
-        return None
-    store = Store()
-    store.load(io.StringIO('\n'.join(graph.to_ntriples())), format=RdfFormat.N_TRIPLES)
-    return store
 
 
 def _built(args: argparse.Namespace) -> Graph | None:
@@ -322,7 +321,14 @@ def _resolve(graph: Graph, name: str) -> str | None:
 
 
 def _term(term: Any) -> str | None:
-    return None if term is None else str(getattr(term, 'value', term))
+    """One SPARQL solution binding as text.
+
+    `Any` because `pyoxigraph` is not a declared dependency, so its types are
+    genuinely unavailable to the checker. `.value` is not a guess: every term
+    class it can return — `NamedNode`, `Literal`, `BlankNode` — has one. `None`
+    is the unbound case an `OPTIONAL` produces.
+    """
+    return None if term is None else str(term.value)
 
 
 # -- options ------------------------------------------------------------------

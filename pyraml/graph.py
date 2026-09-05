@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import quote
 
 from pyraml.parser.fragments import APIFragment, Library
@@ -33,11 +33,15 @@ from pyraml.types.base import ScalarFacet
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Iterator, Sequence
 
+    from pyraml.parser.annotations import DomainExtension
+    from pyraml.parser.directives import DirectiveRef, SecurityScheme
     from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
+    from pyraml.parser.fragments import Fragment
+    from pyraml.positions import Position
     from pyraml.registry import Raml
-    from pyraml.types.base import BaseShape, PatternProperty, Property
+    from pyraml.types.base import BaseShape, PatternProperty, Property, Shape
 
 __all__ = [
     'DEFAULT_BASE',
@@ -104,6 +108,16 @@ USE_EDGES: Final = (
 )
 
 _XSD: Final = 'http://www.w3.org/2001/XMLSchema#'
+
+#: The `#/declarations/<bucket>/` segments that hold something a `type:`, `is:`
+#: or `securedBy:` entry can name, and the node kind each one declares. A
+#: `Literal` rather than `str` so the lookup below is total and mypy says so.
+_Bucket = Literal['traits', 'resourceTypes', 'securitySchemes']
+_DECLARED_KINDS: Final[dict[_Bucket, str]] = {
+    'traits': 'Trait',
+    'resourceTypes': 'ResourceType',
+    'securitySchemes': 'SecurityScheme',
+}
 
 #: Percent-escaped in an IRI segment. Everything outside is escaped, so a media
 #: type, a URI template and a `/regex/` property name all survive as one segment.
@@ -469,7 +483,7 @@ class _Builder:
         if obj:
             self.edges.append(Edge(subject=subject, predicate=predicate, object=obj))
 
-    def positioned(self, iri: str, location: str, position: Any) -> None:
+    def positioned(self, iri: str, location: str, position: Position | None) -> None:
         self.node(iri, definedIn=self.relative(location))
         if position is not None and position.is_known:
             self.node(iri, line=position.line, column=position.column)
@@ -495,8 +509,12 @@ class _Builder:
         if shape is not None and shape.id not in self.shape_iris:
             self.shape_iris[shape.id] = self.claim(iri, shape.id)
 
-    def fragment(self, location: str, fragment: object) -> None:
-        """Every declaration a fragment holds, in declaration order."""
+    def fragment(self, location: str, fragment: Fragment) -> None:
+        """Every declaration a fragment holds, in declaration order.
+
+        Only the two that declare anything. The `isinstance` is what narrows
+        `Fragment` — a protocol with no `types` — to the pair that has them.
+        """
         if not isinstance(fragment, (APIFragment, Library)):
             return
         unit = self.unit(location)
@@ -510,7 +528,7 @@ class _Builder:
                 f'{unit}#/declarations/securitySchemes/{_segment(name)}',
                 'SecurityScheme',
                 name=name,
-                type=getattr(scheme, 'type', None),
+                type=scheme.type or None,
             )
             self.edge(unit, 'declares', iri)
         for name in fragment.traits:
@@ -573,7 +591,9 @@ class _Builder:
         for child in endpoint.endpoints.values():
             self.endpoint(api, child, seen)
 
-    def applies(self, subject: str, predicate: str, bucket: str, ref: Any, location: str) -> None:
+    def applies(
+        self, subject: str, predicate: str, bucket: _Bucket, ref: DirectiveRef | SecurityScheme, location: str
+    ) -> None:
         """A `type:`/`is:` reference, pointed at the declaration it names.
 
         The name may be qualified (`lib.collection`), and the declaration then
@@ -590,8 +610,8 @@ class _Builder:
         An unmatched name still gets an edge, to a node created here, so an
         application is never invisible and no edge ever dangles.
         """
-        name = getattr(ref, 'name', None)
-        if not isinstance(name, str) or not name:
+        name = ref.name
+        if not name:
             return
         for candidate in (name, name.rsplit('.', 1)[-1]):
             wanted = f'#/declarations/{bucket}/{_segment(candidate)}'
@@ -599,9 +619,8 @@ class _Builder:
                 if iri.endswith(wanted):
                     self.edge(subject, predicate, iri)
                     return
-        kind = {'traits': 'Trait', 'resourceTypes': 'ResourceType', 'securitySchemes': 'SecurityScheme'}[bucket]
         local = f'{self.unit(location)}#/declarations/{bucket}/{_segment(name)}'
-        self.edge(subject, predicate, self.node(local, kind, name=name))
+        self.edge(subject, predicate, self.node(local, _DECLARED_KINDS[bucket], name=name))
 
     def operation(self, endpoint: str, operation: Operation) -> None:
         iri = self.node(
@@ -678,11 +697,9 @@ class _Builder:
         self.edge(iri, 'range', self.shape(prop.base, f'{iri}/schema'))
         return iri
 
-    def secured(self, subject: str, schemes: Iterable[Any]) -> None:
+    def secured(self, subject: str, schemes: list[SecurityScheme]) -> None:
         for scheme in schemes:
-            if scheme is None:
-                continue
-            if getattr(scheme, 'is_null', False):
+            if scheme.is_null:
                 # `securedBy: [null]` is how an author *removes* inherited
                 # security (docs/09 § A3). It is a fact about the operation, so
                 # it is recorded on the operation rather than dropped for having
@@ -690,13 +707,12 @@ class _Builder:
                 self.node(subject, *self.nodes[subject].kinds, unsecured=True)
                 continue
             self.applies(subject, 'securedBy', 'securitySchemes', scheme, self.raml.location)
-            scopes = getattr(scheme, 'compiled_params', None)
-            if scopes:
-                self.node(subject, *self.nodes[subject].kinds, scopes=' '.join(scopes))
+            if scheme.compiled_params:
+                self.node(subject, *self.nodes[subject].kinds, scopes=' '.join(scheme.compiled_params))
 
-    def annotated(self, subject: str, annotations: dict[str, Any]) -> None:
+    def annotated(self, subject: str, annotations: dict[str, DomainExtension]) -> None:
         for name, extension in annotations.items():
-            defined_by = getattr(extension, 'defined_by', None)
+            defined_by = extension.defined_by
             tail = name.rsplit('.', 1)[-1]
             wanted = f'#/declarations/annotations/{_segment(tail)}'
             target = self.shape_iris.get(defined_by.id) if defined_by is not None else None
@@ -746,7 +762,7 @@ class _Builder:
         self.children(iri, base.shape)
         return iri
 
-    def children(self, iri: str, shape: Any) -> None:
+    def children(self, iri: str, shape: Shape | None) -> None:
         """The declarations a kind contains. One branch per container facet."""
         if isinstance(shape, ObjectShape):
             for name, prop in (shape.properties or {}).items():
@@ -782,6 +798,12 @@ class _Builder:
         Read off the instance rather than a per-kind table: a facet added to a
         kind appears here without this module being touched, which is the same
         reason the golden projector walks `__slots__` (docs/14 § 2).
+
+        The other of the two places `getattr` is genuinely required. The
+        attribute name comes from `_slots`, so it is not known until runtime;
+        there is no static expression for "whatever this kind declares". The
+        `isinstance` immediately after is what recovers the type — everything
+        downstream of it is checked.
         """
         shape = base.shape
         if shape is None:
@@ -793,14 +815,21 @@ class _Builder:
                 if literal is not None:
                     self.node(iri, *self.nodes[iri].kinds, **{_camel(name): literal})
         if base.enum is not None:
-            names = [str(_plain(item)) for item in base.enum]
-            self.node(iri, *self.nodes[iri].kinds, enum=' '.join(names))
+            # `DataNode.raw` is the plain Python value already; unwrapping the
+            # `ValueNode` by hand would only reproduce it.
+            self.node(iri, *self.nodes[iri].kinds, enum=' '.join(str(member.raw) for member in base.enum))
 
 
 # -- small readers ------------------------------------------------------------
 
 
 def _slots(cls: type) -> Iterator[str]:
+    """Every `__slots__` entry down the MRO.
+
+    One of the two places `getattr` is genuinely required: `__slots__` is not
+    declared by any base class in the hierarchy, `object` does not have it, and
+    the names are what the walk is *for*.
+    """
     for klass in cls.__mro__:
         yield from getattr(klass, '__slots__', ())
 
@@ -810,32 +839,26 @@ def _camel(name: str) -> str:
     return head + ''.join(part.title() for part in rest.split('_') if part)
 
 
-def _text(facet: Any) -> str | None:
-    value = getattr(facet, 'value', None)
-    return value if isinstance(value, str) and value else None
+def _text(facet: ScalarFacet[str] | None) -> str | None:
+    return facet.value if facet is not None and facet.value else None
 
 
-def _pattern(pattern: PatternProperty) -> str | None:
-    compiled = getattr(pattern, 'pattern', None)
-    text = getattr(compiled, 'pattern', None)
-    return text if isinstance(text, str) else None
+def _pattern(pattern: PatternProperty) -> str:
+    return pattern.pattern.pattern
 
 
-def _facet_value(value: Any) -> str | int | bool | None:
+def _facet_value(value: object) -> str | int | bool | None:
+    """One `ScalarFacet`'s value as a literal.
+
+    `object` rather than a union: the facets are `ScalarFacet[T]` for seven
+    different `T`, they are reached through the untyped `__slots__` walk above,
+    and the point of this function is to be the one place that decides what an
+    unrecognised `T` becomes.
+    """
     if value is True or value is False:
         return value
     if isinstance(value, Fraction):
         return _number_text(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
+    if isinstance(value, (int, str)):
         return value
     return None
-
-
-def _plain(value: Any) -> Any:
-    for attribute in ('scalar', 'value'):
-        inner = getattr(value, attribute, None)
-        if inner is not None:
-            return _plain(inner)
-    return value

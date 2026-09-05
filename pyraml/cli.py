@@ -3,6 +3,10 @@
 ```
 pyraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE...
 pyraml info [-w ROOT] [-r] FILE
+pyraml graph [--format nt|turtle|dot|json] FILE
+pyraml refs FILE NAME
+pyraml deps FILE NAME
+pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
 ```
 
 Mirrors the reference implementation's `raml` tool closely enough that the two
@@ -18,13 +22,16 @@ back.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import sys
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pyraml import __version__
 from pyraml.errors import RamlError
+from pyraml.graph import TYPE_EDGES, USE_EDGES, Graph, build_graph
 from pyraml.loaders import FileLoader
 from pyraml.parser.entry import ParseOptions, parse_from_path
 from pyraml.yamlnode import backend_name
@@ -43,9 +50,17 @@ EXIT_INVALID = 1
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
-    if args.command == 'info':
-        return _info(args)
-    return _validate(args)
+    match args.command:
+        case 'info':
+            return _info(args)
+        case 'graph':
+            return _graph(args)
+        case 'refs' | 'deps':
+            return _walk(args)
+        case 'query':
+            return _query(args)
+        case _:
+            return _validate(args)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -68,6 +83,31 @@ def _parser() -> argparse.ArgumentParser:
     info = commands.add_parser('info', help='backend, timings and model counts for one file')
     info.add_argument('files', metavar='FILE', nargs=1)
     _add_common(info)
+
+    graph = commands.add_parser('graph', help='project the effective model as a graph (doc 16)')
+    graph.add_argument('files', metavar='FILE', nargs=1)
+    graph.add_argument(
+        '--format',
+        choices=('nt', 'turtle', 'dot', 'json'),
+        default='turtle',
+        help='N-Triples, Turtle, Graphviz, or plain JSON (default: turtle)',
+    )
+    _add_common(graph)
+
+    for name, direction in (('refs', 'uses'), ('deps', 'is made of')):
+        walk = commands.add_parser(name, help=f'what {direction} a named type, with the route to it')
+        walk.add_argument('files', metavar='FILE', nargs=1)
+        walk.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
+        walk.add_argument('--json', action='store_true', help='one JSON object per result')
+        _add_common(walk)
+
+    query = commands.add_parser('query', help='run SPARQL over the graph (needs pyoxigraph)')
+    query.add_argument('files', metavar='FILE', nargs=1)
+    source = query.add_mutually_exclusive_group(required=True)
+    source.add_argument('-q', dest='sparql', help='the query text')
+    source.add_argument('-Q', dest='query_file', help='a file holding the query')
+    query.add_argument('--json', action='store_true', help='JSON rather than a table')
+    _add_common(query)
     return parser
 
 
@@ -151,14 +191,148 @@ def _report(raml: Raml, elapsed: float, *, path: str | None = None) -> None:
         print(f'{name:<12} {value}')
 
 
+# -- graph --------------------------------------------------------------------
+
+
+def _graph(args: argparse.Namespace) -> int:
+    graph = _built(args)
+    if graph is None:
+        return EXIT_INVALID
+    if args.format == 'json':
+        print(json.dumps(graph.to_json(), indent=2))
+        return EXIT_OK
+    emit = {'nt': graph.to_ntriples, 'turtle': graph.to_turtle, 'dot': graph.to_dot}[args.format]
+    for line in emit():
+        print(line)
+    return EXIT_OK
+
+
+def _walk(args: argparse.Namespace) -> int:
+    """`refs` walks the edges backwards, `deps` forwards.
+
+    One function because they differ in exactly two values, and writing them
+    twice is how the two edge closures drift apart.
+    """
+    graph = _built(args)
+    if graph is None:
+        return EXIT_INVALID
+    origin = _resolve(graph, args.name)
+    if origin is None:
+        return EXIT_INVALID
+
+    reverse = args.command == 'refs'
+    paths = graph.walk(origin, USE_EDGES if reverse else TYPE_EDGES, reverse=reverse)
+    for path in paths:
+        # Rendered from whichever end is the *subject* of the first hop, so a
+        # route reads the way the edges point no matter which way it was walked.
+        nodes = tuple(reversed(path.nodes)) if reverse else path.nodes
+        predicates = tuple(reversed(path.predicates)) if reverse else path.predicates
+        if args.json:
+            print(json.dumps({'kind': graph.kind_of(path.target), 'iri': path.target, 'route': list(nodes)}))
+            continue
+        route = graph.label(nodes[0])
+        for predicate, node in zip(predicates, nodes[1:], strict=True):
+            route += f' -{predicate}-> {graph.label(node)}'
+        print(f'{graph.kind_of(path.target):<16} {route}')
+    if not paths and not args.json:
+        print(f'{args.name}: nothing found', file=sys.stderr)
+    return EXIT_OK
+
+
+def _query(args: argparse.Namespace) -> int:
+    store = _store(args)
+    if store is None:
+        return EXIT_INVALID
+    text = args.sparql if args.sparql is not None else Path(args.query_file).read_text(encoding='utf-8')
+    result = store.query(text)
+
+    # SPARQL has three result shapes and the store returns a different type for
+    # each: solutions for SELECT, triples for CONSTRUCT/DESCRIBE, a boolean for
+    # ASK. Handling only the first turns a valid query into a traceback, and the
+    # boolean is *not* a `bool` — it is a wrapper, so it is identified by what
+    # the other two have rather than by its own type.
+    if not hasattr(result, 'variables'):
+        if hasattr(result, '__iter__'):
+            for triple in result:
+                print(f'{triple.subject} {triple.predicate} {triple.object} .')
+            return EXIT_OK
+        answer = bool(result)
+        print(json.dumps({'ask': answer}) if args.json else str(answer).lower())
+        return EXIT_OK
+
+    names = [str(name).lstrip('?') for name in result.variables]
+    for row in result:
+        if args.json:
+            print(json.dumps({name: _term(row[name]) for name in names}))
+        else:
+            print('\t'.join(_term(row[name]) or '' for name in names))
+    return EXIT_OK
+
+
+def _store(args: argparse.Namespace) -> Any:
+    """The graph loaded into an RDF store, or `None` with a diagnostic.
+
+    `pyoxigraph` is optional the way `google-re2` and the HTTP client are: the
+    package never imports it, so a user who does not query never installs it.
+    """
+    try:
+        from pyoxigraph import RdfFormat, Store  # noqa: PLC0415 - optional: a module-level import would require it
+    except ImportError:
+        print('query needs an RDF store: install pyoxigraph', file=sys.stderr)
+        return None
+    graph = _built(args)
+    if graph is None:
+        return None
+    store = Store()
+    store.load(io.StringIO('\n'.join(graph.to_ntriples())), format=RdfFormat.N_TRIPLES)
+    return store
+
+
+def _built(args: argparse.Namespace) -> Graph | None:
+    """Parse and project, or report why not.
+
+    `validate` is off here and on for `validate`/`info`: a document with a bad
+    example still has a graph worth reading, and refusing to draw one would make
+    the tool useless exactly where navigating is most wanted.
+    """
+    path = args.files[0]
+    try:
+        raml = parse_from_path(path, _options(args, validate=False))
+    except RamlError as err:
+        print(f'{path}: invalid', file=sys.stderr)
+        print(err, file=sys.stderr)
+        return None
+    return build_graph(raml)
+
+
+def _resolve(graph: Graph, name: str) -> str | None:
+    """A name from the command line as one node IRI."""
+    found = graph.find(name)
+    if not found:
+        print(f'{name}: no such node', file=sys.stderr)
+        return None
+    if len(found) > 1:
+        # Two libraries may declare the same name, and picking one silently
+        # would answer a question the user did not ask.
+        print(f'{name}: ambiguous, name one of:', file=sys.stderr)
+        for iri in found:
+            print(f'  {iri}', file=sys.stderr)
+        return None
+    return found[0]
+
+
+def _term(term: Any) -> str | None:
+    return None if term is None else str(getattr(term, 'value', term))
+
+
 # -- options ------------------------------------------------------------------
 
 
-def _options(args: argparse.Namespace) -> ParseOptions:
-    """`unwrap` and `validate` are always on: the CLI's job is to find faults."""
+def _options(args: argparse.Namespace, *, validate: bool = True) -> ParseOptions:
+    """`unwrap` is always on; `validate` is on wherever the job is to find faults."""
     return ParseOptions(
         unwrap=True,
-        validate=True,
+        validate=validate,
         workspace_root=args.workspace_root,
         file_loader=FileLoader() if args.no_workspace_guard else None,
         http_client=_http_client() if args.remote else None,

@@ -75,6 +75,7 @@ Two orderings are required for correctness:
 pyraml/
   __init__.py             public API re-exports (see doc 13)
   cli.py                  the `pyraml` console script (doc 13 section 8)
+  graph.py                the effective model as a queryable graph (doc 16)
   py.typed
 
   errors.py               Diagnostic, StackTrace, Accumulator, ErrorKind
@@ -126,6 +127,11 @@ pyraml/
       lexer.py            RDT tokenizer (doc 06)
       parser.py           RDT recursive-descent parser; memoised on a caller-supplied cache
 ```
+
+`graph.py` is **not a pass**. It runs after the pipeline has finished, over a
+model that is already unwrapped, and decides no RAML rule. The dependency runs
+one way — it imports the model and nothing in the model imports it — which is
+what keeps it a consumer rather than a stage ([16](16-graph.md) § 1).
 
 `types/resolve.py` holds the AST → shape visitor as well as the driver, rather
 than the separate `expressions/build.py` an earlier draft of this list named.

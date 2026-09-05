@@ -115,19 +115,23 @@ with 49 skipped.
 
 ### 1.3 Cross-checking against go-raml
 
-**Not built.** The design is: a developer-only script runs `raml validate
---json` from the reference implementation and `pyraml validate --json` over the
-same fixture, then diffs the trace chains, and each disagreement is triaged as a
-pyRAML bug, a go-raml bug, or a documented deviation
-([01](01-scope-and-coverage.md) § 4). It needs a Go toolchain, so it would not
-run in CI.
+**Not built, and not required.** The design was: a developer-only script runs
+`raml validate --json` from the reference implementation and `pyraml validate
+--json` over the same fixture, then diffs the trace chains, and each
+disagreement is triaged as a pyRAML bug, a go-raml bug, or a documented
+deviation ([01](01-scope-and-coverage.md) § 4). It needs a Go toolchain, so it
+would not run in CI.
 
 It was meant to be the fastest way to diagnose a TCK failure, and there are none
 — the ratchet is 916 of 916. Every disagreement that did arise was settled by
-running go-raml directly against a throwaway Go test, which is what
-`CLAUDE.md` prescribes and which needs no script. The half that was missing,
-`pyraml validate --json`, exists as of Phase 9, so this is a short job whenever a
-regression makes it worth doing.
+running go-raml directly against a throwaway Go test, which is what `CLAUDE.md`
+prescribes and which needs no script and no agreed output format. That is the
+standing method; this section describes an alternative to it that was never
+needed, and the decision is to leave it unbuilt rather than to keep it on a list.
+
+Build it if the premise changes — a divergence that a single fixture does not
+isolate, or a second implementation to diff against. Both halves it needs exist
+(`pyraml validate --json` since Phase 9), so it stays a short job.
 
 ### 1.4 Differential conformance: the YAML 1.2 oracle
 
@@ -294,6 +298,15 @@ The laws. Section 4.1 records where each is checked and over what input —
     the private-copy path of docs/13 § 2 against the real one. Every other test
     picks a configuration and stays in it, so a copy that had diverged would be
     invisible — each configuration agreeing with itself.
+12. **Every model that parses has a sound graph** — `build_graph` raises on no
+    unwrapped model in the corpus; no projection returns nodes with no edges; no
+    edge touches a node that does not exist; and no two shapes share an IRI
+    ([16](16-graph.md) §§ 3.1–3.2). Only the first of those four is about
+    crashing. The other three are the ways a projection is **wrong while
+    looking right**: dropping every relationship, ending a traversal early at a
+    dangling edge, or merging two types into one node. Each was found by the
+    check that names it, and the last was found because go-raml's converter
+    carries the same regression net.
 
 ### 4.1 Where each law lives, and why
 
@@ -302,7 +315,7 @@ The laws. Section 4.1 records where each is checked and over what input —
 | 2–4, node identity | `tests/property/test_merge_laws.py` | hypothesis |
 | 1, 7 | `tests/unit/test_unwrap.py`, `tests/unit/test_validate.py` | hypothesis over a table of declarations |
 | 10 | `tests/unit/test_depth_guard.py` | constructed, one case per guard |
-| 5, 6, 8, 9, 11 | `tests/tck/test_properties.py` | **the corpus** |
+| 5, 6, 8, 9, 11, 12 | `tests/tck/test_properties.py` | **the corpus** |
 
 The last row is a deliberate substitution for the hypothesis generator this
 section originally called for. A generator writes the documents someone thought
@@ -358,6 +371,7 @@ than measurements:
 
 | File | Gate | When |
 |------|------|------|
+| `tests/unit/test_graph.py` | the graph projection: IRI stability, the edges that answer the questions it exists for, and both RDF serialisations **checked by a real RDF parser** ([16](16-graph.md)) | always; the RDF cases skip without `pyoxigraph` |
 | `tests/bench/test_corpus.py` | every generated corpus is valid RAML in **all four** configurations, generation is deterministic, and `bench_large`'s diamond really does reach one `common.raml` | always; tiny scale, milliseconds |
 | `tests/bench/test_linearity.py` | `bench_large` within 15 % of linear against a half-size corpus | `PYRAML_BENCH=1` only |
 

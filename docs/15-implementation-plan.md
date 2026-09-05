@@ -739,6 +739,12 @@ In rough priority order:
    middleware. All are consumers of the model, not changes to it; `retain_source`
    and the `TypeExprRef`/`IncludeRef` indices exist so none of them requires a
    parser change.
+
+   **The first of these is built and lives in-tree**: the graph projection
+   ([16](16-graph.md)), `pyraml/graph.py` plus four CLI verbs. It is in the
+   package rather than beside it only because the CLI needs it; it is still a
+   consumer, it decides no RAML rule, and nothing in the model imports it. It
+   required no parser change, which is the claim this item makes.
 6. **Per-entity tolerance across passes**, for `parse_lenient`. Today it stops
    where a strict parse stops and returns the partial model
    ([13](13-public-api.md) § 1). Running the later passes anyway was built in
@@ -759,4 +765,4 @@ In rough priority order:
 | Parent-shape mutation during multiple inheritance | Phase 4 | Explicit test: two children inherit one parent, assert the parent is byte-identical after |
 | `RecursionError` on deep user input | Phases 4, 6, 8 | Depth guard + hypothesis property 10 |
 | Performance regressions creep in unnoticed | all | Benchmarks in CI from Phase 9, baselines committed |
-| Divergence from the reference on an ambiguous spec point | all | The cross-check script ([14](14-testing.md) § 1.3); every divergence resolved into a documented deviation or a bug |
+| Divergence from the reference on an ambiguous spec point | all | **Closed by the TCK, not by the script that was planned for it.** Every divergence was isolated by a single fixture and settled by running go-raml against a throwaway Go test; the ratchet is 916 of 916 and each resolution is a documented deviation ([01](01-scope-and-coverage.md) § 4) or a bug fixed. The cross-check script ([14](14-testing.md) § 1.3) is deliberately unbuilt |

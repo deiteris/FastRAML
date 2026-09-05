@@ -115,19 +115,23 @@ with 49 skipped.
 
 ### 1.3 Cross-checking against go-raml
 
-**Not built.** The design is: a developer-only script runs `raml validate
---json` from the reference implementation and `pyraml validate --json` over the
-same fixture, then diffs the trace chains, and each disagreement is triaged as a
-pyRAML bug, a go-raml bug, or a documented deviation
-([01](01-scope-and-coverage.md) § 4). It needs a Go toolchain, so it would not
-run in CI.
+**Not built, and not required.** The design was: a developer-only script runs
+`raml validate --json` from the reference implementation and `pyraml validate
+--json` over the same fixture, then diffs the trace chains, and each
+disagreement is triaged as a pyRAML bug, a go-raml bug, or a documented
+deviation ([01](01-scope-and-coverage.md) § 4). It needs a Go toolchain, so it
+would not run in CI.
 
 It was meant to be the fastest way to diagnose a TCK failure, and there are none
 — the ratchet is 916 of 916. Every disagreement that did arise was settled by
-running go-raml directly against a throwaway Go test, which is what
-`CLAUDE.md` prescribes and which needs no script. The half that was missing,
-`pyraml validate --json`, exists as of Phase 9, so this is a short job whenever a
-regression makes it worth doing.
+running go-raml directly against a throwaway Go test, which is what `CLAUDE.md`
+prescribes and which needs no script and no agreed output format. That is the
+standing method; this section describes an alternative to it that was never
+needed, and the decision is to leave it unbuilt rather than to keep it on a list.
+
+Build it if the premise changes — a divergence that a single fixture does not
+isolate, or a second implementation to diff against. Both halves it needs exist
+(`pyraml validate --json` since Phase 9), so it stays a short job.
 
 ### 1.4 Differential conformance: the YAML 1.2 oracle
 

@@ -396,6 +396,29 @@ moved from 158.5 ms to 23.2 ms, and `pyraml --version` from 168.7 ms to 48.1 ms.
 Importing the actual parse entry points remains about 96 ms, as expected: a
 parse needs PyYAML and the model even though a bare package import does not.
 
+### 23. Release and reuse narrow working state
+
+P4 clears the API fragment's private endpoint-node buffer only after endpoint
+materialization succeeds. The final model then owns the result without also
+retaining the original endpoint YAML tree; a failed lenient parse keeps the
+buffer with its other partial state. On `bench_endpoints` this reduced retained
+traced memory from 30.6 MB to 22.3 MB.
+
+Mapping merge removes matched keys from its existing source-value dictionary
+rather than allocating a second target-key set. The same dictionary then answers
+which source keys remain, preserving source order and duplicate source-only
+keys. Measured end to end on `bench_endpoints`: -1.1 % wall time and -0.42 MB
+peak traced allocation.
+
+Two feature-specific walks use equally narrow state. The registry records only
+shapes that actually wrote a discriminator facet, so the pre-P9 rule is
+proportional to those declarations rather than to the whole reachable type
+graph. The former full walk cost about 14 ms on `bench_validate` and 8 ms on
+`bench_large`, both of which contain no discriminators. Graph projection caches
+escaped IRI segments for the lifetime of one builder: the endpoint graph used
+30,507 segments but only 518 distinct strings, and the cache reduced its
+projection time by about 7 % without retaining anything across projections.
+
 ## Part 4 — Budgets and measurement
 
 None of the above is worth anything unmeasured.

@@ -113,6 +113,7 @@ class Raml:
         'include_refs',
         'shapes',
         # --- work queues -----------------------------------------------------
+        '_discriminator_shapes',
         'unresolved_shapes',
         # --- global metadata harvested from the API root ---------------------
         'global_media_types',
@@ -160,6 +161,9 @@ class Raml:
         self.fragment_annotations: dict[str, dict[str, BaseShape]] = {}
         self.fragment_resolvers: dict[str, ReferenceResolver] = {}
         self.fragment_typedefs: dict[str, list[BaseShape]] = {}
+        # The pre-P9 inline-declaration rule visits only shapes that actually
+        # wrote either discriminator facet, not the whole reachable type graph.
+        self._discriminator_shapes: list[BaseShape] = []
         self.endpoints: dict[str, EndPoint] = {}
         self.shapes: list[BaseShape] = []
         self.domain_extensions: list[DomainExtension] = []

@@ -449,7 +449,7 @@ class _Builder:
     for exactly this reason (`converter/jsonld.go`, `preRegisterTypes`).
     """
 
-    __slots__ = ('base', 'claimed', 'edges', 'emitted', 'nodes', 'raml', 'root', 'shape_iris')
+    __slots__ = ('_segments', 'base', 'claimed', 'edges', 'emitted', 'nodes', 'raml', 'root', 'shape_iris')
 
     def __init__(self, raml: Raml, base: str) -> None:
         self.raml = raml
@@ -462,6 +462,7 @@ class _Builder:
         #: `claim`.
         self.claimed: dict[str, int] = {}
         self.emitted: set[int] = set()
+        self._segments: dict[str, str] = {}
         self.root = raml.location.rsplit('/', 1)[0] + '/' if raml.location else ''
 
     # -- infrastructure -------------------------------------------------------
@@ -476,7 +477,14 @@ class _Builder:
         if location == self.raml.location or not location:
             return self.base
         relative = location.removeprefix(self.root)
-        return f'{self.base}/{_segment(relative)}'
+        return f'{self.base}/{self.segment(relative)}'
+
+    def segment(self, value: str) -> str:
+        escaped = self._segments.get(value)
+        if escaped is None:
+            escaped = _segment(value)
+            self._segments[value] = escaped
+        return escaped
 
     def node(self, iri: str, *kinds: str, **attributes: str | int | bool | None) -> str:
         node = self.nodes.get(iri)
@@ -528,10 +536,10 @@ class _Builder:
     def run(self) -> None:
         for location, declared in self.raml.fragment_types.items():
             for name in declared:
-                self.reserve(declared[name], f'{self.unit(location)}#/declarations/types/{_segment(name)}')
+                self.reserve(declared[name], f'{self.unit(location)}#/declarations/types/{self.segment(name)}')
         for location, declared in self.raml.fragment_annotations.items():
             for name in declared:
-                self.reserve(declared[name], f'{self.unit(location)}#/declarations/annotations/{_segment(name)}')
+                self.reserve(declared[name], f'{self.unit(location)}#/declarations/annotations/{self.segment(name)}')
 
         for location, fragment in self.raml.fragments.items():
             self.fragment(location, fragment)
@@ -552,21 +560,23 @@ class _Builder:
         unit = self.unit(location)
         self.node(unit, 'Unit', name=self.relative(location))
         for name, shape in fragment.types.items():
-            self.edge(unit, 'declares', self.shape(shape, f'{unit}#/declarations/types/{_segment(name)}'))
+            self.edge(unit, 'declares', self.shape(shape, f'{unit}#/declarations/types/{self.segment(name)}'))
         for name, shape in fragment.annotation_types.items():
-            self.edge(unit, 'declares', self.shape(shape, f'{unit}#/declarations/annotations/{_segment(name)}'))
+            self.edge(unit, 'declares', self.shape(shape, f'{unit}#/declarations/annotations/{self.segment(name)}'))
         for name, scheme in fragment.security_schemes.items():
             iri = self.node(
-                f'{unit}#/declarations/securitySchemes/{_segment(name)}',
+                f'{unit}#/declarations/securitySchemes/{self.segment(name)}',
                 'SecurityScheme',
                 name=name,
                 type=scheme.type or None,
             )
             self.edge(unit, 'declares', iri)
         for name in fragment.traits:
-            self.edge(unit, 'declares', self.node(f'{unit}#/declarations/traits/{_segment(name)}', 'Trait', name=name))
+            self.edge(
+                unit, 'declares', self.node(f'{unit}#/declarations/traits/{self.segment(name)}', 'Trait', name=name)
+            )
         for name in fragment.resource_types:
-            iri = f'{unit}#/declarations/resourceTypes/{_segment(name)}'
+            iri = f'{unit}#/declarations/resourceTypes/{self.segment(name)}'
             self.edge(unit, 'declares', self.node(iri, 'ResourceType', name=name))
 
     def api(self) -> None:
@@ -597,7 +607,7 @@ class _Builder:
             return
         seen.add(endpoint.id)
         iri = self.node(
-            f'{self.base}#/web-api/endpoint/{_segment(endpoint.full_uri)}',
+            f'{self.base}#/web-api/endpoint/{self.segment(endpoint.full_uri)}',
             'EndPoint',
             path=endpoint.full_uri,
             name=_text(endpoint.display_name) or endpoint.full_uri,
@@ -608,13 +618,15 @@ class _Builder:
 
         parent = endpoint.full_uri[: -len(endpoint.uri)] if endpoint.uri and endpoint.full_uri != endpoint.uri else ''
         if parent:
-            self.edge(iri, 'parent', f'{self.base}#/web-api/endpoint/{_segment(parent)}')
+            self.edge(iri, 'parent', f'{self.base}#/web-api/endpoint/{self.segment(parent)}')
         if endpoint.resource_type is not None:
             self.applies(iri, 'appliesResourceType', 'resourceTypes', endpoint.resource_type, endpoint.location)
         for trait in endpoint.traits:
             self.applies(iri, 'appliesTrait', 'traits', trait, endpoint.location)
         for name, prop in endpoint.uri_parameters.items():
-            self.edge(iri, 'parameter', self.parameter(f'{iri}/parameter/path/{_segment(name)}', name, prop, 'path'))
+            self.edge(
+                iri, 'parameter', self.parameter(f'{iri}/parameter/path/{self.segment(name)}', name, prop, 'path')
+            )
         self.secured(iri, endpoint.secured_by)
         self.annotated(iri, endpoint.annotations)
 
@@ -646,17 +658,17 @@ class _Builder:
         if not name:
             return
         for candidate in (name, name.rsplit('.', 1)[-1]):
-            wanted = f'#/declarations/{bucket}/{_segment(candidate)}'
+            wanted = f'#/declarations/{bucket}/{self.segment(candidate)}'
             for iri in self.nodes:
                 if iri.endswith(wanted):
                     self.edge(subject, predicate, iri)
                     return
-        local = f'{self.unit(location)}#/declarations/{bucket}/{_segment(name)}'
+        local = f'{self.unit(location)}#/declarations/{bucket}/{self.segment(name)}'
         self.edge(subject, predicate, self.node(local, _DECLARED_KINDS[bucket], name=name))
 
     def operation(self, endpoint: str, operation: Operation) -> None:
         iri = self.node(
-            f'{endpoint}/supportedOperation/{_segment(operation.method)}',
+            f'{endpoint}/supportedOperation/{self.segment(operation.method)}',
             'Operation',
             method=operation.method,
             name=_text(operation.display_name) or operation.method,
@@ -683,10 +695,10 @@ class _Builder:
         self.edge(operation, 'request', iri)
         for name, prop in request.headers.items():
             self.edge(
-                iri, 'parameter', self.parameter(f'{iri}/parameter/header/{_segment(name)}', name, prop, 'header')
+                iri, 'parameter', self.parameter(f'{iri}/parameter/header/{self.segment(name)}', name, prop, 'header')
             )
         for name, prop in request.query_parameters.items():
-            child = self.parameter(f'{iri}/parameter/query/{_segment(name)}', name, prop, 'query')
+            child = self.parameter(f'{iri}/parameter/query/{self.segment(name)}', name, prop, 'query')
             self.edge(iri, 'parameter', child)
         if request.query_string is not None:
             self.edge(iri, 'queryString', self.shape(request.query_string, f'{iri}/queryString'))
@@ -695,7 +707,7 @@ class _Builder:
 
     def response(self, operation: str, response: Response) -> None:
         iri = self.node(
-            f'{operation}/returns/{_segment(response.code)}',
+            f'{operation}/returns/{self.segment(response.code)}',
             'Response',
             statusCode=response.code,
             name=_text(response.display_name) or response.code,
@@ -705,13 +717,13 @@ class _Builder:
         self.edge(operation, 'returns', iri)
         self.annotated(iri, response.annotations)
         for name, prop in response.headers.items():
-            child = self.parameter(f'{iri}/parameter/header/{_segment(name)}', name, prop, 'header')
+            child = self.parameter(f'{iri}/parameter/header/{self.segment(name)}', name, prop, 'header')
             self.edge(iri, 'parameter', child)
         for media, body in response.bodies.items():
             self.edge(iri, 'payload', self.payload(iri, media, body))
 
     def payload(self, parent: str, media: str, body: Body) -> str:
-        iri = self.node(f'{parent}/payload/{_segment(media or "default")}', 'Payload', mediaType=media or None)
+        iri = self.node(f'{parent}/payload/{self.segment(media or "default")}', 'Payload', mediaType=media or None)
         self.positioned(iri, body.location, body.key_pos)
         if body.shape is not None:
             self.edge(iri, 'range', self.shape(body.shape, f'{iri}/schema'))
@@ -746,7 +758,7 @@ class _Builder:
         for name, extension in annotations.items():
             defined_by = extension.defined_by
             tail = name.rsplit('.', 1)[-1]
-            wanted = f'#/declarations/annotations/{_segment(tail)}'
+            wanted = f'#/declarations/annotations/{self.segment(tail)}'
             target = self.shape_iris.get(defined_by.id) if defined_by is not None else None
             if target is None:
                 target = next((iri for iri in self.nodes if iri.endswith(wanted)), f'{self.base}{wanted}')
@@ -786,7 +798,7 @@ class _Builder:
         self.facets(iri, base)
 
         for parent in base.inherits:
-            self.edge(iri, 'inherits', self.shape(parent, f'{iri}/inherits/{_segment(parent.name or "anonymous")}'))
+            self.edge(iri, 'inherits', self.shape(parent, f'{iri}/inherits/{self.segment(parent.name or "anonymous")}'))
         if base.alias is not None:
             self.edge(iri, 'aliasOf', self.shape(base.alias, f'{iri}/aliasOf'))
         for name, extension in base.annotations.items():
@@ -798,7 +810,7 @@ class _Builder:
         """The declarations a kind contains. One branch per container facet."""
         if isinstance(shape, ObjectShape):
             for name, prop in (shape.properties or {}).items():
-                child = f'{iri}/property/{_segment(name)}'
+                child = f'{iri}/property/{self.segment(name)}'
                 self.node(child, 'Property', name=name, required=prop.required)
                 self.edge(child, 'range', self.shape(prop.base, f'{child}/schema'))
                 self.edge(iri, 'property', child)
@@ -806,7 +818,7 @@ class _Builder:
                 # Keyed by the `/regex/` as written, not by position: a pattern
                 # property has no name of its own and an index would move under
                 # any edit above it.
-                child = f'{iri}/patternProperty/{_segment(name)}'
+                child = f'{iri}/patternProperty/{self.segment(name)}'
                 self.node(child, 'PatternProperty', name=name, pattern=_pattern(pattern))
                 self.edge(child, 'range', self.shape(pattern.base, f'{child}/schema'))
                 self.edge(iri, 'patternProperty', child)

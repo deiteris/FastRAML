@@ -81,6 +81,9 @@ def build_endpoints(raml: Raml) -> None:
         raml.pop_ctx()
 
     accumulator.raise_if_any()
+    # The final endpoint model owns everything needed after P4. Keeping this
+    # private source buffer would retain the original endpoint YAML tree too.
+    raw.clear()
 
 
 def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) -> None:

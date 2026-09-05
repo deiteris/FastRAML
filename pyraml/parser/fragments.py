@@ -21,7 +21,7 @@ Every declaration is now decoded here. The two `_raw_*` attributes that remain
 are working buffers rather than seams: `_raw_endpoints` is handed to P4, which
 runs after every fragment is decoded, and `_raw_secured_by` is harvested before
 the main loop but decoded after it, because it names schemes the loop has yet to
-declare.
+declare. Each is released after its consumer succeeds.
 """
 
 from __future__ import annotations
@@ -540,6 +540,7 @@ class APIFragment(_BaseFragment):
         if self.title is None:
             accumulator.add(node_error('title is required', self.location, node))
         accumulator.raise_if_any()
+        self._raw_secured_by = None
 
     def _decode_key(self, key: Node, value: Node, declarations: _Declarations) -> None:
         if self._decode_root_facet(key, value) or self._retain_declarations(key, value, declarations):

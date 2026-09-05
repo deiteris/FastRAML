@@ -23,6 +23,7 @@ import json
 
 import pytest
 
+import pyraml.graph as graph_module
 from pyraml import ParseOptions, parse_from_path
 from pyraml.graph import (
     DEFAULT_BASE,
@@ -95,6 +96,24 @@ class TestIris:
 
     def test_a_declared_type_lands_at_its_declaration_iri(self, graph):
         assert graph.find('User') == [f'{DEFAULT_BASE}/lib.raml#/declarations/types/User']
+
+    def test_repeated_segments_are_escaped_once_per_projection(self, workspace, monkeypatch):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  A:\n    properties:\n      id: string\n'
+                '  B:\n    properties:\n      id: string\n'
+            }
+        )
+        original = graph_module._segment
+        calls: list[str] = []
+
+        def counted(value: str) -> str:
+            calls.append(value)
+            return original(value)
+
+        monkeypatch.setattr(graph_module, '_segment', counted)
+        build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        assert calls.count('id') == 1
 
     def test_a_library_is_a_unit_of_its_own_relative_to_the_entry_directory(self, graph):
         assert f'{DEFAULT_BASE}/lib.raml' in graph.nodes

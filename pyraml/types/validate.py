@@ -58,66 +58,40 @@ def check_declared_discriminators(raml: Raml) -> None:
     type — `types:`, `schemas:`, `annotationTypes:` or a DataType fragment's
     root.
     """
-    named = _named_type_ids(raml)
     accumulator = Accumulator()
-    seen: set[int] = set()
-    for shapes in raml.fragment_typedefs.values():
-        for base in shapes:
-            _check_declared(base, named, accumulator, seen)
+    for base in sorted(raml._discriminator_shapes, key=lambda candidate: candidate.id):  # noqa: SLF001
+        shape = base.shape
+        if isinstance(shape, ObjectShape) and not _is_named_type(raml, base):
+            for facet, position in (
+                ('discriminator', shape.discriminator.key_pos if shape.discriminator is not None else None),
+                (
+                    'discriminatorValue',
+                    shape.discriminator_value.key_pos if shape.discriminator_value is not None else None,
+                ),
+            ):
+                if position is not None:
+                    accumulator.add(
+                        failure(
+                            'discriminator on an inline type declaration',
+                            base.location,
+                            position,
+                            info={'facet': facet},
+                        )
+                    )
     accumulator.raise_if_any()
 
 
-def _named_type_ids(raml: Raml) -> set[int]:
-    """Every shape a document gave a name to.
-
-    Keyed by `id` rather than by object, because `clone` preserves it and a
-    caller may hold a copy (docs/07 section 5).
-    """
-    ids = {
-        shape.id
-        for index in (raml.fragment_types, raml.fragment_annotations)
-        for declared in index.values()
-        for shape in declared.values()
-    }
-    for fragment in raml.fragments.values():
-        shape = getattr(fragment, 'shape', None)
-        if shape is not None:
-            ids.add(shape.id)
-    return ids
-
-
-def _check_declared(base: BaseShape, named: set[int], acc: Accumulator, seen: set[int]) -> None:
-    if id(base) in seen:
-        return
-    seen.add(id(base))
-
-    shape = base.shape
-    if isinstance(shape, ObjectShape) and base.id not in named:
-        for facet, position in (
-            ('discriminator', shape.discriminator.key_pos if shape.discriminator is not None else None),
-            (
-                'discriminatorValue',
-                shape.discriminator_value.key_pos if shape.discriminator_value is not None else None,
-            ),
-        ):
-            if position is not None:
-                acc.add(
-                    failure(
-                        'discriminator on an inline type declaration', base.location, position, info={'facet': facet}
-                    )
-                )
-
-    if isinstance(shape, ObjectShape):
-        for prop in (shape.properties or {}).values():
-            _check_declared(prop.base, named, acc, seen)
-        for pattern in (shape.pattern_properties or {}).values():
-            _check_declared(pattern.base, named, acc, seen)
-    elif isinstance(shape, ArrayShape):
-        if shape.items is not None:
-            _check_declared(shape.items, named, acc, seen)
-    elif isinstance(shape, UnionShape):
-        for member in shape.any_of or ():
-            _check_declared(member, named, acc, seen)
+def _is_named_type(raml: Raml, base: BaseShape) -> bool:
+    """Whether an indexed candidate is one of the parse's named declarations."""
+    if base.name is not None:
+        for index in (raml.fragment_types, raml.fragment_annotations):
+            declared = index.get(base.location)
+            named = None if declared is None else declared.get(base.name)
+            if named is not None and named.id == base.id:
+                return True
+    fragment = raml.fragments.get(base.location)
+    named = None if fragment is None else getattr(fragment, 'shape', None)
+    return named is not None and named.id == base.id
 
 
 def validate_shapes(raml: Raml) -> None:

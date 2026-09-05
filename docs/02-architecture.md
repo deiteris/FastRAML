@@ -359,6 +359,7 @@ class Raml:
         "domain_extensions",  # [DomainExtension]
         "include_refs",  # uri -> [IncludeRef]  (tooling)
         # --- work queues ---------------------------------------------------
+        "_discriminator_shapes",  # [BaseShape] that wrote a discriminator facet
         "unresolved_shapes",  # deque[BaseShape] with UnknownShape
         # --- global metadata harvested from the API root -------------------
         "global_protocols",

@@ -165,6 +165,7 @@ class ObjectShape(ComplexKind):
     def decode_facets(self, pairs: list[Node]) -> None:
         raml, location = self.base._raml, self.base.location  # noqa: SLF001
         rest: list[Node] = []
+        declares_discriminator = False
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
@@ -178,12 +179,16 @@ class ObjectShape(ComplexKind):
                     # Whether the named property exists is P10's question: it may
                     # be inherited, and so invisible until unwrap (docs/05 § 9).
                     self.discriminator = make_string_facet(raml, key, value, location)
+                    declares_discriminator = True
                 case 'discriminatorValue':
                     self.discriminator_value = make_data_node(raml, key, value, location)
+                    declares_discriminator = True
                 case _:
                     rest.append(key)
                     rest.append(value)
         super().decode_facets(rest)
+        if declares_discriminator:
+            raml._discriminator_shapes.append(self.base)  # noqa: SLF001 - consumed by the pre-P9 check
 
     def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> ObjectShape:
         clone = cast('ObjectShape', super().clone(base, memo))

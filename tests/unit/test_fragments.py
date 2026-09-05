@@ -20,6 +20,7 @@ from pyraml import (
     TraitFragment,
     parse_from_path,
     parse_from_string,
+    parse_lenient,
     path_to_file_uri,
 )
 from pyraml.parser.fragments import HEADS, ReferenceResolver, SecuritySchemeResolver, identify_fragment
@@ -159,10 +160,17 @@ class TestApiDecoding:
             parse_from_path(root / 'api.raml')
         assert [trace.info['field'] for trace in traces(caught.value)] == ['nonsense', 'rubbish']
 
-    def test_endpoints_are_retained_in_document_order_not_decoded(self, workspace):
+    def test_endpoint_buffer_is_released_after_materialization(self, workspace):
         root = workspace({'api.raml': API + '/users:\n  get:\n/orders:\n  post:\n'})
-        api = parse_from_path(root / 'api.raml').entry_point
-        assert [key.value for key, _value in api._raw_endpoints] == ['/users', '/orders']
+        raml = parse_from_path(root / 'api.raml')
+        assert list(raml.endpoints) == ['/users', '/orders']
+        assert raml.entry_point._raw_endpoints == []
+
+    def test_endpoint_buffer_survives_a_failed_materialization(self, workspace):
+        root = workspace({'api.raml': API + '/users:\n  get:\n    is: [missing]\n'})
+        raml, error = parse_lenient(root / 'api.raml')
+        assert error is not None
+        assert [key.value for key, _value in raml.entry_point._raw_endpoints] == ['/users']
 
     def test_types_and_schemas_are_mutually_exclusive(self, workspace):
         root = workspace({'api.raml': API + 'types:\n  A: string\nschemas:\n  B: string\n'})

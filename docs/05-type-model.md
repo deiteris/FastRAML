@@ -441,10 +441,13 @@ is the whole of it. A discriminator is *inherited*: a body written
 `application/json: Person` against a discriminated `Person` carries one after
 unwrap, and it is inline — so on the flattened model every correct document
 reports as broken. On the declared model a discriminator is present only where it
-was written. `check_declared_discriminators` in `types/validate.py` is the pass;
-the reference implementation carries the same rule as a `FIXME` ("need to
-validate on which level the discriminator is applied to avoid potential false
-positives") and enforces nothing.
+was written. Decoding records only shapes that wrote either facet, and
+`check_declared_discriminators` in `types/validate.py` checks that narrow list;
+its cost is proportional to discriminator declarations, not to all types. The
+reference implementation cannot supply this check: `complex.go` carries the rule
+as a `FIXME` ("need to validate on which level the discriminator is applied to
+avoid potential false positives"), its TCK case is commented out, and it
+enforces nothing.
 
 `discriminatorValue` defaults to the type's name; the default is computed on read,
 not materialised at parse time.

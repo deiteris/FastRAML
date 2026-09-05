@@ -242,6 +242,20 @@ class TestDiscriminator:
         assert error is not None
         assert traces(error)[0].info == {'property': 'kind'}
 
+    def test_only_declarations_with_discriminators_enter_the_check_index(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  T: string\n'})
+        raml = parse_from_path(root / 'api.raml')
+        assert raml._discriminator_shapes == []
+
+        root = workspace(
+            {
+                'with.raml': API
+                + 'types:\n  Plain: string\n  Tagged:\n    properties:\n      kind: string\n    discriminator: kind\n'
+            }
+        )
+        raml = parse_from_path(root / 'with.raml')
+        assert [base.name for base in raml._discriminator_shapes] == ['Tagged']
+
     def test_an_inline_declaration_may_not_declare_one(self, workspace):
         # Spec § Using Discriminator. Checked between P7 and P9, because a
         # discriminator is *inherited*: after unwrap every subtype of a

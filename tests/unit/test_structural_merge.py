@@ -76,6 +76,10 @@ class TestTheThreeSpecRules:
         merged = merge('b: 1\na: 2\n', 'z: 3\na: 4\ny: 5\n')
         assert keys(merged) == ['b', 'a', 'z', 'y']
 
+    def test_duplicate_source_only_keys_remain_in_source_order(self):
+        merged = merge('a: mine\n', 'a: theirs\nb: first\nb: second\n')
+        assert keys(merged) == ['a', 'b', 'b']
+
 
 class TestKindDisagreement:
     def test_the_explicit_node_wins(self):

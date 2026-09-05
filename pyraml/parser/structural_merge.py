@@ -106,11 +106,12 @@ def _merge_mappings(
     merged tree worth reading.
     """
     source_values = {key.value: value for key, value in pairs(source)}
-    target_keys = {key.value for key, _ in pairs(target)}
 
     merged: list[Node] = []
     for key, value in pairs(target):
-        other = source_values.get(key.value)
+        # Removing matches leaves the same dictionary as the source-only key
+        # index, avoiding a second set for every mapping merge.
+        other = source_values.pop(key.value, None)
         if other is None or key.value in OPAQUE_DATA_FACETS:
             merged.append(key)
             merged.append(value)
@@ -120,7 +121,7 @@ def _merge_mappings(
         merged.append(value if recursed is None else recursed)
 
     for key, value in pairs(source):
-        if key.value in target_keys:
+        if key.value not in source_values:
             continue
         mark_graft(overlay, value, source_scope)
         merged.append(key)

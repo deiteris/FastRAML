@@ -267,13 +267,15 @@ ORDER BY ?unit ?owner ?property
     ),
     _q(
         'enums',
-        'Every closed value set in the document, and where it is declared.',
+        'Every closed value set in the document: one row per permitted value.',
         """
-SELECT ?name ?values WHERE {
-  ?t raml:enum ?values .
+# One row per value, not one per set. `raml:enum` is multi-valued, because an
+# enum member may contain a space and joining them would lose the boundaries.
+SELECT ?name ?value WHERE {
+  ?t raml:enum ?value .
   OPTIONAL { ?t raml:name ?name }
 }
-ORDER BY ?name
+ORDER BY ?name ?value
 """,
     ),
     _q(

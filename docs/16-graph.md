@@ -611,3 +611,87 @@ expands into far more than fits on a screen.
 Depth alone does not open a scalar: `level:` followed by `type: integer` is two
 lines saying what one line said. Only something with structure is opened, and a
 type cycle stops at its first re-entry however deep the walk was asked to go.
+
+## 10. What changed, and what it breaks
+
+`pyraml diff OLD NEW`, and `pyraml/diff.py` behind it.
+
+The whole feature exists because § 3's IRIs are **structural**. The same entity
+has the same name in both versions, so matching two documents is a dict lookup
+rather than a similarity search. That property was designed for the
+declared-versus-effective case; it pays for this one at no cost.
+
+### 10.1 The change list is the contract
+
+`diff(old, new) -> list[Change]` holds no opinion: added, removed and altered
+nodes, in the old document's declaration order so the result can be committed
+and compared.
+
+Two things are dropped before anyone sees them, and both were reported as API
+changes by the first version:
+
+- **Positions.** A moved line is not a change.
+- **`name`.** It is either part of the node's own IRI — so a rename arrives as
+  a removal and an addition — or it is derived from an owner. Left in, it
+  reported the two *file names* differing as a change to every document, and
+  restated `note? -> note` alongside the `required` change that actually says
+  it.
+
+A change strictly inside something that was itself added or removed is
+**subsumed**. Removing a property removes the node holding its type; reporting
+both says one thing twice and grades a consequence as an independent break.
+
+### 10.2 Direction is what makes the policy possible
+
+Backward compatibility is not a property of an edit. It depends on who consumes
+the data:
+
+| Edit | In a request (server consumes) | In a response (client consumes) |
+|---|---|---|
+| property added, required | **breaking** | safe |
+| property removed | risky | **breaking** |
+| property becomes optional | safe | **breaking** |
+| enum value removed | **breaking** | safe |
+| enum value added | safe | **risky** |
+| bound tightened (`maxLength` down) | **breaking** | safe |
+| bound loosened (`maxLength` up) | safe | **breaking** |
+
+The same edit is breaking on one side and harmless on the other. Nothing in the
+model says which side a node is on — the **graph** does, from its containment
+path, and that is this projection earning its keep on a question the model
+alone cannot answer.
+
+`Change.directions` is a **set**, and that is not fussiness. One declared type
+is routinely a POST body and a GET response in the same document; the first
+version stopped at the first side it reached, so the canonical CRUD shape was
+graded by whichever edge came off the stack first — unstable as well as wrong.
+Every side is graded and **the worst is reported**, or a reassurance buries a
+break.
+
+Direction-independent: a resource, method or status code removed.
+
+### 10.3 The policy is separable, and named
+
+`classify(change) -> Rule` returns the rule, not a bare severity, so a report
+can say *why* and a team can suppress one by name without forking anything.
+`RULES` is the whole table.
+
+`other` is `risky` rather than `safe` on purpose. An unrecognised change is the
+one case where silence misleads.
+
+This is a policy, and [§ 7](#7-amf-was-assessed-and-not-adopted) says policy
+above RAML conformance belongs to a consumer. That line stands: backward
+compatibility follows from the spec's own semantics — `required`, and which
+side of the wire consumes a value — unlike "every operation must be
+documented", which is genuinely org-specific. The structure keeps both true:
+the change list is the contract, `--json` carries it whole, and the grading is
+one consumer of it.
+
+### 10.4 What it does not do
+
+- **A rename reads as a removal and an addition.** No similarity matching:
+  correct, noisy, and better than a confident wrong guess about which old name
+  became which new one.
+- **Semantic equivalence.** `type: string | nil` and `type?: string` may mean
+  the same thing to a reader and will diff as different.
+- **Examples and descriptions** are `cosmetic`. Nothing on the wire changed.

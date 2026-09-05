@@ -28,8 +28,9 @@ from typing import TYPE_CHECKING, Any
 from pyraml import __version__
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
+    from pyraml.diff import Change, Rule
     from pyraml.graph import Graph
     from pyraml.parser.entry import ParseOptions
     from pyraml.registry import Raml
@@ -40,22 +41,14 @@ EXIT_OK = 0
 EXIT_INVALID = 1
 
 
+#: One entry per subcommand. A table rather than a `match`, so adding a verb is
+#: one line here and one in `_parser` rather than a branch that lint counts.
+_COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {}
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = _parser()
-    args = parser.parse_args(argv)
-    match args.command:
-        case 'info':
-            return _info(args)
-        case 'graph':
-            return _graph(args)
-        case 'refs' | 'deps':
-            return _walk(args)
-        case 'show':
-            return _show_type(args)
-        case 'query':
-            return _query(args)
-        case _:
-            return _validate(args)
+    args = _parser().parse_args(argv)
+    return _COMMANDS[args.command](args)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -115,6 +108,20 @@ def _parser() -> argparse.ArgumentParser:
     )
     _add_common(show)
 
+    changed = commands.add_parser('diff', help='what changed between two versions, and what it breaks')
+    changed.add_argument('files', metavar='FILE', nargs=2, help='the old document, then the new one')
+    changed.add_argument('--json', action='store_true', help='one JSON object per change')
+    changed.add_argument(
+        '--breaking-only', action='store_true', help='report only breaking changes (still exits 1 if any)'
+    )
+    changed.add_argument(
+        '--severity',
+        action='append',
+        choices=('breaking', 'risky', 'safe', 'cosmetic'),
+        help='report only these severities; repeatable',
+    )
+    _add_common(changed)
+
     query = commands.add_parser('query', help='run SPARQL over the graph (needs pyoxigraph)')
     query.add_argument('files', metavar='FILE', nargs='*')
     source = query.add_mutually_exclusive_group()
@@ -125,6 +132,17 @@ def _parser() -> argparse.ArgumentParser:
     query.add_argument('--show', metavar='NAME', help='print one catalogue query rather than running it')
     query.add_argument('--json', action='store_true', help='JSON rather than a table')
     _add_common(query)
+
+    _COMMANDS.update(
+        validate=_validate,
+        info=_info,
+        graph=_graph,
+        refs=_walk,
+        deps=_walk,
+        show=_show_type,
+        diff=_diff,
+        query=_query,
+    )
     return parser
 
 
@@ -328,6 +346,111 @@ def _walk(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _diff(args: argparse.Namespace) -> int:
+    """What changed, graded by whether it breaks a caller.
+
+    Exits 1 when anything is breaking, so it works as a CI gate. `--json` is
+    the whole change list with its grading, for a consumer that disagrees with
+    the built-in policy and wants only the facts (docs/16 § 10).
+    """
+    from pyraml.diff import RULES, classify, diff  # noqa: PLC0415 - graph commands only
+
+    graphs = []
+    for path in args.files:
+        built = _built(args, path)
+        if built is None:
+            return EXIT_INVALID
+        graphs.append(built[0])
+
+    wanted = set(args.severity or ()) | ({'breaking'} if args.breaking_only else set())
+    graded = [(classify(change), change) for change in diff(graphs[0], graphs[1])]
+    breaking = sum(rule.severity == 'breaking' for rule, _ in graded)
+    shown = [(rule, change) for rule, change in graded if not wanted or rule.severity in wanted]
+
+    if args.json:
+        import json  # noqa: PLC0415 - only JSON output needs the encoder
+
+        for rule, change in shown:
+            print(json.dumps(_record(rule, change)))
+    else:
+        # Grouped, because one edit reaches every site that used the type: the
+        # declaration and each endpoint carrying it are separate nodes and so
+        # separate changes. All of them are worth seeing; three copies of the
+        # same sentence are not.
+        groups: dict[tuple[str, str, str], list[Change]] = {}
+        for rule, change in shown:
+            key = (rule.name, str(change.attribute or ''), f'{_plain(change.before)!r} -> {_plain(change.after)!r}')
+            groups.setdefault(key, []).append(change)
+        for (name, attribute, values), members in groups.items():
+            detail = f'  {attribute}: {values}' if attribute else ''
+            print(f'{RULES[name].severity:<9} {name}{detail}')
+            for change in members:
+                print(f'    {_pretty(change.iri)}')
+    if breaking and not args.json:
+        sys.stdout.flush()
+        print(f'{breaking} breaking change{"s" if breaking > 1 else ""}', file=sys.stderr)
+    return EXIT_INVALID if breaking else EXIT_OK
+
+
+def _plain(value: object) -> object:
+    return list(value) if isinstance(value, tuple) else value
+
+
+def _record(rule: Rule, change: Change) -> dict[str, object]:
+    return {
+        'kind': change.kind,
+        'iri': change.iri,
+        'node_kind': change.node_kind,
+        'direction': change.direction,
+        'attribute': change.attribute,
+        'before': _plain(change.before),
+        'after': _plain(change.after),
+        'rule': rule.name,
+        'severity': rule.severity,
+        'because': rule.because,
+    }
+
+
+#: IRI segments that introduce something, and how to show it. The IRI is
+#: structural (docs/16 § 3) precisely so a reader-facing path can be recovered
+#: from it without consulting the model again.
+_SEGMENTS = {
+    'endpoint': '{}',
+    'supportedOperation': '{}',
+    'returns': '-> {}',
+    'payload': '{}',
+    'property': '.{}',
+    'patternProperty': '.{}',
+    'parameter': '?{}',
+    'anyOf': '|{}',
+    'types': 'types/{}',
+    'traits': 'trait {}',
+    'resourceTypes': 'resourceType {}',
+    'securitySchemes': 'scheme {}',
+    'annotations': 'annotation {}',
+}
+
+
+def _pretty(iri: str) -> str:
+    """One node IRI as something a person can find in the document."""
+    from urllib.parse import unquote  # noqa: PLC0415 - presentation only
+
+    parts = [unquote(part) for part in (iri.partition('#/')[2] or iri).split('/')]
+    out, index = [], 0
+    while index < len(parts):
+        head = parts[index]
+        template = _SEGMENTS.get(head)
+        if template and index + 1 < len(parts):
+            out.append(template.format(parts[index + 1]))
+            index += 2
+        elif head in ('items', 'schema', 'web-api', 'declarations', 'request'):
+            index += 1
+        else:
+            out.append(head)
+            index += 1
+    return ' '.join(out) or iri
+
+
 def _query(args: argparse.Namespace) -> int:
     """SPARQL over the graph: the catalogue, or a query of your own."""
     from pyraml.queries import QUERIES  # noqa: PLC0415 - query command only
@@ -398,7 +521,7 @@ def _run_sparql(graph: Graph, text: str, *, json_lines: bool) -> int:
     return EXIT_OK
 
 
-def _built(args: argparse.Namespace) -> tuple[Graph, Raml] | None:
+def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Raml] | None:
     """Parse and project, or report why not.
 
     Returns the model as well as the graph. The graph answers "which entity did
@@ -413,7 +536,7 @@ def _built(args: argparse.Namespace) -> tuple[Graph, Raml] | None:
     from pyraml.graph import build_graph  # noqa: PLC0415
     from pyraml.parser.entry import parse_from_path  # noqa: PLC0415
 
-    path = args.files[0]
+    path = path or args.files[0]
     try:
         raml = parse_from_path(path, _options(args, validate=False))
     except RamlError as err:

@@ -290,6 +290,7 @@ pyraml graph [--format nt|turtle|dot|json] FILE
 pyraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
 pyraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made of
 pyraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
+pyraml diff OLD NEW [--breaking-only] [--severity S] [--json]
 pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
 ```
 
@@ -403,3 +404,24 @@ pyraml query api.raml -q '<sparql>'  # or -Q file.rq
 the catalogue **before** the file is opened, so a mistyped name reports the
 mistyped name rather than a parse error. The catalogue and the verdict on
 whether it earns its keep are [16](16-graph.md) § 6.
+
+### 8.2 `diff`
+
+What changed between two versions, graded by whether it breaks a caller
+([16](16-graph.md) § 10). **Exits 1 when anything is breaking**, so it works as
+a CI gate without parsing its output.
+
+```
+breaking  response-property-removed
+    types/Order .discount
+    /orders get -> 200 application/json .discount
+```
+
+Results are grouped by rule: one edit reaches the declaration and every endpoint
+carrying it, and all of those are worth seeing while three copies of the same
+sentence are not.
+
+`--json` emits the whole change list — `kind`, `iri`, `direction`, the attribute
+and its values, plus the `rule`, `severity` and `because`. That is the
+programmatic surface: a team that disagrees with the built-in policy can grade
+the same facts its own way.

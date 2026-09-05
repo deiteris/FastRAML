@@ -278,8 +278,12 @@ class TestTheAnswersAreRight:
         """`offset?` comes from a trait and is optional; `expand` is required."""
         assert self.column(store, 'required-query-parameters', 'name') == ['expand']
 
-    def test_enums_reports_the_values(self, store):
-        assert 'uk us de' in self.column(store, 'enums', 'values')
+    def test_enums_reports_one_row_per_value(self, store):
+        """`raml:enum` is multi-valued. It used to be a space-joined string,
+        which could not represent a value containing a space — so
+        `["new york", "london"]` was indistinguishable from three values.
+        """
+        assert set(self.column(store, 'enums', 'value')) >= {'uk', 'us', 'de'}
 
     def test_media_types_counts_the_long_tail(self, store):
         counts = {row['media'].value: int(row['payloads'].value) for row in rows(store, 'media-types')}

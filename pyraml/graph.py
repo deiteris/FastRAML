@@ -164,7 +164,11 @@ class GraphNode:
 
     iri: str
     kinds: tuple[str, ...]
-    attributes: dict[str, str | int | bool] = field(default_factory=dict)
+    #: A tuple is a genuinely multi-valued facet — `enum`, OAuth scopes. It is
+    #: not joined into a string: an enum value may itself contain a space, so
+    #: `["new york", "london"]` and three separate values would be
+    #: indistinguishable, and a diff could not say which member was removed.
+    attributes: dict[str, str | int | bool | tuple[str, ...]] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         return f'GraphNode({self.iri!r}, {self.kinds[0]!r})'
@@ -367,7 +371,10 @@ class Graph:
             for kind in node.kinds:
                 yield f'{subject} {_iri(_RDF_TYPE)} {_iri(RAML_NS + kind)} .'
             for key, value in node.attributes.items():
-                yield f'{subject} {_iri(RAML_NS + key)} {_literal(value)} .'
+                # A multi-valued facet is one triple per member, which is how
+                # RDF spells a set. Joining them would be lossy here too.
+                for one in value if isinstance(value, tuple) else (value,):
+                    yield f'{subject} {_iri(RAML_NS + key)} {_literal(one)} .'
         for edge in self.edges:
             yield f'{_iri(edge.subject)} {_iri(RAML_NS + edge.predicate)} {_iri(edge.object)} .'
 
@@ -379,7 +386,11 @@ class Graph:
         for iri, node in self.nodes.items():
             subject = _iri(iri)
             yield f'{subject} a {", ".join("raml:" + k for k in node.kinds)} ;'
-            statements = [f'    raml:{key} {_literal(value, prefixed=True)}' for key, value in node.attributes.items()]
+            statements = [
+                f'    raml:{key} {_literal(one, prefixed=True)}'
+                for key, value in node.attributes.items()
+                for one in (value if isinstance(value, tuple) else (value,))
+            ]
             statements += [f'    raml:{e.predicate} {_iri(e.object)}' for e in self.out(iri)]
             if statements:
                 yield ' ;\n'.join(statements) + ' .'
@@ -404,7 +415,14 @@ class Graph:
         return {
             'base': self.base,
             'nodes': [
-                {'iri': iri, 'kinds': list(node.kinds), 'attributes': node.attributes}
+                {
+                    'iri': iri,
+                    'kinds': list(node.kinds),
+                    'attributes': {
+                        key: list(value) if isinstance(value, tuple) else value
+                        for key, value in node.attributes.items()
+                    },
+                }
                 for iri, node in self.nodes.items()
             ],
             'edges': [{'s': e.subject, 'p': e.predicate, 'o': e.object} for e in self.edges],
@@ -552,7 +570,7 @@ class _Builder:
             self._segments[value] = escaped
         return escaped
 
-    def node(self, iri: str, *kinds: str, **attributes: str | int | bool | None) -> str:
+    def node(self, iri: str, *kinds: str, **attributes: str | int | bool | tuple[str, ...] | None) -> str:
         node = self.nodes.get(iri)
         if node is None:
             node = GraphNode(iri=iri, kinds=kinds)
@@ -820,7 +838,7 @@ class _Builder:
                 continue
             self.applies(subject, 'securedBy', 'securitySchemes', scheme, self.raml.location)
             if scheme.compiled_params:
-                self.node(subject, *self.nodes[subject].kinds, scopes=' '.join(scheme.compiled_params))
+                self.node(subject, *self.nodes[subject].kinds, scopes=tuple(scheme.compiled_params))
 
     def annotated(self, subject: str, annotations: dict[str, DomainExtension]) -> None:
         for name, extension in annotations.items():
@@ -930,7 +948,7 @@ class _Builder:
         if base.enum is not None:
             # `DataNode.raw` is the plain Python value already; unwrapping the
             # `ValueNode` by hand would only reproduce it.
-            self.node(iri, *self.nodes[iri].kinds, enum=' '.join(str(member.raw) for member in base.enum))
+            self.node(iri, *self.nodes[iri].kinds, enum=tuple(str(member.raw) for member in base.enum))
 
 
 # -- small readers ------------------------------------------------------------

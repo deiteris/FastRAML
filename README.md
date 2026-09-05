@@ -45,6 +45,8 @@ view of the **effective** model as a graph ([docs/16](docs/16-graph.md)):
 pyraml refs api.raml User          # every operation that can carry a User, with the route
 pyraml deps api.raml User          # everything User is built from
 pyraml graph api.raml              # the whole projection as Turtle (or nt, dot, json)
+pyraml show api.raml /users        # the effective view: everything merged in, with origins
+pyraml diff v1.raml v2.raml        # what changed, and what it breaks (exit 1 if breaking)
 pyraml query --list                # 17 named analysis queries
 pyraml query api.raml -n type-fan-in   # or -q '<sparql>' for your own
 ```

@@ -398,3 +398,80 @@ class TestWalkBounding:
         assert main(['refs', graphed, 'Entity', '--json', '--limit', '1']) == EXIT_OK
         record = json.loads(capsys.readouterr().out.splitlines()[0])
         assert re.fullmatch(r'g\.raml:\d+', record['at'])
+
+
+V1 = (
+    API
+    + """types:
+  Order:
+    type: object
+    properties:
+      id: string
+      discount: number
+/orders:
+  get:
+    responses:
+      200:
+        body:
+          application/json: Order
+"""
+)
+V2 = V1.replace('      discount: number\n', '')
+
+
+@pytest.fixture
+def versions(workspace):
+    root = workspace({'v1.raml': V1, 'v2.raml': V2})
+    return str(root / 'v1.raml'), str(root / 'v2.raml')
+
+
+class TestDiff:
+    """docs/13 § 8.2. The exit code is the contract a CI job depends on."""
+
+    def test_a_breaking_change_exits_one(self, versions, capsys):
+        assert main(['diff', *versions]) == EXIT_INVALID
+        out = capsys.readouterr()
+        assert 'response-property-removed' in out.out
+        assert 'breaking change' in out.err
+
+    def test_an_unchanged_document_exits_zero_and_says_nothing(self, versions, capsys):
+        assert main(['diff', versions[0], versions[0]]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert captured.out == ''
+        assert captured.err == ''
+
+    def test_a_safe_change_exits_zero(self, workspace, capsys):
+        widened = V1.replace('      id: string', '      id: string\n      note?: string')
+        root = workspace({'a.raml': V1, 'b.raml': widened})
+        assert main(['diff', str(root / 'a.raml'), str(root / 'b.raml')]) == EXIT_OK
+        assert 'response-property-added' in capsys.readouterr().out
+
+    def test_breaking_only_still_exits_one_but_prints_less(self, workspace, capsys):
+        both = V2.replace('      id: string', '      id: string\n      note?: string')
+        root = workspace({'a.raml': V1, 'b.raml': both})
+        assert main(['diff', str(root / 'a.raml'), str(root / 'b.raml'), '--breaking-only']) == EXIT_INVALID
+        out = capsys.readouterr().out
+        assert 'response-property-removed' in out
+        assert 'safe' not in out
+
+    def test_json_carries_the_rule_and_the_reason(self, versions, capsys):
+        assert main(['diff', *versions, '--json']) == EXIT_INVALID
+        records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        removal = next(r for r in records if r['rule'] == 'response-property-removed')
+        assert removal['severity'] == 'breaking'
+        assert removal['because']
+        assert removal['direction'] == 'response'
+
+    def test_json_writes_nothing_to_stderr(self, versions, capsys):
+        """A consumer parses stdout; the summary must not corrupt it."""
+        main(['diff', *versions, '--json'])
+        assert capsys.readouterr().err == ''
+
+    def test_an_unreadable_file_exits_one(self, versions, capsys):
+        assert main(['diff', versions[0], 'no-such-file.raml']) == EXIT_INVALID
+        assert 'invalid' in capsys.readouterr().err
+
+    def test_a_location_reads_as_a_path_not_an_iri(self, versions, capsys):
+        """The IRI is structural so a findable path can be recovered from it."""
+        main(['diff', *versions])
+        assert '/orders get -> 200 application/json .discount' in capsys.readouterr().out

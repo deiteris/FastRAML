@@ -378,14 +378,13 @@ class StringShape(ScalarKind):
                 self.base.value_pos,
                 info={'path': path, 'length': len(value), 'maxLength': self.max_length.value},
             )
-        if self.pattern is not None and self.pattern.value.fullmatch(value) is None:
-            # `fullmatch`: a `pattern:` facet describes the whole string. An
-            # unanchored search accepts `simpleAnnotation_value_on_type` against
-            # `[a-zA-Z0-9]{8,32}` because the first sixteen characters match,
-            # which is the TCK's own `Annotations/complex-11` pair — the two
-            # fixtures differ in nothing else. `/regex/` *property names* stay
-            # unanchored (docs/05 § 5.1): those are matched against a key rather
-            # than describing one, and `/^x/` is how they are written.
+        if self.pattern is not None and self.pattern.value.search(value) is None:
+            # `search`, not `fullmatch`: the spec never says a `pattern:` facet
+            # is anchored, and writes `^...$` itself wherever it means anchored
+            # — `^.+@.+\..+$`, `^\d+\-\w+$`, `^\w{16}$`. Those anchors would be
+            # noise under a full match. go-raml agrees: `regexp.Compile` on the
+            # raw pattern and `MatchString`, which is Go's unanchored search
+            # (docs/10 § 5.4).
             raise failure(
                 'value does not match pattern',
                 self.base.location,

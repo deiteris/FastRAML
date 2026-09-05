@@ -142,7 +142,7 @@ Per kind:
 | any | anything | — |
 | nil | `None` | — |
 | boolean | `bool` | — |
-| string | `str` | `minLength`, `maxLength`, `pattern` (a **full match**, § 5.4) |
+| string | `str` | `minLength`, `maxLength`, `pattern` (a **search**, § 5.4) |
 | integer | `int`, `Decimal`/`float` with integral value, `str` from a number-preserving decoder | `minimum`, `maximum`, `multipleOf`, `format` range |
 | number | `int`, `float`, `Decimal` | `minimum`, `maximum`, `multipleOf` |
 | date-only | `str` matching `YYYY-MM-DD` | strict parse |
@@ -201,18 +201,30 @@ recovers the shortest decimal that round-trips, which is the author's text in
 every case that matters; the reference implementation converts through
 `big.Rat.SetString(fmt.Sprintf("%v", v))` for the same reason.
 
-### 5.4 `pattern` is a full match
+### 5.4 `pattern` is a search; the author writes the anchors
 
-A `pattern:` facet describes the **whole** string: `re.fullmatch`, not
-`re.search`. An earlier draft of this section said the opposite, on ECMA-262
-semantics, and the reference implementation does the same (`MatchString`, which
-is Go's unanchored search).
+A `pattern:` facet is `re.search`, not `re.fullmatch`. The spec's definition is
+one line — "Regular expression that this string MUST match" — and says nothing
+about anchoring. What settles it is that the spec **writes the anchors itself**
+wherever it means anchored: `^.+@.+\..+$`, `^\d+\-\w+$`, `^\w{16}$`. Under a
+full match every one of those is noise, written three separate times.
 
-The TCK decides it. `Annotations/complex-11`'s valid and invalid fixtures differ
-in one character class: `simpleAnnotationValueOnType` against
-`simpleAnnotation_value_on_type`, both under `pattern: "[a-zA-Z0-9]{8,32}"`. An
-unanchored search accepts both, because the first sixteen characters match — so
-under the old reading the pair tests nothing at all.
+The reference implementation agrees: `regexp.Compile` on the raw pattern and
+`MatchString`, which is Go's unanchored search.
+
+This section said the opposite until it was rechecked, resting on one TCK
+fixture: `Annotations/complex-11`'s pair differs only in
+`simpleAnnotationValueOnType` versus `simpleAnnotation_value_on_type` under
+`pattern: "[a-zA-Z0-9]{8,32}"`, and a search accepts both because the first
+sixteen characters match. But go-raml fails that fixture too — measured, both
+files parse clean — so it encodes an assumption its author never checked rather
+than a rule any implementation follows. The fixture's pattern is unanchored
+where it means anchored, and it is **fixed in the suite**
+(`^[a-zA-Z0-9]{8,32}$`), which makes the pair discriminate under either reading.
+
+`/regex/` *property names* were always a search and are unchanged: those match
+against a key rather than describing one, and `/^x/` is how an anchored one is
+written ([05](05-type-model.md) § 5.1).
 
 **`/regex/` property names stay unanchored** ([05](05-type-model.md) § 5.1). The
 two are different jobs: a `pattern:` facet *describes* a value, while a pattern

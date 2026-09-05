@@ -145,10 +145,13 @@ Full list with the pass that establishes each: `docs/02-architecture.md` § 4.
   through its decimal text too (`Fraction(repr(v))`), because the YAML decoder
   already made it a float and `as_integer_ratio()` would recover the binary
   approximation. `multipleOf: 1.1` must accept `2.2`, and that is the test.
-- **A `pattern:` facet is `fullmatch`; a `/regex/` property name is `search`.**
-  The two look like one rule and are not: a facet *describes* a value, a pattern
-  property is matched *against* a key it does not own, and `/^x/` is how those
-  are written. Unifying them either way breaks a fixture
+- **`pattern:` is a `search`, and so is a `/regex/` property name — the author
+  writes the anchors.** The spec never says a pattern is anchored, and writes
+  `^...$` itself wherever it means anchored (`^.+@.+\..+$`, `^\w{16}$`), which
+  would be noise otherwise; go-raml uses Go's unanchored `MatchString`. This
+  read `fullmatch` until it was rechecked, on the strength of one TCK fixture
+  whose own pattern is unanchored where it means anchored — go-raml fails it
+  too. The fixture is fixed in the suite, not worked around here
   (`docs/10-validation.md` § 5.4).
 - **A discriminator is inherited, so the inline-declaration rule runs before
   P9.** After unwrap every subtype of a discriminated type carries one and looks

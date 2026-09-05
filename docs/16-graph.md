@@ -277,7 +277,98 @@ Both serialisations are checked against a real RDF parser in
 `tests/unit/test_graph.py`, not merely eyeballed — a hand-written emitter that
 produces almost-valid N-Triples is the obvious failure mode.
 
-## 6. AMF was assessed and not adopted
+## 6. The catalogue, and whether SPARQL earned its keep
+
+`pyraml/queries.py`. Seventeen named questions, run with `pyraml query -n NAME`,
+listed with `--list` and printed with `--show`. Both of the latter are text
+operations: they need no store and no document, so a reader without
+`pyoxigraph` can still see what the tool would ask.
+
+| Query | Answers |
+|---|---|
+| `unused-types` | declared types nothing references |
+| `trait-usage` | every trait and how many operations apply it; **0 means dead** |
+| `annotation-usage` | every annotation type and how many sites apply it |
+| `type-fan-in` | types ranked by how many operations can carry them |
+| `multiple-inheritance` | types with more than one direct supertype |
+| `recursive-types` | types that close a cycle |
+| `undocumented-operations` | operations with no description |
+| `unsecured-operations` | operations with no scheme, after inheritance and `[null]` |
+| `scheme-usage` | each scheme, what it guards, and any narrowed scopes |
+| `error-response-types` | every 4xx/5xx and the type it returns |
+| `untyped-payloads` | bodies whose type is `any` |
+| `media-types` | which media types are used and how often |
+| `get-with-request-body` | GETs that declare a payload |
+| `required-query-parameters` | required query parameters |
+| `unbounded-strings` | string properties with no `maxLength`, `pattern` or `enum` |
+| `enums` | every closed value set |
+| `endpoint-tree` | every resource and its methods |
+
+All seventeen are **whole-document** questions that take no arguments. That is
+the division: parameterised navigation is `refs` and `deps`, which return a
+route (§ 5).
+
+### 6.1 The verdict
+
+The test this projection was to be judged by was whether real analysis queries
+become materially simpler than the equivalent code. Having written them:
+
+**Yes, for whole-document analysis. No, for navigation.** The split is clean and
+falls exactly where § 5 predicted.
+
+Where SPARQL clearly wins:
+
+- **Negation.** `unused-types` is `FILTER NOT EXISTS { ?s ?p ?t . FILTER(?p !=
+  raml:declares) }` — *any* incoming edge other than the declaration counts as a
+  use, so the query needs no list of the ways a type can be referenced and
+  cannot fall out of date when an edge is added. That property is not available
+  to hand-written code without rebuilding the same generalisation.
+- **Outer joins.** `trait-usage` reports an unused trait as `0` rather than
+  omitting it, and the unused trait is the whole reason to run the query. One
+  `OPTIONAL` does it; an inner join silently answers the opposite question.
+- **Transitive closure combined with aggregation.** `type-fan-in` is a `*` path
+  under a `COUNT(DISTINCT)` and a `GROUP BY`. This is the case with no tidy
+  imperative equivalent, and it is the most useful query in the list.
+
+Where it does not win: everything already covered by `refs`/`deps`, plus the
+cases where the query is a flat filter — `required-query-parameters` is no
+shorter than a loop, and the loop is readable by more people.
+
+### 6.2 What writing them exposed
+
+Three of the seventeen were wrong on first run, in the way that returns rows and
+looks fine.
+
+`multiple-inheritance`, `unbounded-strings` and `type-fan-in` all matched every
+`Type` node rather than every *declared* type. Since a response body that
+resolves to `Admin` carries `Admin`'s parents, the un-restricted form reported
+one row per **use** of a problem instead of one row per problem — and labelled
+most of them `application/json`, which names nothing an author can go and fix.
+`GROUP BY ?name` then merged the declaration with its uses. All three are now
+anchored on `?u raml:declares ?t` and grouped by the node.
+
+This is the argument for a catalogue rather than a section of example queries:
+the wrong version of each ran, returned output, and would have been copied.
+
+### 6.3 Cost at scale
+
+Every query against `bench_large` (7000 types, 268 951 triples) and
+`bench_endpoints` (2000 endpoints, 239 547 triples), on the machine of § 8:
+
+| | `bench_endpoints` | `bench_large` |
+|---|---|---|
+| slowest query | `type-fan-in`, 30 ms | `type-fan-in`, 101 ms |
+| median query | 8 ms | 0.1 ms |
+| loading the store | 397 ms | 445 ms |
+
+**The store load dominates every query, by a factor of four at worst.** That is
+the number that matters for how this gets used: `pyraml query` reloads per
+invocation, so a session asking several questions should hold one store rather
+than shell out repeatedly. The queries themselves are not the cost, and the one
+that is slowest — transitive closure plus aggregation — is precisely the one
+hardest to replace with code.
+
+## 7. AMF was assessed and not adopted
 
 The reference implementation ships a full AMF-compatible JSON-LD converter
 (`go-raml:converter/jsonld.go`, 1787 lines over a model whose class names match
@@ -320,7 +411,7 @@ nothing. SHACL would earn its place for *policy above RAML conformance* — ever
 public operation is documented, every 4xx uses the standard error type — and that
 is a consumer's rule set, not a parser's.
 
-## 7. Cost
+## 8. Cost
 
 On `bench_large` (7000 types, 150 libraries):
 

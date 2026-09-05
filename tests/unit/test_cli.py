@@ -273,3 +273,48 @@ class TestQueryVerb:
         with pytest.raises(SystemExit) as caught:
             main(['query', graphed, '-q', 'ASK {}', '-Q', 'q.rq'])
         assert caught.value.code == 2
+
+
+class TestQueryCatalogue:
+    """docs/13 § 8.1 — `--list` and `--show` are text, so neither needs a store
+    nor a file. That is the point of them: a user who has not installed
+    `pyoxigraph` can still find out what the tool would ask.
+    """
+
+    def test_list_names_every_query_and_its_question(self, capsys):
+        from pyraml.queries import QUERIES
+
+        assert main(['query', '--list']) == EXIT_OK
+        out = capsys.readouterr().out
+        for query in QUERIES.values():
+            assert query.name in out
+            assert query.question in out
+
+    def test_show_prints_a_runnable_query(self, capsys):
+        assert main(['query', '--show', 'unused-types']) == EXIT_OK
+        out = capsys.readouterr().out
+        assert 'PREFIX raml:' in out
+        assert 'SELECT' in out
+
+    def test_an_unknown_name_exits_one(self, capsys):
+        assert main(['query', '--show', 'nope']) == EXIT_INVALID
+        assert 'try --list' in capsys.readouterr().err
+
+    def test_a_named_query_runs(self, graphed, capsys):
+        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
+        assert main(['query', graphed, '-n', 'endpoint-tree']) == EXIT_OK
+        assert '/users' in capsys.readouterr().out
+
+    def test_an_unknown_named_query_exits_one_before_parsing(self, capsys):
+        assert main(['query', 'no-such-file.raml', '-n', 'nope']) == EXIT_INVALID
+        err = capsys.readouterr().err
+        assert 'try --list' in err
+        assert 'invalid' not in err, 'the name is checked before the file is opened'
+
+    def test_a_query_with_no_source_says_which_flags_exist(self, graphed, capsys):
+        assert main(['query', graphed]) == EXIT_INVALID
+        assert '-q, -Q or -n' in capsys.readouterr().err
+
+    def test_a_query_with_no_file_says_so(self, capsys):
+        assert main(['query', '-n', 'endpoint-tree']) == EXIT_INVALID
+        assert 'needs a FILE' in capsys.readouterr().err

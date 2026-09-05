@@ -45,7 +45,8 @@ view of the **effective** model as a graph ([docs/16](docs/16-graph.md)):
 pyraml refs api.raml User          # every operation that can carry a User, with the route
 pyraml deps api.raml User          # everything User is built from
 pyraml graph api.raml              # the whole projection as Turtle (or nt, dot, json)
-pyraml query api.raml -q '...'     # SPARQL, with pyoxigraph installed
+pyraml query --list                # 17 named analysis queries
+pyraml query api.raml -n type-fan-in   # or -q '<sparql>' for your own
 ```
 
 ```
@@ -117,7 +118,7 @@ PYRAML_BENCH=1 uv run pytest tests/bench # the same gate, under pytest
 | Extra | For |
 |-------|-----|
 | `google-re2` | `ParseOptions(regex_engine="re2")` — linear-time patterns for untrusted input |
-| `pyoxigraph` | `pyraml query` — SPARQL over the graph projection; the graph itself needs nothing |
+| `pyoxigraph` | `pyraml query` — SPARQL over the graph projection ([the catalogue](docs/16-graph.md)); the graph itself needs nothing |
 | `httpx` or `requests` | remote `!include`; supply the client yourself, or use `pyraml validate -r` |
 | libyaml | selected automatically when PyYAML was built with it; roughly an order of magnitude faster, and **not only** a speed choice ([D9](docs/01-scope-and-coverage.md)) |
 

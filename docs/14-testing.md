@@ -372,6 +372,7 @@ than measurements:
 | File | Gate | When |
 |------|------|------|
 | `tests/unit/test_graph.py` | the graph projection: IRI stability, the edges that answer the questions it exists for, and both RDF serialisations **checked by a real RDF parser** ([16](16-graph.md)) | always; the RDF cases skip without `pyoxigraph` |
+| `tests/unit/test_queries.py` | every catalogue query is valid SPARQL, **returns rows on a fixture written to trigger all of them**, and answers the right question ([16](16-graph.md) § 6) | always; skips without `pyoxigraph` |
 | `tests/bench/test_corpus.py` | every generated corpus is valid RAML in **all four** configurations, generation is deterministic, and `bench_large`'s diamond really does reach one `common.raml` | always; tiny scale, milliseconds |
 | `tests/bench/test_linearity.py` | `bench_large` within 15 % of linear against a half-size corpus | `PYRAML_BENCH=1` only |
 

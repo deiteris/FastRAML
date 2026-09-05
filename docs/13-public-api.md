@@ -344,3 +344,16 @@ name; the verb then lists the candidates and exits 1 rather than picking one.
 — `pip install pyraml[graph]`, or the verb tells you so and exits 1. All four
 result forms work: SELECT as TSV or `--json` JSON Lines, ASK as `true`/`false`,
 CONSTRUCT and DESCRIBE as N-Triples.
+
+```
+pyraml query --list                  # the catalogue: 17 named questions
+pyraml query --show unused-types     # print one, to read or to edit
+pyraml query api.raml -n type-fan-in # run one
+pyraml query api.raml -q '<sparql>'  # or -Q file.rq
+```
+
+`--list` and `--show` need neither a store nor a document, so a reader without
+`pyoxigraph` can still find out what the tool would ask. `-n` is checked against
+the catalogue **before** the file is opened, so a mistyped name reports the
+mistyped name rather than a parse error. The catalogue and the verdict on
+whether it earns its keep are [16](16-graph.md) § 6.

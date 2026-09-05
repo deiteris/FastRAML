@@ -34,6 +34,7 @@ from pyraml.errors import RamlError
 from pyraml.graph import TYPE_EDGES, USE_EDGES, Graph, build_graph
 from pyraml.loaders import FileLoader
 from pyraml.parser.entry import ParseOptions, parse_from_path
+from pyraml.queries import QUERIES, render
 from pyraml.yamlnode import backend_name
 
 if TYPE_CHECKING:
@@ -102,10 +103,13 @@ def _parser() -> argparse.ArgumentParser:
         _add_common(walk)
 
     query = commands.add_parser('query', help='run SPARQL over the graph (needs pyoxigraph)')
-    query.add_argument('files', metavar='FILE', nargs=1)
-    source = query.add_mutually_exclusive_group(required=True)
+    query.add_argument('files', metavar='FILE', nargs='*')
+    source = query.add_mutually_exclusive_group()
     source.add_argument('-q', dest='sparql', help='the query text')
     source.add_argument('-Q', dest='query_file', help='a file holding the query')
+    source.add_argument('-n', dest='named', metavar='NAME', help='a query from the catalogue (docs/16 section 6)')
+    query.add_argument('--list', dest='catalogue', action='store_true', help='list the catalogue and exit')
+    query.add_argument('--show', metavar='NAME', help='print one catalogue query rather than running it')
     query.add_argument('--json', action='store_true', help='JSON rather than a table')
     _add_common(query)
     return parser
@@ -240,13 +244,35 @@ def _walk(args: argparse.Namespace) -> int:
 
 
 def _query(args: argparse.Namespace) -> int:
-    """SPARQL over the graph.
+    """SPARQL over the graph: the catalogue, or a query of your own."""
+    # The catalogue is text, so `--list` and `--show` want neither a store nor a
+    # file. A user without pyoxigraph can still read a query and copy it out.
+    if args.catalogue:
+        width = max(len(name) for name in QUERIES)
+        for query in QUERIES.values():
+            print(f'{query.name:<{width}}  {query.question}')
+        return EXIT_OK
+    if args.show is not None:
+        return _show(args.show)
+
+    text = _query_text(args)
+    if text is None:
+        return EXIT_INVALID
+    if not args.files:
+        print('query needs a FILE', file=sys.stderr)
+        return EXIT_INVALID
+    graph = _built(args)
+    return EXIT_INVALID if graph is None else _run_sparql(graph, text, json_lines=args.json)
+
+
+def _run_sparql(graph: Graph, text: str, *, json_lines: bool) -> int:
+    """Load the graph into a store and print whatever the query returns.
 
     `pyoxigraph` is optional the way `google-re2` and the HTTP client are: the
     package never imports it at module scope, so a user who does not query never
-    installs it. Everything it provides is used through it here rather than
-    behind a helper, because the three result classes are what the dispatch
-    below needs and they are only in scope once the import has succeeded.
+    installs it. It is used inline rather than behind a helper because the three
+    result classes are what the dispatch needs, and they are only in scope once
+    the import has succeeded.
     """
     try:
         import pyoxigraph  # noqa: PLC0415 - optional: a module-level import would make it required
@@ -254,24 +280,19 @@ def _query(args: argparse.Namespace) -> int:
         print('query needs an RDF store: install pyoxigraph', file=sys.stderr)
         return EXIT_INVALID
 
-    graph = _built(args)
-    if graph is None:
-        return EXIT_INVALID
     store = pyoxigraph.Store()
     store.load(io.StringIO('\n'.join(graph.to_ntriples())), format=pyoxigraph.RdfFormat.N_TRIPLES)
-
-    text = args.sparql if args.sparql is not None else Path(args.query_file).read_text(encoding='utf-8')
     result = store.query(text)
 
     # SPARQL has three result shapes and the store returns a different class for
     # each: `QuerySolutions` for SELECT, `QueryTriples` for CONSTRUCT/DESCRIBE,
     # `QueryBoolean` for ASK. Handling only the first turns a valid query into a
     # traceback. The ASK result is *not* a `bool` — it is a wrapper that converts
-    # to one — which is why this dispatches on the class and not on `isinstance`
-    # of `bool`.
+    # to one — which is why this dispatches on the class rather than on
+    # `isinstance` of `bool`.
     if isinstance(result, pyoxigraph.QueryBoolean):
         answer = bool(result)
-        print(json.dumps({'ask': answer}) if args.json else str(answer).lower())
+        print(json.dumps({'ask': answer}) if json_lines else str(answer).lower())
         return EXIT_OK
     if isinstance(result, pyoxigraph.QueryTriples):
         for triple in result:
@@ -280,7 +301,7 @@ def _query(args: argparse.Namespace) -> int:
 
     names = [str(name).lstrip('?') for name in result.variables]
     for row in result:
-        if args.json:
+        if json_lines:
             print(json.dumps({name: _term(row[name]) for name in names}))
         else:
             print('\t'.join(_term(row[name]) or '' for name in names))
@@ -318,6 +339,32 @@ def _resolve(graph: Graph, name: str) -> str | None:
             print(f'  {iri}', file=sys.stderr)
         return None
     return found[0]
+
+
+def _query_text(args: argparse.Namespace) -> str | None:
+    """The SPARQL to run: given, read from a file, or named in the catalogue."""
+    if args.sparql is not None:
+        return str(args.sparql)
+    if args.query_file is not None:
+        return Path(args.query_file).read_text(encoding='utf-8')
+    if args.named is not None:
+        query = QUERIES.get(args.named)
+        if query is None:
+            print(f'{args.named}: no such query; try --list', file=sys.stderr)
+            return None
+        return render(query)
+    print('query needs one of -q, -Q or -n (or --list)', file=sys.stderr)
+    return None
+
+
+def _show(name: str) -> int:
+    query = QUERIES.get(name)
+    if query is None:
+        print(f'{name}: no such query; try --list', file=sys.stderr)
+        return EXIT_INVALID
+    print(f'# {query.question}')
+    print(render(query), end='')
+    return EXIT_OK
 
 
 def _term(term: Any) -> str | None:

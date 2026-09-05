@@ -414,3 +414,61 @@ class TestTheInventory:
         listed = {name for _, name, _ in graph.entries()}
         for probe in ('Adress', 'List', 'user', 'get', 'Tre'):
             assert set(graph.suggest(probe)) <= listed, probe
+
+
+class TestFindDoesNotSplitOneEntity:
+    """docs/16 § 3.3. A node passes its name to what it contains."""
+
+    QUERY = """#%RAML 1.0
+title: T
+/things:
+  get:
+    queryParameters:
+      login?:
+        type: string
+        minLength: 2
+    responses:
+      200:
+"""
+
+    @pytest.fixture
+    def parameterised(self, workspace):
+        root = workspace({'api.raml': self.QUERY})
+        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+    def test_a_node_and_the_schema_inside_it_are_not_an_ambiguity(self, parameterised):
+        """`…/parameter/query/login` and `…/parameter/query/login/schema` are one
+        entity at two depths. Reporting the pair asked the caller to choose
+        between a thing and part of itself, and `show login` exited 1 on it.
+        """
+        found = parameterised.find('login')
+        assert len(found) == 1, found
+        assert parameterised.kind_of(found[0]) == 'Parameter'
+
+    def test_the_outer_node_is_the_one_kept(self, parameterised):
+        assert not parameterised.find('login')[0].endswith('/schema')
+
+    def test_two_declarations_of_one_name_stay_ambiguous(self, workspace):
+        """Containment cannot settle that pair, and it is a real question."""
+        api = '#%RAML 1.0\ntitle: T\nuses:\n  a: a.raml\n  b: b.raml\ntypes:\n  Use: a.Thing\n'
+        lib = '#%RAML 1.0 Library\ntypes:\n  Thing:\n    type: object\n    properties:\n      x: string\n'
+        root = workspace({'api.raml': api, 'a.raml': lib, 'b.raml': lib})
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        assert len(graph.find('Thing')) > 1
+
+    def test_a_synthetic_parent_still_needs_the_declaration_rule(self, workspace):
+        """`…/types/Admin/inherits/Entity` is not *inside* `…/types/Entity`, so
+        containment cannot collapse it — only the declaration rule can. Both
+        rules are load-bearing.
+        """
+        api = (
+            '#%RAML 1.0\ntitle: T\ntypes:\n'
+            '  Entity:\n    type: object\n    properties:\n      id: string\n'
+            '  User:\n    type: Entity\n    properties:\n      name: string\n'
+            '  Admin:\n    type: [User, Entity]\n    properties:\n      level: integer\n'
+        )
+        root = workspace({'api.raml': api})
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        found = graph.find('Entity')
+        assert len(found) == 1, found
+        assert found[0].endswith('#/declarations/types/Entity')

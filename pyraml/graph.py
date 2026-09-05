@@ -126,6 +126,26 @@ def _is_declaration(iri: str) -> bool:
     return bool(marker) and tail.count('/') == 1
 
 
+def _outermost(matched: Sequence[str]) -> list[str]:
+    """Drop any IRI that sits inside another one in the same set.
+
+    A node passes its name down to the nodes it contains, so a query parameter
+    `login` matches both `…/parameter/query/login` and the schema beneath it,
+    `…/parameter/query/login/schema`. Those are one entity at two depths, and
+    reporting them as an ambiguity asks the caller to choose between a thing and
+    part of itself.
+
+    Distinct from the declaration rule above and not a replacement for it: a
+    synthetic parent at `…/types/Admin/inherits/Entity` is not *inside*
+    `…/types/Entity`, so containment cannot settle that pair and only the
+    declaration rule can. This one settles what that rule leaves.
+
+    Two declarations of one name are unaffected — neither contains the other,
+    and that ambiguity is real.
+    """
+    return [iri for iri in matched if not any(other != iri and iri.startswith(other + '/') for other in matched)]
+
+
 #: The `#/declarations/<bucket>/` segments that hold something a `type:`, `is:`
 #: or `securedBy:` entry can name, and the node kind each one declares. A
 #: `Literal` rather than `str` so the lookup below is total and mypy says so.
@@ -311,6 +331,7 @@ class Graph:
         declared = [iri for iri in matched if _is_declaration(iri)]
         if declared:
             matched = declared
+        matched = _outermost(matched)
         if kinds is None:
             return matched
         return [iri for iri in matched if self.nodes[iri].kinds[0] in kinds]

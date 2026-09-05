@@ -228,6 +228,18 @@ Without this rule `pyraml refs Entity` exited 1 on a three-type document. It was
 found by asking what navigation still needed, not by a test, which is why one
 now names it.
 
+**And an outer node wins over one inside it.** A node passes its name down to
+what it contains, so a query parameter `login` matches both
+`…/parameter/query/login` and `…/parameter/query/login/schema`. Those are one
+entity at two depths, and reporting the pair asks the caller to choose between a
+thing and part of itself — `pyraml show login` exited 1 on exactly that.
+
+The two rules are independent and both are needed. Containment cannot settle the
+synthetic-parent case, because `…/types/Admin/inherits/Entity` is not *inside*
+`…/types/Entity`; the declaration rule cannot settle the parameter case, because
+neither node is a declaration. Two declarations of one name survive both, which
+is right: neither contains the other and the question is real.
+
 ### 3.4 Ordering
 
 RDF is a set of triples and declaration order is an invariant everywhere the

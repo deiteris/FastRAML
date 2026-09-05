@@ -636,3 +636,75 @@ class TestSecuritySchemesContribute:
 
     def test_it_is_still_loadable_yaml(self, endpoint):
         assert loaded(endpoint('/items', depth=3)) is not None
+
+
+EXTENDED = """#%RAML 1.0
+title: T
+annotationTypes:
+  deprecated: string
+  tier:
+    type: string
+    enum: [gold, silver]
+  limits:
+    type: object
+    properties:
+      perMinute: integer
+types:
+  Money:
+    type: object
+    facets:
+      currencyCode: string
+      rounding?: integer
+    properties:
+      amount: number
+  Price:
+    type: Money
+    currencyCode: EUR
+    (deprecated): use Amount instead
+    (tier): gold
+    (limits):
+      perMinute: 60
+    properties:
+      vat?: number
+"""
+
+
+class TestExtensionsAreShown:
+    """`facets:`, the values supplied for them, and applied annotations.
+
+    All three were absent, and none can be recovered by looking at the
+    declaration: a custom facet's *value* is supplied by a subtype far from
+    where the facet was declared, and an annotation is RAML's main extension
+    point — one real document applies 187 of them.
+    """
+
+    @pytest.fixture
+    def extended(self, workspace):
+        root = workspace({'api.raml': EXTENDED})
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+        def show(name: str) -> dict:
+            text = '\n'.join(render(graph.shape_at(graph.find(name)[0]), root=graph.root))
+            return loaded(text)[name]
+
+        return show
+
+    def test_a_declared_facet_block_is_shown(self, extended):
+        assert extended('Money')['facets'] == {'currencyCode': 'string', 'rounding?': 'integer'}
+
+    def test_a_supplied_facet_value_is_shown_on_the_subtype(self, extended):
+        """The question the view exists for: `Money` says what must be supplied,
+        and only `Price` says what was.
+        """
+        assert extended('Price')['currencyCode'] == 'EUR'
+
+    def test_an_annotation_round_trips_in_its_applied_form(self, extended):
+        assert extended('Price')['(deprecated)'] == 'use Amount instead'
+        assert extended('Price')['(tier)'] == 'gold'
+
+    def test_a_structured_annotation_keeps_its_shape(self, extended):
+        assert extended('Price')['(limits)'] == {'perMinute': 60}
+
+    def test_a_type_with_none_gains_no_empty_keys(self, extended):
+        assert 'facets' not in extended('Money') or extended('Money')['facets']
+        assert not [key for key in extended('Money') if key.startswith('(')]

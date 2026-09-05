@@ -699,6 +699,11 @@ sharing one body, which makes it the opposite of decoration.
 First line only, as with a type's description: these may be paragraphs and the
 view is meant to fit a screen.
 
+**Custom facets and annotations are shown.** A `facets:` block says what a
+subtype must supply; the *value* is supplied far from there, usually in a
+subtype, and an annotation is RAML's main extension point. None of the three was
+rendered. An application round-trips in its written form, `(name): value`.
+
 **A union names its members** — `string | nil`, not `union`. Naming is not
 expansion, so it is not gated on `--depth`: a union reaching the limit as the
 bare word `union` says nothing, and one more level was showing exactly the

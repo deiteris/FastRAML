@@ -352,6 +352,25 @@ function rather than the same `isinstance` in every consumer, because a consumer
 that forgets it does not fail — it sees a leaf with no properties and reports
 that a schema type is made of nothing.
 
+A subschema with no `type` is projected by the kind its keywords imply, and
+that is **a projection decision rather than JSON Schema semantics**. In JSON
+Schema a keyword is an assertion applied *conditionally on the instance type*:
+`{"properties": {…}, "required": ["a"]}` does not say the instance is an object,
+it says that if it is one then `a` must be present — against `"hello"` it passes
+vacuously. Validation is unaffected, because it goes to the real validator.
+
+The projection has to pick a kind, since RAML cannot spell "a constraint that
+applies only to objects and is otherwise silent". When every keyword present
+points at one kind, that kind is the least-lossy pick; when they point at more
+than one — `{"properties": {…}, "minLength": 3}` constrains objects *and*
+strings, which is legal — the shape stays `any` rather than silently choosing.
+
+The keyword table is **not** RAML's `FACET_TYPE_HINT`. That one maps `fileTypes`
+and `discriminator`, which JSON Schema does not have, omits `patternProperties`,
+`required`, `dependencies`, `contains` and `exclusiveMinimum`, which it does,
+and its `identify_shape_type` *raises* on two hints — so reusing it would reject
+schemas that are valid.
+
 Mappings:
 
 | JSON Schema | RAML |

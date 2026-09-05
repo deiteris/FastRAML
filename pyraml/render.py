@@ -391,6 +391,48 @@ def _facets(base: BaseShape, indent: str) -> Iterator[_Line]:
     if base.description is not None and base.description.value:
         first = base.description.value.strip().splitlines()[0]
         yield _Line(f'{indent}description: {_dumped(first)}')
+    yield from _extensions(base, indent)
+
+
+def _extensions(base: BaseShape, indent: str) -> Iterator[_Line]:
+    """`facets:`, the values supplied for them, and applied annotations.
+
+    All three were absent, and all three are things a reader cannot recover by
+    looking at the declaration: a custom facet's *value* is usually supplied by
+    a subtype far from where the facet was declared, and an annotation is the
+    main extension point RAML has — one real document here applies 187 of them.
+
+    Declared facets come from the chain, so a subtype shows what it must supply
+    as well as what it did. The declaring type's own block is included because
+    `custom_facet_defs` is already the effective set after unwrap.
+    """
+    if base.custom_facet_defs:
+        yield _Line(f'{indent}facets:')
+        for name, declared in base.custom_facet_defs.items():
+            key = name if declared.required else f'{name}?'
+            yield _Line(f'{indent}  {_key(key)}: {_type_name(declared.base)}')
+    for name, supplied in base.custom_facets.items():
+        yield _Line(f'{indent}{_key(name)}: {_dumped(_plain(supplied.raw))}')
+    for name, extension in base.annotations.items():
+        # `(name)` is how RAML spells an application, so it round-trips.
+        yield _Line(
+            f'{indent}({name}): {_dumped(_plain(extension.value.raw))}', _at(extension.location, extension.key_pos, '')
+        )
+
+
+def _plain(value: Any) -> Any:
+    """An annotation or facet value as something YAML can emit.
+
+    A nested `DataNode` value arrives as plain Python already; anything the
+    emitter would refuse becomes its text rather than blocking the whole view.
+    """
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, dict):
+        return {str(key): _plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    return str(value)
 
 
 def _slots(cls: type) -> Iterator[str]:

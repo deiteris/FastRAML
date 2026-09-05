@@ -626,29 +626,68 @@ def _project_body(context: _Projection, contents: dict, base: BaseShape, visitin
     return _project_type(context, str(declared), contents, base, visiting)
 
 
-#: Keywords that only mean anything for one kind, so their presence settles the
-#: kind when `type` is absent. The same inference RAML does for a declaration
-#: with `properties:` and no `type:` (docs/05 § Determine Default Types).
-_IMPLIES: Final = (
-    (TYPE_OBJECT, ('properties', 'patternProperties', 'required', 'additionalProperties')),
-    (TYPE_ARRAY, ('items', 'minItems', 'maxItems', 'uniqueItems')),
-)
+#: JSON Schema keywords that apply to exactly one instance type.
+#:
+#: **Deliberately not RAML's `FACET_TYPE_HINT`**, though the two overlap. That
+#: table is wrong here in both directions: it maps `fileTypes` and
+#: `discriminator`, which are not JSON Schema keywords, and it omits
+#: `patternProperties`, `required`, `dependencies`, `contains` and
+#: `exclusiveMinimum`, which are. Its `identify_shape_type` also *raises* on a
+#: declaration hinting at two kinds — and a JSON schema constraining two kinds at
+#: once is legal and ordinary, so borrowing it would reject valid input.
+_KEYWORD_TYPE: Final[dict[str, str]] = {
+    'properties': TYPE_OBJECT,
+    'patternProperties': TYPE_OBJECT,
+    'additionalProperties': TYPE_OBJECT,
+    'propertyNames': TYPE_OBJECT,
+    'dependencies': TYPE_OBJECT,
+    'required': TYPE_OBJECT,
+    'minProperties': TYPE_OBJECT,
+    'maxProperties': TYPE_OBJECT,
+    'items': TYPE_ARRAY,
+    'additionalItems': TYPE_ARRAY,
+    'contains': TYPE_ARRAY,
+    'minItems': TYPE_ARRAY,
+    'maxItems': TYPE_ARRAY,
+    'uniqueItems': TYPE_ARRAY,
+    'minLength': TYPE_STRING,
+    'maxLength': TYPE_STRING,
+    'pattern': TYPE_STRING,
+    'minimum': TYPE_NUMBER,
+    'maximum': TYPE_NUMBER,
+    'exclusiveMinimum': TYPE_NUMBER,
+    'exclusiveMaximum': TYPE_NUMBER,
+    'multipleOf': TYPE_NUMBER,
+}
 
 
 def _inferred_type(contents: dict) -> str | None:
-    """The kind a subschema means without saying so.
+    """The one kind a subschema constrains, when it constrains only one.
 
-    JSON Schema lets a subschema constrain an object by writing `properties`
-    alone, and an `allOf` member almost always does — the enclosing schema
-    already said `"type": "object"`, so repeating it would be noise. Projecting
-    that member as `any` and then merging it made `inherit` refuse: "cannot
-    inherit from different type: source: object: target: any", which took down
-    the whole projection of any schema written that way.
+    **This is a projection decision, not JSON Schema semantics.** In JSON Schema
+    a keyword is an assertion that applies *conditionally on the instance type*:
+    `{"properties": {...}, "required": ["a"]}` does not say the instance is an
+    object, it says that **if** it is one then `a` must be present. Against the
+    string `"hello"` that schema passes, vacuously. Nothing is inferred, and
+    validation here is unaffected — it goes to the real validator, which has
+    those semantics.
+
+    The § 6.3 *projection* has to pick a kind, because RAML has no way to spell
+    "a constraint that applies only to objects, and is silent otherwise". When
+    every keyword present points at one kind, that kind is the least-lossy pick.
+
+    When they point at more than one — `{"properties": {...}, "minLength": 3}`
+    constrains objects *and* strings, which is legal and which RAML cannot
+    express — this returns `None` and the shape stays `any` rather than silently
+    choosing. Losing the constraints is bad; claiming the wrong kind is worse.
+
+    Written for `allOf`, where a member almost never repeats `"type"`: the
+    enclosing schema already said it. Projecting such a member as `any` and then
+    merging it made `inherit` refuse — "cannot inherit from different type" —
+    which took down the projection of the whole schema.
     """
-    for kind, keywords in _IMPLIES:
-        if any(keyword in contents for keyword in keywords):
-            return kind
-    return None
+    implied = {_KEYWORD_TYPE[keyword] for keyword in contents if keyword in _KEYWORD_TYPE}
+    return implied.pop() if len(implied) == 1 else None
 
 
 def _project_all_of(context: _Projection, members: list, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:

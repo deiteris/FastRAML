@@ -175,6 +175,37 @@ Every segment is percent-escaped with an empty safe set, so a media type, a
 `/{userId}` template and a `/^x-/` pattern-property name each survive as one
 segment.
 
+### 3.1 Names are not unique, and a collision is silent
+
+A structural IRI is derived from *names*, and RAML does not promise the names
+are distinct. `type1: [string, string]` gives two parents the same one. Without
+disambiguation the second merges into the first: no error is raised, the node
+count is plausible, and **two types have become one**.
+
+`_Builder.claim` therefore records which shape holds each IRI and appends `/!2`,
+`/!3` … to a name already taken. The suffix begins with `!`, which segment
+escaping always percent-encodes, so a disambiguated IRI can never collide with
+one a real name produced.
+
+This is not a hypothetical. go-raml's converter carries a test for exactly the
+same hazard — `TestJSONLD_NoDuplicateIDs`, "a regression net for intermediate
+`*BaseShape` objects that bypass `shapeIDs` registration and accidentally claim
+a contextID already in use". Taking that seriously found the same hole here, in
+one corpus fixture (`EdgeCases/inherit-multiple-scalars`). The corpus law is
+docs/14 § 4, law 12.
+
+### 3.2 A dot is not always a namespace separator
+
+`type: lib.Collection` is a qualified reference; `securitySchemes: {oauth2.0: …}`
+is a declaration whose *name* contains a dot. A reference is therefore matched
+against the whole name first and only then against the dotted tail — splitting
+first makes the tail `0`, which matches nothing.
+
+An unmatched reference still gets an edge, to a node created at that moment, so
+an application is never invisible and **no edge ever dangles**. That last part is
+also a corpus law: an edge to a node that does not exist is a traversal that
+silently ends early.
+
 ### 3.1 Ordering
 
 RDF is a set of triples and declaration order is an invariant everywhere the
@@ -225,8 +256,10 @@ recursive walk in code returns it; a property path cannot.
 Two edge closures are exported so a caller and a query cannot drift:
 
 - `TYPE_EDGES` — what a type is *made of*.
-- `USE_EDGES` — `TYPE_EDGES` plus containment, which walked in reverse from a
-  type arrives at the operations and resources that can carry it.
+- `USE_EDGES` — `TYPE_EDGES` plus containment **and application**, which walked
+  in reverse from a type arrives at the operations and resources that can carry
+  it, and from a trait, a security scheme or an annotation type at every site
+  that uses it.
 
 ### 5.1 SPARQL
 

@@ -124,6 +124,20 @@ class TestIris:
         assert paths == {'/users', '/users/{userId}'}
         assert f'{DEFAULT_BASE}#/web-api/endpoint/%2Fusers%2F%7BuserId%7D' in graph.nodes
 
+    def test_two_shapes_with_one_structural_name_get_two_iris(self, workspace):
+        """`type1: [string, string]` — RAML does not promise names are distinct.
+
+        Both parents derive the IRI `.../inherits/string`, and without
+        disambiguation the second merges into the first: no error, a plausible
+        node count, and two types quietly become one. go-raml's converter has a
+        test for the same hazard (`TestJSONLD_NoDuplicateIDs`); this hole was
+        found by taking it seriously, in one corpus fixture.
+        """
+        root = workspace({'lib.raml': '#%RAML 1.0 Library\ntypes:\n  Both: [string, string]\n'})
+        graph = build_graph(parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True)))
+        parents = graph.out(graph.find('Both')[0], ['inherits'])
+        assert len({edge.object for edge in parents}) == 2, 'two parents, two nodes'
+
     def test_the_same_parse_projects_identically_twice(self, workspace):
         """Determinism, at the level a consumer sees it."""
         root = workspace({'api.raml': API, 'lib.raml': LIB})
@@ -172,6 +186,27 @@ class TestTheEdgesThatAnswerQuestions:
         assert attributes['required'] is False
         target = graph.out(parameter, ['range'])[0].object
         assert graph.nodes[target].attributes['maximum'] == 100
+
+    def test_a_scheme_reaches_the_operations_that_apply_it(self, workspace):
+        """A `refs` that answers this only for types would be half a tool.
+
+        `oauth2.0` is also the corpus's reminder that a dot in a name is not
+        always a namespace separator (docs/16 § 2.2).
+        """
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: D\nbaseUri: https://e.test\n'
+                'securitySchemes:\n  oauth2.0:\n    type: OAuth 2.0\n'
+                '    settings:\n      authorizationGrants: [client_credentials]\n'
+                '      accessTokenUri: https://e.test/t\n'
+                '/persons:\n  get:\n    securedBy: [oauth2.0]\n'
+            }
+        )
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        scheme = graph.find('oauth2.0')[0]
+        assert scheme.endswith('/declarations/securitySchemes/oauth2.0')
+        found = graph.walk(scheme, USE_EDGES, reverse=True)
+        assert 'Operation' in {graph.kind_of(route.target) for route in found}
 
     def test_the_reverse_index_agrees_with_the_forward_one(self, graph):
         for edge in graph.edges:

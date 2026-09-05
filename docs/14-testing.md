@@ -298,11 +298,15 @@ The laws. Section 4.1 records where each is checked and over what input —
     the private-copy path of docs/13 § 2 against the real one. Every other test
     picks a configuration and stays in it, so a copy that had diverged would be
     invisible — each configuration agreeing with itself.
-12. **Every model that parses has a graph** — `build_graph` raises on no
-    unwrapped model in the corpus, and never returns nodes with no edges
-    ([16](16-graph.md) § 1). The second half is the one that matters: a
-    projection that dropped every relationship would build cleanly, report a
-    plausible node count, and be useless.
+12. **Every model that parses has a sound graph** — `build_graph` raises on no
+    unwrapped model in the corpus; no projection returns nodes with no edges; no
+    edge touches a node that does not exist; and no two shapes share an IRI
+    ([16](16-graph.md) §§ 3.1–3.2). Only the first of those four is about
+    crashing. The other three are the ways a projection is **wrong while
+    looking right**: dropping every relationship, ending a traversal early at a
+    dangling edge, or merging two types into one node. Each was found by the
+    check that names it, and the last was found because go-raml's converter
+    carries the same regression net.
 
 ### 4.1 Where each law lives, and why
 

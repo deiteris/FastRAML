@@ -82,9 +82,12 @@ TYPE_EDGES: Final = (
     'recursionHead',
 )
 
-#: `TYPE_EDGES` plus the containment edges, which is what a *use* question needs:
-#: walked in reverse from a type it arrives at the operations and resources that
-#: can carry it, which is the query the whole projection exists for.
+#: `TYPE_EDGES` plus containment and application, which is what a *use* question
+#: needs: walked in reverse from a type it arrives at the operations and
+#: resources that can carry it, which is the query the whole projection exists
+#: for. The application edges are here for the same reason — reversed from a
+#: trait, a security scheme or an annotation type, they name every site that
+#: uses it, and a `refs` that could not answer that would be half a tool.
 USE_EDGES: Final = (
     *TYPE_EDGES,
     'queryString',
@@ -94,6 +97,10 @@ USE_EDGES: Final = (
     'returns',
     'supportedOperation',
     'endpoint',
+    'securedBy',
+    'appliesTrait',
+    'appliesResourceType',
+    'annotation',
 )
 
 _XSD: Final = 'http://www.w3.org/2001/XMLSchema#'
@@ -396,7 +403,7 @@ class _Builder:
     for exactly this reason (`converter/jsonld.go`, `preRegisterTypes`).
     """
 
-    __slots__ = ('base', 'edges', 'emitted', 'nodes', 'raml', 'root', 'shape_iris')
+    __slots__ = ('base', 'claimed', 'edges', 'emitted', 'nodes', 'raml', 'root', 'shape_iris')
 
     def __init__(self, raml: Raml, base: str) -> None:
         self.raml = raml
@@ -404,6 +411,10 @@ class _Builder:
         self.nodes: dict[str, GraphNode] = {}
         self.edges: list[Edge] = []
         self.shape_iris: dict[int, str] = {}
+        #: IRI → the `BaseShape.id` holding it. Two shapes given the same
+        #: structural name would otherwise merge into one node in silence; see
+        #: `claim`.
+        self.claimed: dict[str, int] = {}
         self.emitted: set[int] = set()
         self.root = raml.location.rsplit('/', 1)[0] + '/' if raml.location else ''
 
@@ -430,6 +441,29 @@ class _Builder:
             if value is not None:
                 node.attributes[key] = value
         return iri
+
+    def claim(self, fallback: str, shape_id: int) -> str:
+        """`fallback`, or the first free variation of it, claimed for `shape_id`.
+
+        A structural IRI is derived from *names*, and RAML does not promise the
+        names are distinct: `type1: [string, string]` gives two parents the same
+        one. Without this the second silently merges into the first — the node
+        count is plausible, no error is raised, and two types have become one.
+
+        go-raml's converter has a test for exactly this hazard
+        (`TestJSONLD_NoDuplicateIDs`, "a regression net for intermediate
+        BaseShape objects that bypass shapeIDs registration and accidentally
+        claim a contextID already in use"). It cost one corpus fixture to
+        confirm the same hole was here.
+
+        The suffix begins with `!`, which `_segment` always percent-escapes, so
+        a disambiguated IRI can never collide with a name that produced one.
+        """
+        candidate, index = fallback, 1
+        while self.claimed.setdefault(candidate, shape_id) != shape_id:
+            index += 1
+            candidate = f'{fallback}/!{index}'
+        return candidate
 
     def edge(self, subject: str, predicate: str, obj: str) -> None:
         if obj:
@@ -458,8 +492,8 @@ class _Builder:
         self.api()
 
     def reserve(self, shape: BaseShape | None, iri: str) -> None:
-        if shape is not None:
-            self.shape_iris.setdefault(shape.id, iri)
+        if shape is not None and shape.id not in self.shape_iris:
+            self.shape_iris[shape.id] = self.claim(iri, shape.id)
 
     def fragment(self, location: str, fragment: object) -> None:
         """Every declaration a fragment holds, in declaration order."""
@@ -544,20 +578,30 @@ class _Builder:
 
         The name may be qualified (`lib.collection`), and the declaration then
         lives in that library's unit rather than this one. Resolving it here
-        would be re-implementing P4; instead the unqualified tail is matched
-        against what the projection has already declared, and an unmatched name
-        still gets an edge to the local IRI so the application is never invisible.
+        would be re-implementing P4; instead the name is matched against what
+        the projection has already declared.
+
+        **The whole name is tried before the dotted tail.** A dot is not only a
+        namespace separator: `securitySchemes: {oauth2.0: …}` is a declaration
+        whose name contains one, and splitting first makes the tail `0`, which
+        matches nothing. That fixture is in the corpus, and it produced an edge
+        to a node that did not exist.
+
+        An unmatched name still gets an edge, to a node created here, so an
+        application is never invisible and no edge ever dangles.
         """
         name = getattr(ref, 'name', None)
         if not isinstance(name, str) or not name:
             return
-        tail = name.rsplit('.', 1)[-1]
-        wanted = f'#/declarations/{bucket}/{_segment(tail)}'
-        for iri in self.nodes:
-            if iri.endswith(wanted):
-                self.edge(subject, predicate, iri)
-                return
-        self.edge(subject, predicate, f'{self.unit(location)}{wanted}')
+        for candidate in (name, name.rsplit('.', 1)[-1]):
+            wanted = f'#/declarations/{bucket}/{_segment(candidate)}'
+            for iri in self.nodes:
+                if iri.endswith(wanted):
+                    self.edge(subject, predicate, iri)
+                    return
+        kind = {'traits': 'Trait', 'resourceTypes': 'ResourceType', 'securitySchemes': 'SecurityScheme'}[bucket]
+        local = f'{self.unit(location)}#/declarations/{bucket}/{_segment(name)}'
+        self.edge(subject, predicate, self.node(local, kind, name=name))
 
     def operation(self, endpoint: str, operation: Operation) -> None:
         iri = self.node(
@@ -671,7 +715,9 @@ class _Builder:
         """
         if base is None:
             return ''
-        iri = self.shape_iris.setdefault(base.id, fallback)
+        iri = self.shape_iris.get(base.id)
+        if iri is None:
+            iri = self.shape_iris[base.id] = self.claim(fallback, base.id)
         if base.id in self.emitted:
             return iri
         self.emitted.add(base.id)

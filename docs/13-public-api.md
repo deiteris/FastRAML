@@ -295,7 +295,7 @@ pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
 ```
 
 `validate` and `info` parse with `unwrap=True, validate=True`: their job is to
-find faults. The four graph verbs parse with `validate=False` — a document with
+find faults. The six graph verbs parse with `validate=False` — a document with
 a bad example still has a graph worth reading, and refusing to draw one would
 make the tool useless exactly where navigating is most wanted.
 

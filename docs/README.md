@@ -28,7 +28,7 @@ follows it or the document is amended first.
 | 13 | [Public API](13-public-api.md) | Entry points, options, the model surface consumers see |
 | 14 | [Testing strategy](14-testing.md) | TCK integration, unit/golden/property/benchmark layers |
 | 15 | [Implementation plan](15-implementation-plan.md) | Milestones, ordering, definition of done per phase |
-| 16 | [The graph projection](16-graph.md) | The effective model as a queryable graph: vocabulary, IRIs, RDF/SPARQL, why not AMF |
+| 16 | [The graph projection](16-graph.md) | The effective model as a queryable graph: vocabulary, IRIs, RDF/SPARQL, why not AMF, the effective view, the version diff |
 
 ## Conventions in these documents
 
@@ -37,10 +37,3 @@ follows it or the document is amended first.
 - Citations of the form `go-raml:file.go` refer to the reference implementation.
 - Python identifiers are `snake_case`; the Go names are given where a reader may
   want to diff against the reference.
-
-## Immediate housekeeping
-
-`C:\Sources\pyRAML\pyproject.toml` currently contains the metadata of an unrelated
-project (`authkit` — an OAuth client). It must be replaced before Phase 0 (see
-[15-implementation-plan.md](15-implementation-plan.md)); only the `[tool.ruff]` and
-`[tool.mypy]` blocks are worth keeping, and the target Python version stays `>=3.12`.

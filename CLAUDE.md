@@ -57,6 +57,16 @@ parser compiles, `parse_lenient`, the `pyraml` CLI and the widened export list. 
 brief per phase lives in `docs/briefs/`, each with a section at its top recording
 what it got wrong.
 
+**The graph layer sits on top and is not a pass** (`docs/16-graph.md`).
+`graph.py` projects the finished effective model as a labelled graph with stable
+IRIs; `queries.py` is the SPARQL catalogue, `render.py` the effective view of a
+type or endpoint as RAML, `diff.py` the version comparison and its
+backward-compatibility policy. Six CLI verbs — `graph`, `refs`, `deps`, `show`,
+`query`, `diff`. It runs after P10, decides no RAML rule, and nothing in the
+model imports it; SPARQL needs `pyoxigraph`, which the package does not depend
+on, and the graph itself needs nothing. Keep it that way: a rule that belongs to
+the language belongs in a pass.
+
 **Benchmarks are a gate, not a report.** `python -m bench compare` before and
 after anything that touches a hot path; the commit message carries the delta
 (`docs/12` Part 4). Linearity is asserted in CI, absolute time is not — it is a
@@ -123,6 +133,10 @@ Full list with the pass that establishes each: `docs/02-architecture.md` § 4.
   (`docs/07-resolution-and-inheritance.md` § 3.6) — one type under two names.
   An *inheritance* merge sharing the same containers is a corruption (§ 3.3).
   Do not "fix" the first into the second; the propagation is the feature.
+  It follows that **any traversal reaching a type must follow `aliasOf`**:
+  `items` under `User[]` holds the alias, so a walk that stops there reports
+  `User`'s *supertypes* in place of `User` — a wrong answer, not an error
+  (`docs/16` § 2.4).
 - **Accumulate errors; do not fail fast** — except for an unreadable entry file,
   a missing or unrecognised RAML header, a non-mapping root, and a fragment whose
   kind does not match its context.

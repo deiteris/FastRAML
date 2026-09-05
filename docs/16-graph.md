@@ -141,10 +141,23 @@ compares nodes, attributes and reference edges, saw **no change at all** when a
 whole response schema was replaced. On a schema-heavy document that is every
 type in it.
 
-The cost is proportional to the structure gained. On the benchmark's schema
+The cost is proportional to the structure gained: on the benchmark's schema
 corpus the graph goes from 401 nodes to 6001, and `unwrap+graph` from about
-93 ms to 140 ms: 15× the graph for 1.5× the time. That is what makes the
-questions above answerable.
+93 ms to 140 ms.
+
+It was not proportional at first, and the benchmark did not say so. On a real
+149-endpoint document the build went from 65 ms to **1260 ms** — because
+`applies` resolved each `is:`/`securedBy:` name by scanning every node in the
+graph, and nine times the nodes made that quadratic bite. The scan is now an
+index built as nodes are created, and the same document builds in 144 ms: nine
+times the graph for a little over twice the time.
+
+**Why the gate missed it.** `bench_endpoints` makes 6000 trait applications, so
+the code was covered — but its names are unqualified, and declarations are
+projected first, so every scan matched within a few nodes and returned. A
+*qualified* name (`roles_lib.public`) never matches on the first candidate, so
+it scans the whole graph before falling back. No corpus has qualified names and
+a large graph together, which is the shape of a real library-using API.
 
 ### 2.5 Literals
 

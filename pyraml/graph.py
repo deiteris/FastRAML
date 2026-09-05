@@ -630,6 +630,7 @@ class _Builder:
         '_segments',
         'base',
         'claimed',
+        'declared',
         'edges',
         'emitted',
         'entities',
@@ -649,6 +650,12 @@ class _Builder:
         #: The inverse of `shape_iris`, by IRI, for `Graph.shape_at`.
         self.shapes: dict[str, BaseShape] = {}
         self.entities: dict[str, EndPoint | Operation] = {}
+        #: Declaration fragment (`#/declarations/traits/paged`) -> the first IRI
+        #: carrying it. `applies` used to find that by scanning every node, which
+        #: is quadratic and was 18 million `endswith` calls on a real document
+        #: once schema contents joined the graph. First writer wins, which is the
+        #: order the scan reported.
+        self.declared: dict[str, str] = {}
         #: IRI → the `BaseShape.id` holding it. Two shapes given the same
         #: structural name would otherwise merge into one node in silence; see
         #: `claim`.
@@ -683,6 +690,9 @@ class _Builder:
         if node is None:
             node = GraphNode(iri=iri, kinds=kinds)
             self.nodes[iri] = node
+            marker = iri.find(_DECLARATIONS)
+            if marker != -1:
+                self.declared.setdefault(iri[marker:], iri)
         for key, value in attributes.items():
             if value is not None:
                 node.attributes[key] = value
@@ -856,11 +866,10 @@ class _Builder:
         if not name:
             return
         for candidate in (name, name.rsplit('.', 1)[-1]):
-            wanted = f'#/declarations/{bucket}/{self.segment(candidate)}'
-            for iri in self.nodes:
-                if iri.endswith(wanted):
-                    self.edge(subject, predicate, iri)
-                    return
+            found = self.declared.get(f'{_DECLARATIONS}{bucket}/{self.segment(candidate)}')
+            if found is not None:
+                self.edge(subject, predicate, found)
+                return
         local = f'{self.unit(location)}#/declarations/{bucket}/{self.segment(name)}'
         self.edge(subject, predicate, self.node(local, _DECLARED_KINDS[bucket], name=name))
 

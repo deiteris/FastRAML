@@ -31,7 +31,6 @@ from pyraml.yamlnode import (
     Node,
     NodeKind,
     node_error,
-    pairs,
 )
 
 if TYPE_CHECKING:
@@ -177,7 +176,7 @@ def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location
             raise node_error('invalid inline JSON', location, value_node, info={'error': str(err)}) from err
         value = value_node_of(decoded)
     else:
-        value = _to_value(raml, value_node, location, set())
+        value = _to_value(raml, value_node, location, None)
 
     return DataNode(
         value=value,
@@ -187,11 +186,13 @@ def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location
     )
 
 
-def _to_value(raml: Raml, node: Node, location: str, visited: set[str]) -> ValueNode:
+def _to_value(raml: Raml, node: Node, location: str, visited: set[str] | None) -> ValueNode:
     if node.kind is NodeKind.MAPPING:
         entries: list[MappingEntry] = []
         raw_map: dict[str, Any] = {}
-        for key, value in pairs(node):
+        content = node.content
+        for index in range(0, len(content), 2):
+            key, value = content[index], content[index + 1]
             child = _to_value(raml, value, location, visited)
             entries.append(
                 MappingEntry(key=key.value, value=child, key_pos=key.position, value_pos=value.full_position)
@@ -211,7 +212,7 @@ def _to_value(raml: Raml, node: Node, location: str, visited: set[str]) -> Value
     return _scalar_to_value(raml, node, location, visited)
 
 
-def _scalar_to_value(raml: Raml, node: Node, location: str, visited: set[str]) -> ValueNode:
+def _scalar_to_value(raml: Raml, node: Node, location: str, visited: set[str] | None) -> ValueNode:
     if node.tag != TAG_INCLUDE:
         value = scalar_value(node)
         return ValueNode(scalar=value, raw=value)
@@ -220,7 +221,9 @@ def _scalar_to_value(raml: Raml, node: Node, location: str, visited: set[str]) -
     # A scalar include may itself include, so the chain is what needs cycle
     # detection; fragment-level cycles are legal and handled by the fragment
     # cache instead. See docs/03-yaml-and-io.md section 4.3.
-    if target in visited:
+    if visited is None:
+        visited = set()
+    elif target in visited:
         raise node_error('circular include detected', location, node, info={'path': target})
     visited.add(target)
     try:

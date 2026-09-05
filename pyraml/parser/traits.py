@@ -24,6 +24,7 @@ Two things here are easy to get subtly wrong:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from itertools import chain
 from typing import TYPE_CHECKING
 
 from pyraml.domains import DomainLocation
@@ -43,6 +44,8 @@ from pyraml.registry import ParseCtx
 from pyraml.yamlnode import TAG_INCLUDE, Node, NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from pyraml.parser.directives import DirectiveRef
     from pyraml.parser.fragments import ReferenceResolver
     from pyraml.parser.source_ir import SourceEndPoint, SourceOperation
@@ -114,7 +117,8 @@ def make_trait_definition(raml: Raml, key_node: Node | None, value_node: Node, l
         if key.value == FACET_USAGE:
             definition.usage = make_string_facet(raml, key, value, location)
         else:
-            kept += (key, value)
+            kept.append(key)
+            kept.append(value)
     definition.source = _body(value_node, kept)
     if definition.source is not None:
         definition.declared_variables, definition.variable_index = collect_variables_index(definition.source, location)
@@ -186,18 +190,18 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
     accumulator.raise_if_any()
 
 
-def _in_priority_order(endpoint: SourceEndPoint, operation: SourceOperation) -> list[DirectiveRef]:
+def _in_priority_order(endpoint: SourceEndPoint, operation: SourceOperation) -> Iterator[DirectiveRef]:
     """The four classes of docs/08 section 5.2, closest first.
 
     The `traits` / `rt_traits` split on the IR exists solely to keep these
     distinguishable after the resource-type merge has flattened everything else.
     """
-    return [
-        *operation.traits,  # 1. the method's own
-        *endpoint.traits,  # 2. the resource's own
-        *operation.rt_traits,  # 3. the resource type's method-level
-        *endpoint.rt_traits,  # 4. the resource type's resource-level
-    ]
+    return chain(
+        operation.traits,  # 1. the method's own
+        endpoint.traits,  # 2. the resource's own
+        operation.rt_traits,  # 3. the resource type's method-level
+        endpoint.rt_traits,  # 4. the resource type's resource-level
+    )
 
 
 def _definition_for(ref: DirectiveRef) -> TraitDefinition:

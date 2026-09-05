@@ -119,8 +119,10 @@ def _is_media_type_map(node: Node) -> bool:
     """
     if node.kind is not NodeKind.MAPPING:
         return False
-    keys = [key for key, _ in pairs(node)]
-    return bool(keys) and all('/' in key.value for key in keys)
+    content = node.content
+    if not content:
+        return False
+    return all('/' in content[index].value for index in range(0, len(content), 2))
 
 
 def _decode_bodies(raml: Raml, node: Node, location: str, target: DomainLocation) -> dict[str, Body]:

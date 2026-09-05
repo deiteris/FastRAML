@@ -84,13 +84,14 @@ def _one_ref(node: Node, location: str, scope: ParseCtx | None, *, what: str) ->
     if node.kind is not NodeKind.MAPPING:
         raise node_error(f'{what} must be a name or a name with parameters', location, node)
 
-    entries = list(pairs(node))
-    if len(entries) != 1:
+    content = node.content
+    found = len(content) // 2
+    if found != 1:
         # `{a: …, b: …}` is two applications written as one, which the spec has
         # no form for — a sequence is how you apply two.
-        raise node_error(f'{what} must name exactly one', location, node, info={'found': len(entries)})
+        raise node_error(f'{what} must name exactly one', location, node, info={'found': found})
 
-    key, value = entries[0]
+    key, value = content
     params: dict[str, Node] = {}
     if not is_null(value):
         if value.kind is not NodeKind.MAPPING:

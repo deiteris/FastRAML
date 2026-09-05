@@ -308,7 +308,8 @@ class DateTimeShape(ScalarKind):
                 # an inherited format has to be resolved first.
                 self.format = make_string_facet(self.base._raml, key, value, self.base.location)  # noqa: SLF001
             else:
-                rest += (key, value)
+                rest.append(key)
+                rest.append(value)
         super().decode_facets(rest)
 
     def check(self) -> None:
@@ -353,7 +354,8 @@ class StringShape(ScalarKind):
                 case 'maxLength':
                     self.max_length = make_int_facet(raml, key, value, location)
                 case _:
-                    rest += (key, value)
+                    rest.append(key)
+                    rest.append(value)
         super().decode_facets(rest)
 
     def check(self) -> None:
@@ -419,7 +421,8 @@ class NumberShape(ScalarKind):
                 case 'format':
                     self.format = make_string_facet(raml, key, value, location)
                 case _:
-                    rest += (key, value)
+                    rest.append(key)
+                    rest.append(value)
         super().decode_facets(rest)
 
     def check(self) -> None:
@@ -469,7 +472,8 @@ class IntegerShape(ScalarKind):
                 case 'format':
                     self.format = make_string_facet(raml, key, value, location)
                 case _:
-                    rest += (key, value)
+                    rest.append(key)
+                    rest.append(value)
         super().decode_facets(rest)
 
     def check(self) -> None:
@@ -531,7 +535,8 @@ class FileShape(ScalarKind):
                 case 'maxLength':
                     self.max_length = make_int_facet(raml, key, value, location)
                 case _:
-                    rest += (key, value)
+                    rest.append(key)
+                    rest.append(value)
         super().decode_facets(rest)
 
     def check(self) -> None:

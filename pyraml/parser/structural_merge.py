@@ -112,16 +112,19 @@ def _merge_mappings(
     for key, value in pairs(target):
         other = source_values.get(key.value)
         if other is None or key.value in OPAQUE_DATA_FACETS:
-            merged += (key, value)
+            merged.append(key)
+            merged.append(value)
             continue
         recursed = merge_structural(value, other, source_scope, overlay)
-        merged += (key, value if recursed is None else recursed)
+        merged.append(key)
+        merged.append(value if recursed is None else recursed)
 
     for key, value in pairs(source):
         if key.value in target_keys:
             continue
         mark_graft(overlay, value, source_scope)
-        merged += (key, value)
+        merged.append(key)
+        merged.append(value)
     return _container(target, merged)
 
 
@@ -188,6 +191,8 @@ def node_value_equal(left: Node, right: Node) -> bool:
     Positions are ignored: two `enum` entries written in different files are the
     same member. Iterative, so a deep sequence item costs no stack.
     """
+    if left is right:
+        return True
     stack = [(left, right)]
     while stack:
         one, other = stack.pop()

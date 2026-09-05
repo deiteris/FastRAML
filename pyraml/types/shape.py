@@ -273,7 +273,9 @@ def _decode(  # noqa: PLR0912 - one pass over the sixteen-row table of docs/05 s
     type_node: Node | None = None
     facets: list[Node] = []
     location = base.location
-    for key, value in pairs(value_node):
+    content = value_node.content
+    for index in range(0, len(content), 2):
+        key, value = content[index], content[index + 1]
         match key.value:
             case 'type' | 'schema':
                 if type_node is not None:
@@ -303,7 +305,8 @@ def _decode(  # noqa: PLR0912 - one pass over the sixteen-row table of docs/05 s
                 extension = unmarshal_domain_extension(raml, location, key, value)
                 base.annotations[extension.name] = extension
             case _:
-                facets += (key, value)
+                facets.append(key)
+                facets.append(value)
     return type_node, facets
 
 
@@ -466,7 +469,8 @@ def _split_declarations(
         key, value = facets[index], facets[index + 1]
         spec = table.get(key.value)
         if spec is None:
-            rest += (key, value)
+            rest.append(key)
+            rest.append(value)
             continue
         match spec.kind:
             case 'shape':

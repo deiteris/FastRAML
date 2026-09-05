@@ -181,7 +181,8 @@ class ObjectShape(ComplexKind):
                 case 'discriminatorValue':
                     self.discriminator_value = make_data_node(raml, key, value, location)
                 case _:
-                    rest += (key, value)
+                    rest.append(key)
+                    rest.append(value)
         super().decode_facets(rest)
 
     def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> ObjectShape:
@@ -371,7 +372,8 @@ class ArrayShape(ComplexKind):
                 case 'uniqueItems':
                     self.unique_items = make_bool_facet(raml, key, value, location)
                 case _:
-                    rest += (key, value)
+                    rest.append(key)
+                    rest.append(value)
         super().decode_facets(rest)
 
     def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> ArrayShape:
@@ -465,7 +467,8 @@ class UnionShape(ComplexKind):
                     key,
                     info={'facet': key.value},
                 )
-            rest += (key, value)
+            rest.append(key)
+            rest.append(value)
         # Deliberately *not* `super().decode_facets(rest)`: filing these under
         # `custom_facets` would digest them into `DataNode`s, and distributing
         # one to a member means decoding it against that member's kind, which

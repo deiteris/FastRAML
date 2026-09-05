@@ -337,6 +337,27 @@ allocations* around the regexes, not the matching itself.
 a date, so the suite could not have answered this. A benchmark suite is only
 evidence about the code its corpora exercise.
 
+### 19c. Allocation cleanup in flat-list consumers
+
+A later audit found several consumers that defeated § 5's flat-list layout with
+small temporary containers. `list += (key, value)` built a tuple for every pair;
+some hot mapping walks used `pairs()` and therefore yielded a tuple for every
+entry; and directive decoding converted those tuples into a list only to require
+one entry. These paths now append nodes separately or index `Node.content`
+directly. Trait priority uses a chained iterator instead of copying four lists.
+
+Two success paths also allocated state they rarely needed. Ordinary data values
+created an empty include-cycle set even when they contained no `!include`, and
+the pairwise `uniqueItems` branch copied `items[:index]` on every comparison.
+The set is now created on the first nested include, and the pairwise branch uses
+indices. Both retain the same traversal and diagnostic order.
+
+Measured against the preceding baseline on the same Windows / CPython 3.12 /
+libyaml machine, the full suite's minimum-of-three parse times moved by -4.6 %
+for `large`, -1.7 % for `endpoints`, and -0.5 % for `validate`. Endpoint traced
+peak allocation moved from 34.6 MB to 34.5 MB; the other traced peaks were
+unchanged because most removed objects were short-lived.
+
 ### 20. Expression AST cache
 
 Type expressions are memoised on their text ([06](06-type-expressions.md) § 2.3).

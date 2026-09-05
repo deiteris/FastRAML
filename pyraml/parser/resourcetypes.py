@@ -122,9 +122,11 @@ def make_resource_type_definition(
         if name == FACET_USAGE:
             definition.usage = make_string_facet(raml, key, value, location)
         elif name in RESOURCE_TYPE_FACETS or is_annotation_key(name):
-            kept += (key, value)
+            kept.append(key)
+            kept.append(value)
         else:
-            kept += (_method_key(definition, key, location), value)
+            kept.append(_method_key(definition, key, location))
+            kept.append(value)
     definition.source = _body(value_node, kept)
     if definition.source is not None:
         definition.declared_variables, definition.variable_index = collect_variables_index(definition.source, location)
@@ -286,7 +288,8 @@ def _filter_optional_methods(definition: ResourceTypeDefinition, source: Node, e
     for key, value in pairs(source):
         if key.value in definition.optional_methods and key.value not in existing:
             continue
-        kept += (key, value)
+        kept.append(key)
+        kept.append(value)
     if len(kept) == len(source.content):
         return source
     return Node(

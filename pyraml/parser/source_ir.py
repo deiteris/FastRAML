@@ -152,7 +152,8 @@ def make_source_operation(raml: Raml, method: str, key: Node, value: Node, locat
             operation.secured_by = decode_secured_by(child_value, location, operation.scope)
             operation.explicit_secured_by = True
         else:
-            kept += (child_key, child_value)
+            kept.append(child_key)
+            kept.append(child_value)
     operation.body = _retained(kept, value)
     return operation
 
@@ -201,7 +202,8 @@ def make_source_endpoint(raml: Raml, key: Node, value: Node, location: str, *, p
                     raml, child_key, child_value, location, parent_uri=endpoint.full_uri
                 )
             else:
-                kept += (child_key, child_value)
+                kept.append(child_key)
+                kept.append(child_value)
         except RamlError as err:
             accumulator.add(err)
     endpoint.body = _retained(kept, value)

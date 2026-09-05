@@ -296,8 +296,9 @@ def unique_items(items: list[Any]) -> int | None:
     """
     if len(items) <= PAIRWISE_LIMIT:
         for index, item in enumerate(items):
-            if any(same_value(item, earlier) for earlier in items[:index]):
-                return index
+            for earlier_index in range(index):
+                if same_value(item, items[earlier_index]):
+                    return index
         return None
 
     buckets: dict[int, list[Any]] = {}

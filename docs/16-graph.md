@@ -127,6 +127,25 @@ member, which looks like a plausible answer and is the wrong one.
 a test asserting that an operation returning `UserList` reaches `User`; it did
 not, and reached `Entity` instead.
 
+### 2.6 A schema type is not a leaf
+
+Structure and facets are read through `projected(base)` ([10](10-validation.md)
+§ 6.3), so a type defined by a JSON schema has properties, items and members in
+the graph like any other.
+
+Without it a `JsonShape` held no `ScalarFacet` slots and no children, so it
+projected as a leaf — and three verbs then answered wrongly rather than saying
+they could not: `deps errorScheme` reported it is made of nothing, every
+catalogue query walking `raml:property` skipped those types, and `diff`, which
+compares nodes, attributes and reference edges, saw **no change at all** when a
+whole response schema was replaced. On a schema-heavy document that is every
+type in it.
+
+It costs what it represents: the benchmark's schema corpus goes from 401 nodes
+to 6001, and `unwrap+graph` on it from about 93 ms to 140 ms. That is 15× the
+graph for 1.5× the time, and it is the price of the questions above having
+answers.
+
 ### 2.5 Literals
 
 Names, positions and every `ScalarFacet` the shape kind holds. The facets are

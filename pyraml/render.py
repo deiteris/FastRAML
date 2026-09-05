@@ -31,6 +31,7 @@ import yaml
 from pyraml.types.base import ScalarFacet
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from pyraml.types.jsonschema_ import projected
+from pyraml.uris import relative_to
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -168,7 +169,7 @@ def _note(base: BaseShape, sources: Sources | None, applied: frozenset[str], roo
 def _at(location: str, position: Position, root: str) -> str:
     if not position.is_known:
         return ''
-    return f'{location.removeprefix(root) or location}:{position.line}'
+    return f'{relative_to(location, root)}:{position.line}'
 
 
 def _aligned(lines: list[_Line]) -> Iterator[str]:

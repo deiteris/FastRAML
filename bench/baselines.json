@@ -6,179 +6,179 @@
   },
   "measurements": {
     "endpoints/parse": {
-      "allocated_bytes": 34573219,
+      "allocated_bytes": 34453235,
       "bench": "endpoints",
       "config": "parse",
-      "max_rss_bytes": 114319360,
-      "seconds": 0.3348354999907315
+      "max_rss_bytes": 110125056,
+      "seconds": 0.3523168000392616
     },
     "endpoints/unwrap": {
-      "allocated_bytes": 34573219,
+      "allocated_bytes": 34453235,
       "bench": "endpoints",
       "config": "unwrap",
-      "max_rss_bytes": 115290112,
-      "seconds": 0.3484660000540316
+      "max_rss_bytes": 110415872,
+      "seconds": 0.4720370997674763
     },
     "endpoints/unwrap+graph": {
-      "allocated_bytes": 60445567,
+      "allocated_bytes": 52827922,
       "bench": "endpoints",
       "config": "unwrap+graph",
-      "max_rss_bytes": 177049600,
-      "seconds": 0.5124587998725474
+      "max_rss_bytes": 157777920,
+      "seconds": 0.5455640000291169
     },
     "endpoints/unwrap+validate": {
-      "allocated_bytes": 34573219,
+      "allocated_bytes": 34453235,
       "bench": "endpoints",
       "config": "unwrap+validate",
-      "max_rss_bytes": 114810880,
-      "seconds": 0.37260950030758977
+      "max_rss_bytes": 110968832,
+      "seconds": 0.38940300000831485
     },
     "endpoints/validate": {
-      "allocated_bytes": 43981046,
+      "allocated_bytes": 35681446,
       "bench": "endpoints",
       "config": "validate",
-      "max_rss_bytes": 141049856,
-      "seconds": 0.4698863001540303
+      "max_rss_bytes": 119037952,
+      "seconds": 0.4291781997308135
     },
     "jsonschema/parse": {
-      "allocated_bytes": 1326712,
+      "allocated_bytes": 1292412,
       "bench": "jsonschema",
       "config": "parse",
-      "max_rss_bytes": 30085120,
-      "seconds": 0.08958069980144501
+      "max_rss_bytes": 29548544,
+      "seconds": 0.09221619972959161
     },
     "jsonschema/unwrap": {
-      "allocated_bytes": 1326759,
+      "allocated_bytes": 1298193,
       "bench": "jsonschema",
       "config": "unwrap",
-      "max_rss_bytes": 29806592,
-      "seconds": 0.09030070016160607
+      "max_rss_bytes": 29564928,
+      "seconds": 0.0941813001409173
     },
     "jsonschema/unwrap+graph": {
-      "allocated_bytes": 1567327,
+      "allocated_bytes": 8848872,
       "bench": "jsonschema",
       "config": "unwrap+graph",
-      "max_rss_bytes": 30257152,
-      "seconds": 0.09326709993183613
+      "max_rss_bytes": 46510080,
+      "seconds": 0.13944589998573065
     },
     "jsonschema/unwrap+validate": {
-      "allocated_bytes": 1326242,
+      "allocated_bytes": 1294292,
       "bench": "jsonschema",
       "config": "unwrap+validate",
-      "max_rss_bytes": 29741056,
-      "seconds": 0.08797140000388026
+      "max_rss_bytes": 29925376,
+      "seconds": 0.0925149000249803
     },
     "jsonschema/validate": {
-      "allocated_bytes": 1658723,
+      "allocated_bytes": 1656625,
       "bench": "jsonschema",
       "config": "validate",
-      "max_rss_bytes": 30400512,
-      "seconds": 0.0919174998998642
+      "max_rss_bytes": 30363648,
+      "seconds": 0.09345210017636418
     },
     "large/parse": {
-      "allocated_bytes": 30311507,
+      "allocated_bytes": 26536393,
       "bench": "large",
       "config": "parse",
-      "max_rss_bytes": 98222080,
-      "seconds": 0.3545798002742231
+      "max_rss_bytes": 88465408,
+      "seconds": 0.3409331003203988
     },
     "large/unwrap": {
-      "allocated_bytes": 30311460,
+      "allocated_bytes": 26805362,
       "bench": "large",
       "config": "unwrap",
-      "max_rss_bytes": 97726464,
-      "seconds": 0.3651370001025498
+      "max_rss_bytes": 89690112,
+      "seconds": 0.3821105998940766
     },
     "large/unwrap+graph": {
-      "allocated_bytes": 60454059,
+      "allocated_bytes": 60916341,
       "bench": "large",
       "config": "unwrap+graph",
-      "max_rss_bytes": 172351488,
-      "seconds": 0.5833593001589179
+      "max_rss_bytes": 168460288,
+      "seconds": 0.624197700060904
     },
     "large/unwrap+validate": {
-      "allocated_bytes": 30311601,
+      "allocated_bytes": 26805691,
       "bench": "large",
       "config": "unwrap+validate",
-      "max_rss_bytes": 98304000,
-      "seconds": 0.41953610023483634
+      "max_rss_bytes": 89927680,
+      "seconds": 0.4308407995849848
     },
     "large/validate": {
-      "allocated_bytes": 62023740,
+      "allocated_bytes": 62023757,
       "bench": "large",
       "config": "validate",
-      "max_rss_bytes": 169717760,
-      "seconds": 0.6339517999440432
+      "max_rss_bytes": 165330944,
+      "seconds": 0.720958299934864
     },
     "small/parse": {
-      "allocated_bytes": 589920,
+      "allocated_bytes": 589984,
       "bench": "small",
       "config": "parse",
-      "max_rss_bytes": 27844608,
-      "seconds": 0.004737399984151125
+      "max_rss_bytes": 24223744,
+      "seconds": 0.0046164002269506454
     },
     "small/unwrap": {
-      "allocated_bytes": 589920,
+      "allocated_bytes": 589728,
       "bench": "small",
       "config": "unwrap",
-      "max_rss_bytes": 27635712,
-      "seconds": 0.005115600302815437
+      "max_rss_bytes": 23281664,
+      "seconds": 0.005016599781811237
     },
     "small/unwrap+graph": {
-      "allocated_bytes": 900032,
+      "allocated_bytes": 916028,
       "bench": "small",
       "config": "unwrap+graph",
-      "max_rss_bytes": 28577792,
-      "seconds": 0.0072144996374845505
+      "max_rss_bytes": 24850432,
+      "seconds": 0.006963599938899279
     },
     "small/unwrap+validate": {
-      "allocated_bytes": 589920,
+      "allocated_bytes": 589728,
       "bench": "small",
       "config": "unwrap+validate",
-      "max_rss_bytes": 27725824,
-      "seconds": 0.005869199987500906
+      "max_rss_bytes": 23150592,
+      "seconds": 0.005916700232774019
     },
     "small/validate": {
-      "allocated_bytes": 958133,
+      "allocated_bytes": 958479,
       "bench": "small",
       "config": "validate",
-      "max_rss_bytes": 28241920,
-      "seconds": 0.007731100078672171
+      "max_rss_bytes": 24211456,
+      "seconds": 0.0075749000534415245
     },
     "validate/parse": {
-      "allocated_bytes": 129273859,
+      "allocated_bytes": 129273923,
       "bench": "validate",
       "config": "parse",
-      "max_rss_bytes": 425291776,
-      "seconds": 0.9986409000121057
+      "max_rss_bytes": 421310464,
+      "seconds": 1.0718626999296248
     },
     "validate/unwrap": {
-      "allocated_bytes": 129273859,
+      "allocated_bytes": 129273923,
       "bench": "validate",
       "config": "unwrap",
-      "max_rss_bytes": 425500672,
-      "seconds": 1.0432428000494838
+      "max_rss_bytes": 421122048,
+      "seconds": 1.1390113001689315
     },
     "validate/unwrap+graph": {
-      "allocated_bytes": 166522685,
+      "allocated_bytes": 168518813,
       "bench": "validate",
       "config": "unwrap+graph",
-      "max_rss_bytes": 496521216,
-      "seconds": 1.531716300174594
+      "max_rss_bytes": 494100480,
+      "seconds": 1.6328768995590508
     },
     "validate/unwrap+validate": {
-      "allocated_bytes": 129273859,
+      "allocated_bytes": 129273667,
       "bench": "validate",
       "config": "unwrap+validate",
-      "max_rss_bytes": 425390080,
-      "seconds": 1.1018854002468288
+      "max_rss_bytes": 421425152,
+      "seconds": 1.2029631999321282
     },
     "validate/validate": {
-      "allocated_bytes": 129273859,
+      "allocated_bytes": 129273923,
       "bench": "validate",
       "config": "validate",
-      "max_rss_bytes": 443125760,
-      "seconds": 1.4101334000006318
+      "max_rss_bytes": 438452224,
+      "seconds": 1.5040686996653676
     }
   }
 }

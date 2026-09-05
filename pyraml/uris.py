@@ -22,6 +22,7 @@ __all__ = [
     'file_uri_to_path',
     'is_file_uri',
     'path_to_file_uri',
+    'relative_to',
     'resolve_uri_ref',
     'uri_base',
     'uri_scheme',
@@ -104,6 +105,25 @@ def resolve_uri_ref(base: str, ref: str) -> str:
     """
     normalised = ref.replace('\\', '/')
     return urljoin(base, quote(normalised, safe=_REF_SAFE))
+
+
+def relative_to(location: str, root: str) -> str:
+    """`location` as a path a reader can act on, relative to `root` where it can.
+
+    A plain `removeprefix` is not enough: a file in a sibling tree shares no
+    prefix with the entry document's directory, so it fell back to the whole
+    `file:///C:/...` URI — seventy characters in a column of fourteen, which
+    wrecks the alignment of any listing containing one. Walk up and spell the
+    ascent, which is what a person would write.
+    """
+    if location.startswith(root):
+        return location.removeprefix(root) or location
+    base = root.rstrip('/')
+    ups = 0
+    while base and not location.startswith(base + '/'):
+        base, _, _ = base.rpartition('/')
+        ups += 1
+    return '../' * ups + location.removeprefix(base + '/') if base else location
 
 
 def uri_base(uri: str) -> str:

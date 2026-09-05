@@ -613,7 +613,7 @@ def _project_body(context: _Projection, contents: dict, base: BaseShape, visitin
         if members:
             return _project_union(context, members, base, visiting)
 
-    declared = contents.get('type')
+    declared = contents.get('type') or _inferred_type(contents)
     if declared is None:
         return _kind(base, TYPE_ANY, AnyShape)
     if isinstance(declared, list):
@@ -624,6 +624,31 @@ def _project_body(context: _Projection, contents: dict, base: BaseShape, visitin
         members = [_project_type(context, str(name), {}, _view_base(context), visiting) for name in declared]
         return _kind(base, TYPE_UNION, UnionShape, any_of=members)
     return _project_type(context, str(declared), contents, base, visiting)
+
+
+#: Keywords that only mean anything for one kind, so their presence settles the
+#: kind when `type` is absent. The same inference RAML does for a declaration
+#: with `properties:` and no `type:` (docs/05 § Determine Default Types).
+_IMPLIES: Final = (
+    (TYPE_OBJECT, ('properties', 'patternProperties', 'required', 'additionalProperties')),
+    (TYPE_ARRAY, ('items', 'minItems', 'maxItems', 'uniqueItems')),
+)
+
+
+def _inferred_type(contents: dict) -> str | None:
+    """The kind a subschema means without saying so.
+
+    JSON Schema lets a subschema constrain an object by writing `properties`
+    alone, and an `allOf` member almost always does — the enclosing schema
+    already said `"type": "object"`, so repeating it would be noise. Projecting
+    that member as `any` and then merging it made `inherit` refuse: "cannot
+    inherit from different type: source: object: target: any", which took down
+    the whole projection of any schema written that way.
+    """
+    for kind, keywords in _IMPLIES:
+        if any(keyword in contents for keyword in keywords):
+            return kind
+    return None
 
 
 def _project_all_of(context: _Projection, members: list, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:

@@ -472,3 +472,111 @@ title: T
         found = graph.find('Entity')
         assert len(found) == 1, found
         assert found[0].endswith('#/declarations/types/Entity')
+
+
+SCHEMA_LIB = """#%RAML 1.0
+title: Schemas
+traits:
+  paged:
+    queryParameters:
+      offset?: integer
+securitySchemes:
+  key:
+    type: Pass Through
+    describedBy:
+      headers:
+        X-Key: string
+types:
+  Err: !include err.json
+/things:
+  get:
+    is: [paged]
+    securedBy: [key]
+    responses:
+      200:
+        body:
+          application/json: Err
+"""
+
+ERR = """{
+  "type": "object",
+  "allOf": [
+    {"properties": {"code": {"type": "integer"}}, "required": ["code"]},
+    {"properties": {"tags": {"type": "array", "items": {"type": "string"}}}}
+  ]
+}"""
+
+
+class TestSchemaTypesAreNotLeaves:
+    """docs/16 § 2.6. The graph walked the unprojected shape.
+
+    A `JsonShape` holds no `ScalarFacet` slots and no properties, so a schema
+    type had no children and no attributes: `deps` reported it was made of
+    nothing, SPARQL queries over `raml:property` skipped it, and `diff` -- which
+    compares nodes, attributes and reference edges -- saw no change when a whole
+    schema was replaced.
+    """
+
+    @pytest.fixture
+    def schema_graph(self, workspace):
+        root = workspace({'api.raml': SCHEMA_LIB, 'err.json': ERR})
+        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+    def test_a_schema_type_has_its_properties_as_children(self, schema_graph):
+        err = schema_graph.find('Err')[0]
+        names = {schema_graph.label(e.object) for e in schema_graph.out(err, ('property',))}
+        assert {'code', 'tags'} <= names
+
+    def test_an_all_of_member_without_a_type_still_projects(self, schema_graph):
+        """`{"properties": {...}}` with no `"type"` is an object constraint --
+        the enclosing schema already said `"type": "object"`. Projecting it as
+        `any` made `inherit` refuse and took the whole projection down.
+        """
+        err = schema_graph.find('Err')[0]
+        assert schema_graph.out(err, ('property',)), 'allOf members contributed nothing'
+
+    def test_the_walk_reaches_inside_a_schema(self, schema_graph):
+        err = schema_graph.find('Err')[0]
+        reached = {schema_graph.label(r.target) for r in schema_graph.walk(err, TYPE_EDGES)}
+        assert 'code' in reached
+
+
+class TestLabelsIdentifyTheNode:
+    def test_an_anonymous_member_reads_as_its_type(self, graph):
+        """The model names an array's member `items`, so a route ended
+        `-items-> items`: the hop just followed, and nothing about the node.
+        """
+        user_list = graph.find('UserList')[0]
+        members = [graph.label(e.object) for e in graph.out(user_list, ('items',))]
+        assert members
+        assert 'items' not in members
+
+    def test_a_declaration_keeps_its_own_name(self, graph):
+        """`types/User` repeats its segment too, and there the repeat is the
+        name a person wrote.
+        """
+        assert graph.label(graph.find('User')[0]) == 'User'
+
+    def test_an_operation_still_reads_as_its_method(self, graph):
+        """An operation's name defaults to the method, which also spells its
+        segment -- and `get` is exactly what a reader wants there.
+        """
+        kinds = {graph.label(i) for i, n in graph.nodes.items() if n.kinds[0] == 'Operation'}
+        assert 'get' in kinds
+
+
+class TestDeclarationsArePositioned:
+    """A trait is applied far from where it is written, so the location column
+    is the whole reason to list it. All three kinds had an empty one.
+    """
+
+    @pytest.fixture
+    def positioned(self, workspace):
+        root = workspace({'api.raml': SCHEMA_LIB, 'err.json': ERR})
+        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+    @pytest.mark.parametrize(('kind', 'name'), [('Trait', 'paged'), ('SecurityScheme', 'key')])
+    def test_it_has_a_file_and_a_line(self, positioned, kind, name):
+        node = positioned.nodes[positioned.find(name)[0]]
+        assert node.attributes.get('definedIn')
+        assert node.attributes.get('line')

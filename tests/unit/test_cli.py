@@ -15,6 +15,7 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 
 from pyraml.cli import EXIT_INVALID, EXIT_OK, main
 
@@ -596,3 +597,106 @@ types:
         """The IRI is structural so a findable path can be recovered from it."""
         main(['diff', *versions])
         assert '/orders get -> 200 application/json .discount' in capsys.readouterr().out
+
+
+class TestEveryListedNameIsUsable:
+    """The `list` -> `show` contract, checked against what a real document holds.
+
+    The earlier version of this passed on a fixture with no traits and whose
+    operations happened to render under a path. On a real API 215 of 525 listed
+    names did not round-trip: `show <operation>` emitted a bare `:` -- not
+    loadable YAML -- and traits and security schemes were refused outright.
+    """
+
+    RICH = (
+        API
+        + """securitySchemes:
+  key:
+    type: Pass Through
+    describedBy:
+      headers:
+        X-Key: string
+traits:
+  paged:
+    queryParameters:
+      offset?: integer
+types:
+  Item:
+    type: object
+    properties:
+      sku: string
+/items:
+  get:
+    is: [paged]
+    securedBy: [key]
+    responses:
+      200:
+        body:
+          application/json: Item
+"""
+    )
+
+    @pytest.fixture
+    def rich(self, workspace):
+        return str(workspace({'api.raml': self.RICH}) / 'api.raml')
+
+    def test_an_operation_renders_under_its_resource(self, rich, capsys):
+        """It has no `path` of its own; the owning endpoint does."""
+        assert main(['show', rich, 'get']) == EXIT_OK
+        loaded = yaml.safe_load(capsys.readouterr().out)
+        assert list(loaded) == ['/items']
+
+    def test_every_listed_name_either_renders_or_explains_itself(self, rich, capsys):
+        main(['list', rich, '--json'])
+        rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        assert rows
+        for row in rows:
+            code = main(['show', rich, row['name']])
+            out, err = capsys.readouterr()
+            if code == EXIT_OK:
+                assert yaml.safe_load(out), f'{row["kind"]} {row["name"]} rendered unloadable YAML'
+            else:
+                assert 'no effective view' in err, f'{row["kind"]} {row["name"]}: unhelpful refusal'
+
+    def test_a_refused_kind_names_where_it_was_written(self, rich, capsys):
+        assert main(['show', rich, 'paged']) == EXIT_INVALID
+        err = capsys.readouterr().err
+        assert 'api.raml:' in err
+        assert 'pyraml refs paged' in err
+
+
+class TestDepsWorksOnMoreThanTypes:
+    def test_an_endpoint_is_made_of_its_operations(self, graphed, capsys):
+        """`deps` walked the type closure only, so every endpoint and every
+        operation in a document reported "nothing found".
+        """
+        assert main(['deps', graphed, '/users']) == EXIT_OK
+        assert 'supportedOperation' in capsys.readouterr().out
+
+    def test_a_type_still_walks_the_type_closure(self, graphed, capsys):
+        """Widening `deps` for a type would pull in its use sites, which is
+        `refs`'s question, not this one.
+        """
+        main(['deps', graphed, 'User'])
+        out = capsys.readouterr().out
+        assert '-inherits-> Entity' in out
+        assert 'supportedOperation' not in out
+
+
+class TestResultsAreBounded:
+    def test_refs_stops_at_a_default_and_says_so(self, graphed, capsys, monkeypatch):
+        monkeypatch.setattr('pyraml.cli._DEFAULT_LIMIT', 1)
+        assert main(['refs', graphed, 'User']) == EXIT_OK
+        out, err = capsys.readouterr()
+        assert len(out.splitlines()) == 1
+        assert 'more' in err, 'the remainder must be reported'
+
+    def test_the_note_goes_to_stderr_so_a_pipe_is_clean(self, graphed, capsys, monkeypatch):
+        monkeypatch.setattr('pyraml.cli._DEFAULT_LIMIT', 1)
+        main(['refs', graphed, 'User'])
+        assert 'more' not in capsys.readouterr().out
+
+    def test_zero_still_means_all(self, graphed, capsys, monkeypatch):
+        monkeypatch.setattr('pyraml.cli._DEFAULT_LIMIT', 1)
+        main(['refs', graphed, 'User', '--limit', '0'])
+        assert len(capsys.readouterr().out.splitlines()) > 1

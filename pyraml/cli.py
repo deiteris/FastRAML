@@ -41,6 +41,13 @@ __all__ = ['main']
 EXIT_OK = 0
 EXIT_INVALID = 1
 
+#: How many routes `refs`/`deps` print before saying there are more. One type at
+#: a real scale produces thousands -- `refs errorScheme` on a 149-endpoint API is
+#: 1902 lines -- which scrolls the answer off the screen as surely as printing
+#: nothing. The remainder goes to stderr, so a piped run is unaffected, and
+#: `--limit 0` still means all.
+_DEFAULT_LIMIT = 50
+
 
 #: One entry per subcommand. A table rather than a `match`, so adding a verb is
 #: one line here and one in `_parser` rather than a branch that lint counts.
@@ -143,7 +150,13 @@ def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser
             metavar='KIND',
             help='keep only results of this kind, e.g. Operation; repeatable',
         )
-        walk.add_argument('--limit', type=int, default=0, metavar='N', help='print at most N results (0: all)')
+        walk.add_argument(
+            '--limit',
+            type=int,
+            default=_DEFAULT_LIMIT,
+            metavar='N',
+            help=f'print at most N results (default: {_DEFAULT_LIMIT}; 0 for all)',
+        )
         _add_common(walk)
 
     catalogue = commands.add_parser('list', help='what is in the document, by kind and name')
@@ -304,14 +317,19 @@ def _show_type(args: argparse.Namespace) -> int:
     if endpoint is not None:
         lines = render_endpoint(endpoint, depth=depth, root=root, sources=Sources.of(raml))
     elif operation is not None:
-        path = str(graph.nodes[iri].attributes.get('path') or '')
-        lines = render_operation(operation, path, depth=depth, root=root, sources=Sources.of(raml))
+        lines = render_operation(operation, _owning_path(graph, iri), depth=depth, root=root, sources=Sources.of(raml))
     elif shape is not None:
         lines = render(shape, depth=depth, root=root)
     else:
-        # A trait, a security scheme, a payload: real nodes with nothing of
-        # their own to show. Naming the kind beats "not found", which is false.
-        print(f'{args.name}: nothing to show for a {graph.kind_of(iri)}; try `pyraml refs`', file=sys.stderr)
+        # A trait, a resource type, a payload: a real node whose content is a
+        # template applied elsewhere rather than an effective form of its own.
+        # What *is* effective about it is where it landed, so say that and where
+        # it was written rather than only refusing.
+        kind, where = graph.kind_of(iri), _position_of(graph, iri)
+        applied = len(graph.into(iri, ('appliesTrait', 'appliesResourceType', 'securedBy', 'annotation')))
+        print(f'{args.name}: a {kind}{" at " + where if where else ""} has no effective view', file=sys.stderr)
+        if applied:
+            print(f'applied at {applied} site(s); see `pyraml refs {args.name}`', file=sys.stderr)
         return EXIT_INVALID
     for line in lines:
         print(line)
@@ -372,7 +390,13 @@ def _walk(args: argparse.Namespace) -> int:
         return EXIT_INVALID
 
     reverse = args.command == 'refs'
-    routes = graph.walk(origin, USE_EDGES if reverse else TYPE_EDGES, reverse=reverse, max_depth=args.depth)
+    # `deps` follows type structure, which is the whole answer for a type and
+    # none of it for a resource: an endpoint's own edges are `supportedOperation`,
+    # `parameter` and `securedBy`, so the type closure alone reported that every
+    # endpoint and every operation in the document is made of nothing. Forward
+    # from anything that is not a type, the *use* closure is the containment.
+    forward = TYPE_EDGES if graph.kind_of(origin) == 'Type' else USE_EDGES
+    routes = graph.walk(origin, USE_EDGES if reverse else forward, reverse=reverse, max_depth=args.depth)
     if args.kind:
         wanted = {kind.casefold() for kind in args.kind}
         routes = [route for route in routes if graph.kind_of(route.target).casefold() in wanted]
@@ -623,6 +647,19 @@ def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Ra
         print(err, file=sys.stderr)
         return None
     return build_graph(raml), raml
+
+
+def _owning_path(graph: Graph, iri: str) -> str:
+    """The resource an operation hangs off, as its URI.
+
+    Read back over the `supportedOperation` edge rather than off the operation
+    node, which carries no `path` of its own — reading one there produced an
+    empty key, so `show <operation>` emitted a bare `:` and the output stopped
+    being loadable YAML, which is the one thing docs/16 § 9.2 promises.
+    """
+    for edge in graph.into(iri, ('supportedOperation',)):
+        return graph.label(edge.subject)
+    return ''
 
 
 def _position_of(graph: Graph, iri: str) -> str:

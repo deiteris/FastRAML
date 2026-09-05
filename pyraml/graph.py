@@ -32,6 +32,8 @@ from pyraml.parser.endpoints import EndPoint, Operation
 from pyraml.parser.fragments import APIFragment, Library
 from pyraml.types.base import ScalarFacet
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from pyraml.types.jsonschema_ import projected
+from pyraml.uris import relative_to
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -318,14 +320,31 @@ class Graph:
         return node.kinds[0] if node is not None else 'Unknown'
 
     def label(self, iri: str) -> str:
-        """A short human name, falling back to the IRI's last segment."""
+        """A short human name, falling back to the kind and then to the IRI.
+
+        An anonymous shape is *named* by the facet that holds it — the model
+        calls an array's member `items` — so a route ended `-items-> items`,
+        telling the reader the hop they had just followed and nothing about the
+        node. A name that only repeats the IRI segment is structural rather than
+        authored, and the node's `type` is the useful answer. A declaration is
+        exempt: `types/User` repeats its segment too, and there `User` is the
+        name a person wrote.
+        """
         node = self.nodes.get(iri)
-        if node is not None:
-            for key in ('name', 'path', 'method', 'statusCode', 'mediaType'):
-                value = node.attributes.get(key)
-                if isinstance(value, str) and value:
-                    return value
-        return iri.rsplit('/', 1)[-1] or iri
+        if node is None:
+            return iri.rsplit('/', 1)[-1] or iri
+        segment = iri.rsplit('/', 1)[-1]
+        keys: tuple[str, ...] = ('name', 'path', 'method', 'statusCode', 'mediaType', 'type')
+        # Only a `Type`: an operation's name defaults to its method, which also
+        # spells its segment, and there `get` is exactly what the reader wants.
+        structural = node.kinds[0] == 'Type' and not _is_declaration(iri)
+        if structural and node.attributes.get('name') == segment:
+            keys = keys[1:]
+        for key in keys:
+            value = node.attributes.get(key)
+            if isinstance(value, str) and value:
+                return value
+        return segment or iri
 
     def find(self, name: str, kinds: Sequence[str] | None = None) -> list[str]:
         """Every node matching `name`, for turning a CLI word into an IRI.
@@ -702,7 +721,7 @@ class _Builder:
             self.node(iri, line=position.line, column=position.column)
 
     def relative(self, location: str) -> str:
-        return location.removeprefix(self.root) or location
+        return relative_to(location, self.root)
 
     # -- driver ---------------------------------------------------------------
 
@@ -736,6 +755,9 @@ class _Builder:
             self.edge(unit, 'declares', self.shape(shape, f'{unit}#/declarations/types/{self.segment(name)}'))
         for name, shape in fragment.annotation_types.items():
             self.edge(unit, 'declares', self.shape(shape, f'{unit}#/declarations/annotations/{self.segment(name)}'))
+        # Each of the three is positioned, like every other node. Without it the
+        # location column is empty for exactly the declarations a reader most
+        # often wants to open — a trait is applied far from where it is written.
         for name, scheme in fragment.security_schemes.items():
             iri = self.node(
                 f'{unit}#/declarations/securitySchemes/{self.segment(name)}',
@@ -743,14 +765,16 @@ class _Builder:
                 name=name,
                 type=scheme.type or None,
             )
+            self.positioned(iri, scheme.location, scheme.key_pos)
             self.edge(unit, 'declares', iri)
-        for name in fragment.traits:
-            self.edge(
-                unit, 'declares', self.node(f'{unit}#/declarations/traits/{self.segment(name)}', 'Trait', name=name)
-            )
-        for name in fragment.resource_types:
-            iri = f'{unit}#/declarations/resourceTypes/{self.segment(name)}'
-            self.edge(unit, 'declares', self.node(iri, 'ResourceType', name=name))
+        for name, trait in fragment.traits.items():
+            iri = self.node(f'{unit}#/declarations/traits/{self.segment(name)}', 'Trait', name=name)
+            self.positioned(iri, trait.location, trait.key_pos)
+            self.edge(unit, 'declares', iri)
+        for name, resource_type in fragment.resource_types.items():
+            iri = self.node(f'{unit}#/declarations/resourceTypes/{self.segment(name)}', 'ResourceType', name=name)
+            self.positioned(iri, resource_type.location, resource_type.key_pos)
+            self.edge(unit, 'declares', iri)
 
     def api(self) -> None:
         entry = self.raml.entry_point
@@ -846,6 +870,10 @@ class _Builder:
             'Operation',
             method=operation.method,
             name=_text(operation.display_name) or operation.method,
+            # The resource it hangs off. A `displayName` is what an operation is
+            # *called*; the method and path are what it *is*, and a reader given
+            # only `ActivateUser` cannot tell which endpoint that is.
+            path=self.nodes[endpoint].attributes.get('path'),
             description=_text(operation.description),
         )
         self.positioned(iri, operation.location, operation.key_pos)
@@ -971,7 +999,14 @@ class _Builder:
             isAnnotationType=base.is_annotation_type or None,
         )
         self.positioned(iri, base.location, base.key_pos)
-        self.facets(iri, base)
+        # Structure and facets come from the *projected* shape, so a type defined
+        # by a JSON schema has members here rather than being a leaf. Without it
+        # `deps errorScheme` reported that it is made of nothing, every SPARQL
+        # query walking `raml:property` skipped those types, and `diff` — which
+        # compares nodes, attributes and reference edges — saw no change when a
+        # whole schema was replaced (docs/16 § 2.6).
+        view = projected(base)
+        self.facets(iri, view)
 
         for parent in base.inherits:
             self.edge(iri, 'inherits', self.shape(parent, f'{iri}/inherits/{self.segment(parent.name or "anonymous")}'))
@@ -979,7 +1014,7 @@ class _Builder:
             self.edge(iri, 'aliasOf', self.shape(base.alias, f'{iri}/aliasOf'))
         for name, extension in base.annotations.items():
             self.annotated(iri, {name: extension})
-        self.children(iri, base.shape)
+        self.children(iri, view.shape)
         return iri
 
     def children(self, iri: str, shape: Shape | None) -> None:

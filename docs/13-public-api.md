@@ -421,7 +421,18 @@ Results are grouped by rule: one edit reaches the declaration and every endpoint
 carrying it, and all of those are worth seeing while three copies of the same
 sentence are not.
 
-`--json` emits the whole change list — `kind`, `iri`, `direction`, the attribute
-and its values, plus the `rule`, `severity` and `because`. That is the
-programmatic surface: a team that disagrees with the built-in policy can grade
-the same facts its own way.
+`kind` is `added`, `removed` or `changed` for a node, and `linked` or `unlinked`
+for a reference that now points somewhere else — a `securedBy` swapped from
+OAuth 2.0 to an API key moves no node and alters no attribute
+([16](16-graph.md) § 10.4).
+
+`--json` emits the whole change list — `kind`, `iri`, `node_kind`, `directions`,
+the attribute and its values, plus the `rule`, `severity` and `because`. That is
+the programmatic surface: a team that disagrees with the built-in policy can
+grade the same facts its own way.
+
+`directions` is a **list**, because a type can be a request body and a response
+body at once and is graded on the worse side. An earlier version wrote one side,
+which put `"direction": "request"` beside `"rule": "response-property-optional"`
+in the same record — a consumer regrading these facts could not have reached the
+published answer from them.

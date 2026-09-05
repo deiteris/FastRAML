@@ -84,13 +84,6 @@ class Change:
     before: object = None
     after: object = None
 
-    @property
-    def direction(self) -> Direction:
-        """One side, for display. Request first: it is the stricter reading."""
-        if 'request' in self.directions:
-            return 'request'
-        return 'response' if 'response' in self.directions else 'declaration'
-
     def __repr__(self) -> str:
         detail = f' {self.attribute}' if self.attribute else ''
         return f'Change({self.kind}{detail} {self.node_kind} {self.iri!r})'

@@ -408,11 +408,19 @@ def _value(value: object) -> str:
 
 
 def _record(rule: Rule, change: Change) -> dict[str, object]:
+    """One change as JSON, carrying everything `classify` used to grade it.
+
+    `directions` is a list, not one side. A type that is a POST body and a GET
+    response is graded on the worse of the two, so a record naming only one of
+    them contradicts its own `rule` — `direction: request` beside
+    `response-property-optional` — and a consumer regrading these facts its own
+    way cannot reach the same answer from them.
+    """
     return {
         'kind': change.kind,
         'iri': change.iri,
         'node_kind': change.node_kind,
-        'direction': change.direction,
+        'directions': sorted(change.directions),
         'attribute': change.attribute,
         'before': _plain(change.before),
         'after': _plain(change.after),

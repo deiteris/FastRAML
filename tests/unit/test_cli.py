@@ -460,7 +460,39 @@ class TestDiff:
         removal = next(r for r in records if r['rule'] == 'response-property-removed')
         assert removal['severity'] == 'breaking'
         assert removal['because']
-        assert removal['direction'] == 'response'
+        assert removal['directions'] == ['response']
+
+    def test_json_carries_every_side_the_rule_was_graded_on(self, workspace, capsys):
+        """Or the record contradicts itself.
+
+        A type that is a POST body and a GET response is graded on the worse
+        side. Writing one side put `direction: request` beside
+        `rule: response-property-optional` in the same object, and a consumer
+        regrading these facts its own way could not have reached the published
+        answer from them.
+        """
+        both_ways = """#%RAML 1.0
+title: T
+types:
+  Thing:
+    type: object
+    properties:
+      a: string
+/things:
+  post:
+    body:
+      application/json: Thing
+    responses:
+      200:
+        body:
+          application/json: Thing
+"""
+        root = workspace({'a.raml': both_ways, 'b.raml': both_ways.replace('      a: string', '      a?: string')})
+        main(['diff', str(root / 'a.raml'), str(root / 'b.raml'), '--json'])
+        records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        declared = next(r for r in records if '#/declarations/' in r['iri'])
+        assert declared['directions'] == ['request', 'response']
+        assert declared['severity'] == 'breaking'
 
     def test_json_writes_nothing_to_stderr(self, versions, capsys):
         """A consumer parses stdout; the summary must not corrupt it."""

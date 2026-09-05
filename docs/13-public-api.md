@@ -287,8 +287,8 @@ parsing rule lives in `pyraml/cli.py`.
 pyraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
 pyraml info [-w ROOT] [-r] FILE       # backend, timings, counts
 pyraml graph [--format nt|turtle|dot|json] FILE
-pyraml refs FILE NAME                 # what uses this type, and by what route
-pyraml deps FILE NAME                 # what this type is made of
+pyraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
+pyraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made of
 pyraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
 pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
 ```
@@ -339,11 +339,19 @@ forwards to everything it is built from. Each result line is a **route**, not
 just a hit:
 
 ```
-Operation   get -returns-> 200 -payload-> application/json -range-> ... -inherits-> CallerType
+Operation  api.raml:61   get -returns-> 200 -payload-> ... -inherits-> CallerType
 ```
 
-That is the output a property path cannot produce ([16](16-graph.md) § 5), and
-it is the reason these are not simply a canned SPARQL query.
+Kind and position first — *what* was found and *where to go* — then the route,
+which is *why* it was found and the part that varies in length. That route is
+the output a property path cannot produce ([16](16-graph.md) § 5), and it is the
+reason these are not simply a canned SPARQL query.
+
+**Bound the output.** One type at benchmark scale produces over ten thousand
+routes, which is the same as no output at all. `--kind` keeps only results of a
+given kind and is repeatable (`--kind Operation --kind EndPoint`); `--depth`
+stops the walk after N hops; `--limit` prints at most N and reports the
+remainder on stderr, so a piped run is unaffected.
 
 `NAME` is a declared name or a whole node IRI. A **declaration** wins over any
 node inside one that happens to carry the same name ([16](16-graph.md) § 3.3).

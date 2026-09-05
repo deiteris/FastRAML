@@ -10,6 +10,7 @@ depends on: what the exit code means, which stream each thing goes to, and that
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 
@@ -353,3 +354,47 @@ class TestQueryCatalogue:
     def test_a_query_with_no_file_says_so(self, capsys):
         assert main(['query', '-n', 'endpoint-tree']) == EXIT_INVALID
         assert 'needs a FILE' in capsys.readouterr().err
+
+
+class TestWalkBounding:
+    """`refs` returns 10 503 routes for one type at benchmark scale. Unbounded
+    output is the same as no output, so the flags are not a nicety.
+    """
+
+    def test_a_result_carries_the_position_to_go_to(self, graphed, capsys):
+        """The graph has held this on every node all along; the route renderer
+        dropped it, which left `refs` saying that something uses a type without
+        saying where to look.
+        """
+        assert main(['refs', graphed, 'Entity']) == EXIT_OK
+        assert re.search(r'g\.raml:\d+', capsys.readouterr().out)
+
+    def test_kind_keeps_only_that_kind(self, graphed, capsys):
+        assert main(['refs', graphed, 'Entity', '--kind', 'Operation']) == EXIT_OK
+        kinds = {line.split()[0] for line in capsys.readouterr().out.splitlines()}
+        assert kinds == {'Operation'}
+
+    def test_kind_is_repeatable(self, graphed, capsys):
+        assert main(['refs', graphed, 'Entity', '--kind', 'Operation', '--kind', 'EndPoint']) == EXIT_OK
+        kinds = {line.split()[0] for line in capsys.readouterr().out.splitlines()}
+        assert kinds == {'Operation', 'EndPoint'}
+
+    def test_depth_bounds_the_route_length(self, graphed, capsys):
+        assert main(['refs', graphed, 'Entity', '--depth', '1']) == EXIT_OK
+        for line in capsys.readouterr().out.splitlines():
+            assert line.count('->') <= 1, line
+
+    def test_limit_truncates_and_says_so_on_stderr(self, graphed, capsys):
+        assert main(['refs', graphed, 'Entity', '--limit', '1']) == EXIT_OK
+        captured = capsys.readouterr()
+        assert len(captured.out.splitlines()) == 1
+        assert 'more' in captured.err
+
+    def test_an_unlimited_run_says_nothing_on_stderr(self, graphed, capsys):
+        assert main(['refs', graphed, 'Entity']) == EXIT_OK
+        assert capsys.readouterr().err == ''
+
+    def test_json_carries_the_position_too(self, graphed, capsys):
+        assert main(['refs', graphed, 'Entity', '--json', '--limit', '1']) == EXIT_OK
+        record = json.loads(capsys.readouterr().out.splitlines()[0])
+        assert re.fullmatch(r'g\.raml:\d+', record['at'])

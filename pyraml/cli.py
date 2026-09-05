@@ -94,6 +94,14 @@ def _parser() -> argparse.ArgumentParser:
         walk.add_argument('files', metavar='FILE', nargs=1)
         walk.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
         walk.add_argument('--json', action='store_true', help='one JSON object per result')
+        walk.add_argument('--depth', type=int, default=None, metavar='N', help='stop after N hops')
+        walk.add_argument(
+            '--kind',
+            action='append',
+            metavar='KIND',
+            help='keep only results of this kind, e.g. Operation; repeatable',
+        )
+        walk.add_argument('--limit', type=int, default=0, metavar='N', help='print at most N results (0: all)')
         _add_common(walk)
 
     show = commands.add_parser('show', help='the effective view of one type, as RAML (doc 16 section 9)')
@@ -286,21 +294,35 @@ def _walk(args: argparse.Namespace) -> int:
         return EXIT_INVALID
 
     reverse = args.command == 'refs'
-    paths = graph.walk(origin, USE_EDGES if reverse else TYPE_EDGES, reverse=reverse)
+    routes = graph.walk(origin, USE_EDGES if reverse else TYPE_EDGES, reverse=reverse, max_depth=args.depth)
+    if args.kind:
+        wanted = {kind.casefold() for kind in args.kind}
+        routes = [route for route in routes if graph.kind_of(route.target).casefold() in wanted]
+    paths = routes[: args.limit] if args.limit else routes
+
     for path in paths:
         # Rendered from whichever end is the *subject* of the first hop, so a
         # route reads the way the edges point no matter which way it was walked.
         nodes = tuple(reversed(path.nodes)) if reverse else path.nodes
         predicates = tuple(reversed(path.predicates)) if reverse else path.predicates
+        where = _position_of(graph, path.target)
         if args.json:
             import json  # noqa: PLC0415 - only JSON output needs the encoder
 
-            print(json.dumps({'kind': graph.kind_of(path.target), 'iri': path.target, 'route': list(nodes)}))
+            record = {'kind': graph.kind_of(path.target), 'iri': path.target, 'at': where, 'route': list(nodes)}
+            print(json.dumps(record))
             continue
         route = graph.label(nodes[0])
         for predicate, node in zip(predicates, nodes[1:], strict=True):
             route += f' -{predicate}-> {graph.label(node)}'
-        print(f'{graph.kind_of(path.target):<16} {route}')
+        # Kind and position first: what was found and where to go. The route is
+        # why it was found, and is the part that varies in length.
+        print(f'{graph.kind_of(path.target):<16} {where:<22} {route}')
+    if len(paths) < len(routes):
+        # Flushed first, or the note arrives before the results it is about
+        # once either stream is redirected — the hazard `_validate` documents.
+        sys.stdout.flush()
+        print(f'... {len(routes) - len(paths)} more; raise --limit or narrow with --kind', file=sys.stderr)
     if not paths and not args.json:
         print(f'{args.name}: nothing found', file=sys.stderr)
     return EXIT_OK
@@ -399,6 +421,20 @@ def _built(args: argparse.Namespace) -> tuple[Graph, Raml] | None:
         print(err, file=sys.stderr)
         return None
     return build_graph(raml), raml
+
+
+def _position_of(graph: Graph, iri: str) -> str:
+    """`path:line` for a node, so a result is somewhere you can go.
+
+    The graph already carries this on every node it positioned; the route
+    renderer used to drop it, which left `refs` telling you that something uses
+    a type without telling you where to look.
+    """
+    node = graph.nodes.get(iri)
+    if node is None:
+        return ''
+    where, line = node.attributes.get('definedIn'), node.attributes.get('line')
+    return f'{where}:{line}' if where and line else str(where or '')
 
 
 def _resolve(graph: Graph, name: str) -> str | None:

@@ -274,6 +274,12 @@ introduces no variables. For a navigation tool the intermediates *are* the
 answer: "why does this endpoint expose `User`" is a request for the route. A
 recursive walk in code returns it; a property path cannot.
 
+`refs` and `deps` report each result's **position** as well as its route: the
+graph has carried `definedIn` and `line` on every node from the start, and a
+result you cannot navigate to is half an answer. They also take `--kind`,
+`--depth` and `--limit`, because one type on a 2000-endpoint document reaches
+10 503 routes and unbounded output is indistinguishable from none.
+
 Two edge closures are exported so a caller and a query cannot drift:
 
 - `TYPE_EDGES` — what a type is *made of*.

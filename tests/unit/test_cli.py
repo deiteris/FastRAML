@@ -152,3 +152,124 @@ class TestUsage:
             main(['--version'])
         assert caught.value.code == 0
         assert 'pyraml' in capsys.readouterr().out
+
+
+GRAPHED = (
+    API
+    + """types:
+  Entity:
+    type: object
+    properties:
+      id: string
+  User:
+    type: Entity
+    properties:
+      name: string
+/users:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: User
+"""
+)
+
+
+@pytest.fixture
+def graphed(workspace):
+    return str(workspace({'g.raml': GRAPHED}) / 'g.raml')
+
+
+class TestGraphVerbs:
+    """docs/13 section 8.1. Presentation and exit codes, as above — what the
+    graph *means* is `tests/unit/test_graph.py`'s subject, not this file's.
+    """
+
+    @pytest.mark.parametrize(
+        ('form', 'marker'),
+        [('turtle', '@prefix raml:'), ('nt', '<pyraml://id'), ('dot', 'digraph raml {'), ('json', '"nodes"')],
+    )
+    def test_each_format_emits_its_own_syntax(self, graphed, capsys, form, marker):
+        assert main(['graph', '--format', form, graphed]) == EXIT_OK
+        assert marker in capsys.readouterr().out
+
+    def test_the_default_format_is_turtle(self, graphed, capsys):
+        assert main(['graph', graphed]) == EXIT_OK
+        assert '@prefix raml:' in capsys.readouterr().out
+
+    def test_refs_reports_the_route_and_not_only_the_hit(self, graphed, capsys):
+        assert main(['refs', graphed, 'User']) == EXIT_OK
+        out = capsys.readouterr().out
+        assert 'Operation' in out
+        assert '-returns->' in out
+        assert '-payload->' in out
+
+    def test_deps_walks_the_other_way(self, graphed, capsys):
+        assert main(['deps', graphed, 'User']) == EXIT_OK
+        assert '-inherits-> Entity' in capsys.readouterr().out
+
+    def test_json_output_is_one_object_per_result(self, graphed, capsys):
+        assert main(['refs', graphed, 'User', '--json']) == EXIT_OK
+        rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        assert rows
+        assert all({'kind', 'iri', 'route'} <= row.keys() for row in rows)
+
+    def test_an_unknown_name_exits_one(self, graphed, capsys):
+        assert main(['refs', graphed, 'Nope']) == EXIT_INVALID
+        assert 'no such node' in capsys.readouterr().err
+
+    def test_an_invalid_document_exits_one(self, files, capsys):
+        """A document that will not *parse* has no graph. One that merely fails
+        validation does — the graph verbs run with `validate=False`.
+        """
+        assert main(['graph', files('nonexistent.raml')]) == EXIT_INVALID
+        assert 'invalid' in capsys.readouterr().err
+
+    def test_a_document_with_a_bad_example_still_graphs(self, files, capsys):
+        assert main(['graph', files('bad.raml')]) == EXIT_OK
+        assert '@prefix raml:' in capsys.readouterr().out
+
+
+class TestQueryVerb:
+    def test_without_a_store_it_says_so_and_exits_one(self, graphed, capsys, monkeypatch):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def refuse(name, *args, **kwargs):
+            if name == 'pyoxigraph':
+                raise ImportError(name)
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, '__import__', refuse)
+        assert main(['query', graphed, '-q', 'ASK {}']) == EXIT_INVALID
+        assert 'install pyoxigraph' in capsys.readouterr().err
+
+    def test_a_select_prints_a_row_per_solution(self, graphed, capsys):
+        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
+        from pyraml.graph import RAML_NS
+
+        query = f'PREFIX raml: <{RAML_NS}> SELECT ?m WHERE {{ ?o a raml:Operation ; raml:method ?m }}'
+        assert main(['query', graphed, '-q', query]) == EXIT_OK
+        assert capsys.readouterr().out.strip() == 'get'
+
+    def test_an_ask_prints_a_boolean(self, graphed, capsys):
+        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
+        from pyraml.graph import RAML_NS
+
+        assert main(['query', graphed, '-q', f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Operation }}']) == EXIT_OK
+        assert capsys.readouterr().out.strip() == 'true'
+
+    def test_a_query_can_come_from_a_file(self, graphed, workspace, capsys):
+        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
+        from pyraml.graph import RAML_NS
+
+        path = workspace({'q.rq': f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Api }}'}) / 'q.rq'
+        assert main(['query', graphed, '-Q', str(path)]) == EXIT_OK
+        assert capsys.readouterr().out.strip() == 'true'
+
+    def test_the_two_query_sources_are_mutually_exclusive(self, graphed):
+        with pytest.raises(SystemExit) as caught:
+            main(['query', graphed, '-q', 'ASK {}', '-Q', 'q.rq'])
+        assert caught.value.code == 2

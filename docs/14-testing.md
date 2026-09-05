@@ -298,6 +298,11 @@ The laws. Section 4.1 records where each is checked and over what input —
     the private-copy path of docs/13 § 2 against the real one. Every other test
     picks a configuration and stays in it, so a copy that had diverged would be
     invisible — each configuration agreeing with itself.
+12. **Every model that parses has a graph** — `build_graph` raises on no
+    unwrapped model in the corpus, and never returns nodes with no edges
+    ([16](16-graph.md) § 1). The second half is the one that matters: a
+    projection that dropped every relationship would build cleanly, report a
+    plausible node count, and be useless.
 
 ### 4.1 Where each law lives, and why
 
@@ -306,7 +311,7 @@ The laws. Section 4.1 records where each is checked and over what input —
 | 2–4, node identity | `tests/property/test_merge_laws.py` | hypothesis |
 | 1, 7 | `tests/unit/test_unwrap.py`, `tests/unit/test_validate.py` | hypothesis over a table of declarations |
 | 10 | `tests/unit/test_depth_guard.py` | constructed, one case per guard |
-| 5, 6, 8, 9, 11 | `tests/tck/test_properties.py` | **the corpus** |
+| 5, 6, 8, 9, 11, 12 | `tests/tck/test_properties.py` | **the corpus** |
 
 The last row is a deliberate substitution for the hypothesis generator this
 section originally called for. A generator writes the documents someone thought
@@ -362,6 +367,7 @@ than measurements:
 
 | File | Gate | When |
 |------|------|------|
+| `tests/unit/test_graph.py` | the graph projection: IRI stability, the edges that answer the questions it exists for, and both RDF serialisations **checked by a real RDF parser** ([16](16-graph.md)) | always; the RDF cases skip without `pyoxigraph` |
 | `tests/bench/test_corpus.py` | every generated corpus is valid RAML in **all four** configurations, generation is deterministic, and `bench_large`'s diamond really does reach one `common.raml` | always; tiny scale, milliseconds |
 | `tests/bench/test_linearity.py` | `bench_large` within 15 % of linear against a half-size corpus | `PYRAML_BENCH=1` only |
 

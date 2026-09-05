@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from pyraml.datanode import DataNode, ValueNode
 from pyraml.errors import Accumulator, ErrorKind, RamlError, Trace
+from pyraml.graph import Edge, Graph, GraphNode, Route, build_graph
 from pyraml.loaders import (
     FileLoader,
     HTTPLoader,
@@ -105,12 +106,15 @@ __all__ = [
     'DocumentationItem',
     'DocumentationItemFragment',
     'DomainExtension',
+    'Edge',
     'EndPoint',
     'ErrorKind',
     'FileLoader',
     'FileShape',
     'Fragment',
     'FragmentKind',
+    'Graph',
+    'GraphNode',
     'HTTPLoader',
     'IncludeInfo',
     'IncludeRef',
@@ -137,6 +141,7 @@ __all__ = [
     'ResourceLoader',
     'ResourceTypeFragment',
     'Response',
+    'Route',
     'SafeFileLoader',
     'ScalarFacet',
     'SchemeLoader',
@@ -152,6 +157,7 @@ __all__ = [
     'WorkspaceEscapeError',
     '__version__',
     'backend_name',
+    'build_graph',
     'build_loader',
     'compose',
     'file_uri_to_path',

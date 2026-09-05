@@ -114,7 +114,19 @@ which is wrong, or drop them, which loses the question.
 Every such node reaches its type through the same predicate, `range`, so a
 traversal spells the alternation once.
 
-### 2.4 Literals
+### 2.4 `aliasOf` is not optional, and that is not obvious
+
+`User[]` does **not** put the declaration of `User` under `items`. It puts an
+*alias* of `User` there — a distinct shape that shares the referent's containers
+(docs/07 § 3.6). So a traversal closure that omits `aliasOf` stops one hop short
+of every array member type and reports the member's **supertypes** instead of the
+member, which looks like a plausible answer and is the wrong one.
+
+`TYPE_EDGES` therefore includes `aliasOf` and `recursionHead`. This was found by
+a test asserting that an operation returning `UserList` reaches `User`; it did
+not, and reached `Entity` instead.
+
+### 2.5 Literals
 
 Names, positions and every `ScalarFacet` the shape kind holds. The facets are
 read off the instance by walking `__slots__`, not from a per-kind table — the
@@ -199,7 +211,7 @@ for path in graph.walk(user, USE_EDGES, reverse=True):
     print(graph.kind_of(path.target), [graph.label(n) for n in path.nodes])
 ```
 
-`walk` is breadth-first and returns a `Path` per node reached: the nodes, and the
+`walk` is breadth-first and returns a `Route` per node reached: the nodes, and the
 predicate taken at each hop.
 
 **That return type is the reason not to make SPARQL the only interface.** SPARQL

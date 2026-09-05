@@ -253,3 +253,41 @@ class TestPositionSanity:
             and (shape.key_pos.line, shape.key_pos.column) > (shape.value_pos.line, shape.value_pos.column)
         ]
         assert not offenders, '\n'.join(offenders[:20])
+
+
+class TestTheGraphProjectsTheWholeCorpus:
+    """Law 12 — every model that parses has a graph (docs/16 § 1).
+
+    The unit fixtures in `tests/unit/test_graph.py` are written to exercise one
+    rule each; the corpus is where the shapes nobody thought of live. A
+    projection that raises on real input is the failure mode that matters, and
+    it is the only one a walk over 900 documents can see cheaply.
+    """
+
+    def test_every_parseable_fixture_projects(self):
+        from pyraml import ParseOptions, RamlError, parse_from_path
+        from pyraml.graph import build_graph
+
+        root = _root_or_skip()
+        options = ParseOptions(unwrap=True)
+        projected = 0
+        offenders: list[str] = []
+        for path in collect_fixtures('valid'):
+            try:
+                raml = parse_from_path(path, options)
+            except (RamlError, OSError):
+                continue
+            try:
+                graph = build_graph(raml)
+            except Exception as err:  # any failure at all is the finding
+                offenders.append(f'{fixture_id(root, path)}: {type(err).__name__}: {err}')
+                continue
+            projected += 1
+            # A graph with nodes and no edges would mean every relationship was
+            # dropped, which builds cleanly and is useless.
+            if len(graph.nodes) > 1 and not graph.edges:
+                offenders.append(f'{fixture_id(root, path)}: {len(graph.nodes)} nodes, no edges')
+        # Fewer than the `corpus` fixture's count: this one unwraps, and unwrap
+        # rejects documents that a plain parse accepts.
+        assert projected > 400, f'the corpus was not found ({projected} projected)'
+        assert not offenders, '\n'.join(offenders[:20])

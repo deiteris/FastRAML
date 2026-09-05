@@ -38,6 +38,23 @@ pyraml validate --json *.raml      # one JSON object per file
 pyraml info api.raml               # YAML backend, timing, model counts
 ```
 
+And, because the tedious part of RAML is following resolved links by hand, a
+view of the **effective** model as a graph ([docs/16](docs/16-graph.md)):
+
+```bash
+pyraml refs api.raml User          # every operation that can carry a User, with the route
+pyraml deps api.raml User          # everything User is built from
+pyraml graph api.raml              # the whole projection as Turtle (or nt, dot, json)
+pyraml query api.raml -q '...'     # SPARQL, with pyoxigraph installed
+```
+
+```
+Operation  get -returns-> 200 -payload-> application/json -range-> ... -items-> User
+```
+
+Each result is a **route**, not just a hit — which is the one thing a SPARQL
+property path cannot give you, and the reason these are not a canned query.
+
 ## Why it is fast
 
 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using
@@ -100,9 +117,10 @@ PYRAML_BENCH=1 uv run pytest tests/bench # the same gate, under pytest
 | Extra | For |
 |-------|-----|
 | `google-re2` | `ParseOptions(regex_engine="re2")` — linear-time patterns for untrusted input |
+| `pyoxigraph` | `pyraml query` — SPARQL over the graph projection; the graph itself needs nothing |
 | `httpx` or `requests` | remote `!include`; supply the client yourself, or use `pyraml validate -r` |
 | libyaml | selected automatically when PyYAML was built with it; roughly an order of magnitude faster, and **not only** a speed choice ([D9](docs/01-scope-and-coverage.md)) |
 
 ## Licence
 
-To be decided before the first release.
+MIT. See [LICENSE](LICENSE).

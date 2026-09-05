@@ -279,9 +279,16 @@ parsing rule lives in `pyraml/cli.py`.
 ```
 pyraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
 pyraml info [-w ROOT] [-r] FILE       # backend, timings, counts
+pyraml graph [--format nt|turtle|dot|json] FILE
+pyraml refs FILE NAME                 # what uses this type, and by what route
+pyraml deps FILE NAME                 # what this type is made of
+pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
 ```
 
-Both parse with `unwrap=True, validate=True`: the CLI's job is to find faults.
+`validate` and `info` parse with `unwrap=True, validate=True`: their job is to
+find faults. The four graph verbs parse with `validate=False` — a document with
+a bad example still has a graph worth reading, and refusing to draw one would
+make the tool useless exactly where navigating is most wanted.
 
 - `-w ROOT` sets the workspace root; `--no-workspace-guard` disables the sandbox
   entirely, as go-raml's flag of the same name does.
@@ -308,6 +315,32 @@ exactly that.
 
 `error` is `RamlError.to_dict()` or `null`. The wrapper is what `to_dict()` alone
 cannot express — which file, and whether it was valid at all — and the `traces`
-value inside it keeps the reference implementation's shape so the cross-check
-script can diff the two fixture by fixture ([14](14-testing.md) § 1.3). Nothing
-is written to stderr in this mode.
+value inside it keeps the reference implementation's shape, so the two tools can
+be diffed fixture by fixture without an adapter ([14](14-testing.md) § 1.3).
+Nothing is written to stderr in this mode.
+
+### 8.1 The graph verbs
+
+`graph` writes the whole projection: Turtle by default, or N-Triples, Graphviz
+DOT, or plain JSON. The vocabulary and the IRI scheme are
+[16](16-graph.md) §§ 2–3.
+
+`refs` and `deps` are one traversal in two directions — `refs` walks the edges
+backwards from a named type to everything that can carry it, `deps` walks them
+forwards to everything it is built from. Each result line is a **route**, not
+just a hit:
+
+```
+Operation   get -returns-> 200 -payload-> application/json -range-> ... -inherits-> CallerType
+```
+
+That is the output a property path cannot produce ([16](16-graph.md) § 5), and
+it is the reason these are not simply a canned SPARQL query.
+
+`NAME` is a declared name or a whole node IRI. Two libraries may declare the same
+name; the verb then lists the candidates and exits 1 rather than picking one.
+
+`query` runs SPARQL, and needs **`pyoxigraph`**, which pyRAML does not depend on
+— `pip install pyraml[graph]`, or the verb tells you so and exits 1. All four
+result forms work: SELECT as TSV or `--json` JSON Lines, ASK as `true`/`false`,
+CONSTRUCT and DESCRIBE as N-Triples.

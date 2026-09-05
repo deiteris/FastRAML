@@ -22,6 +22,9 @@ dependencies = [
 [project.optional-dependencies]
 # Linear-time regex engine for `pattern:` facets. See docs/01 deviation D3.
 re2 = ["google-re2"]
+# An RDF store for `pyraml query`. The graph itself needs nothing; only SPARQL
+# does. See docs/16 section 5.1.
+graph = ["pyoxigraph>=0.4"]
 
 [project.scripts]
 pyraml = "pyraml.cli:main"

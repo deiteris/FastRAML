@@ -739,6 +739,12 @@ In rough priority order:
    middleware. All are consumers of the model, not changes to it; `retain_source`
    and the `TypeExprRef`/`IncludeRef` indices exist so none of them requires a
    parser change.
+
+   **The first of these is built and lives in-tree**: the graph projection
+   ([16](16-graph.md)), `pyraml/graph.py` plus four CLI verbs. It is in the
+   package rather than beside it only because the CLI needs it; it is still a
+   consumer, it decides no RAML rule, and nothing in the model imports it. It
+   required no parser change, which is the claim this item makes.
 6. **Per-entity tolerance across passes**, for `parse_lenient`. Today it stops
    where a strict parse stops and returns the partial model
    ([13](13-public-api.md) § 1). Running the later passes anyway was built in

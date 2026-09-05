@@ -47,7 +47,7 @@ __all__ = [
     'Edge',
     'Graph',
     'GraphNode',
-    'Path',
+    'Route',
     'build_graph',
 ]
 
@@ -65,7 +65,22 @@ DEFAULT_BASE: Final = 'pyraml://id'
 #: The edges to follow when asking what a type is *made of*. This is the closure
 #: `deps` uses, and the one a SPARQL property path would spell as an alternation
 #: — kept here so the two cannot drift.
-TYPE_EDGES: Final = ('range', 'items', 'anyOf', 'inherits', 'property', 'patternProperty')
+TYPE_EDGES: Final = (
+    'range',
+    'items',
+    'anyOf',
+    'inherits',
+    'property',
+    'patternProperty',
+    # Both look optional and are not. `User[]` does not put the *declaration* of
+    # `User` under `items`: it puts an alias of it there (docs/07 § 3.6), so a
+    # closure without `aliasOf` stops one hop short of every array member type
+    # and reports the member's supertypes instead of the member. `recursionHead`
+    # is the same argument for a cyclic type — the walk's own `seen` set is what
+    # stops it, not the absence of the edge.
+    'aliasOf',
+    'recursionHead',
+)
 
 #: `TYPE_EDGES` plus the containment edges, which is what a *use* question needs:
 #: walked in reverse from a type it arrives at the operations and resources that
@@ -118,7 +133,7 @@ class GraphNode:
 
 
 @dataclass(slots=True, eq=False)
-class Path:
+class Route:
     """One route through the graph: the nodes reached and the edges taken.
 
     The reason this type exists is the one thing SPARQL 1.1 property paths
@@ -208,7 +223,7 @@ class Graph:
         *,
         reverse: bool = False,
         max_depth: int | None = None,
-    ) -> list[Path]:
+    ) -> list[Route]:
         """Every node reachable from `origin`, each with the route that found it.
 
         Breadth-first, so the route reported is a shortest one; a cyclic type
@@ -216,10 +231,10 @@ class Graph:
         same reason `RecursiveShape` exists in the model at all.
         """
         seen = {origin}
-        frontier = [Path(nodes=(origin,), predicates=())]
-        found: list[Path] = []
+        frontier = [Route(nodes=(origin,), predicates=())]
+        found: list[Route] = []
         while frontier:
-            nxt: list[Path] = []
+            nxt: list[Route] = []
             for path in frontier:
                 if max_depth is not None and len(path) >= max_depth:
                     continue
@@ -229,13 +244,13 @@ class Graph:
                     if other in seen:
                         continue
                     seen.add(other)
-                    step = Path(nodes=(*path.nodes, other), predicates=(*path.predicates, edge.predicate))
+                    step = Route(nodes=(*path.nodes, other), predicates=(*path.predicates, edge.predicate))
                     found.append(step)
                     nxt.append(step)
             frontier = nxt
         return found
 
-    def route(self, origin: str, target: str, predicates: Sequence[str] = TYPE_EDGES) -> Path | None:
+    def route(self, origin: str, target: str, predicates: Sequence[str] = TYPE_EDGES) -> Route | None:
         """One shortest route from `origin` to `target`, or `None`."""
         for path in self.walk(origin, predicates):
             if path.target == target:

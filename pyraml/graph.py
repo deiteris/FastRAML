@@ -637,6 +637,7 @@ class _Builder:
         'nodes',
         'raml',
         'root',
+        'scheme_iris',
         'shape_iris',
         'shapes',
     )
@@ -651,11 +652,17 @@ class _Builder:
         self.shapes: dict[str, BaseShape] = {}
         self.entities: dict[str, EndPoint | Operation] = {}
         #: Declaration fragment (`#/declarations/traits/paged`) -> the first IRI
-        #: carrying it. `applies` used to find that by scanning every node, which
-        #: is quadratic and was 18 million `endswith` calls on a real document
-        #: once schema contents joined the graph. First writer wins, which is the
-        #: order the scan reported.
+        #: carrying it, filled by `declare` at the five places a declaration is
+        #: projected. `applies` used to find one by scanning every node for a
+        #: matching suffix, which is quadratic — 18 million `str.endswith` calls
+        #: on a real document once schema contents joined the graph.
         self.declared: dict[str, str] = {}
+        #: `SecuritySchemeDefinition.id` -> its node IRI. Keyed on the parse's own
+        #: counter rather than a name, because P5 has already bound each
+        #: `securedBy:` entry to its definition and a name cannot tell two
+        #: libraries' schemes apart. Not `id()`: the project forbids it, and this
+        #: counter is unique per parse anyway (docs/02 § 3.1).
+        self.scheme_iris: dict[int, str] = {}
         #: IRI → the `BaseShape.id` holding it. Two shapes given the same
         #: structural name would otherwise merge into one node in silence; see
         #: `claim`.
@@ -690,12 +697,22 @@ class _Builder:
         if node is None:
             node = GraphNode(iri=iri, kinds=kinds)
             self.nodes[iri] = node
-            marker = iri.find(_DECLARATIONS)
-            if marker != -1:
-                self.declared.setdefault(iri[marker:], iri)
         for key, value in attributes.items():
             if value is not None:
                 node.attributes[key] = value
+        return iri
+
+    def declare(self, unit: str, bucket: str, name: str) -> str:
+        """The IRI of one declaration, recorded so a name can be resolved to it.
+
+        Registered where the declaration is *created* rather than recovered from
+        the IRI afterwards. Sniffing for `#/declarations/` in `node` would have
+        meant a substring search on all 58,000 node creations to re-learn
+        something the caller already knew, and `startswith` cannot do it — the
+        marker sits after the unit's own URI, not at the front.
+        """
+        iri = f'{unit}{_DECLARATIONS}{bucket}/{self.segment(name)}'
+        self.declared.setdefault(iri[iri.index(_DECLARATIONS) :], iri)
         return iri
 
     def claim(self, fallback: str, shape_id: int) -> str:
@@ -738,10 +755,10 @@ class _Builder:
     def run(self) -> None:
         for location, declared in self.raml.fragment_types.items():
             for name in declared:
-                self.reserve(declared[name], f'{self.unit(location)}#/declarations/types/{self.segment(name)}')
+                self.reserve(declared[name], self.declare(self.unit(location), 'types', name))
         for location, declared in self.raml.fragment_annotations.items():
             for name in declared:
-                self.reserve(declared[name], f'{self.unit(location)}#/declarations/annotations/{self.segment(name)}')
+                self.reserve(declared[name], self.declare(self.unit(location), 'annotations', name))
 
         for location, fragment in self.raml.fragments.items():
             self.fragment(location, fragment)
@@ -762,27 +779,31 @@ class _Builder:
         unit = self.unit(location)
         self.node(unit, 'Unit', name=self.relative(location))
         for name, shape in fragment.types.items():
-            self.edge(unit, 'declares', self.shape(shape, f'{unit}#/declarations/types/{self.segment(name)}'))
+            self.edge(unit, 'declares', self.shape(shape, self.declare(unit, 'types', name)))
         for name, shape in fragment.annotation_types.items():
-            self.edge(unit, 'declares', self.shape(shape, f'{unit}#/declarations/annotations/{self.segment(name)}'))
+            self.edge(unit, 'declares', self.shape(shape, self.declare(unit, 'annotations', name)))
         # Each of the three is positioned, like every other node. Without it the
         # location column is empty for exactly the declarations a reader most
         # often wants to open — a trait is applied far from where it is written.
         for name, scheme in fragment.security_schemes.items():
             iri = self.node(
-                f'{unit}#/declarations/securitySchemes/{self.segment(name)}',
+                self.declare(unit, 'securitySchemes', name),
                 'SecurityScheme',
                 name=name,
                 type=scheme.type or None,
             )
             self.positioned(iri, scheme.location, scheme.key_pos)
+            # Under both the declaration and whatever an `!include` resolved to,
+            # so a `securedBy:` bound to either finds this one node.
+            self.scheme_iris[scheme.id] = iri
+            self.scheme_iris[scheme.resolved().id] = iri
             self.edge(unit, 'declares', iri)
         for name, trait in fragment.traits.items():
-            iri = self.node(f'{unit}#/declarations/traits/{self.segment(name)}', 'Trait', name=name)
+            iri = self.node(self.declare(unit, 'traits', name), 'Trait', name=name)
             self.positioned(iri, trait.location, trait.key_pos)
             self.edge(unit, 'declares', iri)
         for name, resource_type in fragment.resource_types.items():
-            iri = self.node(f'{unit}#/declarations/resourceTypes/{self.segment(name)}', 'ResourceType', name=name)
+            iri = self.node(self.declare(unit, 'resourceTypes', name), 'ResourceType', name=name)
             self.positioned(iri, resource_type.location, resource_type.key_pos)
             self.edge(unit, 'declares', iri)
 
@@ -962,7 +983,16 @@ class _Builder:
                 # no scheme to point at.
                 self.node(subject, *self.nodes[subject].kinds, unsecured=True)
                 continue
-            self.applies(subject, 'securedBy', 'securitySchemes', scheme, self.raml.location)
+            # P5 already bound this reference to its declaration, so the IRI is
+            # computed from the definition rather than matched by name. Matching
+            # re-derived work the model had done, and did it worse: two libraries
+            # declaring one scheme name are indistinguishable to a name lookup
+            # and are two different objects here.
+            target = self.scheme_iris.get(scheme.definition.id) if scheme.definition is not None else None
+            if target is not None:
+                self.edge(subject, 'securedBy', target)
+            else:
+                self.applies(subject, 'securedBy', 'securitySchemes', scheme, self.raml.location)
             if scheme.compiled_params:
                 self.node(subject, *self.nodes[subject].kinds, scopes=tuple(scheme.compiled_params))
 

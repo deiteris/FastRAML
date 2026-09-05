@@ -44,9 +44,17 @@ SKIPPED_HEADS: dict[str, str] = {
 #: reason, because an unreachable host and an unregistered URI scheme both
 #: produce an error.
 _NO_NETWORK = 'fetches an https include; the suite must not touch the network'
+
+#: The one fixture a deliberate deviation contradicts. The fixture is correct —
+#: it is the spec's own example of `members: Person[]` over a JSON-schema type —
+#: and pyRAML accepts it on purpose (docs/01 § 4, D11). Skipped rather than
+#: ratcheted to `fail`, because a `fail` entry means work outstanding
+#: (docs/14 § 1.2) and this is a decision, not a gap.
+_D11 = 'deviation D11: a JSON schema type may be used in a type expression'
 SKIPPED_FIXTURES: dict[str, str] = {
     'Root/include-02/valid-https.raml': _NO_NETWORK,
     'Root/include-02/invalid-https.raml': _NO_NETWORK,
+    'spec-examples/APIs/external-type-extend-invalid.raml': _D11,
 }
 
 _ENV_VAR = 'PYRAML_TCK_DIR'

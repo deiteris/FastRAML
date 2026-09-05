@@ -299,34 +299,35 @@ default parse. `check()` therefore has nothing left to do.
 
 ### 6.2 Restrictions
 
-Spec § Using XML and JSON Schemas: a type that defines an external schema "MUST
-NOT participate in type inheritance or specialization, or effectively in any type
-expression". Enforced:
+Spec § Using XML and JSON Schemas states three things. pyRAML enforces the first
+two and deliberately not the third ([01](01-scope-and-coverage.md) § 4, D11).
+
+**Enforced.** A schema type carries no sibling facets, and does not inherit:
 
 - `JsonShape.decode_facets(pairs)` errors if any sibling facet is present, except
   the wrapper facets the spec explicitly allows: `displayName`, `description`,
   annotations, `example`/`examples`;
 - `JsonShape.inherit(source)` errors unless the source carries the identical raw
-  schema;
-- a JSON-schema-typed name used in an expression (`Person[]`, `Person?`,
-  `Person | string`) is refused by P7's visitor, at the operand. An earlier draft
-  of this section said it "fails when the array's item inherit runs", which it
-  does not: an item written as a bare reference is an *alias*, not a subtype
-  ([06](06-type-expressions.md) § 3.1), so nothing merges and nothing failed.
-  A bare reference on its own stays legal — it is another name for the same
-  type, not an expression.
+  schema — the spec's own "SHALL NOT define sub-types to declare new properties,
+  add restrictions, set facets", and go-raml's behaviour exactly. Inheritance is
+  the one case that asks for something a compiled schema cannot supply: merging
+  a RAML facet into it. There is no such operation.
 
-Spec also forbids XML/JSON schemas "in any declaration of query parameters, query
-string, URI parameters, and headers". `baseUriParameters` are URI parameters and
-are covered by the same rule.
+**Not enforced.** The spec also bars a schema type from "effectively any type
+expression" and from "any declaration of query parameters, query string, URI
+parameters, and headers". pyRAML allows both. A `JsonShape` is a container for a
+compiled schema exposing `validate(value)`; at every one of those sites that is
+the only thing asked of it, and validation is delegated. A union is a list of
+types to validate against and the union itself is only an entry point; an array
+item and a property are the same story. `check_parameter_schemas` used to hold
+the parameter half and is gone, along with `_reject_schema_operand` in
+`types/resolve.py`.
 
-Enforced by `check_parameter_schemas` in `parser/endpoint_build.py`, run after
-P7 — **not** at the four decoders, as an earlier draft of
-[15](15-implementation-plan.md) said. A parameter may *name* a JSON-schema type
-rather than declare one inline, and a name is not bound to a kind until P7. By
-then the four declarations are four fields of a model that is already built, so
-the rule has one home rather than four; the module already holds the other
-parameter-only rule, `_check_slash_free`.
+An earlier draft of this section claimed the expression rule "fails when the
+array's item inherit runs". It never did: an item written as a bare reference is
+an *alias*, not a subtype ([06](06-type-expressions.md) § 3.1), so nothing merged
+and nothing failed. The rule only ever existed as an explicit check, which is
+part of why removing it changes no behaviour beyond permitting the construct.
 
 Inner-element references (`!include elements.json#/definitions/Foo`) are handled
 by the JSON Pointer fragment of the URI, resolved by the schema library.

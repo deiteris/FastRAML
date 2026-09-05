@@ -263,23 +263,47 @@ class TestRestrictions:
     @pytest.mark.parametrize(
         'expression', ['Person[]', 'Person?', 'Person | string'], ids=['array', 'optional', 'union']
     )
-    def test_a_schema_type_cannot_appear_in_a_type_expression(self, workspace, expression):
+    def test_a_schema_type_may_appear_in_a_type_expression(self, workspace, expression):
+        """Deviation D11. The spec refuses all three; pyRAML builds them.
+
+        Nothing here asks the schema for more than `validate(value)`, which it
+        answers. A union is a list of types to validate against, and the union
+        itself is only an entry point.
+        """
         body = 'types:\n  Person: |\n' + indent(PERSON) + f'  Board:\n    properties:\n      members: {expression}\n'
-        error = parse(workspace, {'api.raml': API + body})
-        assert error is not None
-        assert 'a JSON schema type cannot be used in a type expression' in messages(error)
+        assert parse(workspace, {'api.raml': API + body}) is None
+
+    def test_the_expression_still_validates_through_the_schema(self, workspace):
+        """Permitting it is only right if it works. `Person` requires `name`."""
+        body = 'types:\n  Person: |\n' + indent(PERSON) + '  Board:\n    properties:\n      members: Person[]\n'
+        raml = parsed(workspace, {'api.raml': API + body})
+        board = raml.types_in(raml.location)['Board'].shape.base
+        assert board.validate({'members': [{'name': 'Bob'}]}) is None
+        assert board.validate({'members': [{'nope': 1}]}) is not None
 
     def test_a_bare_reference_to_a_schema_type_is_allowed(self, workspace):
         """The spec's own examples use one: a name is not a type expression."""
         body = 'types:\n  Person: |\n' + indent(PERSON) + '  Board:\n    properties:\n      chair: Person\n'
         assert parse(workspace, {'api.raml': API + body}) is None
 
+    def test_inheriting_from_a_schema_type_is_still_refused(self, workspace):
+        """The boundary of D11. Inheritance asks for a RAML facet to be merged
+        into a compiled schema, and there is no such operation.
+        """
+        body = 'types:\n  Person: |\n' + indent(PERSON) + '  Boss:\n    type: Person\n    minLength: 3\n'
+        error = parse(workspace, {'api.raml': API + body})
+        assert error is not None
+
+
+SCALAR_SCHEMA = json.dumps({'type': 'string', 'minLength': 4})
+
 
 class TestParameterDeclarations:
-    """Section 6.2's other half: four places a schema may not be used at all.
+    """Deviation D11: a schema type *is* a type, including in a parameter.
 
-    Checked after P7 rather than at the decoders, because a parameter may name a
-    JSON-schema type instead of declaring one inline.
+    The spec forbids one outright in a query parameter, query string, URI
+    parameter or header. pyRAML permits it — `docs/01` § 4 D11 — because a
+    `JsonShape` is asked for nothing here but `validate(value)`, which it does.
     """
 
     RESOURCE: ClassVar[dict[str, str]] = {
@@ -292,17 +316,24 @@ class TestParameterDeclarations:
     }
 
     @pytest.mark.parametrize('facet', sorted(RESOURCE))
-    def test_a_named_schema_type_is_refused(self, workspace, facet):
-        body = 'types:\n  Person: |\n' + indent(PERSON) + self.RESOURCE[facet].format(ref='Person')
-        error = parse(workspace, {'api.raml': API + 'baseUri: http://x/{h}\n' + body})
-        assert error is not None
-        assert 'a JSON schema type is not allowed here' in messages(error)
+    def test_a_named_schema_type_is_accepted(self, workspace, facet):
+        body = 'types:\n  Code: |\n' + indent(SCALAR_SCHEMA) + self.RESOURCE[facet].format(ref='Code')
+        assert parse(workspace, {'api.raml': API + 'baseUri: http://x/{h}\n' + body}) is None
 
-    def test_an_inline_schema_is_refused_too(self, workspace):
-        body = '/r:\n  get:\n    headers:\n      H:\n        type: |\n' + indent(PERSON, 10)
-        error = parse(workspace, {'api.raml': API + body})
-        assert error is not None
-        assert 'a JSON schema type is not allowed here' in messages(error)
+    def test_an_inline_schema_is_accepted_too(self, workspace):
+        body = '/r:\n  get:\n    headers:\n      H:\n        type: |\n' + indent(SCALAR_SCHEMA, 10)
+        assert parse(workspace, {'api.raml': API + body}) is None
+
+    def test_the_schema_still_validates_the_value(self, workspace):
+        """The point of permitting it. A parameter that parses but never
+        validates would be worse than refusing it.
+        """
+        body = 'types:\n  Code: |\n' + indent(SCALAR_SCHEMA) + self.RESOURCE['queryParameters'].format(ref='Code')
+        raml = parsed(workspace, {'api.raml': API + body})
+        operation = next(iter(next(iter(raml.endpoints.values())).operations.values()))
+        code = operation.request.query_parameters['q'].base
+        assert code.validate('long enough') is None
+        assert code.validate('abc') is not None
 
     def test_an_ordinary_parameter_is_untouched(self, workspace):
         body = '/r:\n  get:\n    headers:\n      H: string\n'

@@ -49,7 +49,7 @@ Phase 8c: facets written beside `type: A | B`, distributed to the members at P9
 — the last conformance gap the corpus measured.
 
 **Every pass P0–P10 runs, every RAML construct is decoded, and the TCK stands at
-916 of 916** — every fixture outside the skip list does what its name promises.
+915 of 915** — every fixture outside the skip list does what its name promises.
 No `_raw_*` attribute is a deferred seam any more; the two that remain are
 working buffers within a single decode. Phase 9 added the `bench/` suite and its
 baselines, one recursion ceiling in place of three, `re2` over every regex the

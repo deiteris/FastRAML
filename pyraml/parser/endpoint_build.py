@@ -20,14 +20,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pyraml.domains import DomainLocation
-from pyraml.errors import Accumulator, ErrorKind, RamlError
+from pyraml.errors import Accumulator, RamlError
 from pyraml.parser.resourcetypes import apply_resource_type
 from pyraml.parser.source_decode import decode_source_endpoint
 from pyraml.parser.source_ir import make_source_endpoint
 from pyraml.parser.traits import apply_traits
 from pyraml.parser.uritemplates import extract_uri_template_params
 from pyraml.registry import ParseCtx
-from pyraml.types.base import TYPE_JSON, TYPE_STRING, BaseShape, Property
+from pyraml.types.base import TYPE_STRING, BaseShape, Property
 from pyraml.types.shape import attach_kind
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from pyraml.parser.source_ir import SourceEndPoint
     from pyraml.registry import Raml
 
-__all__ = ['build_endpoints', 'check_parameter_schemas']
+__all__ = ['build_endpoints']
 
 
 def build_endpoints(raml: Raml) -> None:
@@ -172,55 +172,6 @@ def _resolve_uri_parameters(raml: Raml, endpoint: EndPoint, inherited: dict[str,
     # Ancestors first, then this endpoint's own; a redeclared name wins here.
     endpoint.uri_parameters = {**inherited, **own}
     accumulator.raise_if_any()
-
-
-def check_parameter_schemas(raml: Raml) -> None:
-    """Doc 10 section 6.2's last rule, after P7 has settled every kind.
-
-    Spec section Using XML and JSON Schemas: a type that defines an external
-    schema may not be used "in any declaration of query parameters, query
-    string, URI parameters, and headers". Base-URI parameters are URI
-    parameters and are covered too.
-
-    Not done at the four decoders, as an earlier draft of doc 15 said: a
-    parameter may *name* a JSON-schema type rather than declare one inline, and
-    the name is not bound until P7. Here every kind is known and the four
-    declarations are four fields of a model already built, so the rule has one
-    home rather than four — which is also what `_check_slash_free` above does
-    for the other parameter-only rule.
-    """
-    accumulator = Accumulator()
-    api = raml.entry_point
-    if api is not None:
-        _reject_schemas(getattr(api, 'base_uri_parameters', {}), 'baseUriParameters', accumulator)
-    for endpoint in raml.endpoints.values():
-        _reject_schemas(endpoint.uri_parameters, 'uriParameters', accumulator)
-        for operation in endpoint.operations.values():
-            request = operation.request
-            if request is not None:
-                _reject_schemas(request.headers, 'headers', accumulator)
-                _reject_schemas(request.query_parameters, 'queryParameters', accumulator)
-                if request.query_string is not None and request.query_string.type == TYPE_JSON:
-                    accumulator.add(_schema_not_allowed(request.query_string, 'queryString', 'queryString'))
-            for response in operation.responses.values():
-                _reject_schemas(response.headers, 'headers', accumulator)
-    accumulator.raise_if_any()
-
-
-def _reject_schemas(declared: dict[str, Property], facet: str, accumulator: Accumulator) -> None:
-    for name, prop in declared.items():
-        if prop.base.type == TYPE_JSON:
-            accumulator.add(_schema_not_allowed(prop.base, facet, name))
-
-
-def _schema_not_allowed(base: BaseShape, facet: str, name: str) -> RamlError:
-    return RamlError.new(
-        'a JSON schema type is not allowed here',
-        base.location,
-        base.key_pos,
-        kind=ErrorKind.VALIDATING,
-        info={'facet': facet, 'parameter': name},
-    )
 
 
 def _synthesise(raml: Raml, name: str, endpoint: EndPoint) -> Property:

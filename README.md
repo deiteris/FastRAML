@@ -4,7 +4,7 @@ A [RAML 1.0](https://github.com/raml-org/raml-spec/blob/master/versions/raml-10/
 parser for Python 3.12+.
 
 > **Status: complete and unreleased.** Every pass runs, every RAML construct is
-> decoded, and the compliance kit stands at **916 of 916**. Overlays and
+> decoded, and the compliance kit stands at **915 of 915**. Overlays and
 > Extensions are the one language feature deferred, and XML Schema external
 > types are out of scope. **The API is not stable before 1.0.**
 

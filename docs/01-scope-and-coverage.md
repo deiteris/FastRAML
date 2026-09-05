@@ -290,6 +290,44 @@ pyRAML is no stricter than the reference implementation:
   and plain values accept `::vector`; only the flow form is rejected. Not a
   construct RAML uses.
 
+### D11 — A JSON-schema type is a type, and may be used as one
+
+Spec § Using XML and JSON Schemas states that a type defining an external schema
+"MUST NOT participate in type inheritance or specialization, or effectively in
+any type expression", and separately that schemas are "forbidden in any
+declaration of query parameters, query string, URI parameters, and headers".
+
+pyRAML enforces the **inheritance** half and not the rest. A `JsonShape` is a
+container for a compiled schema that answers `validate(value)`. Everywhere the
+spec forbids — a property, an array item, a union member, a parameter — that is
+the only thing asked of it, and delegating is the whole implementation. A union
+is a list of types to validate against; the union itself is just an entry point.
+
+Inheritance is genuinely different and stays refused: it asks for a RAML facet
+to be *merged into* a compiled schema, and there is no such operation.
+`JsonShape.inherit` errors unless the source carries the identical raw schema,
+which is also exactly go-raml's behaviour.
+
+Established by measurement rather than by reading:
+
+- The restriction is not load-bearing. With the checks removed, unions, arrays,
+  optionals and parameters all validate correctly through the compiled schema,
+  with positioned diagnostics. Nothing else needed changing.
+- go-raml has no parameter check at all, and accepts schema types in type
+  expressions.
+- The parameter half costs no TCK fixture. The expression half costs exactly one
+  — `spec-examples/APIs/external-type-extend-invalid.raml`, the spec's own
+  example — which is recorded in `SKIPPED_FIXTURES` with this deviation as its
+  reason. It is skipped rather than ratcheted to `fail`, because a `fail` entry
+  means work outstanding ([14](14-testing.md) § 1.2) and this is a decision.
+- AMF, the other widely used implementation, does not enforce it either.
+
+The one hazard is real and accepted: an *object* schema as a query parameter
+parses and then rejects every possible value, because a parameter arrives as
+text. That is not specific to schemas — a plain RAML `type: object` query
+parameter is equally unsatisfiable and equally unrefused — so banning one
+spelling of it prevents nothing.
+
 ## 5. Dependency budget
 
 | Dependency | Purpose | Required? |

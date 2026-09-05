@@ -909,7 +909,6 @@
     "Types/xml-serialization/invalid-wrapped-value.raml": "pass",
     "Types/xml-serialization/valid.raml": "pass",
     "spec-examples/APIs/duplicated-uris-invalid.raml": "pass",
-    "spec-examples/APIs/external-type-extend-invalid.raml": "pass",
     "spec-examples/APIs/external-types-invalid.raml": "pass",
     "spec-examples/APIs/invalid-discriminator-usage.raml": "pass",
     "spec-examples/APIs/multiple-inheritance-3-invalid.raml": "pass",

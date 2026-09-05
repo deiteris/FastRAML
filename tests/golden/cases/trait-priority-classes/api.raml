@@ -1,0 +1,34 @@
+#%RAML 1.0
+title: Golden
+baseUri: https://example.test
+traits:
+  first:
+    queryParameters:
+      shared?:
+        type: string
+        description: from first
+      onlyFirst?: string
+    headers:
+      X-Trait: string
+  second:
+    queryParameters:
+      shared?:
+        type: string
+        description: from second
+      onlySecond?: string
+resourceTypes:
+  collection:
+    get:
+      queryParameters:
+        shared?:
+          type: string
+          description: from resource type
+        fromType?: string
+/items:
+  type: collection
+  get:
+    is: [first, second]
+    queryParameters:
+      shared?:
+        type: string
+        description: from the method itself

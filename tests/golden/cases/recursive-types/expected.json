@@ -1,0 +1,107 @@
+{
+  "annotations": [],
+  "endpoints": {},
+  "entry_point": {
+    "kind": "Library"
+  },
+  "types": {
+    "lib.raml": {
+      "Chain": {
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "Chain",
+        "properties": {
+          "next": {
+            "required": false,
+            "type": {
+              "any_of": [
+                {
+                  "head": {
+                    "recursive_ref": "Chain"
+                  },
+                  "is_annotation_type": false,
+                  "kind": "RecursiveShape",
+                  "name": "Chain",
+                  "type": "recursive"
+                },
+                {
+                  "is_annotation_type": false,
+                  "kind": "NilShape",
+                  "name": null,
+                  "type": "nil",
+                  "type_expr": "Chain | nil"
+                }
+              ],
+              "is_annotation_type": false,
+              "kind": "UnionShape",
+              "name": "next?",
+              "type": "union",
+              "type_expr": "Chain | nil"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      },
+      "Node": {
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "Node",
+        "properties": {
+          "child": {
+            "required": false,
+            "type": {
+              "head": {
+                "recursive_ref": "Node"
+              },
+              "is_annotation_type": false,
+              "kind": "RecursiveShape",
+              "name": "Node",
+              "type": "recursive"
+            }
+          },
+          "value": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "StringShape",
+              "name": "value",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      },
+      "Tree": {
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "Tree",
+        "properties": {
+          "children": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "items": {
+                "head": {
+                  "recursive_ref": "Tree"
+                },
+                "is_annotation_type": false,
+                "kind": "RecursiveShape",
+                "name": "Tree",
+                "type": "recursive"
+              },
+              "kind": "ArrayShape",
+              "name": "children",
+              "type": "array",
+              "type_expr": "Tree[]"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      }
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "annotations": [],
+  "endpoints": {
+    "/items": {
+      "operations": {
+        "get": {
+          "headers": {
+            "X-Trait": {
+              "required": true,
+              "type": {
+                "is_annotation_type": false,
+                "kind": "StringShape",
+                "name": "X-Trait",
+                "type": "string",
+                "type_expr": "string"
+              }
+            }
+          },
+          "query_parameters": {
+            "fromType": {
+              "required": false,
+              "type": {
+                "is_annotation_type": false,
+                "kind": "StringShape",
+                "name": "fromType?",
+                "type": "string",
+                "type_expr": "string"
+              }
+            },
+            "onlyFirst": {
+              "required": false,
+              "type": {
+                "is_annotation_type": false,
+                "kind": "StringShape",
+                "name": "onlyFirst?",
+                "type": "string",
+                "type_expr": "string"
+              }
+            },
+            "onlySecond": {
+              "required": false,
+              "type": {
+                "is_annotation_type": false,
+                "kind": "StringShape",
+                "name": "onlySecond?",
+                "type": "string",
+                "type_expr": "string"
+              }
+            },
+            "shared": {
+              "required": false,
+              "type": {
+                "description": "from the method itself",
+                "is_annotation_type": false,
+                "kind": "StringShape",
+                "name": "shared?",
+                "type": "string",
+                "type_expr": "string"
+              }
+            }
+          },
+          "responses": {}
+        }
+      },
+      "secured_by": []
+    }
+  },
+  "entry_point": {
+    "base_uri": "https://example.test",
+    "kind": "APIFragment",
+    "media_types": [],
+    "protocols": [],
+    "title": "Golden"
+  },
+  "types": {}
+}

@@ -1,0 +1,49 @@
+{
+  "annotations": [],
+  "endpoints": {},
+  "entry_point": {
+    "kind": "Library"
+  },
+  "types": {
+    "lib.raml": {
+      "Prefs": {
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "Prefs",
+        "properties": {
+          "literalQuestion": {
+            "required": false,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "StringShape",
+              "name": "literalQuestion?",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "plain": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "StringShape",
+              "name": "plain",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "preference": {
+            "required": false,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "StringShape",
+              "name": "preference?",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

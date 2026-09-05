@@ -1,0 +1,93 @@
+{
+  "annotations": [],
+  "endpoints": {},
+  "entry_point": {
+    "kind": "Library"
+  },
+  "types": {
+    "lib.raml": {
+      "Aged": {
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "Aged",
+        "properties": {
+          "age": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "IntegerShape",
+              "name": "age",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      },
+      "Named": {
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "Named",
+        "properties": {
+          "name": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "StringShape",
+              "min_length": 2,
+              "name": "name",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      },
+      "Person": {
+        "inherits": [
+          "Named",
+          "Aged"
+        ],
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "Person",
+        "properties": {
+          "age": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "IntegerShape",
+              "name": "age",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "name": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "StringShape",
+              "min_length": 4,
+              "name": "name",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "nickname": {
+            "required": false,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "StringShape",
+              "name": "nickname?",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "annotations": [],
+  "endpoints": {
+    "/downloads": {
+      "operations": {
+        "get": {
+          "query_parameters": {
+            "platform": {
+              "required": false,
+              "type": {
+                "enum": [
+                  "mac",
+                  "unix",
+                  "win"
+                ],
+                "is_annotation_type": false,
+                "kind": "StringShape",
+                "name": "platform?",
+                "type": "string",
+                "type_expr": "string"
+              }
+            }
+          },
+          "responses": {}
+        }
+      },
+      "secured_by": []
+    }
+  },
+  "entry_point": {
+    "kind": "APIFragment",
+    "media_types": [],
+    "protocols": [],
+    "title": "Golden"
+  },
+  "types": {}
+}

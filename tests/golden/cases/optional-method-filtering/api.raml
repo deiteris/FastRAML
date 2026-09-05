@@ -1,0 +1,14 @@
+#%RAML 1.0
+title: Golden
+resourceTypes:
+  maybe:
+    get:
+      description: always present
+    post?:
+      description: only where the resource declares post
+/has-post:
+  type: maybe
+  post:
+    displayName: declared
+/no-post:
+  type: maybe

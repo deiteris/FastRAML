@@ -1,0 +1,116 @@
+{
+  "annotations": [],
+  "endpoints": {
+    "/things": {
+      "operations": {
+        "get": {
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "inherits": [
+                    "CallerType"
+                  ],
+                  "is_annotation_type": false,
+                  "kind": "ObjectShape",
+                  "name": "application/json",
+                  "properties": {
+                    "fromCaller": {
+                      "required": true,
+                      "type": {
+                        "is_annotation_type": false,
+                        "kind": "StringShape",
+                        "name": "fromCaller",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    }
+                  },
+                  "type": "object",
+                  "type_expr": "caller.CallerType"
+                }
+              }
+            },
+            "201": {
+              "bodies": {
+                "application/json": {
+                  "inherits": [
+                    "OwnType"
+                  ],
+                  "is_annotation_type": false,
+                  "kind": "ObjectShape",
+                  "name": "application/json",
+                  "properties": {
+                    "fromResourceTypesLibrary": {
+                      "required": true,
+                      "type": {
+                        "is_annotation_type": false,
+                        "kind": "StringShape",
+                        "name": "fromResourceTypesLibrary",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    }
+                  },
+                  "type": "object",
+                  "type_expr": "own.OwnType"
+                }
+              }
+            }
+          }
+        }
+      },
+      "secured_by": []
+    }
+  },
+  "entry_point": {
+    "kind": "APIFragment",
+    "media_types": [],
+    "protocols": [],
+    "title": "Golden"
+  },
+  "types": {
+    "caller.raml": {
+      "CallerType": {
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "CallerType",
+        "properties": {
+          "fromCaller": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "StringShape",
+              "name": "fromCaller",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      }
+    },
+    "own.raml": {
+      "OwnType": {
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "OwnType",
+        "properties": {
+          "fromResourceTypesLibrary": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "StringShape",
+              "name": "fromResourceTypesLibrary",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+#%RAML 1.0 Library
+types:
+  Named:
+    type: object
+    properties:
+      name:
+        type: string
+        minLength: 2
+  Aged:
+    type: object
+    properties:
+      age: integer
+  Person:
+    type: [Named, Aged]
+    properties:
+      name:
+        type: string
+        minLength: 4
+      nickname?: string

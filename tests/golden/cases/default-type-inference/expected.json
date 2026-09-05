@@ -1,0 +1,92 @@
+{
+  "annotations": [],
+  "endpoints": {},
+  "entry_point": {
+    "kind": "Library"
+  },
+  "types": {
+    "lib.raml": {
+      "AnnotatedScalar": {
+        "display_name": "plain string",
+        "is_annotation_type": false,
+        "kind": "StringShape",
+        "name": "AnnotatedScalar",
+        "type": "string",
+        "type_expr": "string"
+      },
+      "FromExplicitType": {
+        "is_annotation_type": false,
+        "kind": "IntegerShape",
+        "name": "FromExplicitType",
+        "type": "integer",
+        "type_expr": "integer"
+      },
+      "HasItems": {
+        "is_annotation_type": false,
+        "items": {
+          "is_annotation_type": false,
+          "kind": "StringShape",
+          "name": "items",
+          "type": "string",
+          "type_expr": "string"
+        },
+        "kind": "ArrayShape",
+        "name": "HasItems",
+        "type": "array"
+      },
+      "HasProperties": {
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "HasProperties",
+        "properties": {
+          "a": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "StringShape",
+              "name": "a",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "type": "object"
+      },
+      "NoFacets": {
+        "is_annotation_type": false,
+        "kind": "StringShape",
+        "name": "NoFacets",
+        "type": "string"
+      },
+      "PropertyShorthand": {
+        "is_annotation_type": false,
+        "kind": "ObjectShape",
+        "name": "PropertyShorthand",
+        "properties": {
+          "inferred": {
+            "required": true,
+            "type": {
+              "is_annotation_type": false,
+              "kind": "ObjectShape",
+              "name": "inferred",
+              "properties": {
+                "nested": {
+                  "required": true,
+                  "type": {
+                    "is_annotation_type": false,
+                    "kind": "StringShape",
+                    "name": "nested",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@ Five layers, each answering a question the others cannot.
 | Layer | Question | Size |
 |-------|----------|------|
 | Unit | does this function do what the doc says? | many, fast |
-| Golden | does the whole model come out right for this input? | ~100 |
+| Golden | does the whole model come out right for this input? | 10 cases |
 | TCK | do we agree with the spec's own compliance kit? | 965 fixtures |
 | Property | do the algebraic laws hold on generated input? | ~10 properties |
 | Benchmark | is it linear, and how fast? | 5 benches |
@@ -195,14 +195,40 @@ about:
 - the `preference?` / `preference??` property-name corner cases;
 - `securedBy: [null]` overriding an inherited scheme.
 
-**Not built yet.** There is no `tests/golden/` and no `--update-golden`; the
-harness lands with Phase 9. Until then the cases above are pinned as unit tests
-where the phase that owns them has run — the trait/resource-type priority
-classes, optional-method filtering, the collection merge, and the three-way
-provenance example are in `tests/unit/test_traits.py`,
-`test_resourcetypes.py` and `test_structural_merge.py`. A unit test asserts the
-one thing it names; a golden asserts everything at once, which is why these
-cases are still listed here.
+**Built**, as `tests/golden/`, with a case per bullet above. Each case is a
+directory holding its own RAML and an `expected.json`; every case parses with
+`unwrap=True, validate=True`, because a golden of an un-flattened model would
+pin the declaration rather than the type, and the declaration is what the unit
+tests already cover.
+
+`tests/golden/project.py` is the walker. **It is driven off `__slots__`**, using
+the same `copyable_slots` walk as `KindBase.clone`, for the reason docs/05 § 1
+gives there: `__slots__` on every model class is a project rule rather than a
+convention, so the field list cannot go stale. A facet added to a kind and not
+wired in by hand would otherwise be invisible to the goldens — which is the
+exact failure this layer exists to catch, so the layer must not have it.
+
+Two things a reader of this section should know, both learned by getting them
+wrong first:
+
+- **A golden must contain the thing its case is named after.** The first draft
+  projected endpoints as lists of parameter *names*, so
+  `collection-merge-enum` — the case that exists to pin the spec's own
+  `[mac, unix, win]` — asserted nothing at all, because the merged `enum` lives
+  on the query parameter's shape. It passed, and it was cover rather than a
+  test. The projection now carries parameter and body shapes in full.
+- **`getattr(x, 'name', default)` in a projector turns a wrong field name into a
+  plausible answer.** `SecurityScheme` has `compiled_params`, not `scopes`, so
+  every OAuth scope narrowing projected as `[]` and looked deliberate.
+
+The goldens are checked against mutation like the corpus properties (§ 4.2):
+disabling sequence deduplication in the structural merge, and disabling
+optional-method filtering, each turn them red.
+
+Regenerate with `pytest tests/golden --update-golden`. **Read the diff before
+committing it.** A regenerated golden accepted unread asserts whatever the code
+happened to do that day, which is worse than having no golden, because it looks
+like one.
 
 ## 3. Unit tests
 

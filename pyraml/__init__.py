@@ -32,63 +32,104 @@ The design is settled in `docs/`, which is normative; start at `docs/README.md`.
 
 from __future__ import annotations
 
-from pyraml.datanode import DataNode, ValueNode
-from pyraml.errors import Accumulator, ErrorKind, RamlError, Trace
-from pyraml.graph import Edge, Graph, GraphNode, Route, build_graph
-from pyraml.loaders import (
-    FileLoader,
-    HTTPLoader,
-    LoaderError,
-    ResourceLoader,
-    SafeFileLoader,
-    SchemeLoader,
-    UnsupportedSchemeError,
-    WorkspaceEscapeError,
-    build_loader,
-)
-from pyraml.parser.annotations import DomainExtension
-from pyraml.parser.documentation import DocumentationItem
-from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
-from pyraml.parser.entry import ParseOptions, parse_from_path, parse_from_string, parse_lenient
-from pyraml.parser.fragments import (
-    APIFragment,
-    DataTypeFragment,
-    DocumentationItemFragment,
-    Fragment,
-    FragmentKind,
-    Library,
-    NamedExample,
-    ResourceTypeFragment,
-    SecuritySchemeFragment,
-    TraitFragment,
-)
-from pyraml.parser.includes import IncludeInfo, IncludeRef
-from pyraml.positions import Position
-from pyraml.registry import ParseCtx, Raml
-from pyraml.types.base import BaseShape, PatternProperty, Property, ScalarFacet
-
-# The seventeen concrete kinds. Exported because `isinstance` against them is
-# the documented way to narrow a shape (docs/13 section 6), and reaching into
-# `pyraml.types.complex_` for that is a poor advertisement for a supported API.
-from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape, UnknownShape
-from pyraml.types.jsonschema_ import JsonShape
-from pyraml.types.scalars import (
-    AnyShape,
-    BooleanShape,
-    DateOnlyShape,
-    DateTimeOnlyShape,
-    DateTimeShape,
-    FileShape,
-    IntegerShape,
-    NilShape,
-    NumberShape,
-    StringShape,
-    TimeOnlyShape,
-)
-from pyraml.uris import file_uri_to_path, path_to_file_uri, resolve_uri_ref
-from pyraml.yamlnode import Node, NodeKind, backend_name, compose
+from importlib import import_module
 
 __version__ = '0.0.1'
+
+# Importing the public package is intentionally cheap. Each value is loaded and
+# cached on first access; `pyraml/__init__.pyi` gives type checkers the same
+# surface without making those imports happen at runtime.
+_EXPORTS = {
+    'APIFragment': ('pyraml.parser.fragments', 'APIFragment'),
+    'Accumulator': ('pyraml.errors', 'Accumulator'),
+    'AnyShape': ('pyraml.types.scalars', 'AnyShape'),
+    'ArrayShape': ('pyraml.types.complex_', 'ArrayShape'),
+    'BaseShape': ('pyraml.types.base', 'BaseShape'),
+    'Body': ('pyraml.parser.endpoints', 'Body'),
+    'BooleanShape': ('pyraml.types.scalars', 'BooleanShape'),
+    'DataNode': ('pyraml.datanode', 'DataNode'),
+    'DataTypeFragment': ('pyraml.parser.fragments', 'DataTypeFragment'),
+    'DateOnlyShape': ('pyraml.types.scalars', 'DateOnlyShape'),
+    'DateTimeOnlyShape': ('pyraml.types.scalars', 'DateTimeOnlyShape'),
+    'DateTimeShape': ('pyraml.types.scalars', 'DateTimeShape'),
+    'DocumentationItem': ('pyraml.parser.documentation', 'DocumentationItem'),
+    'DocumentationItemFragment': ('pyraml.parser.fragments', 'DocumentationItemFragment'),
+    'DomainExtension': ('pyraml.parser.annotations', 'DomainExtension'),
+    'Edge': ('pyraml.graph', 'Edge'),
+    'EndPoint': ('pyraml.parser.endpoints', 'EndPoint'),
+    'ErrorKind': ('pyraml.errors', 'ErrorKind'),
+    'FileLoader': ('pyraml.loaders', 'FileLoader'),
+    'FileShape': ('pyraml.types.scalars', 'FileShape'),
+    'Fragment': ('pyraml.parser.fragments', 'Fragment'),
+    'FragmentKind': ('pyraml.parser.fragments', 'FragmentKind'),
+    'Graph': ('pyraml.graph', 'Graph'),
+    'GraphNode': ('pyraml.graph', 'GraphNode'),
+    'HTTPLoader': ('pyraml.loaders', 'HTTPLoader'),
+    'IncludeInfo': ('pyraml.parser.includes', 'IncludeInfo'),
+    'IncludeRef': ('pyraml.parser.includes', 'IncludeRef'),
+    'IntegerShape': ('pyraml.types.scalars', 'IntegerShape'),
+    'JsonShape': ('pyraml.types.jsonschema_', 'JsonShape'),
+    'Library': ('pyraml.parser.fragments', 'Library'),
+    'LoaderError': ('pyraml.loaders', 'LoaderError'),
+    'NamedExample': ('pyraml.parser.fragments', 'NamedExample'),
+    'NilShape': ('pyraml.types.scalars', 'NilShape'),
+    'Node': ('pyraml.yamlnode', 'Node'),
+    'NodeKind': ('pyraml.yamlnode', 'NodeKind'),
+    'NumberShape': ('pyraml.types.scalars', 'NumberShape'),
+    'ObjectShape': ('pyraml.types.complex_', 'ObjectShape'),
+    'Operation': ('pyraml.parser.endpoints', 'Operation'),
+    'ParseCtx': ('pyraml.registry', 'ParseCtx'),
+    'ParseOptions': ('pyraml.parser.entry', 'ParseOptions'),
+    'PatternProperty': ('pyraml.types.base', 'PatternProperty'),
+    'Position': ('pyraml.positions', 'Position'),
+    'Property': ('pyraml.types.base', 'Property'),
+    'Raml': ('pyraml.registry', 'Raml'),
+    'RamlError': ('pyraml.errors', 'RamlError'),
+    'RecursiveShape': ('pyraml.types.complex_', 'RecursiveShape'),
+    'Request': ('pyraml.parser.endpoints', 'Request'),
+    'ResourceLoader': ('pyraml.loaders', 'ResourceLoader'),
+    'ResourceTypeFragment': ('pyraml.parser.fragments', 'ResourceTypeFragment'),
+    'Response': ('pyraml.parser.endpoints', 'Response'),
+    'Route': ('pyraml.graph', 'Route'),
+    'SafeFileLoader': ('pyraml.loaders', 'SafeFileLoader'),
+    'ScalarFacet': ('pyraml.types.base', 'ScalarFacet'),
+    'SchemeLoader': ('pyraml.loaders', 'SchemeLoader'),
+    'SecuritySchemeFragment': ('pyraml.parser.fragments', 'SecuritySchemeFragment'),
+    'StringShape': ('pyraml.types.scalars', 'StringShape'),
+    'TimeOnlyShape': ('pyraml.types.scalars', 'TimeOnlyShape'),
+    'Trace': ('pyraml.errors', 'Trace'),
+    'TraitFragment': ('pyraml.parser.fragments', 'TraitFragment'),
+    'UnionShape': ('pyraml.types.complex_', 'UnionShape'),
+    'UnknownShape': ('pyraml.types.complex_', 'UnknownShape'),
+    'UnsupportedSchemeError': ('pyraml.loaders', 'UnsupportedSchemeError'),
+    'ValueNode': ('pyraml.datanode', 'ValueNode'),
+    'WorkspaceEscapeError': ('pyraml.loaders', 'WorkspaceEscapeError'),
+    'backend_name': ('pyraml.yamlnode', 'backend_name'),
+    'build_graph': ('pyraml.graph', 'build_graph'),
+    'build_loader': ('pyraml.loaders', 'build_loader'),
+    'compose': ('pyraml.yamlnode', 'compose'),
+    'file_uri_to_path': ('pyraml.uris', 'file_uri_to_path'),
+    'parse_from_path': ('pyraml.parser.entry', 'parse_from_path'),
+    'parse_from_string': ('pyraml.parser.entry', 'parse_from_string'),
+    'parse_lenient': ('pyraml.parser.entry', 'parse_lenient'),
+    'path_to_file_uri': ('pyraml.uris', 'path_to_file_uri'),
+    'resolve_uri_ref': ('pyraml.uris', 'resolve_uri_ref'),
+}
+
+
+def __getattr__(name: str) -> object:
+    try:
+        module_name, attribute = _EXPORTS[name]
+    except KeyError:
+        raise AttributeError(f'module {__name__!r} has no attribute {name!r}') from None
+    value = getattr(import_module(module_name), attribute)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
+
 
 __all__ = [
     'APIFragment',

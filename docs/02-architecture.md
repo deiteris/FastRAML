@@ -73,7 +73,8 @@ Two orderings are required for correctness:
 
 ```
 pyraml/
-  __init__.py             public API re-exports (see doc 13)
+  __init__.py             lazy public API exports (see doc 13)
+  __init__.pyi            eager declarations of that surface for type checkers
   cli.py                  the `pyraml` console script (doc 13 section 8)
   graph.py                the effective model as a queryable graph (doc 16)
   queries.py              the named SPARQL analysis catalogue (doc 16 section 6)
@@ -212,7 +213,12 @@ Rules on the layout:
   `anchor` is `None` — goes through `Raml.resolver_at`, an index the fragment
   decoder fills where it already performs the capability check.
 
-- **One deferred import exists, in `types/shape.py`, and no other may be added.**
+- **One cycle-breaking deferred import exists, in `types/shape.py`, and no other
+  may be added.** Imports deferred only to keep an optional or unusually heavy
+  dependency off the ordinary startup path are allowed when measured and
+  recorded in [12](12-performance.md); they must not introduce a hidden edge
+  between pyRAML modules.
+
   `type: !include lib.raml` and `examples: !include e.raml` have to parse a
   fragment, so `make_shape` needs `parser.fragments.parse_fragment`; and a
   fragment declares types, so `parser/fragments.py` needs `make_shape`. That

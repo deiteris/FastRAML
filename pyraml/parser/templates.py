@@ -23,13 +23,13 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
-from pluralizer import Pluralizer
-
 from pyraml.errors import ErrorKind, RamlError
 from pyraml.yamlnode import TAG_STR, Node, NodeKind
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+
+    from pluralizer import Pluralizer
 
     from pyraml.parser.structural_merge import ProvenanceOverlay
     from pyraml.registry import ParseCtx
@@ -114,15 +114,22 @@ _IRREGULAR: Final[tuple[tuple[str, str], ...]] = (
 )
 
 
-def _build_pluralizer() -> Pluralizer:
+def _get_pluralizer() -> Pluralizer:
+    global _PLURALIZER  # noqa: PLW0603 - one immutable rules engine, built lazily
+    if _PLURALIZER is not None:
+        return _PLURALIZER
+
+    from pluralizer import Pluralizer  # noqa: PLC0415 - only two template actions need it
+
     engine = Pluralizer()
     for singular, plural in _IRREGULAR:
         # Registers both directions, and keeps the input's casing.
         engine.add_irregular_rule(singular, plural)
-    return engine
+    _PLURALIZER = engine
+    return _PLURALIZER
 
 
-_PLURALIZER: Final = _build_pluralizer()
+_PLURALIZER: Pluralizer | None = None
 
 
 def _words(value: str) -> list[str]:
@@ -165,11 +172,11 @@ def _lower_hyphen_case(value: str) -> str:
 
 
 def _singularize(value: str) -> str:
-    return _PLURALIZER.singular(value) if value else value
+    return _get_pluralizer().singular(value) if value else value
 
 
 def _pluralize(value: str) -> str:
-    return _PLURALIZER.plural(value) if value else value
+    return _get_pluralizer().plural(value) if value else value
 
 
 #: Module-level dispatch table (docs/12-performance.md section 18): every

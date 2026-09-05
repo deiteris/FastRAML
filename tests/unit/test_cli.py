@@ -10,6 +10,8 @@ depends on: what the exit code means, which stream each thing goes to, and that
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 
 import pytest
 
@@ -142,6 +144,14 @@ class TestOptions:
 
 
 class TestUsage:
+    def test_import_does_not_load_a_parser_or_graph(self):
+        code = (
+            'import pyraml.cli, sys; '
+            "unexpected = {'pyraml.parser.entry', 'pyraml.graph', 'yaml'} & sys.modules.keys(); "
+            'assert not unexpected, unexpected'
+        )
+        subprocess.run([sys.executable, '-c', code], check=True)  # noqa: S603 - this interpreter, fixed code
+
     def test_a_missing_subcommand_is_a_usage_error(self, capsys):
         with pytest.raises(SystemExit) as caught:
             main([])

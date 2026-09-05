@@ -20,16 +20,9 @@ above `complex_.py` and `scalars.py` and is imported by `shape.py`
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
-
-from jsonschema.exceptions import SchemaError, ValidationError
-from jsonschema.validators import Draft7Validator, validator_for
-from referencing import Registry, Resource
-from referencing.exceptions import Unresolvable
-from referencing.jsonschema import DRAFT7, specification_with
 
 from pyraml.datanode import DataNode, value_node_of
 from pyraml.errors import ErrorKind, RamlError
@@ -62,6 +55,7 @@ if TYPE_CHECKING:
     # too (docs/01 deviation D3).
     import re
 
+    from referencing import Registry, Resource
     from referencing._core import Resolver
 
     from pyraml.positions import Position
@@ -146,6 +140,12 @@ class SchemaRegistry:
         is still the compilation unit, so a sibling definition it references
         resolves.
         """
+        # JSON Schema is uncommon in ordinary RAML documents. Keep its sizeable
+        # dependency tree off the startup path until a schema is actually used.
+        from jsonschema.exceptions import SchemaError  # noqa: PLC0415 - deferred for startup cost
+        from jsonschema.validators import Draft7Validator, validator_for  # noqa: PLC0415
+        from referencing import Registry, Resource  # noqa: PLC0415
+
         document_uri, _, pointer = location.partition('#')
         contents = self._decode(raw, location, position)
         specification = _specification_of(contents)
@@ -180,6 +180,8 @@ class SchemaRegistry:
     # -- reading --------------------------------------------------------------
 
     def _decode(self, raw: str | bytes, location: str, position: Position | None = None) -> Any:
+        import json  # noqa: PLC0415 - loaded with the deferred JSON Schema dependencies
+
         try:
             contents = json.loads(raw)
         except ValueError as err:
@@ -219,6 +221,9 @@ class SchemaRegistry:
 
     def _retrieve(self, uri: str) -> Resource[Any]:
         """`referencing`'s hook: every `$ref` target is read through the loader."""
+        from referencing import Resource  # noqa: PLC0415 - deferred for startup cost
+        from referencing.jsonschema import DRAFT7  # noqa: PLC0415
+
         cached = self._resources.get(uri)
         if cached is not None:
             return cached
@@ -250,6 +255,8 @@ class SchemaRegistry:
     # -- reference resolution -------------------------------------------------
 
     def _lookup(self, resolver: Resolver[Any], ref: str, location: str, position: Position | None) -> Any:
+        from referencing.exceptions import Unresolvable  # noqa: PLC0415 - deferred for startup cost
+
         try:
             return resolver.lookup(ref)
         except Unresolvable as err:
@@ -344,6 +351,8 @@ class SchemaRegistry:
 
 def _specification_of(contents: Any) -> Any:
     """The draft a schema declares, or 7 — what the reference implementation assumes."""
+    from referencing.jsonschema import DRAFT7, specification_with  # noqa: PLC0415 - deferred for startup cost
+
     declared = contents.get('$schema') if isinstance(contents, dict) else None
     if not isinstance(declared, str):
         return DRAFT7
@@ -412,6 +421,9 @@ class JsonShape(ComplexKind):
     def validate(self, value: Any, path: str) -> None:
         if self.validator is None:
             return
+        from jsonschema.exceptions import ValidationError  # noqa: PLC0415 - deferred for startup cost
+        from referencing.exceptions import Unresolvable  # noqa: PLC0415
+
         try:
             self.validator.validate(value)
         except ValidationError as err:

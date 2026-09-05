@@ -22,24 +22,16 @@ back.
 from __future__ import annotations
 
 import argparse
-import io
-import json
 import sys
-import time
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pyraml import __version__
-from pyraml.errors import RamlError
-from pyraml.graph import TYPE_EDGES, USE_EDGES, Graph, build_graph
-from pyraml.loaders import FileLoader
-from pyraml.parser.entry import ParseOptions, parse_from_path
-from pyraml.queries import QUERIES, render
-from pyraml.yamlnode import backend_name
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from pyraml.graph import Graph
+    from pyraml.parser.entry import ParseOptions
     from pyraml.registry import Raml
 
 __all__ = ['main']
@@ -129,6 +121,11 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
 
 
 def _validate(args: argparse.Namespace) -> int:
+    import time  # noqa: PLC0415 - version and catalogue commands do not parse
+
+    from pyraml.errors import RamlError  # noqa: PLC0415
+    from pyraml.parser.entry import parse_from_path  # noqa: PLC0415
+
     options = _options(args)
     failed = False
     for path in args.files:
@@ -142,6 +139,8 @@ def _validate(args: argparse.Namespace) -> int:
         failed = failed or error is not None
 
         if args.json:
+            import json  # noqa: PLC0415 - only JSON output needs the encoder
+
             record = {'path': path, 'valid': error is None, 'error': error.to_dict() if error else None}
             print(json.dumps(record))
             continue
@@ -165,6 +164,11 @@ def _validate(args: argparse.Namespace) -> int:
 
 
 def _info(args: argparse.Namespace) -> int:
+    import time  # noqa: PLC0415 - version and catalogue commands do not parse
+
+    from pyraml.errors import RamlError  # noqa: PLC0415
+    from pyraml.parser.entry import parse_from_path  # noqa: PLC0415
+
     path = args.files[0]
     started = time.perf_counter()
     try:
@@ -179,6 +183,8 @@ def _info(args: argparse.Namespace) -> int:
 
 def _report(raml: Raml, elapsed: float, *, path: str | None = None) -> None:
     """The counts a user reaches for when asking why a parse was slow or wrong."""
+    from pyraml.yamlnode import backend_name  # noqa: PLC0415 - reporting only
+
     rows = [] if path is None else [('file', path)]
     rows += [
         # Semantic as well as diagnostic: the two YAML backends do not accept
@@ -203,6 +209,8 @@ def _graph(args: argparse.Namespace) -> int:
     if graph is None:
         return EXIT_INVALID
     if args.format == 'json':
+        import json  # noqa: PLC0415 - only JSON output needs the encoder
+
         print(json.dumps(graph.to_json(), indent=2))
         return EXIT_OK
     emit = {'nt': graph.to_ntriples, 'turtle': graph.to_turtle, 'dot': graph.to_dot}[args.format]
@@ -217,6 +225,8 @@ def _walk(args: argparse.Namespace) -> int:
     One function because they differ in exactly two values, and writing them
     twice is how the two edge closures drift apart.
     """
+    from pyraml.graph import TYPE_EDGES, USE_EDGES  # noqa: PLC0415 - graph commands only
+
     graph = _built(args)
     if graph is None:
         return EXIT_INVALID
@@ -232,6 +242,8 @@ def _walk(args: argparse.Namespace) -> int:
         nodes = tuple(reversed(path.nodes)) if reverse else path.nodes
         predicates = tuple(reversed(path.predicates)) if reverse else path.predicates
         if args.json:
+            import json  # noqa: PLC0415 - only JSON output needs the encoder
+
             print(json.dumps({'kind': graph.kind_of(path.target), 'iri': path.target, 'route': list(nodes)}))
             continue
         route = graph.label(nodes[0])
@@ -245,6 +257,8 @@ def _walk(args: argparse.Namespace) -> int:
 
 def _query(args: argparse.Namespace) -> int:
     """SPARQL over the graph: the catalogue, or a query of your own."""
+    from pyraml.queries import QUERIES  # noqa: PLC0415 - query command only
+
     # The catalogue is text, so `--list` and `--show` want neither a store nor a
     # file. A user without pyoxigraph can still read a query and copy it out.
     if args.catalogue:
@@ -274,6 +288,9 @@ def _run_sparql(graph: Graph, text: str, *, json_lines: bool) -> int:
     result classes are what the dispatch needs, and they are only in scope once
     the import has succeeded.
     """
+    import io  # noqa: PLC0415 - query execution only
+    import json  # noqa: PLC0415 - query execution only
+
     try:
         import pyoxigraph  # noqa: PLC0415 - optional: a module-level import would make it required
     except ImportError:
@@ -315,6 +332,10 @@ def _built(args: argparse.Namespace) -> Graph | None:
     example still has a graph worth reading, and refusing to draw one would make
     the tool useless exactly where navigating is most wanted.
     """
+    from pyraml.errors import RamlError  # noqa: PLC0415 - graph commands only
+    from pyraml.graph import build_graph  # noqa: PLC0415
+    from pyraml.parser.entry import parse_from_path  # noqa: PLC0415
+
     path = args.files[0]
     try:
         raml = parse_from_path(path, _options(args, validate=False))
@@ -343,6 +364,10 @@ def _resolve(graph: Graph, name: str) -> str | None:
 
 def _query_text(args: argparse.Namespace) -> str | None:
     """The SPARQL to run: given, read from a file, or named in the catalogue."""
+    from pathlib import Path  # noqa: PLC0415 - query files only
+
+    from pyraml.queries import QUERIES, render  # noqa: PLC0415
+
     if args.sparql is not None:
         return str(args.sparql)
     if args.query_file is not None:
@@ -358,6 +383,8 @@ def _query_text(args: argparse.Namespace) -> str | None:
 
 
 def _show(name: str) -> int:
+    from pyraml.queries import QUERIES, render  # noqa: PLC0415 - query command only
+
     query = QUERIES.get(name)
     if query is None:
         print(f'{name}: no such query; try --list', file=sys.stderr)
@@ -383,6 +410,9 @@ def _term(term: Any) -> str | None:
 
 def _options(args: argparse.Namespace, *, validate: bool = True) -> ParseOptions:
     """`unwrap` is always on; `validate` is on wherever the job is to find faults."""
+    from pyraml.loaders import FileLoader  # noqa: PLC0415 - parsing commands only
+    from pyraml.parser.entry import ParseOptions  # noqa: PLC0415
+
     return ParseOptions(
         unwrap=True,
         validate=validate,

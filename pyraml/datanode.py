@@ -16,7 +16,6 @@ See docs/03-yaml-and-io.md section 6.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
@@ -170,6 +169,8 @@ def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location
         )
 
     if value_node.kind is NodeKind.SCALAR and value_node.value[:1] in ('{', '['):
+        import json  # noqa: PLC0415 - most RAML data is already represented by YAML nodes
+
         try:
             decoded = json.loads(value_node.value)
         except ValueError as err:

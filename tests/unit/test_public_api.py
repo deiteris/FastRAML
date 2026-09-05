@@ -10,6 +10,9 @@ that kind alone and will not guess it.
 
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import pyraml
 from pyraml.types.base import BUILTIN_TYPES
 
@@ -20,6 +23,31 @@ def test_every_exported_name_resolves():
 
 def test_all_is_sorted_and_free_of_duplicates():
     assert pyraml.__all__ == sorted(set(pyraml.__all__))
+
+
+def test_lazy_export_table_matches_all():
+    assert set(pyraml._EXPORTS) == set(pyraml.__all__) - {'__version__'}
+
+
+def test_bare_import_does_not_load_the_parser_or_its_dependencies():
+    code = (
+        'import pyraml, sys; '
+        "unexpected = {'pyraml.parser.entry', 'pyraml.graph', 'yaml', 'jsonschema', 'pluralizer'} & sys.modules.keys(); "
+        'assert not unexpected, unexpected'
+    )
+    subprocess.run([sys.executable, '-c', code], check=True)  # noqa: S603 - this interpreter, fixed code
+
+
+def test_lazy_export_is_cached_and_listed_by_dir():
+    assert 'ParseOptions' in dir(pyraml)
+    first = pyraml.ParseOptions
+    assert pyraml.__dict__['ParseOptions'] is first
+    assert pyraml.ParseOptions is first
+
+
+def test_wildcard_import_still_resolves_the_whole_public_surface():
+    code = 'from pyraml import *; assert ParseOptions and JsonShape and build_graph and __version__'
+    subprocess.run([sys.executable, '-c', code], check=True)  # noqa: S603 - this interpreter, fixed code
 
 
 class TestNarrowing:

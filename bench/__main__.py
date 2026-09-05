@@ -6,6 +6,7 @@ python -m bench run --bench large --config parse
 python -m bench baseline             # record bench/baselines.json
 python -m bench compare              # fail on a >25 % regression
 python -m bench linearity            # bench_large against a half-size corpus
+python -m bench startup              # cold process, package and CLI startup
 ```
 
 Each measurement runs in a **fresh subprocess**. `harness.py` explains why in
@@ -28,6 +29,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -230,12 +232,40 @@ def linearity(repeat: int, scale: float) -> int:
     return 0
 
 
+# -- startup ------------------------------------------------------------------
+
+_STARTUP_CASES = (
+    ('python', ('-c', 'pass')),
+    ('import pyraml', ('-c', 'import pyraml')),
+    ('import parse API', ('-c', 'from pyraml import ParseOptions, parse_from_path')),
+    ('cli --version', ('-m', 'pyraml.cli', '--version')),
+)
+
+
+def startup(repeat: int) -> int:
+    """Measure cold imports in fresh interpreters; the parse benches start warm."""
+    timings: dict[str, float] = {}
+    for name, arguments in _STARTUP_CASES:
+        best = float('inf')
+        for _ in range(repeat):
+            started = time.perf_counter()
+            subprocess.run(  # noqa: S603 - this interpreter and fixed arguments
+                [sys.executable, *arguments], capture_output=True, check=True
+            )
+            best = min(best, time.perf_counter() - started)
+        timings[name] = best
+    process = timings['python']
+    for name, seconds in timings.items():
+        print(f'{name:<18} {seconds * 1e3:7.1f} ms  ({(seconds - process) * 1e3:7.1f} ms after process start)')
+    return 0
+
+
 # -- entry point --------------------------------------------------------------
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog='bench', description=__doc__)
-    parser.add_argument('command', choices=('run', 'baseline', 'compare', 'linearity', 'worker'))
+    parser.add_argument('command', choices=('run', 'baseline', 'compare', 'linearity', 'startup', 'worker'))
     parser.add_argument('rest', nargs='*')
     parser.add_argument('--bench', action='append', choices=[bench.name for bench in BENCHES])
     parser.add_argument('--config', action='append', choices=CONFIGS)
@@ -252,6 +282,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == 'linearity':
         return linearity(args.repeat, args.scale)
+    if args.command == 'startup':
+        return startup(args.repeat)
 
     names = args.bench or [bench.name for bench in BENCHES]
     configs = args.config or list(CONFIGS)

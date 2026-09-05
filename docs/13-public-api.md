@@ -202,6 +202,13 @@ it is what makes the paragraph above a working decision rather than a promise.
 any version: every name in `__all__` resolves, and no concrete kind is missing
 from it.
 
+The re-exports are loaded on first access and cached. This is invisible to
+ordinary imports, wildcard imports, `hasattr` and `dir`; only code inspecting
+`pyraml.__dict__` directly can observe that an export is absent before its first
+use. The package ships an `__init__.pyi` with eager declarations, so static
+analysis and editor completion see the full surface without importing the parser
+at runtime.
+
 ## 5. Data validation
 
 ```python

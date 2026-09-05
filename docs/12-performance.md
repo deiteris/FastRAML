@@ -372,6 +372,30 @@ the parser by hand.
 Diagnostics carry structured `info` dicts and format at render time
 ([11](11-diagnostics.md) § 8). No f-string is evaluated on a success path.
 
+### 22. Deferred uncommon dependencies
+
+`jsonschema` and `referencing` are imported only when a JSON Schema is compiled.
+Most RAML files never declare one, and importing those packages accounted for
+about 59 ms of a 136 ms package import on Windows / CPython 3.12. A
+schema-bearing parse pays the same cost later, when it first needs the libraries;
+ordinary imports and parses do not. The standard-library JSON decoder is
+likewise loaded on first inline JSON value or JSON Schema rather than for every
+library import.
+
+The pluralization dictionary is also built only when `!pluralize` or
+`!singularize` is applied. Those are two of ten template actions and cost about
+4 ms to import and initialise even in a document with no templates.
+
+The top-level package uses module `__getattr__` to load each public export on
+first access and then caches it in the module. `__all__`, wildcard imports,
+`dir(pyraml)` and ordinary attribute access retain their normal behaviour; the
+parallel `__init__.pyi` exposes the same eager surface to type checkers without
+executing it. The CLI similarly imports parser, graph and query modules only in
+the commands that use them. On the same machine, median cold `import pyraml`
+moved from 158.5 ms to 23.2 ms, and `pyraml --version` from 168.7 ms to 48.1 ms.
+Importing the actual parse entry points remains about 96 ms, as expected: a
+parse needs PyYAML and the model even though a bare package import does not.
+
 ## Part 4 — Budgets and measurement
 
 None of the above is worth anything unmeasured.
@@ -409,7 +433,13 @@ python -m bench run --bench large --scale .5
 python -m bench baseline                     # record bench/baselines.json
 python -m bench compare                      # fail on a >25 % regression
 python -m bench linearity                    # the hard requirement, measured
+python -m bench startup                      # cold package and CLI startup
 ```
+
+The parse benches time work after imports. `startup` instead launches a fresh
+interpreter for each repeat and reports both total time and time beyond a bare
+Python process. It covers `import pyraml`, importing the parse entry points, and
+the CLI's `--version` path.
 
 Three implementation decisions the specification above did not settle, each of
 which a simpler harness gets wrong:

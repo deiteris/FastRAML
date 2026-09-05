@@ -1,7 +1,8 @@
 # 16. The graph projection
 
-**Status: built.** `pyraml/graph.py` and `pyraml/render.py`, and the `graph`,
-`refs`, `deps`, `show` and `query` verbs of the CLI ([13](13-public-api.md) § 8).
+**Status: built.** `pyraml/graph.py`, `pyraml/queries.py`, `pyraml/render.py` and
+`pyraml/diff.py`, behind the `graph`, `list`, `refs`, `deps`, `show`, `query` and
+`diff` verbs of the CLI ([13](13-public-api.md) § 8).
 
 This document owns one area: turning the parsed model into something you can
 *ask questions of*. It settles the vocabulary, the IRI scheme, what is projected
@@ -238,6 +239,29 @@ query for a property nothing here needs.
 
 Order is therefore available to the Python API and to `--format json`, and absent
 from Turtle and N-Triples. Where order matters, read the graph directly.
+
+### 3.5 The inventory, and a miss that is not a dead end
+
+`find` answers "which node is this name?". `Graph.entries()` answers the question
+that comes before it — **what names are there** — returning `(kind, name, iri)`
+for every declaration plus every endpoint and operation. That is exactly the set
+`find` resolves to one node, so a listed name is one the caller can use, and a
+test asserts it for every row.
+
+Deliberately not every node. On a real document the nodes inside declarations
+outnumber the declarations about twenty to one, and they are reached by walking
+rather than by naming; listing them buries the answer in the question. Sorted by
+kind then name, so two runs diff cleanly rather than churning.
+
+`Graph.suggest(name)` is for the miss. `difflib.get_close_matches` first, then a
+substring pass — the second is not belt-and-braces: `get_close_matches` is
+ratio-based, so a half-remembered fragment (`List` against `UserList`, `user`
+against `userLoginInfo`) scores below any cutoff worth using, and typing a
+fragment is the commonest miss there is.
+
+It **suggests and never substitutes**. Running the nearest name answers a
+question the caller did not ask, which is the same principle as § 3.3's refusal
+to pick from a genuine ambiguity.
 
 ## 4. What is deliberately not projected
 

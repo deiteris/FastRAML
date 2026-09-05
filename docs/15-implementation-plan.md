@@ -742,7 +742,7 @@ In rough priority order:
 
    **The first of these is built and lives in-tree**: the graph projection
    ([16](16-graph.md)) — `graph.py`, `queries.py`, `render.py` and `diff.py`,
-   behind six CLI verbs. It is in the
+   behind seven CLI verbs. It is in the
    package rather than beside it only because the CLI needs it; it is still a
    consumer, it decides no RAML rule, and nothing in the model imports it. It
    required no parser change, which is the claim this item makes.

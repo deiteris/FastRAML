@@ -4,6 +4,7 @@
 pyraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE...
 pyraml info [-w ROOT] [-r] FILE
 pyraml graph [--format nt|turtle|dot|json] FILE
+pyraml list FILE [PATTERN]
 pyraml refs FILE NAME
 pyraml deps FILE NAME
 pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
@@ -82,31 +83,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     _add_common(graph)
 
-    for name, direction in (('refs', 'uses'), ('deps', 'is made of')):
-        walk = commands.add_parser(name, help=f'what {direction} a named type, with the route to it')
-        walk.add_argument('files', metavar='FILE', nargs=1)
-        walk.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
-        walk.add_argument('--json', action='store_true', help='one JSON object per result')
-        walk.add_argument('--depth', type=int, default=None, metavar='N', help='stop after N hops')
-        walk.add_argument(
-            '--kind',
-            action='append',
-            metavar='KIND',
-            help='keep only results of this kind, e.g. Operation; repeatable',
-        )
-        walk.add_argument('--limit', type=int, default=0, metavar='N', help='print at most N results (0: all)')
-        _add_common(walk)
-
-    show = commands.add_parser('show', help='the effective view of one type, as RAML (doc 16 section 9)')
-    show.add_argument('files', metavar='FILE', nargs=1)
-    show.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
-    show.add_argument(
-        '--depth',
-        type=int,
-        default=1,
-        help='levels to expand; 1 names nested types rather than opening them (default: 1)',
-    )
-    _add_common(show)
+    _add_navigation(commands)
 
     changed = commands.add_parser('diff', help='what changed between two versions, and what it breaks')
     changed.add_argument('files', metavar='FILE', nargs=2, help='the old document, then the new one')
@@ -140,10 +117,56 @@ def _parser() -> argparse.ArgumentParser:
         refs=_walk,
         deps=_walk,
         show=_show_type,
+        list=_list,
         diff=_diff,
         query=_query,
     )
     return parser
+
+
+def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The verbs that take you around a document rather than judging it.
+
+    Split out of `_parser` for its statement count alone, but the grouping is
+    real: `list` says what can be named, `refs`/`deps` say what reaches a name,
+    and `show` says what one name resolves to.
+    """
+    for name, direction in (('refs', 'uses'), ('deps', 'is made of')):
+        walk = commands.add_parser(name, help=f'what {direction} a named type, with the route to it')
+        walk.add_argument('files', metavar='FILE', nargs=1)
+        walk.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
+        walk.add_argument('--json', action='store_true', help='one JSON object per result')
+        walk.add_argument('--depth', type=int, default=None, metavar='N', help='stop after N hops')
+        walk.add_argument(
+            '--kind',
+            action='append',
+            metavar='KIND',
+            help='keep only results of this kind, e.g. Operation; repeatable',
+        )
+        walk.add_argument('--limit', type=int, default=0, metavar='N', help='print at most N results (0: all)')
+        _add_common(walk)
+
+    catalogue = commands.add_parser('list', help='what is in the document, by kind and name')
+    catalogue.add_argument('files', metavar='FILE', nargs=1)
+    catalogue.add_argument(
+        'pattern', metavar='PATTERN', nargs='?', help='keep only names containing this (case-insensitive)'
+    )
+    catalogue.add_argument('--json', action='store_true', help='one JSON object per entry')
+    catalogue.add_argument(
+        '--kind', action='append', metavar='KIND', help='keep only this kind, e.g. EndPoint; repeatable'
+    )
+    _add_common(catalogue)
+
+    show = commands.add_parser('show', help='the effective view of one type, as RAML (doc 16 section 9)')
+    show.add_argument('files', metavar='FILE', nargs=1)
+    show.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
+    show.add_argument(
+        '--depth',
+        type=int,
+        default=1,
+        help='levels to expand; 1 names nested types rather than opening them (default: 1)',
+    )
+    _add_common(show)
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
@@ -292,6 +315,40 @@ def _show_type(args: argparse.Namespace) -> int:
         return EXIT_INVALID
     for line in lines:
         print(line)
+    return EXIT_OK
+
+
+def _list(args: argparse.Namespace) -> int:
+    """The inventory: what this document holds that can be named.
+
+    `refs`, `deps` and `show` all take a NAME, and until this verb existed the
+    only ways to learn one were `graph --format json` piped through a filter,
+    a SPARQL query needing an optional dependency, or guessing. Counting is what
+    `info` does; this names them.
+    """
+    built = _built(args)
+    if built is None:
+        return EXIT_INVALID
+    graph, _ = built
+
+    entries = graph.entries(args.kind)
+    if args.pattern:
+        wanted = args.pattern.casefold()
+        entries = [entry for entry in entries if wanted in entry[1].casefold()]
+
+    for kind, name, iri in entries:
+        if args.json:
+            import json  # noqa: PLC0415 - only JSON output needs the encoder
+
+            print(json.dumps({'kind': kind, 'name': name, 'iri': iri, 'at': _position_of(graph, iri)}))
+            continue
+        print(f'{kind:<16} {_position_of(graph, iri):<22} {name}')
+
+    if not entries:
+        sys.stdout.flush()
+        detail = f' matching {args.pattern!r}' if args.pattern else ''
+        print(f'nothing{detail}', file=sys.stderr)
+        return EXIT_INVALID
     return EXIT_OK
 
 
@@ -584,6 +641,14 @@ def _resolve(graph: Graph, name: str) -> str | None:
     found = graph.find(name)
     if not found:
         print(f'{name}: no such node', file=sys.stderr)
+        # A miss is still a miss — the nearest name is not run, because that
+        # answers a question the caller did not ask, exactly as the ambiguity
+        # branch below refuses to pick. But a dead end helps nobody.
+        near = graph.suggest(name)
+        if near:
+            print(f'did you mean: {", ".join(near)}?', file=sys.stderr)
+        else:
+            print("try 'pyraml list' to see what is here", file=sys.stderr)
         return None
     if len(found) > 1:
         # Two libraries may declare the same name, and picking one silently

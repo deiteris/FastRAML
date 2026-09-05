@@ -42,6 +42,7 @@ And, because the tedious part of RAML is following resolved links by hand, a
 view of the **effective** model as a graph ([docs/16](docs/16-graph.md)):
 
 ```bash
+pyraml list api.raml               # what is in here: every name you can ask about
 pyraml refs api.raml User          # every operation that can carry a User, with the route
 pyraml deps api.raml User          # everything User is built from
 pyraml graph api.raml              # the whole projection as Turtle (or nt, dot, json)

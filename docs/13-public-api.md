@@ -287,6 +287,7 @@ parsing rule lives in `pyraml/cli.py`.
 pyraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
 pyraml info [-w ROOT] [-r] FILE       # backend, timings, counts
 pyraml graph [--format nt|turtle|dot|json] FILE
+pyraml list FILE [PATTERN] [--kind K] [--json]             # what is in here
 pyraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
 pyraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made of
 pyraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
@@ -295,7 +296,7 @@ pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
 ```
 
 `validate` and `info` parse with `unwrap=True, validate=True`: their job is to
-find faults. The six graph verbs parse with `validate=False` — a document with
+find faults. The seven graph verbs parse with `validate=False` — a document with
 a bad example still has a graph worth reading, and refusing to draw one would
 make the tool useless exactly where navigating is most wanted.
 
@@ -334,6 +335,30 @@ Nothing is written to stderr in this mode.
 DOT, or plain JSON. The vocabulary and the IRI scheme are
 [16](16-graph.md) §§ 2–3.
 
+`list` is the **inventory**, and it comes first: every other navigation verb
+takes a NAME, and this is how you learn one.
+
+```
+Type          api.raml:6136   userMe
+EndPoint      api.raml:2515   /login
+Trait         lib.raml:12     hasConflict
+```
+
+Exactly the set `find` resolves to one node — every declaration (type, trait,
+resource type, security scheme, annotation type) plus endpoints and operations.
+**Not every node.** The nodes inside a declaration outnumber the declarations
+about twenty to one on a real document and are reached by walking rather than by
+naming; listing them would bury the answer in the question. `PATTERN` filters by
+substring, case-insensitively, and `--kind` narrows as it does on `refs`.
+
+A name it prints is a name the other verbs accept — there is a test asserting
+that for every row, because a listing whose names `show` then rejects would be
+worse than none.
+
+Until this verb existed the only ways to learn a name were `graph --format json`
+piped through a filter, a catalogue query needing `pyoxigraph`, or guessing.
+`info` counts — `types 1288` — which is not the same question.
+
 `refs` and `deps` are one traversal in two directions — `refs` walks the edges
 backwards from a named type to everything that can carry it, `deps` walks them
 forwards to everything it is built from. Each result line is a **route**, not
@@ -359,6 +384,19 @@ node inside one that happens to carry the same name ([16](16-graph.md) § 3.3).
 Two libraries declaring one name is a real ambiguity: the verb lists the
 candidates and exits 1 rather than picking one, and the IRI it prints is what you
 pass back.
+
+A name that matches nothing gets the near ones, from the same set `list` prints:
+
+```
+Usre: no such node
+did you mean: User, UserList?
+```
+
+Suggested, never substituted — running the nearest name answers a question the
+caller did not ask, which is the same reason an ambiguity is reported rather than
+resolved. Still exit 1. `difflib` alone is not enough: it is ratio-based, so a
+half-remembered fragment (`List` against `UserList`) scores below any usable
+cutoff, and a substring pass covers what it misses.
 
 `show` prints the **effective view** of one type as RAML: every inherited
 property in one place, each constraint beside the property it constrains, and

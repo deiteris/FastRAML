@@ -315,6 +315,57 @@ class Graph:
             return matched
         return [iri for iri in matched if self.nodes[iri].kinds[0] in kinds]
 
+    def entries(self, kinds: Sequence[str] | None = None) -> list[tuple[str, str, str]]:
+        """The navigable inventory: `(kind, name, iri)`, in declaration order.
+
+        What `find` can resolve to exactly one node, which is the set a reader
+        may usefully pass back to `refs`, `deps` or `show`. Every *declaration*
+        — a type, trait, resource type, security scheme or annotation type —
+        plus endpoints and operations, which have no declaration bucket but are
+        the entities a reader most often starts from.
+
+        Deliberately not every node. The nodes inside a declaration outnumber
+        the declarations by twenty to one on a real document and are reached by
+        walking, not by naming: listing them would bury the answer in the
+        question. `kinds` narrows further.
+
+        A name that two declarations share appears twice, because it is two
+        entities and `find` will rightly call it ambiguous. Sorting is by kind
+        and then by name so the output is stable across parses; declaration
+        order within a kind is not preserved here, and is not what a reader
+        scanning for a name wants.
+        """
+        wanted = None if kinds is None else {kind.casefold() for kind in kinds}
+        found = []
+        for iri, node in self.nodes.items():
+            kind = node.kinds[0]
+            if not (_is_declaration(iri) or kind in ('EndPoint', 'Operation')):
+                continue
+            if wanted is not None and kind.casefold() not in wanted:
+                continue
+            found.append((kind, self.label(iri), iri))
+        return sorted(found, key=lambda entry: (entry[0], entry[1]))
+
+    def suggest(self, name: str, limit: int = 5) -> list[str]:
+        """Names close to `name`, for a miss that would otherwise be a dead end.
+
+        Suggests; never substitutes. Running the nearest name answers a question
+        the caller did not ask, which is the same reason `find` reports an
+        ambiguity rather than picking from it.
+        """
+        import difflib  # noqa: PLC0415 - only a failed lookup pays for this
+
+        names = list(dict.fromkeys(name for _, name, _ in self.entries()))
+        close = difflib.get_close_matches(name, names, n=limit, cutoff=0.6)
+        if close:
+            return close
+        # `get_close_matches` is ratio-based, so a short query inside a long
+        # name — `user` against `userLoginInfo` — scores below any cutoff worth
+        # using. A reader typing a fragment of the name they half-remember is
+        # the commonest miss there is.
+        folded = name.casefold()
+        return [candidate for candidate in names if folded in candidate.casefold()][:limit]
+
     # -- traversal ------------------------------------------------------------
 
     def walk(

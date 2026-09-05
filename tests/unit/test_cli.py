@@ -267,6 +267,95 @@ class TestGraphVerbs:
         assert '@prefix raml:' in capsys.readouterr().out
 
 
+class TestListVerb:
+    """docs/13 § 8.1. The inventory — what `refs`, `deps` and `show` accept.
+
+    Before it existed, learning a name meant `graph --format json` piped through
+    a filter, a SPARQL query needing an optional dependency, or guessing.
+    """
+
+    def test_it_names_declarations_and_endpoints(self, graphed, capsys):
+        assert main(['list', graphed]) == EXIT_OK
+        out = capsys.readouterr().out
+        assert 'User' in out
+        assert 'Entity' in out
+        assert '/users' in out
+
+    def test_each_row_carries_a_position_to_go_to(self, graphed, capsys):
+        main(['list', graphed])
+        assert 'g.raml:' in capsys.readouterr().out
+
+    def test_a_pattern_filters_by_name_case_insensitively(self, graphed, capsys):
+        assert main(['list', graphed, 'user']) == EXIT_OK
+        out = capsys.readouterr().out
+        assert 'User' in out
+        assert 'Entity' not in out
+
+    def test_kind_narrows_and_is_repeatable(self, graphed, capsys):
+        assert main(['list', graphed, '--kind', 'EndPoint']) == EXIT_OK
+        out = capsys.readouterr().out
+        assert '/users' in out
+        assert 'Entity' not in out
+
+    def test_it_does_not_list_the_nodes_inside_a_declaration(self, graphed, capsys):
+        """Twenty to one on a real document, and reached by walking rather than
+        by naming. Listing them would bury the answer in the question.
+        """
+        main(['list', graphed])
+        assert 'Payload' not in capsys.readouterr().out
+
+    def test_every_name_it_prints_can_be_passed_back(self, graphed, capsys):
+        """The contract that makes it useful. A listed name that `show` then
+        rejects would be worse than no listing.
+        """
+        main(['list', graphed, '--json'])
+        rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        assert rows
+        for row in rows:
+            assert main(['show', graphed, row['name']]) == EXIT_OK, row['name']
+            capsys.readouterr()
+
+    def test_no_match_exits_one_and_says_so(self, graphed, capsys):
+        assert main(['list', graphed, 'zzz']) == EXIT_INVALID
+        assert 'nothing' in capsys.readouterr().err
+
+    def test_json_is_one_object_per_entry(self, graphed, capsys):
+        assert main(['list', graphed, '--json']) == EXIT_OK
+        rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        assert rows
+        assert all({'kind', 'name', 'iri', 'at'} <= row.keys() for row in rows)
+
+
+class TestSuggestions:
+    """A miss should not be a dead end — but it stays a miss."""
+
+    def test_a_typo_is_offered_the_near_name(self, graphed, capsys):
+        assert main(['refs', graphed, 'Usre']) == EXIT_INVALID
+        err = capsys.readouterr().err
+        assert 'did you mean' in err
+        assert 'User' in err
+
+    def test_a_remembered_fragment_is_offered_too(self, graphed, capsys):
+        """`difflib` is ratio-based, so a short query inside a long name scores
+        below any usable cutoff. That is the commonest miss there is.
+        """
+        assert main(['deps', graphed, 'Ent']) == EXIT_INVALID
+        assert 'Entity' in capsys.readouterr().err
+
+    def test_nothing_close_points_at_the_inventory(self, graphed, capsys):
+        assert main(['show', graphed, 'zzzqqq']) == EXIT_INVALID
+        err = capsys.readouterr().err
+        assert 'did you mean' not in err
+        assert 'pyraml list' in err
+
+    def test_the_near_name_is_suggested_and_not_run(self, graphed, capsys):
+        """Substituting answers a question the caller did not ask — the same
+        reason an ambiguous name is reported rather than picked from.
+        """
+        assert main(['refs', graphed, 'Usre']) == EXIT_INVALID
+        assert '-returns->' not in capsys.readouterr().out
+
+
 class TestQueryVerb:
     def test_without_a_store_it_says_so_and_exits_one(self, graphed, capsys, monkeypatch):
         import builtins

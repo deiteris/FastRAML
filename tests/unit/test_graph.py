@@ -353,3 +353,64 @@ class TestSerialisation:
         payload = json.loads(json.dumps(graph.to_json()))
         assert len(payload['nodes']) == len(graph.nodes)
         assert len(payload['edges']) == len(graph.edges)
+
+
+class TestTheInventory:
+    """`entries` and `suggest` — docs/16 § 3.5. What a reader can name.
+
+    `find` turns a name into a node; these two answer the question that comes
+    first, which is what names there are.
+    """
+
+    def test_it_lists_declarations_from_every_file(self, graph):
+        names = {name for _, name, _ in graph.entries()}
+        assert {'Wrapper', 'Entity', 'Address', 'User', 'UserList', 'Tree'} <= names
+
+    def test_it_lists_endpoints_and_operations_too(self, graph):
+        by_kind: dict[str, set[str]] = {}
+        for kind, name, _ in graph.entries():
+            by_kind.setdefault(kind, set()).add(name)
+        assert '/users/{userId}' in by_kind['EndPoint']
+        assert 'get' in by_kind['Operation']
+
+    def test_it_omits_the_nodes_inside_a_declaration(self, graph):
+        """The ones reached by walking rather than by naming. On a real document
+        they outnumber the declarations twenty to one.
+        """
+        kinds = {kind for kind, _, _ in graph.entries()}
+        assert not kinds & {'Payload', 'Response', 'Property', 'Parameter', 'Request'}
+
+    def test_every_entry_resolves_back_to_exactly_one_node(self, graph):
+        """The contract the CLI depends on: a listed name is one you can use."""
+        for _, _, iri in graph.entries():
+            assert iri in graph.nodes
+
+    def test_kinds_narrows(self, graph):
+        assert {kind for kind, _, _ in graph.entries(['EndPoint'])} == {'EndPoint'}
+
+    def test_it_is_stable_across_parses(self, workspace):
+        """Sorted, so a reader diffing two runs sees changes and not churn."""
+        root = workspace({'api.raml': API, 'lib.raml': LIB})
+
+        def once():
+            built = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+            return [(kind, name) for kind, name, _ in built.entries()]
+
+        assert once() == once()
+
+    def test_a_typo_is_suggested_the_near_name(self, graph):
+        assert 'Address' in graph.suggest('Adress')
+
+    def test_a_remembered_fragment_is_suggested_too(self, graph):
+        """`difflib` is ratio-based, so `User` inside `UserList` scores below any
+        cutoff worth using — and a half-remembered fragment is the common miss.
+        """
+        assert 'UserList' in graph.suggest('List')
+
+    def test_nothing_close_suggests_nothing(self, graph):
+        assert graph.suggest('zzzqqq') == []
+
+    def test_it_never_suggests_a_name_that_is_not_listed(self, graph):
+        listed = {name for _, name, _ in graph.entries()}
+        for probe in ('Adress', 'List', 'user', 'get', 'Tre'):
+            assert set(graph.suggest(probe)) <= listed, probe

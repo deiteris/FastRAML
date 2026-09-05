@@ -61,8 +61,8 @@ what it got wrong.
 `graph.py` projects the finished effective model as a labelled graph with stable
 IRIs; `queries.py` is the SPARQL catalogue, `render.py` the effective view of a
 type or endpoint as RAML, `diff.py` the version comparison and its
-backward-compatibility policy. Six CLI verbs — `graph`, `refs`, `deps`, `show`,
-`query`, `diff`. It runs after P10, decides no RAML rule, and nothing in the
+backward-compatibility policy. Seven CLI verbs — `graph`, `list`, `refs`,
+`deps`, `show`, `query`, `diff`. It runs after P10, decides no RAML rule, and nothing in the
 model imports it; SPARQL needs `pyoxigraph`, which the package does not depend
 on, and the graph itself needs nothing. Keep it that way: a rule that belongs to
 the language belongs in a pass.

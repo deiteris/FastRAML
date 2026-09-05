@@ -201,12 +201,28 @@ class Graph:
     most of what a navigation question turns out to be.
     """
 
-    __slots__ = ('_incoming', '_outgoing', 'base', 'edges', 'nodes')
+    __slots__ = ('_incoming', '_outgoing', '_shapes', 'base', 'edges', 'nodes', 'root')
 
-    def __init__(self, base: str, nodes: dict[str, GraphNode], edges: list[Edge]) -> None:
+    def __init__(
+        self,
+        base: str,
+        nodes: dict[str, GraphNode],
+        edges: list[Edge],
+        shapes: dict[str, BaseShape] | None = None,
+        root: str = '',
+    ) -> None:
         self.base = base
+        #: The entry document's directory URI. What the IRIs above are
+        #: relative to, and what a consumer needs to turn a shape's absolute
+        #: `location` back into the path a person typed.
+        self.root = root
         self.nodes = nodes
         self.edges = edges
+        #: IRI → the declaration it was projected from. References, not copies:
+        #: the graph was built from a live model and this is the way back to it.
+        #: Navigation finds a node here and then asks the model the detailed
+        #: question, which is the split docs/16 § 5 describes.
+        self._shapes = shapes or {}
         self._outgoing: dict[str, list[Edge]] = {}
         self._incoming: dict[str, list[Edge]] = {}
         for edge in edges:
@@ -227,6 +243,16 @@ class Graph:
         """Edges arriving at `iri`. The half a tree walk cannot give you."""
         edges = self._incoming.get(iri, [])
         return edges if predicates is None else [e for e in edges if e.predicate in predicates]
+
+    def shape_at(self, iri: str) -> BaseShape | None:
+        """The declaration behind a node, or `None` for a node that is not a type.
+
+        The graph keeps every entity's *structure*; the model keeps its detail.
+        A caller that has located something here and now wants its facets asks
+        for the shape rather than reading the projection, which deliberately
+        carries only what a traversal needs (§ 2.5).
+        """
+        return self._shapes.get(iri)
 
     def kind_of(self, iri: str) -> str:
         node = self.nodes.get(iri)
@@ -438,7 +464,7 @@ def build_graph(raml: Raml, *, base: str = DEFAULT_BASE) -> Graph:
     """Project a parsed model. Use `ParseOptions(unwrap=True)` — see the module docstring."""
     builder = _Builder(raml, base)
     builder.run()
-    return Graph(base, builder.nodes, builder.edges)
+    return Graph(base, builder.nodes, builder.edges, builder.shapes, builder.root)
 
 
 class _Builder:
@@ -449,7 +475,7 @@ class _Builder:
     for exactly this reason (`converter/jsonld.go`, `preRegisterTypes`).
     """
 
-    __slots__ = ('_segments', 'base', 'claimed', 'edges', 'emitted', 'nodes', 'raml', 'root', 'shape_iris')
+    __slots__ = ('_segments', 'base', 'claimed', 'edges', 'emitted', 'nodes', 'raml', 'root', 'shape_iris', 'shapes')
 
     def __init__(self, raml: Raml, base: str) -> None:
         self.raml = raml
@@ -457,6 +483,8 @@ class _Builder:
         self.nodes: dict[str, GraphNode] = {}
         self.edges: list[Edge] = []
         self.shape_iris: dict[int, str] = {}
+        #: The inverse of `shape_iris`, by IRI, for `Graph.shape_at`.
+        self.shapes: dict[str, BaseShape] = {}
         #: IRI → the `BaseShape.id` holding it. Two shapes given the same
         #: structural name would otherwise merge into one node in silence; see
         #: `claim`.
@@ -781,6 +809,7 @@ class _Builder:
         if base.id in self.emitted:
             return iri
         self.emitted.add(base.id)
+        self.shapes[iri] = base
 
         kind = type(base.shape).__name__ if base.shape is not None else 'UnknownShape'
         self.node(

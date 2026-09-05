@@ -330,3 +330,48 @@ class TestTheGraphProjectsTheWholeCorpus:
                 if owner.setdefault(iri, shape_id) != shape_id:
                     offenders.append(f'{fixture_id(root, path)}: {iri}')
         assert not offenders, '\n'.join(offenders[:20])
+
+
+class TestEveryTypeRenders:
+    """Law 13 — every declared type has an effective view (docs/16 § 9).
+
+    Two claims, and the second is the one that can rot quietly. `render` must
+    not raise on anything the corpus declares, and its output must **parse as
+    YAML**, because § 9 says the view pastes back into a document. A renderer
+    that emits a key it cannot quote produces something that looks right and is
+    not loadable, which is how the `//:` pattern property was found.
+    """
+
+    def test_every_declared_type_renders_as_loadable_yaml(self):
+        import yaml
+
+        from pyraml import ParseOptions, RamlError, parse_from_path
+        from pyraml.graph import build_graph
+        from pyraml.render import render
+
+        root = _root_or_skip()
+        options = ParseOptions(unwrap=True)
+        rendered = 0
+        offenders: list[str] = []
+        for path in collect_fixtures('valid'):
+            try:
+                graph = build_graph(parse_from_path(path, options))
+            except (RamlError, OSError):
+                continue
+            for iri, node in graph.nodes.items():
+                shape = graph.shape_at(iri)
+                if shape is None or node.kinds[0] != 'Type':
+                    continue
+                name = f'{fixture_id(root, path)} {iri.rsplit("/", 1)[-1]}'
+                try:
+                    text = '\n'.join(render(shape, depth=2, root=graph.root))
+                except Exception as err:  # any failure at all is the finding
+                    offenders.append(f'{name}: {type(err).__name__}: {err}')
+                    continue
+                rendered += 1
+                try:
+                    yaml.safe_load(text)
+                except yaml.YAMLError as err:
+                    offenders.append(f'{name}: not loadable: {str(err)[:80]}')
+        assert rendered > 1000, f'the corpus was not found ({rendered} rendered)'
+        assert not offenders, '\n'.join(offenders[:20])

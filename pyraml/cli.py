@@ -50,6 +50,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _graph(args)
         case 'refs' | 'deps':
             return _walk(args)
+        case 'show':
+            return _show_type(args)
         case 'query':
             return _query(args)
         case _:
@@ -93,6 +95,17 @@ def _parser() -> argparse.ArgumentParser:
         walk.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
         walk.add_argument('--json', action='store_true', help='one JSON object per result')
         _add_common(walk)
+
+    show = commands.add_parser('show', help='the effective view of one type, as RAML (doc 16 section 9)')
+    show.add_argument('files', metavar='FILE', nargs=1)
+    show.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
+    show.add_argument(
+        '--depth',
+        type=int,
+        default=1,
+        help='levels to expand; 1 names nested types rather than opening them (default: 1)',
+    )
+    _add_common(show)
 
     query = commands.add_parser('query', help='run SPARQL over the graph (needs pyoxigraph)')
     query.add_argument('files', metavar='FILE', nargs='*')
@@ -215,6 +228,32 @@ def _graph(args: argparse.Namespace) -> int:
         return EXIT_OK
     emit = {'nt': graph.to_ntriples, 'turtle': graph.to_turtle, 'dot': graph.to_dot}[args.format]
     for line in emit():
+        print(line)
+    return EXIT_OK
+
+
+def _show_type(args: argparse.Namespace) -> int:
+    """The effective view: every inherited property in one place, with origins.
+
+    Renders from the **model**, not from the graph — the graph is only what
+    turns `NAME` into one declaration. The projection drops facet detail on
+    purpose, so rendering from it would show a lossy copy (docs/16 § 9).
+    """
+    from pyraml.render import render  # noqa: PLC0415 - graph commands only
+
+    graph = _built(args)
+    if graph is None:
+        return EXIT_INVALID
+    iri = _resolve(graph, args.name)
+    if iri is None:
+        return EXIT_INVALID
+    shape = graph.shape_at(iri)
+    if shape is None:
+        # A trait, a security scheme, an endpoint: real nodes with no type
+        # behind them. Saying which it is beats "not found", which is false.
+        print(f'{args.name}: {graph.kind_of(iri)} is not a type; try `pyraml refs`', file=sys.stderr)
+        return EXIT_INVALID
+    for line in render(shape, depth=max(1, args.depth), root=graph.root):
         print(line)
     return EXIT_OK
 

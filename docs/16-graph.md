@@ -1,7 +1,7 @@
 # 16. The graph projection
 
-**Status: built.** `pyraml/graph.py`, and the `graph` / `refs` / `deps` / `query`
-verbs of the CLI ([13](13-public-api.md) § 8).
+**Status: built.** `pyraml/graph.py` and `pyraml/render.py`, and the `graph`,
+`refs`, `deps`, `show` and `query` verbs of the CLI ([13](13-public-api.md) § 8).
 
 This document owns one area: turning the parsed model into something you can
 *ask questions of*. It settles the vocabulary, the IRI scheme, what is projected
@@ -490,3 +490,75 @@ store stayed in memory. The parse figure was inflated by 2.5x, and the ratio was
 wrong by a factor of nearly three: the projection costs two thirds of the parse,
 not a quarter. `bench/harness.py` uses a fresh subprocess to prevent exactly
 this, and its docstring says so.
+
+## 9. The effective view
+
+`pyraml show FILE NAME`, and `pyraml/render.py` behind it.
+
+This answers the question a reader asks most often, and the one neither `refs`
+nor a query answers: **what is this type, actually?** Every inherited property
+in one place, every constraint beside the property it constrains, and for each
+one the file and line it was really written on.
+
+```
+Admin:                # api.raml:46
+  type: object
+  inherits: [User, Entity]
+  properties:
+    level: integer    # api.raml:49
+    name: string      # User, api.raml:44
+    address: Address  # User, api.raml:45
+    id:               # Entity, api.raml:31
+      type: string
+      maxLength: 36
+```
+
+### 9.1 Why it does not go through the graph
+
+The graph resolves the *name* — `Graph.find` picks one declaration, and
+`Graph.shape_at` hands back the shape it was projected from. Everything after
+that reads the **model**.
+
+That split is deliberate. The projection carries what a traversal needs and
+drops facet detail on purpose (§ 2.5), so rendering from it would render a lossy
+copy. This is the "find here, ask the model there" division the design has
+assumed since § 5: the graph is an index, not a replacement for the model.
+
+### 9.2 The output is RAML
+
+Not a table, and not a bespoke format. It is the notation the reader already
+knows, it pastes back into a document, and two versions of it diff. Origins ride
+in trailing comments so the whole thing stays loadable YAML — which is a corpus
+law rather than an intention (docs/14 § 4, law 13), because a renderer that
+emits a key it forgot to quote produces something that looks right and will not
+load. Three fixtures do exactly that: `//:`, the spec's way to constrain every
+additional property, has an empty pattern and so an empty key.
+
+### 9.3 Where a property came from
+
+Each property is attributed to the **furthest** ancestor that declares it at the
+same position — `Admin.id` reports `Entity`, not `User`, even though after
+unwrap `User` carries it too.
+
+Position is what identifies "the same" property, and that is what makes the
+attribution useful rather than merely decorative: a subtype that *narrows* an
+inherited property re-declares it at its own line, so the position stops
+matching and the subtype is correctly named as the origin. That is the case a
+reader is usually trying to settle — *is this limit 36 or 8, and who set it?*
+
+This is per-**property** provenance, obtained for free from `location` and
+`key_pos`. Per-**facet** provenance — which link in the chain set `maxLength`
+when three of them mention it — is still not available; the parser knows at
+merge time and does not retain it (After-v1 item 4 in
+[15](15-implementation-plan.md)).
+
+### 9.4 Depth
+
+`--depth` counts levels of *expansion*. The default of 1 shows the type's own
+effective properties and names their types rather than opening them, because a
+named type is worth naming — the reader can ask for it by name, and a real API
+expands into far more than fits on a screen.
+
+Depth alone does not open a scalar: `level:` followed by `type: integer` is two
+lines saying what one line said. Only something with structure is opened, and a
+type cycle stops at its first re-entry however deep the walk was asked to go.

@@ -289,6 +289,7 @@ pyraml info [-w ROOT] [-r] FILE       # backend, timings, counts
 pyraml graph [--format nt|turtle|dot|json] FILE
 pyraml refs FILE NAME                 # what uses this type, and by what route
 pyraml deps FILE NAME                 # what this type is made of
+pyraml show FILE NAME [--depth N]     # the effective view of one type
 pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
 ```
 
@@ -349,6 +350,27 @@ node inside one that happens to carry the same name ([16](16-graph.md) § 3.3).
 Two libraries declaring one name is a real ambiguity: the verb lists the
 candidates and exits 1 rather than picking one, and the IRI it prints is what you
 pass back.
+
+`show` prints the **effective view** of one type as RAML: every inherited
+property in one place, each constraint beside the property it constrains, and
+each property tagged with the file and line it was really written on
+([16](16-graph.md) § 9).
+
+```
+Admin:                # api.raml:46
+  type: object
+  inherits: [User, Entity]
+  properties:
+    level: integer    # api.raml:49
+    name: string      # User, api.raml:44
+    id:               # Entity, api.raml:31
+      type: string
+      maxLength: 36
+```
+
+The output is loadable YAML, so it pastes back into a document and two versions
+diff. `--depth` expands nested types; the default of 1 names them instead, which
+is what keeps the output the size of a screen.
 
 `query` runs SPARQL, and needs **`pyoxigraph`**, which pyRAML does not depend on
 — `pip install pyraml[graph]`, or the verb tells you so and exits 1. All four

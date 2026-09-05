@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from pyraml.parser.directives import SecurityScheme
     from pyraml.parser.endpoints import Body, EndPoint, Operation
+    from pyraml.parser.security import SecuritySchemeDescription
     from pyraml.positions import Position
     from pyraml.registry import Raml
     from pyraml.types.base import BaseShape, Property
@@ -533,7 +534,7 @@ def _endpoint_body(endpoint: EndPoint, level: _Level, sources: Sources | None) -
         yield _Line(f'{level.indent}type: {endpoint.resource_type.name}')
     if endpoint.traits:
         yield _Line(f'{level.indent}is: [{", ".join(ref.name for ref in endpoint.traits)}]')
-    yield from _secured(endpoint.secured_by, level)
+    yield from _secured(endpoint.secured_by, level, sources)
     # Ancestor-declared parameters come first and are the ones a reader is least
     # likely to have in mind: they are written on a resource further up the path.
     yield from _parameters(endpoint.uri_parameters, 'uriParameters', level, sources, applied)
@@ -555,7 +556,7 @@ def _operation(
         yield _Line(f'{inner.indent}protocols: [{", ".join(operation.protocols)}]')
     if operation.traits:
         yield _Line(f'{inner.indent}is: [{", ".join(ref.name for ref in operation.traits)}]')
-    yield from _secured(operation.secured_by, inner)
+    yield from _secured(operation.secured_by, inner, sources)
 
     request = operation.request
     if request is not None:
@@ -609,26 +610,82 @@ def _parameters(
         yield from _one(key, prop.base, _contributor(prop.base, sources, applied), level)
 
 
-def _secured(schemes: list[SecurityScheme], level: _Level) -> Iterator[_Line]:
+def _label(scheme: SecurityScheme) -> str:
+    """One scheme as it is written, with any narrowed OAuth scopes."""
+    if scheme.is_null:
+        # `securedBy: [null]` *removes* inherited security (docs/09 § A3), and
+        # `null` is how RAML spells that — so it round-trips as itself.
+        return 'null'
+    if scheme.compiled_params:
+        return f'{scheme.name} ({", ".join(scheme.compiled_params)})'
+    return scheme.name
+
+
+def _secured(schemes: list[SecurityScheme], level: _Level, sources: Sources | None = None) -> Iterator[_Line]:
+    """`securedBy:`, and what each scheme adds to the request.
+
+    A scheme's `describedBy` declares headers, query parameters and responses
+    that a caller using it must supply or expect, and none of it was rendered —
+    so an operation's `Authorization` header, the one thing every caller needs,
+    appeared nowhere in the view.
+
+    **One block per scheme, never merged into the operation.** Spec § Applying
+    Security Schemes: a method "can be authenticated by *any* of the specified
+    security schemes", so three schemes are three ways to call it, not one call
+    carrying all three headers. Flattening them into the operation's `headers:`
+    would state something false. It would also need a precedence rule for a
+    response code the operation *and* the scheme both declare — a `401` from
+    both a trait and the scheme is the ordinary case here — and the spec defines
+    none, because it never merges them.
+
+    The flat form is kept when no scheme contributes anything, which is most
+    documents; a block per name with nothing in it is worse than a list.
+    """
     if not schemes:
         return
-    rendered = []
-    removed = False
-    for scheme in schemes:
-        if scheme.is_null:
-            # `securedBy: [null]` *removes* inherited security (docs/09 § A3),
-            # and `null` is how RAML spells that — so it round-trips as itself.
-            # The explanation goes in the line's note, never inside the flow
-            # sequence: a `#` there is not a comment, it is a syntax error.
-            rendered.append('null')
-            removed = True
-        elif scheme.compiled_params:
-            rendered.append(f'{scheme.name} ({", ".join(scheme.compiled_params)})')
-        else:
-            rendered.append(scheme.name)
-    yield _Line(
-        f'{level.indent}securedBy: [{", ".join(rendered)}]', 'null removes inherited security' if removed else ''
-    )
+    removed = any(scheme.is_null for scheme in schemes)
+    note = 'null removes inherited security' if removed else ''
+    described = [(scheme, _described(scheme)) for scheme in schemes]
+    if not any(description is not None for _, description in described):
+        yield _Line(f'{level.indent}securedBy: [{", ".join(_label(s) for s, _ in described)}]', note)
+        return
+
+    yield _Line(f'{level.indent}securedBy:', note)
+    inner = replace(level, indent=level.indent + '  ')
+    for scheme, description in described:
+        if description is None:
+            yield _Line(f'{inner.indent}{_key(_label(scheme))}:')
+            continue
+        where = _at(description.location, description.value_pos, level.root) if description.value_pos else ''
+        yield _Line(f'{inner.indent}{_key(_label(scheme))}:', where)
+        yield from _described_body(description, replace(inner, indent=inner.indent + '  '), sources)
+
+
+def _described(scheme: SecurityScheme) -> SecuritySchemeDescription | None:
+    """The scheme's `describedBy`, if it declares anything worth showing."""
+    definition = scheme.definition.resolved() if scheme.definition is not None else None
+    description = definition.described_by if definition is not None else None
+    if description is None:
+        return None
+    has_content = description.headers or description.query_parameters or description.responses
+    return description if has_content or description.query_string is not None else None
+
+
+def _described_body(description: SecuritySchemeDescription, level: _Level, sources: Sources | None) -> Iterator[_Line]:
+    empty: frozenset[str] = frozenset()
+    yield from _parameters(description.headers, 'headers', level, sources, empty)
+    yield from _parameters(description.query_parameters, 'queryParameters', level, sources, empty)
+    if description.query_string is not None:
+        yield _Line(f'{level.indent}queryString: {_type_name(description.query_string)}')
+    if description.responses:
+        yield _Line(f'{level.indent}responses:')
+        for response in description.responses.values():
+            code = replace(level, indent=level.indent + '  ')
+            yield _Line(f'{code.indent}{response.code}:', _at(response.location, response.key_pos, level.root))
+            body = replace(code, indent=code.indent + '  ')
+            yield from _prose(response, body.indent)
+            yield from _parameters(response.headers, 'headers', body, sources, empty)
+            yield from _bodies(response.bodies, body, sources, empty)
 
 
 def _applied(endpoint: EndPoint) -> frozenset[str]:

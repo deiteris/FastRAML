@@ -214,6 +214,16 @@ securitySchemes:
       accessTokenUri: https://e.test/t
       authorizationGrants: [authorization_code]
       scopes: [read, write]
+    describedBy:
+      headers:
+        Authorization:
+          type: string
+          description: Bearer token.
+      responses:
+        401:
+          description: Token missing or invalid.
+  plain:
+    type: Pass Through
 traits:
   paged:
     queryParameters:
@@ -234,7 +244,7 @@ types:
     properties:
       sku: string
       tag: string | nil
-securedBy: [oauth]
+securedBy: [oauth, plain]
 /items:
   description: Everything on sale.
   type: collection
@@ -315,7 +325,8 @@ class TestTheEndpointView:
         assert 'collection' not in TestOrigins.notes(text)['shared?']
 
     def test_inherited_security_is_shown_where_it_applies(self, endpoint):
-        assert 'securedBy: [oauth]' in endpoint('/items')
+        """Inherited from the API root, and invisible at the resource itself."""
+        assert set(loaded(endpoint('/items'))['/items']['securedBy']) == {'oauth', 'plain'}
 
     def test_securedby_null_round_trips_as_null(self, endpoint):
         """It *removes* inherited security (docs/09 § A3), and `null` is how
@@ -579,3 +590,49 @@ class TestAUnionNamesItsMembers:
         for an anonymous one rather than a replacement for the declared name.
         """
         assert loaded(shown('UserList'))['UserList']['items'] == 'User'
+
+
+class TestSecuritySchemesContribute:
+    """docs/16 § 9.8. `describedBy` reached the view not at all.
+
+    A scheme's headers, query parameters and responses are what a caller using
+    it must send and expect -- the `Authorization` header above all -- and none
+    of it was rendered.
+    """
+
+    def test_a_scheme_that_describes_nothing_keeps_the_flat_list(self, endpoint):
+        """A block per name with nothing in it is worse than a list."""
+        assert loaded(endpoint('/open'))['/open']['get']['securedBy'] == [None]
+
+    def test_a_describing_scheme_gets_a_block(self, endpoint):
+        secured = loaded(endpoint('/items'))['/items']['securedBy']
+        assert isinstance(secured, dict)
+        assert secured['oauth']['headers']['Authorization']['description'] == 'Bearer token.'
+
+    def test_its_responses_are_shown(self, endpoint):
+        secured = loaded(endpoint('/items'))['/items']['securedBy']
+        assert secured['oauth']['responses'][401]['description'] == 'Token missing or invalid.'
+
+    def test_a_scheme_without_a_describedby_is_still_named(self, endpoint):
+        """Every alternative has to appear, or the reader cannot tell that
+        calling it with a Pass Through scheme is an option at all.
+        """
+        assert 'plain' in loaded(endpoint('/items'))['/items']['securedBy']
+
+    def test_the_contributions_are_not_merged_into_the_operation(self, endpoint):
+        """The crux. `securedBy: [a, b, c]` means *any* of them, so hoisting
+        every scheme's headers into `headers:` would say "send all three".
+        """
+        get = loaded(endpoint('/items'))['/items']['get']
+        assert 'Authorization' not in (get.get('headers') or {})
+
+    def test_a_response_the_operation_also_declares_is_not_overwritten(self, endpoint):
+        """The scheme's 401 and the operation's 200 live in different blocks, so
+        no precedence rule is needed -- and the spec defines none.
+        """
+        shown = loaded(endpoint('/items'))['/items']
+        assert set(shown['get']['responses']) == {200}
+        assert set(shown['securedBy']['oauth']['responses']) == {401}
+
+    def test_it_is_still_loadable_yaml(self, endpoint):
+        assert loaded(endpoint('/items', depth=3)) is not None

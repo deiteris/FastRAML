@@ -421,6 +421,12 @@ after inheritance, ancestor URI parameters, and every merged-in header, query
 parameter and body — each tagged with the trait or resource type that supplied
 it where that can be established exactly ([16](16-graph.md) § 9.4).
 
+Each security scheme's `describedBy` appears as its own block under
+`securedBy:`, so the `Authorization` header a caller must send is visible.
+**One block per scheme, never merged**: `securedBy: [a, b]` means *any* of them,
+so hoisting every scheme's headers into `headers:` would claim all of them are
+sent at once ([16](16-graph.md) § 9.8).
+
 The output is loadable YAML, so it pastes back into a document and two versions
 diff. `--depth` expands nested types; the default of 1 names them instead, which
 is what keeps the output the size of a screen.

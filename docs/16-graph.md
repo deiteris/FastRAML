@@ -712,6 +712,46 @@ into the subtype and not `_compiled`, which is what `as_shape()` reads — so th
 projection returned `None` on every *declared* schema type once P9 had run, which
 is exactly the shape a consumer holds. Fixed in `types/inherit.py`.
 
+### 9.8 What each security scheme adds, and why it is not merged
+
+A scheme's `describedBy` declares the headers, query parameters and responses a
+caller using it must send and expect. None of it was rendered, so an operation's
+`Authorization` header — the one thing every caller needs — appeared nowhere.
+
+It is shown as **one block per scheme**, nested under `securedBy:`:
+
+```yaml
+  securedBy:
+    oauth2:                       # security/oauth2.raml:8
+      headers:
+        Authorization:
+          type: string
+          pattern: Bearer [0-9a-zA-Z\-\._~+/]*=*
+      responses:
+        401:
+          description: The request was denied due to an invalid access token.
+    session:                      # security/session.raml:8
+      headers:
+        Cookie: string
+```
+
+**Never merged into the operation.** Spec § Applying Security Schemes: a method
+"can be authenticated by *any* of the specified security schemes". Three schemes
+are three ways to call it, not one call carrying three `Authorization` headers,
+and hoisting them into the operation's `headers:` would state something false.
+
+Merging would also need a precedence rule for a response code the operation and
+the scheme both declare — a `401` from a trait *and* from the scheme is the
+ordinary case, not a corner — and **the spec defines none**, because it never
+merges them. Separate blocks mean the question never arises.
+
+A scheme that describes nothing is still named, because it is still an
+alternative the reader may use; and when *no* scheme in the list contributes
+anything the flat `securedBy: [a, b]` form is kept, since a block per name with
+nothing in it is worse than a list. `null` keeps round-tripping as `null` — it
+removes inherited security (docs/09 § A3) — with the explanation in the line's
+note, never inside the flow sequence where `#` is a syntax error.
+
 ## 10. What changed, and what it breaks
 
 `pyraml diff OLD NEW`, and `pyraml/diff.py` behind it.

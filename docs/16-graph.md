@@ -178,6 +178,42 @@ This is what makes § 1's rule enforceable rather than aspirational. A node with
 no entity is something this layer invented, and inventing is the failure mode
 the rule exists to prevent.
 
+### 2.8 The literals are derived, not stored
+
+`GraphNode.attributes` is a property. It reads the entity when asked and builds
+the dictionary then; nothing is written at build time.
+
+Storing them copied 82,287 values into 32,090 dicts on a real 149-endpoint
+document — **6.0 MB restating what the model already held**, allocated whether
+or not anything read it. Deriving all of them on demand costs 33 ms, and the
+verbs that navigate never ask for more than a handful: `entries` labels 525
+rows, not 32,090.
+
+**What the view is for.** The keys are `additionalProperties`, `statusCode`,
+`isAnnotationType` — this vocabulary's names, which the model spells
+`additional_properties`, `code`, `is_annotation_type`. Mapping between them is
+real work and it belongs here. The rule that follows is the one worth keeping:
+**this layer owns the vocabulary, not the values.** A stored attribute is a
+value it does not own.
+
+Three consequences fell out of applying it:
+
+- **`path` on an Operation is gone.** The endpoint holds it, the
+  `supportedOperation` edge reaches it, and `label` never read it anyway — it
+  tries `name` first and every operation has one. Storing it also made a moved
+  resource report a change once per method beneath it, where § 10.4 diffs the
+  edge and reports it once.
+- **`scopes` became a fold.** The eager writer assigned it once per scheme
+  inside the loop, so a method secured by two OAuth schemes kept only the
+  second one's scopes. Read from `Operation.secured_by`, it is all of them.
+- **`unsecured` and the binding** come off the entity — the first from
+  `securedBy: [null]` being visible in `secured_by`, the second from
+  `Parameter.binding` (§ 5 of [05](05-type-model.md)).
+
+Verified by dumping every attribute of every node before and after, across five
+corpora and 216,961 nodes: 2,187 cells differ and every one of them is the
+`path` deletion, which is exactly the operation count.
+
 ### 2.5 Literals
 
 Names, positions and every `ScalarFacet` the shape kind holds. The facets are

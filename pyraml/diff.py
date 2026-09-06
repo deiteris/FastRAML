@@ -176,10 +176,14 @@ def _without_subsumed(changes: list[Change]) -> list[Change]:
 
 
 def _altered(iri: str, before: GraphNode, after: GraphNode, directions: frozenset[Direction]) -> Iterator[Change]:
-    for key in sorted(before.attributes.keys() | after.attributes.keys()):
+    # Bound once each: `attributes` is derived from the entity per read, so
+    # asking four times per node pair would build four dictionaries
+    # (docs/16 § 2.8).
+    was_all, now_all = before.attributes, after.attributes
+    for key in sorted(was_all.keys() | now_all.keys()):
         if key in _POSITIONAL or key in _DERIVED:
             continue
-        was, now = before.attributes.get(key), after.attributes.get(key)
+        was, now = was_all.get(key), now_all.get(key)
         if was != now:
             yield Change(
                 kind='changed',

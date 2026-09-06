@@ -23,14 +23,18 @@ imports the model rather than being imported by it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import quote
 
-from pyraml.parser.endpoints import EndPoint, Operation
-from pyraml.parser.fragments import APIFragment, Library
-from pyraml.types.base import BaseShape, ScalarFacet
+from pyraml.parser.directives import DirectiveRef, SecurityScheme
+from pyraml.parser.endpoints import Body, EndPoint, Operation, Response
+from pyraml.parser.fragments import APIFragment, Fragment, Library
+from pyraml.parser.resourcetypes import ResourceTypeDefinition
+from pyraml.parser.security import SecuritySchemeDefinition
+from pyraml.parser.traits import TraitDefinition
+from pyraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from pyraml.types.jsonschema_ import projected
 from pyraml.uris import relative_to
@@ -39,15 +43,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from pyraml.parser.annotations import DomainExtension
-    from pyraml.parser.directives import DirectiveRef, SecurityScheme
-    from pyraml.parser.endpoints import Body, Request, Response
-    from pyraml.parser.fragments import Fragment
-    from pyraml.parser.resourcetypes import ResourceTypeDefinition
-    from pyraml.parser.security import SecuritySchemeDefinition
-    from pyraml.parser.traits import TraitDefinition
+    from pyraml.parser.endpoints import Request
     from pyraml.positions import Position
     from pyraml.registry import Raml
-    from pyraml.types.base import Parameter, PatternProperty, Property, Shape
+    from pyraml.types.base import Shape
 
 __all__ = [
     'DEFAULT_BASE',
@@ -203,6 +202,9 @@ class Edge:
     object: str
 
 
+#: What a node attribute may be. A tuple is a genuinely multi-valued facet.
+type Literal_ = str | int | bool | tuple[str, ...]
+
 #: Everything a node can stand for. Every kind in the vocabulary projects one of
 #: these, and the field below is not optional, so this list being total is
 #: checked by `mypy` at each of the fifteen places a node is created rather than
@@ -241,11 +243,26 @@ class GraphNode:
     #: an entity would be something this layer invented, and inventing is what
     #: it is not for (docs/16 § 1).
     entity: Entity
-    #: A tuple is a genuinely multi-valued facet — `enum`, OAuth scopes. It is
-    #: not joined into a string: an enum value may itself contain a space, so
-    #: `["new york", "london"]` and three separate values would be
-    #: indistinguishable, and a diff could not say which member was removed.
-    attributes: dict[str, str | int | bool | tuple[str, ...]] = field(default_factory=dict)
+    #: The entry document's directory URI, which `definedIn` is relative to.
+    #: The one piece of context the entity does not carry; every node in a
+    #: graph holds the same string object.
+    root: str = ''
+
+    @property
+    def attributes(self) -> dict[str, Literal_]:
+        """The node's literals, read from the entity on demand.
+
+        Derived rather than stored. Storing them copied 81,688 values into
+        32,090 dicts on a real 149-endpoint document — 6.0 MB restating what
+        the model already held, built whether or not anything read it
+        (docs/16 § 2.8).
+
+        A tuple value is a genuinely multi-valued facet — `enum`, OAuth scopes
+        — and is not joined into a string: an enum value may itself contain a
+        space, so `["new york", "london"]` and three separate values would be
+        indistinguishable, and a diff could not say which member was removed.
+        """
+        return _attributes(self)
 
     def __repr__(self) -> str:
         return f'GraphNode({self.iri!r}, {self.kinds[0]!r})'
@@ -374,14 +391,16 @@ class Graph:
         if node is None:
             return iri.rsplit('/', 1)[-1] or iri
         segment = iri.rsplit('/', 1)[-1]
+        # Bound once: derived per read, and this asks up to seven times (§ 2.8).
+        attributes = node.attributes
         keys: tuple[str, ...] = ('name', 'path', 'method', 'statusCode', 'mediaType', 'type')
         # Only a `Type`: an operation's name defaults to its method, which also
         # spells its segment, and there `get` is exactly what the reader wants.
         structural = node.kinds[0] == 'Type' and not _is_declaration(iri)
-        if structural and node.attributes.get('name') == segment:
+        if structural and attributes.get('name') == segment:
             keys = keys[1:]
         for key in keys:
-            value = node.attributes.get(key)
+            value = attributes.get(key)
             if isinstance(value, str) and value:
                 return value
         return segment or iri
@@ -723,9 +742,7 @@ class _Builder:
             self._segments[value] = escaped
         return escaped
 
-    def node(
-        self, iri: str, entity: Entity, *kinds: str, **attributes: str | int | bool | tuple[str, ...] | None
-    ) -> str:
+    def node(self, iri: str, entity: Entity, *kinds: str) -> str:
         """Create the node for `entity`, or return the one that already holds it.
 
         The entity is required and not optional, so that `mypy` rather than a
@@ -733,26 +750,9 @@ class _Builder:
         nodes are not all backed by something in the model has copied rather
         than projected (docs/16 section 1).
         """
-        node = self.nodes.get(iri)
-        if node is None:
-            node = GraphNode(iri=iri, kinds=kinds, entity=entity)
-            self.nodes[iri] = node
-        self.annotate(iri, **attributes)
+        if iri not in self.nodes:
+            self.nodes[iri] = GraphNode(iri=iri, kinds=kinds, entity=entity, root=self.root)
         return iri
-
-    def annotate(self, iri: str, **attributes: str | int | bool | tuple[str, ...] | None) -> None:
-        """Add attributes to a node that already exists.
-
-        Separate from `node` because the callers differ: one is creating an
-        entity's node and knows the entity, the other is filling in a fact
-        learned later — a position, a facet, the scopes a scheme narrowed to.
-        Merging the two forced every such caller to re-supply `kinds`, which
-        they did by reading them back off the node they were about to update.
-        """
-        node = self.nodes[iri]
-        for key, value in attributes.items():
-            if value is not None:
-                node.attributes[key] = value
 
     def declare(self, unit: str, bucket: str, name: str) -> str:
         """The IRI of one declaration, recorded so a name can be resolved to it.
@@ -794,11 +794,6 @@ class _Builder:
         if obj:
             self.edges.append(Edge(subject=subject, predicate=predicate, object=obj))
 
-    def positioned(self, iri: str, location: str, position: Position | None) -> None:
-        self.annotate(iri, definedIn=self.relative(location))
-        if position is not None and position.is_known:
-            self.annotate(iri, line=position.line, column=position.column)
-
     def relative(self, location: str) -> str:
         return relative_to(location, self.root)
 
@@ -829,7 +824,7 @@ class _Builder:
         if not isinstance(fragment, (APIFragment, Library)):
             return
         unit = self.unit(location)
-        self.node(unit, fragment, 'Unit', name=self.relative(location))
+        self.node(unit, fragment, 'Unit')
         for name, shape in fragment.types.items():
             self.edge(unit, 'declares', self.shape(shape, self.declare(unit, 'types', name)))
         for name, shape in fragment.annotation_types.items():
@@ -838,41 +833,24 @@ class _Builder:
         # location column is empty for exactly the declarations a reader most
         # often wants to open — a trait is applied far from where it is written.
         for name, scheme in fragment.security_schemes.items():
-            iri = self.node(
-                self.declare(unit, 'securitySchemes', name),
-                scheme,
-                'SecurityScheme',
-                name=name,
-                type=scheme.type or None,
-            )
-            self.positioned(iri, scheme.location, scheme.key_pos)
+            iri = self.node(self.declare(unit, 'securitySchemes', name), scheme, 'SecurityScheme')
             # Under both the declaration and whatever an `!include` resolved to,
             # so a `securedBy:` bound to either finds this one node.
             self.scheme_iris[scheme.id] = iri
             self.scheme_iris[scheme.resolved().id] = iri
             self.edge(unit, 'declares', iri)
         for name, trait in fragment.traits.items():
-            iri = self.node(self.declare(unit, 'traits', name), trait, 'Trait', name=name)
-            self.positioned(iri, trait.location, trait.key_pos)
+            iri = self.node(self.declare(unit, 'traits', name), trait, 'Trait')
             self.edge(unit, 'declares', iri)
         for name, resource_type in fragment.resource_types.items():
-            iri = self.node(self.declare(unit, 'resourceTypes', name), resource_type, 'ResourceType', name=name)
-            self.positioned(iri, resource_type.location, resource_type.key_pos)
+            iri = self.node(self.declare(unit, 'resourceTypes', name), resource_type, 'ResourceType')
             self.edge(unit, 'declares', iri)
 
     def api(self) -> None:
         entry = self.raml.entry_point
         if not isinstance(entry, APIFragment):
             return
-        api = self.node(
-            f'{self.base}#/web-api',
-            entry,
-            'Api',
-            name=_text(entry.title),
-            version=_text(entry.version),
-            description=_text(entry.description),
-            baseUri=_text(entry.base_uri),
-        )
+        api = self.node(f'{self.base}#/web-api', entry, 'Api')
         self.edge(api, 'unit', self.unit(entry.location))
         seen: set[int] = set()
         for endpoint in self.raml.endpoints.values():
@@ -888,15 +866,7 @@ class _Builder:
         if endpoint.id in seen:
             return
         seen.add(endpoint.id)
-        iri = self.node(
-            f'{self.base}#/web-api/endpoint/{self.segment(endpoint.full_uri)}',
-            endpoint,
-            'EndPoint',
-            path=endpoint.full_uri,
-            name=_text(endpoint.display_name) or endpoint.full_uri,
-            description=_text(endpoint.description),
-        )
-        self.positioned(iri, endpoint.location, endpoint.key_pos)
+        iri = self.node(f'{self.base}#/web-api/endpoint/{self.segment(endpoint.full_uri)}', endpoint, 'EndPoint')
         self.edge(api, 'endpoint', iri)
 
         parent = endpoint.full_uri[: -len(endpoint.uri)] if endpoint.uri and endpoint.full_uri != endpoint.uri else ''
@@ -944,22 +914,10 @@ class _Builder:
                 self.edge(subject, predicate, found)
                 return
         local = f'{self.unit(location)}#/declarations/{bucket}/{self.segment(name)}'
-        self.edge(subject, predicate, self.node(local, ref, _DECLARED_KINDS[bucket], name=name))
+        self.edge(subject, predicate, self.node(local, ref, _DECLARED_KINDS[bucket]))
 
     def operation(self, endpoint: str, operation: Operation) -> None:
-        iri = self.node(
-            f'{endpoint}/supportedOperation/{self.segment(operation.method)}',
-            operation,
-            'Operation',
-            method=operation.method,
-            name=_text(operation.display_name) or operation.method,
-            # The resource it hangs off. A `displayName` is what an operation is
-            # *called*; the method and path are what it *is*, and a reader given
-            # only `ActivateUser` cannot tell which endpoint that is.
-            path=self.nodes[endpoint].attributes.get('path'),
-            description=_text(operation.description),
-        )
-        self.positioned(iri, operation.location, operation.key_pos)
+        iri = self.node(f'{endpoint}/supportedOperation/{self.segment(operation.method)}', operation, 'Operation')
         self.edge(endpoint, 'supportedOperation', iri)
         for trait in operation.traits:
             self.applies(iri, 'appliesTrait', 'traits', trait, operation.location)
@@ -989,15 +947,7 @@ class _Builder:
             self.edge(iri, 'payload', self.payload(iri, media, body))
 
     def response(self, operation: str, response: Response) -> None:
-        iri = self.node(
-            f'{operation}/returns/{self.segment(response.code)}',
-            response,
-            'Response',
-            statusCode=response.code,
-            name=_text(response.display_name) or response.code,
-            description=_text(response.description),
-        )
-        self.positioned(iri, response.location, response.key_pos)
+        iri = self.node(f'{operation}/returns/{self.segment(response.code)}', response, 'Response')
         self.edge(operation, 'returns', iri)
         self.annotated(iri, response.annotations)
         for name, param in response.headers.items():
@@ -1007,10 +957,7 @@ class _Builder:
             self.edge(iri, 'payload', self.payload(iri, media, body))
 
     def payload(self, parent: str, media: str, body: Body) -> str:
-        iri = self.node(
-            f'{parent}/payload/{self.segment(media or "default")}', body, 'Payload', mediaType=media or None
-        )
-        self.positioned(iri, body.location, body.key_pos)
+        iri = self.node(f'{parent}/payload/{self.segment(media or "default")}', body, 'Payload')
         if body.shape is not None:
             self.edge(iri, 'range', self.shape(body.shape, f'{iri}/schema'))
         return iri
@@ -1024,19 +971,20 @@ class _Builder:
         header there. The model says so too — `Parameter` holds the property
         and adds the binding, so nothing here has to be told which it is.
         """
-        self.node(iri, param, 'Parameter', name=param.name, binding=_BINDING[param.binding], required=param.required)
-        self.positioned(iri, param.base.location, param.key_pos)
+        self.node(iri, param, 'Parameter')
         self.edge(iri, 'range', self.shape(param.base, f'{iri}/schema'))
         return iri
 
     def secured(self, subject: str, schemes: list[SecurityScheme]) -> None:
+        """One `securedBy` edge per scheme in force.
+
+        `securedBy: [null]` removes inherited security rather than naming a
+        scheme, so it produces no edge. The subject records it — as `unsecured`,
+        alongside the scopes the schemes narrowed to — and both are read off
+        `Operation.secured_by` when the attributes are asked for.
+        """
         for scheme in schemes:
             if scheme.is_null:
-                # `securedBy: [null]` is how an author *removes* inherited
-                # security (docs/09 § A3). It is a fact about the operation, so
-                # it is recorded on the operation rather than dropped for having
-                # no scheme to point at.
-                self.annotate(subject, unsecured=True)
                 continue
             # P5 already bound this reference to its declaration, so the IRI is
             # computed from the definition rather than matched by name. Matching
@@ -1048,8 +996,6 @@ class _Builder:
                 self.edge(subject, 'securedBy', target)
             else:
                 self.applies(subject, 'securedBy', 'securitySchemes', scheme, self.raml.location)
-            if scheme.compiled_params:
-                self.annotate(subject, scopes=tuple(scheme.compiled_params))
 
     def annotated(self, subject: str, annotations: dict[str, DomainExtension]) -> None:
         for name, extension in annotations.items():
@@ -1080,19 +1026,7 @@ class _Builder:
         self.emitted.add(base.id)
 
         kind = type(base.shape).__name__ if base.shape is not None else 'UnknownShape'
-        self.node(
-            iri,
-            base,
-            'Type',
-            kind,
-            name=base.name,
-            type=base.type,
-            displayName=_text(base.display_name),
-            description=_text(base.description),
-            required=_facet_value(base.required.value) if base.required is not None else None,
-            isAnnotationType=base.is_annotation_type or None,
-        )
-        self.positioned(iri, base.location, base.key_pos)
+        self.node(iri, base, 'Type', kind)
         # Structure and facets come from the *projected* shape, so a type defined
         # by a JSON schema has members here rather than being a leaf. Without it
         # `deps errorScheme` reported that it is made of nothing, every SPARQL
@@ -1100,7 +1034,6 @@ class _Builder:
         # compares nodes, attributes and reference edges — saw no change when a
         # whole schema was replaced (docs/16 § 2.6).
         view = projected(base)
-        self.facets(iri, view)
 
         for parent in base.inherits:
             self.edge(iri, 'inherits', self.shape(parent, f'{iri}/inherits/{self.segment(parent.name or "anonymous")}'))
@@ -1116,7 +1049,7 @@ class _Builder:
         if isinstance(shape, ObjectShape):
             for name, prop in (shape.properties or {}).items():
                 child = f'{iri}/property/{self.segment(name)}'
-                self.node(child, prop, 'Property', name=name, required=prop.required)
+                self.node(child, prop, 'Property')
                 self.edge(child, 'range', self.shape(prop.base, f'{child}/schema'))
                 self.edge(iri, 'property', child)
             for name, pattern in (shape.pattern_properties or {}).items():
@@ -1124,7 +1057,7 @@ class _Builder:
                 # property has no name of its own and an index would move under
                 # any edit above it.
                 child = f'{iri}/patternProperty/{self.segment(name)}'
-                self.node(child, pattern, 'PatternProperty', name=name, pattern=_pattern(pattern))
+                self.node(child, pattern, 'PatternProperty')
                 self.edge(child, 'range', self.shape(pattern.base, f'{child}/schema'))
                 self.edge(iri, 'patternProperty', child)
         elif isinstance(shape, ArrayShape):
@@ -1141,32 +1074,186 @@ class _Builder:
             if head is not None:
                 self.edge(iri, 'recursionHead', head)
 
-    def facets(self, iri: str, base: BaseShape) -> None:
-        """Every `ScalarFacet` the kind holds, as a literal.
 
-        Read off the instance rather than a per-kind table: a facet added to a
-        kind appears here without this module being touched, which is the same
-        reason the golden projector walks `__slots__` (docs/14 § 2).
+# -- the literals, derived ----------------------------------------------------
 
-        The other of the two places `getattr` is genuinely required. The
-        attribute name comes from `_slots`, so it is not known until runtime;
-        there is no static expression for "whatever this kind declares". The
-        `isinstance` immediately after is what recovers the type — everything
-        downstream of it is checked.
-        """
-        shape = base.shape
-        if shape is None:
-            return
+
+def _attributes(node: GraphNode) -> dict[str, Literal_]:  # noqa: PLR0911, PLR0912 - one arm per node kind
+    """One node's literals, read from the entity it projects.
+
+    Dispatched on the node's *kind* rather than on the entity's class, because
+    the two are not one-to-one: the entry document is the entity behind both
+    the `Api` node and its `Unit` node, and they say different things about it.
+    The kind is this layer's own vocabulary, which is what should be choosing.
+
+    Every key here is a name docs/16 § 2 owns — `additionalProperties`,
+    `statusCode`, `isAnnotationType` — and the model spells each of them
+    differently. That mapping is the work this function exists to do, and it is
+    why the projection keeps an attribute view at all: this layer owns the
+    vocabulary, not the values (§ 2.8).
+    """
+    entity, kind = node.entity, node.kinds[0]
+    if kind == 'Type':
+        return _type_attributes(entity, node.root) if isinstance(entity, BaseShape) else {}
+    if kind == 'Property':
+        return {'name': entity.name, 'required': entity.required} if isinstance(entity, Property) else {}
+    if kind == 'PatternProperty':
+        return {'name': _pattern(entity), 'pattern': _pattern(entity)} if isinstance(entity, PatternProperty) else {}
+    if kind == 'Parameter':
+        if not isinstance(entity, Parameter):
+            return {}
+        bound: dict[str, Literal_] = {
+            'name': entity.name,
+            'binding': _BINDING[entity.binding],
+            'required': entity.required,
+        }
+        return bound | _where(entity.base.location, entity.key_pos, node.root)
+    if kind == 'Payload':
+        if not isinstance(entity, Body):
+            return {}
+        media: dict[str, Literal_] = {'mediaType': entity.media_type} if entity.media_type else {}
+        return media | _where(entity.location, entity.key_pos, node.root)
+    if kind == 'Response':
+        if not isinstance(entity, Response):
+            return {}
+        coded = _named({'statusCode': entity.code}, _text(entity.display_name) or entity.code, entity.description)
+        return coded | _where(entity.location, entity.key_pos, node.root)
+    if kind == 'Operation':
+        return _operation_attributes(entity, node.root) if isinstance(entity, Operation) else {}
+    if kind == 'EndPoint':
+        if not isinstance(entity, EndPoint):
+            return {}
+        path = _named({'path': entity.full_uri}, _text(entity.display_name) or entity.full_uri, entity.description)
+        return path | _where(entity.location, entity.key_pos, node.root)
+    if kind == 'Api':
+        if not isinstance(entity, APIFragment):
+            return {}
+        return _drop(
+            {
+                'name': _text(entity.title),
+                'version': _text(entity.version),
+                'description': _text(entity.description),
+                'baseUri': _text(entity.base_uri),
+            }
+        )
+    if kind == 'Unit':
+        # No `definedIn`: a file is not defined somewhere else, and its name
+        # already is its path relative to the root.
+        return {'name': relative_to(entity.location, node.root)} if isinstance(entity, Fragment) else {}
+    return _declared_attributes(entity, node.root)
+
+
+def _declared_attributes(entity: Entity, root: str) -> dict[str, Literal_]:
+    """A trait, a resource type or a security scheme.
+
+    Two kinds of entity reach here per node kind. One is the definition, which
+    knows where it was written. The other is a *reference* whose name matched no
+    declaration — `applies` still emits an edge, so that an application is never
+    invisible, and the placeholder it points at has a name and nothing else.
+    """
+    if isinstance(entity, SecuritySchemeDefinition):
+        typed: dict[str, Literal_] = {'name': entity.name}
+        if entity.type:
+            typed['type'] = entity.type
+        return typed | _where(entity.location, entity.key_pos, root)
+    if isinstance(entity, (TraitDefinition, ResourceTypeDefinition)):
+        return {'name': entity.name} | _where(entity.location, entity.key_pos, root)
+    if isinstance(entity, (DirectiveRef, SecurityScheme)):
+        return {'name': entity.name} if entity.name else {}
+    return {}
+
+
+def _type_attributes(base: BaseShape, root: str) -> dict[str, Literal_]:
+    """A declaration: its common facets, then whatever its kind holds.
+
+    The kind's facets are read off the instance rather than a per-kind table, so
+    a facet added to a kind appears here without this module being touched —
+    the same reason the golden projector walks `__slots__` (docs/14 § 2). They
+    come from the *projected* shape, so a type defined by a JSON schema has them
+    rather than reading as a leaf (§ 2.6); `as_shape` caches, so asking twice
+    costs one dictionary build and no second projection.
+    """
+    found = _drop(
+        {
+            'name': base.name,
+            'type': base.type,
+            'displayName': _text(base.display_name),
+            'description': _text(base.description),
+            'required': _facet_value(base.required.value) if base.required is not None else None,
+            'isAnnotationType': base.is_annotation_type or None,
+        }
+    )
+    found.update(_where(base.location, base.key_pos, root))
+    view = projected(base)
+    shape = view.shape
+    if shape is not None:
+        # One of the two places `getattr` is genuinely required: the attribute
+        # name comes from `_slots`, so there is no static expression for
+        # "whatever this kind declares". The `isinstance` recovers the type.
         for name in _slots(type(shape)):
             value = getattr(shape, name, None)
             if isinstance(value, ScalarFacet):
                 literal = _facet_value(value.value)
                 if literal is not None:
-                    self.annotate(iri, **{_camel(name): literal})
-        if base.enum is not None:
-            # `DataNode.raw` is the plain Python value already; unwrapping the
-            # `ValueNode` by hand would only reproduce it.
-            self.annotate(iri, enum=tuple(str(member.raw) for member in base.enum))
+                    found[_camel(name)] = literal
+    if view.enum is not None:
+        # `DataNode.raw` is the plain Python value already; unwrapping the
+        # `ValueNode` by hand would only reproduce it.
+        found['enum'] = tuple(str(member.raw) for member in view.enum)
+    return found
+
+
+def _operation_attributes(operation: Operation, root: str) -> dict[str, Literal_]:
+    """A method, and what its security amounts to.
+
+    `scopes` is a fold over every scheme in force, not the last one seen. The
+    eager writer set it once per scheme inside the loop, so a method secured by
+    two OAuth schemes kept only the second one's scopes.
+
+    There is deliberately no `path`. The endpoint holds it and the
+    `supportedOperation` edge reaches it, and a fact reachable by following an
+    edge is not an attribute (§ 2.8). Storing it also made a moved resource
+    report a change once per method beneath it rather than once at the edge.
+    """
+    found = _named(
+        {'method': operation.method}, _text(operation.display_name) or operation.method, operation.description
+    )
+    found.update(_where(operation.location, operation.key_pos, root))
+    scopes = tuple(
+        scope for scheme in operation.secured_by if not scheme.is_null for scope in scheme.compiled_params or ()
+    )
+    if scopes:
+        found['scopes'] = scopes
+    if any(scheme.is_null for scheme in operation.secured_by):
+        # `securedBy: [null]` is how an author *removes* inherited security
+        # (docs/09 § A3). It is a fact about the method, so it is recorded on
+        # the method rather than dropped for having no scheme to point at.
+        found['unsecured'] = True
+    return found
+
+
+def _named(found: dict[str, Literal_], name: str, description: ScalarFacet[str] | None) -> dict[str, Literal_]:
+    """`found`, plus the two things almost every kind says about itself."""
+    if name:
+        found['name'] = name
+    text = _text(description)
+    if text is not None:
+        found['description'] = text
+    return found
+
+
+def _where(location: str, position: Position | None, root: str) -> dict[str, Literal_]:
+    """Where an entity was written, spelled the way the vocabulary spells it."""
+    found: dict[str, Literal_] = {'definedIn': relative_to(location, root)}
+    if position is not None and position.is_known:
+        found['line'] = position.line
+        found['column'] = position.column
+    return found
+
+
+def _drop(found: dict[str, Literal_ | None]) -> dict[str, Literal_]:
+    """A facet that is absent says nothing rather than saying `None`."""
+    return {key: value for key, value in found.items() if value is not None}
 
 
 # -- small readers ------------------------------------------------------------

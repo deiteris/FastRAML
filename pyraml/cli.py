@@ -672,7 +672,8 @@ def _position_of(graph: Graph, iri: str) -> str:
     node = graph.nodes.get(iri)
     if node is None:
         return ''
-    where, line = node.attributes.get('definedIn'), node.attributes.get('line')
+    attributes = node.attributes
+    where, line = attributes.get('definedIn'), attributes.get('line')
     return f'{where}:{line}' if where and line else str(where or '')
 
 

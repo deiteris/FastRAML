@@ -31,6 +31,7 @@ from pyraml.graph import (
     TYPE_EDGES,
     USE_EDGES,
     Graph,
+    GraphNode,
     build_graph,
 )
 
@@ -614,3 +615,65 @@ class TestEveryNodeIsBackedByTheModel:
 
     def test_an_unknown_iri_has_no_entity(self, graph: Graph):
         assert graph.entity_at(f'{DEFAULT_BASE}#/nope') is None
+
+
+class TestAttributesAreDerivedNotStored:
+    """docs/16 section 2.8: this layer owns the vocabulary, not the values."""
+
+    def test_a_node_stores_no_attribute_dict(self, graph: Graph):
+        node = graph.nodes[graph.find('User')[0]]
+        assert 'attributes' not in GraphNode.__slots__
+        # Read twice, equal both times, and not the same object either time.
+        first, second = node.attributes, node.attributes
+        assert first == second
+        assert first is not second
+
+    def test_a_facet_added_to_a_kind_needs_no_change_here(self, graph: Graph):
+        """Facets are read off the instance's `__slots__`, not a table."""
+        limit = graph.find('limit')
+        assert graph.nodes[limit[0]].attributes['binding'] == 'query'
+        target = graph.out(limit[0], ['range'])[0].object
+        assert graph.nodes[target].attributes['maximum'] == 100
+
+    def test_an_operation_does_not_restate_its_endpoints_path(self, graph: Graph):
+        """A fact reachable by following an edge is not an attribute.
+
+        The endpoint holds the path and `supportedOperation` reaches it. Storing
+        it made a moved resource report a change once per method beneath it
+        rather than once at the edge.
+        """
+        operation = iris(graph, 'Operation')[0]
+        assert 'path' not in graph.nodes[operation].attributes
+        endpoint = graph.into(operation, ['supportedOperation'])[0].subject
+        assert graph.nodes[endpoint].attributes['path'] == '/users/{userId}'
+
+    def test_scopes_are_every_scheme_in_force_not_the_last_one(self, workspace):
+        """The eager writer set `scopes` once per scheme inside the loop."""
+        root = workspace(
+            {
+                'api.raml': """#%RAML 1.0
+title: T
+securitySchemes:
+  first:
+    type: OAuth 2.0
+    settings:
+      authorizationUri: https://e.test/a
+      accessTokenUri: https://e.test/t
+      authorizationGrants: [authorization_code]
+      scopes: [read, write]
+  second:
+    type: OAuth 2.0
+    settings:
+      authorizationUri: https://e.test/a
+      accessTokenUri: https://e.test/t
+      authorizationGrants: [authorization_code]
+      scopes: [admin]
+/things:
+  get:
+    securedBy: [first: {scopes: [read]}, second: {scopes: [admin]}]
+"""
+            }
+        )
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        operation = iris(graph, 'Operation')[0]
+        assert graph.nodes[operation].attributes['scopes'] == ('read', 'admin')

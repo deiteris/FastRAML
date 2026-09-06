@@ -163,6 +163,13 @@ Exported model classes, all read-oriented, all slotted, all carrying
 narrow it ([16](16-graph.md) § 2.7). `Graph.__init__` no longer takes `shapes=`
 or `entities=` — the two side maps they filled are gone.
 
+`GraphNode.attributes` is a **property**, derived from the entity on each read
+rather than stored ([16](16-graph.md) § 2.8). Reading it is unchanged; two
+things about writing are not. It cannot be assigned to, and each read returns a
+fresh dictionary — so a caller reading it in a loop should bind it to a local,
+as `diff` does. An `Operation` no longer carries `path`: follow
+`supportedOperation` back to the endpoint, which has it.
+
 **Types** — `BaseShape` plus the seventeen concrete shapes, `Property`,
 `PatternProperty`, `Parameter`, `Example`, `Examples`, `ScalarFacet`,
 `DataNode`, `ValueNode`, `XmlSerialization`.

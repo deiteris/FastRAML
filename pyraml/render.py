@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from pyraml.types.base import ScalarFacet
+from pyraml.types.base import facets_of
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from pyraml.types.jsonschema_ import projected
 from pyraml.uris import relative_to
@@ -45,16 +45,9 @@ if TYPE_CHECKING:
 
 __all__ = ['Sources', 'render', 'render_endpoint', 'render_operation']
 
-#: Facets whose RAML spelling is not just the camel case of the slot name.
-_SPELLINGS = {'multiple_of': 'multipleOf', 'unique_items': 'uniqueItems', 'file_types': 'fileTypes'}
-
 #: Wide enough that PyYAML never folds a value onto a second line: a wrapped
 #: scalar would break the one-value-per-line shape everything here assumes.
 _UNWRAPPED = 1 << 30
-
-#: Never rendered as a facet: printed by the caller, or structure rather than
-#: constraint.
-_NOT_A_FACET = frozenset({'any_of', 'base', 'id', 'items', 'name', 'pattern_properties', 'properties', 'raml', 'type'})
 
 
 @dataclass(frozen=True, slots=True)
@@ -367,9 +360,9 @@ def _where(base: BaseShape, root: str) -> str:
 def _facets(base: BaseShape, indent: str) -> Iterator[_Line]:
     """Every constraint the kind holds, in RAML spelling.
 
-    Read off `__slots__` rather than from a table, for the reason the golden
-    projector does (docs/14 § 2): a facet added to a kind has to show up here
-    without this module being edited, or the view silently omits a constraint.
+    `facets_of` is shared with the graph's projection so the two cannot disagree
+    about what a kind constrains (docs/14 § 2). Only the formatting is this
+    module's: a facet value spelled the way RAML would write it.
 
     Through the projection, so a scalar JSON schema shows its bounds. A
     `JsonShape` holds no facet slots of its own — the constraints are inside the
@@ -378,12 +371,8 @@ def _facets(base: BaseShape, indent: str) -> Iterator[_Line]:
     """
     shape = projected(base).shape
     if shape is not None:
-        for slot in _slots(type(shape)):
-            if slot in _NOT_A_FACET:
-                continue
-            value = getattr(shape, slot, None)
-            if isinstance(value, ScalarFacet):
-                yield _Line(f'{indent}{_SPELLINGS.get(slot, _camel(slot))}: {_scalar(value.value)}')
+        for name, facet in facets_of(shape):
+            yield _Line(f'{indent}{name}: {_scalar(facet.value)}')
     if base.enum is not None:
         # Dumped as a list, so the flow context quotes a member containing a
         # comma rather than silently splitting it into two.
@@ -433,16 +422,6 @@ def _plain(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_plain(item) for item in value]
     return str(value)
-
-
-def _slots(cls: type) -> Iterator[str]:
-    for klass in cls.__mro__:
-        yield from getattr(klass, '__slots__', ())
-
-
-def _camel(name: str) -> str:
-    head, _, rest = name.partition('_')
-    return head + ''.join(part.title() for part in rest.split('_') if part)
 
 
 def _scalar(value: Any) -> str:
@@ -567,11 +546,11 @@ def _prose(owner: Any, indent: str) -> Iterator[_Line]:
     First line only, as everywhere else here: a description may be a paragraph,
     and the view is meant to fit a screen.
     """
-    for facet in ('display_name', 'description'):
+    for facet, spelling in (('display_name', 'displayName'), ('description', 'description')):
         value = getattr(owner, facet, None)
         if value is not None and value.value and value.value.strip():
             first = value.value.strip().splitlines()[0]
-            yield _Line(f'{indent}{_SPELLINGS.get(facet, _camel(facet))}: {_dumped(first)}')
+            yield _Line(f'{indent}{spelling}: {_dumped(first)}')
 
 
 def _endpoint_body(endpoint: EndPoint, level: _Level, sources: Sources | None) -> Iterator[_Line]:

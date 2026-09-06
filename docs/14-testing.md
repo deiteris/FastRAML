@@ -331,6 +331,17 @@ The laws. Section 4.1 records where each is checked and over what input —
     inside a `securedBy` flow sequence, where it is a syntax error rather than a
     comment.
 
+14. **One facet vocabulary for every emitter** — `facets_of` is the only
+    enumeration of a kind's constraints, so a facet added to a kind reaches
+    `render` and the graph's attributes without either being edited. Asserted as
+    *agreement* between the two views, in `test_render.py`: the failure is one
+    emitter growing a private list and drifting, which no test of either alone
+    can see. Two copies of the walk existed, and one carried an exception table
+    every entry of which was already what plain camel case produced — dead code
+    kept alive by nothing being able to see the other copy. Writing the law
+    found a live gap as well: a `pattern:` on a type reached no node attribute,
+    so `diff` reported no change when one was tightened.
+
 ### 4.1 Where each law lives, and why
 
 | Laws | Where | Input |

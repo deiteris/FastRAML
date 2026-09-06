@@ -13,6 +13,7 @@ projection owns the vocabulary, not the values, so nothing here is stored.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, ClassVar, Final
@@ -23,13 +24,11 @@ from pyraml.parser.fragments import APIFragment, Fragment
 from pyraml.parser.resourcetypes import ResourceTypeDefinition
 from pyraml.parser.security import SecuritySchemeDefinition
 from pyraml.parser.traits import TraitDefinition
-from pyraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet
+from pyraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet, facets_of
 from pyraml.types.jsonschema_ import projected
 from pyraml.uris import relative_to
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from pyraml.positions import Position
 
 __all__ = [
@@ -162,16 +161,13 @@ class TypeNode(GraphNode[BaseShape]):
         view = projected(base)
         shape = view.shape
         if shape is not None:
-            # Read off the instance rather than a per-kind table, so a facet
-            # added to a kind appears without this module being touched. One of
-            # the two places `getattr` is required: the attribute name comes
-            # from `_slots`, and the `isinstance` recovers the type.
-            for name in _slots(type(shape)):
-                value = getattr(shape, name, None)
-                if isinstance(value, ScalarFacet):
-                    literal = _facet_value(value.value)
-                    if literal is not None:
-                        found[_camel(name)] = literal
+            # `facets_of` is shared with `render`, so the two views cannot
+            # disagree about what a kind constrains (docs/14 § 2). Only the
+            # conversion to a literal is this module's.
+            for name, facet in facets_of(shape):
+                literal = _facet_value(facet.value)
+                if literal is not None:
+                    found[name] = literal
         if view.enum is not None:
             # `DataNode.raw` is the plain Python value already.
             found['enum'] = tuple(str(member.raw) for member in view.enum)
@@ -434,21 +430,6 @@ def _drop(found: dict[str, Literal_ | None]) -> dict[str, Literal_]:
     return {key: value for key, value in found.items() if value is not None}
 
 
-def _slots(cls: type) -> Iterator[str]:
-    """Every `__slots__` entry down the MRO.
-
-    `__slots__` is not declared by any base class in the hierarchy, `object`
-    does not have it, and the names are what the walk is *for*.
-    """
-    for klass in cls.__mro__:
-        yield from getattr(klass, '__slots__', ())
-
-
-def _camel(name: str) -> str:
-    head, _, rest = name.partition('_')
-    return head + ''.join(part.title() for part in rest.split('_') if part)
-
-
 def _text(facet: ScalarFacet[str] | None) -> str | None:
     return facet.value if facet is not None and facet.value else None
 
@@ -457,7 +438,7 @@ def _facet_value(value: object) -> str | int | bool | None:
     """One `ScalarFacet`'s value as a literal.
 
     `object` rather than a union: the facets are `ScalarFacet[T]` for seven
-    different `T`, they are reached through the untyped `__slots__` walk above,
+    different `T`, `facets_of` reaches them through an untyped `__slots__` walk,
     and the point of this function is to be the one place that decides what an
     unrecognised `T` becomes.
     """
@@ -465,6 +446,11 @@ def _facet_value(value: object) -> str | int | bool | None:
         return value
     if isinstance(value, Fraction):
         return _number_text(value)
+    if isinstance(value, re.Pattern):
+        # The facet holds a *compiled* pattern. Without this a `pattern:` on a
+        # type reached no node attribute at all, so `diff` reported no change
+        # when one was tightened — the § 2.6 failure in a different place.
+        return str(value.pattern)
     if isinstance(value, (int, str)):
         return value
     return None

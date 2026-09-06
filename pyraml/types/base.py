@@ -30,7 +30,7 @@ from pyraml.types.values import same_value as _same_value
 
 if TYPE_CHECKING:
     import re
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
 
     from pyraml.datanode import DataNode
     from pyraml.domains import DomainLocation
@@ -570,6 +570,47 @@ def copyable_slots(kind: type) -> tuple[str, ...]:
         cached = tuple(names)
         _SLOT_CACHE[kind] = cached
     return cached
+
+
+_FACET_CACHE: dict[type, tuple[tuple[str, str], ...]] = {}
+
+
+def facet_slots(kind: type) -> tuple[tuple[str, str], ...]:
+    """Every constraint slot a kind declares, as `(slot, RAML spelling)`.
+
+    Read off `__slots__` rather than from a per-kind table, so a facet added to
+    a kind reaches every emitter without any emitter being edited. That is the
+    same argument `copyable_slots` makes for `clone`, and it is load-bearing for
+    the same reason: a hand-written list goes stale in silence, and a view that
+    omits a constraint looks exactly like a type that does not have it.
+
+    The RAML spelling is `lowerCamelCase` throughout — `multiple_of` is
+    `multipleOf`, `unique_items` is `uniqueItems` — so no exception table is
+    needed and none should be reintroduced without a name that needs one.
+    """
+    cached = _FACET_CACHE.get(kind)
+    if cached is None:
+        cached = tuple((slot, _camel(slot)) for slot in copyable_slots(kind))
+        _FACET_CACHE[kind] = cached
+    return cached
+
+
+def facets_of(shape: object) -> Iterator[tuple[str, ScalarFacet]]:
+    """Every constraint `shape` actually carries, in RAML spelling.
+
+    The `isinstance` is the whole filter: a container facet — `properties`,
+    `items`, `any_of` — is not a `ScalarFacet`, so naming those to exclude them
+    is redundant and an exclusion list would only be able to go wrong.
+    """
+    for slot, spelling in facet_slots(type(shape)):
+        value = getattr(shape, slot, None)
+        if isinstance(value, ScalarFacet):
+            yield spelling, value
+
+
+def _camel(name: str) -> str:
+    head, _, rest = name.partition('_')
+    return head + ''.join(part.title() for part in rest.split('_') if part)
 
 
 class KindBase:

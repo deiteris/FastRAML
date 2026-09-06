@@ -23,6 +23,8 @@ import yaml
 from pyraml import ParseOptions, parse_from_path
 from pyraml.graph import build_graph
 from pyraml.render import render
+from pyraml.types.base import facets_of
+from pyraml.types.jsonschema_ import projected
 
 LIB = """#%RAML 1.0 Library
 types:
@@ -708,3 +710,71 @@ class TestExtensionsAreShown:
     def test_a_type_with_none_gains_no_empty_keys(self, extended):
         assert 'facets' not in extended('Money') or extended('Money')['facets']
         assert not [key for key in extended('Money') if key.startswith('(')]
+
+
+class TestOneFacetVocabularyForEveryEmitter:
+    """docs/14 § 2, law 14. `facets_of` is the only enumeration of a kind's
+    constraints, so a facet added to a kind reaches every view without any
+    emitter being edited.
+
+    Asserted as agreement rather than by inspecting the helper: the failure this
+    guards against is one emitter growing its own list and drifting, which no
+    test of either emitter alone can see. Two copies of the walk once existed,
+    and the exception table one of them carried was dead — every name in it was
+    already what plain camel case produced.
+    """
+
+    FACETED = """#%RAML 1.0
+title: T
+types:
+  Bounded:
+    type: string
+    minLength: 2
+    maxLength: 8
+    pattern: ^a
+  Counted:
+    type: integer
+    minimum: 1
+    maximum: 9
+    multipleOf: 2
+    format: int32
+  Listed:
+    type: string[]
+    minItems: 1
+    maxItems: 3
+    uniqueItems: true
+  Held:
+    properties:
+      a: string
+    minProperties: 1
+    maxProperties: 2
+    additionalProperties: false
+"""
+
+    @pytest.fixture
+    def views(self, workspace):
+        root = workspace({'api.raml': self.FACETED})
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+        def of(name: str) -> tuple[set[str], set[str], set[str]]:
+            iri = graph.find(name)[0]
+            shape = graph.shape_at(iri)
+            declared = {facet for facet, _ in facets_of(projected(shape).shape)}
+            rendered = {
+                match.group(1) for line in render(shape, root=graph.root) if (match := re.match(r'\s+(\w+):', line))
+            }
+            return declared, rendered, set(graph.nodes[iri].attributes)
+
+        return of
+
+    @pytest.mark.parametrize('name', ['Bounded', 'Counted', 'Listed', 'Held'])
+    def test_every_facet_the_kind_holds_reaches_both_views(self, views, name):
+        declared, rendered, attributes = views(name)
+        assert declared, f'{name} declares no facet, so the law is not being exercised'
+        assert declared <= rendered, f'{name}: render is missing {sorted(declared - rendered)}'
+        assert declared <= attributes, f'{name}: the graph is missing {sorted(declared - attributes)}'
+
+    def test_the_two_views_spell_a_facet_identically(self, views):
+        """`multipleOf`, not `multiple_of` in one and `multipleof` in the other."""
+        _, rendered, attributes = views('Counted')
+        assert {'minimum', 'maximum', 'multipleOf', 'format'} <= rendered & attributes

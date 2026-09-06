@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from pyraml.parser.directives import SecurityScheme
     from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
     from pyraml.parser.fragments import Fragment
+    from pyraml.parser.security import SecuritySchemeDefinition, SecuritySchemeDescription
     from pyraml.positions import Position
     from pyraml.registry import Raml
 
@@ -200,9 +201,70 @@ class _Projector:
             'base': self.addresses.base,
             'entry_point': self.fragment(raml.entry_point),
             'types': self.types(raml),
+            'security_schemes': self.security_schemes(raml),
             'endpoints': {path: self.endpoint(endpoint) for path, endpoint in raml.endpoints.items()},
             'annotations': [self.annotation(extension) for extension in raml.domain_extensions],
         }
+
+    def security_schemes(self, raml: Raml) -> Json:
+        """Every declared scheme, by the file it was written in.
+
+        A section of its own rather than repeated at each `securedBy:`. The
+        settings and `describedBy` belong to the declaration, and a use site
+        already points at it by address — the rule § 11.3 applies to a supertype.
+        """
+        out: dict[str, Json] = {}
+        for location, fragment in raml.fragments.items():
+            declared = getattr(fragment, 'security_schemes', None)
+            if declared:
+                out[_relative(raml, location)] = {
+                    name: self.scheme(definition) for name, definition in declared.items()
+                }
+        return out
+
+    def scheme(self, definition: SecuritySchemeDefinition) -> Json:
+        """One `securitySchemes:` entry, with what a caller has to satisfy.
+
+        `settings` and `describedBy` are the point: the OAuth 2.0 URLs, grants
+        and scopes on one side, and the headers and query parameters a request
+        must carry on the other. Without them a reader knows a scheme is
+        required and nothing about how to satisfy it.
+        """
+        out: dict[str, Json] = {
+            'id': self.at(definition.id),
+            'name': definition.name,
+            'type': definition.type,
+        }
+        for field in ('display_name', 'description'):
+            value = getattr(definition, field, None)
+            if value is not None:
+                out[field] = self.value(value, frozenset())
+        settings = definition.settings
+        if settings is not None:
+            # `values` holds the scalars and `lists` the sequences, so both have
+            # to be read; either alone drops half of an OAuth 2.0 declaration.
+            spelled: dict[str, Json] = {name: self.value(facet, frozenset()) for name, facet in settings.values.items()}
+            spelled.update({name: [*items] for name, items in settings.lists.items()})
+            if spelled:
+                out['settings'] = spelled
+        if definition.described_by is not None:
+            out['described_by'] = self.described(definition.described_by)
+        if definition.annotations:
+            out['annotations'] = self.applied_to(definition.annotations)
+        return out
+
+    def described(self, described: SecuritySchemeDescription) -> Json:
+        """What `describedBy:` says a secured request and response carry."""
+        out: dict[str, Json] = {}
+        for field in ('headers', 'query_parameters'):
+            declared = getattr(described, field, None)
+            if declared:
+                out[field] = {name: self.value(param, frozenset()) for name, param in declared.items()}
+        if described.query_string is not None:
+            out['query_string'] = self.shape(described.query_string)
+        if described.responses:
+            out['responses'] = {str(code): self.response(r) for code, r in described.responses.items()}
+        return out
 
     def types(self, raml: Raml) -> Json:
         """Every declaration, by the file it was written in.
@@ -338,10 +400,24 @@ class _Projector:
         if fragment is None:
             return None
         out: dict[str, Json] = {'kind': type(fragment).__name__}
-        for field in ('title', 'version', 'base_uri', 'media_types', 'protocols', 'usage'):
+        for field in ('title', 'version', 'base_uri', 'media_types', 'protocols', 'usage', 'description'):
             value = getattr(fragment, field, None)
             if value is not None:
                 out[field] = self.value(value, frozenset())
+        declared = getattr(fragment, 'base_uri_parameters', None)
+        if declared:
+            # `{tenant}` in the base URI is a value every caller has to supply,
+            # so a reader who cannot see it cannot build a request at all.
+            out['base_uri_parameters'] = {name: self.value(param, frozenset()) for name, param in declared.items()}
+        items = getattr(fragment, 'documentation', None)
+        if items:
+            out['documentation'] = [
+                {'title': self.value(item.title, frozenset()), 'content': self.value(item.content, frozenset())}
+                for item in items
+            ]
+        annotations = getattr(fragment, 'annotations', None)
+        if annotations:
+            out['annotations'] = self.applied_to(annotations)
         return out
 
     def endpoint(self, endpoint: EndPoint) -> Json:
@@ -350,10 +426,19 @@ class _Projector:
             'operations': {method: self.operation(op) for method, op in (endpoint.operations or {}).items()},
             'secured_by': self.schemes(endpoint.secured_by),
         }
+        # A resource carries the prose a navigation pane is built from, and it
+        # reached no view here at all: an operation had both, its resource had
+        # neither.
+        for field in ('display_name', 'description'):
+            value = getattr(endpoint, field, None)
+            if value is not None:
+                out[field] = self.value(value, frozenset())
         if endpoint.uri_parameters:
             out['uri_parameters'] = {
                 name: self.value(param, frozenset()) for name, param in endpoint.uri_parameters.items()
             }
+        if endpoint.annotations:
+            out['annotations'] = self.applied_to(endpoint.annotations)
         return out
 
     def operation(self, operation: Operation) -> Json:
@@ -375,6 +460,8 @@ class _Projector:
             out['display_name'] = self.value(operation.display_name, frozenset())
         if operation.secured_by:
             out['secured_by'] = self.schemes(operation.secured_by)
+        if operation.annotations:
+            out['annotations'] = self.applied_to(operation.annotations)
         request = operation.request
         if request is not None:
             out.update(self.request(request))
@@ -400,6 +487,8 @@ class _Projector:
             out['headers'] = {name: self.value(param, frozenset()) for name, param in response.headers.items()}
         if response.bodies:
             out['bodies'] = {media: self.body(body) for media, body in response.bodies.items()}
+        if response.annotations:
+            out['annotations'] = self.applied_to(response.annotations)
         return out
 
     def body(self, body: Body) -> Json:
@@ -437,6 +526,15 @@ class _Projector:
             for scheme in schemes or []
             if scheme is not None
         ]
+
+    def applied_to(self, annotations: dict[str, DomainExtension]) -> Json:
+        """Every annotation applied at one site, each pointing at its type.
+
+        On the site, not only in the document-wide list. There `target` is a
+        *kind* — `Resource` — so a reader could see that something was
+        deprecated and not what.
+        """
+        return [self.applied(name, extension) for name, extension in annotations.items()]
 
     def applied(self, name: str, extension: DomainExtension) -> Json:
         """One applied annotation, pointing at the annotation *type*.

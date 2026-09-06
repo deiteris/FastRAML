@@ -350,6 +350,16 @@ The laws. Section 4.1 records where each is checked and over what input —
     by the golden layer, which cannot see this — a golden agrees with whatever
     was generated, including a `null` where an address belonged.
 
+16. **A documentation view has what a reader needs** — one test per item in
+    [16](16-graph.md) § 11.4, in `test_effective.py`. Each was absent from every
+    view, and none of them failed anything: a key that is not emitted looks
+    exactly like a document that did not say it, so only a checklist written
+    against what a renderer *renders* finds them. Six were found that way at
+    once — `baseUriParameters`, `documentation`, a resource's own
+    `displayName`/`description`, a scheme's `settings` and `describedBy`, and
+    annotations attached to the site they were applied at rather than only to a
+    document-wide list keyed by *kind*.
+
 ### 4.1 Where each law lives, and why
 
 | Laws | Where | Input |

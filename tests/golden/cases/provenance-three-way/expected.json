@@ -80,6 +80,7 @@
     "protocols": [],
     "title": "Golden"
   },
+  "security_schemes": {},
   "types": {
     "caller.raml": {
       "CallerType": {

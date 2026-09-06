@@ -80,5 +80,25 @@
     "protocols": [],
     "title": "Golden"
   },
+  "security_schemes": {
+    "api.raml": {
+      "oauth": {
+        "id": "pyraml://id#/declarations/securitySchemes/oauth",
+        "name": "oauth",
+        "settings": {
+          "accessTokenUri": "https://example.test/token",
+          "authorizationGrants": [
+            "authorization_code"
+          ],
+          "authorizationUri": "https://example.test/authorize",
+          "scopes": [
+            "read",
+            "write"
+          ]
+        },
+        "type": "OAuth 2.0"
+      }
+    }
+  },
   "types": {}
 }

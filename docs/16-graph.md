@@ -1173,6 +1173,31 @@ expressions, and every container inline. `kind_facets` is driven off
 places its members rather than pointing at them, so it needs the containers as
 well as the constraints.
 
+Plus what a **reader** needs and a traversal does not. Each of these reached no
+view at all, and each omission was invisible, because an absent key looks
+exactly like a document that did not say it:
+
+| | where | why a reader needs it |
+|---|---|---|
+| `baseUriParameters` | `entry_point` | `{tenant}` is a value every caller supplies; without it no request can be built |
+| `documentation` items | `entry_point` | the prose pages of an API are not reachable from any type |
+| `displayName`, `description` | an endpoint | an operation had both and its resource had neither, which is what a navigation pane is built from |
+| `settings` | a scheme | the OAuth 2.0 URLs, grants and scopes |
+| `describedBy` | a scheme | the headers and query parameters a secured request must carry |
+| `annotations` | an endpoint, operation, response | see below |
+
+**Security schemes are a section of their own**, keyed by file then name like
+`types`. The settings belong to the declaration, and a `securedBy:` entry
+already points at it by address — the rule § 11.3 applies to a supertype.
+Repeating a scheme at every use site would be the duplication that rule exists
+to prevent.
+
+**An annotation is recorded where it was applied.** The document-wide
+`annotations` list gives `target: "Resource"` — a *kind*, not an address — so a
+reader could see that something was deprecated and not what. `shape` had always
+pointed at the annotation type; an endpoint, an operation and a response now do
+the same.
+
 Two fields answer different questions and both are kept: `bound` says a
 `securedBy` entry resolved, `declaration` says where to. A `securedBy: [null]`
 entry binds to a synthesised definition that no document declares, so it is

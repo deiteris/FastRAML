@@ -5,6 +5,7 @@
   "entry_point": {
     "kind": "Library"
   },
+  "security_schemes": {},
   "types": {
     "lib.raml": {
       "AnnotatedScalar": {

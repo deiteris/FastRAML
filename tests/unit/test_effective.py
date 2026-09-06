@@ -210,3 +210,120 @@ class TestAnAddressMapCanBeReused:
         raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
         assert effective(raml, addresses=graph.addresses) == effective(raml)
+
+
+DOCUMENTED = """#%RAML 1.0
+title: Docs
+version: v2
+baseUri: https://api.example.test/{tenant}
+baseUriParameters:
+  tenant:
+    description: which tenant
+documentation:
+  - title: Getting started
+    content: Read this first.
+securitySchemes:
+  oauth:
+    type: OAuth 2.0
+    describedBy:
+      headers:
+        Authorization:
+          description: bearer token
+    settings:
+      authorizationUri: https://example.test/auth
+      accessTokenUri: https://example.test/token
+      authorizationGrants: [authorization_code]
+      scopes: [read, write]
+annotationTypes:
+  deprecated: string
+/users:
+  displayName: Users collection
+  description: the users resource
+  (deprecated): use /people
+  securedBy: [oauth]
+  get:
+    (deprecated): use GET /people
+    responses:
+      200:
+        (deprecated): going away
+        description: ok
+"""
+
+
+class TestWhatADocumentationViewNeeds:
+    """docs/16 § 11.4. A renderer reads this, so what a reader has to see has to
+    be in it. Each of these reached no view at all and the omission was
+    invisible: an absent key looks exactly like a document that did not say it.
+    """
+
+    @pytest.fixture
+    def doc(self, workspace):
+        root = workspace({'api.raml': DOCUMENTED})
+        return effective(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+    def test_base_uri_parameters_are_projected(self, doc):
+        """`{tenant}` is a value every caller supplies; without it no request
+        can be built at all.
+        """
+        declared = doc['entry_point']['base_uri_parameters']
+        assert declared['tenant']['binding'] == 'uri'
+        assert declared['tenant']['type']['description'] == 'which tenant'
+
+    def test_documentation_items_are_projected(self, doc):
+        assert doc['entry_point']['documentation'] == [{'title': 'Getting started', 'content': 'Read this first.'}]
+
+    def test_a_resource_carries_its_own_prose(self, doc):
+        """An operation had `displayName` and `description` and its resource had
+        neither, which is what a navigation pane is built from.
+        """
+        users = doc['endpoints']['/users']
+        assert users['display_name'] == 'Users collection'
+        assert users['description'] == 'the users resource'
+
+    def test_a_scheme_says_how_to_satisfy_it(self, doc):
+        scheme = doc['security_schemes']['api.raml']['oauth']
+        assert scheme['type'] == 'OAuth 2.0'
+        assert scheme['settings']['authorizationUri'] == 'https://example.test/auth'
+        assert scheme['settings']['scopes'] == ['read', 'write']
+        assert scheme['settings']['authorizationGrants'] == ['authorization_code']
+
+    def test_a_scheme_says_what_a_request_must_carry(self, doc):
+        described = doc['security_schemes']['api.raml']['oauth']['described_by']
+        assert described['headers']['Authorization']['type']['description'] == 'bearer token'
+
+    def test_a_secured_by_entry_resolves_into_the_scheme_section(self, doc):
+        """The join within one document: `securedBy:` points at the declaration
+        by address, and the declaration is now here to be found.
+        """
+        applied = doc['endpoints']['/users']['secured_by'][0]
+        assert applied['declaration'] == doc['security_schemes']['api.raml']['oauth']['id']
+
+
+class TestAnAnnotationIsRecordedWhereItWasApplied:
+    """The document-wide list gives `target: "Resource"` — a *kind*, not an
+    address — so a reader could see that something was deprecated and not what.
+    """
+
+    @pytest.fixture
+    def doc(self, workspace):
+        root = workspace({'api.raml': DOCUMENTED})
+        return effective(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+    def test_on_the_resource(self, doc):
+        assert doc['endpoints']['/users']['annotations'] == [
+            {'name': 'deprecated', 'type': 'pyraml://id#/declarations/annotations/deprecated'}
+        ]
+
+    def test_on_the_operation(self, doc):
+        assert [a['name'] for a in doc['endpoints']['/users']['operations']['get']['annotations']] == ['deprecated']
+
+    def test_on_the_response(self, doc):
+        response = doc['endpoints']['/users']['operations']['get']['responses']['200']
+        assert [a['name'] for a in response['annotations']] == ['deprecated']
+
+    def test_each_points_at_a_type_that_exists(self, workspace):
+        root = workspace({'api.raml': DOCUMENTED})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        graph = build_graph(raml)
+        dangling = [a for _, a in references(effective(raml)) if a not in graph.nodes]
+        assert not dangling, dangling

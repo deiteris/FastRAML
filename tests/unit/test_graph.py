@@ -867,3 +867,46 @@ class TestTheProjectionRules:
         """The corollary: the endpoint's path is one hop away, so it is not here."""
         for iri in iris(graph, 'Operation'):
             assert 'path' not in graph.nodes[iri].attributes
+
+
+class TestEveryFileThatDeclaresSomethingHasANode:
+    """docs/16 section 2.2: `definedIn` names a file, and that file is a node.
+
+    A typed fragment is one declaration and has no `types:` map, so walking the
+    maps never reaches it — it is reached as a parent of whatever `types:` entry
+    included it. Its file gets a node all the same, or `definedIn` names
+    something the graph does not contain and no traversal can reach the file.
+    """
+
+    @pytest.fixture
+    def graph(self, workspace) -> Graph:
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  Role: !include role.raml\n'
+                '/roles:\n  get:\n    responses:\n      200:\n        body:\n'
+                '          application/json: Role\n',
+                'role.raml': '#%RAML 1.0 DataType\ntype: object\nproperties:\n  name: string\n',
+            }
+        )
+        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+    def test_the_included_file_is_a_node(self, graph: Graph):
+        assert sorted(graph.label(iri) for iri in iris(graph, 'Unit')) == ['api.raml', 'role.raml']
+
+    def test_the_file_declares_what_it_holds(self, graph: Graph):
+        unit = next(i for i in iris(graph, 'Unit') if graph.label(i) == 'role.raml')
+        declared = [e.object for e in graph.out(unit, ['declares'])]
+        assert len(declared) == 1
+        assert graph.nodes[declared[0]].attributes['definedIn'] == 'role.raml'
+
+    def test_declares_agrees_with_defined_in(self, graph: Graph):
+        """A file declares what is written in it, not what names it elsewhere."""
+        for edge in graph.edges:
+            if edge.predicate != 'declares':
+                continue
+            where = graph.nodes[edge.object].attributes.get('definedIn')
+            assert where is None or where == graph.nodes[edge.subject].attributes['name']
+
+    def test_no_unit_node_is_unreachable(self, graph: Graph):
+        for iri in iris(graph, 'Unit'):
+            assert graph.out(iri) or graph.into(iri), iri

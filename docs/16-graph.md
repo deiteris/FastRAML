@@ -108,7 +108,7 @@ first, as AMF's `@type` arrays are.
 
 | Predicate | From | To | Notes |
 |---|---|---|---|
-| `declares` | `Unit` | any declaration | one per `types:`/`traits:`/… entry |
+| `declares` | `Unit` | any declaration | the file it is **written in**, not the map that named it |
 | `unit` | `Api` | `Unit` | the document the API root was written in |
 | `endpoint` | `Api` | `EndPoint` | flat: every resource, not only top-level |
 | `parent` | `EndPoint` | `EndPoint` | nesting, for the tree view |
@@ -215,6 +215,25 @@ node, and `shape_at`, `endpoint_at` and `operation_at` narrow it.
 This is what makes § 1's rule enforceable rather than aspirational. A node with
 no entity is something this layer invented, and inventing is the failure mode
 the rule exists to prevent.
+
+### 2.9 A file that declares something is a node
+
+Every fragment holding a declaration gets a `Unit`, whatever its kind. A typed
+fragment is *one* declaration and has no `types:` map, so walking the maps never
+reaches it — it is reached as a parent of the `types:` entry that included it —
+and it needs a node all the same. On a real document that is 161 files rather
+than 3: the API, two libraries, and the 158 `!include`d data types.
+
+Without them `definedIn` names something the graph does not contain. No edge
+dangles, because it is a literal rather than an edge, but it is the same defect
+one level down: 158 of the 161 files a type could be written in were unreachable,
+so "what does this file declare" had no answer for 96% of them.
+
+`declares` runs from the file a declaration is **written in**, not from the map
+that named it. `types: {X: !include x.raml}` names `X` in one document and writes
+it in another; `definedIn` already says `x.raml`, and an edge from the naming
+document would contradict it. One declarer per declaration, and it agrees with
+the literal.
 
 ### 2.8 The literals are derived, not stored
 
@@ -423,6 +442,11 @@ to pick from a genuine ambiguity.
 - **Trait and resource-type *bodies*.** They have been applied; the applied
   result is projected on the operation. `appliesTrait` records that a trait was
   used, which is the question anyone asks about it.
+- **`!include` references.** `raml.include_refs` records 1,083 of them on a
+  real 149-endpoint document, and nothing asks: `deps` and `refs` work on types
+  and endpoints, not files. § 2's rule applies — add a term when a question
+  wants it. A `Unit` node per file exists (§ 2.9), so the question would have
+  somewhere to land if one arrives.
 - **Documentation items, `uses:` prefixes, protocols, `baseUriParameters`.**
   Nothing has needed them yet. § 2's rule applies: add a term when a question
   wants it.

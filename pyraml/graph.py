@@ -51,7 +51,7 @@ from pyraml.nodes import (
 )
 from pyraml.parser.directives import SecurityScheme
 from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
-from pyraml.parser.fragments import APIFragment, Fragment, Library
+from pyraml.parser.fragments import APIFragment, DataTypeFragment, Fragment, Library
 from pyraml.types.base import BaseShape, Parameter
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from pyraml.types.jsonschema_ import projected
@@ -698,20 +698,46 @@ class _Builder:
         if shape is not None and shape.id not in self.iris:
             self.iris[shape.id] = self.claim(iri, shape.id)
 
+    def declared(self, shape: BaseShape, iri: str) -> None:
+        """Record that `shape` is declared, by the file it was written in.
+
+        Not by the map that named it. `types: {X: !include x.raml}` names `X`
+        here and writes it there, and `definedIn` on the node already says
+        `x.raml` — a `declares` edge from this document would contradict it.
+        The file's node is made on demand, so a document holds one only if it
+        holds a declaration.
+        """
+        holder = self.raml.fragments.get(shape.location)
+        if holder is None:
+            return
+        unit = self.add(UnitNode(self.unit(shape.location), holder, self.root))
+        self.edge(unit, 'declares', iri)
+
     def fragment(self, location: str, fragment: Fragment) -> None:
         """Every declaration a fragment holds, in declaration order.
 
-        Only the two that declare anything. The `isinstance` is what narrows
-        `Fragment` — a protocol with no `types` — to the pair that has them.
+        A `Fragment` is a protocol with no `types`, so the `isinstance` calls
+        are what narrow it to the kinds that declare something: the two with
+        declaration maps, and the typed fragment that is itself one declaration.
         """
+        unit = self.unit(location)
+        if isinstance(fragment, DataTypeFragment):
+            # The whole document is one declaration, so the file declares it.
+            # It is normally reached first as a parent of the `types:` entry
+            # that included it and already holds an IRI; the fallback names it
+            # after the file, which is what a type with no name of its own is
+            # called everywhere else.
+            if fragment.shape is not None:
+                named = fragment.shape.name or location.rsplit('/', 1)[-1]
+                self.declared(fragment.shape, self.shape(fragment.shape, self.declare(unit, 'types', named)))
+            return
         if not isinstance(fragment, (APIFragment, Library)):
             return
-        unit = self.unit(location)
         self.add(UnitNode(unit, fragment, self.root))
         for name, shape in fragment.types.items():
-            self.edge(unit, 'declares', self.shape(shape, self.declare(unit, 'types', name)))
+            self.declared(shape, self.shape(shape, self.declare(unit, 'types', name)))
         for name, shape in fragment.annotation_types.items():
-            self.edge(unit, 'declares', self.shape(shape, self.declare(unit, 'annotations', name)))
+            self.declared(shape, self.shape(shape, self.declare(unit, 'annotations', name)))
         for name, scheme in fragment.security_schemes.items():
             iri = self.add(SecuritySchemeNode(self.declare(unit, 'securitySchemes', name), scheme, self.root))
             # Under both the declaration and whatever an `!include` resolved to,

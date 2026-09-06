@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, ClassVar, Final
 
 from pyraml.parser.directives import DirectiveRef, SecurityScheme
 from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
-from pyraml.parser.fragments import APIFragment, Library
+from pyraml.parser.fragments import APIFragment, Fragment
 from pyraml.parser.resourcetypes import ResourceTypeDefinition
 from pyraml.parser.security import SecuritySchemeDefinition
 from pyraml.parser.traits import TraitDefinition
@@ -75,8 +75,7 @@ type Entity = (
     | Response
     | Operation
     | EndPoint
-    | APIFragment
-    | Library
+    | Fragment
     | TraitDefinition
     | ResourceTypeDefinition
     | SecuritySchemeDefinition
@@ -327,8 +326,11 @@ class ApiNode(GraphNode[APIFragment]):
 
 
 @dataclass(slots=True, eq=False)
-class UnitNode(GraphNode[APIFragment | Library]):
-    """One file. No `definedIn`: its name already is its path from the root."""
+class UnitNode(GraphNode[Fragment]):
+    """One file that holds a declaration, of any fragment kind.
+
+    No `definedIn`: its name already is its path from the root.
+    """
 
     kind: ClassVar[str] = 'Unit'
 

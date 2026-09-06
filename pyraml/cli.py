@@ -316,11 +316,14 @@ def _effective(args: argparse.Namespace) -> int:
 
     from pyraml.effective import effective, positions_of  # noqa: PLC0415
 
-    built = _built(args)
-    if built is None:
+    # No graph: this verb needs none, and `effective` assigns the addresses it
+    # needs itself. A consumer that already holds a graph passes
+    # `addresses=graph.addresses` instead and skips the second assignment.
+    raml = _parsed(args)
+    if raml is None:
         return EXIT_INVALID
-    _, raml = built
-    print(json.dumps(positions_of(raml) if args.positions else effective(raml), indent=2, sort_keys=True))
+    payload = positions_of(raml) if args.positions else effective(raml)
+    print(json.dumps(payload, indent=2, sort_keys=True))
     return EXIT_OK
 
 
@@ -651,6 +654,20 @@ def _run_sparql(graph: Graph, text: str, *, json_lines: bool) -> int:
         else:
             print('\t'.join(_term(row[name]) or '' for name in names))
     return EXIT_OK
+
+
+def _parsed(args: argparse.Namespace, path: str | None = None) -> Raml | None:
+    """Parse without projecting, for a verb that needs no graph."""
+    from pyraml.errors import RamlError  # noqa: PLC0415 - graph commands only
+    from pyraml.parser.entry import parse_from_path  # noqa: PLC0415
+
+    path = path or args.files[0]
+    try:
+        return parse_from_path(path, _options(args, validate=False))
+    except RamlError as err:
+        print(f'{path}: invalid', file=sys.stderr)
+        print(err, file=sys.stderr)
+        return None
 
 
 def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Raml] | None:

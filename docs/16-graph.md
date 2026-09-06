@@ -1149,6 +1149,22 @@ size.
 Both outputs come from one `Walk`, so **an address printed by `effective` names
 the node printed by `graph`**. That join is the whole point; law 15 asserts it.
 
+### 11.3a A typed fragment is a declaration
+
+A `#%RAML 1.0 DataType` document is one declaration, and `fragment_types` lists
+it only when some document's `types:` included it. As the **entry point**
+nothing lists it, and reading only that map projected a document whose entire
+content is a type as having none — silently, because an empty map is what a
+document with no types looks like. `pyraml effective user.raml` printed
+`"types": {}`.
+
+Only the entry point is folded in. An included fragment is already listed under
+the name that included it, and the graph addresses its shape *under* that
+declaration — `…/types/User/inherits/user.raml` — rather than top-level, because
+`types: {User: !include user.raml}` is a **link**: two shapes, two ids, and the
+one the walk reaches first keeps the declaration address. Adding a top-level
+entry for the second would invent a declaration the graph does not have.
+
 ### 11.4 What it carries that the graph does not
 
 Examples, defaults, `xml`, `allowedTargets`, custom facet *values*, type

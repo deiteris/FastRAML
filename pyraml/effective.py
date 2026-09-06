@@ -25,9 +25,10 @@ from __future__ import annotations
 
 import re
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pyraml.datanode import DataNode, ValueNode
+from pyraml.parser.fragments import DataTypeFragment
 from pyraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet, copyable_slots
 from pyraml.types.examples import Example, Examples
 from pyraml.walk import DEFAULT_BASE, Addresses, address
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
     from pyraml.parser.directives import SecurityScheme
     from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
     from pyraml.parser.fragments import Fragment
+    from pyraml.positions import Position
     from pyraml.registry import Raml
 
 __all__ = ['Json', 'effective', 'positions_of']
@@ -65,9 +67,38 @@ _SKIP = frozenset(
 )
 
 
-def effective(raml: Raml, *, base: str = DEFAULT_BASE) -> Json:
-    """The whole parse, as a value `json.dumps` accepts."""
-    return _Projector(address(raml, base=base), _declared(raml)).model(raml)
+def effective(raml: Raml, *, addresses: Addresses | None = None, base: str = DEFAULT_BASE) -> Json:
+    """The whole parse, as a value `json.dumps` accepts.
+
+    Pass `addresses` to reuse a map already assigned — `Graph.addresses`, say.
+    The walk that assigns them is most of the cost, and a consumer holding both
+    views should pay for it once. `base` is used only when one is built here.
+    """
+    if addresses is None:
+        addresses = address(raml, base=base)
+    return _Projector(addresses, _declared(raml)).model(raml)
+
+
+def _typed_fragment(raml: Raml) -> tuple[str, str, BaseShape] | None:
+    """The `#%RAML 1.0 DataType` entry document, if that is what was parsed.
+
+    A typed fragment is one declaration, and `fragment_types` lists it only when
+    some document's `types:` included it. As the *entry point* nothing lists it,
+    so reading only `fragment_types` projected a document whose entire content
+    is a type as having none — silently, since an empty map is what a document
+    with no types looks like.
+
+    The entry point alone, because that is the only case nothing else covers.
+    An included fragment is already listed under the name that included it, and
+    the graph gives its shape an address *under* that declaration
+    (`…/types/User/inherits/user.raml`) rather than a top-level one — so adding
+    a top-level entry here would invent a declaration the graph does not have.
+    """
+    entry = raml.entry_point
+    if not isinstance(entry, DataTypeFragment) or entry.shape is None:
+        return None
+    location = entry.location
+    return location, entry.shape.name or location.rsplit('/', 1)[-1], entry.shape
 
 
 def _declared(raml: Raml) -> frozenset[int]:
@@ -79,12 +110,16 @@ def _declared(raml: Raml) -> frozenset[int]:
     entirely. The address infix cannot answer this — a nested anonymous shape
     inside a declaration carries `#/declarations/` too.
     """
-    return frozenset(
-        shape.id
+    named = [
+        shape
         for declared in (*raml.fragment_types.values(), *raml.fragment_annotations.values())
         for shape in declared.values()
         if shape is not None
-    )
+    ]
+    entry = _typed_fragment(raml)
+    if entry is not None:
+        named.append(entry[2])
+    return frozenset(shape.id for shape in named)
 
 
 def positions_of(raml: Raml) -> Json:
@@ -93,14 +128,18 @@ def positions_of(raml: Raml) -> Json:
     Only the cases that are *about* positions carry one of these, so an edit to
     any other document cannot churn it.
     """
-    return {
-        _relative(raml, uri): {
-            name: {'key': _position(base.key_pos), 'value': _position(base.value_pos)}
-            for name, base in declared.items()
-        }
-        for uri, declared in raml.fragment_types.items()
-        if declared
-    }
+    out: dict[str, Json] = {}
+    for uri, declared in raml.fragment_types.items():
+        if declared:
+            out[_relative(raml, uri)] = {
+                name: {'key': _position(base.key_pos), 'value': _position(base.value_pos)}
+                for name, base in declared.items()
+            }
+    entry = _typed_fragment(raml)
+    if entry is not None:
+        uri, name, shape = entry
+        out[_relative(raml, uri)] = {name: {'key': _position(shape.key_pos), 'value': _position(shape.value_pos)}}
+    return out
 
 
 def _relative(raml: Raml, uri: str) -> str:
@@ -113,7 +152,7 @@ def _relative(raml: Raml, uri: str) -> str:
     return uri.removeprefix(root)
 
 
-def _position(position: Any) -> Json:
+def _position(position: Position | None) -> Json:
     return None if position is None else [position.line, position.column]
 
 
@@ -160,14 +199,26 @@ class _Projector:
         return {
             'base': self.addresses.base,
             'entry_point': self.fragment(raml.entry_point),
-            'types': {
-                _relative(raml, uri): {name: self.shape(base) for name, base in declared.items()}
-                for uri, declared in raml.fragment_types.items()
-                if declared
-            },
+            'types': self.types(raml),
             'endpoints': {path: self.endpoint(endpoint) for path, endpoint in raml.endpoints.items()},
             'annotations': [self.annotation(extension) for extension in raml.domain_extensions],
         }
+
+    def types(self, raml: Raml) -> Json:
+        """Every declaration, by the file it was written in.
+
+        Typed fragments are folded in under their own location: one is a
+        declaration that no `types:` block need mention.
+        """
+        out: dict[str, Json] = {}
+        for uri, declared in raml.fragment_types.items():
+            if declared:
+                out[_relative(raml, uri)] = {name: self.shape(base) for name, base in declared.items()}
+        entry = _typed_fragment(raml)
+        if entry is not None:
+            uri, name, shape = entry
+            out[_relative(raml, uri)] = {name: self.shape(shape)}
+        return out
 
     # -- shapes ---------------------------------------------------------------
 

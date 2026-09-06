@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from pyraml import ParseOptions, parse_from_path
-from pyraml.effective import effective
+from pyraml.effective import effective, positions_of
 from pyraml.graph import build_graph
 
 #: Exercises each of the four cross-references at once: `inherits`, an alias
@@ -66,8 +66,6 @@ def references(value: object, key: str = '') -> list[tuple[str, str]]:
     elif isinstance(value, list):
         for item in value:
             found += references(item, key)
-        if key == 'inherits':
-            found += [(key, item) for item in value if isinstance(item, str)]
     return found
 
 
@@ -152,3 +150,63 @@ class TestTheProjectionAndTheGraphAgree:
         operation = projection['endpoints']['/people']['operations']['get']
         assert operation['id'] in graph.nodes
         assert graph.nodes[operation['id']].attributes['method'] == 'get'
+
+
+class TestATypedFragmentIsADeclaration:
+    """A `#%RAML 1.0 DataType` document is one declaration, and no `types:`
+    block need mention it. Read only from `fragment_types`, such a document
+    projected as having no types at all — silently, because an empty map is
+    exactly what a document with no types looks like. The graph carries the same
+    branch (docs/16 § 2.9).
+    """
+
+    FRAGMENT = '#%RAML 1.0 DataType\ntype: object\nproperties:\n  id: string\n'
+
+    @pytest.fixture
+    def entry(self, workspace):
+        root = workspace({'user.raml': self.FRAGMENT})
+        return parse_from_path(root / 'user.raml', ParseOptions(unwrap=True))
+
+    def test_the_fragment_is_projected_as_a_type(self, entry):
+        declared = effective(entry)['types']['user.raml']
+        assert list(declared) == ['user.raml']
+        assert declared['user.raml']['kind'] == 'ObjectShape'
+        assert list(declared['user.raml']['properties']) == ['id']
+
+    def test_it_lands_at_the_address_the_graph_gave_it(self, entry):
+        graph = build_graph(entry)
+        projected = effective(entry)['types']['user.raml']['user.raml']
+        assert projected['id'] == f'{graph.base}#/declarations/types/user.raml'
+        assert projected['id'] in graph.nodes
+
+    def test_its_positions_are_projected_too(self, entry):
+        assert positions_of(entry)['user.raml']['user.raml']['key'] is not None
+
+    def test_an_included_fragment_is_listed_only_where_it_was_named(self, workspace):
+        """Included under a `types:` name it is already there, under that name.
+
+        The graph addresses its shape *under* that declaration —
+        `…/types/User/inherits/user.raml` — rather than top-level, so a second
+        entry here would invent a declaration the graph does not have.
+        """
+        root = workspace(
+            {
+                'user.raml': self.FRAGMENT,
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  User: !include user.raml\n',
+            }
+        )
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        declared = effective(raml)['types']
+        assert {file: list(names) for file, names in declared.items()} == {'api.raml': ['User']}
+        assert set(build_graph(raml).nodes) >= {addr for _, addr in references(declared)}
+
+
+class TestAnAddressMapCanBeReused:
+    def test_passing_a_graph_s_map_gives_the_same_projection(self, workspace):
+        """The join is only real if the two agree, and they agree because it is
+        one map rather than two walks that happen to match.
+        """
+        root = workspace({'api.raml': API})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        graph = build_graph(raml)
+        assert effective(raml, addresses=graph.addresses) == effective(raml)

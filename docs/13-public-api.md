@@ -376,8 +376,8 @@ where = address(raml)               # entity id -> address, on its own
 
 `Addresses.of` is many-to-one and `id` remains the identity: a linked
 declaration and its link target share one address on purpose
-([16](16-graph.md) § 3.1). `Addresses.at` goes back the other way and returns a
-list for that reason.
+([16](16-graph.md) § 3.1). Pass `Graph.addresses` to `effective` when you hold
+both views: the walk is most of the cost, and the two have to agree on it.
 
 `list` is the **inventory**, and it comes first: every other navigation verb
 takes a NAME, and this is how you learn one.

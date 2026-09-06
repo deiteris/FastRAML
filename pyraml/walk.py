@@ -125,10 +125,6 @@ class Addresses:
     def __repr__(self) -> str:
         return f'<Addresses base={self.base!r} entities={len(self.of)}>'
 
-    def at(self, iri: str) -> list[int]:
-        """Every entity addressed by `iri`, in the order the walk reached them."""
-        return [entity for entity, address in self.of.items() if address == iri]
-
 
 class _NullSink:
     """The sink that records nothing, for a walk wanted only for its addresses."""

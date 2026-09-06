@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import quote
 
 from pyraml.parser.directives import DirectiveRef, SecurityScheme
-from pyraml.parser.endpoints import Body, EndPoint, Operation, Response
+from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
 from pyraml.parser.fragments import APIFragment, Fragment, Library
 from pyraml.parser.resourcetypes import ResourceTypeDefinition
 from pyraml.parser.security import SecuritySchemeDefinition
@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from pyraml.parser.annotations import DomainExtension
-    from pyraml.parser.endpoints import Request
     from pyraml.positions import Position
     from pyraml.registry import Raml
     from pyraml.types.base import Shape
@@ -188,6 +187,40 @@ _DECLARED_KINDS: Final[dict[_Bucket, str]] = {
 #: Percent-escaped in an IRI segment. Everything outside is escaped, so a media
 #: type, a URI template and a `/regex/` property name all survive as one segment.
 _SAFE: Final = ''
+
+#: What each node kind is allowed to project. Declared once and consulted twice
+#: — when a node is created, and when its literals are read — so the two cannot
+#: disagree about what a kind stands for (docs/16 § 2.7).
+#:
+#: A mismatch used to be silent: the reader narrowed with `isinstance` and
+#: returned an empty dictionary when the narrowing failed, so a node paired with
+#: the wrong entity kept its kind, its IRI and its edges, and simply had no
+#: literals. That is a wrong answer rather than an error, and it is the failure
+#: mode this whole layer is meant not to have.
+#:
+#: Three kinds take more than one class, and both spellings are real. A trait, a
+#: resource type or a security scheme is normally its definition; when a name
+#: matched no declaration, `applies` still emits an edge so the application is
+#: not invisible, and the placeholder it points at is the *reference*.
+_KIND_ENTITY: Final[dict[str, tuple[type, ...]]] = {
+    'Type': (BaseShape,),
+    'Property': (Property,),
+    'PatternProperty': (PatternProperty,),
+    'Parameter': (Parameter,),
+    'Payload': (Body,),
+    'Request': (Request,),
+    'Response': (Response,),
+    'Operation': (Operation,),
+    'EndPoint': (EndPoint,),
+    # One object, two nodes: the entry document is a file and an API, and the
+    # two say different things about it. This is why the dispatch is on the
+    # kind and not on the entity's class — the class cannot tell them apart.
+    'Api': (APIFragment,),
+    'Unit': (APIFragment, Library),
+    'Trait': (TraitDefinition, DirectiveRef),
+    'ResourceType': (ResourceTypeDefinition, DirectiveRef),
+    'SecurityScheme': (SecuritySchemeDefinition, SecurityScheme, DirectiveRef),
+}
 
 
 # -- the graph ----------------------------------------------------------------
@@ -749,8 +782,14 @@ class _Builder:
         test is what establishes that every node has one. A projection whose
         nodes are not all backed by something in the model has copied rather
         than projected (docs/16 section 1).
+
+        The kind and the entity are checked against each other here, where a
+        mismatch is introduced, rather than being discovered when the literals
+        are read — or worse, not discovered, which is what an `isinstance` that
+        falls through to an empty dictionary does.
         """
         if iri not in self.nodes:
+            _check_kind(kinds[0], entity)
             self.nodes[iri] = GraphNode(iri=iri, kinds=kinds, entity=entity, root=self.root)
         return iri
 
@@ -1078,7 +1117,36 @@ class _Builder:
 # -- the literals, derived ----------------------------------------------------
 
 
-def _attributes(node: GraphNode) -> dict[str, Literal_]:  # noqa: PLR0911, PLR0912 - one arm per node kind
+def _check_kind(kind: str, entity: Entity) -> None:
+    """Refuse a node whose kind and entity disagree.
+
+    Raised rather than accumulated: it is a fault in this module, not in the
+    document being projected, so no author can act on it and no parse should
+    survive it.
+    """
+    allowed = _KIND_ENTITY.get(kind)
+    if allowed is None:
+        raise TypeError(f'unknown node kind {kind!r}; add it to _KIND_ENTITY')
+    if not isinstance(entity, allowed):
+        wanted = ' | '.join(cls.__name__ for cls in allowed)
+        raise TypeError(f'node kind {kind!r} projects {wanted}, not {type(entity).__name__}')
+
+
+def _narrowed[T](entity: Entity, kind: str, *wanted: type[T]) -> T:
+    """`entity` as `wanted`, which `_check_kind` has already guaranteed.
+
+    The `isinstance` is here to narrow for `mypy`, not to decide anything, so
+    the failing branch raises instead of returning nothing. An earlier version
+    returned an empty dictionary and turned a builder mistake into a node with
+    no literals — plausible, silent and wrong.
+    """
+    if not isinstance(entity, wanted):
+        names = ' | '.join(cls.__name__ for cls in wanted)
+        raise TypeError(f'node kind {kind!r} holds {type(entity).__name__}, not {names}')
+    return entity
+
+
+def _attributes(node: GraphNode) -> dict[str, Literal_]:  # noqa: PLR0911 - one arm per node kind
     """One node's literals, read from the entity it projects.
 
     Dispatched on the node's *kind* rather than on the entity's class, because
@@ -1092,58 +1160,64 @@ def _attributes(node: GraphNode) -> dict[str, Literal_]:  # noqa: PLR0911, PLR09
     why the projection keeps an attribute view at all: this layer owns the
     vocabulary, not the values (§ 2.8).
     """
-    entity, kind = node.entity, node.kinds[0]
+    entity, kind, root = node.entity, node.kinds[0], node.root
     if kind == 'Type':
-        return _type_attributes(entity, node.root) if isinstance(entity, BaseShape) else {}
+        return _type_attributes(_narrowed(entity, kind, BaseShape), root)
     if kind == 'Property':
-        return {'name': entity.name, 'required': entity.required} if isinstance(entity, Property) else {}
+        prop = _narrowed(entity, kind, Property)
+        return {'name': prop.name, 'required': prop.required}
     if kind == 'PatternProperty':
-        return {'name': _pattern(entity), 'pattern': _pattern(entity)} if isinstance(entity, PatternProperty) else {}
+        written = _pattern(_narrowed(entity, kind, PatternProperty))
+        return {'name': written, 'pattern': written}
     if kind == 'Parameter':
-        if not isinstance(entity, Parameter):
-            return {}
+        param = _narrowed(entity, kind, Parameter)
         bound: dict[str, Literal_] = {
-            'name': entity.name,
-            'binding': _BINDING[entity.binding],
-            'required': entity.required,
+            'name': param.name,
+            'binding': _BINDING[param.binding],
+            'required': param.required,
         }
-        return bound | _where(entity.base.location, entity.key_pos, node.root)
+        return bound | _where(param.base.location, param.key_pos, root)
     if kind == 'Payload':
-        if not isinstance(entity, Body):
-            return {}
-        media: dict[str, Literal_] = {'mediaType': entity.media_type} if entity.media_type else {}
-        return media | _where(entity.location, entity.key_pos, node.root)
+        body = _narrowed(entity, kind, Body)
+        media: dict[str, Literal_] = {'mediaType': body.media_type} if body.media_type else {}
+        return media | _where(body.location, body.key_pos, root)
     if kind == 'Response':
-        if not isinstance(entity, Response):
-            return {}
-        coded = _named({'statusCode': entity.code}, _text(entity.display_name) or entity.code, entity.description)
-        return coded | _where(entity.location, entity.key_pos, node.root)
+        response = _narrowed(entity, kind, Response)
+        named = _named(
+            {'statusCode': response.code}, _text(response.display_name) or response.code, response.description
+        )
+        return named | _where(response.location, response.key_pos, root)
     if kind == 'Operation':
-        return _operation_attributes(entity, node.root) if isinstance(entity, Operation) else {}
+        return _operation_attributes(_narrowed(entity, kind, Operation), root)
     if kind == 'EndPoint':
-        if not isinstance(entity, EndPoint):
-            return {}
-        path = _named({'path': entity.full_uri}, _text(entity.display_name) or entity.full_uri, entity.description)
-        return path | _where(entity.location, entity.key_pos, node.root)
+        endpoint = _narrowed(entity, kind, EndPoint)
+        named = _named(
+            {'path': endpoint.full_uri}, _text(endpoint.display_name) or endpoint.full_uri, endpoint.description
+        )
+        return named | _where(endpoint.location, endpoint.key_pos, root)
     if kind == 'Api':
-        if not isinstance(entity, APIFragment):
-            return {}
+        api = _narrowed(entity, kind, APIFragment)
         return _drop(
             {
-                'name': _text(entity.title),
-                'version': _text(entity.version),
-                'description': _text(entity.description),
-                'baseUri': _text(entity.base_uri),
+                'name': _text(api.title),
+                'version': _text(api.version),
+                'description': _text(api.description),
+                'baseUri': _text(api.base_uri),
             }
         )
     if kind == 'Unit':
         # No `definedIn`: a file is not defined somewhere else, and its name
         # already is its path relative to the root.
-        return {'name': relative_to(entity.location, node.root)} if isinstance(entity, Fragment) else {}
-    return _declared_attributes(entity, node.root)
+        return {'name': relative_to(_narrowed(entity, kind, APIFragment, Library).location, root)}
+    if kind == 'Request':
+        # A request node exists to hang parameters and payloads off. It says
+        # nothing about itself that its edges do not already say.
+        _narrowed(entity, kind, Request)
+        return {}
+    return _declared_attributes(entity, kind, root)
 
 
-def _declared_attributes(entity: Entity, root: str) -> dict[str, Literal_]:
+def _declared_attributes(entity: Entity, kind: str, root: str) -> dict[str, Literal_]:
     """A trait, a resource type or a security scheme.
 
     Two kinds of entity reach here per node kind. One is the definition, which
@@ -1160,7 +1234,7 @@ def _declared_attributes(entity: Entity, root: str) -> dict[str, Literal_]:
         return {'name': entity.name} | _where(entity.location, entity.key_pos, root)
     if isinstance(entity, (DirectiveRef, SecurityScheme)):
         return {'name': entity.name} if entity.name else {}
-    return {}
+    raise TypeError(f'node kind {kind!r} holds {type(entity).__name__}, which projects no literals')
 
 
 def _type_attributes(base: BaseShape, root: str) -> dict[str, Literal_]:

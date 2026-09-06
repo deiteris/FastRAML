@@ -178,6 +178,25 @@ This is what makes § 1's rule enforceable rather than aspirational. A node with
 no entity is something this layer invented, and inventing is the failure mode
 the rule exists to prevent.
 
+**And the kind must agree with the entity.** `_KIND_ENTITY` says what each kind
+projects, and it is consulted twice: when a node is created, and when its
+literals are read. A pair the table does not allow raises, at the creation site
+where the mistake was made.
+
+That guard exists because the first version of § 2.8's reader did not have it.
+It narrowed with `isinstance` to satisfy the type checker and returned an empty
+dictionary when the narrowing failed — so a node paired with the wrong entity
+would keep its kind, its IRI and every edge, and simply have no literals. No
+error, a plausible node count, and a wrong answer: the same shape of bug as the
+duplicate-IRI hazard in § 3.1, and caught the same way.
+
+Three kinds legitimately take more than one class, and the table says so. A
+trait, a resource type or a security scheme is normally its definition; where a
+name matched no declaration, `applies` still emits an edge so the application is
+not invisible, and the placeholder it points at is the *reference*. `Api` and
+`Unit` are the reverse case — one entity behind two kinds, which is why the
+dispatch is on the kind and cannot be on the entity's class.
+
 ### 2.8 The literals are derived, not stored
 
 `GraphNode.attributes` is a property. It reads the entity when asked and builds

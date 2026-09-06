@@ -677,3 +677,44 @@ securitySchemes:
         graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
         operation = iris(graph, 'Operation')[0]
         assert graph.nodes[operation].attributes['scopes'] == ('read', 'admin')
+
+
+class TestAKindAndItsEntityCannotDiverge:
+    """docs/16 section 2.7: one table says what a kind projects, and both the
+    builder and the reader consult it.
+
+    The hazard is specific. `_attributes` narrows with `isinstance` to satisfy
+    the type checker, and an earlier version returned an empty dictionary when
+    the narrowing failed — so a node paired with the wrong entity kept its kind,
+    its IRI and its edges and simply had no literals. Plausible, silent, wrong.
+    """
+
+    def test_the_table_covers_every_kind_the_builder_emits(self, graph: Graph):
+        emitted = {node.kinds[0] for node in graph.nodes.values()}
+        assert emitted <= set(graph_module._KIND_ENTITY), emitted - set(graph_module._KIND_ENTITY)
+
+    def test_every_node_holds_a_class_its_kind_allows(self, graph: Graph):
+        for node in graph.nodes.values():
+            allowed = graph_module._KIND_ENTITY[node.kinds[0]]
+            assert isinstance(node.entity, allowed), (node.iri, node.kinds[0], type(node.entity))
+
+    def test_creating_a_mismatched_node_is_refused(self, graph: Graph):
+        builder = graph_module._Builder.__new__(graph_module._Builder)
+        builder.nodes, builder.root = {}, ''
+        endpoint = graph.endpoint_at(iris(graph, 'EndPoint')[0])
+        with pytest.raises(TypeError, match="'Response' projects Response, not EndPoint"):
+            builder.node('pyraml://id#/wrong', endpoint, 'Response')
+
+    def test_an_unknown_kind_is_refused_rather_than_silently_bare(self, graph: Graph):
+        builder = graph_module._Builder.__new__(graph_module._Builder)
+        builder.nodes, builder.root = {}, ''
+        endpoint = graph.endpoint_at(iris(graph, 'EndPoint')[0])
+        with pytest.raises(TypeError, match='unknown node kind'):
+            builder.node('pyraml://id#/wrong', endpoint, 'Sprocket')
+
+    def test_reading_a_mismatched_node_raises_rather_than_returning_nothing(self, graph: Graph):
+        """The guard at creation is the real defence; this is the backstop."""
+        real = graph.nodes[iris(graph, 'EndPoint')[0]]
+        forged = GraphNode(iri=real.iri, kinds=('Response',), entity=real.entity, root=real.root)
+        with pytest.raises(TypeError, match="'Response' holds EndPoint"):
+            _ = forged.attributes

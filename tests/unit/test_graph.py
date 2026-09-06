@@ -704,3 +704,125 @@ class TestAKindAndItsEntityCannotDiverge:
         assert by_kind['Type'] == {'TypeNode'}
         assert by_kind['EndPoint'] == {'EndPointNode'}
         assert by_kind['Unit'] == {'UnitNode'}
+
+
+QUALIFIED_LIB = """#%RAML 1.0 Library
+traits:
+  paged:
+    queryParameters:
+      offset?: integer
+resourceTypes:
+  collection:
+    get:
+      description: list them
+annotationTypes:
+  audited: boolean
+securitySchemes:
+  key:
+    type: Pass Through
+    describedBy:
+      headers:
+        X-Key: string
+"""
+
+QUALIFIED_API = """#%RAML 1.0
+title: Qualified
+uses:
+  shared: shared.raml
+/things:
+  type: shared.collection
+  (shared.audited): true
+  get:
+    is: [shared.paged]
+    securedBy: [shared.key]
+"""
+
+
+class TestAReferenceThroughALibraryReachesTheDeclaration:
+    """docs/16 section 2.2: `appliesTrait`, `appliesResourceType`, `securedBy`
+    and `annotation` point at the declaration, not at a stand-in for it.
+
+    A qualified name is the case that matters. `shared.paged` names one trait in
+    one library, and a projection that cannot reach it emits an edge to a node
+    that holds only the name — an application that looks recorded and answers
+    `refs shared.paged` with nothing.
+    """
+
+    @pytest.fixture
+    def graph(self, workspace) -> Graph:
+        root = workspace({'api.raml': QUALIFIED_API, 'shared.raml': QUALIFIED_LIB})
+        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+    def declaration(self, graph: Graph, bucket: str, name: str) -> str:
+        tail = f'#/declarations/{bucket}/{name}'
+        found = [iri for iri in graph.nodes if iri.endswith(tail)]
+        assert len(found) == 1, found
+        return found[0]
+
+    def test_a_qualified_trait_reaches_the_library_declaration(self, graph: Graph):
+        operation = iris(graph, 'Operation')[0]
+        target = self.declaration(graph, 'traits', 'paged')
+        assert [e.object for e in graph.out(operation, ['appliesTrait'])] == [target]
+        # It is the declaration, not a stand-in: it knows where it was written.
+        assert graph.nodes[target].attributes['definedIn'] == 'shared.raml'
+
+    def test_a_qualified_resource_type_reaches_the_library_declaration(self, graph: Graph):
+        endpoint = iris(graph, 'EndPoint')[0]
+        target = self.declaration(graph, 'resourceTypes', 'collection')
+        assert [e.object for e in graph.out(endpoint, ['appliesResourceType'])] == [target]
+        assert graph.nodes[target].attributes['definedIn'] == 'shared.raml'
+
+    def test_a_qualified_scheme_reaches_the_library_declaration(self, graph: Graph):
+        operation = iris(graph, 'Operation')[0]
+        target = self.declaration(graph, 'securitySchemes', 'key')
+        assert [e.object for e in graph.out(operation, ['securedBy'])] == [target]
+
+    def test_a_qualified_annotation_reaches_its_type(self, graph: Graph):
+        endpoint = iris(graph, 'EndPoint')[0]
+        target = self.declaration(graph, 'annotations', 'audited')
+        assert [e.object for e in graph.out(endpoint, ['annotation'])] == [target]
+
+    def test_refs_answers_from_the_declaration_side(self, graph: Graph):
+        """The reverse walk is the question the edges exist for."""
+        trait = self.declaration(graph, 'traits', 'paged')
+        assert [e.subject for e in graph.into(trait, ['appliesTrait'])] == iris(graph, 'Operation')
+
+    def test_no_node_stands_in_for_a_name_that_resolved(self, graph: Graph):
+        """An `Unresolved*Node` here means a reference was matched by name and
+        missed, which is the failure the model reference exists to prevent."""
+        stood_in = [n.iri for n in graph.nodes.values() if type(n).__name__.startswith('Unresolved')]
+        assert stood_in == []
+
+
+class TestOneNameInTwoLibraries:
+    """docs/16 section 2.2: an application points at what was applied.
+
+    `a.paged` and `b.paged` are one name in two libraries. Matching the name
+    cannot tell them apart and returns whichever was declared first, so the
+    edge lands on a trait that was never applied and `refs a.paged` reports a
+    use that is not there. The reference carries the declaration P6 resolved.
+    """
+
+    FILES = {
+        'api.raml': '#%RAML 1.0\ntitle: T\nuses:\n  a: a.raml\n  b: b.raml\n/things:\n  get:\n    is: [b.paged]\n',
+        'a.raml': '#%RAML 1.0 Library\ntraits:\n  paged:\n    queryParameters:\n      fromA?: integer\n',
+        'b.raml': '#%RAML 1.0 Library\ntraits:\n  paged:\n    queryParameters:\n      fromB?: integer\n',
+    }
+
+    @pytest.fixture
+    def graph(self, workspace) -> Graph:
+        root = workspace(self.FILES)
+        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+    def test_the_edge_lands_on_the_library_that_was_applied(self, graph: Graph):
+        operation = iris(graph, 'Operation')[0]
+        applied = [e.object for e in graph.out(operation, ['appliesTrait'])]
+        assert applied == [f'{DEFAULT_BASE}/b.raml#/declarations/traits/paged']
+
+    def test_the_edge_agrees_with_what_the_merge_produced(self, graph: Graph):
+        """The parameter the trait contributed says which one really applied."""
+        assert [graph.label(iri) for iri in iris(graph, 'Parameter')] == ['fromB']
+
+    def test_the_trait_that_was_not_applied_has_no_uses(self, graph: Graph):
+        unused = f'{DEFAULT_BASE}/a.raml#/declarations/traits/paged'
+        assert graph.into(unused, ['appliesTrait']) == []

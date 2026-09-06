@@ -23,7 +23,9 @@ from pyraml.positions import UNKNOWN, Position
 from pyraml.yamlnode import NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
+    from pyraml.parser.resourcetypes import ResourceTypeDefinition
     from pyraml.parser.security import SecuritySchemeDefinition
+    from pyraml.parser.traits import TraitDefinition
     from pyraml.registry import ParseCtx, Raml
     from pyraml.yamlnode import Node
 
@@ -58,6 +60,12 @@ class DirectiveRef:
     #: own `is:` entries resolve against the resource type's file even after the
     #: merge has moved them onto an operation in another (docs/08 section 5.2).
     scope: ParseCtx | None = None
+    #: The declaration this name resolved to, filled in by whichever of
+    #: `traits.py` and `resourcetypes.py` resolved it. A consumer asking what
+    #: was applied reads this rather than matching the name again: two libraries
+    #: may declare one name, and a lookup cannot tell them apart
+    #: (docs/16 § 2.2). `None` where the name matched nothing.
+    resolved: TraitDefinition | ResourceTypeDefinition | None = None
 
     def __repr__(self) -> str:
         return f'DirectiveRef({self.name!r})'

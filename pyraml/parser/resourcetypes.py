@@ -220,6 +220,7 @@ def _definition_for(ref: DirectiveRef) -> ResourceTypeDefinition:
         raise RamlError.wrap('get resource type definition', err, ref.location, ref.value_pos) from err
     if definition is None:
         raise RamlError.new('resource type not found', ref.location, ref.value_pos, info={'resourceType': ref.name})
+    ref.resolved = definition
     return definition
 
 

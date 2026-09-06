@@ -220,6 +220,7 @@ def _definition_for(ref: DirectiveRef) -> TraitDefinition:
         raise RamlError.wrap('get trait definition', err, ref.location, ref.value_pos) from err
     if definition is None:
         raise RamlError.new('trait not found', ref.location, ref.value_pos, info={'trait': ref.name})
+    ref.resolved = definition
     return definition
 
 

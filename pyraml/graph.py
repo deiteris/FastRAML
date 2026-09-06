@@ -49,6 +49,7 @@ from pyraml.nodes import (
     UnresolvedSchemeNode,
     UnresolvedTraitNode,
 )
+from pyraml.parser.directives import SecurityScheme
 from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
 from pyraml.parser.fragments import APIFragment, Fragment, Library
 from pyraml.types.base import BaseShape, Parameter
@@ -60,7 +61,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from pyraml.parser.annotations import DomainExtension
-    from pyraml.parser.directives import DirectiveRef, SecurityScheme
+    from pyraml.parser.directives import DirectiveRef
     from pyraml.registry import Raml
     from pyraml.types.base import Shape
 
@@ -598,14 +599,13 @@ class _Builder:
         '_segments',
         'base',
         'claimed',
-        'declared',
+        'declaration_iris',
         'edges',
         'emitted',
         'entities',
         'nodes',
         'raml',
         'root',
-        'scheme_iris',
         'shape_iris',
         'shapes',
     )
@@ -622,13 +622,15 @@ class _Builder:
         #: projected. `applies` used to find one by scanning every node for a
         #: matching suffix, which is quadratic — 18 million `str.endswith` calls
         #: on a real document once schema contents joined the graph.
-        self.declared: dict[str, str] = {}
         #: `SecuritySchemeDefinition.id` -> its node IRI. Keyed on the parse's own
         #: counter rather than a name, because P5 has already bound each
         #: `securedBy:` entry to its definition and a name cannot tell two
         #: libraries' schemes apart. Not `id()`: the project forbids it, and this
         #: counter is unique per parse anyway (docs/02 § 3.1).
-        self.scheme_iris: dict[int, str] = {}
+        #: Declaration id -> its node's IRI, for everything a `type:`, `is:`
+        #: or `securedBy:` entry can name. Keyed on the model's own id, never
+        #: `id()`, which is neither stable nor unique once an object is freed.
+        self.declaration_iris: dict[int, str] = {}
         #: IRI → the `BaseShape.id` holding it. Two shapes given the same
         #: structural name would otherwise merge into one node in silence; see
         #: `claim`.
@@ -668,17 +670,8 @@ class _Builder:
         return node.iri
 
     def declare(self, unit: str, bucket: str, name: str) -> str:
-        """The IRI of one declaration, recorded so a name can be resolved to it.
-
-        Registered where the declaration is *created* rather than recovered from
-        the IRI afterwards. Sniffing for `#/declarations/` in `node` would have
-        meant a substring search on all 58,000 node creations to re-learn
-        something the caller already knew, and `startswith` cannot do it — the
-        marker sits after the unit's own URI, not at the front.
-        """
-        iri = f'{unit}{_DECLARATIONS}{bucket}/{self.segment(name)}'
-        self.declared.setdefault(iri[iri.index(_DECLARATIONS) :], iri)
-        return iri
+        """The IRI of one declaration in `unit`'s `types:`, `traits:` and so on."""
+        return f'{unit}{_DECLARATIONS}{bucket}/{self.segment(name)}'
 
     def claim(self, fallback: str, shape_id: int) -> str:
         """`fallback`, or the first free variation of it, claimed for `shape_id`.
@@ -749,14 +742,18 @@ class _Builder:
             iri = self.add(SecuritySchemeNode(self.declare(unit, 'securitySchemes', name), scheme, self.root))
             # Under both the declaration and whatever an `!include` resolved to,
             # so a `securedBy:` bound to either finds this one node.
-            self.scheme_iris[scheme.id] = iri
-            self.scheme_iris[scheme.resolved().id] = iri
+            self.declaration_iris[scheme.id] = iri
+            self.declaration_iris[scheme.resolved().id] = iri
             self.edge(unit, 'declares', iri)
         for name, trait in fragment.traits.items():
             iri = self.add(TraitNode(self.declare(unit, 'traits', name), trait, self.root))
+            self.declaration_iris[trait.id] = iri
+            self.declaration_iris[trait.resolved().id] = iri
             self.edge(unit, 'declares', iri)
         for name, resource_type in fragment.resource_types.items():
             iri = self.add(ResourceTypeNode(self.declare(unit, 'resourceTypes', name), resource_type, self.root))
+            self.declaration_iris[resource_type.id] = iri
+            self.declaration_iris[resource_type.resolved().id] = iri
             self.edge(unit, 'declares', iri)
 
     def api(self) -> None:
@@ -804,31 +801,26 @@ class _Builder:
     def applies(
         self, subject: str, predicate: str, bucket: _Bucket, ref: DirectiveRef | SecurityScheme, location: str
     ) -> None:
-        """A `type:`/`is:` reference, pointed at the declaration it names.
+        """A `type:`, `is:` or `securedBy:` reference, pointed at what it named.
 
-        The name may be qualified (`lib.collection`), and the declaration then
-        lives in that library's unit rather than this one. Resolving it here
-        would be re-implementing P4; instead the name is matched against what
-        the projection has already declared.
+        The declaration comes off the reference, which the pass that resolved it
+        recorded. Matching the name again would re-run P4's work and get a
+        different answer: `a.paged` and `b.paged` are one name in two libraries,
+        and a lookup cannot tell them apart — it returns whichever was declared
+        first, so `refs a.paged` reports a use that is not there.
 
-        **The whole name is tried before the dotted tail.** A dot is not only a
-        namespace separator: `securitySchemes: {oauth2.0: …}` is a declaration
-        whose name contains one, and splitting first makes the tail `0`, which
-        matches nothing. That fixture is in the corpus, and it produced an edge
-        to a node that did not exist.
-
-        An unmatched name still gets an edge, to a node created here, so an
-        application is never invisible and no edge ever dangles.
+        A reference that resolved to nothing still gets an edge, to a node
+        holding the name, so an application is never invisible and no edge
+        dangles.
         """
-        name = ref.name
-        if not name:
+        if not ref.name:
             return
-        for candidate in (name, name.rsplit('.', 1)[-1]):
-            found = self.declared.get(f'{_DECLARATIONS}{bucket}/{self.segment(candidate)}')
-            if found is not None:
-                self.edge(subject, predicate, found)
-                return
-        local = f'{self.unit(location)}#/declarations/{bucket}/{self.segment(name)}'
+        definition = ref.definition if isinstance(ref, SecurityScheme) else ref.resolved
+        target = self.declaration_iris.get(definition.id) if definition is not None else None
+        if target is not None:
+            self.edge(subject, predicate, target)
+            return
+        local = f'{self.unit(location)}#/declarations/{bucket}/{self.segment(ref.name)}'
         self.edge(subject, predicate, self.add(_UNRESOLVED[bucket](local, ref, self.root)))
 
     def operation(self, endpoint: str, operation: Operation) -> None:
@@ -908,20 +900,21 @@ class _Builder:
             # re-derived work the model had done, and did it worse: two libraries
             # declaring one scheme name are indistinguishable to a name lookup
             # and are two different objects here.
-            target = self.scheme_iris.get(scheme.definition.id) if scheme.definition is not None else None
+            target = self.declaration_iris.get(scheme.definition.id) if scheme.definition is not None else None
             if target is not None:
                 self.edge(subject, 'securedBy', target)
             else:
                 self.applies(subject, 'securedBy', 'securitySchemes', scheme, self.raml.location)
 
     def annotated(self, subject: str, annotations: dict[str, DomainExtension]) -> None:
+        """One edge per annotation, to the annotation *type* P8 bound it to."""
         for name, extension in annotations.items():
             defined_by = extension.defined_by
-            tail = name.rsplit('.', 1)[-1]
-            wanted = f'#/declarations/annotations/{self.segment(tail)}'
             target = self.shape_iris.get(defined_by.id) if defined_by is not None else None
             if target is None:
-                target = next((iri for iri in self.nodes if iri.endswith(wanted)), f'{self.base}{wanted}')
+                # Nothing was bound, so there is no declaration to point at and
+                # nothing this layer could resolve that P8 could not.
+                target = f'{self.base}#/declarations/annotations/{self.segment(name.rsplit(".", 1)[-1])}'
             self.edge(subject, 'annotation', target)
 
     # -- shapes ---------------------------------------------------------------

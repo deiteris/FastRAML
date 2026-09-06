@@ -302,6 +302,24 @@ an application is never invisible and **no edge ever dangles**. That last part i
 also a corpus law: an edge to a node that does not exist is a traversal that
 silently ends early.
 
+### 3.2a An application points at what was applied
+
+`appliesTrait`, `appliesResourceType`, `securedBy` and `annotation` read the
+declaration off the reference — `DirectiveRef.resolved`, `SecurityScheme.definition`,
+`DomainExtension.defined_by` — which the pass that resolved the name recorded.
+
+Matching the name again is not equivalent, and the difference is visible:
+`a.paged` and `b.paged` are one name in two libraries. A lookup returns whichever
+was declared first, so `is: [b.paged]` produces an edge to `a`'s trait — an
+application recorded against a declaration that was never applied, and a
+`refs a.paged` that reports a use which does not exist. There is no name
+resolution in this layer; § 1 says so and this is what it costs to mean it.
+
+A reference that resolved to nothing still gets an edge, to a node carrying the
+name, so an application is never invisible and no edge dangles. That node is an
+`Unresolved*Node` (§ 2.7), and its presence is the signal that a name matched
+nothing — not that the projection failed to look hard enough.
+
 ### 3.3 Looking a name up: a declaration wins
 
 `Graph.find` turns a name into an IRI, and more than one node can carry the same

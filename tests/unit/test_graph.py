@@ -24,6 +24,7 @@ import json
 import pytest
 
 import pyraml.graph as graph_module
+import pyraml.nodes as nodes_module
 from pyraml import ParseOptions, parse_from_path
 from pyraml.graph import (
     DEFAULT_BASE,
@@ -803,15 +804,16 @@ class TestOneNameInTwoLibraries:
     use that is not there. The reference carries the declaration P6 resolved.
     """
 
-    FILES = {
-        'api.raml': '#%RAML 1.0\ntitle: T\nuses:\n  a: a.raml\n  b: b.raml\n/things:\n  get:\n    is: [b.paged]\n',
-        'a.raml': '#%RAML 1.0 Library\ntraits:\n  paged:\n    queryParameters:\n      fromA?: integer\n',
-        'b.raml': '#%RAML 1.0 Library\ntraits:\n  paged:\n    queryParameters:\n      fromB?: integer\n',
-    }
-
     @pytest.fixture
     def graph(self, workspace) -> Graph:
-        root = workspace(self.FILES)
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\nuses:\n  a: a.raml\n  b: b.raml\n'
+                '/things:\n  get:\n    is: [b.paged]\n',
+                'a.raml': '#%RAML 1.0 Library\ntraits:\n  paged:\n    queryParameters:\n      fromA?: integer\n',
+                'b.raml': '#%RAML 1.0 Library\ntraits:\n  paged:\n    queryParameters:\n      fromB?: integer\n',
+            }
+        )
         return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def test_the_edge_lands_on_the_library_that_was_applied(self, graph: Graph):
@@ -826,3 +828,42 @@ class TestOneNameInTwoLibraries:
     def test_the_trait_that_was_not_applied_has_no_uses(self, graph: Graph):
         unused = f'{DEFAULT_BASE}/a.raml#/declarations/traits/paged'
         assert graph.into(unused, ['appliesTrait']) == []
+
+
+class TestTheProjectionRules:
+    """docs/16 section 1: what "a projection" forbids, one test per clause.
+
+    The rules are here rather than spread across the classes above because each
+    is a property of the whole layer, and each was stated as prose long enough
+    to be violated without anyone noticing.
+    """
+
+    def test_a_node_stores_only_its_iri_entity_and_root(self):
+        """Clause 1: references, not copies.
+
+        A field restating something the entity holds is a second copy of the
+        model. Adding one fails here, which is the point.
+        """
+        allowed = {'iri', 'entity', 'root', 'shape_kind'}
+        for name in nodes_module.__all__:
+            cls = getattr(nodes_module, name)
+            if not (isinstance(cls, type) and issubclass(cls, GraphNode)):
+                continue
+            stored = {slot for klass in cls.__mro__ for slot in getattr(klass, '__slots__', ())}
+            assert stored <= allowed, (name, stored - allowed)
+
+    def test_attributes_is_computed_and_not_a_field(self, graph: Graph):
+        """Clause 2: the vocabulary is owned, the values are not."""
+        assert isinstance(type(graph.nodes[graph.find('User')[0]]).attributes, property)
+        node = graph.nodes[graph.find('User')[0]]
+        assert node.attributes == node.attributes
+        assert node.attributes is not node.attributes
+
+    def test_no_node_kind_is_reachable_without_a_model_object(self, graph: Graph):
+        """Clause 1 again, from the other side: nothing is invented."""
+        assert all(node.entity is not None for node in graph.nodes.values())
+
+    def test_an_operation_does_not_restate_a_fact_an_edge_reaches(self, graph: Graph):
+        """The corollary: the endpoint's path is one hop away, so it is not here."""
+        for iri in iris(graph, 'Operation'):
+            assert 'path' not in graph.nodes[iri].attributes

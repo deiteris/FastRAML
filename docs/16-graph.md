@@ -22,11 +22,39 @@ multiple inheritance is a lot.
 effective graph: what remains is projecting it into a form where following an
 edge is a lookup rather than a visitor.
 
-So this module is a projection and nothing else. It contains no RAML rule, no
+So this layer is a projection and nothing else. It contains no RAML rule, no
 merge, no name resolution, no inference. If a question about the graph turns into
 a question about what RAML means, the answer belongs in another document and
-another pass. The dependency runs one way — `graph.py` imports the model and
-nothing in the model imports `graph.py`.
+another pass. The dependency runs one way — `graph.py` and `nodes.py` import the
+model and nothing in the model imports either.
+
+"A projection" states an intention, and an intention permits anything that can
+be argued for. Three clauses say what it forbids, and each has a test:
+
+**It holds references, not copies.** A node's data is its IRI, the model object
+it projects, and the root that object's location is reported relative to. Nothing
+else is stored. A field restating something the entity holds is a second copy of
+the model that drifts from the first and doubles the memory: 82,287 values in
+6.0 MB, on a document whose model already held all of them.
+*Test:* every node class's slots are a subset of `iri`, `entity`, `root` and
+`TypeNode.shape_kind`.
+
+**It owns the vocabulary, not the values.** `additionalProperties`, `statusCode`,
+`definedIn` are this vocabulary's names for things the model spells
+`additional_properties`, `code`, `location`. Translating between them is the
+work. Deciding what the value *is* is not — that happened in a pass.
+*Test:* `attributes` is a property computed from the entity, and a fresh
+dictionary each read.
+
+**It resolves nothing by name.** Every reference the model resolved carries what
+it resolved to. Matching a name again gets a different answer where two libraries
+declare one: § 3.2a is a worked case where the graph reported an application
+against a trait that was never applied.
+*Test:* two libraries declaring `paged`, and the edge lands on the one whose
+parameter the merge produced.
+
+A fourth follows from the first: **a fact reachable by following an edge is not
+an attribute.** An operation does not restate its endpoint's path (§ 2.8).
 
 ### 1.1 Effective, not declared
 

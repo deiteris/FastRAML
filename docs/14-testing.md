@@ -311,6 +311,14 @@ The laws. Section 4.1 records where each is checked and over what input —
     dangling edge, or merging two types into one node. Each was found by the
     check that names it, and the last was found because go-raml's converter
     carries the same regression net.
+12a. **The projection stays a projection** — one test per clause of
+    [16](16-graph.md) § 1, in `test_graph.py`. A node stores only its IRI, its
+    entity and the root; `attributes` is computed, never a field; an application
+    edge lands on the declaration the pass resolved, not on a same-named one in
+    another library. The clauses were prose for long enough to be violated three
+    times without failing anything, which is why each now has a test that names
+    it. The first is the one to keep: adding a stored field to a node class is
+    how the layer becomes a second copy of the model, and it fails there.
 13. **Every type and every endpoint has an effective view** — `render` raises on
     nothing the corpus declares, and its output **loads as YAML**
     ([16](16-graph.md) § 9). The second half is the one that rots quietly: a

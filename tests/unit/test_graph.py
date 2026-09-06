@@ -23,8 +23,8 @@ import json
 
 import pytest
 
-import pyraml.graph as graph_module
 import pyraml.nodes as nodes_module
+import pyraml.walk as walk_module
 from pyraml import ParseOptions, parse_from_path
 from pyraml.graph import (
     DEFAULT_BASE,
@@ -106,14 +106,14 @@ class TestIris:
                 '  B:\n    properties:\n      id: string\n'
             }
         )
-        original = graph_module._segment
+        original = walk_module._segment
         calls: list[str] = []
 
         def counted(value: str) -> str:
             calls.append(value)
             return original(value)
 
-        monkeypatch.setattr(graph_module, '_segment', counted)
+        monkeypatch.setattr(walk_module, '_segment', counted)
         build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
         assert calls.count('id') == 1
 

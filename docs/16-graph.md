@@ -287,6 +287,14 @@ regardless of whether anything compares it.
 Node IRIs are **structural**: a path describing where the entity sits, not an
 opaque identifier.
 
+**The scheme belongs to `pyraml/walk.py`, not to this module.** More than one
+emitter addresses the same document, and a reference is followable only when the
+emitter that wrote it and the emitter that reads it agree. Assignment is one
+traversal — `Walk`, reporting to a `Sink` — and every emitter is a sink over it.
+`address(raml)` runs that traversal for the map alone; `Graph.addresses` is the
+map the graph was built with, and is the join between a node here and the same
+entity in any other emitter's output.
+
 ```
 pyraml://id#/declarations/types/User
 pyraml://id/lib.raml#/declarations/types/Address
@@ -325,7 +333,7 @@ are distinct. `type1: [string, string]` gives two parents the same one. Without
 disambiguation the second merges into the first: no error is raised, the node
 count is plausible, and **two types have become one**.
 
-`_Builder.claim` therefore records which shape holds each IRI and appends `/!2`,
+`Walk.claim` therefore records which shape holds each IRI and appends `/!2`,
 `/!3` … to a name already taken. The suffix begins with `!`, which segment
 escaping always percent-encodes, so a disambiguated IRI can never collide with
 one a real name produced.
@@ -336,6 +344,15 @@ same hazard — `TestJSONLD_NoDuplicateIDs`, "a regression net for intermediate
 a contextID already in use". Taking that seriously found the same hole here, in
 one corpus fixture (`EdgeCases/inherit-multiple-scalars`). The corpus law is
 docs/14 § 4, law 12.
+
+**An address is therefore not an identity, and must not be made into one.** It
+fails injectivity in both directions. Two entities share one address wherever
+the model links: `traits: {paged: !include p.raml}` registers the entry and the
+fragment it resolves to against one node, so a reference bound to either finds
+it — `Addresses.at` returns a list for that reason. And an entity's address is
+not a function of the document alone, because `claim` breaks a tie by visit
+order. Identity stays `BaseShape.id`, the per-parse counter; `Addresses.of` maps
+identity to address and is deliberately many-to-one.
 
 ### 3.2 A dot is not always a namespace separator
 
@@ -437,8 +454,21 @@ to pick from a genuine ambiguity.
 
 ## 4. What is deliberately not projected
 
-- **Examples and default values.** Data, not structure; `Examples.entries()` is
-  the way to read them and the golden layer already pins them.
+The boundary is not "data versus structure". **A thing is projected when
+something can point at it.** Every predicate in § 2.2 is emitted where the model
+holds a referent — `annotation` points at the annotation *type*, never at the
+value — and everything below is absent because nothing in the model refers to
+it, so no traversal can arrive at it and no query can ask.
+
+That is also the reach of the addressing traversal (`pyraml/walk.py`): an entity
+needs an address exactly when a reference to it has to be followable. An emitter
+that wants the list below places it by containment instead, which needs no
+address. So the list is a boundary a fuller emitter crosses without this module
+changing — not a shortfall it has to work around.
+
+- **Examples and default values.** Nothing points at an example; the containing
+  shape holds it. `Examples.entries()` is the way to read them and the golden
+  layer already pins them.
 - **Trait and resource-type *bodies*.** They have been applied; the applied
   result is projected on the operation. `appliesTrait` records that a trait was
   used, which is the question anyone asks about it.
@@ -637,10 +667,18 @@ classes produce.
 
 **Emit AMF JSON-LD as an export.** Not rejected — deferred, with a stated
 trigger. The one real payoff is interoperating with tooling written against AMF,
-notably the API-governance rulesets. Nothing needs that yet, and if it does, it
-is an *additional serialiser* over this graph rather than a change to it. That is
-the whole reason § 3's IRIs are structural and § 2's vocabulary is separable from
-them.
+notably the API-governance rulesets. Nothing needs that yet.
+
+It would be **a sink over `pyraml/walk.py`, not a serialiser over this graph.**
+An AMF consumer renders as well as queries, so it wants what § 4 excludes —
+api-console 6.6.69 reads 357 vocabulary terms across twelve namespaces, of which
+the `data:` DataNode tree for examples and defaults is a large part. Reading
+those out of a graph that deliberately omits them is not possible, and widening
+the graph to carry them would slow every traversal to serve an emitter that does
+not traverse. Sharing the walk and the addresses is what makes the two outputs
+joinable; sharing the graph would make both worse. § 3's addresses being
+structural, and § 2's vocabulary being separable from them, are what keep the
+option open.
 
 **What was taken from AMF: the IRI discipline, and nothing else.** Structural
 paths, escaped segments, one flat identifier space, declarations registered

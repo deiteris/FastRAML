@@ -301,25 +301,26 @@ class TestTheGraphProjectsTheWholeCorpus:
         assert projected > 400, f'the corpus was not found ({projected} projected)'
         assert not offenders, '\n'.join(offenders[:20])
 
-    def test_no_two_shapes_share_an_iri(self):
-        """A structural IRI is derived from names, which RAML does not promise
-        are distinct: `type1: [string, string]` gives two parents the same one.
-        A collision merges two nodes into one **in silence** — no error, a
+    def test_no_two_shapes_share_an_address(self):
+        """An address is derived from names, which RAML does not promise are
+        distinct: `type1: [string, string]` gives two parents the same one. A
+        collision merges two nodes into one **in silence** — no error, a
         plausible node count, and two types have quietly become one.
 
         go-raml's converter carries the same regression net for the same reason
-        (`TestJSONLD_NoDuplicateIDs`). Reaching into the builder's own table is
-        deliberate: from outside, a collision looks exactly like a graph that
-        happened to have one node fewer.
+        (`TestJSONLD_NoDuplicateIDs`). Asked of the address map rather than of a
+        graph: from outside a graph, a collision looks exactly like a document
+        that happened to have one node fewer.
 
-        Restricted to **shapes**. `builder.iris` covers every entity kind, and
-        two ids sharing one IRI is correct for a linked declaration —
+        Restricted to **shapes**. `Addresses.of` covers every entity kind, and
+        two ids sharing one address is correct for a linked declaration —
         `traits: {paged: !include p.raml}` registers the entry and the fragment
         it resolves to against one node, so a reference bound to either finds
-        it. Two *shapes* on one IRI is the hazard, and it is what § 3.1 is about.
+        it. Two *shapes* on one address is the hazard, and it is what § 3.1 is
+        about.
         """
         from pyraml import ParseOptions, RamlError, parse_from_path
-        from pyraml.graph import DEFAULT_BASE, _Builder
+        from pyraml.walk import address
 
         root = _root_or_skip()
         options = ParseOptions(unwrap=True)
@@ -329,11 +330,9 @@ class TestTheGraphProjectsTheWholeCorpus:
                 raml = parse_from_path(path, options)
             except (RamlError, OSError):
                 continue
-            builder = _Builder(raml, DEFAULT_BASE)
-            builder.run()
             shape_ids = {shape.id for shape in raml.shapes}
             owner: dict[str, int] = {}
-            for entity_id, iri in builder.iris.items():
+            for entity_id, iri in address(raml).of.items():
                 if entity_id in shape_ids and owner.setdefault(iri, entity_id) != entity_id:
                     offenders.append(f'{fixture_id(root, path)}: {iri}')
         assert not offenders, '\n'.join(offenders[:20])

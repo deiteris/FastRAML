@@ -159,6 +159,25 @@ projected first, so every scan matched within a few nodes and returned. A
 it scans the whole graph before falling back. No corpus has qualified names and
 a large graph together, which is the shape of a real library-using API.
 
+### 2.7 Every node holds the entity it projects
+
+`GraphNode.entity` is the model object the node was made from, and it is **not
+optional**. That is the enforcement mechanism: `mypy` rejects a `node()` call
+that cannot name an entity, so the claim is checked at each of the fifteen
+places a node is created rather than asserted by a test afterwards.
+
+Before it, two side maps held the way back — one for shapes, one for endpoints
+and operations — which covered 19,427 of 32,090 nodes on a real 149-endpoint
+document. The other 12,663 were not unrecorded because no model object existed:
+every one of them is a `Property`, `Body`, `Response`, `Parameter`, `Request`,
+`TraitDefinition`, `Fragment` or `SecuritySchemeDefinition`. The builder simply
+did not keep the reference. Both maps are gone; `entity_at` reads the node, and
+`shape_at`, `endpoint_at` and `operation_at` are `isinstance` over it.
+
+This is what makes § 1's rule enforceable rather than aspirational. A node with
+no entity is something this layer invented, and inventing is the failure mode
+the rule exists to prevent.
+
 ### 2.5 Literals
 
 Names, positions and every `ScalarFacet` the shape kind holds. The facets are

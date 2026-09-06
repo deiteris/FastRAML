@@ -30,7 +30,7 @@ from urllib.parse import quote
 
 from pyraml.parser.endpoints import EndPoint, Operation
 from pyraml.parser.fragments import APIFragment, Library
-from pyraml.types.base import ScalarFacet
+from pyraml.types.base import BaseShape, ScalarFacet
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from pyraml.types.jsonschema_ import projected
 from pyraml.uris import relative_to
@@ -42,9 +42,12 @@ if TYPE_CHECKING:
     from pyraml.parser.directives import DirectiveRef, SecurityScheme
     from pyraml.parser.endpoints import Body, Request, Response
     from pyraml.parser.fragments import Fragment
+    from pyraml.parser.resourcetypes import ResourceTypeDefinition
+    from pyraml.parser.security import SecuritySchemeDefinition
+    from pyraml.parser.traits import TraitDefinition
     from pyraml.positions import Position
     from pyraml.registry import Raml
-    from pyraml.types.base import BaseShape, Parameter, PatternProperty, Shape
+    from pyraml.types.base import Parameter, PatternProperty, Property, Shape
 
 __all__ = [
     'DEFAULT_BASE',
@@ -52,6 +55,7 @@ __all__ = [
     'TYPE_EDGES',
     'USE_EDGES',
     'Edge',
+    'Entity',
     'Graph',
     'GraphNode',
     'Route',
@@ -199,6 +203,29 @@ class Edge:
     object: str
 
 
+#: Everything a node can stand for. Every kind in the vocabulary projects one of
+#: these, and the field below is not optional, so this list being total is
+#: checked by `mypy` at each of the fifteen places a node is created rather than
+#: asserted afterwards (docs/16 § 2.7).
+type Entity = (
+    BaseShape
+    | Property
+    | PatternProperty
+    | Parameter
+    | Body
+    | Request
+    | Response
+    | Operation
+    | EndPoint
+    | Fragment
+    | TraitDefinition
+    | ResourceTypeDefinition
+    | SecuritySchemeDefinition
+    | DirectiveRef
+    | SecurityScheme
+)
+
+
 @dataclass(slots=True, eq=False)
 class GraphNode:
     """One entity: what it is, what it is called, and its literal facets.
@@ -210,6 +237,10 @@ class GraphNode:
 
     iri: str
     kinds: tuple[str, ...]
+    #: The model object this node projects. Every node has one: a node without
+    #: an entity would be something this layer invented, and inventing is what
+    #: it is not for (docs/16 § 1).
+    entity: Entity
     #: A tuple is a genuinely multi-valued facet — `enum`, OAuth scopes. It is
     #: not joined into a string: an enum value may itself contain a space, so
     #: `["new york", "london"]` and three separate values would be
@@ -252,35 +283,27 @@ class Graph:
     most of what a navigation question turns out to be.
     """
 
-    __slots__ = ('_entities', '_incoming', '_outgoing', '_shapes', 'base', 'edges', 'nodes', 'root')
+    __slots__ = ('_incoming', '_outgoing', 'base', 'edges', 'nodes', 'root')
 
-    def __init__(  # noqa: PLR0913 - five independent indices, all built by one walk
+    def __init__(
         self,
         base: str,
         nodes: dict[str, GraphNode],
         edges: list[Edge],
         *,
-        shapes: dict[str, BaseShape] | None = None,
         root: str = '',
-        entities: dict[str, EndPoint | Operation] | None = None,
     ) -> None:
         self.base = base
         #: The entry document's directory URI. What the IRIs above are
         #: relative to, and what a consumer needs to turn a shape's absolute
         #: `location` back into the path a person typed.
         self.root = root
+        #: Every node carries the model object it was projected from, so the
+        #: way back to the model is the node itself. Two side maps used to hold
+        #: that for types and for endpoints — 60% of the nodes — and nothing
+        #: recorded it for the rest (docs/16 § 2.7).
         self.nodes = nodes
         self.edges = edges
-        #: IRI → the declaration it was projected from. References, not copies:
-        #: the graph was built from a live model and this is the way back to it.
-        #: Navigation finds a node here and then asks the model the detailed
-        #: question, which is the split docs/16 § 5 describes.
-        self._shapes = shapes or {}
-        #: The same way back for the entities that are not types. An endpoint
-        #: is the entity a reader most needs resolved — it accumulates a
-        #: resource type, traits, security and ancestor URI parameters — and
-        #: none of that is a `BaseShape` (docs/16 § 9.5).
-        self._entities: dict[str, EndPoint | Operation] = entities or {}
         self._outgoing: dict[str, list[Edge]] = {}
         self._incoming: dict[str, list[Edge]] = {}
         for edge in edges:
@@ -302,14 +325,23 @@ class Graph:
         edges = self._incoming.get(iri, [])
         return edges if predicates is None else [e for e in edges if e.predicate in predicates]
 
+    def entity_at(self, iri: str) -> Entity | None:
+        """The model object behind a node, or `None` if the IRI is unknown.
+
+        Every node has one, so this returns `None` only for an IRI that names
+        no node. The three narrowing helpers below are `isinstance` over this.
+        """
+        node = self.nodes.get(iri)
+        return node.entity if node is not None else None
+
     def endpoint_at(self, iri: str) -> EndPoint | None:
         """The resource behind a node, or `None`. See `shape_at`."""
-        found = self._entities.get(iri)
+        found = self.entity_at(iri)
         return found if isinstance(found, EndPoint) else None
 
     def operation_at(self, iri: str) -> Operation | None:
         """The method behind a node, or `None`. See `shape_at`."""
-        found = self._entities.get(iri)
+        found = self.entity_at(iri)
         return found if isinstance(found, Operation) else None
 
     def shape_at(self, iri: str) -> BaseShape | None:
@@ -320,7 +352,8 @@ class Graph:
         for the shape rather than reading the projection, which deliberately
         carries only what a traversal needs (§ 2.5).
         """
-        return self._shapes.get(iri)
+        found = self.entity_at(iri)
+        return found if isinstance(found, BaseShape) else None
 
     def kind_of(self, iri: str) -> str:
         node = self.nodes.get(iri)
@@ -615,14 +648,7 @@ def build_graph(raml: Raml, *, base: str = DEFAULT_BASE) -> Graph:
     """Project a parsed model. Use `ParseOptions(unwrap=True)` — see the module docstring."""
     builder = _Builder(raml, base)
     builder.run()
-    return Graph(
-        base,
-        builder.nodes,
-        builder.edges,
-        shapes=builder.shapes,
-        root=builder.root,
-        entities=builder.entities,
-    )
+    return Graph(base, builder.nodes, builder.edges, root=builder.root)
 
 
 class _Builder:
@@ -656,8 +682,6 @@ class _Builder:
         self.edges: list[Edge] = []
         self.shape_iris: dict[int, str] = {}
         #: The inverse of `shape_iris`, by IRI, for `Graph.shape_at`.
-        self.shapes: dict[str, BaseShape] = {}
-        self.entities: dict[str, EndPoint | Operation] = {}
         #: Declaration fragment (`#/declarations/traits/paged`) -> the first IRI
         #: carrying it, filled by `declare` at the five places a declaration is
         #: projected. `applies` used to find one by scanning every node for a
@@ -699,15 +723,36 @@ class _Builder:
             self._segments[value] = escaped
         return escaped
 
-    def node(self, iri: str, *kinds: str, **attributes: str | int | bool | tuple[str, ...] | None) -> str:
+    def node(
+        self, iri: str, entity: Entity, *kinds: str, **attributes: str | int | bool | tuple[str, ...] | None
+    ) -> str:
+        """Create the node for `entity`, or return the one that already holds it.
+
+        The entity is required and not optional, so that `mypy` rather than a
+        test is what establishes that every node has one. A projection whose
+        nodes are not all backed by something in the model has copied rather
+        than projected (docs/16 section 1).
+        """
         node = self.nodes.get(iri)
         if node is None:
-            node = GraphNode(iri=iri, kinds=kinds)
+            node = GraphNode(iri=iri, kinds=kinds, entity=entity)
             self.nodes[iri] = node
+        self.annotate(iri, **attributes)
+        return iri
+
+    def annotate(self, iri: str, **attributes: str | int | bool | tuple[str, ...] | None) -> None:
+        """Add attributes to a node that already exists.
+
+        Separate from `node` because the callers differ: one is creating an
+        entity's node and knows the entity, the other is filling in a fact
+        learned later — a position, a facet, the scopes a scheme narrowed to.
+        Merging the two forced every such caller to re-supply `kinds`, which
+        they did by reading them back off the node they were about to update.
+        """
+        node = self.nodes[iri]
         for key, value in attributes.items():
             if value is not None:
                 node.attributes[key] = value
-        return iri
 
     def declare(self, unit: str, bucket: str, name: str) -> str:
         """The IRI of one declaration, recorded so a name can be resolved to it.
@@ -750,9 +795,9 @@ class _Builder:
             self.edges.append(Edge(subject=subject, predicate=predicate, object=obj))
 
     def positioned(self, iri: str, location: str, position: Position | None) -> None:
-        self.node(iri, definedIn=self.relative(location))
+        self.annotate(iri, definedIn=self.relative(location))
         if position is not None and position.is_known:
-            self.node(iri, line=position.line, column=position.column)
+            self.annotate(iri, line=position.line, column=position.column)
 
     def relative(self, location: str) -> str:
         return relative_to(location, self.root)
@@ -784,7 +829,7 @@ class _Builder:
         if not isinstance(fragment, (APIFragment, Library)):
             return
         unit = self.unit(location)
-        self.node(unit, 'Unit', name=self.relative(location))
+        self.node(unit, fragment, 'Unit', name=self.relative(location))
         for name, shape in fragment.types.items():
             self.edge(unit, 'declares', self.shape(shape, self.declare(unit, 'types', name)))
         for name, shape in fragment.annotation_types.items():
@@ -795,6 +840,7 @@ class _Builder:
         for name, scheme in fragment.security_schemes.items():
             iri = self.node(
                 self.declare(unit, 'securitySchemes', name),
+                scheme,
                 'SecurityScheme',
                 name=name,
                 type=scheme.type or None,
@@ -806,11 +852,11 @@ class _Builder:
             self.scheme_iris[scheme.resolved().id] = iri
             self.edge(unit, 'declares', iri)
         for name, trait in fragment.traits.items():
-            iri = self.node(self.declare(unit, 'traits', name), 'Trait', name=name)
+            iri = self.node(self.declare(unit, 'traits', name), trait, 'Trait', name=name)
             self.positioned(iri, trait.location, trait.key_pos)
             self.edge(unit, 'declares', iri)
         for name, resource_type in fragment.resource_types.items():
-            iri = self.node(self.declare(unit, 'resourceTypes', name), 'ResourceType', name=name)
+            iri = self.node(self.declare(unit, 'resourceTypes', name), resource_type, 'ResourceType', name=name)
             self.positioned(iri, resource_type.location, resource_type.key_pos)
             self.edge(unit, 'declares', iri)
 
@@ -820,6 +866,7 @@ class _Builder:
             return
         api = self.node(
             f'{self.base}#/web-api',
+            entry,
             'Api',
             name=_text(entry.title),
             version=_text(entry.version),
@@ -843,13 +890,13 @@ class _Builder:
         seen.add(endpoint.id)
         iri = self.node(
             f'{self.base}#/web-api/endpoint/{self.segment(endpoint.full_uri)}',
+            endpoint,
             'EndPoint',
             path=endpoint.full_uri,
             name=_text(endpoint.display_name) or endpoint.full_uri,
             description=_text(endpoint.description),
         )
         self.positioned(iri, endpoint.location, endpoint.key_pos)
-        self.entities[iri] = endpoint
         self.edge(api, 'endpoint', iri)
 
         parent = endpoint.full_uri[: -len(endpoint.uri)] if endpoint.uri and endpoint.full_uri != endpoint.uri else ''
@@ -897,11 +944,12 @@ class _Builder:
                 self.edge(subject, predicate, found)
                 return
         local = f'{self.unit(location)}#/declarations/{bucket}/{self.segment(name)}'
-        self.edge(subject, predicate, self.node(local, _DECLARED_KINDS[bucket], name=name))
+        self.edge(subject, predicate, self.node(local, ref, _DECLARED_KINDS[bucket], name=name))
 
     def operation(self, endpoint: str, operation: Operation) -> None:
         iri = self.node(
             f'{endpoint}/supportedOperation/{self.segment(operation.method)}',
+            operation,
             'Operation',
             method=operation.method,
             name=_text(operation.display_name) or operation.method,
@@ -912,7 +960,6 @@ class _Builder:
             description=_text(operation.description),
         )
         self.positioned(iri, operation.location, operation.key_pos)
-        self.entities[iri] = operation
         self.edge(endpoint, 'supportedOperation', iri)
         for trait in operation.traits:
             self.applies(iri, 'appliesTrait', 'traits', trait, operation.location)
@@ -929,7 +976,7 @@ class _Builder:
             # An empty node here would be one per GET in the graph, all identical
             # and all noise.
             return
-        iri = self.node(f'{operation}/request', 'Request')
+        iri = self.node(f'{operation}/request', request, 'Request')
         self.edge(operation, 'request', iri)
         for name, param in request.headers.items():
             self.edge(iri, 'parameter', self.parameter(f'{iri}/parameter/header/{self.segment(name)}', param))
@@ -944,6 +991,7 @@ class _Builder:
     def response(self, operation: str, response: Response) -> None:
         iri = self.node(
             f'{operation}/returns/{self.segment(response.code)}',
+            response,
             'Response',
             statusCode=response.code,
             name=_text(response.display_name) or response.code,
@@ -959,7 +1007,9 @@ class _Builder:
             self.edge(iri, 'payload', self.payload(iri, media, body))
 
     def payload(self, parent: str, media: str, body: Body) -> str:
-        iri = self.node(f'{parent}/payload/{self.segment(media or "default")}', 'Payload', mediaType=media or None)
+        iri = self.node(
+            f'{parent}/payload/{self.segment(media or "default")}', body, 'Payload', mediaType=media or None
+        )
         self.positioned(iri, body.location, body.key_pos)
         if body.shape is not None:
             self.edge(iri, 'range', self.shape(body.shape, f'{iri}/schema'))
@@ -974,7 +1024,7 @@ class _Builder:
         header there. The model says so too — `Parameter` holds the property
         and adds the binding, so nothing here has to be told which it is.
         """
-        self.node(iri, 'Parameter', name=param.name, binding=_BINDING[param.binding], required=param.required)
+        self.node(iri, param, 'Parameter', name=param.name, binding=_BINDING[param.binding], required=param.required)
         self.positioned(iri, param.base.location, param.key_pos)
         self.edge(iri, 'range', self.shape(param.base, f'{iri}/schema'))
         return iri
@@ -986,7 +1036,7 @@ class _Builder:
                 # security (docs/09 § A3). It is a fact about the operation, so
                 # it is recorded on the operation rather than dropped for having
                 # no scheme to point at.
-                self.node(subject, *self.nodes[subject].kinds, unsecured=True)
+                self.annotate(subject, unsecured=True)
                 continue
             # P5 already bound this reference to its declaration, so the IRI is
             # computed from the definition rather than matched by name. Matching
@@ -999,7 +1049,7 @@ class _Builder:
             else:
                 self.applies(subject, 'securedBy', 'securitySchemes', scheme, self.raml.location)
             if scheme.compiled_params:
-                self.node(subject, *self.nodes[subject].kinds, scopes=tuple(scheme.compiled_params))
+                self.annotate(subject, scopes=tuple(scheme.compiled_params))
 
     def annotated(self, subject: str, annotations: dict[str, DomainExtension]) -> None:
         for name, extension in annotations.items():
@@ -1028,11 +1078,11 @@ class _Builder:
         if base.id in self.emitted:
             return iri
         self.emitted.add(base.id)
-        self.shapes[iri] = base
 
         kind = type(base.shape).__name__ if base.shape is not None else 'UnknownShape'
         self.node(
             iri,
+            base,
             'Type',
             kind,
             name=base.name,
@@ -1066,7 +1116,7 @@ class _Builder:
         if isinstance(shape, ObjectShape):
             for name, prop in (shape.properties or {}).items():
                 child = f'{iri}/property/{self.segment(name)}'
-                self.node(child, 'Property', name=name, required=prop.required)
+                self.node(child, prop, 'Property', name=name, required=prop.required)
                 self.edge(child, 'range', self.shape(prop.base, f'{child}/schema'))
                 self.edge(iri, 'property', child)
             for name, pattern in (shape.pattern_properties or {}).items():
@@ -1074,7 +1124,7 @@ class _Builder:
                 # property has no name of its own and an index would move under
                 # any edit above it.
                 child = f'{iri}/patternProperty/{self.segment(name)}'
-                self.node(child, 'PatternProperty', name=name, pattern=_pattern(pattern))
+                self.node(child, pattern, 'PatternProperty', name=name, pattern=_pattern(pattern))
                 self.edge(child, 'range', self.shape(pattern.base, f'{child}/schema'))
                 self.edge(iri, 'patternProperty', child)
         elif isinstance(shape, ArrayShape):
@@ -1112,11 +1162,11 @@ class _Builder:
             if isinstance(value, ScalarFacet):
                 literal = _facet_value(value.value)
                 if literal is not None:
-                    self.node(iri, *self.nodes[iri].kinds, **{_camel(name): literal})
+                    self.annotate(iri, **{_camel(name): literal})
         if base.enum is not None:
             # `DataNode.raw` is the plain Python value already; unwrapping the
             # `ValueNode` by hand would only reproduce it.
-            self.node(iri, *self.nodes[iri].kinds, enum=tuple(str(member.raw) for member in base.enum))
+            self.annotate(iri, enum=tuple(str(member.raw) for member in base.enum))
 
 
 # -- small readers ------------------------------------------------------------

@@ -580,3 +580,37 @@ class TestDeclarationsArePositioned:
         node = positioned.nodes[positioned.find(name)[0]]
         assert node.attributes.get('definedIn')
         assert node.attributes.get('line')
+
+
+class TestEveryNodeIsBackedByTheModel:
+    """docs/16 section 1: a projection holds references, and invents nothing.
+
+    A node with no model object behind it would be something this layer made
+    up. The type checker is what enforces that at the fifteen places a node is
+    created — `GraphNode.entity` is not optional — and these pin the two
+    consequences a reader can observe.
+    """
+
+    def test_no_node_stands_for_nothing(self, graph: Graph):
+        assert [iri for iri, node in graph.nodes.items() if node.entity is None] == []
+
+    def test_the_kinds_that_used_to_go_unrecorded_are_recorded(self, graph: Graph):
+        """Types and endpoints were kept in two side maps; the rest were not."""
+        by_kind = {node.kinds[0]: type(node.entity).__name__ for node in graph.nodes.values()}
+        assert by_kind['Property'] == 'Property'
+        assert by_kind['Parameter'] == 'Parameter'
+        assert by_kind['Payload'] == 'Body'
+        assert by_kind['Response'] == 'Response'
+        assert by_kind['Request'] == 'Request'
+        assert by_kind['Unit'] in {'APIFragment', 'Library'}
+
+    def test_entity_at_is_what_the_narrowing_helpers_are_built_from(self, graph: Graph):
+        endpoint = iris(graph, 'EndPoint')[0]
+        assert graph.entity_at(endpoint) is graph.endpoint_at(endpoint)
+        # A type node is not an endpoint, and asking does not raise.
+        declared = graph.find('User')[0]
+        assert graph.endpoint_at(declared) is None
+        assert graph.shape_at(declared) is graph.entity_at(declared)
+
+    def test_an_unknown_iri_has_no_entity(self, graph: Graph):
+        assert graph.entity_at(f'{DEFAULT_BASE}#/nope') is None

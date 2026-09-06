@@ -157,6 +157,12 @@ Exported model classes, all read-oriented, all slotted, all carrying
 **API structure** — `EndPoint`, `Operation`, `Request`, `Response`, `Body`,
 `DocumentationItem`.
 
+**Graph** — `Graph`, `GraphNode`, `Edge`, `Route`, `Entity`, `build_graph`.
+`GraphNode.entity` holds the model object the node projects and is never
+`None`; `Graph.entity_at` reads it, and `shape_at`/`endpoint_at`/`operation_at`
+narrow it ([16](16-graph.md) § 2.7). `Graph.__init__` no longer takes `shapes=`
+or `entities=` — the two side maps they filled are gone.
+
 **Types** — `BaseShape` plus the seventeen concrete shapes, `Property`,
 `PatternProperty`, `Parameter`, `Example`, `Examples`, `ScalarFacet`,
 `DataNode`, `ValueNode`, `XmlSerialization`.

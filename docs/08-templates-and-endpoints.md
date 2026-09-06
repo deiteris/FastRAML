@@ -532,6 +532,17 @@ because `{version}` is legal there with nothing declaring it.
 ancestor-declared parameters first, then its own. A nested resource therefore
 exposes the full set needed to build its URL, in path order.
 
+The map holds `Parameter`, not `Property` ([05](05-type-model.md) § 5), and an
+inherited entry is the **same object** at the ancestor and at every descendant —
+the rewrite is `{**inherited, **own}`, so nothing is copied. That is what makes
+its position cite the resource that actually declared it, and it means a
+consumer indexing parameters by identity gets one entry per declaration rather
+than one per resource that inherits it. A synthesised variable is created at the
+endpoint whose template named it, so it is not shared.
+
+`baseUriParameters` binds as `uri` too, and is the one parameter map with no
+template to check against — § 8.2 above says why.
+
 ### 8.3 Bodies and default media types
 
 `decode_media_type_node` handles the two spellings of `body:`:

@@ -23,7 +23,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
 from pyraml.datanode import DataNode, ValueNode
-from pyraml.types.base import BaseShape, PatternProperty, Property, ScalarFacet, copyable_slots
+from pyraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet, copyable_slots
 from pyraml.yamlnode import Node, NodeKind
 
 if TYPE_CHECKING:
@@ -174,6 +174,8 @@ def _value(value: Any, seen: set[int]) -> Any:  # noqa: PLR0911, PLR0912 - one a
         return _shape(value, seen)
     if isinstance(value, ScalarFacet):
         return _value(value.value, seen)
+    if isinstance(value, Parameter):
+        return {'binding': value.binding, 'required': value.required, 'type': _shape(value.base, seen)}
     if isinstance(value, Property):
         return {'required': value.required, 'type': _shape(value.base, seen)}
     if isinstance(value, PatternProperty):

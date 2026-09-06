@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from pyraml.parser.security import SecuritySchemeDescription
     from pyraml.positions import Position
     from pyraml.registry import Raml
-    from pyraml.types.base import BaseShape, Property
+    from pyraml.types.base import BaseShape, Parameter, Property
 
 __all__ = ['Sources', 'render', 'render_endpoint', 'render_operation']
 
@@ -670,7 +670,7 @@ def _bodies(
 
 
 def _parameters(
-    parameters: dict[str, Property], label: str, level: _Level, sources: Sources | None, applied: frozenset[str]
+    parameters: dict[str, Parameter], label: str, level: _Level, sources: Sources | None, applied: frozenset[str]
 ) -> Iterator[_Line]:
     if not parameters:
         return

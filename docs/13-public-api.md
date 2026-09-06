@@ -158,8 +158,15 @@ Exported model classes, all read-oriented, all slotted, all carrying
 `DocumentationItem`.
 
 **Types** — `BaseShape` plus the seventeen concrete shapes, `Property`,
-`PatternProperty`, `Example`, `Examples`, `ScalarFacet`, `DataNode`, `ValueNode`,
-`XmlSerialization`.
+`PatternProperty`, `Parameter`, `Example`, `Examples`, `ScalarFacet`,
+`DataNode`, `ValueNode`, `XmlSerialization`.
+
+`Parameter` is what `Request.headers`, `Request.query_parameters`,
+`Response.headers`, `EndPoint.uri_parameters` and a scheme's `describedBy`
+headers and query parameters hold — **not** `Property`, which is what they held
+before it existed. It wraps the property and adds the binding, an `id` and the
+position of the key; `name`, `base` and `required` read through, so code that
+only asked those three needs no change ([05](05-type-model.md) § 5).
 
 **Templates and security** — `TraitDefinition`, `ResourceTypeDefinition`,
 `SecuritySchemeDefinition`, `SecuritySchemeDescription`,
@@ -180,7 +187,7 @@ six ([09](09-security-and-annotations.md) § A2).
 **What `pyraml` re-exports, and what it does not.** Phase 9 widened `__all__`
 from 45 names to 70 — the entry points, options, errors, loaders and fragments as
 before, plus everything a consumer **narrows against or walks**: all seventeen
-concrete shapes, `BaseShape`, `Property`, `PatternProperty`, and
+concrete shapes, `BaseShape`, `Property`, `PatternProperty`, `Parameter`, and
 `EndPoint`/`Operation`/`Request`/`Response`/`Body`. `isinstance` narrowing is
 what § 6 tells a caller to do, and needing `from pyraml.types.complex_ import
 ObjectShape` to do it — a module named with a trailing underscore precisely

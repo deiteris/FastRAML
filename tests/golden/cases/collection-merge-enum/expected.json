@@ -6,6 +6,7 @@
         "get": {
           "query_parameters": {
             "platform": {
+              "binding": "query",
               "required": false,
               "type": {
                 "enum": [

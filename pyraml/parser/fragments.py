@@ -44,7 +44,7 @@ from pyraml.parser.traits import TraitDefinition, make_trait_definition
 from pyraml.parser.uritemplates import extract_uri_template_params
 from pyraml.registry import ParseCtx
 from pyraml.types.examples import Example, make_example
-from pyraml.types.shape import make_property_map, make_shape, unmarshal_types
+from pyraml.types.shape import make_parameter_map, make_shape, unmarshal_types
 from pyraml.uris import uri_base
 from pyraml.yamlnode import (
     TAG_INCLUDE,
@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 
     from pyraml.positions import Position
     from pyraml.registry import Raml
-    from pyraml.types.base import BaseShape, Property, ScalarFacet
+    from pyraml.types.base import BaseShape, Parameter, ScalarFacet
 
 __all__ = [
     'HEADS',
@@ -486,7 +486,7 @@ class APIFragment(_BaseFragment):
         self.resource_types: dict[str, ResourceTypeDefinition] = {}
         self.security_schemes: dict[str, SecuritySchemeDefinition] = {}
         self.annotations: dict[str, DomainExtension] = {}
-        self.base_uri_parameters: dict[str, Property] = {}
+        self.base_uri_parameters: dict[str, Parameter] = {}
         # A seam: `securedBy:` is harvested before the main loop but decoded
         # after it, because it names schemes the loop has yet to declare.
         self._raw_secured_by: Node | None = None
@@ -592,7 +592,7 @@ class APIFragment(_BaseFragment):
         elif name == FACET_ANNOTATION_TYPES:
             self.annotation_types = unmarshal_types(self._raml, value, self.location, is_annotation=True)
         elif name == FACET_BASE_URI_PARAMETERS:
-            self.base_uri_parameters = make_property_map(self._raml, value, self.location)
+            self.base_uri_parameters = make_parameter_map(self._raml, value, self.location, 'uri')
         elif name == FACET_TRAITS:
             self.traits = decode_trait_definitions(self._raml, value, self.location)
         elif name == FACET_RESOURCE_TYPES:

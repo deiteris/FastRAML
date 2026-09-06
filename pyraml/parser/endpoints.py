@@ -26,7 +26,7 @@ from pyraml.positions import UNKNOWN, Position
 if TYPE_CHECKING:
     from pyraml.parser.annotations import DomainExtension
     from pyraml.parser.directives import DirectiveRef, SecurityScheme
-    from pyraml.types.base import BaseShape, Property, ScalarFacet
+    from pyraml.types.base import BaseShape, Parameter, ScalarFacet
 
 __all__ = [
     'VALID_PROTOCOLS',
@@ -72,8 +72,8 @@ class Request:
     id: int
     location: str
     #: Declaration order. Each is a property declaration, so each is a shape.
-    headers: dict[str, Property] = field(default_factory=dict)
-    query_parameters: dict[str, Property] = field(default_factory=dict)
+    headers: dict[str, Parameter] = field(default_factory=dict)
+    query_parameters: dict[str, Parameter] = field(default_factory=dict)
     #: Mutually exclusive with `query_parameters`; a whole shape, not a map.
     query_string: BaseShape | None = None
     bodies: dict[str, Body] = field(default_factory=dict)
@@ -91,7 +91,7 @@ class Response:
     location: str
     display_name: ScalarFacet[str] | None = None
     description: ScalarFacet[str] | None = None
-    headers: dict[str, Property] = field(default_factory=dict)
+    headers: dict[str, Parameter] = field(default_factory=dict)
     bodies: dict[str, Body] = field(default_factory=dict)
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
     key_pos: Position = UNKNOWN
@@ -149,7 +149,7 @@ class EndPoint:
     #: Ancestor-declared parameters first, then this endpoint's, in path order
     #: (P6, docs/08 section 8.2). A template variable with no declaration gets a
     #: synthesised required `string`.
-    uri_parameters: dict[str, Property] = field(default_factory=dict)
+    uri_parameters: dict[str, Parameter] = field(default_factory=dict)
     operations: dict[str, Operation] = field(default_factory=dict)
     #: Nested resources, keyed by their *relative* URI as written.
     endpoints: dict[str, EndPoint] = field(default_factory=dict)

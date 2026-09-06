@@ -66,8 +66,10 @@ __all__ = [
     'TYPE_TIME_ONLY',
     'TYPE_UNION',
     'BaseShape',
+    'Binding',
     'DeclarationFacet',
     'KindBase',
+    'Parameter',
     'PatternProperty',
     'Property',
     'ScalarFacet',
@@ -466,6 +468,52 @@ class PatternProperty:
 
     def __repr__(self) -> str:
         return f'PatternProperty({self.pattern.pattern!r})'
+
+
+#: Where a parameter is bound. `baseUriParameters` binds as `uri`: it declares
+#: the same thing about the same template variables (docs/08 section 8.2).
+type Binding = Literal['uri', 'query', 'header']
+
+
+@dataclass(slots=True, eq=False)
+class Parameter:
+    """One *bound* parameter: a property declaration, plus where it is bound.
+
+    A `Property` is a name, a shape and a flag, because one syntax declares an
+    object's property, a header, a query parameter and a URI parameter alike.
+    Which of those it is belongs to the *use* and not to the type — the same
+    declared type is a required path parameter here and an optional header
+    there — so a `Property` cannot say, and does not try to.
+
+    That is also why it carries no id and no position: it is a record, and only
+    entities get ids (docs/02 section 3.1). A bound parameter is an entity. It
+    holds the property rather than restating it, so the optionality rules of
+    `make_property` stay in one place, and it adds the two facts the property
+    has nowhere to put — the binding, and where the key was written.
+    """
+
+    id: int
+    binding: Binding
+    #: Not named `property`: the annotation would shadow the builtin for the
+    #: rest of the class body, and the delegates below need it.
+    declaration: Property
+    key_pos: Position = UNKNOWN
+    value_pos: Position = UNKNOWN
+
+    @property
+    def name(self) -> str:
+        return self.declaration.name
+
+    @property
+    def base(self) -> BaseShape:
+        return self.declaration.base
+
+    @property
+    def required(self) -> bool:
+        return self.declaration.required
+
+    def __repr__(self) -> str:
+        return f'Parameter({self.binding}, {self.declaration.name!r})'
 
 
 @dataclass(frozen=True, slots=True)

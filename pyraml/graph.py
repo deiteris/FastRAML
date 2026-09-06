@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from pyraml.parser.fragments import Fragment
     from pyraml.positions import Position
     from pyraml.registry import Raml
-    from pyraml.types.base import BaseShape, PatternProperty, Property, Shape
+    from pyraml.types.base import BaseShape, Parameter, PatternProperty, Shape
 
 __all__ = [
     'DEFAULT_BASE',
@@ -114,6 +114,13 @@ _XSD: Final = 'http://www.w3.org/2001/XMLSchema#'
 
 #: Opens the tail of every declaration IRI (§ 3).
 _DECLARATIONS: Final = '#/declarations/'
+
+#: The model's binding names to this vocabulary's. They differ in one place —
+#: RAML declares `uriParameters`, and the graph has always spelled that `path`,
+#: in the attribute and in the IRI segment. Renaming it would move every URI
+#: parameter's IRI, which § 3 promises is stable, so the mapping stays here:
+#: owning the vocabulary is this layer's job, and the model's name is its own.
+_BINDING: Final[dict[str, str]] = {'uri': 'path', 'query': 'query', 'header': 'header'}
 
 
 def _is_declaration(iri: str) -> bool:
@@ -852,10 +859,8 @@ class _Builder:
             self.applies(iri, 'appliesResourceType', 'resourceTypes', endpoint.resource_type, endpoint.location)
         for trait in endpoint.traits:
             self.applies(iri, 'appliesTrait', 'traits', trait, endpoint.location)
-        for name, prop in endpoint.uri_parameters.items():
-            self.edge(
-                iri, 'parameter', self.parameter(f'{iri}/parameter/path/{self.segment(name)}', name, prop, 'path')
-            )
+        for name, param in endpoint.uri_parameters.items():
+            self.edge(iri, 'parameter', self.parameter(f'{iri}/parameter/path/{self.segment(name)}', param))
         self.secured(iri, endpoint.secured_by)
         self.annotated(iri, endpoint.annotations)
 
@@ -926,12 +931,10 @@ class _Builder:
             return
         iri = self.node(f'{operation}/request', 'Request')
         self.edge(operation, 'request', iri)
-        for name, prop in request.headers.items():
-            self.edge(
-                iri, 'parameter', self.parameter(f'{iri}/parameter/header/{self.segment(name)}', name, prop, 'header')
-            )
-        for name, prop in request.query_parameters.items():
-            child = self.parameter(f'{iri}/parameter/query/{self.segment(name)}', name, prop, 'query')
+        for name, param in request.headers.items():
+            self.edge(iri, 'parameter', self.parameter(f'{iri}/parameter/header/{self.segment(name)}', param))
+        for name, param in request.query_parameters.items():
+            child = self.parameter(f'{iri}/parameter/query/{self.segment(name)}', param)
             self.edge(iri, 'parameter', child)
         if request.query_string is not None:
             self.edge(iri, 'queryString', self.shape(request.query_string, f'{iri}/queryString'))
@@ -949,8 +952,8 @@ class _Builder:
         self.positioned(iri, response.location, response.key_pos)
         self.edge(operation, 'returns', iri)
         self.annotated(iri, response.annotations)
-        for name, prop in response.headers.items():
-            child = self.parameter(f'{iri}/parameter/header/{self.segment(name)}', name, prop, 'header')
+        for name, param in response.headers.items():
+            child = self.parameter(f'{iri}/parameter/header/{self.segment(name)}', param)
             self.edge(iri, 'parameter', child)
         for media, body in response.bodies.items():
             self.edge(iri, 'payload', self.payload(iri, media, body))
@@ -962,16 +965,18 @@ class _Builder:
             self.edge(iri, 'range', self.shape(body.shape, f'{iri}/schema'))
         return iri
 
-    def parameter(self, iri: str, name: str, prop: Property, binding: str) -> str:
+    def parameter(self, iri: str, param: Parameter) -> str:
         """A URI, query or header parameter.
 
         A node of its own rather than an edge straight to the type, because
         `required` and the binding belong to the *use* and not to the type: the
         same declared type is a required path parameter here and an optional
-        header there.
+        header there. The model says so too — `Parameter` holds the property
+        and adds the binding, so nothing here has to be told which it is.
         """
-        self.node(iri, 'Parameter', name=name, binding=binding, required=prop.required)
-        self.edge(iri, 'range', self.shape(prop.base, f'{iri}/schema'))
+        self.node(iri, 'Parameter', name=param.name, binding=_BINDING[param.binding], required=param.required)
+        self.positioned(iri, param.base.location, param.key_pos)
+        self.edge(iri, 'range', self.shape(param.base, f'{iri}/schema'))
         return iri
 
     def secured(self, subject: str, schemes: list[SecurityScheme]) -> None:

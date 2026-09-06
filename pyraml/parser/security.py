@@ -29,7 +29,7 @@ from pyraml.parser.annotations import is_annotation_key, unmarshal_domain_extens
 from pyraml.parser.facets import make_string_facet, scalar_str
 from pyraml.parser.includes import note_include_ref
 from pyraml.parser.source_decode import decode_responses
-from pyraml.types.shape import make_property_map, make_shape
+from pyraml.types.shape import make_parameter_map, make_shape
 from pyraml.yamlnode import TAG_INCLUDE, Node, NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from pyraml.parser.endpoints import EndPoint, Response
     from pyraml.positions import Position
     from pyraml.registry import Raml
-    from pyraml.types.base import BaseShape, Property, ScalarFacet
+    from pyraml.types.base import BaseShape, Parameter, ScalarFacet
 
 __all__ = [
     'SCHEME_TYPES',
@@ -123,8 +123,8 @@ class SecuritySchemeDescription:
 
     id: int
     location: str
-    headers: dict[str, Property] = field(default_factory=dict)
-    query_parameters: dict[str, Property] = field(default_factory=dict)
+    headers: dict[str, Parameter] = field(default_factory=dict)
+    query_parameters: dict[str, Parameter] = field(default_factory=dict)
     query_string: BaseShape | None = None
     responses: dict[str, Response] = field(default_factory=dict)
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
@@ -229,9 +229,9 @@ def _decode_described_by(raml: Raml, node: Node, location: str) -> SecuritySchem
         name = key.value
         try:
             if name == 'headers':
-                description.headers = make_property_map(raml, value, location)
+                description.headers = make_parameter_map(raml, value, location, 'header')
             elif name == 'queryParameters':
-                description.query_parameters = make_property_map(raml, value, location)
+                description.query_parameters = make_parameter_map(raml, value, location, 'query')
             elif name == 'queryString':
                 description.query_string = make_shape(raml, key, value, location)
                 raml.put_typedef(description.query_string.location, description.query_string)

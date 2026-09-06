@@ -27,7 +27,7 @@ from pyraml.parser.source_ir import make_source_endpoint
 from pyraml.parser.traits import apply_traits
 from pyraml.parser.uritemplates import extract_uri_template_params
 from pyraml.registry import ParseCtx
-from pyraml.types.base import TYPE_STRING, BaseShape, Property
+from pyraml.types.base import TYPE_STRING, BaseShape, Parameter, Property
 from pyraml.types.shape import attach_kind
 
 if TYPE_CHECKING:
@@ -114,7 +114,7 @@ def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) ->
         _resolve_directives(raml, child, acc)
 
 
-def _walk(raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[str, Property]) -> None:
+def _walk(raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[str, Parameter]) -> None:
     if endpoint.full_uri in raml.endpoints:
         # Comparison is on the template text, unexpanded, so `/users/{userId}`
         # and `/users/{username}` coexist while `/users: {/foo:}` and
@@ -139,7 +139,7 @@ def _walk(raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[s
         _walk(raml, child, acc, inherited=endpoint.uri_parameters)
 
 
-def _resolve_uri_parameters(raml: Raml, endpoint: EndPoint, inherited: dict[str, Property]) -> None:
+def _resolve_uri_parameters(raml: Raml, endpoint: EndPoint, inherited: dict[str, Parameter]) -> None:
     """docs/08 section 8.2: synthesise, check, and propagate.
 
     The result is ancestors' parameters first, then this endpoint's, which is
@@ -164,7 +164,7 @@ def _resolve_uri_parameters(raml: Raml, endpoint: EndPoint, inherited: dict[str,
     for prop in declared.values():
         accumulator.add(_check_slash_free(prop))
 
-    own: dict[str, Property] = {}
+    own: dict[str, Parameter] = {}
     for name in variables:
         existing = declared.get(name)
         own[name] = existing if existing is not None else _synthesise(raml, name, endpoint)
@@ -174,7 +174,7 @@ def _resolve_uri_parameters(raml: Raml, endpoint: EndPoint, inherited: dict[str,
     accumulator.raise_if_any()
 
 
-def _synthesise(raml: Raml, name: str, endpoint: EndPoint) -> Property:
+def _synthesise(raml: Raml, name: str, endpoint: EndPoint) -> Parameter:
     """A template variable with no declaration is a required `string`."""
     base = BaseShape(
         id=raml.next_id(),
@@ -189,10 +189,16 @@ def _synthesise(raml: Raml, name: str, endpoint: EndPoint) -> Property:
     raml.put_shape(base)
     # Registered like any other declaration, so P9 and P10 reach it.
     raml.put_typedef(endpoint.location, base)
-    return Property(name=name, base=base, required=True)
+    return Parameter(
+        id=raml.next_id(),
+        binding='uri',
+        declaration=Property(name=name, base=base, required=True),
+        key_pos=endpoint.key_pos,
+        value_pos=endpoint.key_pos,
+    )
 
 
-def _check_slash_free(prop: Property) -> RamlError | None:
+def _check_slash_free(prop: Parameter) -> RamlError | None:
     """Spec section Template URIs: a matched value must not contain a slash.
 
     So a constraint that *names* a value containing one describes something the

@@ -32,6 +32,8 @@ from pyraml.types.base import (
     TYPE_JSON,
     TYPE_STRING,
     BaseShape,
+    Binding,
+    Parameter,
     PatternProperty,
     Property,
     Shape,
@@ -76,9 +78,9 @@ __all__ = [
     'chomp_optional',
     'make_body_shape',
     'make_declarations',
+    'make_parameter_map',
     'make_pattern_property',
     'make_property',
-    'make_property_map',
     'make_shape',
     'unmarshal_types',
 ]
@@ -560,24 +562,34 @@ def make_declarations(
     return properties, patterns
 
 
-def make_property_map(raml: Raml, value_node: Node, location: str) -> dict[str, Property]:
-    """A properties declaration where a `/regex/` key carries no meaning.
+def make_parameter_map(raml: Raml, value_node: Node, location: str, binding: Binding) -> dict[str, Parameter]:
+    """A parameter declaration where a `/regex/` key carries no meaning.
 
     Headers, query parameters, URI parameters and base-URI parameters. Each one
     joins the flat per-file index, which is what unwrap and validation iterate
     instead of walking the model graph (docs/04 section 5.1).
+
+    The binding comes from the caller because only the caller knows it: one
+    syntax declares all four, and which one it is is a fact about the map that
+    holds them (`Parameter` in docs/05 section 5).
     """
     if is_null(value_node):
         return {}
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('parameter declarations must be a mapping', location, value_node)
     location = raml.location_of(value_node, location)
-    declared: dict[str, Property] = {}
+    declared: dict[str, Parameter] = {}
     # Each parameter is a type declaration, whatever holds the map.
     with raml.target_scope(DomainLocation.TYPE_DECLARATION):
         for key, value in pairs(value_node):
             prop = make_property(raml, key, value, location)
-            declared[prop.name] = prop
+            declared[prop.name] = Parameter(
+                id=raml.next_id(),
+                binding=binding,
+                declaration=prop,
+                key_pos=key.position,
+                value_pos=value.position,
+            )
             # Indexed under the shape's own file, which provenance may have made
             # a different one from the map's.
             raml.put_typedef(prop.base.location, prop.base)

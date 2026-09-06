@@ -144,7 +144,14 @@ class Property:  # a named property, a header, a query parameter, a facet def
 
 class PatternProperty:  # always optional by definition
     __slots__ = ("pattern", "base")  # pattern is a compiled regex
+
+
+class Parameter:  # a *bound* property: a header, a query/URI parameter
+    __slots__ = ("id", "binding", "declaration", "key_pos", "value_pos")
 ```
+
+`Property` has no `id` and no position, and that is what makes it a record
+rather than an entity (`docs/02` § 3.1). `Parameter` is the entity: see § 5.
 
 ### 3.1 Numerics
 
@@ -316,6 +323,23 @@ The same function serves `properties:`, `headers:`, `queryParameters:`,
 `uriParameters:`, `baseUriParameters:` and `facets:` — all six are "properties
 declarations" per the spec, and all six therefore get `?` handling and inline
 type declarations for free.
+
+Four of the six are **bound**. A header, a query parameter, a URI parameter and
+a base-URI parameter each say *where* they apply, and which of those a
+declaration is belongs to the map that holds it, not to the type: the same
+declared type is a required path parameter here and an optional header there. A
+`Property` cannot record that, and does not try to — one class serves all six
+precisely because it stays out of the question.
+
+So `make_parameter_map` wraps each one in a `Parameter`, which adds the three
+facts the property has nowhere to put: the binding, an `id`, and where the key
+was written. `properties:` and `facets:` are not bound and stay bare `Property`
+values. `baseUriParameters:` binds as `uri` — it declares the same thing about
+the same template variables (`docs/08` § 8.2).
+
+The binding is `uri` | `query` | `header`. The graph projection spells `uri` as
+`path`, in the attribute and in the IRI segment; that is a vocabulary mapping
+owned by `docs/16` § 3, not a second name for the model's.
 
 ### 5.1 Pattern properties
 

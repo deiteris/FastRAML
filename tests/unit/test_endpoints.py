@@ -336,3 +336,65 @@ class TestNonApiFragments:
     def test_a_library_has_no_endpoints(self, workspace):
         root = workspace({'lib.raml': '#%RAML 1.0 Library\ntypes:\n  T: string\n'})
         assert parse_from_path(root / 'lib.raml').endpoints == {}
+
+
+class TestParameterEntity:
+    """docs/05 section 5: a bound parameter is an entity, a property is a record."""
+
+    def test_each_map_records_the_binding_it_was_declared_under(self, workspace):
+        raml = parse(
+            workspace,
+            """
+/items/{itemId}:
+  get:
+    headers:
+      X-Trace: string
+    queryParameters:
+      page: integer
+    responses:
+      200:
+        headers:
+          X-Total: integer
+""",
+        )
+        endpoint = raml.endpoints['/items/{itemId}']
+        operation = endpoint.operations['get']
+        assert endpoint.uri_parameters['itemId'].binding == 'uri'
+        assert operation.request.headers['X-Trace'].binding == 'header'
+        assert operation.request.query_parameters['page'].binding == 'query'
+        assert operation.responses['200'].headers['X-Total'].binding == 'header'
+
+    def test_name_base_and_required_read_through_to_the_property(self, workspace):
+        raml = parse(workspace, '\n/items:\n  get:\n    queryParameters:\n      page?: integer\n')
+        param = raml.endpoints['/items'].operations['get'].request.query_parameters['page']
+        assert (param.name, param.required) == ('page', False)
+        assert param.base is param.declaration.base
+        assert param.base.type == 'integer'
+
+    def test_a_parameter_carries_the_position_of_its_key(self, workspace):
+        raml = parse(workspace, '\n/items:\n  get:\n    queryParameters:\n      page: integer\n')
+        param = raml.endpoints['/items'].operations['get'].request.query_parameters['page']
+        assert param.key_pos.is_known
+        # The property it holds has nowhere to put this, which is why the
+        # parameter exists (docs/05 section 5).
+        assert not hasattr(param.declaration, 'key_pos')
+
+    def test_an_inherited_uri_parameter_is_one_object_not_a_copy(self, workspace):
+        """docs/08 section 8.2: the rewrite is `{**inherited, **own}`."""
+        raml = parse(workspace, '\n/items/{itemId}:\n  /reviews/{reviewId}:\n    get:\n')
+        parent = raml.endpoints['/items/{itemId}']
+        child = parent.endpoints['/reviews/{reviewId}']
+        assert child.uri_parameters['itemId'] is parent.uri_parameters['itemId']
+        # Its own is not shared, and path order puts the ancestor's first.
+        assert list(child.uri_parameters) == ['itemId', 'reviewId']
+        assert 'reviewId' not in parent.uri_parameters
+
+    def test_base_uri_parameters_bind_as_uri(self, workspace):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\nbaseUri: http://{host}.example.test\n'
+                'baseUriParameters:\n  host:\n    type: string\n'
+            }
+        )
+        raml = parse_from_path(root / 'api.raml')
+        assert raml.entry_point.base_uri_parameters['host'].binding == 'uri'

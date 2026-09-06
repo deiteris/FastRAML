@@ -31,7 +31,7 @@ from pyraml.parser.annotations import is_annotation_key, unmarshal_domain_extens
 from pyraml.parser.directives import make_security_schemes
 from pyraml.parser.endpoints import VALID_PROTOCOLS, Body, EndPoint, Operation, Request, Response
 from pyraml.parser.facets import make_string_facet, scalar_str
-from pyraml.types.shape import make_body_shape, make_property_map, make_shape
+from pyraml.types.shape import make_body_shape, make_parameter_map, make_shape
 from pyraml.yamlnode import NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
@@ -215,7 +215,7 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str) -> Respo
                 elif name == FACET_DESCRIPTION:
                     response.description = make_string_facet(raml, child_key, child_value, location)
                 elif name == FACET_HEADERS:
-                    response.headers = make_property_map(raml, child_value, location)
+                    response.headers = make_parameter_map(raml, child_value, location, 'header')
                 elif name == FACET_BODY:
                     response.bodies = _decode_bodies(raml, child_value, location, DomainLocation.RESPONSE_BODY)
                 elif is_annotation_key(name):
@@ -264,9 +264,9 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
     elif name == FACET_PROTOCOLS:
         operation.protocols = _protocols(value, location)
     elif name == FACET_HEADERS:
-        request.headers = make_property_map(raml, value, location)
+        request.headers = make_parameter_map(raml, value, location, 'header')
     elif name == FACET_QUERY_PARAMETERS:
-        request.query_parameters = make_property_map(raml, value, location)
+        request.query_parameters = make_parameter_map(raml, value, location, 'query')
     elif name == FACET_QUERY_STRING:
         request.query_string = make_shape(raml, key, value, location)
         raml.put_typedef(request.query_string.location, request.query_string)
@@ -328,7 +328,7 @@ def _decode_endpoint_field(raml: Raml, endpoint: EndPoint, key: Node, value: Nod
     elif name == FACET_DESCRIPTION:
         endpoint.description = make_string_facet(raml, key, value, location)
     elif name == FACET_URI_PARAMETERS:
-        endpoint.uri_parameters = make_property_map(raml, value, location)
+        endpoint.uri_parameters = make_parameter_map(raml, value, location, 'uri')
     elif is_annotation_key(name):
         _annotation(raml, endpoint.annotations, key, value, location)
     else:

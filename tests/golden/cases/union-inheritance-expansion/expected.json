@@ -1,5 +1,6 @@
 {
   "annotations": [],
+  "base": "pyraml://id",
   "endpoints": {},
   "entry_point": {
     "kind": "Library"
@@ -7,6 +8,7 @@
   "types": {
     "lib.raml": {
       "A": {
+        "id": "pyraml://id#/declarations/types/A",
         "is_annotation_type": false,
         "kind": "ObjectShape",
         "name": "A",
@@ -14,6 +16,7 @@
           "a": {
             "required": true,
             "type": {
+              "id": "pyraml://id#/declarations/types/A/property/a/schema",
               "is_annotation_type": false,
               "kind": "StringShape",
               "name": "a",
@@ -26,6 +29,7 @@
         "type_expr": "object"
       },
       "B": {
+        "id": "pyraml://id#/declarations/types/B",
         "is_annotation_type": false,
         "kind": "ObjectShape",
         "name": "B",
@@ -33,6 +37,7 @@
           "b": {
             "required": true,
             "type": {
+              "id": "pyraml://id#/declarations/types/B/property/b/schema",
               "is_annotation_type": false,
               "kind": "IntegerShape",
               "name": "b",
@@ -47,7 +52,10 @@
       "Either": {
         "any_of": [
           {
-            "alias_of": "A",
+            "alias_of": {
+              "$ref": "pyraml://id#/declarations/types/A"
+            },
+            "id": "pyraml://id#/declarations/types/Either/anyOf/0",
             "is_annotation_type": false,
             "kind": "ObjectShape",
             "name": null,
@@ -55,6 +63,7 @@
               "a": {
                 "required": true,
                 "type": {
+                  "id": "pyraml://id#/declarations/types/A/property/a/schema",
                   "is_annotation_type": false,
                   "kind": "StringShape",
                   "name": "a",
@@ -67,7 +76,10 @@
             "type_expr": "A | B"
           },
           {
-            "alias_of": "B",
+            "alias_of": {
+              "$ref": "pyraml://id#/declarations/types/B"
+            },
+            "id": "pyraml://id#/declarations/types/Either/anyOf/1",
             "is_annotation_type": false,
             "kind": "ObjectShape",
             "name": null,
@@ -75,6 +87,7 @@
               "b": {
                 "required": true,
                 "type": {
+                  "id": "pyraml://id#/declarations/types/B/property/b/schema",
                   "is_annotation_type": false,
                   "kind": "IntegerShape",
                   "name": "b",
@@ -87,6 +100,7 @@
             "type_expr": "A | B"
           }
         ],
+        "id": "pyraml://id#/declarations/types/Either",
         "is_annotation_type": false,
         "kind": "UnionShape",
         "name": "Either",
@@ -96,7 +110,10 @@
       "Narrowed": {
         "any_of": [
           {
-            "alias_of": "A",
+            "alias_of": {
+              "$ref": "pyraml://id#/declarations/types/A"
+            },
+            "id": "pyraml://id#/declarations/types/Either/anyOf/0",
             "is_annotation_type": false,
             "kind": "ObjectShape",
             "name": null,
@@ -104,6 +121,7 @@
               "a": {
                 "required": true,
                 "type": {
+                  "id": "pyraml://id#/declarations/types/A/property/a/schema",
                   "is_annotation_type": false,
                   "kind": "StringShape",
                   "name": "a",
@@ -116,7 +134,10 @@
             "type_expr": "A | B"
           },
           {
-            "alias_of": "B",
+            "alias_of": {
+              "$ref": "pyraml://id#/declarations/types/B"
+            },
+            "id": "pyraml://id#/declarations/types/Either/anyOf/1",
             "is_annotation_type": false,
             "kind": "ObjectShape",
             "name": null,
@@ -124,6 +145,7 @@
               "b": {
                 "required": true,
                 "type": {
+                  "id": "pyraml://id#/declarations/types/B/property/b/schema",
                   "is_annotation_type": false,
                   "kind": "IntegerShape",
                   "name": "b",
@@ -137,8 +159,11 @@
           }
         ],
         "display_name": "narrowed union",
+        "id": "pyraml://id#/declarations/types/Narrowed",
         "inherits": [
-          "Either"
+          {
+            "$ref": "pyraml://id#/declarations/types/Either"
+          }
         ],
         "is_annotation_type": false,
         "kind": "UnionShape",
@@ -149,8 +174,10 @@
       "WithFacet": {
         "any_of": [
           {
+            "id": "pyraml://id#/declarations/types/WithFacet/anyOf/0",
             "inherits": [
               {
+                "id": "pyraml://id#/declarations/types/WithFacet/anyOf/0/inherits/anonymous",
                 "is_annotation_type": false,
                 "kind": "IntegerShape",
                 "name": null,
@@ -165,8 +192,10 @@
             "type": "integer"
           },
           {
+            "id": "pyraml://id#/declarations/types/WithFacet/anyOf/1",
             "inherits": [
               {
+                "id": "pyraml://id#/declarations/types/WithFacet/anyOf/1/inherits/anonymous",
                 "is_annotation_type": false,
                 "kind": "NumberShape",
                 "name": null,
@@ -181,6 +210,7 @@
             "type": "number"
           }
         ],
+        "id": "pyraml://id#/declarations/types/WithFacet",
         "is_annotation_type": false,
         "kind": "UnionShape",
         "name": "WithFacet",

@@ -90,6 +90,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     _add_common(graph)
 
+    effective = commands.add_parser(
+        'effective', help='the effective document as an addressed JSON tree (doc 16 section 11)'
+    )
+    effective.add_argument('files', metavar='FILE', nargs=1)
+    effective.add_argument(
+        '--positions', action='store_true', help='the span of every declaration instead of the document'
+    )
+    _add_common(effective)
+
     _add_navigation(commands)
 
     changed = commands.add_parser('diff', help='what changed between two versions, and what it breaks')
@@ -121,6 +130,7 @@ def _parser() -> argparse.ArgumentParser:
         validate=_validate,
         info=_info,
         graph=_graph,
+        effective=_effective,
         refs=_walk,
         deps=_walk,
         show=_show_type,
@@ -292,6 +302,25 @@ def _graph(args: argparse.Namespace) -> int:
     emit = {'nt': graph.to_ntriples, 'turtle': graph.to_turtle, 'dot': graph.to_dot}[args.format]
     for line in emit():
         print(line)
+    return EXIT_OK
+
+
+def _effective(args: argparse.Namespace) -> int:
+    """The whole effective document, with every reference as an address.
+
+    The counterpart to `graph`: the same walk assigns both, so an address
+    printed here names the node `graph` prints (docs/16 § 11). Unwrapped, so
+    what is printed is the effective document rather than the declared one.
+    """
+    import json  # noqa: PLC0415 - only this verb needs the encoder
+
+    from pyraml.effective import effective, positions_of  # noqa: PLC0415
+
+    built = _built(args)
+    if built is None:
+        return EXIT_INVALID
+    _, raml = built
+    print(json.dumps(positions_of(raml) if args.positions else effective(raml), indent=2, sort_keys=True))
     return EXIT_OK
 
 

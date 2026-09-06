@@ -359,6 +359,26 @@ Nothing is written to stderr in this mode.
 DOT, or plain JSON. The vocabulary and the IRI scheme are
 [16](16-graph.md) §§ 2–3.
 
+`effective` writes the whole document as an addressed JSON tree, and is the
+counterpart to `graph`: one `Walk` assigns both, so an address it prints names
+the node `graph` prints ([16](16-graph.md) § 11). Use it when a consumer needs
+the *contents* — examples, defaults, every container inline — which the graph
+deliberately does not carry. `--positions` writes the span of every declaration
+instead.
+
+```python
+from pyraml import ParseOptions, address, effective, parse_from_path
+
+raml = parse_from_path('api.raml', ParseOptions(unwrap=True))
+document = effective(raml)          # the tree, references as addresses
+where = address(raml)               # entity id -> address, on its own
+```
+
+`Addresses.of` is many-to-one and `id` remains the identity: a linked
+declaration and its link target share one address on purpose
+([16](16-graph.md) § 3.1). `Addresses.at` goes back the other way and returns a
+list for that reason.
+
 `list` is the **inventory**, and it comes first: every other navigation verb
 takes a NAME, and this is how you learn one.
 

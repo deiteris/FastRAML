@@ -1,15 +1,21 @@
 {
   "annotations": [],
+  "base": "pyraml://id",
   "endpoints": {
     "/things": {
+      "id": "pyraml://id#/web-api/endpoint/%2Fthings",
       "operations": {
         "get": {
+          "id": "pyraml://id#/web-api/endpoint/%2Fthings/supportedOperation/get",
           "responses": {
             "200": {
               "bodies": {
                 "application/json": {
+                  "id": "pyraml://id#/web-api/endpoint/%2Fthings/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
                   "inherits": [
-                    "CallerType"
+                    {
+                      "$ref": "pyraml://id/caller.raml#/declarations/types/CallerType"
+                    }
                   ],
                   "is_annotation_type": false,
                   "kind": "ObjectShape",
@@ -18,6 +24,7 @@
                     "fromCaller": {
                       "required": true,
                       "type": {
+                        "id": "pyraml://id/caller.raml#/declarations/types/CallerType/property/fromCaller/schema",
                         "is_annotation_type": false,
                         "kind": "StringShape",
                         "name": "fromCaller",
@@ -34,8 +41,11 @@
             "201": {
               "bodies": {
                 "application/json": {
+                  "id": "pyraml://id#/web-api/endpoint/%2Fthings/supportedOperation/get/returns/201/payload/application%2Fjson/schema",
                   "inherits": [
-                    "OwnType"
+                    {
+                      "$ref": "pyraml://id/own.raml#/declarations/types/OwnType"
+                    }
                   ],
                   "is_annotation_type": false,
                   "kind": "ObjectShape",
@@ -44,6 +54,7 @@
                     "fromResourceTypesLibrary": {
                       "required": true,
                       "type": {
+                        "id": "pyraml://id/own.raml#/declarations/types/OwnType/property/fromResourceTypesLibrary/schema",
                         "is_annotation_type": false,
                         "kind": "StringShape",
                         "name": "fromResourceTypesLibrary",
@@ -72,6 +83,7 @@
   "types": {
     "caller.raml": {
       "CallerType": {
+        "id": "pyraml://id/caller.raml#/declarations/types/CallerType",
         "is_annotation_type": false,
         "kind": "ObjectShape",
         "name": "CallerType",
@@ -79,6 +91,7 @@
           "fromCaller": {
             "required": true,
             "type": {
+              "id": "pyraml://id/caller.raml#/declarations/types/CallerType/property/fromCaller/schema",
               "is_annotation_type": false,
               "kind": "StringShape",
               "name": "fromCaller",
@@ -93,6 +106,7 @@
     },
     "own.raml": {
       "OwnType": {
+        "id": "pyraml://id/own.raml#/declarations/types/OwnType",
         "is_annotation_type": false,
         "kind": "ObjectShape",
         "name": "OwnType",
@@ -100,6 +114,7 @@
           "fromResourceTypesLibrary": {
             "required": true,
             "type": {
+              "id": "pyraml://id/own.raml#/declarations/types/OwnType/property/fromResourceTypesLibrary/schema",
               "is_annotation_type": false,
               "kind": "StringShape",
               "name": "fromResourceTypesLibrary",

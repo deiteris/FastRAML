@@ -342,6 +342,14 @@ The laws. Section 4.1 records where each is checked and over what input —
     found a live gap as well: a `pattern:` on a type reached no node attribute,
     so `diff` reported no change when one was tightened.
 
+15. **Every reference the effective projection emits resolves** — and resolves
+    to the node the graph put at the same address ([16](16-graph.md) § 11.2), in
+    `test_effective.py`. This is the check on the addressable set: a reference to
+    something the walk never reached comes out as `null`, which reads exactly
+    like "there was nothing to point at". The projection itself is pinned whole
+    by the golden layer, which cannot see this — a golden agrees with whatever
+    was generated, including a `null` where an address belonged.
+
 ### 4.1 Where each law lives, and why
 
 | Laws | Where | Input |

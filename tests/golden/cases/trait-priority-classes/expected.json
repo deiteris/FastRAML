@@ -1,7 +1,9 @@
 {
   "annotations": [],
+  "base": "pyraml://id",
   "endpoints": {
     "/items": {
+      "id": "pyraml://id#/web-api/endpoint/%2Fitems",
       "operations": {
         "get": {
           "headers": {
@@ -9,6 +11,7 @@
               "binding": "header",
               "required": true,
               "type": {
+                "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/header/X-Trait/schema",
                 "is_annotation_type": false,
                 "kind": "StringShape",
                 "name": "X-Trait",
@@ -17,11 +20,13 @@
               }
             }
           },
+          "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get",
           "query_parameters": {
             "fromType": {
               "binding": "query",
               "required": false,
               "type": {
+                "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/fromType/schema",
                 "is_annotation_type": false,
                 "kind": "StringShape",
                 "name": "fromType?",
@@ -33,6 +38,7 @@
               "binding": "query",
               "required": false,
               "type": {
+                "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/onlyFirst/schema",
                 "is_annotation_type": false,
                 "kind": "StringShape",
                 "name": "onlyFirst?",
@@ -44,6 +50,7 @@
               "binding": "query",
               "required": false,
               "type": {
+                "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/onlySecond/schema",
                 "is_annotation_type": false,
                 "kind": "StringShape",
                 "name": "onlySecond?",
@@ -56,6 +63,7 @@
               "required": false,
               "type": {
                 "description": "from the method itself",
+                "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/shared/schema",
                 "is_annotation_type": false,
                 "kind": "StringShape",
                 "name": "shared?",

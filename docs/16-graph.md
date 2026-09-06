@@ -1075,3 +1075,102 @@ effect this cannot compute.
   things to a reader — replacing `Ref` with `Other`, both `type: string`, is
   reported as a retargeted reference and graded `risky` rather than judged.
 - **Examples and descriptions** are `cosmetic`. Nothing on the wire changed.
+
+## 11. The effective document as a tree
+
+`graph` answers *what points at what*. `effective` answers *what is here*.
+
+```bash
+pyraml effective api.raml            # the whole document, addressed
+pyraml effective --positions api.raml
+```
+
+```python
+from pyraml import ParseOptions, effective, parse_from_path
+
+document = effective(parse_from_path('api.raml', ParseOptions(unwrap=True)))
+```
+
+### 11.1 Why it is not the graph, and not a filter of it
+
+The two are lossy on **orthogonal** axes, so neither can be derived from the
+other:
+
+| | leaf data | identity |
+|---|---|---|
+| model | complete | complete (`id` per entity) |
+| graph | drops what nothing points at (§ 4) | addresses, and references as edges |
+| tree | complete | collapsed into nesting |
+
+The graph's edges cannot be recovered from a tree whose references are names,
+because names are not unique. The tree's examples and defaults cannot be
+recovered from the graph, because they are not in it. Widening the graph to
+carry them would slow every traversal to serve a consumer that does not
+traverse.
+
+### 11.2 References are addresses
+
+A tree meets a cross-reference at four places, and each was a **name** until the
+addressing pass existed:
+
+| | was | is |
+|---|---|---|
+| recursion | `{"recursive_ref": "Chain"}` | `{"$ref": "pyraml://id#/declarations/types/Chain"}` |
+| `inherits` | `["Named"]`, or the parent inlined when anonymous | `[{"$ref": "…/types/Named"}]`, or inlined — § 11.3 |
+| an alias | `"alias_of": "A"` | `"alias_of": {"$ref": "…/types/A"}` |
+| an annotation | `["tier"]` | `[{"name": "tier", "type": "…/declarations/annotations/tier"}]` |
+
+A name cannot say which of two libraries declaring `paged` was meant — the same
+ambiguity § 3.2a removes from the graph — and an anonymous shape has no name at
+all.
+
+### 11.3 A supertype is referenced or inlined, and which one is not a style choice
+
+A **declaration** is listed under `types` in this same document, so `$ref` loses
+nothing, and repeating it would make one type read differently depending on
+which subtype you arrived through.
+
+An **anonymous** supertype is in no other part of the tree — `type: integer |
+number` with a facet beside it gains one per member when P9 distributes the
+facet (§ 8c) — so referencing it would delete it from the only view that carries
+it. The graph node at its address holds § 2.5's literals, not the shape, so
+"follow the address into the graph" is not a recovery. It is inlined, and
+carries its own `id`.
+
+The test is membership of the declaration maps, not the shape of the address:
+a nested anonymous shape inside a declaration carries `#/declarations/` too.
+
+An **alias** parent inlines for the same reason, which also makes the alias hop
+visible rather than reporting the referent's name in its place — the wrong
+answer docs/07 § 3.6 warns about. It costs nothing measurable: on a 2000-type
+document, referencing alias parents instead produced an output of identical
+size.
+
+Both outputs come from one `Walk`, so **an address printed by `effective` names
+the node printed by `graph`**. That join is the whole point; law 15 asserts it.
+
+### 11.4 What it carries that the graph does not
+
+Examples, defaults, `xml`, `allowedTargets`, custom facet *values*, type
+expressions, and every container inline. `kind_facets` is driven off
+`copyable_slots`, so this is wider than `facets_of` by construction: a tree
+places its members rather than pointing at them, so it needs the containers as
+well as the constraints.
+
+Two fields answer different questions and both are kept: `bound` says a
+`securedBy` entry resolved, `declaration` says where to. A `securedBy: [null]`
+entry binds to a synthesised definition that no document declares, so it is
+`bound` with no address — reporting only the address would make it read as
+unbound.
+
+### 11.5 Positions are separate
+
+`positions_of` projects them apart. A one-line edit shifts every position after
+it, and a view that churned on every edit would be regenerated unread, which is
+the same as not having one (docs/14 § 2).
+
+### 11.6 It is also the golden layer
+
+`tests/golden/project.py` is a two-line wrapper. The property that made it worth
+promoting is the one the goldens already relied on: driven off `__slots__`, so a
+facet added to a kind cannot go missing from it.

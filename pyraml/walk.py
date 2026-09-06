@@ -253,6 +253,14 @@ class Walk:
             candidate = f'{fallback}/!{index}'
         return candidate
 
+    def assign(self, entity_id: int, iri: str) -> str:
+        """Record `iri` as `entity_id`'s address and hand it back.
+
+        First assignment wins, matching `shape`: an endpoint reached through the
+        nested map and again through the flat one is one entity at one address.
+        """
+        return self.iris.setdefault(entity_id, iri)
+
     def edge(self, subject: str, predicate: str, obj: str) -> None:
         """Report a relationship, unless there is nothing to point at.
 
@@ -363,7 +371,7 @@ class Walk:
         if endpoint.id in seen:
             return
         seen.add(endpoint.id)
-        iri = f'{self.base}#/web-api/endpoint/{self.segment(endpoint.full_uri)}'
+        iri = self.assign(endpoint.id, f'{self.base}#/web-api/endpoint/{self.segment(endpoint.full_uri)}')
         self.sink.endpoint(iri, endpoint)
         self.edge(api, 'endpoint', iri)
 
@@ -411,7 +419,7 @@ class Walk:
         self.edge(subject, predicate, local)
 
     def operation(self, endpoint: str, operation: Operation) -> None:
-        iri = f'{endpoint}/supportedOperation/{self.segment(operation.method)}'
+        iri = self.assign(operation.id, f'{endpoint}/supportedOperation/{self.segment(operation.method)}')
         self.sink.operation(iri, operation)
         self.edge(endpoint, 'supportedOperation', iri)
         for trait in operation.traits:
@@ -429,7 +437,7 @@ class Walk:
             # An empty node here would be one per GET in the graph, all identical
             # and all noise.
             return
-        iri = f'{operation}/request'
+        iri = self.assign(request.id, f'{operation}/request')
         self.sink.request(iri, request)
         self.edge(operation, 'request', iri)
         for name, param in request.headers.items():
@@ -443,7 +451,7 @@ class Walk:
             self.edge(iri, 'payload', self.payload(iri, media, body))
 
     def response(self, operation: str, response: Response) -> None:
-        iri = f'{operation}/returns/{self.segment(response.code)}'
+        iri = self.assign(response.id, f'{operation}/returns/{self.segment(response.code)}')
         self.sink.response(iri, response)
         self.edge(operation, 'returns', iri)
         self.annotated(iri, response.annotations)
@@ -454,7 +462,7 @@ class Walk:
             self.edge(iri, 'payload', self.payload(iri, media, body))
 
     def payload(self, parent: str, media: str, body: Body) -> str:
-        iri = f'{parent}/payload/{self.segment(media or "default")}'
+        iri = self.assign(body.id, f'{parent}/payload/{self.segment(media or "default")}')
         self.sink.payload(iri, body)
         if body.shape is not None:
             self.edge(iri, 'range', self.shape(body.shape, f'{iri}/schema'))
@@ -469,6 +477,7 @@ class Walk:
         header there. The model says so too — `Parameter` holds the property
         and adds the binding, so nothing here has to be told which it is.
         """
+        self.assign(param.id, iri)
         self.sink.parameter(iri, param)
         self.edge(iri, 'range', self.shape(param.base, f'{iri}/schema'))
         return iri

@@ -1,5 +1,6 @@
 {
   "annotations": [],
+  "base": "pyraml://id",
   "endpoints": {},
   "entry_point": {
     "kind": "Library"
@@ -7,6 +8,7 @@
   "types": {
     "lib.raml": {
       "Prefs": {
+        "id": "pyraml://id#/declarations/types/Prefs",
         "is_annotation_type": false,
         "kind": "ObjectShape",
         "name": "Prefs",
@@ -14,6 +16,7 @@
           "literalQuestion": {
             "required": false,
             "type": {
+              "id": "pyraml://id#/declarations/types/Prefs/property/literalQuestion/schema",
               "is_annotation_type": false,
               "kind": "StringShape",
               "name": "literalQuestion?",
@@ -24,6 +27,7 @@
           "plain": {
             "required": true,
             "type": {
+              "id": "pyraml://id#/declarations/types/Prefs/property/plain/schema",
               "is_annotation_type": false,
               "kind": "StringShape",
               "name": "plain",
@@ -34,6 +38,7 @@
           "preference": {
             "required": false,
             "type": {
+              "id": "pyraml://id#/declarations/types/Prefs/property/preference/schema",
               "is_annotation_type": false,
               "kind": "StringShape",
               "name": "preference?",

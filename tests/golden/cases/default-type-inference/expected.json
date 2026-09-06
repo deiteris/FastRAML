@@ -1,5 +1,6 @@
 {
   "annotations": [],
+  "base": "pyraml://id",
   "endpoints": {},
   "entry_point": {
     "kind": "Library"
@@ -8,6 +9,7 @@
     "lib.raml": {
       "AnnotatedScalar": {
         "display_name": "plain string",
+        "id": "pyraml://id#/declarations/types/AnnotatedScalar",
         "is_annotation_type": false,
         "kind": "StringShape",
         "name": "AnnotatedScalar",
@@ -15,6 +17,7 @@
         "type_expr": "string"
       },
       "FromExplicitType": {
+        "id": "pyraml://id#/declarations/types/FromExplicitType",
         "is_annotation_type": false,
         "kind": "IntegerShape",
         "name": "FromExplicitType",
@@ -22,8 +25,10 @@
         "type_expr": "integer"
       },
       "HasItems": {
+        "id": "pyraml://id#/declarations/types/HasItems",
         "is_annotation_type": false,
         "items": {
+          "id": "pyraml://id#/declarations/types/HasItems/items",
           "is_annotation_type": false,
           "kind": "StringShape",
           "name": "items",
@@ -35,6 +40,7 @@
         "type": "array"
       },
       "HasProperties": {
+        "id": "pyraml://id#/declarations/types/HasProperties",
         "is_annotation_type": false,
         "kind": "ObjectShape",
         "name": "HasProperties",
@@ -42,6 +48,7 @@
           "a": {
             "required": true,
             "type": {
+              "id": "pyraml://id#/declarations/types/HasProperties/property/a/schema",
               "is_annotation_type": false,
               "kind": "StringShape",
               "name": "a",
@@ -53,12 +60,14 @@
         "type": "object"
       },
       "NoFacets": {
+        "id": "pyraml://id#/declarations/types/NoFacets",
         "is_annotation_type": false,
         "kind": "StringShape",
         "name": "NoFacets",
         "type": "string"
       },
       "PropertyShorthand": {
+        "id": "pyraml://id#/declarations/types/PropertyShorthand",
         "is_annotation_type": false,
         "kind": "ObjectShape",
         "name": "PropertyShorthand",
@@ -66,6 +75,7 @@
           "inferred": {
             "required": true,
             "type": {
+              "id": "pyraml://id#/declarations/types/PropertyShorthand/property/inferred/schema",
               "is_annotation_type": false,
               "kind": "ObjectShape",
               "name": "inferred",
@@ -73,6 +83,7 @@
                 "nested": {
                   "required": true,
                   "type": {
+                    "id": "pyraml://id#/declarations/types/PropertyShorthand/property/inferred/schema/property/nested/schema",
                     "is_annotation_type": false,
                     "kind": "StringShape",
                     "name": "nested",

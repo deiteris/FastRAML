@@ -1,13 +1,17 @@
 {
   "annotations": [],
+  "base": "pyraml://id",
   "endpoints": {
     "/closed": {
+      "id": "pyraml://id#/web-api/endpoint/%2Fclosed",
       "operations": {
         "get": {
+          "id": "pyraml://id#/web-api/endpoint/%2Fclosed/supportedOperation/get",
           "responses": {},
           "secured_by": [
             {
               "bound": true,
+              "declaration": "pyraml://id#/declarations/securitySchemes/oauth",
               "is_null": false,
               "name": "oauth",
               "scopes": [
@@ -20,6 +24,7 @@
       "secured_by": [
         {
           "bound": true,
+          "declaration": "pyraml://id#/declarations/securitySchemes/oauth",
           "is_null": false,
           "name": "oauth",
           "scopes": null
@@ -27,12 +32,15 @@
       ]
     },
     "/open": {
+      "id": "pyraml://id#/web-api/endpoint/%2Fopen",
       "operations": {
         "get": {
+          "id": "pyraml://id#/web-api/endpoint/%2Fopen/supportedOperation/get",
           "responses": {},
           "secured_by": [
             {
               "bound": true,
+              "declaration": null,
               "is_null": true,
               "name": "null",
               "scopes": null
@@ -41,10 +49,12 @@
         },
         "post": {
           "description": "inherits oauth",
+          "id": "pyraml://id#/web-api/endpoint/%2Fopen/supportedOperation/post",
           "responses": {},
           "secured_by": [
             {
               "bound": true,
+              "declaration": "pyraml://id#/declarations/securitySchemes/oauth",
               "is_null": false,
               "name": "oauth",
               "scopes": null
@@ -55,6 +65,7 @@
       "secured_by": [
         {
           "bound": true,
+          "declaration": "pyraml://id#/declarations/securitySchemes/oauth",
           "is_null": false,
           "name": "oauth",
           "scopes": null

@@ -1,5 +1,6 @@
 {
   "annotations": [],
+  "base": "pyraml://id",
   "endpoints": {},
   "entry_point": {
     "kind": "Library"
@@ -7,6 +8,7 @@
   "types": {
     "lib.raml": {
       "Aged": {
+        "id": "pyraml://id#/declarations/types/Aged",
         "is_annotation_type": false,
         "kind": "ObjectShape",
         "name": "Aged",
@@ -14,6 +16,7 @@
           "age": {
             "required": true,
             "type": {
+              "id": "pyraml://id#/declarations/types/Aged/property/age/schema",
               "is_annotation_type": false,
               "kind": "IntegerShape",
               "name": "age",
@@ -26,6 +29,7 @@
         "type_expr": "object"
       },
       "Named": {
+        "id": "pyraml://id#/declarations/types/Named",
         "is_annotation_type": false,
         "kind": "ObjectShape",
         "name": "Named",
@@ -33,6 +37,7 @@
           "name": {
             "required": true,
             "type": {
+              "id": "pyraml://id#/declarations/types/Named/property/name/schema",
               "is_annotation_type": false,
               "kind": "StringShape",
               "min_length": 2,
@@ -46,9 +51,57 @@
         "type_expr": "object"
       },
       "Person": {
+        "id": "pyraml://id#/declarations/types/Person",
         "inherits": [
-          "Named",
-          "Aged"
+          {
+            "alias_of": {
+              "$ref": "pyraml://id#/declarations/types/Named"
+            },
+            "id": "pyraml://id#/declarations/types/Person/inherits/Named",
+            "is_annotation_type": false,
+            "kind": "ObjectShape",
+            "name": "Named",
+            "properties": {
+              "name": {
+                "required": true,
+                "type": {
+                  "id": "pyraml://id#/declarations/types/Named/property/name/schema",
+                  "is_annotation_type": false,
+                  "kind": "StringShape",
+                  "min_length": 2,
+                  "name": "name",
+                  "type": "string",
+                  "type_expr": "string"
+                }
+              }
+            },
+            "type": "object",
+            "type_expr": "Named"
+          },
+          {
+            "alias_of": {
+              "$ref": "pyraml://id#/declarations/types/Aged"
+            },
+            "id": "pyraml://id#/declarations/types/Person/inherits/Aged",
+            "is_annotation_type": false,
+            "kind": "ObjectShape",
+            "name": "Aged",
+            "properties": {
+              "age": {
+                "required": true,
+                "type": {
+                  "id": "pyraml://id#/declarations/types/Aged/property/age/schema",
+                  "is_annotation_type": false,
+                  "kind": "IntegerShape",
+                  "name": "age",
+                  "type": "integer",
+                  "type_expr": "integer"
+                }
+              }
+            },
+            "type": "object",
+            "type_expr": "Aged"
+          }
         ],
         "is_annotation_type": false,
         "kind": "ObjectShape",
@@ -57,6 +110,7 @@
           "age": {
             "required": true,
             "type": {
+              "id": "pyraml://id#/declarations/types/Aged/property/age/schema",
               "is_annotation_type": false,
               "kind": "IntegerShape",
               "name": "age",
@@ -67,6 +121,7 @@
           "name": {
             "required": true,
             "type": {
+              "id": "pyraml://id#/declarations/types/Person/property/name/schema",
               "is_annotation_type": false,
               "kind": "StringShape",
               "min_length": 4,
@@ -78,6 +133,7 @@
           "nickname": {
             "required": false,
             "type": {
+              "id": "pyraml://id#/declarations/types/Person/property/nickname/schema",
               "is_annotation_type": false,
               "kind": "StringShape",
               "name": "nickname?",

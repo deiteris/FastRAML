@@ -79,6 +79,7 @@ pyraml/
   walk.py                 one traversal of the effective model, addressing what
                           it reaches; emitters are sinks over it (doc 16 section 3)
   graph.py                the effective model as a queryable graph (doc 16)
+  effective.py            the effective model as an addressed tree (doc 16 section 11)
   queries.py              the named SPARQL analysis catalogue (doc 16 section 6)
   render.py               the effective view of a type or endpoint, as RAML (doc 16 section 9)
   diff.py                 what changed between two versions, and what it breaks (doc 16 section 10)

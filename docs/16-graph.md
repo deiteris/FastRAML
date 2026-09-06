@@ -159,79 +159,68 @@ projected first, so every scan matched within a few nodes and returned. A
 it scans the whole graph before falling back. No corpus has qualified names and
 a large graph together, which is the shape of a real library-using API.
 
-### 2.7 Every node holds the entity it projects
+### 2.7 A node's kind is its class
 
-`GraphNode.entity` is the model object the node was made from, and it is **not
-optional**. That is the enforcement mechanism: `mypy` rejects a `node()` call
-that cannot name an entity, so the claim is checked at each of the fifteen
-places a node is created rather than asserted by a test afterwards.
+`pyraml/nodes.py` holds one class per kind. `TypeNode` carries a `BaseShape`,
+`ResponseNode` a `Response`, `ParameterNode` a `Parameter`; the entity's type is
+a parameter of the class, so `kinds[0]` is read off the class and a node whose
+kind and entity disagree does not typecheck. There is no kind string to get
+wrong and nothing to check at runtime.
 
-Before it, two side maps held the way back — one for shapes, one for endpoints
-and operations — which covered 19,427 of 32,090 nodes on a real 149-endpoint
-document. The other 12,663 were not unrecorded because no model object existed:
-every one of them is a `Property`, `Body`, `Response`, `Parameter`, `Request`,
-`TraitDefinition`, `Fragment` or `SecuritySchemeDefinition`. The builder simply
-did not keep the reference. Both maps are gone; `entity_at` reads the node, and
-`shape_at`, `endpoint_at` and `operation_at` are `isinstance` over it.
+Two shapes of many-to-one are in the vocabulary and the classes say which:
+
+- **One entity, two kinds.** The entry document is both a file and an API, so
+  `UnitNode` and `ApiNode` hold the same `APIFragment` and say different things
+  about it. A kind derived from the entity's class could not tell them apart.
+- **One kind, two entities.** A trait, a resource type or a security scheme is
+  normally its definition. Where a name matches no declaration an edge is still
+  emitted, so the application is not invisible, and `UnresolvedTraitNode` and
+  its two siblings carry the *reference* — a name and nothing else, because
+  nothing else is known.
+
+Every node holds a model object. On a real 149-endpoint document that is 32,090
+of 32,090, across `BaseShape`, `Property`, `Body`, `Response`, `Parameter`,
+`Request`, `Operation`, `EndPoint`, `TraitDefinition`,
+`SecuritySchemeDefinition` and the two fragment kinds. `entity_at` reads the
+node, and `shape_at`, `endpoint_at` and `operation_at` narrow it.
 
 This is what makes § 1's rule enforceable rather than aspirational. A node with
 no entity is something this layer invented, and inventing is the failure mode
 the rule exists to prevent.
 
-**And the kind must agree with the entity.** `_KIND_ENTITY` says what each kind
-projects, and it is consulted twice: when a node is created, and when its
-literals are read. A pair the table does not allow raises, at the creation site
-where the mistake was made.
-
-That guard exists because the first version of § 2.8's reader did not have it.
-It narrowed with `isinstance` to satisfy the type checker and returned an empty
-dictionary when the narrowing failed — so a node paired with the wrong entity
-would keep its kind, its IRI and every edge, and simply have no literals. No
-error, a plausible node count, and a wrong answer: the same shape of bug as the
-duplicate-IRI hazard in § 3.1, and caught the same way.
-
-Three kinds legitimately take more than one class, and the table says so. A
-trait, a resource type or a security scheme is normally its definition; where a
-name matched no declaration, `applies` still emits an edge so the application is
-not invisible, and the placeholder it points at is the *reference*. `Api` and
-`Unit` are the reverse case — one entity behind two kinds, which is why the
-dispatch is on the kind and cannot be on the entity's class.
-
 ### 2.8 The literals are derived, not stored
 
-`GraphNode.attributes` is a property. It reads the entity when asked and builds
-the dictionary then; nothing is written at build time.
+`attributes` is a method on each node class. It reads the entity when asked;
+nothing is written at build time.
 
-Storing them copied 82,287 values into 32,090 dicts on a real 149-endpoint
-document — **6.0 MB restating what the model already held**, allocated whether
-or not anything read it. Deriving all of them on demand costs 33 ms, and the
-verbs that navigate never ask for more than a handful: `entries` labels 525
-rows, not 32,090.
+Holding them costs 6.0 MB on a real 149-endpoint document — 82,287 values in
+32,090 dictionaries, restating what the model already holds, allocated whether
+or not anything reads them. Deriving all of them costs 33 ms, and the verbs
+that navigate never ask for more than a handful: `entries` labels 525 rows, not
+32,090. A caller reading one node's attributes more than once binds them to a
+local, because each read builds a fresh dictionary; `diff` and `label` do.
 
 **What the view is for.** The keys are `additionalProperties`, `statusCode`,
 `isAnnotationType` — this vocabulary's names, which the model spells
 `additional_properties`, `code`, `is_annotation_type`. Mapping between them is
-real work and it belongs here. The rule that follows is the one worth keeping:
-**this layer owns the vocabulary, not the values.** A stored attribute is a
-value it does not own.
+the work, and it belongs here. The rule: **this layer owns the vocabulary, not
+the values.** A stored attribute is a value it does not own.
 
-Three consequences fell out of applying it:
+Three things follow from it:
 
-- **`path` on an Operation is gone.** The endpoint holds it, the
-  `supportedOperation` edge reaches it, and `label` never read it anyway — it
-  tries `name` first and every operation has one. Storing it also made a moved
-  resource report a change once per method beneath it, where § 10.4 diffs the
-  edge and reports it once.
-- **`scopes` became a fold.** The eager writer assigned it once per scheme
-  inside the loop, so a method secured by two OAuth schemes kept only the
-  second one's scopes. Read from `Operation.secured_by`, it is all of them.
-- **`unsecured` and the binding** come off the entity — the first from
+- **An Operation has no `path`.** The endpoint holds it and the
+  `supportedOperation` edge reaches it. A fact reachable by following an edge
+  is not an attribute — storing it would also report a moved resource once per
+  method beneath it, where § 10.4 diffs the edge and reports it once.
+- **`scopes` is a fold** over `Operation.secured_by`, so an operation secured by
+  two OAuth schemes reports the scopes of both.
+- **`unsecured` and the binding** come off the entity: the first from
   `securedBy: [null]` being visible in `secured_by`, the second from
   `Parameter.binding` (§ 5 of [05](05-type-model.md)).
 
-Verified by dumping every attribute of every node before and after, across five
-corpora and 216,961 nodes: 2,187 cells differ and every one of them is the
-`path` deletion, which is exactly the operation count.
+The equivalence is checked by dumping every attribute of every node across five
+corpora and 216,961 nodes: the only cells that differ are the `path` deletion,
+which is exactly the operation count.
 
 ### 2.5 Literals
 

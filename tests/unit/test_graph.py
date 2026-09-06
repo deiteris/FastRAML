@@ -680,41 +680,27 @@ securitySchemes:
 
 
 class TestAKindAndItsEntityCannotDiverge:
-    """docs/16 section 2.7: one table says what a kind projects, and both the
-    builder and the reader consult it.
+    """docs/16 section 2.7: a node's kind is its class.
 
-    The hazard is specific. `_attributes` narrows with `isinstance` to satisfy
-    the type checker, and an earlier version returned an empty dictionary when
-    the narrowing failed — so a node paired with the wrong entity kept its kind,
-    its IRI and its edges and simply had no literals. Plausible, silent, wrong.
+    `TypeNode` holds a `BaseShape`, `ResponseNode` holds a `Response`. The
+    entity's type is a parameter of the class, so a mismatched pair does not
+    typecheck and there is nothing to assert at runtime. These pin the two
+    things a reader can still observe.
     """
 
-    def test_the_table_covers_every_kind_the_builder_emits(self, graph: Graph):
-        emitted = {node.kinds[0] for node in graph.nodes.values()}
-        assert emitted <= set(graph_module._KIND_ENTITY), emitted - set(graph_module._KIND_ENTITY)
-
-    def test_every_node_holds_a_class_its_kind_allows(self, graph: Graph):
+    def test_the_kind_comes_from_the_class(self, graph: Graph):
         for node in graph.nodes.values():
-            allowed = graph_module._KIND_ENTITY[node.kinds[0]]
-            assert isinstance(node.entity, allowed), (node.iri, node.kinds[0], type(node.entity))
+            assert node.kinds[0] == type(node).kind
 
-    def test_creating_a_mismatched_node_is_refused(self, graph: Graph):
-        builder = graph_module._Builder.__new__(graph_module._Builder)
-        builder.nodes, builder.root = {}, ''
-        endpoint = graph.endpoint_at(iris(graph, 'EndPoint')[0])
-        with pytest.raises(TypeError, match="'Response' projects Response, not EndPoint"):
-            builder.node('pyraml://id#/wrong', endpoint, 'Response')
+    def test_a_type_node_names_its_shape_class_second(self, graph: Graph):
+        node = graph.nodes[graph.find('User')[0]]
+        assert node.kinds == ('Type', 'ObjectShape')
 
-    def test_an_unknown_kind_is_refused_rather_than_silently_bare(self, graph: Graph):
-        builder = graph_module._Builder.__new__(graph_module._Builder)
-        builder.nodes, builder.root = {}, ''
-        endpoint = graph.endpoint_at(iris(graph, 'EndPoint')[0])
-        with pytest.raises(TypeError, match='unknown node kind'):
-            builder.node('pyraml://id#/wrong', endpoint, 'Sprocket')
-
-    def test_reading_a_mismatched_node_raises_rather_than_returning_nothing(self, graph: Graph):
-        """The guard at creation is the real defence; this is the backstop."""
-        real = graph.nodes[iris(graph, 'EndPoint')[0]]
-        forged = GraphNode(iri=real.iri, kinds=('Response',), entity=real.entity, root=real.root)
-        with pytest.raises(TypeError, match="'Response' holds EndPoint"):
-            _ = forged.attributes
+    def test_every_kind_in_the_vocabulary_has_exactly_one_class(self, graph: Graph):
+        """Except the three a name can fail to resolve to, which have two."""
+        by_kind: dict[str, set[str]] = {}
+        for node in graph.nodes.values():
+            by_kind.setdefault(node.kinds[0], set()).add(type(node).__name__)
+        assert by_kind['Type'] == {'TypeNode'}
+        assert by_kind['EndPoint'] == {'EndPointNode'}
+        assert by_kind['Unit'] == {'UnitNode'}

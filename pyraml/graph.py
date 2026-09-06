@@ -24,17 +24,34 @@ imports the model rather than being imported by it.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import quote
 
-from pyraml.parser.directives import DirectiveRef, SecurityScheme
+from pyraml.nodes import (
+    ApiNode,
+    EndPointNode,
+    Entity,
+    GraphNode,
+    OperationNode,
+    ParameterNode,
+    PatternPropertyNode,
+    PayloadNode,
+    PropertyNode,
+    RequestNode,
+    ResourceTypeNode,
+    ResponseNode,
+    SecuritySchemeNode,
+    TraitNode,
+    TypeNode,
+    UnitNode,
+    UnresolvedNode,
+    UnresolvedResourceTypeNode,
+    UnresolvedSchemeNode,
+    UnresolvedTraitNode,
+)
 from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
 from pyraml.parser.fragments import APIFragment, Fragment, Library
-from pyraml.parser.resourcetypes import ResourceTypeDefinition
-from pyraml.parser.security import SecuritySchemeDefinition
-from pyraml.parser.traits import TraitDefinition
-from pyraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet
+from pyraml.types.base import BaseShape, Parameter
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from pyraml.types.jsonschema_ import projected
 from pyraml.uris import relative_to
@@ -43,7 +60,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from pyraml.parser.annotations import DomainExtension
-    from pyraml.positions import Position
+    from pyraml.parser.directives import DirectiveRef, SecurityScheme
     from pyraml.registry import Raml
     from pyraml.types.base import Shape
 
@@ -53,9 +70,7 @@ __all__ = [
     'TYPE_EDGES',
     'USE_EDGES',
     'Edge',
-    'Entity',
     'Graph',
-    'GraphNode',
     'Route',
     'build_graph',
 ]
@@ -178,49 +193,15 @@ def _outermost(matched: Sequence[str]) -> list[str]:
 #: or `securedBy:` entry can name, and the node kind each one declares. A
 #: `Literal` rather than `str` so the lookup below is total and mypy says so.
 _Bucket = Literal['traits', 'resourceTypes', 'securitySchemes']
-_DECLARED_KINDS: Final[dict[_Bucket, str]] = {
-    'traits': 'Trait',
-    'resourceTypes': 'ResourceType',
-    'securitySchemes': 'SecurityScheme',
+_UNRESOLVED: Final[dict[_Bucket, type[UnresolvedNode[Any]]]] = {
+    'traits': UnresolvedTraitNode,
+    'resourceTypes': UnresolvedResourceTypeNode,
+    'securitySchemes': UnresolvedSchemeNode,
 }
 
 #: Percent-escaped in an IRI segment. Everything outside is escaped, so a media
 #: type, a URI template and a `/regex/` property name all survive as one segment.
 _SAFE: Final = ''
-
-#: What each node kind is allowed to project. Declared once and consulted twice
-#: — when a node is created, and when its literals are read — so the two cannot
-#: disagree about what a kind stands for (docs/16 § 2.7).
-#:
-#: A mismatch used to be silent: the reader narrowed with `isinstance` and
-#: returned an empty dictionary when the narrowing failed, so a node paired with
-#: the wrong entity kept its kind, its IRI and its edges, and simply had no
-#: literals. That is a wrong answer rather than an error, and it is the failure
-#: mode this whole layer is meant not to have.
-#:
-#: Three kinds take more than one class, and both spellings are real. A trait, a
-#: resource type or a security scheme is normally its definition; when a name
-#: matched no declaration, `applies` still emits an edge so the application is
-#: not invisible, and the placeholder it points at is the *reference*.
-_KIND_ENTITY: Final[dict[str, tuple[type, ...]]] = {
-    'Type': (BaseShape,),
-    'Property': (Property,),
-    'PatternProperty': (PatternProperty,),
-    'Parameter': (Parameter,),
-    'Payload': (Body,),
-    'Request': (Request,),
-    'Response': (Response,),
-    'Operation': (Operation,),
-    'EndPoint': (EndPoint,),
-    # One object, two nodes: the entry document is a file and an API, and the
-    # two say different things about it. This is why the dispatch is on the
-    # kind and not on the entity's class — the class cannot tell them apart.
-    'Api': (APIFragment,),
-    'Unit': (APIFragment, Library),
-    'Trait': (TraitDefinition, DirectiveRef),
-    'ResourceType': (ResourceTypeDefinition, DirectiveRef),
-    'SecurityScheme': (SecuritySchemeDefinition, SecurityScheme, DirectiveRef),
-}
 
 
 # -- the graph ----------------------------------------------------------------
@@ -233,72 +214,6 @@ class Edge:
     subject: str
     predicate: str
     object: str
-
-
-#: What a node attribute may be. A tuple is a genuinely multi-valued facet.
-type Literal_ = str | int | bool | tuple[str, ...]
-
-#: Everything a node can stand for. Every kind in the vocabulary projects one of
-#: these, and the field below is not optional, so this list being total is
-#: checked by `mypy` at each of the fifteen places a node is created rather than
-#: asserted afterwards (docs/16 § 2.7).
-type Entity = (
-    BaseShape
-    | Property
-    | PatternProperty
-    | Parameter
-    | Body
-    | Request
-    | Response
-    | Operation
-    | EndPoint
-    | Fragment
-    | TraitDefinition
-    | ResourceTypeDefinition
-    | SecuritySchemeDefinition
-    | DirectiveRef
-    | SecurityScheme
-)
-
-
-@dataclass(slots=True, eq=False)
-class GraphNode:
-    """One entity: what it is, what it is called, and its literal facets.
-
-    `kinds` is most-specific first, as AMF's `@type` arrays are, so a consumer
-    that wants one label reads `kinds[0]` and one that wants to filter reads the
-    rest.
-    """
-
-    iri: str
-    kinds: tuple[str, ...]
-    #: The model object this node projects. Every node has one: a node without
-    #: an entity would be something this layer invented, and inventing is what
-    #: it is not for (docs/16 § 1).
-    entity: Entity
-    #: The entry document's directory URI, which `definedIn` is relative to.
-    #: The one piece of context the entity does not carry; every node in a
-    #: graph holds the same string object.
-    root: str = ''
-
-    @property
-    def attributes(self) -> dict[str, Literal_]:
-        """The node's literals, read from the entity on demand.
-
-        Derived rather than stored. Storing them copied 81,688 values into
-        32,090 dicts on a real 149-endpoint document — 6.0 MB restating what
-        the model already held, built whether or not anything read it
-        (docs/16 § 2.8).
-
-        A tuple value is a genuinely multi-valued facet — `enum`, OAuth scopes
-        — and is not joined into a string: an enum value may itself contain a
-        space, so `["new york", "london"]` and three separate values would be
-        indistinguishable, and a diff could not say which member was removed.
-        """
-        return _attributes(self)
-
-    def __repr__(self) -> str:
-        return f'GraphNode({self.iri!r}, {self.kinds[0]!r})'
 
 
 @dataclass(slots=True, eq=False)
@@ -338,7 +253,7 @@ class Graph:
     def __init__(
         self,
         base: str,
-        nodes: dict[str, GraphNode],
+        nodes: dict[str, GraphNode[Any]],
         edges: list[Edge],
         *,
         root: str = '',
@@ -664,38 +579,6 @@ def _segment(value: str) -> str:
     return quote(value, safe=_SAFE)
 
 
-def _number_text(value: Fraction) -> str:
-    """A `Fraction` as text, without going through `float`.
-
-    The project rule is that numbers never pass through `float` on either side
-    of a comparison (docs/10 § 5.2), and a graph literal is no exception even
-    though nothing compares it: `1.1` reaching a reader as `1.100000000000000088`
-    would be a defect of this module, not of the parser.
-    """
-    if value.denominator == 1:
-        return str(value.numerator)
-    residue = value.denominator
-    for factor in (2, 5):
-        while residue % factor == 0:
-            residue //= factor
-    if residue != 1:
-        # Not representable as a terminating decimal, so it is reported exactly
-        # as the ratio it is. `multipleOf: 1/3` cannot arise from RAML source,
-        # which is decimal, but a merged bound could in principle.
-        return f'{value.numerator}/{value.denominator}'
-    digits = 0
-    scaled = value
-    while scaled.denominator != 1:
-        scaled *= 10
-        digits += 1
-    text = str(abs(scaled.numerator)).rjust(digits + 1, '0')
-    sign = '-' if scaled.numerator < 0 else ''
-    return f'{sign}{text[:-digits]}.{text[-digits:]}'
-
-
-# -- the projection -----------------------------------------------------------
-
-
 def build_graph(raml: Raml, *, base: str = DEFAULT_BASE) -> Graph:
     """Project a parsed model. Use `ParseOptions(unwrap=True)` — see the module docstring."""
     builder = _Builder(raml, base)
@@ -730,7 +613,7 @@ class _Builder:
     def __init__(self, raml: Raml, base: str) -> None:
         self.raml = raml
         self.base = base
-        self.nodes: dict[str, GraphNode] = {}
+        self.nodes: dict[str, GraphNode[Any]] = {}
         self.edges: list[Edge] = []
         self.shape_iris: dict[int, str] = {}
         #: The inverse of `shape_iris`, by IRI, for `Graph.shape_at`.
@@ -775,23 +658,14 @@ class _Builder:
             self._segments[value] = escaped
         return escaped
 
-    def node(self, iri: str, entity: Entity, *kinds: str) -> str:
-        """Create the node for `entity`, or return the one that already holds it.
+    def add(self, node: GraphNode[Any]) -> str:
+        """Record `node`, or keep the one already at its IRI.
 
-        The entity is required and not optional, so that `mypy` rather than a
-        test is what establishes that every node has one. A projection whose
-        nodes are not all backed by something in the model has copied rather
-        than projected (docs/16 section 1).
-
-        The kind and the entity are checked against each other here, where a
-        mismatch is introduced, rather than being discovered when the literals
-        are read — or worse, not discovered, which is what an `isinstance` that
-        falls through to an empty dictionary does.
+        First reach wins, which is what makes a declared type one node rather
+        than one per use site and what closes a type cycle (docs/16 § 3).
         """
-        if iri not in self.nodes:
-            _check_kind(kinds[0], entity)
-            self.nodes[iri] = GraphNode(iri=iri, kinds=kinds, entity=entity, root=self.root)
-        return iri
+        self.nodes.setdefault(node.iri, node)
+        return node.iri
 
     def declare(self, unit: str, bucket: str, name: str) -> str:
         """The IRI of one declaration, recorded so a name can be resolved to it.
@@ -863,7 +737,7 @@ class _Builder:
         if not isinstance(fragment, (APIFragment, Library)):
             return
         unit = self.unit(location)
-        self.node(unit, fragment, 'Unit')
+        self.add(UnitNode(unit, fragment, self.root))
         for name, shape in fragment.types.items():
             self.edge(unit, 'declares', self.shape(shape, self.declare(unit, 'types', name)))
         for name, shape in fragment.annotation_types.items():
@@ -872,24 +746,24 @@ class _Builder:
         # location column is empty for exactly the declarations a reader most
         # often wants to open — a trait is applied far from where it is written.
         for name, scheme in fragment.security_schemes.items():
-            iri = self.node(self.declare(unit, 'securitySchemes', name), scheme, 'SecurityScheme')
+            iri = self.add(SecuritySchemeNode(self.declare(unit, 'securitySchemes', name), scheme, self.root))
             # Under both the declaration and whatever an `!include` resolved to,
             # so a `securedBy:` bound to either finds this one node.
             self.scheme_iris[scheme.id] = iri
             self.scheme_iris[scheme.resolved().id] = iri
             self.edge(unit, 'declares', iri)
         for name, trait in fragment.traits.items():
-            iri = self.node(self.declare(unit, 'traits', name), trait, 'Trait')
+            iri = self.add(TraitNode(self.declare(unit, 'traits', name), trait, self.root))
             self.edge(unit, 'declares', iri)
         for name, resource_type in fragment.resource_types.items():
-            iri = self.node(self.declare(unit, 'resourceTypes', name), resource_type, 'ResourceType')
+            iri = self.add(ResourceTypeNode(self.declare(unit, 'resourceTypes', name), resource_type, self.root))
             self.edge(unit, 'declares', iri)
 
     def api(self) -> None:
         entry = self.raml.entry_point
         if not isinstance(entry, APIFragment):
             return
-        api = self.node(f'{self.base}#/web-api', entry, 'Api')
+        api = self.add(ApiNode(f'{self.base}#/web-api', entry, self.root))
         self.edge(api, 'unit', self.unit(entry.location))
         seen: set[int] = set()
         for endpoint in self.raml.endpoints.values():
@@ -905,7 +779,9 @@ class _Builder:
         if endpoint.id in seen:
             return
         seen.add(endpoint.id)
-        iri = self.node(f'{self.base}#/web-api/endpoint/{self.segment(endpoint.full_uri)}', endpoint, 'EndPoint')
+        iri = self.add(
+            EndPointNode(f'{self.base}#/web-api/endpoint/{self.segment(endpoint.full_uri)}', endpoint, self.root)
+        )
         self.edge(api, 'endpoint', iri)
 
         parent = endpoint.full_uri[: -len(endpoint.uri)] if endpoint.uri and endpoint.full_uri != endpoint.uri else ''
@@ -953,10 +829,12 @@ class _Builder:
                 self.edge(subject, predicate, found)
                 return
         local = f'{self.unit(location)}#/declarations/{bucket}/{self.segment(name)}'
-        self.edge(subject, predicate, self.node(local, ref, _DECLARED_KINDS[bucket]))
+        self.edge(subject, predicate, self.add(_UNRESOLVED[bucket](local, ref, self.root)))
 
     def operation(self, endpoint: str, operation: Operation) -> None:
-        iri = self.node(f'{endpoint}/supportedOperation/{self.segment(operation.method)}', operation, 'Operation')
+        iri = self.add(
+            OperationNode(f'{endpoint}/supportedOperation/{self.segment(operation.method)}', operation, self.root)
+        )
         self.edge(endpoint, 'supportedOperation', iri)
         for trait in operation.traits:
             self.applies(iri, 'appliesTrait', 'traits', trait, operation.location)
@@ -973,7 +851,7 @@ class _Builder:
             # An empty node here would be one per GET in the graph, all identical
             # and all noise.
             return
-        iri = self.node(f'{operation}/request', request, 'Request')
+        iri = self.add(RequestNode(f'{operation}/request', request, self.root))
         self.edge(operation, 'request', iri)
         for name, param in request.headers.items():
             self.edge(iri, 'parameter', self.parameter(f'{iri}/parameter/header/{self.segment(name)}', param))
@@ -986,7 +864,7 @@ class _Builder:
             self.edge(iri, 'payload', self.payload(iri, media, body))
 
     def response(self, operation: str, response: Response) -> None:
-        iri = self.node(f'{operation}/returns/{self.segment(response.code)}', response, 'Response')
+        iri = self.add(ResponseNode(f'{operation}/returns/{self.segment(response.code)}', response, self.root))
         self.edge(operation, 'returns', iri)
         self.annotated(iri, response.annotations)
         for name, param in response.headers.items():
@@ -996,7 +874,7 @@ class _Builder:
             self.edge(iri, 'payload', self.payload(iri, media, body))
 
     def payload(self, parent: str, media: str, body: Body) -> str:
-        iri = self.node(f'{parent}/payload/{self.segment(media or "default")}', body, 'Payload')
+        iri = self.add(PayloadNode(f'{parent}/payload/{self.segment(media or "default")}', body, self.root))
         if body.shape is not None:
             self.edge(iri, 'range', self.shape(body.shape, f'{iri}/schema'))
         return iri
@@ -1010,7 +888,7 @@ class _Builder:
         header there. The model says so too — `Parameter` holds the property
         and adds the binding, so nothing here has to be told which it is.
         """
-        self.node(iri, param, 'Parameter')
+        self.add(ParameterNode(iri, param, self.root))
         self.edge(iri, 'range', self.shape(param.base, f'{iri}/schema'))
         return iri
 
@@ -1065,7 +943,7 @@ class _Builder:
         self.emitted.add(base.id)
 
         kind = type(base.shape).__name__ if base.shape is not None else 'UnknownShape'
-        self.node(iri, base, 'Type', kind)
+        self.add(TypeNode(iri, base, self.root, kind))
         # Structure and facets come from the *projected* shape, so a type defined
         # by a JSON schema has members here rather than being a leaf. Without it
         # `deps errorScheme` reported that it is made of nothing, every SPARQL
@@ -1088,7 +966,7 @@ class _Builder:
         if isinstance(shape, ObjectShape):
             for name, prop in (shape.properties or {}).items():
                 child = f'{iri}/property/{self.segment(name)}'
-                self.node(child, prop, 'Property')
+                self.add(PropertyNode(child, prop, self.root))
                 self.edge(child, 'range', self.shape(prop.base, f'{child}/schema'))
                 self.edge(iri, 'property', child)
             for name, pattern in (shape.pattern_properties or {}).items():
@@ -1096,7 +974,7 @@ class _Builder:
                 # property has no name of its own and an index would move under
                 # any edit above it.
                 child = f'{iri}/patternProperty/{self.segment(name)}'
-                self.node(child, pattern, 'PatternProperty')
+                self.add(PatternPropertyNode(child, pattern, self.root))
                 self.edge(child, 'range', self.shape(pattern.base, f'{child}/schema'))
                 self.edge(iri, 'patternProperty', child)
         elif isinstance(shape, ArrayShape):
@@ -1114,261 +992,4 @@ class _Builder:
                 self.edge(iri, 'recursionHead', head)
 
 
-# -- the literals, derived ----------------------------------------------------
-
-
-def _check_kind(kind: str, entity: Entity) -> None:
-    """Refuse a node whose kind and entity disagree.
-
-    Raised rather than accumulated: it is a fault in this module, not in the
-    document being projected, so no author can act on it and no parse should
-    survive it.
-    """
-    allowed = _KIND_ENTITY.get(kind)
-    if allowed is None:
-        raise TypeError(f'unknown node kind {kind!r}; add it to _KIND_ENTITY')
-    if not isinstance(entity, allowed):
-        wanted = ' | '.join(cls.__name__ for cls in allowed)
-        raise TypeError(f'node kind {kind!r} projects {wanted}, not {type(entity).__name__}')
-
-
-def _narrowed[T](entity: Entity, kind: str, *wanted: type[T]) -> T:
-    """`entity` as `wanted`, which `_check_kind` has already guaranteed.
-
-    The `isinstance` is here to narrow for `mypy`, not to decide anything, so
-    the failing branch raises instead of returning nothing. An earlier version
-    returned an empty dictionary and turned a builder mistake into a node with
-    no literals — plausible, silent and wrong.
-    """
-    if not isinstance(entity, wanted):
-        names = ' | '.join(cls.__name__ for cls in wanted)
-        raise TypeError(f'node kind {kind!r} holds {type(entity).__name__}, not {names}')
-    return entity
-
-
-def _attributes(node: GraphNode) -> dict[str, Literal_]:  # noqa: PLR0911 - one arm per node kind
-    """One node's literals, read from the entity it projects.
-
-    Dispatched on the node's *kind* rather than on the entity's class, because
-    the two are not one-to-one: the entry document is the entity behind both
-    the `Api` node and its `Unit` node, and they say different things about it.
-    The kind is this layer's own vocabulary, which is what should be choosing.
-
-    Every key here is a name docs/16 § 2 owns — `additionalProperties`,
-    `statusCode`, `isAnnotationType` — and the model spells each of them
-    differently. That mapping is the work this function exists to do, and it is
-    why the projection keeps an attribute view at all: this layer owns the
-    vocabulary, not the values (§ 2.8).
-    """
-    entity, kind, root = node.entity, node.kinds[0], node.root
-    if kind == 'Type':
-        return _type_attributes(_narrowed(entity, kind, BaseShape), root)
-    if kind == 'Property':
-        prop = _narrowed(entity, kind, Property)
-        return {'name': prop.name, 'required': prop.required}
-    if kind == 'PatternProperty':
-        written = _pattern(_narrowed(entity, kind, PatternProperty))
-        return {'name': written, 'pattern': written}
-    if kind == 'Parameter':
-        param = _narrowed(entity, kind, Parameter)
-        bound: dict[str, Literal_] = {
-            'name': param.name,
-            'binding': _BINDING[param.binding],
-            'required': param.required,
-        }
-        return bound | _where(param.base.location, param.key_pos, root)
-    if kind == 'Payload':
-        body = _narrowed(entity, kind, Body)
-        media: dict[str, Literal_] = {'mediaType': body.media_type} if body.media_type else {}
-        return media | _where(body.location, body.key_pos, root)
-    if kind == 'Response':
-        response = _narrowed(entity, kind, Response)
-        named = _named(
-            {'statusCode': response.code}, _text(response.display_name) or response.code, response.description
-        )
-        return named | _where(response.location, response.key_pos, root)
-    if kind == 'Operation':
-        return _operation_attributes(_narrowed(entity, kind, Operation), root)
-    if kind == 'EndPoint':
-        endpoint = _narrowed(entity, kind, EndPoint)
-        named = _named(
-            {'path': endpoint.full_uri}, _text(endpoint.display_name) or endpoint.full_uri, endpoint.description
-        )
-        return named | _where(endpoint.location, endpoint.key_pos, root)
-    if kind == 'Api':
-        api = _narrowed(entity, kind, APIFragment)
-        return _drop(
-            {
-                'name': _text(api.title),
-                'version': _text(api.version),
-                'description': _text(api.description),
-                'baseUri': _text(api.base_uri),
-            }
-        )
-    if kind == 'Unit':
-        # No `definedIn`: a file is not defined somewhere else, and its name
-        # already is its path relative to the root.
-        return {'name': relative_to(_narrowed(entity, kind, APIFragment, Library).location, root)}
-    if kind == 'Request':
-        # A request node exists to hang parameters and payloads off. It says
-        # nothing about itself that its edges do not already say.
-        _narrowed(entity, kind, Request)
-        return {}
-    return _declared_attributes(entity, kind, root)
-
-
-def _declared_attributes(entity: Entity, kind: str, root: str) -> dict[str, Literal_]:
-    """A trait, a resource type or a security scheme.
-
-    Two kinds of entity reach here per node kind. One is the definition, which
-    knows where it was written. The other is a *reference* whose name matched no
-    declaration — `applies` still emits an edge, so that an application is never
-    invisible, and the placeholder it points at has a name and nothing else.
-    """
-    if isinstance(entity, SecuritySchemeDefinition):
-        typed: dict[str, Literal_] = {'name': entity.name}
-        if entity.type:
-            typed['type'] = entity.type
-        return typed | _where(entity.location, entity.key_pos, root)
-    if isinstance(entity, (TraitDefinition, ResourceTypeDefinition)):
-        return {'name': entity.name} | _where(entity.location, entity.key_pos, root)
-    if isinstance(entity, (DirectiveRef, SecurityScheme)):
-        return {'name': entity.name} if entity.name else {}
-    raise TypeError(f'node kind {kind!r} holds {type(entity).__name__}, which projects no literals')
-
-
-def _type_attributes(base: BaseShape, root: str) -> dict[str, Literal_]:
-    """A declaration: its common facets, then whatever its kind holds.
-
-    The kind's facets are read off the instance rather than a per-kind table, so
-    a facet added to a kind appears here without this module being touched —
-    the same reason the golden projector walks `__slots__` (docs/14 § 2). They
-    come from the *projected* shape, so a type defined by a JSON schema has them
-    rather than reading as a leaf (§ 2.6); `as_shape` caches, so asking twice
-    costs one dictionary build and no second projection.
-    """
-    found = _drop(
-        {
-            'name': base.name,
-            'type': base.type,
-            'displayName': _text(base.display_name),
-            'description': _text(base.description),
-            'required': _facet_value(base.required.value) if base.required is not None else None,
-            'isAnnotationType': base.is_annotation_type or None,
-        }
-    )
-    found.update(_where(base.location, base.key_pos, root))
-    view = projected(base)
-    shape = view.shape
-    if shape is not None:
-        # One of the two places `getattr` is genuinely required: the attribute
-        # name comes from `_slots`, so there is no static expression for
-        # "whatever this kind declares". The `isinstance` recovers the type.
-        for name in _slots(type(shape)):
-            value = getattr(shape, name, None)
-            if isinstance(value, ScalarFacet):
-                literal = _facet_value(value.value)
-                if literal is not None:
-                    found[_camel(name)] = literal
-    if view.enum is not None:
-        # `DataNode.raw` is the plain Python value already; unwrapping the
-        # `ValueNode` by hand would only reproduce it.
-        found['enum'] = tuple(str(member.raw) for member in view.enum)
-    return found
-
-
-def _operation_attributes(operation: Operation, root: str) -> dict[str, Literal_]:
-    """A method, and what its security amounts to.
-
-    `scopes` is a fold over every scheme in force, not the last one seen. The
-    eager writer set it once per scheme inside the loop, so a method secured by
-    two OAuth schemes kept only the second one's scopes.
-
-    There is deliberately no `path`. The endpoint holds it and the
-    `supportedOperation` edge reaches it, and a fact reachable by following an
-    edge is not an attribute (§ 2.8). Storing it also made a moved resource
-    report a change once per method beneath it rather than once at the edge.
-    """
-    found = _named(
-        {'method': operation.method}, _text(operation.display_name) or operation.method, operation.description
-    )
-    found.update(_where(operation.location, operation.key_pos, root))
-    scopes = tuple(
-        scope for scheme in operation.secured_by if not scheme.is_null for scope in scheme.compiled_params or ()
-    )
-    if scopes:
-        found['scopes'] = scopes
-    if any(scheme.is_null for scheme in operation.secured_by):
-        # `securedBy: [null]` is how an author *removes* inherited security
-        # (docs/09 § A3). It is a fact about the method, so it is recorded on
-        # the method rather than dropped for having no scheme to point at.
-        found['unsecured'] = True
-    return found
-
-
-def _named(found: dict[str, Literal_], name: str, description: ScalarFacet[str] | None) -> dict[str, Literal_]:
-    """`found`, plus the two things almost every kind says about itself."""
-    if name:
-        found['name'] = name
-    text = _text(description)
-    if text is not None:
-        found['description'] = text
-    return found
-
-
-def _where(location: str, position: Position | None, root: str) -> dict[str, Literal_]:
-    """Where an entity was written, spelled the way the vocabulary spells it."""
-    found: dict[str, Literal_] = {'definedIn': relative_to(location, root)}
-    if position is not None and position.is_known:
-        found['line'] = position.line
-        found['column'] = position.column
-    return found
-
-
-def _drop(found: dict[str, Literal_ | None]) -> dict[str, Literal_]:
-    """A facet that is absent says nothing rather than saying `None`."""
-    return {key: value for key, value in found.items() if value is not None}
-
-
 # -- small readers ------------------------------------------------------------
-
-
-def _slots(cls: type) -> Iterator[str]:
-    """Every `__slots__` entry down the MRO.
-
-    One of the two places `getattr` is genuinely required: `__slots__` is not
-    declared by any base class in the hierarchy, `object` does not have it, and
-    the names are what the walk is *for*.
-    """
-    for klass in cls.__mro__:
-        yield from getattr(klass, '__slots__', ())
-
-
-def _camel(name: str) -> str:
-    head, _, rest = name.partition('_')
-    return head + ''.join(part.title() for part in rest.split('_') if part)
-
-
-def _text(facet: ScalarFacet[str] | None) -> str | None:
-    return facet.value if facet is not None and facet.value else None
-
-
-def _pattern(pattern: PatternProperty) -> str:
-    return pattern.pattern.pattern
-
-
-def _facet_value(value: object) -> str | int | bool | None:
-    """One `ScalarFacet`'s value as a literal.
-
-    `object` rather than a union: the facets are `ScalarFacet[T]` for seven
-    different `T`, they are reached through the untyped `__slots__` walk above,
-    and the point of this function is to be the one place that decides what an
-    unrecognised `T` becomes.
-    """
-    if value is True or value is False:
-        return value
-    if isinstance(value, Fraction):
-        return _number_text(value)
-    if isinstance(value, (int, str)):
-        return value
-    return None

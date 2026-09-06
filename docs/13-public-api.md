@@ -163,12 +163,16 @@ Exported model classes, all read-oriented, all slotted, all carrying
 narrow it ([16](16-graph.md) § 2.7). `Graph.__init__` no longer takes `shapes=`
 or `entities=` — the two side maps they filled are gone.
 
-`GraphNode.attributes` is a **property**, derived from the entity on each read
-rather than stored ([16](16-graph.md) § 2.8). Reading it is unchanged; two
-things about writing are not. It cannot be assigned to, and each read returns a
-fresh dictionary — so a caller reading it in a loop should bind it to a local,
-as `diff` does. An `Operation` no longer carries `path`: follow
-`supportedOperation` back to the endpoint, which has it.
+`GraphNode` lives in `pyraml.nodes` with one subclass per node kind — `TypeNode`,
+`ResponseNode`, `ParameterNode` and eleven more ([16](16-graph.md) § 2.7). The
+kind is the class and the entity's type is a parameter of it, so `node.entity`
+is typed for consumers that narrow.
+
+`attributes` is a **property**, derived from the entity on each read
+([16](16-graph.md) § 2.8). It cannot be assigned to, and each read returns a
+fresh dictionary — a caller reading it in a loop binds it to a local. An
+`Operation` carries no `path`: follow `supportedOperation` back to the endpoint,
+which has it.
 
 **Types** — `BaseShape` plus the seventeen concrete shapes, `Property`,
 `PatternProperty`, `Parameter`, `Example`, `Examples`, `ScalarFacet`,

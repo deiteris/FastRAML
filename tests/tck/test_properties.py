@@ -311,6 +311,12 @@ class TestTheGraphProjectsTheWholeCorpus:
         (`TestJSONLD_NoDuplicateIDs`). Reaching into the builder's own table is
         deliberate: from outside, a collision looks exactly like a graph that
         happened to have one node fewer.
+
+        Restricted to **shapes**. `builder.iris` covers every entity kind, and
+        two ids sharing one IRI is correct for a linked declaration —
+        `traits: {paged: !include p.raml}` registers the entry and the fragment
+        it resolves to against one node, so a reference bound to either finds
+        it. Two *shapes* on one IRI is the hazard, and it is what § 3.1 is about.
         """
         from pyraml import ParseOptions, RamlError, parse_from_path
         from pyraml.graph import DEFAULT_BASE, _Builder
@@ -325,9 +331,10 @@ class TestTheGraphProjectsTheWholeCorpus:
                 continue
             builder = _Builder(raml, DEFAULT_BASE)
             builder.run()
+            shape_ids = {shape.id for shape in raml.shapes}
             owner: dict[str, int] = {}
-            for shape_id, iri in builder.shape_iris.items():
-                if owner.setdefault(iri, shape_id) != shape_id:
+            for entity_id, iri in builder.iris.items():
+                if entity_id in shape_ids and owner.setdefault(iri, entity_id) != entity_id:
                     offenders.append(f'{fixture_id(root, path)}: {iri}')
         assert not offenders, '\n'.join(offenders[:20])
 

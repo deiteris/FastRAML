@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     'ApiNode',
+    'DeclaredNode',
     'EndPointNode',
     'Entity',
     'GraphNode',
@@ -50,6 +51,7 @@ __all__ = [
     'TraitNode',
     'TypeNode',
     'UnitNode',
+    'UnresolvedNode',
     'UnresolvedResourceTypeNode',
     'UnresolvedSchemeNode',
     'UnresolvedTraitNode',
@@ -339,25 +341,31 @@ class UnitNode(GraphNode[APIFragment | Library]):
 
 
 @dataclass(slots=True, eq=False)
-class TraitNode(GraphNode[TraitDefinition]):
+class DeclaredNode[E: TraitDefinition | ResourceTypeDefinition | SecuritySchemeDefinition](GraphNode[E]):
+    """A declaration a `type:`, `is:` or `securedBy:` entry can name.
+
+    All three say the same two things about themselves, and both matter to a
+    reader: the name it is applied by, and the file it is written in, which is
+    rarely the file it is applied in.
+    """
+
+    @property
+    def attributes(self) -> dict[str, Literal_]:
+        return {'name': self.entity.name} | _where(self.entity.location, self.entity.key_pos, self.root)
+
+
+@dataclass(slots=True, eq=False)
+class TraitNode(DeclaredNode[TraitDefinition]):
     kind: ClassVar[str] = 'Trait'
 
-    @property
-    def attributes(self) -> dict[str, Literal_]:
-        return {'name': self.entity.name} | _where(self.entity.location, self.entity.key_pos, self.root)
-
 
 @dataclass(slots=True, eq=False)
-class ResourceTypeNode(GraphNode[ResourceTypeDefinition]):
+class ResourceTypeNode(DeclaredNode[ResourceTypeDefinition]):
     kind: ClassVar[str] = 'ResourceType'
 
-    @property
-    def attributes(self) -> dict[str, Literal_]:
-        return {'name': self.entity.name} | _where(self.entity.location, self.entity.key_pos, self.root)
-
 
 @dataclass(slots=True, eq=False)
-class SecuritySchemeNode(GraphNode[SecuritySchemeDefinition]):
+class SecuritySchemeNode(DeclaredNode[SecuritySchemeDefinition]):
     kind: ClassVar[str] = 'SecurityScheme'
 
     @property

@@ -55,7 +55,6 @@ from pyraml.parser.fragments import APIFragment, Fragment, Library
 from pyraml.types.base import BaseShape, Parameter
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from pyraml.types.jsonschema_ import projected
-from pyraml.uris import relative_to
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -133,13 +132,6 @@ _XSD: Final = 'http://www.w3.org/2001/XMLSchema#'
 #: Opens the tail of every declaration IRI (§ 3).
 _DECLARATIONS: Final = '#/declarations/'
 
-#: The model's binding names to this vocabulary's. They differ in one place —
-#: RAML declares `uriParameters`, and the graph has always spelled that `path`,
-#: in the attribute and in the IRI segment. Renaming it would move every URI
-#: parameter's IRI, which § 3 promises is stable, so the mapping stays here:
-#: owning the vocabulary is this layer's job, and the model's name is its own.
-_BINDING: Final[dict[str, str]] = {'uri': 'path', 'query': 'query', 'header': 'header'}
-
 
 def _is_declaration(iri: str) -> bool:
     """Whether `iri` names a declaration rather than a node inside one.
@@ -190,9 +182,10 @@ def _outermost(matched: Sequence[str]) -> list[str]:
     return outermost
 
 
-#: The `#/declarations/<bucket>/` segments that hold something a `type:`, `is:`
-#: or `securedBy:` entry can name, and the node kind each one declares. A
-#: `Literal` rather than `str` so the lookup below is total and mypy says so.
+#: The `#/declarations/<bucket>/` segments holding something a `type:`, `is:` or
+#: `securedBy:` entry can name, and the node that stands in where one of those
+#: names resolved to nothing. A `Literal` rather than `str` so the lookup is
+#: total and mypy says so.
 _Bucket = Literal['traits', 'resourceTypes', 'securitySchemes']
 _UNRESOLVED: Final[dict[_Bucket, type[UnresolvedNode[Any]]]] = {
     'traits': UnresolvedTraitNode,
@@ -599,15 +592,12 @@ class _Builder:
         '_segments',
         'base',
         'claimed',
-        'declaration_iris',
         'edges',
         'emitted',
-        'entities',
+        'iris',
         'nodes',
         'raml',
         'root',
-        'shape_iris',
-        'shapes',
     )
 
     def __init__(self, raml: Raml, base: str) -> None:
@@ -615,26 +605,16 @@ class _Builder:
         self.base = base
         self.nodes: dict[str, GraphNode[Any]] = {}
         self.edges: list[Edge] = []
-        self.shape_iris: dict[int, str] = {}
-        #: The inverse of `shape_iris`, by IRI, for `Graph.shape_at`.
-        #: Declaration fragment (`#/declarations/traits/paged`) -> the first IRI
-        #: carrying it, filled by `declare` at the five places a declaration is
-        #: projected. `applies` used to find one by scanning every node for a
-        #: matching suffix, which is quadratic — 18 million `str.endswith` calls
-        #: on a real document once schema contents joined the graph.
-        #: `SecuritySchemeDefinition.id` -> its node IRI. Keyed on the parse's own
-        #: counter rather than a name, because P5 has already bound each
-        #: `securedBy:` entry to its definition and a name cannot tell two
-        #: libraries' schemes apart. Not `id()`: the project forbids it, and this
-        #: counter is unique per parse anyway (docs/02 § 3.1).
-        #: Declaration id -> its node's IRI, for everything a `type:`, `is:`
-        #: or `securedBy:` entry can name. Keyed on the model's own id, never
-        #: `id()`, which is neither stable nor unique once an object is freed.
-        self.declaration_iris: dict[int, str] = {}
-        #: IRI → the `BaseShape.id` holding it. Two shapes given the same
-        #: structural name would otherwise merge into one node in silence; see
-        #: `claim`.
+        #: Model entity id -> the IRI of the node projecting it. One map for
+        #: every kind, because ids come from one counter per parse (docs/02
+        #: § 3.1) and so are unique across kinds. Keyed on the model's own id,
+        #: never `id()`, which is neither stable nor unique once freed.
+        self.iris: dict[int, str] = {}
+        #: IRI -> the entity id holding it. Two shapes given the same structural
+        #: name would otherwise merge into one node in silence; see `claim`.
         self.claimed: dict[str, int] = {}
+        #: Shapes already walked, so a type reached twice is projected once and
+        #: a cycle terminates.
         self.emitted: set[int] = set()
         self._segments: dict[str, str] = {}
         self.root = raml.location.rsplit('/', 1)[0] + '/' if raml.location else ''
@@ -700,9 +680,6 @@ class _Builder:
         if obj:
             self.edges.append(Edge(subject=subject, predicate=predicate, object=obj))
 
-    def relative(self, location: str) -> str:
-        return relative_to(location, self.root)
-
     # -- driver ---------------------------------------------------------------
 
     def run(self) -> None:
@@ -718,8 +695,8 @@ class _Builder:
         self.api()
 
     def reserve(self, shape: BaseShape | None, iri: str) -> None:
-        if shape is not None and shape.id not in self.shape_iris:
-            self.shape_iris[shape.id] = self.claim(iri, shape.id)
+        if shape is not None and shape.id not in self.iris:
+            self.iris[shape.id] = self.claim(iri, shape.id)
 
     def fragment(self, location: str, fragment: Fragment) -> None:
         """Every declaration a fragment holds, in declaration order.
@@ -735,25 +712,22 @@ class _Builder:
             self.edge(unit, 'declares', self.shape(shape, self.declare(unit, 'types', name)))
         for name, shape in fragment.annotation_types.items():
             self.edge(unit, 'declares', self.shape(shape, self.declare(unit, 'annotations', name)))
-        # Each of the three is positioned, like every other node. Without it the
-        # location column is empty for exactly the declarations a reader most
-        # often wants to open — a trait is applied far from where it is written.
         for name, scheme in fragment.security_schemes.items():
             iri = self.add(SecuritySchemeNode(self.declare(unit, 'securitySchemes', name), scheme, self.root))
             # Under both the declaration and whatever an `!include` resolved to,
             # so a `securedBy:` bound to either finds this one node.
-            self.declaration_iris[scheme.id] = iri
-            self.declaration_iris[scheme.resolved().id] = iri
+            self.iris[scheme.id] = iri
+            self.iris[scheme.resolved().id] = iri
             self.edge(unit, 'declares', iri)
         for name, trait in fragment.traits.items():
             iri = self.add(TraitNode(self.declare(unit, 'traits', name), trait, self.root))
-            self.declaration_iris[trait.id] = iri
-            self.declaration_iris[trait.resolved().id] = iri
+            self.iris[trait.id] = iri
+            self.iris[trait.resolved().id] = iri
             self.edge(unit, 'declares', iri)
         for name, resource_type in fragment.resource_types.items():
             iri = self.add(ResourceTypeNode(self.declare(unit, 'resourceTypes', name), resource_type, self.root))
-            self.declaration_iris[resource_type.id] = iri
-            self.declaration_iris[resource_type.resolved().id] = iri
+            self.iris[resource_type.id] = iri
+            self.iris[resource_type.resolved().id] = iri
             self.edge(unit, 'declares', iri)
 
     def api(self) -> None:
@@ -816,7 +790,7 @@ class _Builder:
         if not ref.name:
             return
         definition = ref.definition if isinstance(ref, SecurityScheme) else ref.resolved
-        target = self.declaration_iris.get(definition.id) if definition is not None else None
+        target = self.iris.get(definition.id) if definition is not None else None
         if target is not None:
             self.edge(subject, predicate, target)
             return
@@ -900,7 +874,7 @@ class _Builder:
             # re-derived work the model had done, and did it worse: two libraries
             # declaring one scheme name are indistinguishable to a name lookup
             # and are two different objects here.
-            target = self.declaration_iris.get(scheme.definition.id) if scheme.definition is not None else None
+            target = self.iris.get(scheme.definition.id) if scheme.definition is not None else None
             if target is not None:
                 self.edge(subject, 'securedBy', target)
             else:
@@ -910,7 +884,7 @@ class _Builder:
         """One edge per annotation, to the annotation *type* P8 bound it to."""
         for name, extension in annotations.items():
             defined_by = extension.defined_by
-            target = self.shape_iris.get(defined_by.id) if defined_by is not None else None
+            target = self.iris.get(defined_by.id) if defined_by is not None else None
             if target is None:
                 # Nothing was bound, so there is no declaration to point at and
                 # nothing this layer could resolve that P8 could not.
@@ -928,9 +902,9 @@ class _Builder:
         """
         if base is None:
             return ''
-        iri = self.shape_iris.get(base.id)
+        iri = self.iris.get(base.id)
         if iri is None:
-            iri = self.shape_iris[base.id] = self.claim(fallback, base.id)
+            iri = self.iris[base.id] = self.claim(fallback, base.id)
         if base.id in self.emitted:
             return iri
         self.emitted.add(base.id)
@@ -980,7 +954,7 @@ class _Builder:
             # The head is always an ancestor of this marker, so it already holds
             # an IRI: `shape` assigns before it recurses. Following the back-edge
             # would unroll the cycle the marker exists to close.
-            head = self.shape_iris.get(shape.head.id)
+            head = self.iris.get(shape.head.id)
             if head is not None:
                 self.edge(iri, 'recursionHead', head)
 

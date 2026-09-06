@@ -304,8 +304,10 @@ The laws. Section 4.1 records where each is checked and over what input —
     invisible — each configuration agreeing with itself.
 12. **Every model that parses has a sound graph** — `build_graph` raises on no
     unwrapped model in the corpus; no projection returns nodes with no edges; no
-    edge touches a node that does not exist; and no two shapes share an IRI
-    ([16](16-graph.md) §§ 3.1–3.2). Only the first of those four is about
+    edge touches a node that does not exist; and no two **shapes** share an IRI
+    ([16](16-graph.md) §§ 3.1–3.2). Shapes, not entities: a linked declaration
+    registers the entry and the fragment it resolves to against one node on
+    purpose, so a reference bound to either finds it. Only the first of those four is about
     crashing. The other three are the ways a projection is **wrong while
     looking right**: dropping every relationship, ending a traversal early at a
     dangling edge, or merging two types into one node. Each was found by the

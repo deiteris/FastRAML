@@ -983,6 +983,3 @@ class _Builder:
             head = self.iris.get(shape.head.id)
             if head is not None:
                 self.edge(iri, 'recursionHead', head)
-
-
-# -- small readers ------------------------------------------------------------

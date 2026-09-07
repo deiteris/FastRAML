@@ -26,7 +26,6 @@ function DeclarationList({ document, index, of, title }: Props & { of: 'types' |
             <th>Name</th>
             <th>Type</th>
             <th>Description</th>
-            <th>File</th>
           </tr>
         </thead>
         <tbody>
@@ -40,9 +39,6 @@ function DeclarationList({ document, index, of, title }: Props & { of: 'types' |
                 </td>
                 <td className="property-description">
                   <ProseInline>{value.description}</ProseInline>
-                </td>
-                <td>
-                  <code className="dim">{file}</code>
                 </td>
               </tr>
             );

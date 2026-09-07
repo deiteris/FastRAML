@@ -41,7 +41,7 @@ import { Annotations } from './Annotations';
 import { From } from './Borrowed';
 import { Code, Labelled, facetValue, oneLine } from './json';
 import { Prose, ProseInline } from './markdown';
-import { Chip, Tabs } from './ui';
+import { Chip, type Tab, Tabs } from './ui';
 
 interface Props {
   shape: Shape | Ref | null | undefined;
@@ -188,32 +188,36 @@ function simpleItems(shape: Shape, index: Index): boolean {
 }
 
 /**
- * The schema text of a type declared by JSON Schema, if it is one.
+ * A type declared by JSON Schema, in the two forms it needs.
  *
  * Such a type "MUST NOT participate in type inheritance or specialization"
- * (spec, *Using XML and JSON Schemas*) -- the parser treats it as opaque and
- * decodes no RAML facet from it, so there is nothing to render as attributes
- * and the schema itself is the only honest answer.
+ * (spec, *Using XML and JSON Schemas*): the parser decodes no RAML facet from
+ * it, so the shape itself carries no properties and a view that showed only
+ * that reports a type made of nothing.
  *
- * The supertype is searched *first*. With `type: !include invoice.json` the
- * shape's own `type_expr` is `invoice.json` -- the reference, which is worth
- * showing and is not a schema -- while the schema text sits on the supertype
- * the include produced. Preferring the shape's own printed the filename under
- * a heading reading JSON Schema.
+ * **The projection is the default panel** -- the nearest RAML shape to the
+ * schema (docs/10 § 6.3), where `$ref` has been resolved and `#/definitions/…`
+ * is an ordinary nested type. The schema as written is the other panel,
+ * because it is what the author will edit and the projection is a reading of
+ * it. Neither is a substitute for the other, which is why both are here and
+ * neither is buried.
  *
- * That supertype is also what the `extends` line would print, as `json`: true,
- * and worth nothing, so the schema replaces it.
+ * The `extends` line goes: it names the supertype the include produced, as
+ * `json`, which is true and worth nothing.
  */
-function jsonSchemaOf(shape: Shape): string | null {
-  if (shape.type !== TYPE_JSON) return null;
-  const candidates = [...(shape.inherits ?? []), shape];
-  for (const one of candidates) {
-    if (isRef(one) || one.type !== TYPE_JSON) continue;
-    const written = one.type_expr?.trim();
-    // A schema is an object. Anything else here is the include that named it.
-    if (written?.startsWith('{')) return written;
+function JsonSchema({ shape, index }: { shape: Shape; index: Index }) {
+  const panels: Tab[] = [];
+  if (shape.projection) {
+    panels.push({
+      key: 'type',
+      label: 'Type',
+      body: <ShapeView shape={shape.projection} index={index} hideType />,
+    });
   }
-  return null;
+  if (shape.json_schema) {
+    panels.push({ key: 'schema', label: 'JSON Schema', body: <Code>{shape.json_schema}</Code> });
+  }
+  return <Tabs label="declared by" items={panels} />;
 }
 
 const TYPE_JSON = 'json';
@@ -261,7 +265,7 @@ function Body({
   const typed = !hideType && !restates(shape, index);
   const headed = Boolean(typed || named);
   const attributes = properties.length > 0 || patterns.length > 0;
-  const schema = jsonSchemaOf(shape);
+  const json = shape.type === TYPE_JSON;
 
   return (
     <div className="shape">
@@ -274,7 +278,7 @@ function Body({
       {/* Above the prose. What a type extends is the first thing about it,
           and below the description it arrived after everything that only makes
           sense once you know. */}
-      {inherits.length > 0 && schema === null && (
+      {inherits.length > 0 && !json && (
         <div className="shape-line">
           <span className="label">extends</span>
           {inherits.map((parent, at) => (
@@ -325,7 +329,7 @@ function Body({
       {shape.example !== undefined && <Labelled label="example" value={shape.example} />}
       <Examples examples={shape.examples} />
 
-      {schema !== null && <Labelled label="JSON Schema" value={schema} />}
+      {json && <JsonSchema shape={shape} index={index} />}
 
       {members.length > 0 && <Union members={members} index={index} />}
 

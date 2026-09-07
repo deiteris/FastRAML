@@ -1347,8 +1347,25 @@ SecurityScheme    type, settings, described_by, annotations
 Annotation        name, type
 Documentation     title, content
 Shape             type, plus that type's own facets; properties, items and
-                  any_of are containment
+                  any_of are containment. A `json` shape adds json_schema
+                  and projection
 ```
+
+A `json` shape is the one kind that carries the same type twice, and it has to.
+The spec forbids a JSON-schema type from participating in inheritance or
+specialization, so the parser decodes no RAML facet from it: the shape has no
+properties, no items and no facets, and a consumer reading only that reports a
+type made of nothing. `json_schema` is the schema as written — what an author
+edits, and the only form in which a schema's own vocabulary survives — and
+`projection` is the § 6.3 projection of it onto the nearest RAML shape, where
+`$ref` is resolved and `#/definitions/line` is an ordinary nested type. Neither
+is derivable from the other by a consumer: the first needs a JSON Schema
+implementation to read, and the second has already thrown away whatever § 6.3
+could not express.
+
+Nested rather than merged onto the shape. A schema carries its own
+`description` and `example`, and so does the RAML declaration wrapping it;
+merging would pick a winner between two things the author wrote separately.
 
 Every node carries `id`, its address. Three constructs and nothing else:
 

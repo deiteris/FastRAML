@@ -497,6 +497,10 @@ _SHAPE_FIELDS: Final = {
     'declares_facets': 'string[]',
     'annotations': 'Applied[]',
     'type_expr': 'string',
+    #: Both only on a `json` shape, and both about the same schema: the text as
+    #: written, and the nearest RAML shape to it (docs/10 § 6.3).
+    'json_schema': 'string',
+    'projection': 'Shape',
 }
 
 _PREAMBLE: Final = """\
@@ -564,6 +568,24 @@ def _interfaces(emitted: dict[str, _Emitted]) -> list[str]:
     ]
 
 
+def _delegated(emitted: dict[str, _Emitted], caller: _Emitted) -> list[str]:
+    """The literal keys the methods a caller merges in contribute.
+
+    A `dynamic` delegate is skipped: its keys are a map read from the model, not
+    a fixed set, and `kind_facets` is the one that matters -- its keys are the
+    kinds' own facets and are read from the kind classes instead.
+    """
+    names: list[str] = []
+    for method in caller.delegates:
+        found = emitted.get(method)
+        if found is None:
+            raise LookupError(f'a projector method merges in `{method}`, which is not a _Projector method')
+        if found.dynamic:
+            continue
+        names.extend(name for name in (*found.required, *found.optional) if name not in names)
+    return names
+
+
 def _field(interface: str, declared: dict[str, str], name: str, *, optional: bool) -> str:
     spelling = declared.get(name)
     if spelling is None:
@@ -592,7 +614,14 @@ def _shape(emitted: dict[str, _Emitted], kinds: dict[str, list[_Facet]]) -> str:
     found = emitted.get('shape')
     if found is None:
         raise LookupError('_Projector.shape not found')
-    known = set(found.required) | set(found.optional)
+    # Including what it delegates to. `shape()` merges two methods' results into
+    # its own: `kind_facets`, whose keys are the kinds' facets and are read
+    # below, and `json_schema`, whose keys are literal. Reading only `shape()`
+    # meant a key added to a delegate reached the tree and never reached this
+    # file -- the one failure this generator exists to make impossible, and it
+    # was silent, which is worse than the wrong type.
+    delegated = _delegated(emitted, found)
+    known = set(found.required) | set(found.optional) | set(delegated)
     undeclared = sorted(known - set(_SHAPE_FIELDS))
     if undeclared:
         raise LookupError(f'shape() emits {undeclared}, not declared in _SHAPE_FIELDS')
@@ -603,7 +632,9 @@ def _shape(emitted: dict[str, _Emitted], kinds: dict[str, list[_Facet]]) -> str:
             merged.setdefault(facet.name, []).append(facet)
 
     lines = [f'  {name}: {_SHAPE_FIELDS[name]};' for name in found.required]
-    lines += [f'  {name}?: {_SHAPE_FIELDS[name]};' for name in found.optional]
+    # A delegate's keys are optional whatever it says of them: whether it runs
+    # at all is the caller's condition, not the delegate's.
+    lines += [f'  {name}?: {_SHAPE_FIELDS[name]};' for name in [*found.optional, *delegated]]
     lines.append('\n  /* Facets, by the kind that declares each. */')
     for name, facets in sorted(merged.items()):
         spelling = ' | '.join(dict.fromkeys(facet.typescript for facet in facets))

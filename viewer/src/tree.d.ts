@@ -57,6 +57,8 @@ export interface Shape {
   enum?: Json[];
   xml?: Json;
   allowed_targets?: string[];
+  json_schema?: string;
+  projection?: Shape;
 
   /* Facets, by the kind that declares each. */
   additional_properties?: boolean; // Object

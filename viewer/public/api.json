@@ -491,6 +491,31 @@
           }
         }
       },
+      "Delivery": {
+        "id": "pyraml://id#/declarations/types/Delivery",
+        "name": "Delivery",
+        "type": "object",
+        "display_name": "A delivery",
+        "description": "Where an order goes, and when it was promised.",
+        "type_expr": "object",
+        "properties": {
+          "address": {
+            "required": true,
+            "type": {
+              "$ref": "pyraml://id/common.raml#/declarations/types/Address"
+            }
+          },
+          "promisedFor": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Delivery/property/promisedFor/schema",
+              "name": "promisedFor",
+              "type": "datetime",
+              "type_expr": "datetime"
+            }
+          }
+        }
+      },
       "Publication": {
         "id": "pyraml://id#/declarations/types/Publication",
         "name": "Publication",
@@ -627,10 +652,252 @@
             "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json",
             "name": "invoice.json",
             "type": "json",
-            "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n"
+            "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n",
+            "json_schema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n",
+            "projection": {
+              "id": null,
+              "name": null,
+              "type": "object",
+              "display_name": "Invoice",
+              "description": "A type declared by JSON Schema rather than by RAML.",
+              "properties": {
+                "number": {
+                  "required": true,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json/property/number/schema",
+                    "name": null,
+                    "type": "string",
+                    "description": "The invoice number, as printed.",
+                    "pattern": "^INV-[0-9]{6}$"
+                  }
+                },
+                "total": {
+                  "required": true,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json/property/total/schema",
+                    "name": null,
+                    "type": "number",
+                    "description": "The amount due, in the currency of the account.",
+                    "minimum": "0",
+                    "multiple_of": "1/100"
+                  }
+                },
+                "paid": {
+                  "required": false,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json/property/paid/schema",
+                    "name": null,
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "lines": {
+                  "required": false,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json/property/lines/schema",
+                    "name": null,
+                    "type": "array",
+                    "items": {
+                      "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json/property/lines/schema/items",
+                      "name": "line",
+                      "type": "object",
+                      "properties": {
+                        "description": {
+                          "required": true,
+                          "type": {
+                            "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json/property/lines/schema/items/property/description/schema",
+                            "name": null,
+                            "type": "string"
+                          }
+                        },
+                        "amount": {
+                          "required": true,
+                          "type": {
+                            "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json/property/lines/schema/items/property/amount/schema",
+                            "name": null,
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "min_items": 1
+                  }
+                }
+              }
+            }
           }
         ],
-        "type_expr": "invoice.json"
+        "type_expr": "invoice.json",
+        "json_schema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n",
+        "projection": {
+          "id": null,
+          "name": null,
+          "type": "object",
+          "display_name": "Invoice",
+          "description": "A type declared by JSON Schema rather than by RAML.",
+          "properties": {
+            "number": {
+              "required": true,
+              "type": {
+                "id": "pyraml://id#/declarations/types/Invoice/property/number/schema",
+                "name": null,
+                "type": "string",
+                "description": "The invoice number, as printed.",
+                "pattern": "^INV-[0-9]{6}$"
+              }
+            },
+            "total": {
+              "required": true,
+              "type": {
+                "id": "pyraml://id#/declarations/types/Invoice/property/total/schema",
+                "name": null,
+                "type": "number",
+                "description": "The amount due, in the currency of the account.",
+                "minimum": "0",
+                "multiple_of": "1/100"
+              }
+            },
+            "paid": {
+              "required": false,
+              "type": {
+                "id": "pyraml://id#/declarations/types/Invoice/property/paid/schema",
+                "name": null,
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "lines": {
+              "required": false,
+              "type": {
+                "id": "pyraml://id#/declarations/types/Invoice/property/lines/schema",
+                "name": null,
+                "type": "array",
+                "items": {
+                  "id": "pyraml://id#/declarations/types/Invoice/property/lines/schema/items",
+                  "name": "line",
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Invoice/property/lines/schema/items/property/description/schema",
+                        "name": null,
+                        "type": "string"
+                      }
+                    },
+                    "amount": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Invoice/property/lines/schema/items/property/amount/schema",
+                        "name": null,
+                        "type": "number"
+                      }
+                    }
+                  }
+                },
+                "min_items": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "common.raml": {
+      "Address": {
+        "id": "pyraml://id/common.raml#/declarations/types/Address",
+        "name": "Address",
+        "type": "object",
+        "display_name": "A postal address",
+        "description": "Where a physical thing is sent.",
+        "type_expr": "object",
+        "properties": {
+          "line1": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id/common.raml#/declarations/types/Address/property/line1/schema",
+              "name": "line1",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "line2": {
+            "required": false,
+            "type": {
+              "id": "pyraml://id/common.raml#/declarations/types/Address/property/line2/schema",
+              "name": "line2?",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "city": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id/common.raml#/declarations/types/Address/property/city/schema",
+              "name": "city",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "postcode": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id/common.raml#/declarations/types/Address/property/postcode/schema",
+              "name": "postcode",
+              "type": "string",
+              "type_expr": "string",
+              "pattern": "^[A-Z0-9 ]{4,10}$"
+            }
+          },
+          "country": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id/common.raml#/declarations/types/Address/property/country/schema",
+              "name": "country",
+              "type": "string",
+              "description": "An ISO 3166-1 alpha-2 code.",
+              "type_expr": "string",
+              "max_length": 2,
+              "min_length": 2
+            }
+          }
+        }
+      },
+      "Page": {
+        "id": "pyraml://id/common.raml#/declarations/types/Page",
+        "name": "Page",
+        "type": "object",
+        "display_name": "One page of a collection",
+        "description": "The envelope every paged collection is returned in.\n\n`total` counts the whole collection, not the page.\n",
+        "type_expr": "object",
+        "properties": {
+          "total": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id/common.raml#/declarations/types/Page/property/total/schema",
+              "name": "total",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "offset": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id/common.raml#/declarations/types/Page/property/offset/schema",
+              "name": "offset",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "limit": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id/common.raml#/declarations/types/Page/property/limit/schema",
+              "name": "limit",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          }
+        }
       }
     }
   },
@@ -662,6 +929,19 @@
             }
           }
         }
+      }
+    },
+    "common.raml": {
+      "internal": {
+        "id": "pyraml://id/common.raml#/declarations/annotations/internal",
+        "name": "internal",
+        "type": "nil",
+        "description": "Marks something that is not part of the public contract.",
+        "allowed_targets": [
+          "Method",
+          "TypeDeclaration"
+        ],
+        "type_expr": "nil"
       }
     }
   },
@@ -1787,6 +2067,58 @@
       "display_name": "Shelves",
       "description": "Physical arrangement of the catalogue."
     },
+    "/deliveries": {
+      "id": "pyraml://id#/web-api/endpoint/%2Fdeliveries",
+      "operations": {
+        "get": {
+          "id": "pyraml://id#/web-api/endpoint/%2Fdeliveries/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "pyraml://id#/web-api/endpoint/%2Fdeliveries/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "array",
+                  "type_expr": "Delivery[]",
+                  "items": {
+                    "$ref": "pyraml://id#/declarations/types/Delivery"
+                  }
+                }
+              }
+            }
+          },
+          "description": "Every delivery, newest first.",
+          "display_name": "List deliveries",
+          "secured_by": [
+            {
+              "name": "oauth2",
+              "is_null": false,
+              "bound": true,
+              "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+              "scopes": null
+            }
+          ],
+          "annotations": [
+            {
+              "name": "common.internal",
+              "type": "pyraml://id/common.raml#/declarations/annotations/internal",
+              "value": null
+            }
+          ]
+        }
+      },
+      "secured_by": [
+        {
+          "name": "oauth2",
+          "is_null": false,
+          "bound": true,
+          "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+          "scopes": null
+        }
+      ],
+      "display_name": "Deliveries",
+      "description": "Where the store has sent things."
+    },
     "/publications": {
       "id": "pyraml://id#/web-api/endpoint/%2Fpublications",
       "operations": {
@@ -1924,6 +2256,12 @@
       "target": "Method",
       "type": "pyraml://id#/declarations/annotations/deprecated",
       "value": "use PUT"
+    },
+    {
+      "name": "common.internal",
+      "target": "Method",
+      "type": "pyraml://id/common.raml#/declarations/annotations/internal",
+      "value": null
     }
   ]
 }

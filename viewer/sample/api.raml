@@ -59,6 +59,8 @@ documentation:
       * `422` — the body was well-formed but matched no member of a union.
       * `500` — ours. Retry with backoff; it is safe for every method here
         except `POST /books`, which is not idempotent.
+uses:
+  common: !include common.raml
 annotationTypes:
   deprecated:
     type: string
@@ -222,6 +224,16 @@ types:
       total: integer
       items: array
 
+  # A type built from a library's, reached through the `common.` prefix bound
+  # in `uses:` above.
+  Delivery:
+    displayName: A delivery
+    description: Where an order goes, and when it was promised.
+    type: object
+    properties:
+      address: common.Address
+      promisedFor: datetime
+
   Publication:
     displayName: A publication
     description: Everything the store sells. The `kind` property says which.
@@ -346,6 +358,19 @@ securedBy: [oauth2]
         description: The payload matched neither member of the union.
       500:
         description: Something went wrong on our side.
+
+/deliveries:
+  displayName: Deliveries
+  description: Where the store has sent things.
+  get:
+    displayName: List deliveries
+    description: Every delivery, newest first.
+    (common.internal):
+    responses:
+      200:
+        body:
+          application/json:
+            type: Delivery[]
 
 /publications:
   displayName: Publications

@@ -1,0 +1,41 @@
+#%RAML 1.0 Library
+
+usage: |
+  Types and an annotation shared by more than one API. Referenced through the
+  `common.` prefix the applying document binds it to in `uses:`.
+
+types:
+  Address:
+    displayName: A postal address
+    description: Where a physical thing is sent.
+    type: object
+    properties:
+      line1: string
+      line2?: string
+      city: string
+      postcode:
+        type: string
+        pattern: ^[A-Z0-9 ]{4,10}$
+      country:
+        description: An ISO 3166-1 alpha-2 code.
+        type: string
+        minLength: 2
+        maxLength: 2
+
+  Page:
+    displayName: One page of a collection
+    description: |
+      The envelope every paged collection is returned in.
+
+      `total` counts the whole collection, not the page.
+    type: object
+    properties:
+      total: integer
+      offset: integer
+      limit: integer
+
+annotationTypes:
+  internal:
+    description: Marks something that is not part of the public contract.
+    type: nil
+    allowedTargets: [Method, TypeDeclaration]

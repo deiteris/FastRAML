@@ -14,13 +14,13 @@ import type { Props } from './props';
 export function SecuritySchemePage({ document, index }: Props) {
   const { file, name } = useParams();
   const scheme = document.security_schemes[decodeURIComponent(file ?? '')]?.[decodeURIComponent(name ?? '')];
-  if (!scheme) return <Empty>No security scheme named {name} in {file}.</Empty>;
+  if (!scheme) return <Empty>No security scheme named {name}.</Empty>;
   const described = scheme.described_by;
   return (
     <article>
       <h1>{scheme.display_name ?? scheme.name}</h1>
       <p className="subtitle">
-        <code>{file}</code> · <Chip tone="type">{scheme.type}</Chip>
+        <Chip tone="type">{scheme.type}</Chip>
       </p>
       <Prose>{scheme.description}</Prose>
       <Annotations applied={scheme.annotations} index={index} />

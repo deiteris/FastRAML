@@ -179,6 +179,11 @@ const NOT_A_FACET: ReadonlySet<string> = new Set([
   // chip reading `discriminator kind` beside `maxLength 200` does not say.
   'discriminator',
   'discriminator_value',
+  // A JSON-schema type's two forms. Both are whole documents and neither is a
+  // constraint; unlisted, the schema's source went into a chip beside
+  // `maxLength`.
+  'json_schema',
+  'projection',
 ]);
 
 /**
@@ -260,6 +265,10 @@ export function spelling(shape: Shape, borrowed = false): string {
  * marker is named, not descended.
  */
 export function spellingOf(shape: Shape, index: Index, borrowed = false): string {
+  // A JSON-schema type's expression is the `!include` that named the schema --
+  // a file path, which is not a type name and which a reader cannot open. The
+  // schema and its projection are on the page; the expression adds nothing.
+  if (shape.type === 'json') return shape.type;
   const written = spelling(shape, borrowed);
   // Only where the expression says no more than the kind does. `type: Shelf` on
   // an array is a name, and computing `object[]` from its inline items in place

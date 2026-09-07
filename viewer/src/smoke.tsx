@@ -18,12 +18,27 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { Pages } from './App';
 import { renderMarkdown } from './components/markdown';
-import { Index, declarations, facetsOf, isRef, labelOf, type Document, type Shape } from './model';
+import { Index, camel, declarations, facetsOf, isRef, labelOf, type Document, type Shape } from './model';
 import { RATIO_FACETS, rationalOf, showRatio } from './rational';
 
 const source = process.argv[2] ?? 'public/api.json';
 const document = JSON.parse(readFileSync(source, 'utf-8')) as Document;
 const index = new Index(document);
+
+/**
+ * The addresses of the security schemes, which the checks below are not about.
+ *
+ * A scheme carries `id`, `name` and `type` -- the three keys that identify a
+ * shape -- so a structural walk visits one and reports its `settings` and
+ * `described_by` as facets of a type. Told apart by address rather than by
+ * guessing from its keys, because the document lists them.
+ * `tests/tck/test_properties.py` excludes them from law 19 for the same reason.
+ */
+const SCHEMES: ReadonlySet<string> = new Set(
+  declarations(document.security_schemes)
+    .map(({ value }) => value.id)
+    .filter((id): id is string => id !== null),
+);
 
 const routes = [
   '/',
@@ -223,6 +238,37 @@ if (ratios === 0) {
   failed += 1;
 }
 process.stdout.write(`${RATIOS.length} ratios converted, ${ratios} in the document\n`);
+
+/*
+ * `facetsOf` is a deny-list, so a key the tree gains is a facet chip by default.
+ *
+ * That is the wrong default and cannot be changed here -- the view has no way
+ * to know which of a shape's keys are a kind's facets. The generated contract
+ * does: `tree.d.ts` groups them under one comment, written by the generator
+ * from the kind classes. Reading it back is what makes the deny-list a claim
+ * that can be false rather than a list that quietly rots.
+ *
+ * `projection` and `json_schema` arrived as chips holding a whole JSON Schema
+ * before this existed.
+ */
+const contract = readFileSync('src/tree.d.ts', 'utf-8');
+const facetSection = contract.slice(contract.indexOf('/* Facets, by the kind that declares each. */'));
+const declaredFacets = new Set(
+  [...facetSection.slice(0, facetSection.indexOf('\n}')).matchAll(/^\s{2}(\w+)\??:/gm)].map((m) => camel(m[1]!)),
+);
+if (declaredFacets.size < 10) {
+  process.stderr.write(`only ${declaredFacets.size} facets read from tree.d.ts; the check below is vacuous\n`);
+  failed += 1;
+}
+const stray = new Set<string>();
+walk(document, (shape) => {
+  for (const [name] of facetsOf(shape)) if (!declaredFacets.has(name)) stray.add(name);
+});
+for (const name of stray) {
+  process.stderr.write(`FACET  ${name} is rendered as a facet and is not one; add it to NOT_A_FACET\n`);
+  failed += 1;
+}
+process.stdout.write(`${declaredFacets.size} facets declared, none stray\n`);
 if (shapes < 10) {
   process.stderr.write('the document produced almost no shapes; the checks above are vacuous\n');
   failed += 1;
@@ -235,7 +281,9 @@ function walk(node: unknown, visit: (shape: Shape) => void): void {
     for (const item of node) walk(item, visit);
   } else if (typeof node === 'object' && node !== null) {
     const record = node as Record<string, unknown>;
-    if ('id' in record && 'name' in record && 'type' in record) visit(node as Shape);
+    const shaped = 'id' in record && 'name' in record && 'type' in record;
+    if (shaped && !SCHEMES.has(record.id as string)) visit(node as Shape);
     for (const value of Object.values(record)) walk(value, visit);
   }
 }
+

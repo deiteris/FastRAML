@@ -35,6 +35,7 @@ from pyraml.datanode import DataNode, ValueNode
 from pyraml.parser.fragments import DataTypeFragment
 from pyraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet, copyable_slots
 from pyraml.types.examples import Example, Examples
+from pyraml.types.jsonschema_ import JsonShape
 from pyraml.views.walk import DEFAULT_BASE, Addresses, address
 from pyraml.yamlnode import Node, NodeKind
 
@@ -76,8 +77,9 @@ _SKIP = frozenset(
         'type_expr_refs',
         # A `JsonShape` holds a compiled validator and the caches around it. The
         # validator's `repr` carries an absolute path and a registry object, so
-        # emitting it leaked the machine into the view as well as the parser;
-        # `raw` is the schema text, which `type_expr` already carries.
+        # emitting it leaked the machine into the view as well as the parser.
+        # `raw` is the schema text and is emitted by `json_schema` under a name
+        # a consumer can read, beside the projection of the same schema.
         'raw',
         'validator',
     }
@@ -381,6 +383,42 @@ class _Projector:
             out['type_expr'] = self.value(base.type_expr, seen)
         if base.shape is not None:
             out.update(self.kind_facets(base.shape, seen))
+        if isinstance(base.shape, JsonShape):
+            out.update(self.json_schema(base.shape, seen))
+        return out
+
+    def json_schema(self, shape: JsonShape, seen: frozenset[int]) -> dict[str, Json]:
+        """A JSON-schema type in both of the forms a reader needs.
+
+        `json_schema` is the schema as written, and `projection` is the nearest
+        RAML shape to it (docs/10 § 6.3) — the same one `projected()` exists to
+        hand a consumer, and which this view was not calling. Without it a
+        schema type reaches a consumer as a leaf with no properties, no items
+        and no facets, so a reading view reports that it is made of nothing;
+        with only the raw text, every `$ref` in a schema of any size is opaque,
+        because resolving `#/definitions/line` is the parser's job and it has
+        already done it.
+
+        Nested rather than merged onto this shape. A schema carries its own
+        `description` and `example` and so does the RAML declaration wrapping
+        it, and merging would silently pick a winner between two things the
+        author wrote separately.
+
+        The schema text comes from `raw` and not from `type_expr`: with
+        `type: !include invoice.json` the shape's own expression is the
+        *reference*, `invoice.json`, and the schema sits on the supertype the
+        include produced.
+        """
+        out: dict[str, Json] = {}
+        if shape.raw:
+            out['json_schema'] = shape.raw
+        view = shape.as_shape()
+        if view is not None:
+            # A view object, never in `Raml.shapes` and never fed back into a
+            # pass. It is emitted like any other shape, so its members carry no
+            # addresses — nothing points at them, which is what `at` returning
+            # `None` says.
+            out['projection'] = self.shape(view, seen)
         return out
 
     def kind_facets(self, shape: object, seen: frozenset[int]) -> dict[str, Json]:

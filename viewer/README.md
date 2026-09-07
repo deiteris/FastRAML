@@ -97,6 +97,17 @@ The two controls are visibly different on purpose. A caret glyph beside the
 link read as decoration *on* the link, so navigating and expanding looked like
 one ambiguous gesture; a word says which is which.
 
+**An expander appears only where there is an attribute list to expand.** "Show
+child attributes" has to have child attributes: an array does not, it has an
+item type, so `priceHistory: Prices` offered a control that opened onto `each
+item → Money` — one more click to reach what the line can say directly. The line
+says it: `priceHistory  Prices  Money[]`.
+
+**A description is never behind that control.** It is not an attribute. Where
+the type is a reference the prose belongs to the target, and reading it used to
+require opening the attribute list; the expanded body suppresses it so it
+appears once either way.
+
 **A supertype gets the link and no expander.** The projection is unwrapped, so
 every attribute a supertype contributes is already in the list below —
 expanding it printed the same rows a second time a few pixels from the first.

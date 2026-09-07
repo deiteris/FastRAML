@@ -754,6 +754,12 @@ h4 + .tabs > .tabs-strip,
   flex-basis: 100%;
 }
 
+.reference-desc {
+  flex-basis: 100%;
+  color: var(--dim);
+  font-size: 14px;
+}
+
 .typelink {
   font-family: var(--mono);
   font-weight: 600;

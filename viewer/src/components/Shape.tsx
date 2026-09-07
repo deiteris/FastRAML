@@ -103,7 +103,8 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
       <Link to={entry.href} className="typelink">
         {entry.name}
       </Link>
-      {target && (
+      {target?.description && <span className="reference-desc">{target.description}</span>}
+      {expandable(target) && (
         <>
           <button type="button" className="expander" aria-expanded={open} onClick={() => setOpen(!open)}>
             <span className="expander-sign">{open ? '−' : '+'}</span>
@@ -111,7 +112,7 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
           </button>
           {open && (
             <div className="nested">
-              <Body shape={target} index={index} hideType />
+              <Body shape={target} index={index} hideType hideDescription />
             </div>
           )}
         </>
@@ -157,6 +158,21 @@ function simpleItems(shape: Shape): boolean {
   const items = shape.items;
   if (items === null || items === undefined || isRef(items) || isRecursive(items)) return true;
   return !items.properties && !items.any_of && !items.pattern_properties && !items.items;
+}
+
+/**
+ * Whether a reference is worth an expander.
+ *
+ * "Show child attributes" has to have child attributes. An array does not --
+ * it has an item type -- so `priceHistory: Prices` offered a control that
+ * opened onto `each item -> Money`, one more click to reach what the line could
+ * have said. A scalar has none either.
+ *
+ * The item's own expander is a different question and stays: `Money` has
+ * attributes, and reaching them is the point of opening anything.
+ */
+function expandable(target: Shape | undefined): target is Shape {
+  return Boolean(target && (target.properties || target.pattern_properties));
 }
 
 /** An array's item type, where it is worth naming on one line. */
@@ -261,7 +277,7 @@ function Body({
         <div className="shape-line">
           <span className="label">extends</span>
           {inherits.map((parent, at) => (
-            <Supertype key={at} parent={parent} index={index} />
+            <RefLink key={at} parent={parent} index={index} />
           ))}
         </div>
       )}
@@ -318,7 +334,10 @@ function Attribute({
   // the type happened to be a link.
   const link = shape !== null && shape !== undefined && isRef(shape) ? index.get(shape.$ref) : undefined;
   const target = shape !== null && shape !== undefined && isRef(shape) ? index.shape(shape.$ref) : undefined;
+  // What the removed expander would have led to, said on the line instead.
+  const holds = target && target.type === 'array' ? arrayLine(target, index) : null;
   const inline = shape !== null && shape !== undefined && !isRef(shape) && !isRecursive(shape);
+  const described = inline ? shape.description : target?.description;
 
   return (
     <div className="attr">
@@ -330,9 +349,12 @@ function Attribute({
         {inline ? (
           <span className="attr-type">{arrayLine(shape, index)}</span>
         ) : link ? (
-          <Link to={link.href} className="typelink">
-            {link.name}
-          </Link>
+          <>
+            <Link to={link.href} className="typelink">
+              {link.name}
+            </Link>
+            {holds && <span className="attr-type">{holds}</span>}
+          </>
         ) : (
           <ShapeView shape={shape} index={index} />
         )}
@@ -342,8 +364,13 @@ function Attribute({
           required && <span className="attr-flag is-required">Required</span>
         )}
       </div>
-      {inline && shape.description && <p className="attr-desc">{shape.description}</p>}
-      {target && (
+      {/* A description is not an attribute, so it does not live behind the
+          control that expands them. Where the type is a reference the prose
+          belongs to the target, and reading it used to require opening the
+          attribute list first. The expanded body suppresses it, so it appears
+          once either way. */}
+      {described && <p className="attr-desc">{described}</p>}
+      {expandable(target) && (
         <>
           <button type="button" className="expander" aria-expanded={open} onClick={() => setOpen(!open)}>
             <span className="expander-sign">{open ? '−' : '+'}</span>
@@ -351,7 +378,7 @@ function Attribute({
           </button>
           {open && (
             <div className="nested">
-              <Body shape={target} index={index} hideType />
+              <Body shape={target} index={index} hideType hideDescription />
             </div>
           )}
         </>
@@ -396,20 +423,24 @@ function Union({ members, index }: { members: (Shape | Ref)[]; index: Index }) {
 }
 
 /**
- * A supertype: a link, and no expander.
+ * A reference as a name alone, with no expander.
  *
- * This is the one reference position where expanding shows nothing new. The
- * projection is unwrapped, so every attribute the supertype contributes is
- * already in the list below -- `Book extends Entity` lists `id` and `createdAt`
- * among its own. An expander here printed them a second time, a few pixels
- * away from the first. The link still matters: the supertype has a page, with
- * its own prose, examples and the other types that extend it.
+ * Used where an expander would be noise rather than a way in:
  *
- * An *anonymous* supertype is not a link and not a declaration -- the `integer`
- * in `type: integer | number` after P9 distributes a facet exists nowhere else
- * -- so it is rendered where it sits.
+ * - a **supertype**, because the projection is unwrapped and every attribute it
+ *   contributes is already in the list below. `Book extends Entity` lists `id`
+ *   and `createdAt` among its own, so expanding printed them a second time a
+ *   few pixels from the first.
+ * - anything with **no attribute list** -- see `expandable`.
+ *
+ * The link still matters in both: the target has a page, with its own prose and
+ * examples and the list of what else points at it.
+ *
+ * An anonymous shape is not a link and not a declaration -- the `integer` in
+ * `type: integer | number` after P9 distributes a facet exists nowhere else --
+ * so it is rendered where it sits.
  */
-function Supertype({ parent, index }: { parent: Shape | Ref; index: Index }) {
+function RefLink({ parent, index }: { parent: Shape | Ref; index: Index }) {
   if (!isRef(parent)) return <ShapeView shape={parent} index={index} borrowed />;
   const entry = index.get(parent.$ref);
   if (!entry) {

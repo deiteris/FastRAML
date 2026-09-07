@@ -164,7 +164,8 @@ export interface Tab {
   label: ReactNode;
   /** A second line inside the tab -- a response's description, say. */
   note?: ReactNode;
-  tone?: 'plain' | 'status';
+  /** A CSS suffix: a response's first digit, so the strip can colour it. */
+  tone?: string;
   body: ReactNode;
 }
 

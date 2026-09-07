@@ -84,6 +84,11 @@ types:
         uniqueItems: true
         maxItems: 10
       related?: Book[]
+      reviews?:
+        description: Up to twenty reviews, most recent first.
+        type: Review[]
+        maxItems: 20
+      priceHistory?: Prices
       metadata?:
         type: object
         properties:
@@ -94,7 +99,55 @@ types:
       title: Dune
       isbn: "9780441013593"
       price: { amount: 9.99, currency: USD }
-  Prices: Money[]
+  Prices:
+    displayName: Price history
+    description: Every price this book has been sold at, oldest first.
+    type: Money[]
+
+  Review:
+    displayName: A review
+    description: One reader's verdict on a book.
+    type: object
+    properties:
+      rating:
+        description: Stars, one to five.
+        type: integer
+        minimum: 1
+        maximum: 5
+      body?: string
+      author:
+        type: object
+        properties:
+          name: string
+          verified:
+            type: boolean
+            default: false
+    examples:
+      terse:
+        rating: 5
+        author: { name: Ada, verified: true }
+      full:
+        rating: 3
+        body: Uneven, but the middle third is superb.
+        author: { name: Grace, verified: false }
+
+  Shelf:
+    displayName: A shelf
+    description: An array whose items are declared inline rather than by name.
+    type: array
+    minItems: 1
+    items:
+      displayName: Shelf slot
+      type: object
+      properties:
+        position: integer
+        book: Book
+        note?: string
+
+  Payload:
+    displayName: Anything postable
+    description: A union whose members are an array and an object, to show both.
+    type: Book[] | Review
   Chain:
     type: object
     properties:
@@ -169,6 +222,26 @@ securedBy: [oauth2]
       securedBy: [oauth2: { scopes: [write:books] }]
       responses:
         204:
+/shelves:
+  displayName: Shelves
+  description: Physical arrangement of the catalogue.
+  post:
+    displayName: Create a shelf
+    description: Accepts either a list of books or a single review.
+    body:
+      application/json:
+        type: Payload
+    responses:
+      201:
+        description: Created
+        body:
+          application/json:
+            type: Shelf
+      422:
+        description: The payload matched neither member of the union.
+      500:
+        description: Something went wrong on our side.
+
 /search:
   displayName: Search
   get:

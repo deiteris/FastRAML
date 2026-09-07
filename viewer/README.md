@@ -41,9 +41,19 @@ a table can only grow one way: nesting went into the Type column, so a nested
 object pushed its children into a narrowing strip while the page's right half
 stayed blank.
 
-Alternatives are **tabs** -- a union's members, an operation's responses. Each is
+Alternatives are **tabs** — a union's members, an operation's responses. Each is
 a whole thing to read, so stacked they run together and collapsed they have to
-be opened one at a time.
+be opened one at a time. They are text on a shared baseline with the active one
+underlined; a row of filled pills above a rule reads as buttons.
+
+An **example goes above** the attributes it belongs to. It is the fastest way to
+understand a type, and last it read as belonging to whichever attribute happened
+to come final.
+
+An **array says what it holds on its own line** — `tags array of string`. A
+label and a rule around one word was three lines of chrome, and for `Book[]` it
+repeated what had just been read. An item with structure of its own still gets a
+nested block.
 
 Both themes follow the system by default; the toggle has three states, because
 one with two silently makes the choice for a reader who never made it.

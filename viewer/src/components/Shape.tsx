@@ -45,17 +45,35 @@ interface Props {
   hideType?: boolean;
   hideDescription?: boolean;
   /**
+   * The caller's own line already named the item type -- `tags array of
+   * string` -- so the nested block would repeat it.
+   *
+   * A property of the *caller*, not of the shape: a union panel hides the type
+   * line, so a `Body` deciding this for itself left the `array` member of
+   * `Book[] | Review` rendering nothing at all.
+   */
+  hideItems?: boolean;
+  /**
    * This shape's `type_expr` belongs to its container, so only its `type` is
    * its own. True of a union member and an inlined supertype -- see `spelling`.
    */
   borrowed?: boolean;
 }
 
-export function ShapeView({ shape, index, hideType, hideDescription, borrowed }: Props) {
+export function ShapeView({ shape, index, hideType, hideDescription, hideItems, borrowed }: Props) {
   if (shape === null || shape === undefined) return <Chip tone="type">any</Chip>;
   if (isRef(shape)) return <RefView node={shape} index={index} />;
   if (isRecursive(shape)) return <RecursionView node={shape} index={index} />;
-  return <Body shape={shape} index={index} hideType={hideType} hideDescription={hideDescription} borrowed={borrowed} />;
+  return (
+    <Body
+      shape={shape}
+      index={index}
+      hideType={hideType}
+      hideDescription={hideDescription}
+      hideItems={hideItems}
+      borrowed={borrowed}
+    />
+  );
 }
 
 /**
@@ -127,17 +145,54 @@ function RecursionView({ node, index }: { node: Shape & { head: Ref }; index: In
   );
 }
 
+/**
+ * Whether an array's items are already said by its own type line.
+ *
+ * `tags array of string` and `related Book[]` need no nested block: it was a
+ * label and a rule around one word, and for a `[]` expression it repeated what
+ * the reader had just read. An item with structure of its own -- an inline
+ * object, a union -- still gets one.
+ */
+function simpleItems(shape: Shape): boolean {
+  const items = shape.items;
+  if (items === null || items === undefined || isRef(items) || isRecursive(items)) return true;
+  return !items.properties && !items.any_of && !items.pattern_properties && !items.items;
+}
+
+/** An array's item type, where it is worth naming on one line. */
+function itemSummary(shape: Shape, index: Index): string | null {
+  const items = shape.items;
+  if (items === null || items === undefined) return null;
+  if (isRef(items)) return index.label(items.$ref);
+  if (isRecursive(items)) return items.name ?? 'recursive';
+  return items.properties || items.any_of ? null : spelling(items, true);
+}
+
+/**
+ * An array's type as one phrase: `array of string`, not `array` with a nested
+ * block naming `string`. Left alone when the expression already says it --
+ * `Book[]` is not improved by `Book[] of Book`.
+ */
+function arrayLine(shape: Shape, index: Index): string {
+  const written = spelling(shape);
+  if (shape.type !== 'array' || written.endsWith('[]')) return written;
+  const item = itemSummary(shape, index);
+  return item ? `${written} of ${item}` : written;
+}
+
 function Body({
   shape,
   index,
   hideType,
   hideDescription,
+  hideItems,
   borrowed,
 }: {
   shape: Shape;
   index: Index;
   hideType?: boolean;
   hideDescription?: boolean;
+  hideItems?: boolean;
   borrowed?: boolean;
 }) {
   const facets = facetsOf(shape);
@@ -192,6 +247,16 @@ function Body({
 
       <Annotations applied={shape.annotations} index={index} />
 
+      {/* Above the attributes, not below. An example is the fastest way to
+          understand a type, and last it read as belonging to whichever
+          attribute happened to come final. */}
+      {shape.default !== undefined && <Labelled label="default" value={shape.default} />}
+      {shape.example !== undefined && <Labelled label="example" value={shape.example} />}
+      {shape.examples &&
+        Object.entries(shape.examples).map(([name, value]) => (
+          <Labelled key={name} label={`example: ${name}`} value={value} />
+        ))}
+
       {inherits.length > 0 && (
         <div className="shape-line">
           <span className="label">extends</span>
@@ -203,8 +268,8 @@ function Body({
 
       {members.length > 0 && <Union members={members} index={index} />}
 
-      {shape.items !== undefined && (
-        <Group label="items">
+      {shape.items !== undefined && !hideItems && (
+        <Group label="each item">
           <ShapeView shape={shape.items} index={index} />
         </Group>
       )}
@@ -220,12 +285,6 @@ function Body({
         </div>
       )}
 
-      {shape.default !== undefined && <Labelled label="default" value={shape.default} />}
-      {shape.example !== undefined && <Labelled label="example" value={shape.example} />}
-      {shape.examples &&
-        Object.entries(shape.examples).map(([name, value]) => (
-          <Labelled key={name} label={`example: ${name}`} value={value} />
-        ))}
       {shape.xml !== undefined && <Labelled label="xml" value={shape.xml} />}
     </div>
   );
@@ -269,7 +328,7 @@ function Attribute({
           <span className="attr-display">{shape.display_name}</span>
         )}
         {inline ? (
-          <span className="attr-type">{spelling(shape)}</span>
+          <span className="attr-type">{arrayLine(shape, index)}</span>
         ) : link ? (
           <Link to={link.href} className="typelink">
             {link.name}
@@ -297,7 +356,7 @@ function Attribute({
           )}
         </>
       )}
-      {inline && <Body shape={shape} index={index} hideType hideDescription />}
+      {inline && <Body shape={shape} index={index} hideType hideDescription hideItems={simpleItems(shape)} />}
     </div>
   );
 }

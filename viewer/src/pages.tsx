@@ -224,7 +224,8 @@ function Responses({ responses, index }: { responses: Record<string, Response>; 
         items={codes.map(([code, response]) => ({
           key: code,
           label: code,
-          tone: 'status' as const,
+          // The first digit is the class, which is what the dot colours.
+          tone: code[0] ?? 'plain',
           body: (
             <>
               <Prose>{response.description}</Prose>

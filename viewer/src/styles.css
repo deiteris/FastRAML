@@ -458,13 +458,14 @@ h4 {
  */
 .verb {
   display: inline-block;
-  min-width: 52px;
-  padding: 2px 8px;
-  border-radius: 4px;
+  min-width: 44px;
+  padding: 1px 5px;
+  border-radius: 3px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  line-height: 15px;
+  letter-spacing: 0.05em;
   text-align: center;
   color: #fff;
   background: var(--verb, #5a6472);
@@ -477,9 +478,10 @@ h4 {
 .verb-delete { --verb: #b3261e; }
 
 .verb-lg {
-  min-width: 64px;
-  padding: 4px 10px;
-  font-size: 13px;
+  min-width: 50px;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 17px;
 }
 
 .chip-method {
@@ -527,6 +529,15 @@ h4 {
 .attributes {
   border-top: 1px solid var(--line-soft);
   margin: 6px 0 4px;
+}
+
+/* An `h4` now carries a rule of its own, so a list directly under one would
+   draw a second immediately below it. Same for a tab strip. */
+h4 + .attributes,
+h4 + .tabs > .tabs-strip,
+.parameters > h4 + .attributes {
+  border-top: 0;
+  margin-top: 0;
 }
 
 .attr {
@@ -667,38 +678,70 @@ h4 {
 .tabs-strip {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
+  gap: 20px;
+  align-items: flex-end;
   border-bottom: 1px solid var(--line);
-  padding-bottom: 8px;
 }
 
+/* Text on a shared baseline, the active one underlined. A row of filled pills
+   above a rule reads as a set of buttons, not as tabs. */
 .tab {
+  position: relative;
   font-family: var(--mono);
-  font-size: 12px;
-  padding: 4px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--raised);
-  color: var(--dim);
+  font-size: 13px;
+  padding: 6px 0 8px;
+  border: 0;
+  background: none;
+  color: var(--faint);
   cursor: pointer;
 }
 
 .tab:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  color: var(--ink);
 }
 
 .tab.is-chosen {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.tab.is-chosen::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
   background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg);
-  font-weight: 650;
+}
+
+.tabs-strip .label {
+  padding-bottom: 10px;
 }
 
 .tabs-panel {
-  padding-top: 12px;
+  padding-top: 16px;
 }
+
+/* A status code carries its class as a colour: 2xx worked, 4xx was the
+   caller's fault, 5xx was ours. */
+.tab-2::before,
+.tab-3::before,
+.tab-4::before,
+.tab-5::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: middle;
+}
+
+.tab-2::before { background: #1a7f5a; }
+.tab-3::before { background: #2b6cb0; }
+.tab-4::before { background: #9a6700; }
+.tab-5::before { background: #b3261e; }
 
 .reference {
   display: inline-flex;
@@ -952,6 +995,18 @@ table.properties td {
   color: var(--dim);
 }
 
+.shape-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
 .shape-head:empty {
   display: none;
+}
+
+.shape-display {
+  font-weight: 650;
+  color: var(--ink);
 }

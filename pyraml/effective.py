@@ -55,6 +55,10 @@ type Json = str | int | float | bool | list[Json] | dict[str, Json] | None
 #: None of them is stable across an edit, and none describes what the model
 #: *means*. `id` is here because it is a per-parse counter: the address that
 #: replaces it is structural and so survives a re-parse.
+#: Slots that point *back* at something the walk is already inside, rather than
+#: down into containment. `RecursiveShape.head` is the cycle's head.
+_BACK_POINTERS = frozenset({'head'})
+
 _SKIP = frozenset(
     {
         'anchor',
@@ -180,6 +184,17 @@ class _Projector:
         """
         return self.addresses.of.get(entity_id)
 
+    def recursion(self, base: BaseShape) -> Json:
+        """The marker that says the structure repeats from here.
+
+        Spelled as P9's `RecursiveShape` is, because it means the same thing.
+        Keeping it in `type` rather than a key of its own is deliberate: a
+        consumer that switches on `type` and has not handled `recursive` gets an
+        unrecognised value — a loud failure — where a separate key would be
+        silently ignored and hang.
+        """
+        return {'type': 'recursive', 'name': base.name, 'head': {'$ref': self.at(base.id)}}
+
     def reference(self, base: BaseShape, seen: frozenset[int]) -> Json:
         """A supertype or alias target: `$ref` when it is a declaration, inline
         when it is not.
@@ -301,16 +316,28 @@ class _Projector:
     def shape(self, base: BaseShape | None, seen: frozenset[int] = frozenset()) -> Json:  # noqa: PLR0912 - one branch per optional facet
         """One declaration, with its kind's own facets inlined.
 
-        `seen` closes recursion. A self-referential type is a cycle in the model
-        by design (docs/07 § 4), so this has to be finite by construction rather
-        than by hoping the input is a tree. The cycle is closed with an
-        **address**: `{'$ref': …}` is followable, where the type's name was not
-        and an anonymous type had none to give.
+        `seen` closes a cycle P9 did not mark. A self-referential type is a
+        cycle in the model by design (docs/07 § 4), so this has to be finite by
+        construction rather than by hoping the input is a tree.
+
+        It closes it with a **recursion marker**, spelled exactly as P9's, not
+        with a bare `{'$ref': …}`. A bare reference is indistinguishable from
+        an ordinary link, so a consumer that expands links would re-enter and
+        loop — the ancestor set the traversal law exists to make unnecessary
+        (docs/16 § 11.7). Two spellings for one meaning would be two rules for
+        a consumer to learn, so there is one.
+
+        An **alias is transparent**. `Price[]` puts an alias of `Price` under
+        `items` (docs/07 § 3.6); the alias holds no facets of its own, so
+        emitting it showed an anonymous node whose `inherits` named `Price`'s
+        supertype — a wrong answer rather than a missing one (§ 11.8).
         """
         if base is None:
             return None
         if base.id in seen:
-            return {'$ref': self.at(base.id)}
+            return self.recursion(base)
+        if base.alias is not None:
+            return self.reference(base.alias, seen)
         seen = seen | {base.id}
 
         out: dict[str, Json] = {'id': self.at(base.id), 'name': base.name, 'type': base.type}
@@ -332,8 +359,6 @@ class _Projector:
             out['inherits'] = parents
         if base.link is not None:
             out['link'] = type(base.link).__name__
-        if base.alias is not None:
-            out['alias_of'] = self.reference(base.alias, seen)
         if base.custom_facets:
             out['custom_facets'] = {name: self.value(node, seen) for name, node in base.custom_facets.items()}
         if base.custom_facet_defs:
@@ -368,6 +393,13 @@ class _Projector:
                 continue
             value = getattr(shape, name, None)
             if value is None or value in ([], {}):
+                continue
+            if name in _BACK_POINTERS and isinstance(value, BaseShape):
+                # A back-pointer names what repeats; it is not containment. The
+                # node holding it already carries the recursion marker, so
+                # expanding here would mark the same cycle twice — and the walk
+                # is inside the target already, so it could only re-enter.
+                out[name] = {'$ref': self.at(value.id)}
                 continue
             out[name] = self.value(value, seen)
         return out

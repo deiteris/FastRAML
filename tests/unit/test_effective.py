@@ -97,9 +97,10 @@ class TestEveryReferenceResolves:
         """`Chain | nil` is a union whose first member is the recursion marker."""
         projection, graph = both
         union = projection['types']['api.raml']['Chain']['properties']['next']['type']
-        head = union['any_of'][0]['head']
-        assert head['$ref'] == f'{graph.base}#/declarations/types/Chain'
-        assert graph.nodes[head['$ref']].entity.name == 'Chain'
+        marker = union['any_of'][0]
+        assert marker['type'] == 'recursive', 'the cycle must be marked, not left as a bare link'
+        assert marker['head'] == {'$ref': f'{graph.base}#/declarations/types/Chain'}
+        assert graph.nodes[marker['head']['$ref']].entity.name == 'Chain'
 
     def test_a_declared_supertype_is_referenced_rather_than_repeated(self, both):
         """`Named`, the string, would be ambiguous across two libraries. The
@@ -124,15 +125,16 @@ class TestEveryReferenceResolves:
         assert parent['kind'] == 'IntegerShape'
         assert parent['id'].endswith('/inherits/anonymous')
 
-    def test_an_alias_resolves_to_the_type_it_aliases(self, both):
-        """`Named[]` puts an *alias* of `Named` under `items`, not the
-        declaration (docs/07 § 3.6), so the alias is the hop that has to be
-        followable. `Person[]` inside `Person` is a cycle instead, and comes out
-        as a recursion marker — which is why this case uses the other array.
+    def test_an_alias_reads_as_the_type_it_aliases(self, both):
+        """`Named[]` puts an *alias* of `Named` under `items` (docs/07 § 3.6),
+        and the alias never reaches the output: `items` is a link to `Named`.
+
+        `Person[]` inside `Person` is a cycle instead and comes out as a
+        recursion marker, which is why this case uses the other array.
         """
         projection, graph = both
         known = projection['types']['api.raml']['Person']['properties']['known']['type']
-        assert known['items']['alias_of'] == {'$ref': f'{graph.base}#/declarations/types/Named'}
+        assert known['items'] == {'$ref': f'{graph.base}#/declarations/types/Named'}
 
     def test_an_applied_annotation_points_at_its_type(self, both):
         projection, graph = both

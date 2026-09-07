@@ -1292,11 +1292,26 @@ it: that law resolves addresses against the *graph*, which does carry annotation
 types. A tree consumer has only the tree, so `test_consumer_traversal.py`
 resolves them against the tree instead.
 
+**An alias never reaches the output.** `Prices: Price[]` emits
+`items: {"$ref": <Price>}`. All 267 alias shapes in the corpus target a
+declaration, so the reference always resolves, and an alias holds no facets of
+its own — the inlined copy was pure duplication on top of a wrong answer. Two
+goldens shrank by 133 lines.
+
+**A cycle is always a marker, never a bare link.** The projector closes a cycle
+P9 did not mark, and used to close it with `{"$ref": …}` — 31 times across the
+corpus. A consumer expanding links cannot tell that from an ordinary reference,
+so it would re-enter and loop. It now emits the same marker P9 does: one
+meaning, one spelling.
+
+`RecursiveShape.head` is the exception, and stays a bare `{"$ref": …}`. It is a
+**back-pointer**, not containment: the node holding it already carries the
+marker, so expanding there would mark one cycle twice.
+
 By the same rule, still outstanding:
 
 | | verdict | evidence |
 |---|---|---|
-| `alias_of` and the alias node | leak — the honest read is **wrong** | 427 nodes, 200 anonymous, 50 misleading `inherits` |
 | `kind` | redundant with `type` | 1:1 across all 16 kinds, 879 documents, **zero** ambiguous pairs |
 | `link`, `is_annotation_type` | parser state | `is_annotation_type` is `false` on every shape; the section above replaces it |
 | `type_expr` | **keep** | what the author wrote is data, not parser state |

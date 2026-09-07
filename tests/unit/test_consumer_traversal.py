@@ -129,7 +129,6 @@ class TestALinkIsNotARecursionMarker:
         assert node['cost']['type'].get('type') != 'recursive'
 
 
-@pytest.mark.xfail(reason='docs/16 § 11.8: an alias is parser machinery and must become transparent', strict=True)
 class TestAnAliasReadsAsItsReferent:
     """`Prices: Price[]` puts an *alias* of `Price` under `items`, and the alias
     is a parser mechanism with no RAML meaning (docs/07 § 3.6).
@@ -143,6 +142,8 @@ class TestAnAliasReadsAsItsReferent:
 
     Unlike the recursion marker, nothing is lost by making it transparent: an
     alias shares its referent's containers, so it holds no facets of its own.
+    Every one of the 267 alias shapes in the corpus targets a declaration, so
+    the reference always resolves.
     """
 
     def test_items_of_an_array_of_a_declared_type_is_that_type(self, workspace):
@@ -227,3 +228,38 @@ class TestEveryReferenceResolvesInsideTheTree:
         on_operation = projection['endpoints']['/things']['operations']['get']['annotations'][0]
         assert on_type['type'] == declaration
         assert on_operation['type'] == declaration
+
+
+class TestACycleIsAlwaysAMarkerNeverABareLink:
+    """The projector closes a cycle P9 did not mark, and must spell it the same.
+
+    That path fired 31 times across the corpus, emitting a bare `$ref` — which a
+    consumer expanding links cannot tell from an ordinary reference, so it would
+    re-enter and loop. One meaning, one spelling.
+    """
+
+    def test_no_bare_ref_stands_where_a_walk_re_entered(self, workspace):
+        """Expand links as an inlining consumer would, stopping only at markers."""
+        projection = project(
+            workspace,
+            'types:\n  A:\n    properties:\n      b?: B\n  B:\n    properties:\n      a?: A\n',
+        )
+        declarations = projection['types']['api.raml']
+
+        def inline(node: object, depth: int = 0) -> object:
+            if depth > RUNAWAY:
+                raise RunawayError
+            if isinstance(node, dict):
+                if node.get('type') == 'recursive':
+                    return '<recursive>'
+                if set(node) == {'$ref'}:
+                    target = node['$ref'].rsplit('/', 1)[-1]
+                    # A link to a declaration is followable by design; that is
+                    # what makes it a link rather than a marker.
+                    return inline(declarations[target], depth + 1) if target in declarations else '<link>'
+                return {k: inline(v, depth + 1) for k, v in node.items()}
+            if isinstance(node, list):
+                return [inline(i, depth + 1) for i in node]
+            return node
+
+        inline(declarations)

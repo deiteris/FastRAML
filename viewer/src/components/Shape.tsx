@@ -12,13 +12,20 @@
  * object pushed its children rightward into a narrower and narrower strip while
  * the page's whole right half stayed empty. Children belong *under* the
  * attribute they belong to, indented by a rule.
+ *
+ * **What stays in this file is what recurses through this file.** `ShapeView`,
+ * `Body` and `Attribute` call each other in a cycle -- an object holds
+ * attributes, an attribute holds a shape -- and splitting a cycle across
+ * modules buys nothing but an import cycle. Everything that only *uses* a shape
+ * renderer went to a module of its own: parameters, bodies, responses, security,
+ * annotations, values.
  */
 
 import { useState } from 'react';
 import { Link } from 'react-router';
 import {
-  type Applied,
   type Index,
+  type Json,
   type Parameter,
   type PatternProperty,
   type Property,
@@ -30,7 +37,9 @@ import {
   labelOf,
   spellingOf,
 } from '../model';
-import { Chip, Code, Lock, Prose, Tabs } from './ui';
+import { Annotations } from './Annotations';
+import { Code, Labelled, oneLine } from './json';
+import { Chip, Lock, Prose, Tabs } from './ui';
 
 interface Props {
   shape: Shape | Ref | null | undefined;
@@ -45,8 +54,8 @@ interface Props {
   hideType?: boolean;
   hideDescription?: boolean;
   /**
-   * The caller's own line already named the item type -- `tags array of
-   * string` -- so the nested block would repeat it.
+   * The caller's own line already named the item type -- `tags string[]` -- so
+   * the nested block would repeat it.
    *
    * A property of the *caller*, not of the shape: a union panel hides the type
    * line, so a `Body` deciding this for itself left the `array` member of
@@ -106,10 +115,7 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
       {target?.description && <span className="reference-desc">{target.description}</span>}
       {expandable(target) && (
         <>
-          <button type="button" className="expander" aria-expanded={open} onClick={() => setOpen(!open)}>
-            <span className="expander-sign">{open ? '−' : '+'}</span>
-            {open ? 'Hide child attributes' : 'Show child attributes'}
-          </button>
+          <Expander open={open} onToggle={() => setOpen(!open)} />
           {open && (
             <div className="nested">
               <Body shape={target} index={index} hideType hideDescription />
@@ -146,15 +152,25 @@ function RecursionView({ node, index }: { node: Shape & { head: Ref }; index: In
   );
 }
 
+/** The control that opens a reference in place. One shape, two call sites. */
+function Expander({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" className="expander" aria-expanded={open} onClick={onToggle}>
+      <span className="expander-sign">{open ? '−' : '+'}</span>
+      {open ? 'Hide child attributes' : 'Show child attributes'}
+    </button>
+  );
+}
+
 /**
  * Whether an array's items are already said by its own type line.
  *
- * `tags array of string` needs no nested block: it was a label and a rule
- * around one word. An item with structure -- an inline object, a union, or a
- * reference to a type that has attributes -- gets one, because that block is
- * the only place its expander can live. Suppressing it for every `$ref` left
- * `related Book[]` and `priceHistory Prices` naming a type with no way to see
- * inside it: the row a reader wants is the item's, not the array's.
+ * `tags string[]` needs no nested block: it was a label and a rule around one
+ * word. An item with structure -- an inline object, a union, or a reference to
+ * a type that has attributes -- gets one, because that block is the only place
+ * its expander can live. Suppressing it for every `$ref` left `related Book[]`
+ * and `priceHistory Prices` naming a type with no way to see inside it: the row
+ * a reader wants is the item's, not the array's.
  *
  * A recursion marker gets a row too. It is a stop, so nothing expands, but the
  * row is where the marker says the structure repeats and where its `head`
@@ -210,10 +226,12 @@ function Body({
   const named = !hideType && shape.display_name && shape.display_name !== shape.name;
   // The `extends` line below carries it instead, where it is also a link.
   const typed = !hideType && !restates(shape, index);
+  const headed = Boolean(typed || named);
+  const attributes = properties.length > 0 || patterns.length > 0;
 
   return (
     <div className="shape">
-      {(typed || named) && (
+      {headed && (
         <div className="shape-head">
           {named && <span className="shape-display">{shape.display_name}</span>}
           {typed && <TypeChip shape={shape} index={index} borrowed={borrowed} />}
@@ -237,12 +255,12 @@ function Body({
           {facets.map(([name, value]) => (
             <Chip key={name}>
               <span className="facet-name">{name}</span>
-              <span className="facet-value">{render(value)}</span>
+              <span className="facet-value">{oneLine(value)}</span>
             </Chip>
           ))}
           {shape.enum?.map((value, at) => (
             <Chip key={`enum-${at}`} tone="enum">
-              {render(value)}
+              {oneLine(value)}
             </Chip>
           ))}
         </div>
@@ -256,13 +274,13 @@ function Body({
           {Object.entries(shape.custom_facets).map(([name, value]) => (
             <Chip key={name}>
               <span className="facet-name">{name}</span>
-              <span className="facet-value">{render(value)}</span>
+              <span className="facet-value">{oneLine(value)}</span>
             </Chip>
           ))}
         </div>
       )}
 
-      {shape.discriminator && <Discriminator shape={shape} />}
+      {shape.discriminator && <Discriminator shape={shape} index={index} />}
 
       <Annotations applied={shape.annotations} index={index} />
 
@@ -281,14 +299,20 @@ function Body({
         </Group>
       )}
 
-      {(properties.length > 0 || patterns.length > 0) && (
-        <div className="attributes">
-          {properties.map(([name, property]) => (
-            <Attribute key={name} name={name} property={property} index={index} />
-          ))}
-          {patterns.map(([pattern, property]) => (
-            <Attribute key={pattern} name={`/${property.pattern}/`} property={property} index={index} pattern />
-          ))}
+      {/* Indented under the head where there is one, because they belong to the
+          thing it names. `Shelf slot object` sat beside its own `position` and
+          `book` rather than above them, with one rule around the pair saying
+          only that both were inside the array. */}
+      {attributes && (
+        <div className={headed ? 'nested' : undefined}>
+          <div className="attributes">
+            {properties.map(([name, property]) => (
+              <Attribute key={name} name={name} property={property} index={index} />
+            ))}
+            {patterns.map(([pattern, property]) => (
+              <Attribute key={pattern} name={`/${property.pattern}/`} property={property} index={index} pattern />
+            ))}
+          </div>
         </div>
       )}
 
@@ -304,7 +328,7 @@ function Body({
  * nested under that again. Everything a reader scans for sits in one column,
  * which is what a table put in three.
  */
-function Attribute({
+export function Attribute({
   name,
   property,
   index,
@@ -367,10 +391,7 @@ function Attribute({
       {described && <p className="attr-desc">{described}</p>}
       {expandable(target) && (
         <>
-          <button type="button" className="expander" aria-expanded={open} onClick={() => setOpen(!open)}>
-            <span className="expander-sign">{open ? '−' : '+'}</span>
-            {open ? 'Hide child attributes' : 'Show child attributes'}
-          </button>
+          <Expander open={open} onToggle={() => setOpen(!open)} />
           {open && (
             <div className="nested">
               <Body shape={target} index={index} hideType hideDescription />
@@ -389,6 +410,16 @@ function Attribute({
       )}
       {inline && <Body shape={shape} index={index} hideType hideDescription hideItems={simpleItems(shape, index)} />}
     </div>
+  );
+}
+
+/** Where a row came from, when it was not the operation's own. */
+export function From({ scheme }: { scheme: string }) {
+  return (
+    <span className="from" title={`added by the ${scheme} security scheme`}>
+      <Lock />
+      {scheme}
+    </span>
   );
 }
 
@@ -485,7 +516,7 @@ function RefLink({ parent, index }: { parent: Shape | Ref; index: Index }) {
  * A single example keeps its own labelled block: a tab strip with one tab is a
  * control that does nothing.
  */
-function Examples({ examples }: { examples?: Record<string, unknown> }) {
+function Examples({ examples }: { examples?: Record<string, Json> }) {
   const entries = Object.entries(examples ?? {});
   const [first] = entries;
   if (entries.length === 0) return null;
@@ -501,28 +532,36 @@ function Examples({ examples }: { examples?: Record<string, unknown> }) {
 }
 
 /**
- * The property that says which subtype a value is, and this type's value for it.
+ * The property that tells the subtypes of this type apart, and this type's
+ * value for it.
  *
- * A line rather than a facet chip: `discriminator` names a *property* of this
- * shape, which is a different kind of statement from `maxLength 200`.
+ * Two different statements, and only one belongs on each page. The type that
+ * *declares* `discriminator` names the property and has no value of its own:
+ * printing one there read `Publication by default`, which says nothing a reader
+ * of the documentation wants and invites them to send it. A subtype has a
+ * value, and that value is the only part they care about, so it is shown plain.
  *
- * Where `discriminatorValue` is absent the effective value is the type's own
- * name -- the spec's default, applied in P10 where the rule belongs and not
- * written onto the shape, so it is computed here and marked as a default rather
- * than shown as something the author wrote.
+ * `discriminatorValue` defaults to the subtype's own name (RAML 1.0 § 5.5). The
+ * rule is applied in P10, where a language rule belongs, and is not written
+ * onto the shape -- so the subtype case computes it rather than reading it.
+ *
+ * A subtype is told from the declaring type by looking up: after unwrap every
+ * subtype carries an inherited `discriminator` and looks like a declaration
+ * (the note in CLAUDE.md, and go-raml's `FIXME` for the same reason), so the
+ * shape alone cannot say which it is.
  */
-function Discriminator({ shape }: { shape: Shape }) {
-  const written = shape.discriminator_value;
-  const value = written === undefined || written === null ? shape.name : written;
+function Discriminator({ shape, index }: { shape: Shape; index: Index }) {
+  const inherited = (shape.inherits ?? []).some((parent) => isRef(parent) && index.shape(parent.$ref)?.discriminator);
+  const value = shape.discriminator_value ?? (inherited ? shape.name : null);
   return (
     <div className="shape-line">
-      <span className="label">discriminator</span>
+      <span className="label">{inherited ? 'discriminated by' : 'discriminator'}</span>
       <code className="attr-name">{shape.discriminator}</code>
-      {value !== null && value !== undefined && (
-        <Chip tone={written === undefined || written === null ? 'optional' : 'enum'}>
-          {render(value)}
-          {(written === undefined || written === null) && <span className="facet-name"> by default</span>}
-        </Chip>
+      {value !== null && (
+        <>
+          <span className="facet-name">=</span>
+          <Chip tone="enum">{oneLine(value)}</Chip>
+        </>
       )}
     </div>
   );
@@ -546,93 +585,4 @@ function Tagged({ label, values }: { label: string; values: string[] }) {
       ))}
     </div>
   );
-}
-
-export function Annotations({ applied, index }: { applied?: Applied[]; index: Index }) {
-  if (!applied || applied.length === 0) return null;
-  return (
-    <div className="shape-line">
-      {applied.map((one, at) => {
-        const entry = index.get(one.type);
-        return (
-          <Chip key={at} tone="warn">
-            {entry ? (
-              <Link to={entry.href} className="typelink">
-                ({one.name})
-              </Link>
-            ) : (
-              <span>({one.name})</span>
-            )}
-            {one.value !== null && one.value !== undefined && <span className="facet-value">{render(one.value)}</span>}
-          </Chip>
-        );
-      })}
-    </div>
-  );
-}
-
-export function ParameterTable({
-  title,
-  parameters,
-  added,
-  from,
-  index,
-}: {
-  title: string;
-  parameters?: Record<string, Parameter>;
-  /**
-   * What the chosen security scheme contributes here.
-   *
-   * Merged into this table rather than given one of its own: a caller building
-   * a request needs one list of what to send, and a section apart made them
-   * assemble it from two places. Each borrowed row says where it came from, so
-   * merged is not the same as indistinguishable -- a reader can still see what
-   * would change if the scheme did.
-   */
-  added?: Record<string, Parameter>;
-  from?: string;
-  index: Index;
-}) {
-  const own = Object.entries(parameters ?? {});
-  const extra = Object.entries(added ?? {}).filter(([name]) => !(name in (parameters ?? {})));
-  if (own.length + extra.length === 0) return null;
-  return (
-    <section className="parameters">
-      <h4>{title}</h4>
-      <div className="attributes">
-        {own.map(([name, parameter]) => (
-          <Attribute key={name} name={name} property={parameter} index={index} />
-        ))}
-        {extra.map(([name, parameter]) => (
-          <Attribute key={name} name={name} property={parameter} index={index} from={from} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/** Where a row came from, when it was not the operation's own. */
-export function From({ scheme }: { scheme: string }) {
-  return (
-    <span className="from" title={`added by the ${scheme} security scheme`}>
-      <Lock />
-      {scheme}
-    </span>
-  );
-}
-
-function Labelled({ label, value }: { label: string; value: unknown }) {
-  return (
-    <div className="labelled">
-      <span className="label">{label}</span>
-      <Code>{value}</Code>
-    </div>
-  );
-}
-
-/** A facet value on one line. Structured values fall back to compact JSON. */
-function render(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value === null) return 'null';
-  return JSON.stringify(value);
 }

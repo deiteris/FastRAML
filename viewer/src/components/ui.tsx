@@ -124,11 +124,6 @@ export function Prose({ children }: { children?: string }) {
   return <p className="prose">{children}</p>;
 }
 
-export function Code({ children }: { children: unknown }) {
-  const text = typeof children === 'string' ? children : JSON.stringify(children, null, 2);
-  return <pre className="code">{text}</pre>;
-}
-
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="empty">{children}</p>;
 }

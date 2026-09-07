@@ -1048,6 +1048,152 @@
                   }
                 }
               }
+            },
+            "application/xml": {
+              "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/request/payload/application%2Fxml/schema",
+              "name": "application/xml",
+              "type": "object",
+              "description": "One book in the catalogue.",
+              "inherits": [
+                {
+                  "$ref": "pyraml://id#/declarations/types/Book"
+                }
+              ],
+              "type_expr": "Book",
+              "properties": {
+                "title": {
+                  "required": true,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/title/schema",
+                    "name": "title",
+                    "type": "string",
+                    "display_name": "Title",
+                    "description": "The book's title as printed on the cover.",
+                    "example": "Dune",
+                    "type_expr": "string",
+                    "max_length": 200,
+                    "min_length": 1
+                  }
+                },
+                "isbn": {
+                  "required": true,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
+                    "name": "isbn",
+                    "type": "string",
+                    "display_name": "ISBN-13",
+                    "description": "The thirteen-digit ISBN, without separators.",
+                    "type_expr": "string",
+                    "pattern": "^\\d{13}$"
+                  }
+                },
+                "price": {
+                  "required": true,
+                  "type": {
+                    "$ref": "pyraml://id#/declarations/types/Money"
+                  }
+                },
+                "tags": {
+                  "required": false,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/tags/schema",
+                    "name": "tags?",
+                    "type": "array",
+                    "type_expr": "array",
+                    "items": {
+                      "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
+                      "name": "items",
+                      "type": "string",
+                      "type_expr": "string"
+                    },
+                    "max_items": 10,
+                    "unique_items": true
+                  }
+                },
+                "related": {
+                  "required": false,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/related/schema",
+                    "name": "related?",
+                    "type": "array",
+                    "type_expr": "Book[]",
+                    "items": {
+                      "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
+                      "name": "Book",
+                      "type": "recursive",
+                      "description": "One book in the catalogue.",
+                      "annotations": [
+                        {
+                          "name": "deprecated",
+                          "type": "pyraml://id#/declarations/annotations/deprecated",
+                          "value": "use Publication instead"
+                        }
+                      ],
+                      "head": {
+                        "$ref": "pyraml://id#/declarations/types/Book"
+                      }
+                    }
+                  }
+                },
+                "reviews": {
+                  "required": false,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/reviews/schema",
+                    "name": "reviews?",
+                    "type": "array",
+                    "description": "Up to twenty reviews, most recent first.",
+                    "type_expr": "Review[]",
+                    "items": {
+                      "$ref": "pyraml://id#/declarations/types/Review"
+                    },
+                    "max_items": 20
+                  }
+                },
+                "priceHistory": {
+                  "required": false,
+                  "type": {
+                    "$ref": "pyraml://id#/declarations/types/Prices"
+                  }
+                },
+                "metadata": {
+                  "required": false,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/metadata/schema",
+                    "name": "metadata?",
+                    "type": "object",
+                    "type_expr": "object",
+                    "pattern_properties": {
+                      "^x-": {
+                        "pattern": "^x-",
+                        "type": {
+                          "id": "pyraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                          "name": "/^x-/",
+                          "type": "string",
+                          "type_expr": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "id": {
+                  "required": true,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Entity/property/id/schema",
+                    "name": "id",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                },
+                "createdAt": {
+                  "required": true,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Entity/property/createdAt/schema",
+                    "name": "createdAt",
+                    "type": "datetime",
+                    "type_expr": "datetime"
+                  }
+                }
+              }
             }
           }
         },
@@ -1129,6 +1275,152 @@
                 "application/json": {
                   "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
                   "name": "application/json",
+                  "type": "object",
+                  "description": "One book in the catalogue.",
+                  "inherits": [
+                    {
+                      "$ref": "pyraml://id#/declarations/types/Book"
+                    }
+                  ],
+                  "type_expr": "Book",
+                  "properties": {
+                    "title": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/title/schema",
+                        "name": "title",
+                        "type": "string",
+                        "display_name": "Title",
+                        "description": "The book's title as printed on the cover.",
+                        "example": "Dune",
+                        "type_expr": "string",
+                        "max_length": 200,
+                        "min_length": 1
+                      }
+                    },
+                    "isbn": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
+                        "name": "isbn",
+                        "type": "string",
+                        "display_name": "ISBN-13",
+                        "description": "The thirteen-digit ISBN, without separators.",
+                        "type_expr": "string",
+                        "pattern": "^\\d{13}$"
+                      }
+                    },
+                    "price": {
+                      "required": true,
+                      "type": {
+                        "$ref": "pyraml://id#/declarations/types/Money"
+                      }
+                    },
+                    "tags": {
+                      "required": false,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/tags/schema",
+                        "name": "tags?",
+                        "type": "array",
+                        "type_expr": "array",
+                        "items": {
+                          "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
+                          "name": "items",
+                          "type": "string",
+                          "type_expr": "string"
+                        },
+                        "max_items": 10,
+                        "unique_items": true
+                      }
+                    },
+                    "related": {
+                      "required": false,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/related/schema",
+                        "name": "related?",
+                        "type": "array",
+                        "type_expr": "Book[]",
+                        "items": {
+                          "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
+                          "name": "Book",
+                          "type": "recursive",
+                          "description": "One book in the catalogue.",
+                          "annotations": [
+                            {
+                              "name": "deprecated",
+                              "type": "pyraml://id#/declarations/annotations/deprecated",
+                              "value": "use Publication instead"
+                            }
+                          ],
+                          "head": {
+                            "$ref": "pyraml://id#/declarations/types/Book"
+                          }
+                        }
+                      }
+                    },
+                    "reviews": {
+                      "required": false,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/reviews/schema",
+                        "name": "reviews?",
+                        "type": "array",
+                        "description": "Up to twenty reviews, most recent first.",
+                        "type_expr": "Review[]",
+                        "items": {
+                          "$ref": "pyraml://id#/declarations/types/Review"
+                        },
+                        "max_items": 20
+                      }
+                    },
+                    "priceHistory": {
+                      "required": false,
+                      "type": {
+                        "$ref": "pyraml://id#/declarations/types/Prices"
+                      }
+                    },
+                    "metadata": {
+                      "required": false,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/metadata/schema",
+                        "name": "metadata?",
+                        "type": "object",
+                        "type_expr": "object",
+                        "pattern_properties": {
+                          "^x-": {
+                            "pattern": "^x-",
+                            "type": {
+                              "id": "pyraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                              "name": "/^x-/",
+                              "type": "string",
+                              "type_expr": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "id": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Entity/property/id/schema",
+                        "name": "id",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "createdAt": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Entity/property/createdAt/schema",
+                        "name": "createdAt",
+                        "type": "datetime",
+                        "type_expr": "datetime"
+                      }
+                    }
+                  }
+                },
+                "application/xml": {
+                  "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get/returns/200/payload/application%2Fxml/schema",
+                  "name": "application/xml",
                   "type": "object",
                   "description": "One book in the catalogue.",
                   "inherits": [

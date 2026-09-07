@@ -219,8 +219,11 @@ securedBy: [oauth2]
     displayName: Add a book
     description: Adds one book to the catalogue and returns it with its identifier.
     (deprecated): use PUT
+    # Two media types for one body: the same schema, accepted either way.
     body:
       application/json:
+        type: Book
+      application/xml:
         type: Book
     responses:
       201:
@@ -245,6 +248,8 @@ securedBy: [oauth2]
         200:
           body:
             application/json:
+              type: Book
+            application/xml:
               type: Book
     delete:
       displayName: Delete a book

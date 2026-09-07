@@ -18,7 +18,7 @@
  * recurses without a depth budget.
  */
 
-import type { Address, Document, Endpoint, EntryPoint, Operation, Ref, Shape } from './tree';
+import type { Address, Document, Endpoint, EntryPoint, Json, Operation, Ref, Shape } from './tree';
 
 export type {
   Address,
@@ -190,10 +190,10 @@ const NOT_A_FACET: ReadonlySet<string> = new Set([
  * nothing plain camel case did not. So this is a spelling change and not a
  * translation table that can go stale.
  */
-export function facetsOf(shape: Shape): [string, unknown][] {
+export function facetsOf(shape: Shape): [string, Json][] {
   return Object.entries(shape)
     .filter(([key, value]) => !NOT_A_FACET.has(key) && value !== null && value !== undefined)
-    .map(([key, value]) => [camel(key), value] as [string, unknown]);
+    .map(([key, value]) => [camel(key), value as Json]);
 }
 
 /**

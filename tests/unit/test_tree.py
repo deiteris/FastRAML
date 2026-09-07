@@ -139,7 +139,7 @@ class TestEveryReferenceResolves:
     def test_an_applied_annotation_points_at_its_type(self, both):
         projection, graph = both
         applied = projection['types']['api.raml']['Person']['annotations']
-        assert applied == [{'name': 'tier', 'type': f'{graph.base}#/declarations/annotations/tier'}]
+        assert applied == [{'name': 'tier', 'type': f'{graph.base}#/declarations/annotations/tier', 'value': 'gold'}]
 
 
 class TestTheProjectionAndTheGraphAgree:
@@ -313,7 +313,11 @@ class TestAnAnnotationIsRecordedWhereItWasApplied:
 
     def test_on_the_resource(self, doc):
         assert doc['endpoints']['/users']['annotations'] == [
-            {'name': 'deprecated', 'type': 'pyraml://id#/declarations/annotations/deprecated'}
+            {
+                'name': 'deprecated',
+                'type': 'pyraml://id#/declarations/annotations/deprecated',
+                'value': 'use /people',
+            }
         ]
 
     def test_on_the_operation(self, doc):
@@ -322,6 +326,16 @@ class TestAnAnnotationIsRecordedWhereItWasApplied:
     def test_on_the_response(self, doc):
         response = doc['endpoints']['/users']['operations']['get']['responses']['200']
         assert [a['name'] for a in response['annotations']] == ['deprecated']
+
+    def test_each_site_carries_what_the_annotation_says(self, doc):
+        # The document-wide list keys by *kind*, so three `deprecated` entries
+        # with three different messages are three rows a reader cannot tell
+        # apart. Without the value here a view says a thing is deprecated and
+        # not what to use instead.
+        operation = doc['endpoints']['/users']['operations']['get']
+        assert doc['endpoints']['/users']['annotations'][0]['value'] == 'use /people'
+        assert operation['annotations'][0]['value'] == 'use GET /people'
+        assert operation['responses']['200']['annotations'][0]['value'] == 'going away'
 
     def test_each_points_at_a_type_that_exists(self, workspace):
         root = workspace({'api.raml': DOCUMENTED})

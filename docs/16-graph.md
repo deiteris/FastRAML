@@ -1202,11 +1202,14 @@ already points at it by address — the rule § 11.3 applies to a supertype.
 Repeating a scheme at every use site would be the duplication that rule exists
 to prevent.
 
-**An annotation is recorded where it was applied.** The document-wide
-`annotations` list gives `target: "Resource"` — a *kind*, not an address — so a
-reader could see that something was deprecated and not what. `shape` had always
-pointed at the annotation type; an endpoint, an operation and a response now do
-the same.
+**An annotation is recorded where it was applied, with its value.** The
+document-wide `annotations` list gives `target: "Resource"` — a *kind*, not an
+address — so a reader could see that something was deprecated and not what.
+`shape` had always pointed at the annotation type; an endpoint, an operation and
+a response now do the same, and each site carries the value as well as the type.
+Without the value a site says a thing is deprecated and not what to use instead,
+and the document-wide list cannot supply it: keyed by kind, three `Method`
+entries with three different messages are three rows nothing tells apart.
 
 Two fields answer different questions and both are kept: `bound` says a
 `securedBy` entry resolved, `declaration` says where to. A `securedBy: [null]`

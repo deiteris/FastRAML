@@ -587,15 +587,22 @@ class _Projector:
         return [self.applied(name, extension) for name, extension in annotations.items()]
 
     def applied(self, name: str, extension: DomainExtension) -> Json:
-        """One applied annotation, pointing at the annotation *type*.
+        """One applied annotation: its type, and **what it says**.
 
         The name alone was what this held, and a name cannot say which of two
         libraries declaring `deprecated` was meant.
+
+        The value belongs here and not only in the document-wide list, whose
+        `target` is a *kind* — `Method` — so two methods carrying the same
+        annotation are two entries a reader cannot tell apart. Without it a view
+        can say a thing is deprecated and not what to use instead, which is the
+        whole content of `(deprecated): use PUT`.
         """
         defined_by = extension.defined_by
         return {
             'name': name,
             'type': self.at(defined_by.id) if defined_by is not None else None,
+            'value': self.value(extension.value, frozenset()) if extension.value is not None else None,
         }
 
     def annotation(self, extension: DomainExtension) -> Json:

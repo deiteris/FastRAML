@@ -9,20 +9,23 @@
 
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { Annotations, From, ParameterTable, ShapeView } from './components/Shape';
+import { Annotations, From, ParameterTable, ShapeView, restates } from './components/Shape';
 import { Chip, Code, Disclosure, Empty, KeyValues, Lock, Prose, Section, Tabs, Verb } from './components/ui';
 import {
   type Document,
+  type EntryPoint,
   type Index,
   type Ref,
   type Response,
   type SecuredBy,
   type SecurityScheme,
   type Shape,
+  baseUriOf,
   declarations,
   humanise,
   methodsOf,
-  spelling,
+  schemeOf,
+  spellingOf,
 } from './model';
 
 interface Props {
@@ -56,7 +59,11 @@ export function Overview({ document, index }: Props) {
 
       <KeyValues
         rows={[
-          ['Base URI', api.base_uri ? <code>{api.base_uri}</code> : null],
+          // Resolved, with `{version}` filled in, because that is the string a
+          // caller prefixes to every path -- and the one every endpoint page
+          // now shows in front of its own.
+          ['Base URI', api.base_uri ? <code className="url">{baseUriOf(api)}</code> : null],
+          ['As written', api.base_uri && baseUriOf(api) !== api.base_uri ? <code>{api.base_uri}</code> : null],
           ['Media types', api.media_types?.length ? api.media_types.join(', ') : null],
           ...Object.entries(counts).map(
             ([what, many]) => [what[0]!.toUpperCase() + what.slice(1), String(many)] as [string, string],
@@ -115,20 +122,29 @@ export function Overview({ document, index }: Props) {
   );
 }
 
-/**
- * Whether a type expression only repeats what `extends` will say.
- *
- * `type: Entity` gives the expression `Entity` and a single supertype named
- * `Entity`; showing both puts the same fact on the page twice, once without the
- * link. `Money[]` and `string | number` say something no `extends` line does,
- * and stay.
- */
-function restates(shape: Shape): boolean {
-  const written = spelling(shape);
-  return written === shape.type || (shape.inherits ?? []).length === 1;
-}
-
 /* -- endpoints ----------------------------------------------------------------- */
+
+/**
+ * The address a caller actually uses: the base URI, then the path.
+ *
+ * A path on its own is not something anyone can call. The two are one string
+ * and are styled as one, with the base dimmed -- the path is what distinguishes
+ * this page from every other, and the base is what makes it a URL.
+ *
+ * `scheme` is a method-level `protocols:` narrower than the base URI's, which
+ * changes the address for that method alone.
+ */
+function Url({ api, path, protocols }: { api: EntryPoint | null; path: string; protocols?: string[] }) {
+  const base = baseUriOf(api);
+  const scheme = schemeOf(protocols, base);
+  const shown = scheme ? base.replace(/^[a-z][a-z0-9+.-]*:/i, `${scheme}:`) : base;
+  return (
+    <code className="url">
+      <span className="url-base">{shown}</span>
+      {path}
+    </code>
+  );
+}
 
 /**
  * A resource: what is true of every call to it, and the way in to its methods.
@@ -152,7 +168,7 @@ export function EndpointPage({ document, index }: Props) {
   return (
     <article>
       <h1>
-        <code>{full}</code>
+        <Url api={document.entry_point} path={full} />
       </h1>
       {endpoint.display_name && <p className="subtitle">{endpoint.display_name}</p>}
       <Prose>{endpoint.description}</Prose>
@@ -213,12 +229,22 @@ export function OperationPage({ document, index }: Props) {
     <article>
       <h1 className="operation-title">
         <Verb method={method ?? ''} large />
-        <code>{full}</code>
+        <Url api={document.entry_point} path={full} protocols={operation.protocols} />
         {schemes.length > 0 && (
           <Lock open={optional} title={optional ? 'may be called unauthenticated' : 'requires authentication'} />
         )}
       </h1>
       {operation.display_name && <p className="subtitle">{operation.display_name}</p>}
+      {/* A method may narrow the API's protocols. The URL above already shows
+          the scheme; this says it was this method's own decision. */}
+      {operation.protocols && operation.protocols.length > 0 && (
+        <div className="shape-line">
+          <span className="label">protocols</span>
+          {operation.protocols.map((protocol) => (
+            <Chip key={protocol}>{protocol}</Chip>
+          ))}
+        </div>
+      )}
       <Prose>{operation.description}</Prose>
       <Annotations applied={operation.annotations} index={index} />
 
@@ -324,7 +350,11 @@ function Bodies({
       {entries.map(([media, shape]) => (
         <div key={media} className="body">
           <Chip tone="plain">{media}</Chip>
-          <ShapeView shape={shape} index={index} hideType />
+          {/* The type is shown, because the chip beside it is the *media* type
+              and says nothing about the shape. Hidden, a body of `Publication[]`
+              read as a bare `each item Publication` -- the one word saying it
+              was a list was the one word suppressed. */}
+          <ShapeView shape={shape} index={index} />
         </div>
       ))}
     </div>
@@ -465,7 +495,7 @@ export function TypePage({ document, index }: Props) {
           `extends Entity` -- the same fact twice, once without the link. */}
       <p className="subtitle">
         <code>{file}</code> · <Chip tone="type">{shape.type}</Chip>
-        {restates(shape) || <Chip>{spelling(shape)}</Chip>}
+        {restates(shape, index) || <Chip>{spellingOf(shape, index)}</Chip>}
       </p>
       <ShapeView shape={shape} index={index} hideType />
       <Usages document={document} address={shape.id} />
@@ -630,7 +660,7 @@ function DeclarationList({
                   {entry ? <Link to={entry.href}>{name}</Link> : name}
                 </td>
                 <td>
-                  <Chip tone="type">{spelling(value)}</Chip>
+                  <Chip tone="type">{spellingOf(value, index)}</Chip>
                 </td>
                 <td className="property-description">{value.description}</td>
                 <td>

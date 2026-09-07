@@ -439,6 +439,7 @@ _STRUCTURAL: Final[dict[str, dict[str, str]]] = {
         'responses': 'Record<string, Response>',
         'description': 'string',
         'display_name': 'string',
+        'protocols': 'string[]',
         'secured_by': 'SecuredBy[]',
         'annotations': 'Applied[]',
         'headers': 'Record<string, Parameter>',

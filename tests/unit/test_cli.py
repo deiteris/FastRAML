@@ -217,6 +217,15 @@ class TestGraphVerbs:
         assert 'id' in user['properties']
         assert user['inherits'] == [{'$ref': 'pyraml://id#/declarations/types/Entity'}]
 
+    def test_tree_prints_declarations_in_the_order_they_were_written(self, graphed, capsys):
+        # docs/02 section 4: declaration order is preserved everywhere the model
+        # is exposed. `build_tree` preserved it and the verb sorted the keys on
+        # the way out, which is the same loss one step later -- and invisible to
+        # a test of `build_tree`.
+        tree = json.loads(self._tree(graphed, capsys))
+        assert list(tree['types']['g.raml']) == ['Entity', 'User']
+        assert list(tree['types']['g.raml']['User']['properties']) == ['name', 'id']
+
     def test_tree_addresses_agree_with_the_ones_graph_prints(self, graphed, capsys):
         # The counterpart claim in docs/16 § 11: one walk assigns both, so an
         # address read from a tree names a node in the graph. Only a test across

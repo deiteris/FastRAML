@@ -138,6 +138,7 @@ export interface Operation {
   responses: Record<string, Response>;
   description?: string;
   display_name?: string;
+  protocols?: string[];
   secured_by?: SecuredBy[];
   annotations?: Applied[];
   query_string?: Shape | Ref | null;

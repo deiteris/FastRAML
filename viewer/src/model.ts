@@ -18,7 +18,7 @@
  * recurses without a depth budget.
  */
 
-import type { Address, Document, Endpoint, Operation, Ref, Shape } from './tree';
+import type { Address, Document, Endpoint, EntryPoint, Operation, Ref, Shape } from './tree';
 
 export type {
   Address,
@@ -175,6 +175,10 @@ const NOT_A_FACET: ReadonlySet<string> = new Set([
   'custom_facets',
   'declares_facets',
   'allowed_targets',
+  // Shown as a line of their own: a discriminator names a *property*, which a
+  // chip reading `discriminator kind` beside `maxLength 200` does not say.
+  'discriminator',
+  'discriminator_value',
 ]);
 
 /**
@@ -243,6 +247,32 @@ export function spelling(shape: Shape, borrowed = false): string {
 }
 
 /**
+ * A shape's name with one spelling for arrays: `X[]`, always.
+ *
+ * `spelling` alone gives whatever the author wrote, and RAML lets them write an
+ * array two ways -- `type: Review[]` and `type: array` with `items: string` --
+ * so one page read `reviews Review[]` above `tags array of string`. Two
+ * spellings of one idea, and which one appeared was an accident of the source.
+ * The item is named from `items` rather than from the expression, so the two
+ * forms converge and a nested array reads `string[][]` rather than `array[]`.
+ *
+ * Recursion terminates on containment: the emitter marks every cycle, and a
+ * marker is named, not descended.
+ */
+export function spellingOf(shape: Shape, index: Index, borrowed = false): string {
+  const written = spelling(shape, borrowed);
+  // Only where the expression says no more than the kind does. `type: Shelf` on
+  // an array is a name, and computing `object[]` from its inline items in place
+  // of it loses the one word that identifies the type.
+  if (shape.type !== 'array' || written !== 'array') return written;
+  const items = shape.items;
+  if (items === null || items === undefined) return 'any[]';
+  if (isRef(items)) return `${index.label(items.$ref)}[]`;
+  if (isRecursive(items)) return `${items.name ?? 'recursive'}[]`;
+  return `${spellingOf(items, index, true)}[]`;
+}
+
+/**
  * What to call one member of a union or one inlined supertype.
  *
  * The three constructs, in the order the metamodel puts them: a link is named
@@ -252,7 +282,42 @@ export function spelling(shape: Shape, borrowed = false): string {
 export function labelOf(member: Shape | Ref, index: Index): string {
   if (isRef(member)) return index.label(member.$ref);
   if (isRecursive(member)) return member.name ?? 'recursive';
-  return spelling(member, true);
+  return spellingOf(member, index, true);
+}
+
+/* -- where a request actually goes ----------------------------------------------- */
+
+/**
+ * The base URI with `{version}` filled in.
+ *
+ * `{version}` is the one base-URI parameter RAML resolves itself -- it is bound
+ * to the API's own `version:`, not supplied by the caller -- so leaving it as a
+ * placeholder shows a hole where there is a known value. Every other parameter
+ * (`{tenant}`) stays written, because it *is* a hole, and the base URI
+ * parameters table is what fills it.
+ *
+ * The trailing slash goes, so joining a path never doubles it.
+ */
+export function baseUriOf(api: EntryPoint | null | undefined): string {
+  const written = api?.base_uri;
+  if (!written) return '';
+  const filled = api?.version ? written.split('{version}').join(api.version) : written;
+  return filled.endsWith('/') ? filled.slice(0, -1) : filled;
+}
+
+/**
+ * The scheme a caller uses, where the document narrows it.
+ *
+ * A method may declare `protocols:` narrower than the API's, and then the URL
+ * for that method alone has a different scheme -- so it is part of the address,
+ * not a footnote about it. Returns nothing when the base URI already agrees,
+ * which is the ordinary case and would otherwise print the scheme twice.
+ */
+export function schemeOf(protocols: string[] | undefined, base: string): string | null {
+  if (!protocols || protocols.length === 0) return null;
+  const only = protocols.length === 1 ? protocols[0]!.toLowerCase() : null;
+  if (only === null) return null;
+  return base.startsWith(`${only}://`) ? null : only;
 }
 
 /* -- endpoints as a tree -------------------------------------------------------- */

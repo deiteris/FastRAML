@@ -517,6 +517,11 @@ class _Projector:
             out['description'] = self.value(operation.description, frozenset())
         if operation.display_name is not None:
             out['display_name'] = self.value(operation.display_name, frozenset())
+        if operation.protocols:
+            # A method may narrow the API's protocols, and the narrowing is the
+            # scheme of the URL a caller has to build -- an `HTTPS`-only method
+            # under an `HTTP, HTTPS` API is not a detail of presentation.
+            out['protocols'] = self.value(operation.protocols, frozenset())
         if operation.secured_by:
             out['secured_by'] = self.schemes(operation.secured_by)
         if operation.annotations:

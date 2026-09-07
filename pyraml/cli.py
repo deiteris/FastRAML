@@ -319,7 +319,13 @@ def _tree(args: argparse.Namespace) -> int:
     if raml is None:
         return EXIT_INVALID
     payload = positions_of(raml) if args.positions else build_tree(raml)
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    # Not `sort_keys`. Declaration order is an invariant everywhere the model is
+    # exposed (docs/02 § 4, docs/16 § 3.4), and sorting threw it away at the last
+    # step: properties, named examples, response codes and the keys of an
+    # example's own data all came out alphabetical, so a reader was shown an
+    # order no author wrote. Stable output is what the *sink* wanted; the
+    # golden suite sorts for itself.
+    print(json.dumps(payload, indent=2))
     return EXIT_OK
 
 

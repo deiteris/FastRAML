@@ -28,7 +28,7 @@ import {
   isRecursive,
   isRef,
   labelOf,
-  spelling,
+  spellingOf,
 } from '../model';
 import { Chip, Code, Lock, Prose, Tabs } from './ui';
 
@@ -184,27 +184,6 @@ function expandable(target: Shape | undefined): target is Shape {
   return Boolean(target && (target.properties || target.pattern_properties));
 }
 
-/** An array's item type, where it is worth naming on one line. */
-function itemSummary(shape: Shape, index: Index): string | null {
-  const items = shape.items;
-  if (items === null || items === undefined) return null;
-  if (isRef(items)) return index.label(items.$ref);
-  if (isRecursive(items)) return items.name ?? 'recursive';
-  return items.properties || items.any_of ? null : spelling(items, true);
-}
-
-/**
- * An array's type as one phrase: `array of string`, not `array` with a nested
- * block naming `string`. Left alone when the expression already says it --
- * `Book[]` is not improved by `Book[] of Book`.
- */
-function arrayLine(shape: Shape, index: Index): string {
-  const written = spelling(shape);
-  if (shape.type !== 'array' || written.endsWith('[]')) return written;
-  const item = itemSummary(shape, index);
-  return item ? `${written} of ${item}` : written;
-}
-
 function Body({
   shape,
   index,
@@ -229,13 +208,15 @@ function Body({
   // belongs up there too. Rendered here it was a bare word between the
   // description and the facets, with nothing saying what it was.
   const named = !hideType && shape.display_name && shape.display_name !== shape.name;
+  // The `extends` line below carries it instead, where it is also a link.
+  const typed = !hideType && !restates(shape, index);
 
   return (
     <div className="shape">
-      {(!hideType || named) && (
+      {(typed || named) && (
         <div className="shape-head">
           {named && <span className="shape-display">{shape.display_name}</span>}
-          {!hideType && <TypeChip shape={shape} borrowed={borrowed} />}
+          {typed && <TypeChip shape={shape} index={index} borrowed={borrowed} />}
         </div>
       )}
       {/* Above the prose. What a type extends is the first thing about it,
@@ -281,6 +262,8 @@ function Body({
         </div>
       )}
 
+      {shape.discriminator && <Discriminator shape={shape} />}
+
       <Annotations applied={shape.annotations} index={index} />
 
       {/* Above the attributes, not below. An example is the fastest way to
@@ -288,10 +271,7 @@ function Body({
           attribute happened to come final. */}
       {shape.default !== undefined && <Labelled label="default" value={shape.default} />}
       {shape.example !== undefined && <Labelled label="example" value={shape.example} />}
-      {shape.examples &&
-        Object.entries(shape.examples).map(([name, value]) => (
-          <Labelled key={name} label={`example: ${name}`} value={value} />
-        ))}
+      <Examples examples={shape.examples} />
 
       {members.length > 0 && <Union members={members} index={index} />}
 
@@ -349,7 +329,7 @@ function Attribute({
   const link = shape !== null && shape !== undefined && isRef(shape) ? index.get(shape.$ref) : undefined;
   const target = shape !== null && shape !== undefined && isRef(shape) ? index.shape(shape.$ref) : undefined;
   // What the removed expander would have led to, said on the line instead.
-  const holds = target && target.type === 'array' ? arrayLine(target, index) : null;
+  const holds = target && target.type === 'array' ? spellingOf(target, index) : null;
   const inline = shape !== null && shape !== undefined && !isRef(shape) && !isRecursive(shape);
   const described = inline ? shape.description : target?.description;
 
@@ -361,7 +341,7 @@ function Attribute({
           <span className="attr-display">{shape.display_name}</span>
         )}
         {inline ? (
-          <span className="attr-type">{arrayLine(shape, index)}</span>
+          <span className="attr-type">{spellingOf(shape, index)}</span>
         ) : link ? (
           <>
             <Link to={link.href} className="typelink">
@@ -412,9 +392,23 @@ function Attribute({
   );
 }
 
+/**
+ * Whether the type chip would only say what the `extends` line says.
+ *
+ * `type: Entity` gives the expression `Entity` and one supertype named
+ * `Entity`, so printing both puts the fact on the page twice -- once without
+ * the link. `Money[]` over a supertype of `array` says something `extends` does
+ * not and stays.
+ */
+export function restates(shape: Shape, index: Index): boolean {
+  const inherits = shape.inherits ?? [];
+  const only = inherits[0];
+  return inherits.length === 1 && only !== undefined && spellingOf(shape, index) === labelOf(only, index);
+}
+
 /** The type name a reader recognises: the expression as written, else the kind. */
-export function TypeChip({ shape, borrowed }: { shape: Shape; borrowed?: boolean }) {
-  const written = spelling(shape, borrowed);
+export function TypeChip({ shape, index, borrowed }: { shape: Shape; index: Index; borrowed?: boolean }) {
+  const written = spellingOf(shape, index, borrowed);
   return (
     <Chip tone="type" title={written === shape.type ? undefined : `a ${shape.type}`}>
       {written}
@@ -478,6 +472,59 @@ function RefLink({ parent, index }: { parent: Shape | Ref; index: Index }) {
     <Link to={entry.href} className="typelink">
       {entry.name}
     </Link>
+  );
+}
+
+/**
+ * Named examples, as tabs.
+ *
+ * Stacked, each one is a code block the height of the value, so a type with
+ * three of them pushed its own attributes off the screen -- and the reader
+ * wanting one example was scrolling past two. One at a time, all names visible.
+ *
+ * A single example keeps its own labelled block: a tab strip with one tab is a
+ * control that does nothing.
+ */
+function Examples({ examples }: { examples?: Record<string, unknown> }) {
+  const entries = Object.entries(examples ?? {});
+  const [first] = entries;
+  if (entries.length === 0) return null;
+  if (entries.length === 1 && first) return <Labelled label={`example: ${first[0]}`} value={first[1]} />;
+  return (
+    <div className="labelled">
+      <Tabs
+        label="examples"
+        items={entries.map(([name, value]) => ({ key: name, label: name, body: <Code>{value}</Code> }))}
+      />
+    </div>
+  );
+}
+
+/**
+ * The property that says which subtype a value is, and this type's value for it.
+ *
+ * A line rather than a facet chip: `discriminator` names a *property* of this
+ * shape, which is a different kind of statement from `maxLength 200`.
+ *
+ * Where `discriminatorValue` is absent the effective value is the type's own
+ * name -- the spec's default, applied in P10 where the rule belongs and not
+ * written onto the shape, so it is computed here and marked as a default rather
+ * than shown as something the author wrote.
+ */
+function Discriminator({ shape }: { shape: Shape }) {
+  const written = shape.discriminator_value;
+  const value = written === undefined || written === null ? shape.name : written;
+  return (
+    <div className="shape-line">
+      <span className="label">discriminator</span>
+      <code className="attr-name">{shape.discriminator}</code>
+      {value !== null && value !== undefined && (
+        <Chip tone={written === undefined || written === null ? 'optional' : 'enum'}>
+          {render(value)}
+          {(written === undefined || written === null) && <span className="facet-name"> by default</span>}
+        </Chip>
+      )}
+    </div>
   );
 }
 

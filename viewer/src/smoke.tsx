@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { Pages } from './App';
-import { Index, declarations, isRecursive, isRef, labelOf, type Document, type Shape } from './model';
+import { Index, declarations, isRef, labelOf, type Document, type Shape } from './model';
 
 const source = process.argv[2] ?? 'public/api.json';
 const document = JSON.parse(readFileSync(source, 'utf-8')) as Document;
@@ -81,20 +81,18 @@ walk(document, (shape) => {
   // repeats -- never by `type_expr`, which P7 stamps with the whole expression
   // every member was built from.
   //
-  // Stated as the rule and not as "does not equal the parent's expression",
-  // which is what this asked first and why it passed on a query parameter
-  // typed `Search`: the parent read `Search`, the members read `string |
-  // number`, the two differed, and both members were still wrong.
+  // Tested by what a borrowed expression looks like -- a union operator in the
+  // name of one member -- and not by comparing the member's label against a
+  // second expression written here. Comparing against the *parent's* is what
+  // this asked first, and it passed on a query parameter typed `Search`: the
+  // parent read `Search`, the members read `string | number`, the two differed,
+  // and both members were still wrong. Comparing against a re-derivation of
+  // `labelOf` is worse, because it can only agree with itself.
   for (const member of shape.any_of ?? []) {
     members += 1;
     const label = labelOf(member, index);
-    const own = isRef(member)
-      ? index.label(member.$ref)
-      : isRecursive(member)
-        ? (member.name ?? 'recursive')
-        : member.type;
-    if (label !== own) {
-      process.stderr.write(`UNION  ${shape.name ?? shape.id}: member reads "${label}", its own type is "${own}"\n`);
+    if (label.includes('|')) {
+      process.stderr.write(`UNION  ${shape.name ?? shape.id}: member reads "${label}", the whole union's expression\n`);
       failed += 1;
     }
   }

@@ -1337,8 +1337,9 @@ Document          title, version, base_uri, base_uri_parameters, protocols,
                   security_schemes, endpoints, annotations
 Resource          display_name, description, uri_parameters, operations,
                   secured_by, annotations
-Operation         display_name, description, query_parameters, headers,
-                  query_string, bodies, responses, secured_by, annotations
+Operation         display_name, description, protocols, query_parameters,
+                  headers, query_string, bodies, responses, secured_by,
+                  annotations
 Response          description, headers, bodies, annotations
 Body              the shape it carries, keyed by media type
 Parameter         binding, required, type

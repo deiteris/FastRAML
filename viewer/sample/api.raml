@@ -8,7 +8,7 @@ baseUriParameters:
     type: string
     pattern: ^[a-z0-9-]+$
 mediaType: [application/json]
-protocols: [HTTPS]
+protocols: [HTTP, HTTPS]
 description: |
   A worked example exercising every construct the tree carries.
 documentation:
@@ -168,6 +168,26 @@ types:
     properties:
       total: integer
       items: array
+
+  Publication:
+    displayName: A publication
+    description: Everything the store sells. The `kind` property says which.
+    type: object
+    discriminator: kind
+    properties:
+      kind: string
+      title: string
+  Magazine:
+    description: 'A periodical, told apart by `kind: monthly`.'
+    type: Publication
+    discriminatorValue: monthly
+    properties:
+      issue: integer
+  Pamphlet:
+    description: No `discriminatorValue`, so the value is the type's own name.
+    type: Publication
+    properties:
+      pages: integer
 traits:
   paged:
     queryParameters:
@@ -251,6 +271,21 @@ securedBy: [oauth2]
         description: The payload matched neither member of the union.
       500:
         description: Something went wrong on our side.
+
+/publications:
+  displayName: Publications
+  description: Books, magazines and pamphlets, discriminated by `kind`.
+  get:
+    displayName: List publications
+    description: Every publication, of whatever kind.
+    # Narrower than the API's own `[HTTP, HTTPS]`, which changes the scheme of
+    # the URL a caller builds for this method alone.
+    protocols: [HTTPS]
+    responses:
+      200:
+        body:
+          application/json:
+            type: Publication[]
 
 /search:
   displayName: Search

@@ -6,9 +6,11 @@
  * header whose type is an object opens the way a property does.
  */
 
-import type { Index, Parameter } from '../model';
+import { Link } from 'react-router';
+import { type Index, type Ref, type Shape, isRef } from '../model';
 import type { Borrowed } from './Borrowed';
-import { Attribute } from './Shape';
+import { Attribute, ShapeView } from './Shape';
+import type { Parameter } from '../model';
 
 export function ParameterTable({
   title,
@@ -38,6 +40,37 @@ export function ParameterTable({
           <Attribute key={name} name={name} property={parameter} index={index} from={borrowed} />
         ))}
       </div>
+    </section>
+  );
+}
+
+/**
+ * `queryString:` -- the whole query as one type, RAML's alternative to
+ * `queryParameters:` and never allowed beside it.
+ *
+ * Expanded, not behind a link. It is a parameter set like the table above, and
+ * rendering it as an ordinary reference put every parameter of the request
+ * behind "Show child attributes" -- one click to see what the section is for,
+ * where the operation's other inputs are simply listed.
+ *
+ * The link to the declaration stays, because the type has a page of its own.
+ */
+export function QueryString({ shape, index }: { shape: Shape | Ref | null | undefined; index: Index }) {
+  if (shape === null || shape === undefined) return null;
+  const entry = isRef(shape) ? index.get(shape.$ref) : undefined;
+  const target = isRef(shape) ? index.shape(shape.$ref) : shape;
+  return (
+    <section className="parameters">
+      <h4>Query string</h4>
+      {entry && (
+        <div className="shape-line">
+          <span className="label">type</span>
+          <Link to={entry.href} className="typelink">
+            {entry.name}
+          </Link>
+        </div>
+      )}
+      <ShapeView shape={target ?? shape} index={index} hideType />
     </section>
   );
 }

@@ -30,6 +30,7 @@ const PAGES = [
   ['type-union-mixed', '/types/api.raml/Payload'],
   ['type-examples', '/types/api.raml/Review'],
   ['type-json-schema', '/types/api.raml/Invoice'],
+  ['type-json-schema-inline', '/types/api.raml/Barcode'],
   ['type-from-library', '/types/common.raml/Address'],
   ['type-using-library', '/types/api.raml/Delivery'],
   ['operation-library-annotation', '/endpoints/%2Fdeliveries/get'],

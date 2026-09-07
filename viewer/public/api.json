@@ -491,6 +491,53 @@
           }
         }
       },
+      "DeliveryQuery": {
+        "id": "pyraml://id#/declarations/types/DeliveryQuery",
+        "name": "DeliveryQuery",
+        "type": "object",
+        "display_name": "Delivery search",
+        "description": "The whole query string as one type. RAML allows this instead of\n`queryParameters:`, never as well as it.\n",
+        "type_expr": "object",
+        "properties": {
+          "since": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/types/DeliveryQuery/property/since/schema",
+              "name": "since",
+              "type": "datetime",
+              "description": "Only deliveries promised on or after this instant.",
+              "example": "2024-06-01T00:00:00Z",
+              "type_expr": "datetime"
+            }
+          },
+          "status": {
+            "required": false,
+            "type": {
+              "id": "pyraml://id#/declarations/types/DeliveryQuery/property/status/schema",
+              "name": "status?",
+              "type": "string",
+              "example": "sent",
+              "enum": [
+                "pending",
+                "sent",
+                "delivered"
+              ],
+              "type_expr": "string"
+            }
+          },
+          "city": {
+            "required": false,
+            "type": {
+              "id": "pyraml://id#/declarations/types/DeliveryQuery/property/city/schema",
+              "name": "city?",
+              "type": "string",
+              "description": "Matched against the address, case-insensitively.",
+              "example": "Bristol",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
       "Delivery": {
         "id": "pyraml://id#/declarations/types/Delivery",
         "name": "Delivery",
@@ -512,6 +559,48 @@
               "name": "promisedFor",
               "type": "datetime",
               "type_expr": "datetime"
+            }
+          }
+        }
+      },
+      "Barcode": {
+        "id": "pyraml://id#/declarations/types/Barcode",
+        "name": "Barcode",
+        "type": "json",
+        "display_name": "A barcode",
+        "description": "Declared by a JSON Schema written in place.",
+        "example": {
+          "symbology": "EAN-13",
+          "code": "9780441013593"
+        },
+        "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"required\": [\"symbology\", \"code\"],\n  \"properties\": {\n    \"symbology\": { \"type\": \"string\", \"enum\": [\"EAN-13\", \"UPC-A\", \"CODE-128\"] },\n    \"code\": { \"type\": \"string\", \"minLength\": 1 }\n  }\n}\n",
+        "json_schema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"required\": [\"symbology\", \"code\"],\n  \"properties\": {\n    \"symbology\": { \"type\": \"string\", \"enum\": [\"EAN-13\", \"UPC-A\", \"CODE-128\"] },\n    \"code\": { \"type\": \"string\", \"minLength\": 1 }\n  }\n}\n",
+        "projection": {
+          "id": null,
+          "name": null,
+          "type": "object",
+          "properties": {
+            "symbology": {
+              "required": true,
+              "type": {
+                "id": "pyraml://id#/declarations/types/Barcode/property/symbology/schema",
+                "name": null,
+                "type": "string",
+                "enum": [
+                  "EAN-13",
+                  "UPC-A",
+                  "CODE-128"
+                ]
+              }
+            },
+            "code": {
+              "required": true,
+              "type": {
+                "id": "pyraml://id#/declarations/types/Barcode/property/code/schema",
+                "name": null,
+                "type": "string",
+                "min_length": 1
+              }
             }
           }
         }
@@ -2104,7 +2193,10 @@
               "type": "pyraml://id/common.raml#/declarations/annotations/internal",
               "value": null
             }
-          ]
+          ],
+          "query_string": {
+            "$ref": "pyraml://id#/declarations/types/DeliveryQuery"
+          }
         }
       },
       "secured_by": [
@@ -2206,7 +2298,10 @@
                 "id": "pyraml://id#/web-api/endpoint/%2Fsearch/supportedOperation/get/request/parameter/query/q/schema",
                 "name": "q",
                 "type": "union",
+                "display_name": "Query",
+                "description": "The words to search for. Quoted phrases are matched whole.",
                 "required": true,
+                "example": "\"the dispossessed\" le guin",
                 "inherits": [
                   {
                     "$ref": "pyraml://id#/declarations/types/Search"
@@ -2227,6 +2322,20 @@
                     "type_expr": "string | number"
                   }
                 ]
+              }
+            },
+            "sort": {
+              "binding": "query",
+              "required": false,
+              "type": {
+                "id": "pyraml://id#/web-api/endpoint/%2Fsearch/supportedOperation/get/request/parameter/query/sort/schema",
+                "name": "sort?",
+                "type": "string",
+                "description": "A field name, optionally prefixed with `-` to reverse it.",
+                "default": "title",
+                "example": "-price",
+                "type_expr": "string",
+                "pattern": "^-?(title|isbn|price)$"
               }
             }
           }

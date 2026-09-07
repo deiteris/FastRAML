@@ -226,6 +226,26 @@ types:
 
   # A type built from a library's, reached through the `common.` prefix bound
   # in `uses:` above.
+  DeliveryQuery:
+    displayName: Delivery search
+    description: |
+      The whole query string as one type. RAML allows this instead of
+      `queryParameters:`, never as well as it.
+    type: object
+    properties:
+      since:
+        description: Only deliveries promised on or after this instant.
+        type: datetime
+        example: 2024-06-01T00:00:00Z
+      status?:
+        type: string
+        enum: [pending, sent, delivered]
+        example: sent
+      city?:
+        description: Matched against the address, case-insensitively.
+        type: string
+        example: Bristol
+
   Delivery:
     displayName: A delivery
     description: Where an order goes, and when it was promised.
@@ -233,6 +253,27 @@ types:
     properties:
       address: common.Address
       promisedFor: datetime
+
+  # The other form: the schema written inline as a string, with no `!include`.
+  # Same kind, same two representations; only where the text came from differs.
+  Barcode:
+    displayName: A barcode
+    description: Declared by a JSON Schema written in place.
+    type: |
+      {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "required": ["symbology", "code"],
+        "properties": {
+          "symbology": { "type": "string", "enum": ["EAN-13", "UPC-A", "CODE-128"] },
+          "code": { "type": "string", "minLength": 1 }
+        }
+      }
+    # Not a property named `value`: an example map carrying one is RAML's
+    # extended form, and every sibling key is then a field of the wrapper.
+    example:
+      symbology: EAN-13
+      code: "9780441013593"
 
   Publication:
     displayName: A publication
@@ -366,6 +407,7 @@ securedBy: [oauth2]
     displayName: List deliveries
     description: Every delivery, newest first.
     (common.internal):
+    queryString: DeliveryQuery
     responses:
       200:
         body:
@@ -394,8 +436,17 @@ securedBy: [oauth2]
     description: Full-text search across titles and authors.
     queryParameters:
       q:
+        displayName: Query
+        description: The words to search for. Quoted phrases are matched whole.
         type: Search
         required: true
+        example: "\"the dispossessed\" le guin"
+      sort?:
+        description: A field name, optionally prefixed with `-` to reverse it.
+        type: string
+        pattern: ^-?(title|isbn|price)$
+        default: title
+        example: -price
     responses:
       200:
         body:

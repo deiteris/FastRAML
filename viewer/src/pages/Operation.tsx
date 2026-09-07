@@ -5,10 +5,9 @@ import { useParams } from 'react-router';
 import { Annotations } from '../components/Annotations';
 import { Bodies } from '../components/Bodies';
 import { fromBaseUri, fromScheme } from '../components/Borrowed';
-import { ParameterTable } from '../components/Parameters';
+import { ParameterTable, QueryString } from '../components/Parameters';
 import { Responses } from '../components/Responses';
 import { SecurityChoice } from '../components/Security';
-import { ShapeView } from '../components/Shape';
 import { Url } from '../components/Url';
 import { Prose } from '../components/markdown';
 import { Chip, Empty, Lock, Verb } from '../components/ui';
@@ -86,12 +85,7 @@ export function OperationPage({ document, index }: Props) {
         borrowed={fromScheme(adds?.query_parameters, active?.name)}
         index={index}
       />
-      {operation.query_string && (
-        <section className="parameters">
-          <h4>Query string</h4>
-          <ShapeView shape={operation.query_string} index={index} />
-        </section>
-      )}
+      <QueryString shape={operation.query_string} index={index} />
 
       <Bodies title="Request body" bodies={operation.bodies} index={index} />
       <Responses

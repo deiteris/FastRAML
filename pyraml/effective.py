@@ -35,6 +35,8 @@ from pyraml.walk import DEFAULT_BASE, Addresses, address
 from pyraml.yamlnode import Node, NodeKind
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from pyraml.parser.annotations import DomainExtension
     from pyraml.parser.directives import SecurityScheme
     from pyraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
@@ -201,6 +203,7 @@ class _Projector:
             'base': self.addresses.base,
             'entry_point': self.fragment(raml.entry_point),
             'types': self.types(raml),
+            'annotation_types': self.declared_shapes(raml, raml.fragment_annotations),
             'security_schemes': self.security_schemes(raml),
             'endpoints': {path: self.endpoint(endpoint) for path, endpoint in raml.endpoints.items()},
             'annotations': [self.annotation(extension) for extension in raml.domain_extensions],
@@ -267,19 +270,30 @@ class _Projector:
         return out
 
     def types(self, raml: Raml) -> Json:
-        """Every declaration, by the file it was written in.
+        """Every type declaration, by the file it was written in.
 
         Typed fragments are folded in under their own location: one is a
         declaration that no `types:` block need mention.
         """
-        out: dict[str, Json] = {}
-        for uri, declared in raml.fragment_types.items():
-            if declared:
-                out[_relative(raml, uri)] = {name: self.shape(base) for name, base in declared.items()}
+        out = self.declared_shapes(raml, raml.fragment_types)
         entry = _typed_fragment(raml)
         if entry is not None:
             uri, name, shape = entry
             out[_relative(raml, uri)] = {name: self.shape(shape)}
+        return out
+
+    def declared_shapes(self, raml: Raml, declarations: Mapping[str, Mapping[str, BaseShape]]) -> dict[str, Json]:
+        """One declaration map, by the file each entry was written in.
+
+        `annotationTypes:` is a section of its own rather than a flag on a
+        shape. Without it every `(name):` application pointed at an address the
+        tree did not contain — 318 of 318 across the corpus — so a consumer
+        that only has the tree could not say what an annotation *is*.
+        """
+        out: dict[str, Json] = {}
+        for uri, declared in declarations.items():
+            if declared:
+                out[_relative(raml, uri)] = {name: self.shape(base) for name, base in declared.items()}
         return out
 
     # -- shapes ---------------------------------------------------------------

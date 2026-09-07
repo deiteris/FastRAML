@@ -155,3 +155,75 @@ class TestAnAliasReadsAsItsReferent:
         items = projection['types']['api.raml']['Prices']['items']
         assert set(items) == {'$ref'}, f'expected a link to Price, got a {items.get("name")!r} node'
         assert items['$ref'].endswith('/types/Price')
+
+
+class TestEveryReferenceResolvesInsideTheTree:
+    """A tree consumer has only the tree.
+
+    Law 15 checks addresses against the *graph*, which is a different output. It
+    passed while every annotation application in the corpus — 318 of 318 —
+    pointed at an address the tree did not contain, because annotation types had
+    no section of their own. A reference a consumer cannot follow with what it
+    was given is a dangling reference, whatever some other output holds.
+    """
+
+    DOCUMENT = """types:
+  Money:
+    properties:
+      amount: number
+  Price:
+    type: Money
+    (tier): gold
+/things:
+  get:
+    (tier): silver
+    responses:
+      200:
+        body:
+          application/json:
+            type: Price
+"""
+
+    @pytest.fixture
+    def projection(self, workspace):
+        return project(workspace, 'annotationTypes:\n  tier: string\n' + self.DOCUMENT)
+
+    def addresses(self, node: object, found: list[str] | None = None) -> list[str]:
+        """Every address the projection emits as a *reference*, not as an `id`."""
+        found = [] if found is None else found
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in ('$ref', 'type', 'declaration') and isinstance(value, str) and value.startswith('pyraml://'):
+                    found.append(value)
+                self.addresses(value, found)
+        elif isinstance(node, list):
+            for item in node:
+                self.addresses(item, found)
+        return found
+
+    def declared(self, node: object, found: set[str] | None = None) -> set[str]:
+        found = set() if found is None else found
+        if isinstance(node, dict):
+            if isinstance(node.get('id'), str):
+                found.add(node['id'])
+            for value in node.values():
+                self.declared(value, found)
+        elif isinstance(node, list):
+            for item in node:
+                self.declared(item, found)
+        return found
+
+    def test_an_annotation_type_is_a_section_of_its_own(self, projection):
+        assert list(projection['annotation_types']['api.raml']) == ['tier']
+
+    def test_every_reference_names_a_node_the_tree_carries(self, projection):
+        present = self.declared(projection)
+        dangling = sorted({ref for ref in self.addresses(projection) if ref not in present})
+        assert not dangling, f'{len(dangling)} references resolve nowhere in the tree: {dangling}'
+
+    def test_an_annotation_applied_anywhere_reaches_its_declaration(self, projection):
+        declaration = projection['annotation_types']['api.raml']['tier']['id']
+        on_type = projection['types']['api.raml']['Price']['annotations'][0]
+        on_operation = projection['endpoints']['/things']['operations']['get']['annotations'][0]
+        assert on_type['type'] == declaration
+        assert on_operation['type'] == declaration

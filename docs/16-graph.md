@@ -1285,5 +1285,32 @@ containers, so it holds no facets of its own; `items` should be
 `{"$ref": <Price>}`. The law's test carries this as a strict `xfail` until it
 is.
 
-`kind`, `link`, `type_expr` and `is_annotation_type` fall on the parser side by
-the same rule.
+**`annotationTypes:` is a section of its own**, keyed by file like `types` and
+`security_schemes`. Without it every `(name):` application pointed at an address
+the tree did not contain — **318 of 318 across the corpus**. Law 15 did not see
+it: that law resolves addresses against the *graph*, which does carry annotation
+types. A tree consumer has only the tree, so `test_consumer_traversal.py`
+resolves them against the tree instead.
+
+By the same rule, still outstanding:
+
+| | verdict | evidence |
+|---|---|---|
+| `alias_of` and the alias node | leak — the honest read is **wrong** | 427 nodes, 200 anonymous, 50 misleading `inherits` |
+| `kind` | redundant with `type` | 1:1 across all 16 kinds, 879 documents, **zero** ambiguous pairs |
+| `link`, `is_annotation_type` | parser state | `is_annotation_type` is `false` on every shape; the section above replaces it |
+| `type_expr` | **keep** | what the author wrote is data, not parser state |
+
+### 11.9 The vocabulary is the model's field names
+
+`min_length`, not `minLength`. The projection is the model serialised, so there
+is no translation layer and no table to drift.
+
+The consequence is deliberate: **the wire format versions with the model.**
+Renaming a field is a published change. What makes that tractable rather than
+reckless is that the golden layer holds the same names, so no rename can happen
+without a golden diff showing exactly what a consumer will see.
+
+The graph keeps RAML's spelling — `raml:minLength` — because those are RDF
+predicate IRIs in a published vocabulary, a different naming system for a
+different purpose (§ 2). The two disagreeing is by design, not drift.

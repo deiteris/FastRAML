@@ -10,7 +10,11 @@ baseUriParameters:
 mediaType: [application/json]
 protocols: [HTTP, HTTPS]
 description: |
-  A worked example exercising every construct the tree carries.
+  A worked example exercising every construct the tree carries — including
+  **Markdown** in a description, which is what the RAML spec says every
+  `description:` is.
+
+  See [Getting started](#) for the `{tenant}` you will need.
 documentation:
   - title: Getting started
     content: |
@@ -112,7 +116,15 @@ types:
   Book:
     type: Entity
     displayName: A Book
-    description: One book in the catalogue.
+    description: |
+      One book in the catalogue.
+
+      A book is identified by its `isbn`, which is the *thirteen*-digit form
+      with no separators. Two fields are worth knowing about:
+
+      * `price` is the current price; `priceHistory` is every price it has
+        had, oldest first.
+      * `related` is a list of other books, and may point back at this one.
     (deprecated): use Publication instead
     properties:
       title:
@@ -275,7 +287,9 @@ securedBy: [oauth2]
           application/json:
             type: Book
       400:
-        description: Bad request
+        description: |
+          The body did not match `Book` — see the schema above. The response
+          carries no envelope; the status code is the whole of it.
   /{isbn}:
     uriParameters:
       isbn:

@@ -6,7 +6,8 @@ import { ParameterTable } from '../components/Parameters';
 import { Responses } from '../components/Responses';
 import { ShapeView } from '../components/Shape';
 import { Usages } from '../components/Usages';
-import { Chip, Empty, KeyValues, Prose, Section } from '../components/ui';
+import { Prose } from '../components/markdown';
+import { Chip, Empty, KeyValues, Section } from '../components/ui';
 import { type Json, humanise } from '../model';
 import type { Props } from './props';
 

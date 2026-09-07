@@ -15,11 +15,13 @@
     "shots": "npm run build && node shots.mjs"
   },
   "dependencies": {
+    "markdown-it": "^15.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router": "^7.9.0"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

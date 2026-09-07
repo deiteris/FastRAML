@@ -10,7 +10,8 @@ import { Responses } from '../components/Responses';
 import { SecurityChoice } from '../components/Security';
 import { ShapeView } from '../components/Shape';
 import { Url } from '../components/Url';
-import { Chip, Empty, Lock, Prose, Verb } from '../components/ui';
+import { Prose } from '../components/markdown';
+import { Chip, Empty, Lock, Verb } from '../components/ui';
 import { declarations } from '../model';
 import type { Props } from './props';
 

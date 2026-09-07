@@ -1,6 +1,7 @@
 /** The index pages: every type, every annotation type, every scheme. */
 
 import { Link } from 'react-router';
+import { ProseInline } from '../components/markdown';
 import { Chip, Empty } from '../components/ui';
 import { declarations, spellingOf } from '../model';
 import type { Props } from './props';
@@ -37,7 +38,9 @@ function DeclarationList({ document, index, of, title }: Props & { of: 'types' |
                 <td>
                   <Chip tone="type">{spellingOf(value, index)}</Chip>
                 </td>
-                <td className="property-description">{value.description}</td>
+                <td className="property-description">
+                  <ProseInline>{value.description}</ProseInline>
+                </td>
                 <td>
                   <code className="dim">{file}</code>
                 </td>
@@ -73,7 +76,9 @@ export function SecurityList({ document, index }: Props) {
                 <td>
                   <Chip tone="type">{value.type}</Chip>
                 </td>
-                <td className="property-description">{value.description}</td>
+                <td className="property-description">
+                  <ProseInline>{value.description}</ProseInline>
+                </td>
               </tr>
             );
           })}

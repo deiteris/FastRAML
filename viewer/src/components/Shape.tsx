@@ -40,7 +40,8 @@ import {
 import { Annotations } from './Annotations';
 import { From } from './Borrowed';
 import { Code, Labelled, oneLine } from './json';
-import { Chip, Prose, Tabs } from './ui';
+import { Prose, ProseInline } from './markdown';
+import { Chip, Tabs } from './ui';
 
 interface Props {
   shape: Shape | Ref | null | undefined;
@@ -113,7 +114,7 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
       <Link to={entry.href} className="typelink">
         {entry.name}
       </Link>
-      {target?.description && <span className="reference-desc">{target.description}</span>}
+      <ProseInline className="reference-desc">{target?.description}</ProseInline>
       {expandable(target) && (
         <>
           <Expander open={open} onToggle={() => setOpen(!open)} />
@@ -389,7 +390,7 @@ export function Attribute({
           belongs to the target, and reading it used to require opening the
           attribute list first. The expanded body suppresses it, so it appears
           once either way. */}
-      {described && <p className="attr-desc">{described}</p>}
+      <ProseInline className="attr-desc">{described}</ProseInline>
       {expandable(target) && (
         <>
           <Expander open={open} onToggle={() => setOpen(!open)} />

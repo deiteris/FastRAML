@@ -11,7 +11,8 @@ import { Annotations } from './Annotations';
 import { Bodies } from './Bodies';
 import { type Borrowed, From } from './Borrowed';
 import { ParameterTable } from './Parameters';
-import { Empty, Prose, Tabs } from './ui';
+import { Prose } from './markdown';
+import { Empty, Tabs } from './ui';
 
 export function Responses({
   responses,

@@ -579,7 +579,10 @@ h4 + .tabs > .tabs-strip,
   color: var(--required);
 }
 
+/* Inline Markdown in a block slot: `renderInline` emits no `<p>`, so the
+   element it lands in has to supply the break the paragraph used to. */
 .attr-desc {
+  display: block;
   color: var(--dim);
   margin: 6px 0 0;
   font-size: 14px;
@@ -822,16 +825,144 @@ h4 + .tabs > .tabs-strip,
   line-height: 1;
 }
 
+/*
+ * Rendered Markdown.
+ *
+ * Every RAML description is Markdown, so this styles what a description can
+ * contain rather than assuming a paragraph. The measure is capped: a
+ * documentation item is meant to be read, and prose at the full width of a
+ * 1400px window is not.
+ */
 .prose {
   color: var(--dim);
   margin: 6px 0;
+  max-width: 70ch;
 }
 
-.prose-block {
-  white-space: pre-wrap;
-  font-family: var(--sans);
-  margin: 0;
-  color: var(--dim);
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
+}
+
+.prose p {
+  margin: 0 0 12px;
+  line-height: 24px;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  color: var(--ink);
+  margin: 24px 0 8px;
+  border: 0;
+  padding: 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.prose h1 {
+  font-size: 19px;
+}
+
+.prose h2 {
+  font-size: 17px;
+}
+
+.prose h3,
+.prose h4 {
+  font-size: 15px;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.prose li {
+  margin: 4px 0;
+  line-height: 24px;
+}
+
+.prose a {
+  color: var(--accent);
+}
+
+.prose blockquote {
+  margin: 12px 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--line);
+  color: var(--faint);
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 20px 0;
+}
+
+.prose table {
+  border-collapse: collapse;
+  margin: 0 0 12px;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+/* A fenced or indented block. `code` inside one must not be chipped twice. */
+.prose pre {
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 0 0 12px;
+}
+
+.prose code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/*
+ * The inline form: a description sharing a line or a cell with something else.
+ * Only what fits on one line is styled, because block elements cannot occur --
+ * `renderInline` emits none.
+ */
+.prose-inline code,
+.attr-desc code,
+.reference-desc code,
+.property-description code,
+.gloss code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.gloss {
+  display: block;
+  color: var(--faint);
+  font-size: 13.5px;
+  margin-top: 2px;
 }
 
 .dim {
@@ -875,11 +1006,6 @@ h4 + .tabs > .tabs-strip,
 
 .body-media {
   margin-bottom: 4px;
-}
-
-.responses .disclosure {
-  border-top: 1px solid var(--line-soft);
-  padding-top: 10px;
 }
 
 .scopes,
@@ -995,41 +1121,6 @@ h4 {
 
 .security .requirement > .shape-line:first-child {
   margin-top: 0;
-}
-
-/* -- disclosure ----------------------------------------------------------------- */
-
-.disclosure-summary {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 10px;
-  background: none;
-  border: 0;
-  padding: 6px 8px;
-  margin-left: -8px;
-  border-radius: 7px;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.disclosure-summary:hover {
-  background: var(--line-soft);
-}
-
-.disclosure-caret {
-  color: var(--faint);
-  font-size: 13px;
-  width: 14px;
-  flex: none;
-}
-
-.disclosure-body {
-  margin: 6px 0 10px;
-  padding-left: 16px;
-  border-left: 2px solid var(--line);
 }
 
 /* -- misc ------------------------------------------------------------------------ */

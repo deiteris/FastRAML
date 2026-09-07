@@ -3,7 +3,8 @@
 import { Link } from 'react-router';
 import { Annotations } from '../components/Annotations';
 import { ParameterTable } from '../components/Parameters';
-import { Chip, Empty, KeyValues, Prose, Section } from '../components/ui';
+import { Prose } from '../components/markdown';
+import { Chip, Empty, KeyValues, Section } from '../components/ui';
 import { baseUriOf, declarations } from '../model';
 import type { Props } from './props';
 

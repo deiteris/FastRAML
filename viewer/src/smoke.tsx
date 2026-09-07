@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { Pages } from './App';
+import { renderMarkdown } from './components/markdown';
 import { Index, declarations, isRef, labelOf, type Document, type Shape } from './model';
 
 const source = process.argv[2] ?? 'public/api.json';
@@ -114,6 +115,57 @@ walk(document, (shape) => {
 });
 
 process.stdout.write(`${shapes} shapes checked, ${members} union members\n`);
+
+/*
+ * The Markdown renderer, on a description written to attack the reader.
+ *
+ * Descriptions are Markdown by the spec and are rendered as Markdown, which
+ * puts author-controlled text through `dangerouslySetInnerHTML`. The safety of
+ * that rests on two settings, and a setting is exactly the kind of thing a
+ * later edit turns off while every page still renders.
+ */
+const HOSTILE: [string, string][] = [
+  ['a raw script tag', '<script>alert(1)</script>'],
+  ['an inline event handler', '<img src=x onerror="alert(1)">'],
+  ['an iframe', '<iframe src="https://example.com"></iframe>'],
+  ['a javascript: link', '[click](javascript:alert(1))'],
+  ['a javascript: link, cased', '[click](JaVaScRiPt:alert(1))'],
+  ['a data: link', '[click](data:text/html;base64,PHNjcmlwdD4=)'],
+  ['an autolink', '<javascript:alert(1)>'],
+  ['a reference link', '[click][evil]\n\n[evil]: javascript:alert(1)'],
+];
+/*
+ * Read the *tags*, not the string.
+ *
+ * `<img src=x onerror="alert(1)">` renders as the escaped text
+ * `&lt;img src=x onerror=&quot;...`, which is exactly the right outcome and
+ * still contains `onerror=`. Escaped output has no `<` in it at all, so
+ * extracting tags first is what separates "rendered dangerously" from
+ * "rendered safely, as the words the author typed".
+ */
+const EXECUTES = /^<\s*(script|iframe|object|embed|img|svg|form)\b|\son\w+\s*=/i;
+const BAD_TARGET = /(?:href|src)\s*=\s*["']?\s*(?:javascript|vbscript|data):/i;
+for (const [what, source] of HOSTILE) {
+  const html = renderMarkdown(source);
+  const dangerous = (html.match(/<[^>]*>/g) ?? []).filter((tag) => EXECUTES.test(tag) || BAD_TARGET.test(tag));
+  if (dangerous.length > 0) {
+    process.stderr.write(`UNSAFE ${what}: ${source}\n       rendered ${dangerous.join(' ')}\n`);
+    failed += 1;
+  }
+}
+// An ordinary link still works, and leaves with no handle on this window.
+const link = renderMarkdown('[docs](https://example.com)');
+if (!link.includes('href="https://example.com"') || !link.includes('rel="noopener noreferrer nofollow"')) {
+  process.stderr.write(`LINK   an external link lost its hardening: ${link.trim()}\n`);
+  failed += 1;
+}
+// And that it is rendering at all -- a renderer that returned "" would pass
+// every check above.
+if (!renderMarkdown('a *list*:\n\n- one\n').includes('<li>')) {
+  process.stderr.write('the Markdown renderer produced no list; the checks above are vacuous\n');
+  failed += 1;
+}
+process.stdout.write(`${HOSTILE.length} hostile descriptions checked\n`);
 if (shapes < 10) {
   process.stderr.write('the document produced almost no shapes; the checks above are vacuous\n');
   failed += 1;

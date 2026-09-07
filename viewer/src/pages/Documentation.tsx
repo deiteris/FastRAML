@@ -13,7 +13,8 @@
  */
 
 import { Link, useParams } from 'react-router';
-import { Empty, Prose } from '../components/ui';
+import { Prose, ProseInline } from '../components/markdown';
+import { Empty } from '../components/ui';
 import type { Props } from './props';
 
 export function DocumentationPage({ document }: Props) {
@@ -21,14 +22,13 @@ export function DocumentationPage({ document }: Props) {
   const items = document.entry_point?.documentation ?? [];
   const item = items[Number(at)];
   if (!item) return <Empty>No documentation item {at} in this document.</Empty>;
+  // No subtitle. A page that says `documentation` under its own title is
+  // labelling itself for nobody: the reader arrived from the Documentation
+  // section of the nav, which is still showing this item as the current one.
   return (
     <article>
       <h1>{item.title}</h1>
-      <p className="subtitle">documentation</p>
-      {/* Verbatim, like every other description here: RAML prose is Markdown
-          and rendering it means a Markdown dependency and its injection
-          surface, for a view whose subject is the model. */}
-      <pre className="prose-block">{item.content}</pre>
+      <Prose>{item.content}</Prose>
     </article>
   );
 }
@@ -43,7 +43,7 @@ export function DocumentationList({ document }: Props) {
         {items.map((item, at) => (
           <li key={at}>
             <Link to={`/documentation/${at}`}>{item.title}</Link>
-            <Prose>{first(item.content)}</Prose>
+            <ProseInline className="gloss">{first(item.content)}</ProseInline>
           </li>
         ))}
       </ul>
@@ -51,7 +51,8 @@ export function DocumentationList({ document }: Props) {
   );
 }
 
-/** The first line, as a gloss. These run to paragraphs. */
+/** The first paragraph, as a gloss. These run to pages. */
 function first(content: string): string {
-  return content.split(/\r?\n/).find((line) => line.trim() !== '') ?? '';
+  const [paragraph] = content.split(/\r?\n\s*\r?\n/);
+  return (paragraph ?? '').trim();
 }

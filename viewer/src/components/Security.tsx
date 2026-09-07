@@ -10,6 +10,7 @@
 
 import { Link } from 'react-router';
 import type { Index, SecuredBy, SecurityScheme } from '../model';
+import { Prose } from './markdown';
 import { Chip, Lock } from './ui';
 
 /**
@@ -74,7 +75,7 @@ export function SecurityChoice({
                 </Link>
               )}
             </div>
-            {declared?.description && <p className="prose">{declared.description}</p>}
+            <Prose>{declared?.description}</Prose>
             {/* `null` is "not narrowed" and `[]` is "narrowed to nothing"; the
                 two are different and the emitter keeps them apart. */}
             {scheme && scheme.scopes !== null && (

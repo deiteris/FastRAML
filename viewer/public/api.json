@@ -12,7 +12,7 @@
       "HTTP",
       "HTTPS"
     ],
-    "description": "A worked example exercising every construct the tree carries.\n",
+    "description": "A worked example exercising every construct the tree carries \u2014 including\n**Markdown** in a description, which is what the RAML spec says every\n`description:` is.\n\nSee [Getting started](#) for the `{tenant}` you will need.\n",
     "base_uri_parameters": {
       "tenant": {
         "binding": "uri",
@@ -114,7 +114,7 @@
         "name": "Book",
         "type": "object",
         "display_name": "A Book",
-        "description": "One book in the catalogue.",
+        "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
         "example": {
           "id": "b-1",
           "createdAt": "2024-01-01T00:00:00Z",
@@ -199,7 +199,7 @@
                 "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
                 "name": "Book",
                 "type": "recursive",
-                "description": "One book in the catalogue.",
+                "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                 "annotations": [
                   {
                     "name": "deprecated",
@@ -736,7 +736,7 @@
                   "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/returns/201/payload/application%2Fjson/schema",
                   "name": "application/json",
                   "type": "object",
-                  "description": "One book in the catalogue.",
+                  "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                   "inherits": [
                     {
                       "$ref": "pyraml://id#/declarations/types/Book"
@@ -804,7 +804,7 @@
                           "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
                           "name": "Book",
                           "type": "recursive",
-                          "description": "One book in the catalogue.",
+                          "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                           "annotations": [
                             {
                               "name": "deprecated",
@@ -881,7 +881,7 @@
               }
             },
             "400": {
-              "description": "Bad request"
+              "description": "The body did not match `Book` \u2014 see the schema above. The response\ncarries no envelope; the status code is the whole of it.\n"
             }
           },
           "description": "Adds one book to the catalogue and returns it with its identifier.",
@@ -919,7 +919,7 @@
               "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/request/payload/application%2Fjson/schema",
               "name": "application/json",
               "type": "object",
-              "description": "One book in the catalogue.",
+              "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
               "inherits": [
                 {
                   "$ref": "pyraml://id#/declarations/types/Book"
@@ -987,7 +987,7 @@
                       "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
                       "name": "Book",
                       "type": "recursive",
-                      "description": "One book in the catalogue.",
+                      "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                       "annotations": [
                         {
                           "name": "deprecated",
@@ -1065,7 +1065,7 @@
               "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/request/payload/application%2Fxml/schema",
               "name": "application/xml",
               "type": "object",
-              "description": "One book in the catalogue.",
+              "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
               "inherits": [
                 {
                   "$ref": "pyraml://id#/declarations/types/Book"
@@ -1133,7 +1133,7 @@
                       "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
                       "name": "Book",
                       "type": "recursive",
-                      "description": "One book in the catalogue.",
+                      "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                       "annotations": [
                         {
                           "name": "deprecated",
@@ -1288,7 +1288,7 @@
                   "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
                   "name": "application/json",
                   "type": "object",
-                  "description": "One book in the catalogue.",
+                  "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                   "inherits": [
                     {
                       "$ref": "pyraml://id#/declarations/types/Book"
@@ -1356,7 +1356,7 @@
                           "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
                           "name": "Book",
                           "type": "recursive",
-                          "description": "One book in the catalogue.",
+                          "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                           "annotations": [
                             {
                               "name": "deprecated",
@@ -1434,7 +1434,7 @@
                   "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get/returns/200/payload/application%2Fxml/schema",
                   "name": "application/xml",
                   "type": "object",
-                  "description": "One book in the catalogue.",
+                  "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                   "inherits": [
                     {
                       "$ref": "pyraml://id#/declarations/types/Book"
@@ -1502,7 +1502,7 @@
                           "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
                           "name": "Book",
                           "type": "recursive",
-                          "description": "One book in the catalogue.",
+                          "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                           "annotations": [
                             {
                               "name": "deprecated",

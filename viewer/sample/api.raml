@@ -241,6 +241,21 @@ types:
     type: Publication
     properties:
       pages: integer
+
+  # A type declared by JSON Schema rather than by RAML. The spec allows the
+  # wrapper facets only -- displayName, description, example, annotations --
+  # and no RAML facet may sit beside the schema.
+  Invoice:
+    displayName: An invoice
+    description: Declared by an external JSON Schema, not by RAML facets.
+    type: !include invoice.json
+    example:
+      number: INV-000417
+      total: 24.5
+      paid: false
+      lines:
+        - description: One paperback
+          amount: 24.5
 traits:
   paged:
     queryParameters:

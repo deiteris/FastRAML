@@ -66,15 +66,37 @@ export function Prose({ children }: { children?: string }) {
 }
 
 /**
- * The same, with no block structure.
+ * The first paragraph, with no block structure.
  *
  * For the places a description shares a line or a table cell with something
  * else: an attribute's gloss, a reference's, a row in a listing. A `<p>` there
- * breaks the row it is part of, and these are one sentence in practice.
+ * breaks the row it is part of.
+ *
+ * The first paragraph and not the whole of it, for the reason docs/16 § 9.6
+ * gives for the same decision in `render.py`: a description may run to pages
+ * and the row is one line. Rendering the whole with `renderInline` is worse
+ * than long -- it emits no block elements at all, so a list came out as its
+ * source, asterisks and all, run together with the paragraph above it.
  */
 export function ProseInline({ className, children }: { className?: string; children?: string }) {
-  if (!children || children.trim() === '') return null;
-  return <span className={className} dangerouslySetInnerHTML={{ __html: md.renderInline(children) }} />;
+  const gloss = children === undefined ? '' : firstParagraph(children);
+  if (gloss === '') return null;
+  return <span className={className} dangerouslySetInnerHTML={{ __html: md.renderInline(gloss) }} />;
+}
+
+/**
+ * Up to the first blank line, or the first line that opens a block.
+ *
+ * A list may follow a paragraph with no blank line between them, so the blank
+ * line alone is not the boundary.
+ */
+export function firstParagraph(source: string): string {
+  const lines: string[] = [];
+  for (const line of source.split(/\r?\n/)) {
+    if (line.trim() === '' || /^\s*([*+-]\s|\d+[.)]\s|#{1,6}\s|>|```|\|)/.test(line)) break;
+    lines.push(line.trim());
+  }
+  return lines.join(' ').trim();
 }
 
 /** The renderer itself, for a check that wants the string. */

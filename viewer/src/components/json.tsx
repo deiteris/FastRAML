@@ -9,6 +9,7 @@
  */
 
 import type { Json } from '../model';
+import { RATIO_FACETS, showRatio } from '../rational';
 
 export function Code({ children }: { children: Json }) {
   const text = typeof children === 'string' ? children : JSON.stringify(children, null, 2);
@@ -29,4 +30,15 @@ export function oneLine(value: Json): string {
   if (typeof value === 'string') return value;
   if (value === null) return 'null';
   return JSON.stringify(value);
+}
+
+/**
+ * A facet's value, with the three that are exact ratios read back as decimals.
+ *
+ * `multipleOf 1/100` is what the tree carries and is faithful to the parser;
+ * it is not what the author wrote and not what a reader is checking against.
+ */
+export function facetValue(name: string, value: Json): string {
+  if (RATIO_FACETS.has(name) && typeof value === 'string') return showRatio(value);
+  return oneLine(value);
 }

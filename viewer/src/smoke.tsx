@@ -18,7 +18,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { Pages } from './App';
 import { renderMarkdown } from './components/markdown';
-import { Index, declarations, isRef, labelOf, type Document, type Shape } from './model';
+import { Index, declarations, facetsOf, isRef, labelOf, type Document, type Shape } from './model';
+import { RATIO_FACETS, rationalOf, showRatio } from './rational';
 
 const source = process.argv[2] ?? 'public/api.json';
 const document = JSON.parse(readFileSync(source, 'utf-8')) as Document;
@@ -166,6 +167,62 @@ if (!renderMarkdown('a *list*:\n\n- one\n').includes('<li>')) {
   failed += 1;
 }
 process.stdout.write(`${HOSTILE.length} hostile descriptions checked\n`);
+
+/*
+ * The exact ratios, read back as the decimals they were written as.
+ *
+ * `Number(n) / Number(d)` would pass the first three of these and is the one
+ * line that puts the value back through the float the parser spent its effort
+ * avoiding -- `11/10` is the case CLAUDE.md names, where `multipleOf: 1.1` must
+ * accept `2.2`.
+ */
+const RATIOS: [string, string][] = [
+  ['1/100', '0.01'],
+  ['11/10', '1.1'],
+  ['5/2', '2.5'],
+  ['7', '7'],
+  ['0', '0'],
+  ['-3/4', '-0.75'],
+  ['1/1024', '0.0009765625'],
+  // Beyond a double's 53 bits in both directions.
+  ['1/10000000000000000000000', '0.0000000000000000000001'],
+  ['123456789012345678901/100', '1234567890123456789.01'],
+  // Not a terminating decimal, so it stays a ratio rather than becoming a
+  // rounded one. Unreachable from a RAML scalar, and a lie if it appeared.
+  ['1/3', '1/3'],
+];
+for (const [ratio, expected] of RATIOS) {
+  const shown = showRatio(ratio);
+  if (shown !== expected) {
+    process.stderr.write(`RATIO  ${ratio} rendered as ${shown}, expected ${expected}\n`);
+    failed += 1;
+  }
+}
+
+/*
+ * And that the document really does carry ratios where this claims.
+ *
+ * `string | number` is what the binding says, and both occur: an integer bound
+ * arrives as a JSON number and a `Fraction` as a string. Only the strings are
+ * this module's business -- but if none of them were strings any more, the
+ * conversion above would be dead code passing its own tests, so one has to be.
+ */
+let ratios = 0;
+walk(document, (shape) => {
+  for (const [name, value] of facetsOf(shape)) {
+    if (!RATIO_FACETS.has(name) || typeof value !== 'string') continue;
+    ratios += 1;
+    if (rationalOf(value) === null) {
+      process.stderr.write(`RATIO  ${shape.name ?? shape.id}: ${name} is ${JSON.stringify(value)}, not a ratio\n`);
+      failed += 1;
+    }
+  }
+});
+if (ratios === 0) {
+  process.stderr.write('no facet in the document arrived as a ratio; the conversion is untested against real output\n');
+  failed += 1;
+}
+process.stdout.write(`${RATIOS.length} ratios converted, ${ratios} in the document\n`);
 if (shapes < 10) {
   process.stderr.write('the document produced almost no shapes; the checks above are vacuous\n');
   failed += 1;

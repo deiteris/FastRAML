@@ -43,16 +43,11 @@ export function DocumentationList({ document }: Props) {
         {items.map((item, at) => (
           <li key={at}>
             <Link to={`/documentation/${at}`}>{item.title}</Link>
-            <ProseInline className="gloss">{first(item.content)}</ProseInline>
+            {/* `ProseInline` takes the first paragraph itself. */}
+            <ProseInline className="gloss">{item.content}</ProseInline>
           </li>
         ))}
       </ul>
     </article>
   );
-}
-
-/** The first paragraph, as a gloss. These run to pages. */
-function first(content: string): string {
-  const [paragraph] = content.split(/\r?\n\s*\r?\n/);
-  return (paragraph ?? '').trim();
 }

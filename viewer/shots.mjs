@@ -29,6 +29,7 @@ const PAGES = [
   ['type-inline-items', '/types/api.raml/Shelf'],
   ['type-union-mixed', '/types/api.raml/Payload'],
   ['type-examples', '/types/api.raml/Review'],
+  ['type-json-schema', '/types/api.raml/Invoice'],
   ['type-discriminated', '/types/api.raml/Publication'],
   ['type-discriminator-value', '/types/api.raml/Magazine'],
   ['type-discriminator-default', '/types/api.raml/Pamphlet'],

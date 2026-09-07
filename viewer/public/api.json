@@ -604,6 +604,33 @@
             }
           }
         }
+      },
+      "Invoice": {
+        "id": "pyraml://id#/declarations/types/Invoice",
+        "name": "Invoice",
+        "type": "json",
+        "display_name": "An invoice",
+        "description": "Declared by an external JSON Schema, not by RAML facets.",
+        "example": {
+          "number": "INV-000417",
+          "total": 24.5,
+          "paid": false,
+          "lines": [
+            {
+              "description": "One paperback",
+              "amount": 24.5
+            }
+          ]
+        },
+        "inherits": [
+          {
+            "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json",
+            "name": "invoice.json",
+            "type": "json",
+            "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n"
+          }
+        ],
+        "type_expr": "invoice.json"
       }
     }
   },

@@ -421,3 +421,69 @@ class TestEveryTypeRenders:
                     offenders.append(f'{name}: not loadable: {str(err)[:80]}')
         assert rendered > 200, f'the corpus was not found ({rendered} rendered)'
         assert not offenders, '\n'.join(offenders[:20])
+
+
+class TestNothingArrivesUndeclared:
+    """Law 19 — the generated contract covers what the projection emits.
+
+    `pyraml/views/bindings.py` reads source: `tree.py`'s AST for the key sets
+    and the kind classes' annotations for the facets. Reading source is a
+    hypothesis about what running it does, and the corpus is the only thing that
+    settles it. A facet reachable only through a construct no unit fixture
+    writes -- a type expression, a template expansion, a JSON Schema projection
+    -- arrives here and nowhere else.
+
+    Shapes only. The structural records have fixed key sets that generation
+    already refuses to emit incompletely; shapes are the open set, because a
+    kind can grow a facet.
+
+    `security_schemes` is walked around rather than through: a scheme carries
+    `id`, `name` and `type` as well, so the test that finds shapes finds those
+    too and reported four of `SecurityScheme`'s own keys as undeclared shape
+    keys. The `described_by` under it holds real shapes, so it is walked.
+    """
+
+    def test_every_shape_key_over_the_corpus_is_in_the_contract(self):
+        from pyraml import ParseOptions, RamlError, parse_from_path
+        from pyraml.views.tree import build_tree
+        from tests.unit.test_bindings import declared_members
+
+        _root_or_skip()
+        options = ParseOptions(unwrap=True)
+        declared = declared_members()['Shape'] | {'head'}
+        seen: set[str] = set()
+        shapes = 0
+        for path in collect_fixtures('valid'):
+            try:
+                raml = parse_from_path(path, options)
+            except (RamlError, OSError):
+                continue
+            shapes += _shape_keys(build_tree(raml), seen)
+        assert shapes > 500, f'the corpus was not found ({shapes} shapes)'
+        assert not seen - declared, f'emitted but not in the contract: {sorted(seen - declared)}'
+
+
+def _shape_keys(node: object, into: set[str]) -> int:
+    """Every key of every shape below `node`, and how many shapes there were."""
+    found = 0
+    if isinstance(node, dict):
+        if {'id', 'name', 'type'} <= set(node) and not _is_scheme(node):
+            into.update(node)
+            found += 1
+        for key, value in node.items():
+            found += _shape_keys(value, into)
+            del key
+    elif isinstance(node, list):
+        for item in node:
+            found += _shape_keys(item, into)
+    return found
+
+
+def _is_scheme(node: dict[str, object]) -> bool:
+    """A `SecurityScheme`, which shares `id`/`name`/`type` with a shape.
+
+    Told apart by a key no shape has. `type` on a scheme is `OAuth 2.0` and on a
+    shape is a RAML type name, which would be the other way to ask -- but a
+    closed list of scheme types is a table, and this is one key.
+    """
+    return bool({'described_by', 'settings'} & set(node))

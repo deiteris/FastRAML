@@ -1374,3 +1374,44 @@ without a golden diff showing exactly what a consumer will see.
 The graph keeps RAML's spelling — `raml:minLength` — because those are RDF
 predicate IRIs in a published vocabulary, a different naming system for a
 different purpose (§ 2). The two disagreeing is by design, not drift.
+
+### 11.11 The contract is generated
+
+`pyraml/views/bindings.py` writes `viewer/src/tree.d.ts` — the same key list as
+TypeScript declarations, for a consumer outside Python. Hand-written it would go
+stale the first time a kind grew a facet, and stale *quietly*: a key the
+declarations omit still arrives, and a consumer that does not read it looks like
+a document that did not say it. That is law 14's argument, applied across a
+boundary no type checker spans.
+
+Two things are derived, and both by reading source rather than importing it:
+
+| | from | how |
+|---|---|---|
+| which keys arrive, and which are optional | `tree.py`'s own AST | every `_Projector` method's opening display, its `out[...] =` stores, and its `for field in (...)` tuples; a key written under an `if` is `?` |
+| a kind's facets and their types | the `self.x: T` annotations in each kind's `__init__` | Python keeps no runtime record of these, so nothing but the AST has them |
+
+The value type of a *structural* key is not derivable — `out['operations']` is
+an expression — so those are declared in `_STRUCTURAL`. Only their types: the
+key sets come from the AST, so **a key added to the projection and not declared
+there fails generation, by name**. The hand-written half cannot fall behind,
+because it is not the half that says which keys exist.
+
+Three things this found on its first two runs, none of which any test could see:
+
+- **`JsonShape` leaked its compiled validator.** `kind_facets` walks
+  `copyable_slots` and skipped only names beginning `__`, so `_compiled`,
+  `_cached_shape`, `_cached_defs` and `validator` were projected — the first as
+  a Python `repr` carrying an **absolute filesystem path**. Now one rule: a
+  leading underscore is a working buffer. `raw` goes too, being the schema text
+  `type_expr` already carries.
+- **`minimum` is a `number` on an integer and a `string` on a number**, because
+  a number's bound is a `Fraction` and the parser never passes one through
+  `float`. `multipleOf: 0.01` arrives as `"1/100"`. Two kinds declaring one
+  facet name is one member typed as the union, and the encoding is stated where
+  a consumer will read it — `parseFloat` on it returns `NaN`.
+- **Three keys were missing from the first generated file.** `shape()` has two
+  `for field in (...)` loops and both call the variable `field`; a last-wins
+  mapping kept only the second, dropping `display_name`, `description` and
+  `required`. Caught by law 19, which is why that law asks the corpus rather
+  than the generator.

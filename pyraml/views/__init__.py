@@ -18,10 +18,16 @@ enforcing.
     render      one type or endpoint as text, for reading (§ 9)
     queries     the SPARQL catalogue over `graph` (§ 6)
     diff        two versions compared, and what breaks (§ 10)
+    bindings    the tree's contract as TypeScript declarations (§ 11.11)
 
 `walk` is the shared substrate rather than a view of its own: `graph` and `tree`
 are lossy on orthogonal axes, and both are addressed by the same walk so a node
 in one is joinable with the same entity in the other (§ 4).
+
+`bindings` is the odd one: it reads no model at all, only the *source* of
+`tree` and of the kind classes, and emits the declarations a consumer outside
+Python needs in order to read what `tree` writes. It is here because it
+describes this layer's output and belongs on this side of the line.
 
 Importing this package imports nothing: each module is imported by name, and
 `queries` needs `pyoxigraph` only to *run* a query, not to hold one.

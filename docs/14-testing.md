@@ -380,6 +380,16 @@ The laws. Section 4.1 records where each is checked and over what input —
     had drifted by five names: a stub that omits an export leaves it resolving
     at runtime and failing to type-check, so nothing in either suite sees it.
 
+19. **Nothing arrives undeclared** — every key the projection emits over the
+    corpus is in the generated contract ([16](16-graph.md) § 11.11), in
+    `tests/tck/test_properties.py`. The generator reads source, and reading
+    source is a hypothesis about what running it does; only output settles it.
+    It earned its place immediately: it found `JsonShape` projecting its
+    compiled validator — with an absolute path inside the `repr` — and found
+    three keys the generator had dropped because two loops in `shape()` share a
+    variable name. `tests/unit/test_bindings.py` asks the same of one document
+    declaring every kind, so the check still runs without a TCK checkout.
+
 ### 4.1 Where each law lives, and why
 
 | Laws | Where | Input |

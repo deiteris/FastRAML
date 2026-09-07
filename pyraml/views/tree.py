@@ -74,6 +74,12 @@ _SKIP = frozenset(
         '_unwrapped',
         '_visiting',
         'type_expr_refs',
+        # A `JsonShape` holds a compiled validator and the caches around it. The
+        # validator's `repr` carries an absolute path and a registry object, so
+        # emitting it leaked the machine into the view as well as the parser;
+        # `raw` is the schema text, which `type_expr` already carries.
+        'raw',
+        'validator',
     }
 )
 
@@ -393,7 +399,10 @@ class _Projector:
         """
         out: dict[str, Json] = {}
         for name in copyable_slots(type(shape)):
-            if name in _SKIP or name.startswith('__'):
+            # A leading underscore is this project's mark for a working buffer,
+            # so one rule covers the caches every kind may grow rather than a
+            # list that has to be extended each time one appears.
+            if name in _SKIP or name.startswith('_'):
                 continue
             value = getattr(shape, name, None)
             if value is None or value in ([], {}):

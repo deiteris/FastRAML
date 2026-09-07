@@ -20,7 +20,7 @@ import pathlib
 #: allowed to see both sides, which is what a command line is.
 _MODEL = ('pyraml/parser', 'pyraml/types', 'pyraml/nodes.py', 'pyraml/registry.py', 'pyraml/datanode.py')
 
-_VIEWS = ('walk', 'graph', 'tree', 'render', 'queries', 'diff')
+_VIEWS = ('walk', 'graph', 'tree', 'render', 'queries', 'diff', 'bindings')
 
 
 def _imports(path: pathlib.Path) -> list[tuple[int, str]]:

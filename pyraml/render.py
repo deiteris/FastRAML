@@ -198,7 +198,7 @@ def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
     # where the line earns its place, because `type:` cannot show both.
     if parents and parents != [named]:
         yield _Line(f'{level.indent}inherits: [{", ".join(parents)}]')
-    yield from _facets(base, level.indent)
+    yield from _facets(base, level.indent, level.root)
 
     # The structure is read from the *projected* shape, so a type defined by a
     # JSON schema opens like any other. Its own facets above are the RAML ones,
@@ -243,7 +243,7 @@ def _one(name: str, base: BaseShape, origin: str | None, level: _Level) -> Itera
         yield _Line(f'{inner.indent}{key}:', note)
         yield from _body(base, inner.inside(base))
         return
-    facets = list(_facets(base, inner.indent + '  '))
+    facets = list(_facets(base, inner.indent + '  ', inner.root))
     if not facets:
         yield _Line(f'{inner.indent}{key}: {_type_name(base)}', note)
         return
@@ -357,7 +357,7 @@ def _where(base: BaseShape, root: str) -> str:
     return _at(base.location, base.key_pos, root)
 
 
-def _facets(base: BaseShape, indent: str) -> Iterator[_Line]:
+def _facets(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]:
     """Every constraint the kind holds, in RAML spelling.
 
     `facets_of` is shared with the graph's projection so the two cannot disagree
@@ -380,10 +380,10 @@ def _facets(base: BaseShape, indent: str) -> Iterator[_Line]:
     if base.description is not None and base.description.value:
         first = base.description.value.strip().splitlines()[0]
         yield _Line(f'{indent}description: {_dumped(first)}')
-    yield from _extensions(base, indent)
+    yield from _extensions(base, indent, root)
 
 
-def _extensions(base: BaseShape, indent: str) -> Iterator[_Line]:
+def _extensions(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]:
     """`facets:`, the values supplied for them, and applied annotations.
 
     All three were absent, and all three are things a reader cannot recover by
@@ -405,7 +405,8 @@ def _extensions(base: BaseShape, indent: str) -> Iterator[_Line]:
     for name, extension in base.annotations.items():
         # `(name)` is how RAML spells an application, so it round-trips.
         yield _Line(
-            f'{indent}({name}): {_dumped(_plain(extension.value.raw))}', _at(extension.location, extension.key_pos, '')
+            f'{indent}({name}): {_dumped(_plain(extension.value.raw))}',
+            _at(extension.location, extension.key_pos, root),
         )
 
 

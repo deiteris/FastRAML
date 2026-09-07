@@ -360,6 +360,15 @@ The laws. Section 4.1 records where each is checked and over what input —
     annotations attached to the site they were applied at rather than only to a
     document-wide list keyed by *kind*.
 
+17. **A naive consumer terminates** — `test_consumer_traversal.py`. A walker
+    with no ancestor set, no depth budget and no RAML knowledge descends
+    containment and stops at a recursion marker; every shape of cycle — self,
+    mutual, three-deep, through an array, through a union — is broken by one.
+    This is the executable form of [16](16-graph.md) § 11.7, and the reason
+    `unwrap=True` is the contract rather than a convenience. It carries one
+    strict `xfail`: an alias is parser machinery that reads as a wrong answer
+    (§ 11.8), and the law records that rather than hiding it.
+
 ### 4.1 Where each law lives, and why
 
 | Laws | Where | Input |

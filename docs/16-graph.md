@@ -673,10 +673,9 @@ It would be **a sink over `pyraml/walk.py`, not a serialiser over this graph.**
 An AMF consumer renders as well as queries, so it wants what § 4 excludes —
 api-console 6.6.69 reads 357 vocabulary terms across twelve namespaces, of which
 the `data:` DataNode tree for examples and defaults is a large part. Reading
-those out of a graph that deliberately omits them is not possible, and widening
-the graph to carry them would slow every traversal to serve an emitter that does
-not traverse. Sharing the walk and the addresses is what makes the two outputs
-joinable; sharing the graph would make both worse. § 3's addresses being
+those out of a graph that deliberately omits them is not possible. Sharing the
+walk and the addresses is what makes the two outputs joinable; sharing the graph
+would not, because a renderer wants containment and a query wants adjacency. § 3's addresses being
 structural, and § 2's vocabulary being separable from them, are what keep the
 option open.
 
@@ -1104,9 +1103,16 @@ other:
 
 The graph's edges cannot be recovered from a tree whose references are names,
 because names are not unique. The tree's examples and defaults cannot be
-recovered from the graph, because they are not in it. Widening the graph to
-carry them would slow every traversal to serve a consumer that does not
-traverse.
+recovered from the graph, because they are not in it.
+
+**Not for performance.** `attributes` is a `@property`, computed on access, and
+`walk`/`out`/`into` read the edge indexes only — traversal never touches it, so
+carrying more data would cost a query nothing. The constraint is `Literal_`:
+node attributes are scalars, and an example is a structured `DataNode`. The
+reason is shape, not speed. A renderer wants containment; a query wants
+adjacency; api-console demonstrates the cost of asking one to be the other —
+its first act on receiving AMF is to re-nest the flat graph into a tree, at 2.4x
+to 5.9x the memory.
 
 ### 11.2 References are addresses
 
@@ -1215,3 +1221,69 @@ the same as not having one (docs/14 § 2).
 `tests/golden/project.py` is a two-line wrapper. The property that made it worth
 promoting is the one the goldens already relied on: driven off `__slots__`, so a
 facet added to a kind cannot go missing from it.
+
+### 11.7 The law a consumer may rely on
+
+> **A consumer descends containment, follows a link, and stops at a recursion
+> marker. It maintains no ancestor set.**
+
+That is the whole contract, and `unwrap=True` is what buys it. Nine passes of
+RAML logic happen before a consumer sees anything:
+
+| | who does it |
+|---|---|
+| `!include` resolution, `uses:` namespacing | P1 |
+| type expressions — `(A\|B)[]`, nested arrays | P6/P7 |
+| inheritance merge, facet narrowing, multiple inheritance | P9 |
+| trait and resource-type application, optional-method filtering, the four priority classes | P4a |
+| overlays and extensions | P3 |
+| security scheme binding, OAuth scope narrowing | P5 |
+| annotation type binding | P8 |
+| default `mediaType`, baseUri parameter propagation | P4/P6 |
+
+What is left is two operations. `tests/unit/test_consumer_traversal.py` is the
+executable statement of that: a walker with no `seen` set, no depth budget, and
+no knowledge of RAML.
+
+**A recursion marker is not a link, and merging them would break the law.**
+A cycle can close through a property, an array's items or a union member, and
+P9 marks each — verified for all three routes plus mutual and three-deep
+cycles. Without the marker a naive walk cannot tell a repeat from a fresh
+subtree, and every consumer would need its own ancestor set. Three of the four
+renderers in the wider ecosystem reach the same design independently: Redoc's
+`x-circular-ref`, Stoplight's `MirroredRegularNode`, and swagger-js leaving the
+`$ref` in place. Scalar is the one that merges them, and pays with an
+ancestor-set guard in its renderer.
+
+Putting the marker in `type` rather than in a separate key is deliberate: a
+consumer that switches on `type` and has not handled `recursive` gets an
+unrecognised value — a loud failure — where a separate key would be silently
+ignored and hang.
+
+### 11.8 What still leaks, and the rule that decides it
+
+> A marker belongs in the projection when it describes a property of the
+> **data**. It is a leak when it describes a property of the **parser**.
+
+A cycle is a property of the data. An alias is not.
+
+`Prices: Price[]` puts an *alias* of `Price` under `items` (docs/07 § 3.6), and
+the projection currently emits the alias node:
+
+```json
+"items": { "name": null, "type": "object",
+           "inherits": [{"$ref": ".../Money"}], "alias_of": {"$ref": ".../Price"} }
+```
+
+A consumer reading that honestly concludes *an array of anonymous objects
+extending `Money`* — `Price`'s supertype. That is a wrong answer, not a missing
+one. Across the TCK corpus: **427 alias nodes, 200 reading as anonymous, 50
+carrying a misleading `inherits`.**
+
+Nothing is lost by making it transparent. An alias shares its referent's
+containers, so it holds no facets of its own; `items` should be
+`{"$ref": <Price>}`. The law's test carries this as a strict `xfail` until it
+is.
+
+`kind`, `link`, `type_expr` and `is_annotation_type` fall on the parser side by
+the same rule.

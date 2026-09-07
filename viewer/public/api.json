@@ -52,6 +52,8 @@
       "id": "pyraml://id#/web-api/endpoint/%2Fbooks",
       "operations": {
         "get": {
+          "description": "Returns a page of Book records.",
+          "display_name": "List Books",
           "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/get",
           "query_parameters": {
             "limit": {
@@ -235,7 +237,8 @@
               "type_expr": "Book"
             }
           },
-          "description": "Add a book.",
+          "description": "Adds one book to the catalogue and returns it with its identifier.",
+          "display_name": "Add a book",
           "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post",
           "responses": {
             "201": {
@@ -406,6 +409,8 @@
       "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D",
       "operations": {
         "delete": {
+          "description": "Removes a book from the catalogue. Idempotent.",
+          "display_name": "Delete a book",
           "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/delete",
           "responses": {
             "204": {}
@@ -423,7 +428,8 @@
           ]
         },
         "get": {
-          "display_name": "Get one book",
+          "description": "Returns one book by its ISBN-13.",
+          "display_name": "Retrieve a book",
           "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get",
           "responses": {
             "200": {
@@ -597,9 +603,12 @@
       }
     },
     "/search": {
+      "display_name": "Search",
       "id": "pyraml://id#/web-api/endpoint/%2Fsearch",
       "operations": {
         "get": {
+          "description": "Full-text search across titles and authors.",
+          "display_name": "Search the catalogue",
           "id": "pyraml://id#/web-api/endpoint/%2Fsearch/supportedOperation/get",
           "query_parameters": {
             "q": {

@@ -88,7 +88,8 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
       {target && (
         <>
           <button type="button" className="expander" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? 'Hide attributes' : 'Show attributes'}
+            <span className="expander-sign">{open ? '−' : '+'}</span>
+            {open ? 'Hide child attributes' : 'Show child attributes'}
           </button>
           {open && (
             <div className="nested">
@@ -280,7 +281,8 @@ function Attribute({
       {target && (
         <>
           <button type="button" className="expander" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? 'Hide attributes' : 'Show attributes'}
+            <span className="expander-sign">{open ? '−' : '+'}</span>
+            {open ? 'Hide child attributes' : 'Show child attributes'}
           </button>
           {open && (
             <div className="nested">

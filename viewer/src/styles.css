@@ -12,74 +12,77 @@
 
 :root {
   --bg: #ffffff;
-  --panel: #f6f8fa;
+  --panel: #f4f7fa;
   --raised: #ffffff;
-  --line: #e3e6ea;
-  --line-soft: #eef0f3;
-  --ink: #1a1f26;
-  --dim: #616d7e;
-  --faint: #8a94a3;
-  --accent: #3556d4;
-  --type: #0a6c5d;
-  --required: #a3372b;
+  --line: #e3e8ee;
+  --line-soft: #eef1f6;
+  --ink: #1a2c44;
+  --dim: #3c4257;
+  --faint: #8c99ad;
+  --accent: #533afd;
+  --type: #0e7c6b;
+  --required: #b3261e;
   --warn: #8a5a00;
   --recursive: #6b3fb5;
   --enum: #5a4b9c;
-  --shadow: 0 1px 2px rgb(16 24 40 / 6%);
-  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
-  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --shadow: none;
+  --mono: 'Source Code Pro', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Ubuntu, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1216;
-    --panel: #151a20;
-    --raised: #171d24;
-    --line: #262e38;
-    --line-soft: #1e252d;
-    --ink: #dfe4ea;
-    --dim: #9aa5b3;
-    --faint: #6b7684;
-    --accent: #7fa2ff;
-    --type: #4fbfa8;
-    --required: #f08b7d;
-    --warn: #d8ab5e;
-    --recursive: #b394f0;
-    --enum: #a396e8;
-    --shadow: none;
+  --bg: #12161c;
+  --panel: #1b1e25;
+  --raised: #171c23;
+  --line: #2a323d;
+  --line-soft: #212831;
+  --ink: #eceef1;
+  --dim: #b6bfcc;
+  --faint: #8c99ad;
+  --accent: #9d8cff;
+  --type: #4fbfa8;
+  --required: #f08b7d;
+  --warn: #d8ab5e;
+  --recursive: #b394f0;
+  --enum: #a396e8;
+  --shadow: none;
   }
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
+
   --bg: #ffffff;
-  --panel: #f6f8fa;
+  --panel: #f4f7fa;
   --raised: #ffffff;
-  --line: #e3e6ea;
-  --line-soft: #eef0f3;
-  --ink: #1a1f26;
-  --dim: #616d7e;
-  --faint: #8a94a3;
-  --accent: #3556d4;
-  --type: #0a6c5d;
-  --required: #a3372b;
+  --line: #e3e8ee;
+  --line-soft: #eef1f6;
+  --ink: #1a2c44;
+  --dim: #3c4257;
+  --faint: #8c99ad;
+  --accent: #533afd;
+  --type: #0e7c6b;
+  --required: #b3261e;
   --warn: #8a5a00;
   --recursive: #6b3fb5;
   --enum: #5a4b9c;
-  --shadow: 0 1px 2px rgb(16 24 40 / 6%);
+  --shadow: none;
+  --mono: 'Source Code Pro', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Ubuntu, sans-serif;
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #0f1216;
-  --panel: #151a20;
-  --raised: #171d24;
-  --line: #262e38;
-  --line-soft: #1e252d;
-  --ink: #dfe4ea;
-  --dim: #9aa5b3;
-  --faint: #6b7684;
-  --accent: #7fa2ff;
+  --bg: #12161c;
+  --panel: #1b1e25;
+  --raised: #171c23;
+  --line: #2a323d;
+  --line-soft: #212831;
+  --ink: #eceef1;
+  --dim: #b6bfcc;
+  --faint: #8c99ad;
+  --accent: #9d8cff;
   --type: #4fbfa8;
   --required: #f08b7d;
   --warn: #d8ab5e;
@@ -96,14 +99,15 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.6 var(--sans);
+  font: 14px/22px var(--sans);
   -webkit-font-smoothing: antialiased;
 }
 
 code,
 pre {
   font-family: var(--mono);
-  font-size: 0.875em;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 a {
@@ -148,10 +152,10 @@ main {
 }
 
 h1 {
-  font-size: 28px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  margin: 0 0 6px;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 700;
+  margin: 0 0 8px;
 }
 
 h2 {
@@ -172,9 +176,11 @@ h3 {
 }
 
 h4 {
-  font-size: 13px;
-  font-weight: 650;
-  margin: 22px 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  margin: 32px 0 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
   color: var(--ink);
 }
 
@@ -261,6 +267,27 @@ h4 {
   color: var(--faint);
 }
 
+.nav-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-toggle {
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  width: 16px;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.nav-toggle:hover {
+  color: var(--ink);
+}
+
 .nav-empty {
   font-size: 12px;
   color: var(--faint);
@@ -305,20 +332,37 @@ h4 {
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
-  padding: 1px 8px;
-  border-radius: 11px;
+  padding: 1px 7px;
+  border-radius: 4px;
   border: 1px solid var(--line);
-  background: var(--raised);
+  background: var(--panel);
   color: var(--dim);
-  font-size: 11.5px;
+  font-size: 12px;
   font-family: var(--mono);
   white-space: nowrap;
   vertical-align: middle;
 }
 
+/* A facet is an annotation on the attribute above it, so it reads as muted
+   text with no box. A row of outlined pills was louder than the name being
+   scanned for. */
+.facets .chip {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-right: 14px;
+  color: var(--faint);
+}
+
+/* A type name reads the same everywhere it appears -- muted mono text, no box.
+   `items` kept a bordered pill while an attribute's type beside it was plain,
+   so one of the two looked like a control. A marker keeps its box, because a
+   marker is meant to stop the eye. */
 .chip-type {
-  color: var(--type);
-  border-color: color-mix(in srgb, var(--type) 35%, var(--line));
+  color: var(--faint);
+  border: 0;
+  background: none;
+  padding: 0;
 }
 
 .chip-warn {
@@ -409,21 +453,17 @@ h4 {
 }
 
 .attr-name {
-  font-weight: 650;
+  font-weight: 700;
   color: var(--ink);
-  font-size: 13.5px;
+  font-size: 14px;
+  line-height: 20px;
 }
 
-.attr-type {
-  color: var(--type);
+.attr-type,
+.attr-flag {
+  color: var(--faint);
   font-family: var(--mono);
   font-size: 12px;
-}
-
-.attr-flag {
-  font-size: 11px;
-  color: var(--faint);
-  letter-spacing: 0.02em;
 }
 
 .attr-flag.is-required {
@@ -432,8 +472,9 @@ h4 {
 
 .attr-desc {
   color: var(--dim);
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   font-size: 14px;
+  line-height: 22px;
 }
 
 /*
@@ -586,19 +627,28 @@ h4 {
  * one. A word says which is which.
  */
 .expander {
-  background: none;
-  border: 0;
-  padding: 0;
-  color: var(--faint);
-  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--raised);
+  color: var(--dim);
+  font-size: 13px;
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  text-decoration-style: dotted;
 }
 
 .expander:hover {
-  color: var(--accent);
+  border-color: var(--faint);
+  color: var(--ink);
+}
+
+.expander-sign {
+  color: var(--faint);
+  font-size: 14px;
+  line-height: 1;
 }
 
 .prose {

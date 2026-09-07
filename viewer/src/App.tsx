@@ -250,12 +250,32 @@ function within(node: PathNode, matches: (text: string) => boolean): boolean {
   return matches(node.path) || node.children.some((child) => within(child, matches));
 }
 
+/**
+ * One collapsible section of the nav.
+ *
+ * A document with two hundred types makes every other section unreachable
+ * without one, and the heading is the obvious place to put the control. The
+ * section title stays a link where it has a page of its own, so collapsing and
+ * navigating remain two things.
+ */
 function NavGroup({ title, href, children }: { title: string; href?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(true);
   const empty = Array.isArray(children) && children.flat().filter(Boolean).length === 0;
   return (
     <div className="nav-group">
-      <h3>{href ? <NavLink to={href}>{title}</NavLink> : title}</h3>
-      {empty ? <p className="nav-empty">none</p> : <ul>{children}</ul>}
+      <h3 className="nav-heading">
+        <button
+          type="button"
+          className="nav-toggle"
+          aria-expanded={open}
+          aria-label={`${open ? 'Collapse' : 'Expand'} ${title}`}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? '⌄' : '›'}
+        </button>
+        {href ? <NavLink to={href}>{title}</NavLink> : <span>{title}</span>}
+      </h3>
+      {open && (empty ? <p className="nav-empty">none</p> : <ul>{children}</ul>)}
     </div>
   );
 }

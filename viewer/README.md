@@ -15,6 +15,20 @@ npm run dev
 npm run shots         # screenshot every page, both themes, into shots/
 ```
 
+## Style
+
+Measured off `docs.stripe.com`, not eyeballed: `shots.mjs`'s sibling probe loads
+the page in the same headless browser and reads computed styles. What came back
+and is used here — ink `#1a2c44`, muted `#8c99ad`, page `#f4f7fa` on white,
+14px/22px sans, 12px/16px mono, attribute names 14px/700 mono, section headings
+with a rule under them, and `+ Show child attributes` as a bordered pill rather
+than an underlined phrase.
+
+The lesson that changed the most: **a type name is muted text, not a pill.** An
+outlined box per type made a row of facets louder than the attribute name above
+it, which is the thing being scanned for. Boxes are kept for markers — a
+recursion stop — where stopping the eye is the point.
+
 ## Shape of the app
 
 An **operation** is the page, not a resource. A resource with six methods

@@ -113,6 +113,8 @@ traits:
 resourceTypes:
   collection:
     get:
+      displayName: List <<item>>s
+      description: Returns a page of <<item>> records.
       is: [paged]
       responses:
         200:
@@ -125,7 +127,8 @@ securedBy: [oauth2]
   description: The catalogue.
   type: { collection: { item: Book } }
   post:
-    description: Add a book.
+    displayName: Add a book
+    description: Adds one book to the catalogue and returns it with its identifier.
     (deprecated): use PUT
     body:
       application/json:
@@ -146,7 +149,8 @@ securedBy: [oauth2]
         type: string
         pattern: ^\d{13}$
     get:
-      displayName: Get one book
+      displayName: Retrieve a book
+      description: Returns one book by its ISBN-13.
       securedBy: [oauth2: { scopes: [read:books] }, null]
       responses:
         200:
@@ -154,11 +158,16 @@ securedBy: [oauth2]
             application/json:
               type: Book
     delete:
+      displayName: Delete a book
+      description: Removes a book from the catalogue. Idempotent.
       securedBy: [oauth2: { scopes: [write:books] }]
       responses:
         204:
 /search:
+  displayName: Search
   get:
+    displayName: Search the catalogue
+    description: Full-text search across titles and authors.
     queryParameters:
       q:
         type: Search

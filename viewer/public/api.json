@@ -1,0 +1,1030 @@
+{
+  "annotation_types": {
+    "api.raml": {
+      "deprecated": {
+        "allowed_targets": [
+          "Method",
+          "TypeDeclaration"
+        ],
+        "id": "pyraml://id#/declarations/annotations/deprecated",
+        "name": "deprecated",
+        "type": "string",
+        "type_expr": "string"
+      },
+      "rateLimit": {
+        "id": "pyraml://id#/declarations/annotations/rateLimit",
+        "name": "rateLimit",
+        "properties": {
+          "perMinute": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/annotations/rateLimit/property/perMinute/schema",
+              "name": "perMinute",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      }
+    }
+  },
+  "annotations": [
+    {
+      "name": "deprecated",
+      "target": "TypeDeclaration",
+      "type": "pyraml://id#/declarations/annotations/deprecated",
+      "value": "use Publication instead"
+    },
+    {
+      "name": "deprecated",
+      "target": "Method",
+      "type": "pyraml://id#/declarations/annotations/deprecated",
+      "value": "use PUT"
+    }
+  ],
+  "base": "pyraml://id",
+  "endpoints": {
+    "/books": {
+      "description": "The catalogue.",
+      "display_name": "Books",
+      "id": "pyraml://id#/web-api/endpoint/%2Fbooks",
+      "operations": {
+        "get": {
+          "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/get",
+          "query_parameters": {
+            "limit": {
+              "binding": "query",
+              "required": false,
+              "type": {
+                "default": 20,
+                "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/get/request/parameter/query/limit/schema",
+                "maximum": 100,
+                "name": "limit?",
+                "type": "integer",
+                "type_expr": "integer"
+              }
+            },
+            "offset": {
+              "binding": "query",
+              "required": false,
+              "type": {
+                "default": 0,
+                "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/get/request/parameter/query/offset/schema",
+                "name": "offset?",
+                "type": "integer",
+                "type_expr": "integer"
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "items": {
+                    "$ref": "pyraml://id#/declarations/types/Book"
+                  },
+                  "name": "application/json",
+                  "type": "array",
+                  "type_expr": "Book[]"
+                }
+              }
+            }
+          },
+          "secured_by": [
+            {
+              "bound": true,
+              "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+              "is_null": false,
+              "name": "oauth2",
+              "scopes": null
+            }
+          ]
+        },
+        "post": {
+          "annotations": [
+            {
+              "name": "deprecated",
+              "type": "pyraml://id#/declarations/annotations/deprecated",
+              "value": "use PUT"
+            }
+          ],
+          "bodies": {
+            "application/json": {
+              "description": "One book in the catalogue.",
+              "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/request/payload/application%2Fjson/schema",
+              "inherits": [
+                {
+                  "$ref": "pyraml://id#/declarations/types/Book"
+                }
+              ],
+              "name": "application/json",
+              "properties": {
+                "createdAt": {
+                  "required": true,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Entity/property/createdAt/schema",
+                    "name": "createdAt",
+                    "type": "datetime",
+                    "type_expr": "datetime"
+                  }
+                },
+                "id": {
+                  "required": true,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Entity/property/id/schema",
+                    "name": "id",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                },
+                "isbn": {
+                  "required": true,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
+                    "name": "isbn",
+                    "pattern": "^\\d{13}$",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                },
+                "metadata": {
+                  "required": false,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/metadata/schema",
+                    "name": "metadata?",
+                    "pattern_properties": {
+                      "^x-": {
+                        "pattern": "^x-",
+                        "type": {
+                          "id": "pyraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                          "name": "/^x-/",
+                          "type": "string",
+                          "type_expr": "string"
+                        }
+                      }
+                    },
+                    "type": "object",
+                    "type_expr": "object"
+                  }
+                },
+                "price": {
+                  "required": true,
+                  "type": {
+                    "$ref": "pyraml://id#/declarations/types/Money"
+                  }
+                },
+                "related": {
+                  "required": false,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/related/schema",
+                    "items": {
+                      "annotations": [
+                        {
+                          "name": "deprecated",
+                          "type": "pyraml://id#/declarations/annotations/deprecated",
+                          "value": "use Publication instead"
+                        }
+                      ],
+                      "description": "One book in the catalogue.",
+                      "head": {
+                        "$ref": "pyraml://id#/declarations/types/Book"
+                      },
+                      "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
+                      "name": "Book",
+                      "type": "recursive"
+                    },
+                    "name": "related?",
+                    "type": "array",
+                    "type_expr": "Book[]"
+                  }
+                },
+                "tags": {
+                  "required": false,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/tags/schema",
+                    "items": {
+                      "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
+                      "name": "items",
+                      "type": "string",
+                      "type_expr": "string"
+                    },
+                    "max_items": 10,
+                    "name": "tags?",
+                    "type": "array",
+                    "type_expr": "array",
+                    "unique_items": true
+                  }
+                },
+                "title": {
+                  "required": true,
+                  "type": {
+                    "example": "Dune",
+                    "id": "pyraml://id#/declarations/types/Book/property/title/schema",
+                    "max_length": 200,
+                    "min_length": 1,
+                    "name": "title",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                }
+              },
+              "type": "object",
+              "type_expr": "Book"
+            }
+          },
+          "description": "Add a book.",
+          "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post",
+          "responses": {
+            "201": {
+              "bodies": {
+                "application/json": {
+                  "description": "One book in the catalogue.",
+                  "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/returns/201/payload/application%2Fjson/schema",
+                  "inherits": [
+                    {
+                      "$ref": "pyraml://id#/declarations/types/Book"
+                    }
+                  ],
+                  "name": "application/json",
+                  "properties": {
+                    "createdAt": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Entity/property/createdAt/schema",
+                        "name": "createdAt",
+                        "type": "datetime",
+                        "type_expr": "datetime"
+                      }
+                    },
+                    "id": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Entity/property/id/schema",
+                        "name": "id",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "isbn": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
+                        "name": "isbn",
+                        "pattern": "^\\d{13}$",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "metadata": {
+                      "required": false,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/metadata/schema",
+                        "name": "metadata?",
+                        "pattern_properties": {
+                          "^x-": {
+                            "pattern": "^x-",
+                            "type": {
+                              "id": "pyraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                              "name": "/^x-/",
+                              "type": "string",
+                              "type_expr": "string"
+                            }
+                          }
+                        },
+                        "type": "object",
+                        "type_expr": "object"
+                      }
+                    },
+                    "price": {
+                      "required": true,
+                      "type": {
+                        "$ref": "pyraml://id#/declarations/types/Money"
+                      }
+                    },
+                    "related": {
+                      "required": false,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/related/schema",
+                        "items": {
+                          "annotations": [
+                            {
+                              "name": "deprecated",
+                              "type": "pyraml://id#/declarations/annotations/deprecated",
+                              "value": "use Publication instead"
+                            }
+                          ],
+                          "description": "One book in the catalogue.",
+                          "head": {
+                            "$ref": "pyraml://id#/declarations/types/Book"
+                          },
+                          "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
+                          "name": "Book",
+                          "type": "recursive"
+                        },
+                        "name": "related?",
+                        "type": "array",
+                        "type_expr": "Book[]"
+                      }
+                    },
+                    "tags": {
+                      "required": false,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/tags/schema",
+                        "items": {
+                          "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
+                          "name": "items",
+                          "type": "string",
+                          "type_expr": "string"
+                        },
+                        "max_items": 10,
+                        "name": "tags?",
+                        "type": "array",
+                        "type_expr": "array",
+                        "unique_items": true
+                      }
+                    },
+                    "title": {
+                      "required": true,
+                      "type": {
+                        "example": "Dune",
+                        "id": "pyraml://id#/declarations/types/Book/property/title/schema",
+                        "max_length": 200,
+                        "min_length": 1,
+                        "name": "title",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    }
+                  },
+                  "type": "object",
+                  "type_expr": "Book"
+                }
+              },
+              "description": "Created",
+              "headers": {
+                "Location": {
+                  "binding": "header",
+                  "required": true,
+                  "type": {
+                    "id": "pyraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/returns/201/parameter/header/Location/schema",
+                    "name": "Location",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad request"
+            }
+          },
+          "secured_by": [
+            {
+              "bound": true,
+              "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+              "is_null": false,
+              "name": "oauth2",
+              "scopes": null
+            }
+          ]
+        }
+      },
+      "secured_by": [
+        {
+          "bound": true,
+          "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+          "is_null": false,
+          "name": "oauth2",
+          "scopes": null
+        }
+      ]
+    },
+    "/books/{isbn}": {
+      "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D",
+      "operations": {
+        "delete": {
+          "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/delete",
+          "responses": {
+            "204": {}
+          },
+          "secured_by": [
+            {
+              "bound": true,
+              "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+              "is_null": false,
+              "name": "oauth2",
+              "scopes": [
+                "write:books"
+              ]
+            }
+          ]
+        },
+        "get": {
+          "display_name": "Get one book",
+          "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "description": "One book in the catalogue.",
+                  "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "inherits": [
+                    {
+                      "$ref": "pyraml://id#/declarations/types/Book"
+                    }
+                  ],
+                  "name": "application/json",
+                  "properties": {
+                    "createdAt": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Entity/property/createdAt/schema",
+                        "name": "createdAt",
+                        "type": "datetime",
+                        "type_expr": "datetime"
+                      }
+                    },
+                    "id": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Entity/property/id/schema",
+                        "name": "id",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "isbn": {
+                      "required": true,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
+                        "name": "isbn",
+                        "pattern": "^\\d{13}$",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "metadata": {
+                      "required": false,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/metadata/schema",
+                        "name": "metadata?",
+                        "pattern_properties": {
+                          "^x-": {
+                            "pattern": "^x-",
+                            "type": {
+                              "id": "pyraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                              "name": "/^x-/",
+                              "type": "string",
+                              "type_expr": "string"
+                            }
+                          }
+                        },
+                        "type": "object",
+                        "type_expr": "object"
+                      }
+                    },
+                    "price": {
+                      "required": true,
+                      "type": {
+                        "$ref": "pyraml://id#/declarations/types/Money"
+                      }
+                    },
+                    "related": {
+                      "required": false,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/related/schema",
+                        "items": {
+                          "annotations": [
+                            {
+                              "name": "deprecated",
+                              "type": "pyraml://id#/declarations/annotations/deprecated",
+                              "value": "use Publication instead"
+                            }
+                          ],
+                          "description": "One book in the catalogue.",
+                          "head": {
+                            "$ref": "pyraml://id#/declarations/types/Book"
+                          },
+                          "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
+                          "name": "Book",
+                          "type": "recursive"
+                        },
+                        "name": "related?",
+                        "type": "array",
+                        "type_expr": "Book[]"
+                      }
+                    },
+                    "tags": {
+                      "required": false,
+                      "type": {
+                        "id": "pyraml://id#/declarations/types/Book/property/tags/schema",
+                        "items": {
+                          "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
+                          "name": "items",
+                          "type": "string",
+                          "type_expr": "string"
+                        },
+                        "max_items": 10,
+                        "name": "tags?",
+                        "type": "array",
+                        "type_expr": "array",
+                        "unique_items": true
+                      }
+                    },
+                    "title": {
+                      "required": true,
+                      "type": {
+                        "example": "Dune",
+                        "id": "pyraml://id#/declarations/types/Book/property/title/schema",
+                        "max_length": 200,
+                        "min_length": 1,
+                        "name": "title",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    }
+                  },
+                  "type": "object",
+                  "type_expr": "Book"
+                }
+              }
+            }
+          },
+          "secured_by": [
+            {
+              "bound": true,
+              "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+              "is_null": false,
+              "name": "oauth2",
+              "scopes": [
+                "read:books"
+              ]
+            },
+            {
+              "bound": true,
+              "declaration": null,
+              "is_null": true,
+              "name": "null",
+              "scopes": null
+            }
+          ]
+        }
+      },
+      "secured_by": [
+        {
+          "bound": true,
+          "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+          "is_null": false,
+          "name": "oauth2",
+          "scopes": null
+        }
+      ],
+      "uri_parameters": {
+        "isbn": {
+          "binding": "uri",
+          "required": true,
+          "type": {
+            "id": "pyraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/parameter/path/isbn/schema",
+            "name": "isbn",
+            "pattern": "^\\d{13}$",
+            "type": "string",
+            "type_expr": "string"
+          }
+        }
+      }
+    },
+    "/search": {
+      "id": "pyraml://id#/web-api/endpoint/%2Fsearch",
+      "operations": {
+        "get": {
+          "id": "pyraml://id#/web-api/endpoint/%2Fsearch/supportedOperation/get",
+          "query_parameters": {
+            "q": {
+              "binding": "query",
+              "required": true,
+              "type": {
+                "any_of": [
+                  {
+                    "id": "pyraml://id#/declarations/types/Search/anyOf/0",
+                    "name": null,
+                    "type": "string",
+                    "type_expr": "string | number"
+                  },
+                  {
+                    "id": "pyraml://id#/declarations/types/Search/anyOf/1",
+                    "name": null,
+                    "type": "number",
+                    "type_expr": "string | number"
+                  }
+                ],
+                "id": "pyraml://id#/web-api/endpoint/%2Fsearch/supportedOperation/get/request/parameter/query/q/schema",
+                "inherits": [
+                  {
+                    "$ref": "pyraml://id#/declarations/types/Search"
+                  }
+                ],
+                "name": "q",
+                "required": true,
+                "type": "union",
+                "type_expr": "Search"
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "pyraml://id#/web-api/endpoint/%2Fsearch/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "items": {
+                    "$ref": "pyraml://id#/declarations/types/Book"
+                  },
+                  "name": "application/json",
+                  "type": "array",
+                  "type_expr": "Book[]"
+                }
+              }
+            }
+          },
+          "secured_by": [
+            {
+              "bound": true,
+              "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+              "is_null": false,
+              "name": "oauth2",
+              "scopes": null
+            }
+          ]
+        }
+      },
+      "secured_by": [
+        {
+          "bound": true,
+          "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+          "is_null": false,
+          "name": "oauth2",
+          "scopes": null
+        }
+      ]
+    }
+  },
+  "entry_point": {
+    "base_uri": "https://{tenant}.books.example.com/{version}",
+    "base_uri_parameters": {
+      "tenant": {
+        "binding": "uri",
+        "required": true,
+        "type": {
+          "description": "The tenant subdomain",
+          "id": null,
+          "name": "tenant",
+          "pattern": "^[a-z0-9-]+$",
+          "type": "string",
+          "type_expr": "string"
+        }
+      }
+    },
+    "description": "A worked example exercising every construct the tree carries.\n",
+    "documentation": [
+      {
+        "content": "Obtain a token, then call `/books`.",
+        "title": "Getting started"
+      }
+    ],
+    "kind": "APIFragment",
+    "media_types": [
+      "application/json"
+    ],
+    "protocols": [
+      "HTTPS"
+    ],
+    "title": "Bookstore API",
+    "version": "v2"
+  },
+  "security_schemes": {
+    "api.raml": {
+      "basic": {
+        "id": "pyraml://id#/declarations/securitySchemes/basic",
+        "name": "basic",
+        "type": "Basic Authentication"
+      },
+      "oauth2": {
+        "described_by": {
+          "headers": {
+            "Authorization": {
+              "binding": "header",
+              "required": true,
+              "type": {
+                "description": "Bearer token",
+                "id": null,
+                "name": "Authorization",
+                "type": "string",
+                "type_expr": "string"
+              }
+            }
+          },
+          "responses": {
+            "401": {
+              "description": "Not authenticated"
+            }
+          }
+        },
+        "description": "Standard three-legged flow.",
+        "id": "pyraml://id#/declarations/securitySchemes/oauth2",
+        "name": "oauth2",
+        "settings": {
+          "accessTokenUri": "https://books.example.com/oauth/token",
+          "authorizationGrants": [
+            "authorization_code",
+            "client_credentials"
+          ],
+          "authorizationUri": "https://books.example.com/oauth/authorize",
+          "scopes": [
+            "read:books",
+            "write:books"
+          ]
+        },
+        "type": "OAuth 2.0"
+      }
+    }
+  },
+  "types": {
+    "api.raml": {
+      "Book": {
+        "annotations": [
+          {
+            "name": "deprecated",
+            "type": "pyraml://id#/declarations/annotations/deprecated",
+            "value": "use Publication instead"
+          }
+        ],
+        "description": "One book in the catalogue.",
+        "display_name": "A Book",
+        "example": {
+          "createdAt": "2024-01-01T00:00:00Z",
+          "id": "b-1",
+          "isbn": "9780441013593",
+          "price": {
+            "amount": 9.99,
+            "currency": "USD"
+          },
+          "title": "Dune"
+        },
+        "id": "pyraml://id#/declarations/types/Book",
+        "inherits": [
+          {
+            "$ref": "pyraml://id#/declarations/types/Entity"
+          }
+        ],
+        "name": "Book",
+        "properties": {
+          "createdAt": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Entity/property/createdAt/schema",
+              "name": "createdAt",
+              "type": "datetime",
+              "type_expr": "datetime"
+            }
+          },
+          "id": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Entity/property/id/schema",
+              "name": "id",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "isbn": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
+              "name": "isbn",
+              "pattern": "^\\d{13}$",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "metadata": {
+            "required": false,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Book/property/metadata/schema",
+              "name": "metadata?",
+              "pattern_properties": {
+                "^x-": {
+                  "pattern": "^x-",
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                    "name": "/^x-/",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                }
+              },
+              "type": "object",
+              "type_expr": "object"
+            }
+          },
+          "price": {
+            "required": true,
+            "type": {
+              "$ref": "pyraml://id#/declarations/types/Money"
+            }
+          },
+          "related": {
+            "required": false,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Book/property/related/schema",
+              "items": {
+                "annotations": [
+                  {
+                    "name": "deprecated",
+                    "type": "pyraml://id#/declarations/annotations/deprecated",
+                    "value": "use Publication instead"
+                  }
+                ],
+                "description": "One book in the catalogue.",
+                "head": {
+                  "$ref": "pyraml://id#/declarations/types/Book"
+                },
+                "id": "pyraml://id#/declarations/types/Book/property/related/schema/items",
+                "name": "Book",
+                "type": "recursive"
+              },
+              "name": "related?",
+              "type": "array",
+              "type_expr": "Book[]"
+            }
+          },
+          "tags": {
+            "required": false,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Book/property/tags/schema",
+              "items": {
+                "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
+                "name": "items",
+                "type": "string",
+                "type_expr": "string"
+              },
+              "max_items": 10,
+              "name": "tags?",
+              "type": "array",
+              "type_expr": "array",
+              "unique_items": true
+            }
+          },
+          "title": {
+            "required": true,
+            "type": {
+              "example": "Dune",
+              "id": "pyraml://id#/declarations/types/Book/property/title/schema",
+              "max_length": 200,
+              "min_length": 1,
+              "name": "title",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "Entity"
+      },
+      "Chain": {
+        "id": "pyraml://id#/declarations/types/Chain",
+        "name": "Chain",
+        "properties": {
+          "next": {
+            "required": false,
+            "type": {
+              "head": {
+                "$ref": "pyraml://id#/declarations/types/Chain"
+              },
+              "id": "pyraml://id#/declarations/types/Chain/property/next/schema",
+              "name": "Chain",
+              "type": "recursive"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      },
+      "Entity": {
+        "id": "pyraml://id#/declarations/types/Entity",
+        "name": "Entity",
+        "properties": {
+          "createdAt": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Entity/property/createdAt/schema",
+              "name": "createdAt",
+              "type": "datetime",
+              "type_expr": "datetime"
+            }
+          },
+          "id": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Entity/property/id/schema",
+              "name": "id",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      },
+      "Money": {
+        "id": "pyraml://id#/declarations/types/Money",
+        "name": "Money",
+        "properties": {
+          "amount": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Money/property/amount/schema",
+              "minimum": "0",
+              "multiple_of": "1/100",
+              "name": "amount",
+              "type": "number",
+              "type_expr": "number"
+            }
+          },
+          "currency": {
+            "required": true,
+            "type": {
+              "enum": [
+                "USD",
+                "EUR",
+                "GBP"
+              ],
+              "id": "pyraml://id#/declarations/types/Money/property/currency/schema",
+              "name": "currency",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      },
+      "Paged": {
+        "id": "pyraml://id#/declarations/types/Paged",
+        "name": "Paged",
+        "properties": {
+          "items": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Paged/property/items/schema",
+              "name": "items",
+              "type": "array",
+              "type_expr": "array"
+            }
+          },
+          "total": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id#/declarations/types/Paged/property/total/schema",
+              "name": "total",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          }
+        },
+        "type": "object",
+        "type_expr": "object"
+      },
+      "Prices": {
+        "id": "pyraml://id#/declarations/types/Prices",
+        "items": {
+          "$ref": "pyraml://id#/declarations/types/Money"
+        },
+        "name": "Prices",
+        "type": "array",
+        "type_expr": "Money[]"
+      },
+      "Search": {
+        "any_of": [
+          {
+            "id": "pyraml://id#/declarations/types/Search/anyOf/0",
+            "name": null,
+            "type": "string",
+            "type_expr": "string | number"
+          },
+          {
+            "id": "pyraml://id#/declarations/types/Search/anyOf/1",
+            "name": null,
+            "type": "number",
+            "type_expr": "string | number"
+          }
+        ],
+        "id": "pyraml://id#/declarations/types/Search",
+        "name": "Search",
+        "type": "union",
+        "type_expr": "string | number"
+      }
+    }
+  }
+}

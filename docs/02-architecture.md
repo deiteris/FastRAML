@@ -161,6 +161,17 @@ would address the same entity differently and their outputs could not be joined
 what they emit — a node set against containment — because every module here is a
 view of the same effective model, so the input is not what tells them apart.
 
+`viewer/` is outside the package and outside the gate: a React SPA that reads
+`pyraml tree` output and renders it as API documentation. It is a **consumer**,
+kept in this repository to be read alongside the format it consumes. It has no
+Python dependency and nothing depends on it; `pyraml/views/bindings.py` writes
+its `tree.d.ts` and is the only link between them, in that direction only.
+
+Keeping it here has already paid: building it against the tree is what found the
+`JsonShape` validator leak, the missing annotation values at their sites, and
+the three keys the contract had dropped ([16](16-graph.md) § 11.11). A format
+with no consumer is a format whose gaps nothing measures.
+
 `types/resolve.py` holds the AST → shape visitor as well as the driver, rather
 than the separate `expressions/build.py` an earlier draft of this list named.
 The two are mutually recursive — `resolve_shape` runs the visitor, and the

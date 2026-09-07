@@ -7,8 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "check": "tsc --noEmit && npm run smoke",
+    "smoke": "tsx src/smoke.tsx",
     "preview": "vite preview",
-    "check": "tsc -b --noEmit"
+    "sample": "cd .. && uv run pyraml tree viewer/sample/api.raml > viewer/public/api.json"
   },
   "dependencies": {
     "react": "^19.2.0",
@@ -20,6 +22,8 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.1.0",
     "typescript": "^5.9.0",
-    "vite": "^7.1.0"
+    "vite": "^7.1.0",
+    "tsx": "^4.20.0",
+    "@types/node": "^24.0.0"
   }
 }

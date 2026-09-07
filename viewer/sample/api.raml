@@ -1,0 +1,170 @@
+#%RAML 1.0
+title: Bookstore API
+version: v2
+baseUri: https://{tenant}.books.example.com/{version}
+baseUriParameters:
+  tenant:
+    description: The tenant subdomain
+    type: string
+    pattern: ^[a-z0-9-]+$
+mediaType: [application/json]
+protocols: [HTTPS]
+description: |
+  A worked example exercising every construct the tree carries.
+documentation:
+  - title: Getting started
+    content: Obtain a token, then call `/books`.
+annotationTypes:
+  deprecated:
+    type: string
+    allowedTargets: [Method, TypeDeclaration]
+  rateLimit:
+    type: object
+    properties:
+      perMinute: integer
+securitySchemes:
+  oauth2:
+    type: OAuth 2.0
+    description: Standard three-legged flow.
+    settings:
+      authorizationUri: https://books.example.com/oauth/authorize
+      accessTokenUri: https://books.example.com/oauth/token
+      authorizationGrants: [authorization_code, client_credentials]
+      scopes: [read:books, write:books]
+    describedBy:
+      headers:
+        Authorization:
+          description: Bearer token
+          type: string
+      responses:
+        401:
+          description: Not authenticated
+  basic:
+    type: Basic Authentication
+types:
+  Money:
+    type: object
+    properties:
+      amount:
+        type: number
+        minimum: 0
+        multipleOf: 0.01
+      currency:
+        type: string
+        enum: [USD, EUR, GBP]
+  Entity:
+    type: object
+    properties:
+      id: string
+      createdAt: datetime
+  Book:
+    type: Entity
+    displayName: A Book
+    description: One book in the catalogue.
+    (deprecated): use Publication instead
+    properties:
+      title:
+        type: string
+        minLength: 1
+        maxLength: 200
+        example: Dune
+      isbn:
+        type: string
+        pattern: ^\d{13}$
+      price: Money
+      tags?:
+        type: array
+        items: string
+        uniqueItems: true
+        maxItems: 10
+      related?: Book[]
+      metadata?:
+        type: object
+        properties:
+          /^x-/: string
+    example:
+      id: b-1
+      createdAt: 2024-01-01T00:00:00Z
+      title: Dune
+      isbn: "9780441013593"
+      price: { amount: 9.99, currency: USD }
+  Prices: Money[]
+  Chain:
+    type: object
+    properties:
+      next?: Chain
+  Search:
+    type: string | number
+  Paged:
+    type: object
+    properties:
+      total: integer
+      items: array
+traits:
+  paged:
+    queryParameters:
+      offset?:
+        type: integer
+        default: 0
+      limit?:
+        type: integer
+        default: 20
+        maximum: 100
+resourceTypes:
+  collection:
+    get:
+      is: [paged]
+      responses:
+        200:
+          body:
+            application/json:
+              type: <<item>>[]
+securedBy: [oauth2]
+/books:
+  displayName: Books
+  description: The catalogue.
+  type: { collection: { item: Book } }
+  post:
+    description: Add a book.
+    (deprecated): use PUT
+    body:
+      application/json:
+        type: Book
+    responses:
+      201:
+        description: Created
+        headers:
+          Location: string
+        body:
+          application/json:
+            type: Book
+      400:
+        description: Bad request
+  /{isbn}:
+    uriParameters:
+      isbn:
+        type: string
+        pattern: ^\d{13}$
+    get:
+      displayName: Get one book
+      securedBy: [oauth2: { scopes: [read:books] }, null]
+      responses:
+        200:
+          body:
+            application/json:
+              type: Book
+    delete:
+      securedBy: [oauth2: { scopes: [write:books] }]
+      responses:
+        204:
+/search:
+  get:
+    queryParameters:
+      q:
+        type: Search
+        required: true
+    responses:
+      200:
+        body:
+          application/json:
+            type: Book[]

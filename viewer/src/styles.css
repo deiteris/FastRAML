@@ -1,0 +1,517 @@
+/*
+ * One stylesheet, no framework.
+ *
+ * The app exists to show what the tree carries; a utility framework would put a
+ * build step and a class vocabulary between a reader of this repository and
+ * that. Everything below is named after the thing it styles.
+ */
+
+:root {
+  --bg: #fbfbfc;
+  --panel: #ffffff;
+  --line: #e3e5ea;
+  --ink: #1c1e24;
+  --dim: #6b7280;
+  --accent: #2f5bd0;
+  --type: #0b6b5e;
+  --required: #a3372b;
+  --optional: #6b7280;
+  --warn: #8a5300;
+  --recursive: #6b2fb5;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 var(--sans);
+}
+
+code,
+pre {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* -- layout ---------------------------------------------------------------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+main {
+  padding: 32px 40px 96px;
+  max-width: 1100px;
+  min-width: 0;
+}
+
+.loading {
+  padding: 64px;
+}
+
+.error {
+  color: var(--required);
+}
+
+h1 {
+  font-size: 26px;
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 18px;
+  margin: 32px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  margin: 20px 0 6px;
+}
+
+h4 {
+  font-size: 13px;
+  margin: 18px 0 6px;
+  color: var(--dim);
+}
+
+.subtitle {
+  color: var(--dim);
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.aside {
+  font-weight: normal;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+/* -- sidebar --------------------------------------------------------------- */
+
+.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 20px 16px 60px;
+  overflow-y: auto;
+  max-height: 100vh;
+  position: sticky;
+  top: 0;
+}
+
+.brand {
+  display: block;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+
+.filter {
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.nav-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-children {
+  margin-left: 12px !important;
+  border-left: 1px solid var(--line);
+  padding-left: 6px !important;
+}
+
+.nav-item {
+  display: block;
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--ink);
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.nav-item:hover {
+  background: #eef1f8;
+  text-decoration: none;
+}
+
+.nav-item.is-here {
+  background: #e6ecfb;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.nav-item.is-empty {
+  color: var(--dim);
+}
+
+.nav-empty {
+  font-size: 12px;
+  color: var(--dim);
+  margin: 0 0 0 6px;
+}
+
+.sidebar-foot {
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.picker input {
+  display: none;
+}
+
+.picker span {
+  display: inline-block;
+  padding: 5px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.picker span:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* -- chips ------------------------------------------------------------------ */
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 11.5px;
+  font-family: var(--mono);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.chip-type {
+  color: var(--type);
+  border-color: #bfe0da;
+  background: #f0faf8;
+}
+
+.chip-required {
+  color: var(--required);
+  border-color: #edc9c4;
+  background: #fdf4f3;
+}
+
+.chip-optional {
+  color: var(--optional);
+}
+
+.chip-warn {
+  color: var(--warn);
+  border-color: #e8d3a8;
+  background: #fdf8ee;
+}
+
+.chip-recursive {
+  color: var(--recursive);
+  border-color: #d9c8ef;
+  background: #f8f4fd;
+}
+
+.chip-method {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border-color: #c5d3f2;
+  background: #eef2fd;
+  font-size: 12px;
+}
+
+.chip-status {
+  font-weight: 600;
+}
+
+.facet-name {
+  color: var(--dim);
+}
+
+.facet-value {
+  font-weight: 600;
+}
+
+.badges,
+.facets,
+.shape-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dim);
+}
+
+/* -- shapes ----------------------------------------------------------------- */
+
+.shape {
+  min-width: 0;
+}
+
+.shape-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shape-display {
+  font-weight: 600;
+}
+
+.prose,
+.response-description {
+  color: #3b4049;
+  margin: 6px 0;
+}
+
+.prose-block {
+  white-space: pre-wrap;
+  font-family: var(--sans);
+  margin: 0;
+}
+
+.members {
+  margin: 8px 0 8px 2px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+}
+
+.member {
+  margin: 4px 0;
+}
+
+table.properties {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0 16px;
+  font-size: 14px;
+}
+
+table.properties th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dim);
+  border-bottom: 1px solid var(--line);
+  padding: 4px 10px 4px 0;
+  font-weight: 600;
+}
+
+table.properties td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px 8px 0;
+  vertical-align: top;
+}
+
+.property-name {
+  white-space: nowrap;
+}
+
+.property-name code {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.property-type {
+  width: 45%;
+}
+
+.property-description {
+  color: var(--dim);
+}
+
+.dim {
+  color: var(--dim);
+}
+
+.typelink {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.recursion {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* -- disclosure -------------------------------------------------------------- */
+
+.disclosure {
+  margin: 4px 0;
+}
+
+.disclosure-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  padding: 1px 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.disclosure-caret {
+  color: var(--dim);
+  font-size: 10px;
+  width: 10px;
+}
+
+.disclosure-body {
+  margin: 4px 0 8px 12px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+}
+
+/* -- operations --------------------------------------------------------------- */
+
+.operation {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 14px 18px 18px;
+  margin: 18px 0;
+}
+
+.operation h2 {
+  margin-top: 0;
+}
+
+.operation-name {
+  font-size: 16px;
+}
+
+.body {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 6px 0;
+}
+
+.body > .shape {
+  flex: 1;
+  min-width: 0;
+}
+
+.responses .disclosure {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.scopes,
+.secured {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* -- misc ---------------------------------------------------------------------- */
+
+.code {
+  background: #f4f5f7;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  margin: 4px 0;
+  white-space: pre-wrap;
+}
+
+.labelled {
+  margin: 8px 0;
+}
+
+.keyvalues {
+  margin: 12px 0;
+}
+
+.keyvalue {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.keyvalue dt {
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.keyvalue dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.empty {
+  color: var(--dim);
+  padding: 12px 0;
+}
+
+.usages {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.usages li {
+  padding: 3px 0;
+}
+
+.section {
+  margin: 28px 0;
+}

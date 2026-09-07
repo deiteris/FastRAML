@@ -1,0 +1,83 @@
+# viewer
+
+A reference consumer of `pyraml tree` output: a React SPA that renders a RAML
+document as API documentation.
+
+It is **not** part of the parser. Nothing in `pyraml/` knows it exists, it has
+no build step in the Python gate, and it decides no RAML rule. It is here to be
+read alongside the format it consumes — if a construct is awkward to display,
+that is evidence about the format, and it has already produced three fixes.
+
+```bash
+npm install
+npm run sample        # pyraml tree sample/api.raml > public/api.json
+npm run dev
+```
+
+## Where the document comes from
+
+Three ways, one parsed value:
+
+| | for |
+|---|---|
+| `public/api.json` | a built bundle someone is handed |
+| `?src=<url>` | a document served alongside it |
+| the file picker | whatever `pyraml tree` just printed |
+
+## The contract is generated
+
+`src/tree.d.ts` is written by `python -m pyraml.views.bindings`, from the
+emitter's own source — **do not edit it**. The key sets come from `tree.py`'s
+AST and the facets from the kind classes' annotations, so a facet added to a
+kind arrives here without anything being touched by hand.
+`tests/unit/test_bindings.py` fails when the checked-in file is stale, and law
+19 in `tests/tck/test_properties.py` fails when the corpus emits a key it does
+not declare.
+
+`src/model.ts` restates none of it. What lives there is what the JSON does not
+carry and a reader needs: which addresses have a page, what to call one, and the
+path nesting the model flattened.
+
+## The one rule the renderer follows
+
+Three constructs, and telling the last two apart is the whole discipline
+(`docs/16-graph.md` § 11.10):
+
+| | means | what the UI does |
+|---|---|---|
+| `{"$ref": <address>}` | a link | a name that navigates, and a disclosure that expands in place — **never on render** |
+| `{"type": "recursive", …}` | repeats from here | a stop. Its `head` is shown as a name, never as something expandable |
+| anything else | containment | descend |
+
+No ancestor set and no depth budget exist anywhere in `Shape.tsx`, because the
+emitter guarantees a cycle is always *marked*. Collapsing the two into a bare
+`$ref` would put that bookkeeping back on every consumer, which is the thing
+raml2html has no answer to — its `test/outofmemory.raml` is 36 lines.
+
+## Checks
+
+```bash
+npm run check     # tsc, then render every page of public/api.json
+```
+
+`src/smoke.tsx` walks the document's own contents rather than a route list and
+renders each page to static markup. `tsc` says the components type-check, which
+is not the same as saying they render: an index that misses, a facet whose value
+is an object where a string was assumed, and a recursion marker read as a link
+all compile. It is the JavaScript half of law 13 — every declared type and every
+endpoint has a view.
+
+## Layout
+
+```
+src/
+  tree.d.ts            GENERATED -- the contract
+  model.ts             index, addresses, path nesting, facet spelling
+  load.ts              fetch / ?src= / file picker
+  App.tsx              shell, sidebar, routes
+  pages.tsx            one page per section
+  smoke.tsx            render every page, fail on the first that throws
+  components/
+    Shape.tsx          the type renderer -- the traversal law, directly
+    ui.tsx             chips, disclosures, tables
+```

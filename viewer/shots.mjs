@@ -29,6 +29,7 @@ const PAGES = [
   ['resource', '/endpoints/%2Fbooks'],
   ['operation-get', '/endpoints/%2Fbooks%2F%7Bisbn%7D/get'],
   ['operation-post', '/endpoints/%2Fbooks/post'],
+  ['operation-optional-auth', '/endpoints/%2Fbooks%2F%7Bisbn%7D/get'],
   ['operation-search', '/endpoints/%2Fsearch/get'],
   ['operation-responses', '/endpoints/%2Fshelves/post'],
   ['security', '/security/api.raml/oauth2'],

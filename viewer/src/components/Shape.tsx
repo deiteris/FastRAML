@@ -30,7 +30,7 @@ import {
   labelOf,
   spelling,
 } from '../model';
-import { Chip, Code, Prose, Tabs } from './ui';
+import { Chip, Code, Lock, Prose, Tabs } from './ui';
 
 interface Props {
   shape: Shape | Ref | null | undefined;
@@ -229,6 +229,17 @@ function Body({
           {!hideType && <TypeChip shape={shape} borrowed={borrowed} />}
         </div>
       )}
+      {/* Above the prose. What a type extends is the first thing about it,
+          and below the description it arrived after everything that only makes
+          sense once you know. */}
+      {inherits.length > 0 && (
+        <div className="shape-line">
+          <span className="label">extends</span>
+          {inherits.map((parent, at) => (
+            <RefLink key={at} parent={parent} index={index} />
+          ))}
+        </div>
+      )}
       {!hideDescription && <Prose>{shape.description}</Prose>}
 
       {(facets.length > 0 || shape.enum) && (
@@ -273,15 +284,6 @@ function Body({
           <Labelled key={name} label={`example: ${name}`} value={value} />
         ))}
 
-      {inherits.length > 0 && (
-        <div className="shape-line">
-          <span className="label">extends</span>
-          {inherits.map((parent, at) => (
-            <RefLink key={at} parent={parent} index={index} />
-          ))}
-        </div>
-      )}
-
       {members.length > 0 && <Union members={members} index={index} />}
 
       {shape.items !== undefined && !hideItems && (
@@ -318,11 +320,14 @@ function Attribute({
   property,
   index,
   pattern,
+  from,
 }: {
   name: string;
   property: Property | PatternProperty | Parameter;
   index: Index;
   pattern?: boolean;
+  /** The security scheme that contributed this row, if it was not declared. */
+  from?: string;
 }) {
   const [open, setOpen] = useState(false);
   const required = 'required' in property ? property.required : false;
@@ -363,6 +368,7 @@ function Attribute({
         ) : (
           required && <span className="attr-flag is-required">Required</span>
         )}
+        {from && <From scheme={from} />}
       </div>
       {/* A description is not an attribute, so it does not live behind the
           control that expands them. Where the type is a reference the prose
@@ -503,23 +509,50 @@ export function Annotations({ applied, index }: { applied?: Applied[]; index: In
 export function ParameterTable({
   title,
   parameters,
+  added,
+  from,
   index,
 }: {
   title: string;
   parameters?: Record<string, Parameter>;
+  /**
+   * What the chosen security scheme contributes here.
+   *
+   * Merged into this table rather than given one of its own: a caller building
+   * a request needs one list of what to send, and a section apart made them
+   * assemble it from two places. Each borrowed row says where it came from, so
+   * merged is not the same as indistinguishable -- a reader can still see what
+   * would change if the scheme did.
+   */
+  added?: Record<string, Parameter>;
+  from?: string;
   index: Index;
 }) {
-  const rows = Object.entries(parameters ?? {});
-  if (rows.length === 0) return null;
+  const own = Object.entries(parameters ?? {});
+  const extra = Object.entries(added ?? {}).filter(([name]) => !(name in (parameters ?? {})));
+  if (own.length + extra.length === 0) return null;
   return (
     <section className="parameters">
       <h4>{title}</h4>
       <div className="attributes">
-        {rows.map(([name, parameter]) => (
+        {own.map(([name, parameter]) => (
           <Attribute key={name} name={name} property={parameter} index={index} />
+        ))}
+        {extra.map(([name, parameter]) => (
+          <Attribute key={name} name={name} property={parameter} index={index} from={from} />
         ))}
       </div>
     </section>
+  );
+}
+
+/** Where a row came from, when it was not the operation's own. */
+export function From({ scheme }: { scheme: string }) {
+  return (
+    <span className="from" title={`added by the ${scheme} security scheme`}>
+      <Lock />
+      {scheme}
+    </span>
   );
 }
 

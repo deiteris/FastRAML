@@ -50,6 +50,24 @@ An **example goes above** the attributes it belongs to. It is the fastest way to
 understand a type, and last it read as belonging to whichever attribute happened
 to come final.
 
+**Security is a selector, because `securedBy` is a disjunction** — a caller
+satisfies any one entry, not all of them. One line of chips read as a single
+requirement made of parts, which is the opposite.
+
+Choosing one **changes the page**: the scheme's `describedBy` headers, query
+parameters and responses are merged into the operation's own tables, each
+borrowed row marked with the scheme it came from. A section of their own pushed
+the operation's own parameters below the fold and made a caller assemble one
+request from two places. Marked-but-merged is the point — a reader can still see
+what would change if the scheme did.
+
+The choice sits on its own row with the type, prose and scopes beneath it.
+Trailing them onto the same line wrapped badly with three schemes or more than
+two scopes, which is the ordinary case.
+
+A **padlock** marks a secured operation, open where a `securedBy: [null]` entry
+means it may also be called unauthenticated.
+
 An **array says what it holds on its own line** — `tags array of string`. A
 label and a rule around one word was three lines of chrome, and for `Book[]` it
 repeated what had just been read. An item with structure of its own still gets a

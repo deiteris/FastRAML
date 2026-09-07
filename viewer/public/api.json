@@ -438,6 +438,18 @@
               "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
               "is_null": false,
               "name": "oauth2",
+              "scopes": [
+                "write:books",
+                "read:reviews",
+                "write:reviews",
+                "admin:catalogue"
+              ]
+            },
+            {
+              "bound": true,
+              "declaration": "pyraml://id#/declarations/securitySchemes/basic",
+              "is_null": false,
+              "name": "basic",
               "scopes": null
             }
           ]
@@ -904,6 +916,27 @@
   "security_schemes": {
     "api.raml": {
       "basic": {
+        "described_by": {
+          "headers": {
+            "Authorization": {
+              "binding": "header",
+              "required": true,
+              "type": {
+                "description": "The word Basic, a space, then base64(user:password).",
+                "id": null,
+                "name": "Authorization",
+                "type": "string",
+                "type_expr": "string"
+              }
+            }
+          },
+          "responses": {
+            "401": {
+              "description": "Missing or malformed credentials."
+            }
+          }
+        },
+        "description": "Username and password, for server-to-server callers only.",
         "id": "pyraml://id#/declarations/securitySchemes/basic",
         "name": "basic",
         "type": "Basic Authentication"
@@ -941,7 +974,11 @@
           "authorizationUri": "https://books.example.com/oauth/authorize",
           "scopes": [
             "read:books",
-            "write:books"
+            "write:books",
+            "delete:books",
+            "read:reviews",
+            "write:reviews",
+            "admin:catalogue"
           ]
         },
         "type": "OAuth 2.0"

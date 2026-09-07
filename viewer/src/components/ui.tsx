@@ -37,6 +37,30 @@ export function Chevron({ open }: { open: boolean }) {
   );
 }
 
+/**
+ * A padlock, closed or open.
+ *
+ * Open means the operation may also be called unauthenticated -- a
+ * `securedBy: [null]` entry among its alternatives. Swagger UI's convention,
+ * and worth borrowing: a reader scanning for what needs a token should not have
+ * to read every row to find out.
+ */
+export function Lock({ open, title }: { open?: boolean; title?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" className="lock" role="img" aria-label={title}>
+      {title && <title>{title}</title>}
+      <rect x="3.25" y="7" width="9.5" height="6.5" rx="1.5" fill="currentColor" />
+      <path
+        d={open ? 'M5.75 7V4.9a2.4 2.4 0 0 1 4.8 0' : 'M5.75 7V4.9a2.4 2.4 0 0 1 4.8 0V7'}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /** An HTTP method, as a coloured badge. */
 export function Verb({ method, large }: { method: string; large?: boolean }) {
   const name = method.toLowerCase();

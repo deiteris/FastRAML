@@ -192,6 +192,27 @@ export function facetsOf(shape: Shape): [string, unknown][] {
     .map(([key, value]) => [camel(key), value] as [string, unknown]);
 }
 
+/**
+ * A field name as a reader would say it: `accessTokenUri` -> `Access token URI`.
+ *
+ * The JSON carries the model field names (docs/16 section 11.9), which is right
+ * for a wire format and wrong for a label over a value. Derived rather than
+ * tabulated so a settings key this app has never seen still reads as English --
+ * a security scheme's settings are open-ended, and a table would show the raw
+ * name for anything not in it.
+ */
+export function humanise(name: string): string {
+  const spaced = camel(name)
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim();
+  const words = spaced.split(/\s+/).map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word.toLowerCase()));
+  const [first = '', ...rest] = words;
+  return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(' ');
+}
+
+const ACRONYMS = new Set(['uri', 'url', 'urls', 'uris', 'id', 'api', 'http', 'https', 'ttl', 'jwt', 'oauth']);
+
 export function camel(name: string): string {
   return name.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
 }

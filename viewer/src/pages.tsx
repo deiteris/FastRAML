@@ -7,17 +7,20 @@
  * so a `$ref` has somewhere to land.
  */
 
+import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { Annotations, ParameterTable, ShapeView } from './components/Shape';
-import { Chip, Code, Disclosure, Empty, KeyValues, Prose, Section, Tabs, Verb } from './components/ui';
+import { Annotations, From, ParameterTable, ShapeView } from './components/Shape';
+import { Chip, Code, Disclosure, Empty, KeyValues, Lock, Prose, Section, Tabs, Verb } from './components/ui';
 import {
   type Document,
   type Index,
   type Ref,
   type Response,
   type SecuredBy,
+  type SecurityScheme,
   type Shape,
   declarations,
+  humanise,
   methodsOf,
   spelling,
 } from './model';
@@ -112,6 +115,19 @@ export function Overview({ document, index }: Props) {
   );
 }
 
+/**
+ * Whether a type expression only repeats what `extends` will say.
+ *
+ * `type: Entity` gives the expression `Entity` and a single supertype named
+ * `Entity`; showing both puts the same fact on the page twice, once without the
+ * link. `Money[]` and `string | number` say something no `extends` line does,
+ * and stay.
+ */
+function restates(shape: Shape): boolean {
+  const written = spelling(shape);
+  return written === shape.type || (shape.inherits ?? []).length === 1;
+}
+
 /* -- endpoints ----------------------------------------------------------------- */
 
 /**
@@ -170,6 +186,7 @@ export function EndpointPage({ document, index }: Props) {
 /** One method, which is the unit a reader actually came for. */
 export function OperationPage({ document, index }: Props) {
   const { path, method } = useParams();
+  const [chosen, setChosen] = useState(0);
   const full = decodeURIComponent(path ?? '');
   const endpoint = document.endpoints[full];
   const operation = endpoint?.operations[method ?? ''];
@@ -180,20 +197,54 @@ export function OperationPage({ document, index }: Props) {
       </Empty>
     );
   }
+
+  // P5 resolves `securedBy` inheritance, so an operation list is already the
+  // effective one. Falling back to the resource would re-display a requirement
+  // the author had deliberately removed.
+  const schemes = operation.secured_by ?? [];
+  const at = Math.min(chosen, Math.max(schemes.length - 1, 0));
+  const scheme = schemes[at];
+  const byId = Object.fromEntries(declarations(document.security_schemes).map(({ value }) => [value.id, value]));
+  const active = scheme && !scheme.is_null ? byId[scheme.declaration ?? ''] : undefined;
+  const adds = active?.described_by;
+  const optional = schemes.some((one) => one.is_null);
+
   return (
     <article>
       <h1 className="operation-title">
         <Verb method={method ?? ''} large />
         <code>{full}</code>
+        {schemes.length > 0 && (
+          <Lock open={optional} title={optional ? 'may be called unauthenticated' : 'requires authentication'} />
+        )}
       </h1>
       {operation.display_name && <p className="subtitle">{operation.display_name}</p>}
       <Prose>{operation.description}</Prose>
-      <SecuredByList schemes={operation.secured_by ?? endpoint.secured_by} index={index} />
       <Annotations applied={operation.annotations} index={index} />
 
+      <SecurityChoice
+        schemes={schemes}
+        declared={active}
+        chosen={at}
+        onChoose={setChosen}
+        index={index}
+      />
+
       <ParameterTable title="URI parameters" parameters={endpoint.uri_parameters} index={index} />
-      <ParameterTable title="Headers" parameters={operation.headers} index={index} />
-      <ParameterTable title="Query parameters" parameters={operation.query_parameters} index={index} />
+      <ParameterTable
+        title="Headers"
+        parameters={operation.headers}
+        added={adds?.headers}
+        from={active?.name}
+        index={index}
+      />
+      <ParameterTable
+        title="Query parameters"
+        parameters={operation.query_parameters}
+        added={adds?.query_parameters}
+        from={active?.name}
+        index={index}
+      />
       {operation.query_string && (
         <section className="parameters">
           <h4>Query string</h4>
@@ -202,7 +253,7 @@ export function OperationPage({ document, index }: Props) {
       )}
 
       <Bodies title="Request body" bodies={operation.bodies} index={index} />
-      <Responses responses={operation.responses} index={index} />
+      <Responses responses={operation.responses} added={adds?.responses} from={active?.name} index={index} />
     </article>
   );
 }
@@ -214,12 +265,26 @@ export function OperationPage({ document, index }: Props) {
  * makes a reader open them one at a time to find the one they want. The codes
  * are all visible at once here, and exactly one body is on screen.
  */
-function Responses({ responses, index }: { responses: Record<string, Response>; index: Index }) {
-  const codes = Object.entries(responses).sort(([a], [b]) => a.localeCompare(b));
+function Responses({
+  responses,
+  added,
+  from,
+  index,
+  title = 'Responses',
+}: {
+  responses: Record<string, Response>;
+  /** What the chosen security scheme adds -- a `401`, typically. */
+  added?: Record<string, Response>;
+  from?: string;
+  index: Index;
+  title?: string;
+}) {
+  const own = new Set(Object.keys(responses));
+  const codes = Object.entries({ ...responses, ...added }).sort(([a], [b]) => a.localeCompare(b));
   if (codes.length === 0) return null;
   return (
     <section className="responses">
-      <h4>Responses</h4>
+      <h4>{title}</h4>
       <Tabs
         items={codes.map(([code, response]) => ({
           key: code,
@@ -228,6 +293,7 @@ function Responses({ responses, index }: { responses: Record<string, Response>; 
           tone: code[0] ?? 'plain',
           body: (
             <>
+              {!own.has(code) && from && <From scheme={from} />}
               <Prose>{response.description}</Prose>
               <Annotations applied={response.annotations} index={index} />
               <ParameterTable title="Headers" parameters={response.headers} index={index} />
@@ -266,51 +332,121 @@ function Bodies({
 }
 
 /**
- * A `securedBy:` list.
+ * The security selector: one line, above the parameters it changes.
  *
- * `is_null` is `securedBy: [null]`, the way an author *removes* an inherited
- * scheme. It binds to a real definition of type `null`, so a view keeping only
- * names would render it as a scheme called "null" -- which is why the emitter
- * carries the flag and this reads it.
+ * `securedBy` is a **disjunction** -- a caller satisfies any one entry, not all
+ * of them -- so this is a choice, not a list. `is_null` is `securedBy: [null]`,
+ * how an author says a resource may also be called unauthenticated (docs/09
+ * A3); it binds to a real definition of type `null`, so a view keeping only
+ * names would render it as a scheme called "null".
+ *
+ * Choosing changes the page. A scheme is not only a gate: its `describedBy`
+ * declares headers, query parameters and responses the operation *gains* when
+ * secured that way, and those are merged into the operation own tables below,
+ * each marked with the scheme it came from. Shown in a section of their own
+ * they pushed the operation own parameters below the fold and made the reader
+ * assemble the request from two places.
  */
+function SecurityChoice({
+  schemes,
+  declared,
+  chosen,
+  onChoose,
+  index,
+}: {
+  schemes: SecuredBy[];
+  declared?: SecurityScheme;
+  chosen: number;
+  onChoose: (at: number) => void;
+  index: Index;
+}) {
+  if (schemes.length === 0) return null;
+  const scheme = schemes[chosen];
+  const entry = index.get(scheme?.declaration);
+  return (
+    <div className="security-choice">
+      {/* The choice on its own row, the consequences under it. Trailing the
+          type, a link and the scopes onto the same line wrapped badly the
+          moment there were three schemes or more than two scopes, which is the
+          ordinary case rather than the exceptional one. */}
+      <div className="security-pick">
+        <Lock open={schemes.some((one) => one.is_null)} />
+        <span className="label">secured by</span>
+        {schemes.map((one, at) => (
+          <button
+            key={at}
+            type="button"
+            className={`scheme ${at === chosen ? 'is-chosen' : ''}`}
+            onClick={() => onChoose(at)}
+          >
+            {one.is_null ? 'None' : one.name}
+          </button>
+        ))}
+      </div>
+
+      <div className="security-detail">
+        {scheme?.is_null ? (
+          <p className="prose">
+            This operation may be called unauthenticated. Everything below is what it requires without a token.
+          </p>
+        ) : (
+          <>
+            <div className="shape-line">
+              {declared && <Chip tone="type">{declared.type}</Chip>}
+              {entry && (
+                <Link to={entry.href} className="typelink">
+                  {entry.name}
+                </Link>
+              )}
+            </div>
+            {declared?.description && <p className="prose">{declared.description}</p>}
+            {/* `null` is "not narrowed" and `[]` is "narrowed to nothing"; the
+                two are different and the emitter keeps them apart. */}
+            {scheme && scheme.scopes !== null && (
+              <div className="shape-line">
+                <span className="label">scopes</span>
+                {scheme.scopes.length === 0 ? (
+                  <Chip tone="warn">narrowed to none</Chip>
+                ) : (
+                  scheme.scopes.map((scope) => <Chip key={scope}>{scope}</Chip>)
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The one-line form, for a resource. */
 function SecuredByList({ schemes, index }: { schemes?: SecuredBy[]; index: Index }) {
   if (!schemes || schemes.length === 0) return null;
   return (
     <div className="shape-line">
+      <Lock open={schemes.some((scheme) => scheme.is_null)} title="secured" />
       <span className="label">secured by</span>
-      {schemes.map((scheme, at) => {
-        if (scheme.is_null) {
-          return (
-            <Chip key={at} tone="optional" title="securedBy: [null] -- this resource may be called unauthenticated">
-              unsecured
-            </Chip>
-          );
-        }
-        const entry = index.get(scheme.declaration);
-        return (
-          <span key={at} className="secured">
-            {entry ? (
-              <Link to={entry.href} className="typelink">
-                {scheme.name}
-              </Link>
-            ) : (
-              <Chip tone={scheme.bound ? 'plain' : 'warn'}>{scheme.name}</Chip>
-            )}
-            {/* `null` is "not narrowed" and `[]` is "narrowed to nothing"; the
-                two are different and the emitter keeps them apart. */}
-            {scheme.scopes !== null && (
-              <span className="scopes">
-                {scheme.scopes.length === 0 ? (
-                  <Chip tone="warn">no scopes</Chip>
-                ) : (
-                  scheme.scopes.map((scope) => <Chip key={scope}>{scope}</Chip>)
-                )}
-              </span>
-            )}
-          </span>
-        );
-      })}
+      {schemes.map((scheme, at) => (
+        <span key={at} className="secured">
+          {at > 0 && <span className="or">or</span>}
+          {scheme.is_null ? (
+            <Chip tone="optional">unauthenticated</Chip>
+          ) : (
+            <SchemeName scheme={scheme} index={index} />
+          )}
+        </span>
+      ))}
     </div>
+  );
+}
+
+function SchemeName({ scheme, index }: { scheme: SecuredBy; index: Index }) {
+  const entry = index.get(scheme.declaration);
+  if (!entry) return <Chip tone={scheme.bound ? 'plain' : 'warn'}>{scheme.name}</Chip>;
+  return (
+    <Link to={entry.href} className="typelink">
+      {entry.name}
+    </Link>
   );
 }
 
@@ -323,16 +459,13 @@ export function TypePage({ document, index }: Props) {
   return (
     <article>
       <h1>{shape.name ?? name}</h1>
-      {/* The subtitle carries the type chip, so the shape below is rendered
-          `hideType` -- rendering both printed `string | number` twice under a
-          heading that had already said it. */}
+      {/* The kind, and the expression only where it says something the
+          `extends` line below does not. `Book` is written `type: Entity`, so
+          the subtitle read `Entity · object` above a line reading
+          `extends Entity` -- the same fact twice, once without the link. */}
       <p className="subtitle">
-        <code>{file}</code> · <Chip tone="type">{spelling(shape)}</Chip>
-        {/* The expression and the kind are different answers: `Prices` is
-            written `Money[]` and is an array, and `Book` is written `Entity`
-            and is an object. Showing only the first reads as though Book were
-            Entity, which is what `extends` is for. */}
-        {spelling(shape) !== shape.type && <Chip>{shape.type}</Chip>}
+        <code>{file}</code> · <Chip tone="type">{shape.type}</Chip>
+        {restates(shape) || <Chip>{spelling(shape)}</Chip>}
       </p>
       <ShapeView shape={shape} index={index} hideType />
       <Usages document={document} address={shape.id} />
@@ -402,7 +535,7 @@ export function SecuritySchemePage({ document, index }: Props) {
             rows={Object.entries(scheme.settings).map(
               ([key, value]) =>
                 [
-                  key,
+                  humanise(key),
                   Array.isArray(value) ? (
                     value.map((item, at) => <Chip key={at}>{String(item)}</Chip>)
                   ) : (

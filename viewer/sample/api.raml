@@ -30,7 +30,7 @@ securitySchemes:
       authorizationUri: https://books.example.com/oauth/authorize
       accessTokenUri: https://books.example.com/oauth/token
       authorizationGrants: [authorization_code, client_credentials]
-      scopes: [read:books, write:books]
+      scopes: [read:books, write:books, delete:books, read:reviews, write:reviews, admin:catalogue]
     describedBy:
       headers:
         Authorization:
@@ -41,6 +41,15 @@ securitySchemes:
           description: Not authenticated
   basic:
     type: Basic Authentication
+    description: Username and password, for server-to-server callers only.
+    describedBy:
+      headers:
+        Authorization:
+          description: The word Basic, a space, then base64(user:password).
+          type: string
+      responses:
+        401:
+          description: Missing or malformed credentials.
 types:
   Money:
     displayName: Monetary amount
@@ -186,6 +195,7 @@ securedBy: [oauth2]
   description: The catalogue of every book the store carries.
   type: { collection: { item: Book } }
   post:
+    securedBy: [oauth2: { scopes: [write:books, read:reviews, write:reviews, admin:catalogue] }, basic]
     displayName: Add a book
     description: Adds one book to the catalogue and returns it with its identifier.
     (deprecated): use PUT

@@ -1308,13 +1308,51 @@ meaning, one spelling.
 **back-pointer**, not containment: the node holding it already carries the
 marker, so expanding there would mark one cycle twice.
 
-By the same rule, still outstanding:
+By the same rule, and now applied:
 
 | | verdict | evidence |
 |---|---|---|
-| `kind` | redundant with `type` | 1:1 across all 16 kinds, 879 documents, **zero** ambiguous pairs |
-| `link`, `is_annotation_type` | parser state | `is_annotation_type` is `false` on every shape; the section above replaces it |
-| `type_expr` | **keep** | what the author wrote is data, not parser state |
+| `kind` | removed — redundant with `type` | 1:1 across all 16 kinds, 879 documents, **zero** ambiguous pairs |
+| `link` | removed — which fragment a declaration arrived through is parser state | |
+| `is_annotation_type` | removed — `false` on every shape; `annotation_types` is the section that says it | |
+| `type_expr` | **kept** | what the author wrote is data, not parser state |
+
+### 11.10 The metamodel
+
+What a consumer sees is a closed set, and that closure is the point: AMF's
+contribution is a *declared vocabulary* a consumer can read a spec of, rather
+than an implementation's field list. Narrowed to RAML it is ten node types,
+against AMF's fifty-odd across five vocabularies.
+
+```
+Document          title, version, base_uri, base_uri_parameters, protocols,
+                  media_types, documentation, types, annotation_types,
+                  security_schemes, endpoints, annotations
+Resource          display_name, description, uri_parameters, operations,
+                  secured_by, annotations
+Operation         display_name, description, query_parameters, headers,
+                  query_string, bodies, responses, secured_by, annotations
+Response          description, headers, bodies, annotations
+Body              the shape it carries, keyed by media type
+Parameter         binding, required, type
+SecurityScheme    type, settings, described_by, annotations
+Annotation        name, type
+Documentation     title, content
+Shape             type, plus that type's own facets; properties, items and
+                  any_of are containment
+```
+
+Every node carries `id`, its address. Three constructs and nothing else:
+
+| | means |
+|---|---|
+| `{"$ref": <address>}` | a link — the target is a declaration, look it up |
+| `{"type": "recursive", "head": {"$ref": …}}` | the structure repeats from here; do not expand |
+| anything else | containment — descend |
+
+The vocabulary is the model's own field names (§ 11.9), so this list is not a
+translation of the model but a projection of it with the parser's states left
+out.
 
 ### 11.9 The vocabulary is the model's field names
 

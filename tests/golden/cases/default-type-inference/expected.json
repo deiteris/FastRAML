@@ -12,47 +12,35 @@
       "AnnotatedScalar": {
         "display_name": "plain string",
         "id": "pyraml://id#/declarations/types/AnnotatedScalar",
-        "is_annotation_type": false,
-        "kind": "StringShape",
         "name": "AnnotatedScalar",
         "type": "string",
         "type_expr": "string"
       },
       "FromExplicitType": {
         "id": "pyraml://id#/declarations/types/FromExplicitType",
-        "is_annotation_type": false,
-        "kind": "IntegerShape",
         "name": "FromExplicitType",
         "type": "integer",
         "type_expr": "integer"
       },
       "HasItems": {
         "id": "pyraml://id#/declarations/types/HasItems",
-        "is_annotation_type": false,
         "items": {
           "id": "pyraml://id#/declarations/types/HasItems/items",
-          "is_annotation_type": false,
-          "kind": "StringShape",
           "name": "items",
           "type": "string",
           "type_expr": "string"
         },
-        "kind": "ArrayShape",
         "name": "HasItems",
         "type": "array"
       },
       "HasProperties": {
         "id": "pyraml://id#/declarations/types/HasProperties",
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "HasProperties",
         "properties": {
           "a": {
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/HasProperties/property/a/schema",
-              "is_annotation_type": false,
-              "kind": "StringShape",
               "name": "a",
               "type": "string",
               "type_expr": "string"
@@ -63,31 +51,23 @@
       },
       "NoFacets": {
         "id": "pyraml://id#/declarations/types/NoFacets",
-        "is_annotation_type": false,
-        "kind": "StringShape",
         "name": "NoFacets",
         "type": "string"
       },
       "PropertyShorthand": {
         "id": "pyraml://id#/declarations/types/PropertyShorthand",
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "PropertyShorthand",
         "properties": {
           "inferred": {
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/PropertyShorthand/property/inferred/schema",
-              "is_annotation_type": false,
-              "kind": "ObjectShape",
               "name": "inferred",
               "properties": {
                 "nested": {
                   "required": true,
                   "type": {
                     "id": "pyraml://id#/declarations/types/PropertyShorthand/property/inferred/schema/property/nested/schema",
-                    "is_annotation_type": false,
-                    "kind": "StringShape",
                     "name": "nested",
                     "type": "string",
                     "type_expr": "string"

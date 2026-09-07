@@ -11,16 +11,12 @@
     "lib.raml": {
       "Aged": {
         "id": "pyraml://id#/declarations/types/Aged",
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "Aged",
         "properties": {
           "age": {
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/Aged/property/age/schema",
-              "is_annotation_type": false,
-              "kind": "IntegerShape",
               "name": "age",
               "type": "integer",
               "type_expr": "integer"
@@ -32,16 +28,12 @@
       },
       "Named": {
         "id": "pyraml://id#/declarations/types/Named",
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "Named",
         "properties": {
           "name": {
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/Named/property/name/schema",
-              "is_annotation_type": false,
-              "kind": "StringShape",
               "min_length": 2,
               "name": "name",
               "type": "string",
@@ -62,16 +54,12 @@
             "$ref": "pyraml://id#/declarations/types/Aged"
           }
         ],
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "Person",
         "properties": {
           "age": {
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/Aged/property/age/schema",
-              "is_annotation_type": false,
-              "kind": "IntegerShape",
               "name": "age",
               "type": "integer",
               "type_expr": "integer"
@@ -81,8 +69,6 @@
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/Person/property/name/schema",
-              "is_annotation_type": false,
-              "kind": "StringShape",
               "min_length": 4,
               "name": "name",
               "type": "string",
@@ -93,8 +79,6 @@
             "required": false,
             "type": {
               "id": "pyraml://id#/declarations/types/Person/property/nickname/schema",
-              "is_annotation_type": false,
-              "kind": "StringShape",
               "name": "nickname?",
               "type": "string",
               "type_expr": "string"

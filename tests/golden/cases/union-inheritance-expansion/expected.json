@@ -11,16 +11,12 @@
     "lib.raml": {
       "A": {
         "id": "pyraml://id#/declarations/types/A",
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "A",
         "properties": {
           "a": {
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/A/property/a/schema",
-              "is_annotation_type": false,
-              "kind": "StringShape",
               "name": "a",
               "type": "string",
               "type_expr": "string"
@@ -32,16 +28,12 @@
       },
       "B": {
         "id": "pyraml://id#/declarations/types/B",
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "B",
         "properties": {
           "b": {
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/B/property/b/schema",
-              "is_annotation_type": false,
-              "kind": "IntegerShape",
               "name": "b",
               "type": "integer",
               "type_expr": "integer"
@@ -61,8 +53,6 @@
           }
         ],
         "id": "pyraml://id#/declarations/types/Either",
-        "is_annotation_type": false,
-        "kind": "UnionShape",
         "name": "Either",
         "type": "union",
         "type_expr": "A | B"
@@ -83,8 +73,6 @@
             "$ref": "pyraml://id#/declarations/types/Either"
           }
         ],
-        "is_annotation_type": false,
-        "kind": "UnionShape",
         "name": "Narrowed",
         "type": "union",
         "type_expr": "Either"
@@ -96,15 +84,11 @@
             "inherits": [
               {
                 "id": "pyraml://id#/declarations/types/WithFacet/anyOf/0/inherits/anonymous",
-                "is_annotation_type": false,
-                "kind": "IntegerShape",
                 "name": null,
                 "type": "integer",
                 "type_expr": "integer | number"
               }
             ],
-            "is_annotation_type": false,
-            "kind": "IntegerShape",
             "maximum": 10,
             "name": null,
             "type": "integer"
@@ -114,23 +98,17 @@
             "inherits": [
               {
                 "id": "pyraml://id#/declarations/types/WithFacet/anyOf/1/inherits/anonymous",
-                "is_annotation_type": false,
-                "kind": "NumberShape",
                 "name": null,
                 "type": "number",
                 "type_expr": "integer | number"
               }
             ],
-            "is_annotation_type": false,
-            "kind": "NumberShape",
             "maximum": "10",
             "name": null,
             "type": "number"
           }
         ],
         "id": "pyraml://id#/declarations/types/WithFacet",
-        "is_annotation_type": false,
-        "kind": "UnionShape",
         "name": "WithFacet",
         "type": "union",
         "type_expr": "integer | number"

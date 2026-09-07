@@ -122,7 +122,7 @@ class TestEveryReferenceResolves:
         member = projection['types']['api.raml']['Bounded']['any_of'][0]
         parent = member['inherits'][0]
         assert '$ref' not in parent, 'an anonymous supertype must not be a bare reference'
-        assert parent['kind'] == 'IntegerShape'
+        assert parent['type'] == 'integer'
         assert parent['id'].endswith('/inherits/anonymous')
 
     def test_an_alias_reads_as_the_type_it_aliases(self, both):
@@ -172,7 +172,7 @@ class TestATypedFragmentIsADeclaration:
     def test_the_fragment_is_projected_as_a_type(self, entry):
         declared = effective(entry)['types']['user.raml']
         assert list(declared) == ['user.raml']
-        assert declared['user.raml']['kind'] == 'ObjectShape'
+        assert declared['user.raml']['type'] == 'object'
         assert list(declared['user.raml']['properties']) == ['id']
 
     def test_it_lands_at_the_address_the_graph_gave_it(self, entry):

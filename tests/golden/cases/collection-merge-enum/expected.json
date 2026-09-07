@@ -19,8 +19,6 @@
                   "win"
                 ],
                 "id": "pyraml://id#/web-api/endpoint/%2Fdownloads/supportedOperation/get/request/parameter/query/platform/schema",
-                "is_annotation_type": false,
-                "kind": "StringShape",
                 "name": "platform?",
                 "type": "string",
                 "type_expr": "string"

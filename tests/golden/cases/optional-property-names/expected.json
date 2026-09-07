@@ -11,16 +11,12 @@
     "lib.raml": {
       "Prefs": {
         "id": "pyraml://id#/declarations/types/Prefs",
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "Prefs",
         "properties": {
           "literalQuestion": {
             "required": false,
             "type": {
               "id": "pyraml://id#/declarations/types/Prefs/property/literalQuestion/schema",
-              "is_annotation_type": false,
-              "kind": "StringShape",
               "name": "literalQuestion?",
               "type": "string",
               "type_expr": "string"
@@ -30,8 +26,6 @@
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/Prefs/property/plain/schema",
-              "is_annotation_type": false,
-              "kind": "StringShape",
               "name": "plain",
               "type": "string",
               "type_expr": "string"
@@ -41,8 +35,6 @@
             "required": false,
             "type": {
               "id": "pyraml://id#/declarations/types/Prefs/property/preference/schema",
-              "is_annotation_type": false,
-              "kind": "StringShape",
               "name": "preference?",
               "type": "string",
               "type_expr": "string"

@@ -11,8 +11,6 @@
     "lib.raml": {
       "Chain": {
         "id": "pyraml://id#/declarations/types/Chain",
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "Chain",
         "properties": {
           "next": {
@@ -24,23 +22,17 @@
                     "$ref": "pyraml://id#/declarations/types/Chain"
                   },
                   "id": "pyraml://id#/declarations/types/Chain/property/next/schema/anyOf/0",
-                  "is_annotation_type": false,
-                  "kind": "RecursiveShape",
                   "name": "Chain",
                   "type": "recursive"
                 },
                 {
                   "id": "pyraml://id#/declarations/types/Chain/property/next/schema/anyOf/1",
-                  "is_annotation_type": false,
-                  "kind": "NilShape",
                   "name": null,
                   "type": "nil",
                   "type_expr": "Chain | nil"
                 }
               ],
               "id": "pyraml://id#/declarations/types/Chain/property/next/schema",
-              "is_annotation_type": false,
-              "kind": "UnionShape",
               "name": "next?",
               "type": "union",
               "type_expr": "Chain | nil"
@@ -52,8 +44,6 @@
       },
       "Node": {
         "id": "pyraml://id#/declarations/types/Node",
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "Node",
         "properties": {
           "child": {
@@ -63,8 +53,6 @@
                 "$ref": "pyraml://id#/declarations/types/Node"
               },
               "id": "pyraml://id#/declarations/types/Node/property/child/schema",
-              "is_annotation_type": false,
-              "kind": "RecursiveShape",
               "name": "Node",
               "type": "recursive"
             }
@@ -73,8 +61,6 @@
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/Node/property/value/schema",
-              "is_annotation_type": false,
-              "kind": "StringShape",
               "name": "value",
               "type": "string",
               "type_expr": "string"
@@ -86,26 +72,20 @@
       },
       "Tree": {
         "id": "pyraml://id#/declarations/types/Tree",
-        "is_annotation_type": false,
-        "kind": "ObjectShape",
         "name": "Tree",
         "properties": {
           "children": {
             "required": true,
             "type": {
               "id": "pyraml://id#/declarations/types/Tree/property/children/schema",
-              "is_annotation_type": false,
               "items": {
                 "head": {
                   "$ref": "pyraml://id#/declarations/types/Tree"
                 },
                 "id": "pyraml://id#/declarations/types/Tree/property/children/schema/items",
-                "is_annotation_type": false,
-                "kind": "RecursiveShape",
                 "name": "Tree",
                 "type": "recursive"
               },
-              "kind": "ArrayShape",
               "name": "children",
               "type": "array",
               "type_expr": "Tree[]"

@@ -25,10 +25,11 @@ from pyraml.effective import effective
 #: document reaches it, small enough to fail fast.
 RUNAWAY = 60
 
-#: Keys a consumer is not required to understand: they name parser states, not
-#: RAML concepts. Listed here so this file records exactly what the contract
-#: does *not* yet cover (docs/16 § 11.8).
-PARSER_STATE = frozenset({'id', 'is_annotation_type', 'kind', 'link', 'type_expr'})
+#: Keys the walker skips. `id` is an address rather than content, and
+#: `type_expr` is the source expression, kept as data but not traversed
+#: (docs/16 § 11.8). `kind`, `link` and `is_annotation_type` were here too,
+#: until the projection stopped emitting them.
+PARSER_STATE = frozenset({'id', 'type_expr'})
 
 
 class RunawayError(RecursionError):

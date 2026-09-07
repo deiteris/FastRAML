@@ -340,10 +340,12 @@ class _Projector:
             return self.reference(base.alias, seen)
         seen = seen | {base.id}
 
+        # No `kind`: the concrete shape class is 1:1 with `type` across all
+        # sixteen kinds over the corpus, with no ambiguous pair, so it added a
+        # Python class name and no information. No `link` either — which
+        # fragment a declaration came through is parser state (§ 11.8).
         out: dict[str, Json] = {'id': self.at(base.id), 'name': base.name, 'type': base.type}
-        if base.shape is not None:
-            out['kind'] = type(base.shape).__name__
-        for field in ('display_name', 'description', 'required', 'is_annotation_type'):
+        for field in ('display_name', 'description', 'required'):
             value = getattr(base, field, None)
             if value is not None:
                 out[field] = self.value(value, seen)
@@ -357,8 +359,6 @@ class _Projector:
             # say which.
             parents: list[Json] = [self.reference(parent, seen) for parent in base.inherits]
             out['inherits'] = parents
-        if base.link is not None:
-            out['link'] = type(base.link).__name__
         if base.custom_facets:
             out['custom_facets'] = {name: self.value(node, seen) for name, node in base.custom_facets.items()}
         if base.custom_facet_defs:

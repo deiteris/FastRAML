@@ -13,8 +13,6 @@
               "required": true,
               "type": {
                 "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/header/X-Trait/schema",
-                "is_annotation_type": false,
-                "kind": "StringShape",
                 "name": "X-Trait",
                 "type": "string",
                 "type_expr": "string"
@@ -28,8 +26,6 @@
               "required": false,
               "type": {
                 "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/fromType/schema",
-                "is_annotation_type": false,
-                "kind": "StringShape",
                 "name": "fromType?",
                 "type": "string",
                 "type_expr": "string"
@@ -40,8 +36,6 @@
               "required": false,
               "type": {
                 "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/onlyFirst/schema",
-                "is_annotation_type": false,
-                "kind": "StringShape",
                 "name": "onlyFirst?",
                 "type": "string",
                 "type_expr": "string"
@@ -52,8 +46,6 @@
               "required": false,
               "type": {
                 "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/onlySecond/schema",
-                "is_annotation_type": false,
-                "kind": "StringShape",
                 "name": "onlySecond?",
                 "type": "string",
                 "type_expr": "string"
@@ -65,8 +57,6 @@
               "type": {
                 "description": "from the method itself",
                 "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/shared/schema",
-                "is_annotation_type": false,
-                "kind": "StringShape",
                 "name": "shared?",
                 "type": "string",
                 "type_expr": "string"

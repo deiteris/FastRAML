@@ -106,7 +106,7 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
 
     options = ParseOptions(unwrap='unwrap' in config, validate='validate' in config)
     if 'graph' in config:
-        from pyraml.graph import build_graph  # noqa: PLC0415 - as above
+        from pyraml.views.graph import build_graph  # noqa: PLC0415 - as above
 
         return measure(bench, config, lambda: build_graph(parse_from_path(entry, options)), repeat=repeat)
     return measure(bench, config, lambda: parse_from_path(entry, options), repeat=repeat)

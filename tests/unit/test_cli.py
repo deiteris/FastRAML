@@ -149,7 +149,7 @@ class TestUsage:
     def test_import_does_not_load_a_parser_or_graph(self):
         code = (
             'import pyraml.cli, sys; '
-            "unexpected = {'pyraml.parser.entry', 'pyraml.graph', 'yaml'} & sys.modules.keys(); "
+            "unexpected = {'pyraml.parser.entry', 'pyraml.views.graph', 'yaml'} & sys.modules.keys(); "
             'assert not unexpected, unexpected'
         )
         subprocess.run([sys.executable, '-c', code], check=True)  # noqa: S603 - this interpreter, fixed code
@@ -209,6 +209,35 @@ class TestGraphVerbs:
     def test_the_default_format_is_turtle(self, graphed, capsys):
         assert main(['graph', graphed]) == EXIT_OK
         assert '@prefix raml:' in capsys.readouterr().out
+
+    def test_tree_prints_the_whole_document_as_json(self, graphed, capsys):
+        user = json.loads(self._tree(graphed, capsys))['types']['g.raml']['User']
+        assert user['properties']['name']['type']['type'] == 'string'
+        # Unwrapped, so the inherited property is present as well as the link.
+        assert 'id' in user['properties']
+        assert user['inherits'] == [{'$ref': 'pyraml://id#/declarations/types/Entity'}]
+
+    def test_tree_addresses_agree_with_the_ones_graph_prints(self, graphed, capsys):
+        # The counterpart claim in docs/16 § 11: one walk assigns both, so an
+        # address read from a tree names a node in the graph. Only a test across
+        # the two verbs catches them drifting apart.
+        tree = json.loads(self._tree(graphed, capsys))
+        assert main(['graph', '--format', 'json', graphed]) == EXIT_OK
+        iris = {node['iri'] for node in json.loads(capsys.readouterr().out)['nodes']}
+        addressed = tree['types']['g.raml']['User']
+        assert addressed['id'] in iris
+        assert addressed['inherits'][0]['$ref'] in iris
+
+    def test_tree_positions_reports_a_span_per_declaration(self, graphed, capsys):
+        assert main(['tree', '--positions', graphed]) == EXIT_OK
+        spans = json.loads(capsys.readouterr().out)
+        assert set(spans['g.raml']) == {'Entity', 'User'}
+        assert all({'key', 'value'} <= set(span) for span in spans['g.raml'].values()), spans
+
+    @staticmethod
+    def _tree(path, capsys):
+        assert main(['tree', path]) == EXIT_OK
+        return capsys.readouterr().out
 
     def test_refs_reports_the_route_and_not_only_the_hit(self, graphed, capsys):
         assert main(['refs', graphed, 'User']) == EXIT_OK
@@ -374,7 +403,7 @@ class TestQueryVerb:
 
     def test_a_select_prints_a_row_per_solution(self, graphed, capsys):
         pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
-        from pyraml.graph import RAML_NS
+        from pyraml.views.graph import RAML_NS
 
         query = f'PREFIX raml: <{RAML_NS}> SELECT ?m WHERE {{ ?o a raml:Operation ; raml:method ?m }}'
         assert main(['query', graphed, '-q', query]) == EXIT_OK
@@ -382,14 +411,14 @@ class TestQueryVerb:
 
     def test_an_ask_prints_a_boolean(self, graphed, capsys):
         pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
-        from pyraml.graph import RAML_NS
+        from pyraml.views.graph import RAML_NS
 
         assert main(['query', graphed, '-q', f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Operation }}']) == EXIT_OK
         assert capsys.readouterr().out.strip() == 'true'
 
     def test_a_query_can_come_from_a_file(self, graphed, workspace, capsys):
         pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
-        from pyraml.graph import RAML_NS
+        from pyraml.views.graph import RAML_NS
 
         path = workspace({'q.rq': f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Api }}'}) / 'q.rq'
         assert main(['query', graphed, '-Q', str(path)]) == EXIT_OK
@@ -408,7 +437,7 @@ class TestQueryCatalogue:
     """
 
     def test_list_names_every_query_and_its_question(self, capsys):
-        from pyraml.queries import QUERIES
+        from pyraml.views.queries import QUERIES
 
         assert main(['query', '--list']) == EXIT_OK
         out = capsys.readouterr().out

@@ -311,6 +311,7 @@ parsing rule lives in `pyraml/cli.py`.
 pyraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
 pyraml info [-w ROOT] [-r] FILE       # backend, timings, counts
 pyraml graph [--format nt|turtle|dot|json] FILE
+pyraml tree [--positions] FILE                # the whole document, addressed
 pyraml list FILE [PATTERN] [--kind K] [--json]             # what is in here
 pyraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
 pyraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made of
@@ -320,7 +321,7 @@ pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
 ```
 
 `validate` and `info` parse with `unwrap=True, validate=True`: their job is to
-find faults. The seven graph verbs parse with `validate=False` — a document with
+find faults. The eight view verbs parse with `validate=False` — a document with
 a bad example still has a graph worth reading, and refusing to draw one would
 make the tool useless exactly where navigating is most wanted.
 
@@ -359,7 +360,7 @@ Nothing is written to stderr in this mode.
 DOT, or plain JSON. The vocabulary and the IRI scheme are
 [16](16-graph.md) §§ 2–3.
 
-`effective` writes the whole document as an addressed JSON tree, and is the
+`tree` writes the whole document as an addressed JSON tree, and is the
 counterpart to `graph`: one `Walk` assigns both, so an address it prints names
 the node `graph` prints ([16](16-graph.md) § 11). Use it when a consumer needs
 the *contents* — examples, defaults, every container inline — which the graph
@@ -367,16 +368,16 @@ deliberately does not carry. `--positions` writes the span of every declaration
 instead.
 
 ```python
-from pyraml import ParseOptions, address, effective, parse_from_path
+from pyraml import ParseOptions, address, build_tree, parse_from_path
 
 raml = parse_from_path('api.raml', ParseOptions(unwrap=True))
-document = effective(raml)          # the tree, references as addresses
+document = build_tree(raml)         # the tree, references as addresses
 where = address(raml)               # entity id -> address, on its own
 ```
 
 `Addresses.of` is many-to-one and `id` remains the identity: a linked
 declaration and its link target share one address on purpose
-([16](16-graph.md) § 3.1). Pass `Graph.addresses` to `effective` when you hold
+([16](16-graph.md) § 3.1). Pass `Graph.addresses` to `build_tree` when you hold
 both views: the walk is most of the cost, and the two have to agree on it.
 
 `list` is the **inventory**, and it comes first: every other navigation verb

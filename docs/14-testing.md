@@ -344,14 +344,14 @@ The laws. Section 4.1 records where each is checked and over what input —
 
 15. **Every reference the effective projection emits resolves** — and resolves
     to the node the graph put at the same address ([16](16-graph.md) § 11.2), in
-    `test_effective.py`. This is the check on the addressable set: a reference to
+    `test_tree.py`. This is the check on the addressable set: a reference to
     something the walk never reached comes out as `null`, which reads exactly
     like "there was nothing to point at". The projection itself is pinned whole
     by the golden layer, which cannot see this — a golden agrees with whatever
     was generated, including a `null` where an address belonged.
 
 16. **A documentation view has what a reader needs** — one test per item in
-    [16](16-graph.md) § 11.4, in `test_effective.py`. Each was absent from every
+    [16](16-graph.md) § 11.4, in `test_tree.py`. Each was absent from every
     view, and none of them failed anything: a key that is not emitted looks
     exactly like a document that did not say it, so only a checklist written
     against what a renderer *renders* finds them. Six were found that way at
@@ -368,6 +368,17 @@ The laws. Section 4.1 records where each is checked and over what input —
     `unwrap=True` is the contract rather than a convenience. It carries one
     strict `xfail`: an alias is parser machinery that reads as a wrong answer
     (§ 11.8), and the law records that rather than hiding it.
+
+18. **The views cannot reach into the passes' path** — `test_views.py`. Nothing
+    under `parser/` or `types/` imports `pyraml.views`, and outside that package
+    only `cli.py` does. Asserted over the import graph rather than by review:
+    the layer was described as one-way in [02](02-architecture.md) § 2 and in
+    `CLAUDE.md` long before anything could fail when it stopped being. An import
+    the other way does not break a test on its own — it takes a rule about the
+    language landing outside the pass order, months later, for the cost to
+    show. The same file pins `__init__.pyi` against the lazy export table, which
+    had drifted by five names: a stub that omits an export leaves it resolving
+    at runtime and failing to type-check, so nothing in either suite sees it.
 
 ### 4.1 Where each law lives, and why
 
@@ -433,6 +444,8 @@ than measurements:
 | File | Gate | When |
 |------|------|------|
 | `tests/unit/test_graph.py` | the graph projection: IRI stability, the edges that answer the questions it exists for, and both RDF serialisations **checked by a real RDF parser** ([16](16-graph.md)) | always; the RDF cases skip without `pyoxigraph` |
+| `tests/unit/test_tree.py` | the document as containment: every reference resolves to the node the graph put at the same address, and a reader has what it needs ([16](16-graph.md) § 11) | always |
+| `tests/unit/test_views.py` | the layer boundary: no pass imports a view, and the stub matches the export table ([02](02-architecture.md) § 2) | always |
 | `tests/unit/test_render.py` | the effective view of a type and of an endpoint: everything merged in is present, each item attributed to the declaration that really supplied it, output loadable as YAML ([16](16-graph.md) § 9) | always |
 | `tests/unit/test_diff.py` | the change list and the backward-compatibility rules, above all that **the same edit reads differently on each side of the wire** ([16](16-graph.md) § 10.2) | always |
 | `tests/unit/test_queries.py` | every catalogue query is valid SPARQL, **returns rows on a fixture written to trigger all of them**, and answers the right question ([16](16-graph.md) § 6) | always; skips without `pyoxigraph` |

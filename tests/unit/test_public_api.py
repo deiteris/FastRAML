@@ -32,7 +32,7 @@ def test_lazy_export_table_matches_all():
 def test_bare_import_does_not_load_the_parser_or_its_dependencies():
     code = (
         'import pyraml, sys; '
-        "unexpected = {'pyraml.parser.entry', 'pyraml.graph', 'yaml', 'jsonschema', 'pluralizer'} & sys.modules.keys(); "
+        "unexpected = {'pyraml.parser.entry', 'pyraml.views.graph', 'yaml', 'jsonschema', 'pluralizer'} & sys.modules.keys(); "
         'assert not unexpected, unexpected'
     )
     subprocess.run([sys.executable, '-c', code], check=True)  # noqa: S603 - this interpreter, fixed code

@@ -11,8 +11,8 @@ from __future__ import annotations
 import pytest
 
 from pyraml import ParseOptions, parse_from_path
-from pyraml.diff import RULES, classify, diff
-from pyraml.graph import build_graph
+from pyraml.views.diff import RULES, classify, diff
+from pyraml.views.graph import build_graph
 
 BASE = """#%RAML 1.0
 title: Orders

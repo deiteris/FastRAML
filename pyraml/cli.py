@@ -31,10 +31,10 @@ from pyraml import __version__
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from pyraml.diff import Change, Rule
-    from pyraml.graph import Graph
     from pyraml.parser.entry import ParseOptions
     from pyraml.registry import Raml
+    from pyraml.views.diff import Change, Rule
+    from pyraml.views.graph import Graph
 
 __all__ = ['main']
 
@@ -90,14 +90,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     _add_common(graph)
 
-    effective = commands.add_parser(
-        'effective', help='the effective document as an addressed JSON tree (doc 16 section 11)'
-    )
-    effective.add_argument('files', metavar='FILE', nargs=1)
-    effective.add_argument(
-        '--positions', action='store_true', help='the span of every declaration instead of the document'
-    )
-    _add_common(effective)
+    tree = commands.add_parser('tree', help='the effective document as an addressed JSON tree (doc 16 section 11)')
+    tree.add_argument('files', metavar='FILE', nargs=1)
+    tree.add_argument('--positions', action='store_true', help='the span of every declaration instead of the document')
+    _add_common(tree)
 
     _add_navigation(commands)
 
@@ -130,7 +126,7 @@ def _parser() -> argparse.ArgumentParser:
         validate=_validate,
         info=_info,
         graph=_graph,
-        effective=_effective,
+        tree=_tree,
         refs=_walk,
         deps=_walk,
         show=_show_type,
@@ -305,7 +301,7 @@ def _graph(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _effective(args: argparse.Namespace) -> int:
+def _tree(args: argparse.Namespace) -> int:
     """The whole effective document, with every reference as an address.
 
     The counterpart to `graph`: the same walk assigns both, so an address
@@ -314,15 +310,15 @@ def _effective(args: argparse.Namespace) -> int:
     """
     import json  # noqa: PLC0415 - only this verb needs the encoder
 
-    from pyraml.effective import effective, positions_of  # noqa: PLC0415
+    from pyraml.views.tree import build_tree, positions_of  # noqa: PLC0415
 
-    # No graph: this verb needs none, and `effective` assigns the addresses it
+    # No graph: this verb needs none, and `build_tree` assigns the addresses it
     # needs itself. A consumer that already holds a graph passes
     # `addresses=graph.addresses` instead and skips the second assignment.
     raml = _parsed(args)
     if raml is None:
         return EXIT_INVALID
-    payload = positions_of(raml) if args.positions else effective(raml)
+    payload = positions_of(raml) if args.positions else build_tree(raml)
     print(json.dumps(payload, indent=2, sort_keys=True))
     return EXIT_OK
 
@@ -334,7 +330,12 @@ def _show_type(args: argparse.Namespace) -> int:
     turns `NAME` into one declaration. The projection drops facet detail on
     purpose, so rendering from it would show a lossy copy (docs/16 § 9).
     """
-    from pyraml.render import Sources, render, render_endpoint, render_operation  # noqa: PLC0415 - graph commands only
+    from pyraml.views.render import (  # noqa: PLC0415 - graph commands only
+        Sources,
+        render,
+        render_endpoint,
+        render_operation,
+    )
 
     built = _built(args)
     if built is None:
@@ -411,7 +412,7 @@ def _walk(args: argparse.Namespace) -> int:
     One function because they differ in exactly two values, and writing them
     twice is how the two edge closures drift apart.
     """
-    from pyraml.graph import TYPE_EDGES, USE_EDGES  # noqa: PLC0415 - graph commands only
+    from pyraml.views.graph import TYPE_EDGES, USE_EDGES  # noqa: PLC0415 - graph commands only
 
     built = _built(args)
     if built is None:
@@ -469,7 +470,7 @@ def _diff(args: argparse.Namespace) -> int:
     the whole change list with its grading, for a consumer that disagrees with
     the built-in policy and wants only the facts (docs/16 § 10).
     """
-    from pyraml.diff import RULES, classify, diff  # noqa: PLC0415 - graph commands only
+    from pyraml.views.diff import RULES, classify, diff  # noqa: PLC0415 - graph commands only
 
     graphs = []
     for path in args.files:
@@ -588,7 +589,7 @@ def _pretty(iri: str) -> str:
 
 def _query(args: argparse.Namespace) -> int:
     """SPARQL over the graph: the catalogue, or a query of your own."""
-    from pyraml.queries import QUERIES  # noqa: PLC0415 - query command only
+    from pyraml.views.queries import QUERIES  # noqa: PLC0415 - query command only
 
     # The catalogue is text, so `--list` and `--show` want neither a store nor a
     # file. A user without pyoxigraph can still read a query and copy it out.
@@ -682,8 +683,8 @@ def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Ra
     the tool useless exactly where navigating is most wanted.
     """
     from pyraml.errors import RamlError  # noqa: PLC0415 - graph commands only
-    from pyraml.graph import build_graph  # noqa: PLC0415
     from pyraml.parser.entry import parse_from_path  # noqa: PLC0415
+    from pyraml.views.graph import build_graph  # noqa: PLC0415
 
     path = path or args.files[0]
     try:
@@ -751,7 +752,7 @@ def _query_text(args: argparse.Namespace) -> str | None:
     """The SPARQL to run: given, read from a file, or named in the catalogue."""
     from pathlib import Path  # noqa: PLC0415 - query files only
 
-    from pyraml.queries import QUERIES, render  # noqa: PLC0415
+    from pyraml.views.queries import QUERIES, render  # noqa: PLC0415
 
     if args.sparql is not None:
         return str(args.sparql)
@@ -768,7 +769,7 @@ def _query_text(args: argparse.Namespace) -> str | None:
 
 
 def _show(name: str) -> int:
-    from pyraml.queries import QUERIES, render  # noqa: PLC0415 - query command only
+    from pyraml.views.queries import QUERIES, render  # noqa: PLC0415 - query command only
 
     query = QUERIES.get(name)
     if query is None:

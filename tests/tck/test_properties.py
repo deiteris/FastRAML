@@ -266,7 +266,7 @@ class TestTheGraphProjectsTheWholeCorpus:
 
     def test_every_parseable_fixture_projects(self):
         from pyraml import ParseOptions, RamlError, parse_from_path
-        from pyraml.graph import build_graph
+        from pyraml.views.graph import build_graph
 
         root = _root_or_skip()
         options = ParseOptions(unwrap=True)
@@ -320,7 +320,7 @@ class TestTheGraphProjectsTheWholeCorpus:
         about.
         """
         from pyraml import ParseOptions, RamlError, parse_from_path
-        from pyraml.walk import address
+        from pyraml.views.walk import address
 
         root = _root_or_skip()
         options = ParseOptions(unwrap=True)
@@ -352,8 +352,8 @@ class TestEveryTypeRenders:
         import yaml
 
         from pyraml import ParseOptions, RamlError, parse_from_path
-        from pyraml.graph import build_graph
-        from pyraml.render import render
+        from pyraml.views.graph import build_graph
+        from pyraml.views.render import render
 
         root = _root_or_skip()
         options = ParseOptions(unwrap=True)
@@ -391,8 +391,8 @@ class TestEveryTypeRenders:
         import yaml
 
         from pyraml import ParseOptions, RamlError, parse_from_path
-        from pyraml.graph import build_graph
-        from pyraml.render import Sources, render_endpoint
+        from pyraml.views.graph import build_graph
+        from pyraml.views.render import Sources, render_endpoint
 
         root = _root_or_skip()
         options = ParseOptions(unwrap=True)

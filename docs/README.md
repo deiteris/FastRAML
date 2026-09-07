@@ -28,7 +28,7 @@ follows it or the document is amended first.
 | 13 | [Public API](13-public-api.md) | Entry points, options, the model surface consumers see |
 | 14 | [Testing strategy](14-testing.md) | TCK integration, unit/golden/property/benchmark layers |
 | 15 | [Implementation plan](15-implementation-plan.md) | Milestones, ordering, definition of done per phase |
-| 16 | [The graph projection](16-graph.md) | The effective model as a queryable graph: vocabulary, IRIs, RDF/SPARQL, why not AMF, the effective view, the version diff |
+| 16 | [The views](16-graph.md) | `pyraml/views/`: one addressing walk, the model as a graph and as a tree, RDF/SPARQL, why not AMF, the reading view, the version diff |
 
 ## Conventions in these documents
 

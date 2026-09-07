@@ -57,15 +57,20 @@ parser compiles, `parse_lenient`, the `pyraml` CLI and the widened export list. 
 brief per phase lives in `docs/briefs/`, each with a section at its top recording
 what it got wrong.
 
-**The graph layer sits on top and is not a pass** (`docs/16-graph.md`).
-`graph.py` projects the finished effective model as a labelled graph with stable
-IRIs; `queries.py` is the SPARQL catalogue, `render.py` the effective view of a
-type or endpoint as RAML, `diff.py` the version comparison and its
-backward-compatibility policy. Seven CLI verbs — `graph`, `list`, `refs`,
-`deps`, `show`, `query`, `diff`. It runs after P10, decides no RAML rule, and nothing in the
-model imports it; SPARQL needs `pyoxigraph`, which the package does not depend
-on, and the graph itself needs nothing. Keep it that way: a rule that belongs to
-the language belongs in a pass.
+**`pyraml/views/` sits on top and holds no pass** (`docs/16-graph.md`). One
+`views/walk.py` addresses every referenceable entity, and each view is a `Sink`
+over it: `views/graph.py` emits a node set — identity and reference — and
+`views/tree.py` emits containment, the two being lossy on orthogonal axes rather
+than one filtering the other. `views/render.py` is the reading view of a single
+type or endpoint, `views/queries.py` the SPARQL catalogue, `views/diff.py` the
+version comparison and its backward-compatibility policy. Eight CLI verbs —
+`graph`, `tree`, `list`, `refs`, `deps`, `show`, `query`, `diff`.
+
+All of it runs after P10 and decides no RAML rule. **Nothing under `parser/` or
+`types/` may import `pyraml.views`**, and outside it only `cli.py` may;
+`tests/unit/test_views.py` asserts both over the import graph. A rule that
+belongs to the language belongs in a pass. SPARQL needs `pyoxigraph`, which the
+package does not depend on; nothing else here needs anything.
 
 **Benchmarks are a gate, not a report.** `python -m bench compare` before and
 after anything that touches a hot path; the commit message carries the delta

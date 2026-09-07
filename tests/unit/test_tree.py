@@ -15,8 +15,8 @@ from __future__ import annotations
 import pytest
 
 from pyraml import ParseOptions, parse_from_path
-from pyraml.effective import effective, positions_of
-from pyraml.graph import build_graph
+from pyraml.views.graph import build_graph
+from pyraml.views.tree import build_tree, positions_of
 
 #: Exercises each of the four cross-references at once: `inherits`, an alias
 #: under an array, a recursion head, and an applied annotation.
@@ -73,7 +73,7 @@ def references(value: object, key: str = '') -> list[tuple[str, str]]:
 def both(workspace):
     root = workspace({'api.raml': API})
     raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
-    return effective(raml), build_graph(raml)
+    return build_tree(raml), build_graph(raml)
 
 
 class TestEveryReferenceResolves:
@@ -170,14 +170,14 @@ class TestATypedFragmentIsADeclaration:
         return parse_from_path(root / 'user.raml', ParseOptions(unwrap=True))
 
     def test_the_fragment_is_projected_as_a_type(self, entry):
-        declared = effective(entry)['types']['user.raml']
+        declared = build_tree(entry)['types']['user.raml']
         assert list(declared) == ['user.raml']
         assert declared['user.raml']['type'] == 'object'
         assert list(declared['user.raml']['properties']) == ['id']
 
     def test_it_lands_at_the_address_the_graph_gave_it(self, entry):
         graph = build_graph(entry)
-        projected = effective(entry)['types']['user.raml']['user.raml']
+        projected = build_tree(entry)['types']['user.raml']['user.raml']
         assert projected['id'] == f'{graph.base}#/declarations/types/user.raml'
         assert projected['id'] in graph.nodes
 
@@ -198,7 +198,7 @@ class TestATypedFragmentIsADeclaration:
             }
         )
         raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
-        declared = effective(raml)['types']
+        declared = build_tree(raml)['types']
         assert {file: list(names) for file, names in declared.items()} == {'api.raml': ['User']}
         assert set(build_graph(raml).nodes) >= {addr for _, addr in references(declared)}
 
@@ -211,7 +211,7 @@ class TestAnAddressMapCanBeReused:
         root = workspace({'api.raml': API})
         raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
-        assert effective(raml, addresses=graph.addresses) == effective(raml)
+        assert build_tree(raml, addresses=graph.addresses) == build_tree(raml)
 
 
 DOCUMENTED = """#%RAML 1.0
@@ -261,7 +261,7 @@ class TestWhatADocumentationViewNeeds:
     @pytest.fixture
     def doc(self, workspace):
         root = workspace({'api.raml': DOCUMENTED})
-        return effective(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def test_base_uri_parameters_are_projected(self, doc):
         """`{tenant}` is a value every caller supplies; without it no request
@@ -309,7 +309,7 @@ class TestAnAnnotationIsRecordedWhereItWasApplied:
     @pytest.fixture
     def doc(self, workspace):
         root = workspace({'api.raml': DOCUMENTED})
-        return effective(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def test_on_the_resource(self, doc):
         assert doc['endpoints']['/users']['annotations'] == [
@@ -327,5 +327,5 @@ class TestAnAnnotationIsRecordedWhereItWasApplied:
         root = workspace({'api.raml': DOCUMENTED})
         raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
-        dangling = [a for _, a in references(effective(raml)) if a not in graph.nodes]
+        dangling = [a for _, a in references(build_tree(raml)) if a not in graph.nodes]
         assert not dangling, dangling

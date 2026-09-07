@@ -1,4 +1,8 @@
-"""The effective document as an addressed tree — docs/16-graph.md § 11.
+"""The model as containment: an addressed JSON tree — docs/16-graph.md § 11.
+
+Named for its shape rather than its input. Every module in this package is a
+view of the effective model, so the word that tells them apart is the one that
+says how the output is arranged: `graph` is a node set, this is a tree.
 
 The graph answers *what points at what*; this answers *what is here*. Both are
 views of the same model and neither is a filter of the other: the graph carries
@@ -11,7 +15,7 @@ cross-reference at four places — recursion, `inherits`, an alias, an applied
 annotation — and a name is not an identity: two libraries may each declare
 `paged`, and an anonymous shape has no name to write. Every reference below is
 an address from the same `Walk` the graph used, so a node in one output and the
-same entity in the other are joinable (`pyraml.walk`).
+same entity in the other are joinable (`pyraml.views.walk`).
 
 Positions are projected separately by `positions_of`. A one-line edit to a
 document shifts every position after it, and a view that churned on every edit
@@ -31,7 +35,7 @@ from pyraml.datanode import DataNode, ValueNode
 from pyraml.parser.fragments import DataTypeFragment
 from pyraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet, copyable_slots
 from pyraml.types.examples import Example, Examples
-from pyraml.walk import DEFAULT_BASE, Addresses, address
+from pyraml.views.walk import DEFAULT_BASE, Addresses, address
 from pyraml.yamlnode import Node, NodeKind
 
 if TYPE_CHECKING:
@@ -45,7 +49,7 @@ if TYPE_CHECKING:
     from pyraml.positions import Position
     from pyraml.registry import Raml
 
-__all__ = ['Json', 'effective', 'positions_of']
+__all__ = ['Json', 'build_tree', 'positions_of']
 
 #: What this module emits. Everything is a JSON value, so the result goes
 #: through `json.dumps` without an encoder and through any consumer without one.
@@ -74,7 +78,7 @@ _SKIP = frozenset(
 )
 
 
-def effective(raml: Raml, *, addresses: Addresses | None = None, base: str = DEFAULT_BASE) -> Json:
+def build_tree(raml: Raml, *, addresses: Addresses | None = None, base: str = DEFAULT_BASE) -> Json:
     """The whole parse, as a value `json.dumps` accepts.
 
     Pass `addresses` to reuse a map already assigned — `Graph.addresses`, say.

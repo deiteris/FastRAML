@@ -1,7 +1,6 @@
 # 16. The graph projection
 
-**Status: built.** `pyraml/graph.py`, `pyraml/queries.py`, `pyraml/render.py` and
-`pyraml/diff.py`, behind the `graph`, `list`, `refs`, `deps`, `show`, `query` and
+**Status: built.** `pyraml/views/`, behind the `graph`, `tree`, `list`, `refs`, `deps`, `show`, `query` and
 `diff` verbs of the CLI ([13](13-public-api.md) § 8).
 
 This document owns one area: turning the parsed model into something you can
@@ -25,7 +24,7 @@ edge is a lookup rather than a visitor.
 So this layer is a projection and nothing else. It contains no RAML rule, no
 merge, no name resolution, no inference. If a question about the graph turns into
 a question about what RAML means, the answer belongs in another document and
-another pass. The dependency runs one way — `graph.py` and `nodes.py` import the
+another pass. The dependency runs one way — `views/graph.py` and `nodes.py` import the
 model and nothing in the model imports either.
 
 "A projection" states an intention, and an intention permits anything that can
@@ -287,7 +286,7 @@ regardless of whether anything compares it.
 Node IRIs are **structural**: a path describing where the entity sits, not an
 opaque identifier.
 
-**The scheme belongs to `pyraml/walk.py`, not to this module.** More than one
+**The scheme belongs to `pyraml/views/walk.py`, not to this module.** More than one
 emitter addresses the same document, and a reference is followable only when the
 emitter that wrote it and the emitter that reads it agree. Assignment is one
 traversal — `Walk`, reporting to a `Sink` — and every emitter is a sink over it.
@@ -460,7 +459,7 @@ holds a referent — `annotation` points at the annotation *type*, never at the
 value — and everything below is absent because nothing in the model refers to
 it, so no traversal can arrive at it and no query can ask.
 
-That is also the reach of the addressing traversal (`pyraml/walk.py`): an entity
+That is also the reach of the addressing traversal (`pyraml/views/walk.py`): an entity
 needs an address exactly when a reference to it has to be followable. An emitter
 that wants the list below places it by containment instead, which needs no
 address. So the list is a boundary a fuller emitter crosses without this module
@@ -537,7 +536,7 @@ produces almost-valid N-Triples is the obvious failure mode.
 
 ## 6. The catalogue, and whether SPARQL earned its keep
 
-`pyraml/queries.py`. Seventeen named questions, run with `pyraml query -n NAME`,
+`pyraml/views/queries.py`. Seventeen named questions, run with `pyraml query -n NAME`,
 listed with `--list` and printed with `--show`. Both of the latter are text
 operations: they need no store and no document, so a reader without
 `pyoxigraph` can still see what the tool would ask.
@@ -669,7 +668,7 @@ classes produce.
 trigger. The one real payoff is interoperating with tooling written against AMF,
 notably the API-governance rulesets. Nothing needs that yet.
 
-It would be **a sink over `pyraml/walk.py`, not a serialiser over this graph.**
+It would be **a sink over `pyraml/views/walk.py`, not a serialiser over this graph.**
 An AMF consumer renders as well as queries, so it wants what § 4 excludes —
 api-console 6.6.69 reads 357 vocabulary terms across twelve namespaces, of which
 the `data:` DataNode tree for examples and defaults is a large part. Reading
@@ -737,7 +736,7 @@ this, and its docstring says so.
 
 ## 9. The effective view
 
-`pyraml show FILE NAME`, and `pyraml/render.py` behind it.
+`pyraml show FILE NAME`, and `pyraml/views/render.py` behind it.
 
 This answers the question a reader asks most often, and the one neither `refs`
 nor a query answers: **what is this type, actually?** Every inherited property
@@ -969,7 +968,7 @@ note, never inside the flow sequence where `#` is a syntax error.
 
 ## 10. What changed, and what it breaks
 
-`pyraml diff OLD NEW`, and `pyraml/diff.py` behind it.
+`pyraml diff OLD NEW`, and `pyraml/views/diff.py` behind it.
 
 The whole feature exists because § 3's IRIs are **structural**. The same entity
 has the same name in both versions, so matching two documents is a dict lookup
@@ -1077,17 +1076,22 @@ effect this cannot compute.
 
 ## 11. The effective document as a tree
 
-`graph` answers *what points at what*. `effective` answers *what is here*.
+`graph` answers *what points at what*. `tree` answers *what is here*.
+
+The module is `pyraml/views/tree.py`, named for the shape of what it emits.
+Every module in that package is a view of the effective model, so "effective"
+is the word they share and cannot be the one that tells them apart: `graph`
+emits a node set, this emits containment.
 
 ```bash
-pyraml effective api.raml            # the whole document, addressed
-pyraml effective --positions api.raml
+pyraml tree api.raml            # the whole document, addressed
+pyraml tree --positions api.raml
 ```
 
 ```python
-from pyraml import ParseOptions, effective, parse_from_path
+from pyraml import ParseOptions, build_tree, parse_from_path
 
-document = effective(parse_from_path('api.raml', ParseOptions(unwrap=True)))
+document = build_tree(parse_from_path('api.raml', ParseOptions(unwrap=True)))
 ```
 
 ### 11.1 Why it is not the graph, and not a filter of it
@@ -1152,7 +1156,7 @@ answer docs/07 § 3.6 warns about. It costs nothing measurable: on a 2000-type
 document, referencing alias parents instead produced an output of identical
 size.
 
-Both outputs come from one `Walk`, so **an address printed by `effective` names
+Both outputs come from one `Walk`, so **an address printed by `tree` names
 the node printed by `graph`**. That join is the whole point; law 15 asserts it.
 
 ### 11.3a A typed fragment is a declaration
@@ -1161,7 +1165,7 @@ A `#%RAML 1.0 DataType` document is one declaration, and `fragment_types` lists
 it only when some document's `types:` included it. As the **entry point**
 nothing lists it, and reading only that map projected a document whose entire
 content is a type as having none — silently, because an empty map is what a
-document with no types looks like. `pyraml effective user.raml` printed
+document with no types looks like. `pyraml tree user.raml` printed
 `"types": {}`.
 
 Only the entry point is folded in. An included fragment is already listed under

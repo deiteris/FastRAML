@@ -740,12 +740,13 @@ In rough priority order:
    and the `TypeExprRef`/`IncludeRef` indices exist so none of them requires a
    parser change.
 
-   **The first of these is built and lives in-tree**: the graph projection
-   ([16](16-graph.md)) — `graph.py`, `queries.py`, `render.py` and `diff.py`,
-   behind seven CLI verbs. It is in the
-   package rather than beside it only because the CLI needs it; it is still a
-   consumer, it decides no RAML rule, and nothing in the model imports it. It
-   required no parser change, which is the claim this item makes.
+   **The first of these is built and lives in-tree**: `pyraml/views/`
+   ([16](16-graph.md)) — one addressing walk under `graph`, `tree`, `render`,
+   `queries` and `diff`, behind eight CLI verbs. It is in the package rather
+   than beside it only because the CLI needs it; it is still a consumer, it
+   decides no RAML rule, and nothing in the model imports it — which is now a
+   package boundary rather than a convention ([14](14-testing.md) § 4, law 18).
+   It required no parser change, which is the claim this item makes.
 6. **Per-entity tolerance across passes**, for `parse_lenient`. Today it stops
    where a strict parse stops and returns the partial model
    ([13](13-public-api.md) § 1). Running the later passes anyway was built in

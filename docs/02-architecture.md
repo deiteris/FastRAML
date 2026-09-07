@@ -76,14 +76,17 @@ pyraml/
   __init__.py             lazy public API exports (see doc 13)
   __init__.pyi            eager declarations of that surface for type checkers
   cli.py                  the `pyraml` console script (doc 13 section 8)
-  walk.py                 one traversal of the effective model, addressing what
-                          it reaches; emitters are sinks over it (doc 16 section 3)
-  graph.py                the effective model as a queryable graph (doc 16)
-  effective.py            the effective model as an addressed tree (doc 16 section 11)
-  queries.py              the named SPARQL analysis catalogue (doc 16 section 6)
-  render.py               the effective view of a type or endpoint, as RAML (doc 16 section 9)
-  diff.py                 what changed between two versions, and what it breaks (doc 16 section 10)
   py.typed
+
+  views/                  everything that reads the finished model (doc 16).
+                          Not passes: nothing under parser/ or types/ imports it
+    walk.py               one traversal of the effective model, addressing what
+                          it reaches; every view is a sink over it (doc 16 section 3)
+    graph.py              the model as a node set — identity and reference (doc 16)
+    tree.py               the model as containment — what is here (doc 16 section 11)
+    render.py             one type or endpoint as text, for reading (doc 16 section 9)
+    queries.py            the named SPARQL analysis catalogue (doc 16 section 6)
+    diff.py               what changed between two versions, and what it breaks (doc 16 section 10)
 
   errors.py               Diagnostic, StackTrace, Accumulator, ErrorKind
   positions.py            Position (1-based, with end), position helpers
@@ -135,17 +138,28 @@ pyraml/
       parser.py           RDT recursive-descent parser; memoised on a caller-supplied cache
 ```
 
-`walk.py` and `graph.py` are **not passes**. They run after the pipeline has
-finished, over a model that is already unwrapped, and decide no RAML rule. The
+**Nothing in `views/` is a pass.** Each module runs after the pipeline has
+finished, over a model that is already unwrapped, and decides no RAML rule. The
 dependency runs one way — they import the model and nothing in the model imports
 them — which is what keeps them consumers rather than stages
 ([16](16-graph.md) § 1).
 
-`walk.py` sits under `graph.py` rather than beside it. It owns the one traversal
-that assigns an address to every referenceable entity, and each emitter is a
-`Sink` over it. Assignment depends on visit order, so two emitters that walked
-separately would address the same entity differently and their outputs could not
-be joined ([16](16-graph.md) § 3).
+That is a package rather than six modules beside the parser so the direction is
+checkable: `tests/unit/test_views.py` asserts that nothing under `parser/` or
+`types/` imports `pyraml.views`, and that `cli.py` is the only module outside it
+that does. A rule that belongs to the language belongs in a pass, and an import
+the other way is how one quietly stops being one. `queries.py` and `diff.py` are
+inside because the package boundary *is* the layer boundary; they consume a
+`Graph` rather than the model, but a package holding only part of the layer
+would not be worth enforcing.
+
+`walk.py` sits under the rest rather than beside them. It owns the one traversal
+that assigns an address to every referenceable entity, and each view is a `Sink`
+over it. Assignment depends on visit order, so two views that walked separately
+would address the same entity differently and their outputs could not be joined
+([16](16-graph.md) § 3). `graph.py` and `tree.py` are named for the *shape* of
+what they emit — a node set against containment — because every module here is a
+view of the same effective model, so the input is not what tells them apart.
 
 `types/resolve.py` holds the AST → shape visitor as well as the driver, rather
 than the separate `expressions/build.py` an earlier draft of this list named.
@@ -431,7 +445,7 @@ them; violations are bugs, not diagnostics.
 | I8 | Order of declaration is preserved in every mapping the model exposes | dict semantics |
 | I9 | Structural merge never mutates either input tree | P4a |
 | I10 | Node identity is stable across the merge, so provenance lookups work | P4a |
-| I11 | An entity has at most one address; an address may be shared by entities the model links, so `Addresses.of` is many-to-one and `id` remains the identity | `walk.py` (after P10) |
+| I11 | An entity has at most one address; an address may be shared by entities the model links, so `Addresses.of` is many-to-one and `id` remains the identity | `views/walk.py` (after P10) |
 
 ## 5. Error strategy
 

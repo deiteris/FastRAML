@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Final, Literal
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from pyraml.graph import Graph, GraphNode
+    from pyraml.views.graph import Graph, GraphNode
 
 __all__ = ['Change', 'Direction', 'Severity', 'classify', 'diff']
 

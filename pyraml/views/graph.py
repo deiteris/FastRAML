@@ -50,7 +50,7 @@ from pyraml.nodes import (
 )
 from pyraml.parser.endpoints import EndPoint, Operation
 from pyraml.types.base import BaseShape
-from pyraml.walk import DECLARATIONS, DEFAULT_BASE, Addresses, Bucket, Walk
+from pyraml.views.walk import DECLARATIONS, DEFAULT_BASE, Addresses, Bucket, Walk
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -243,7 +243,7 @@ class Graph:
         self.base = base
         #: Where every entity the walk reached was addressed. The join between
         #: a node in this graph and the same entity in any other emitter's
-        #: output, which is the reason assignment is one walk (`pyraml.walk`).
+        #: output, which is the reason assignment is one walk (`pyraml.views.walk`).
         self.addresses = Addresses(base, {}) if addresses is None else addresses
         #: The entry document's directory URI. What the IRIs above are
         #: relative to, and what a consumer needs to turn a shape's absolute

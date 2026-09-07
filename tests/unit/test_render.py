@@ -21,10 +21,10 @@ import pytest
 import yaml
 
 from pyraml import ParseOptions, parse_from_path
-from pyraml.graph import build_graph
-from pyraml.render import render
 from pyraml.types.base import facets_of
 from pyraml.types.jsonschema_ import projected
+from pyraml.views.graph import build_graph
+from pyraml.views.render import render
 
 LIB = """#%RAML 1.0 Library
 types:
@@ -274,8 +274,8 @@ securedBy: [oauth, plain]
 
 @pytest.fixture
 def endpoint(workspace):
-    from pyraml.graph import build_graph
-    from pyraml.render import Sources, render_endpoint
+    from pyraml.views.graph import build_graph
+    from pyraml.views.render import Sources, render_endpoint
 
     root = workspace({'api.raml': API})
     raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))

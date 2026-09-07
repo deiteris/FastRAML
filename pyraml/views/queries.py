@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from pyraml.graph import RAML_NS
+from pyraml.views.graph import RAML_NS
 
 __all__ = ['QUERIES', 'Query', 'render']
 

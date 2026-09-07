@@ -21,8 +21,8 @@ import io
 import pytest
 
 from pyraml import ParseOptions, parse_from_path
-from pyraml.graph import TYPE_EDGES, build_graph
-from pyraml.queries import PREFIX, QUERIES, REACHES, render
+from pyraml.views.graph import TYPE_EDGES, build_graph
+from pyraml.views.queries import PREFIX, QUERIES, REACHES, render
 
 #: Written to trigger every query in the catalogue at once: an unused type and
 #: an unused trait, a multi-parent type, a recursive type, an enum, an unbounded
@@ -180,7 +180,7 @@ class TestTheCatalogueIsWellFormed:
         import sys
 
         done = subprocess.run(
-            [sys.executable, '-c', 'import pyraml.queries, sys; assert "pyoxigraph" not in sys.modules'],
+            [sys.executable, '-c', 'import pyraml.views.queries, sys; assert "pyoxigraph" not in sys.modules'],
             capture_output=True,
             check=False,
         )

@@ -24,9 +24,9 @@ import json
 import pytest
 
 import pyraml.nodes as nodes_module
-import pyraml.walk as walk_module
+import pyraml.views.walk as walk_module
 from pyraml import ParseOptions, parse_from_path
-from pyraml.graph import (
+from pyraml.views.graph import (
     DEFAULT_BASE,
     RAML_NS,
     TYPE_EDGES,

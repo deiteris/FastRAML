@@ -19,7 +19,7 @@ from __future__ import annotations
 import pytest
 
 from pyraml import ParseOptions, parse_from_path
-from pyraml.effective import effective
+from pyraml.views.tree import build_tree
 
 #: Past this, the walker has failed to terminate. Deep enough that no legitimate
 #: document reaches it, small enough to fail fast.
@@ -74,7 +74,7 @@ CYCLES = {
 
 def project(workspace, body: str) -> object:
     root = workspace({'api.raml': '#%RAML 1.0\ntitle: T\n' + body})
-    return effective(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+    return build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
 
 
 class TestANaiveWalkTerminates:

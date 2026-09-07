@@ -288,7 +288,7 @@ function Body({
       )}
       {!hideDescription && <Prose>{shape.description}</Prose>}
 
-      {(facets.length > 0 || shape.enum) && (
+      {facets.length > 0 && (
         <div className="facets">
           {facets.map(([name, value]) => (
             <Chip key={name}>
@@ -296,8 +296,19 @@ function Body({
               <span className="facet-value">{facetValue(name, value)}</span>
             </Chip>
           ))}
-          {shape.enum?.map((value, at) => (
-            <Chip key={`enum-${at}`} tone="enum">
+        </div>
+      )}
+
+      {/* Labelled, and on a line of its own. Among the facet chips these were a
+          row of bare words -- `pending sent delivered` under a string, with
+          nothing saying whether they were a list of values, of names, or of
+          anything else. Every other facet carries its own name; an enum's
+          values are the one thing that arrived without one. */}
+      {shape.enum && shape.enum.length > 0 && (
+        <div className="shape-line">
+          <span className="label">allowed values</span>
+          {shape.enum.map((value, at) => (
+            <Chip key={at} tone="enum">
               {oneLine(value)}
             </Chip>
           ))}

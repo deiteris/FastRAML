@@ -47,10 +47,27 @@ try {
   const page = await browser.newPage();
   await page.setViewport({ width: 1400, height: 1000, deviceScaleFactor: 2 });
 
+  /*
+   * Browser failures, reported by name.
+   *
+   * `npm run smoke` renders to static markup, which does not run the client:
+   * an icon package that resolved a second copy of React threw `Invalid hook
+   * call` on every page and the smoke run still said 38/38. This caught it, but
+   * as a selector timeout with nothing about the cause in it.
+   */
+  const failures = [];
+  const firstLine = (text) => String(text).split(/\r?\n/)[0];
+  page.on('pageerror', (error) => failures.push(`${route}: ${firstLine(error.message)}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error') failures.push(`${route}: ${firstLine(message.text())}`);
+  });
+  let route = '(startup)';
+
   for (const theme of only) {
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: theme }]);
-    for (const [name, route] of PAGES) {
-      await page.goto(`http://localhost:${PORT}/#${route}`, { waitUntil: 'networkidle0' });
+    for (const [name, at] of PAGES) {
+      route = at;
+      await page.goto(`http://localhost:${PORT}/#${at}`, { waitUntil: 'networkidle0' });
       // The document loads after the first paint, so wait for content rather
       // than for the network: a screenshot of the loading state proves nothing.
       await page.waitForSelector('main article, main .empty', { timeout: 5000 });
@@ -60,6 +77,11 @@ try {
     }
   }
   await browser.close();
+
+  if (failures.length > 0) {
+    for (const failure of [...new Set(failures)]) console.error('ERROR', failure);
+    process.exitCode = 1;
+  }
 } finally {
   server.kill();
 }

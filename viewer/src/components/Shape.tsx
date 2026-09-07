@@ -145,7 +145,10 @@ function Body({
   const properties = Object.entries(shape.properties ?? {});
   const patterns = Object.entries(shape.pattern_properties ?? {});
   const members = shape.any_of ?? [];
-  const named = shape.display_name && shape.display_name !== shape.name;
+  // `hideType` means the container names this shape, so its `displayName`
+  // belongs up there too. Rendered here it was a bare word between the
+  // description and the facets, with nothing saying what it was.
+  const named = !hideType && shape.display_name && shape.display_name !== shape.name;
 
   return (
     <div className="shape">
@@ -262,6 +265,9 @@ function Attribute({
     <div className="attr">
       <div className="attr-head">
         <code className="attr-name">{name}</code>
+        {inline && shape.display_name && shape.display_name !== shape.name && (
+          <span className="attr-display">{shape.display_name}</span>
+        )}
         {inline ? (
           <span className="attr-type">{spelling(shape)}</span>
         ) : link ? (

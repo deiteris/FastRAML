@@ -47,7 +47,7 @@
   "base": "pyraml://id",
   "endpoints": {
     "/books": {
-      "description": "The catalogue.",
+      "description": "The catalogue of every book the store carries.",
       "display_name": "Books",
       "id": "pyraml://id#/web-api/endpoint/%2Fbooks",
       "operations": {
@@ -145,6 +145,8 @@
                 "isbn": {
                   "required": true,
                   "type": {
+                    "description": "The thirteen-digit ISBN, without separators.",
+                    "display_name": "ISBN-13",
                     "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
                     "name": "isbn",
                     "pattern": "^\\d{13}$",
@@ -223,6 +225,8 @@
                 "title": {
                   "required": true,
                   "type": {
+                    "description": "The book's title as printed on the cover.",
+                    "display_name": "Title",
                     "example": "Dune",
                     "id": "pyraml://id#/declarations/types/Book/property/title/schema",
                     "max_length": 200,
@@ -274,6 +278,8 @@
                     "isbn": {
                       "required": true,
                       "type": {
+                        "description": "The thirteen-digit ISBN, without separators.",
+                        "display_name": "ISBN-13",
                         "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
                         "name": "isbn",
                         "pattern": "^\\d{13}$",
@@ -352,6 +358,8 @@
                     "title": {
                       "required": true,
                       "type": {
+                        "description": "The book's title as printed on the cover.",
+                        "display_name": "Title",
                         "example": "Dune",
                         "id": "pyraml://id#/declarations/types/Book/property/title/schema",
                         "max_length": 200,
@@ -465,6 +473,8 @@
                     "isbn": {
                       "required": true,
                       "type": {
+                        "description": "The thirteen-digit ISBN, without separators.",
+                        "display_name": "ISBN-13",
                         "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
                         "name": "isbn",
                         "pattern": "^\\d{13}$",
@@ -543,6 +553,8 @@
                     "title": {
                       "required": true,
                       "type": {
+                        "description": "The book's title as printed on the cover.",
+                        "display_name": "Title",
                         "example": "Dune",
                         "id": "pyraml://id#/declarations/types/Book/property/title/schema",
                         "max_length": 200,
@@ -810,6 +822,8 @@
           "isbn": {
             "required": true,
             "type": {
+              "description": "The thirteen-digit ISBN, without separators.",
+              "display_name": "ISBN-13",
               "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
               "name": "isbn",
               "pattern": "^\\d{13}$",
@@ -888,6 +902,8 @@
           "title": {
             "required": true,
             "type": {
+              "description": "The book's title as printed on the cover.",
+              "display_name": "Title",
               "example": "Dune",
               "id": "pyraml://id#/declarations/types/Book/property/title/schema",
               "max_length": 200,
@@ -947,6 +963,8 @@
         "type_expr": "object"
       },
       "Money": {
+        "description": "An amount and the currency it is denominated in.",
+        "display_name": "Monetary amount",
         "id": "pyraml://id#/declarations/types/Money",
         "name": "Money",
         "properties": {

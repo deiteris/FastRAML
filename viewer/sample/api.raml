@@ -43,6 +43,8 @@ securitySchemes:
     type: Basic Authentication
 types:
   Money:
+    displayName: Monetary amount
+    description: An amount and the currency it is denominated in.
     type: object
     properties:
       amount:
@@ -64,11 +66,15 @@ types:
     (deprecated): use Publication instead
     properties:
       title:
+        displayName: Title
+        description: The book's title as printed on the cover.
         type: string
         minLength: 1
         maxLength: 200
         example: Dune
       isbn:
+        displayName: ISBN-13
+        description: The thirteen-digit ISBN, without separators.
         type: string
         pattern: ^\d{13}$
       price: Money
@@ -124,7 +130,7 @@ resourceTypes:
 securedBy: [oauth2]
 /books:
   displayName: Books
-  description: The catalogue.
+  description: The catalogue of every book the store carries.
   type: { collection: { item: Book } }
   post:
     displayName: Add a book

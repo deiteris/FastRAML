@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "check": "tsc --noEmit && npm run smoke",
+    "check": "tsc --noEmit && npm run smoke && npm run shots",
     "smoke": "tsx src/smoke.tsx",
     "preview": "vite preview",
     "sample": "cd .. && uv run pyraml tree viewer/sample/api.raml > viewer/public/api.json",

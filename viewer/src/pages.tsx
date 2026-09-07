@@ -9,7 +9,7 @@
 
 import { Link, useParams } from 'react-router';
 import { Annotations, ParameterTable, ShapeView } from './components/Shape';
-import { Chip, Code, Disclosure, Empty, KeyValues, Prose, Section, Tabs } from './components/ui';
+import { Chip, Code, Disclosure, Empty, KeyValues, Prose, Section, Tabs, Verb } from './components/ui';
 import {
   type Document,
   type Index,
@@ -153,7 +153,7 @@ export function EndpointPage({ document, index }: Props) {
             {methods.map(([method, operation]) => (
               <li key={method}>
                 <Link to={`/endpoints/${encodeURIComponent(full)}/${method}`} className="method-link">
-                  <Chip tone="method">{method.toUpperCase()}</Chip>
+                  <Verb method={method} />
                   <span className="method-name">{operation.display_name ?? operation.description ?? full}</span>
                 </Link>
               </li>
@@ -183,7 +183,7 @@ export function OperationPage({ document, index }: Props) {
   return (
     <article>
       <h1 className="operation-title">
-        <Chip tone="method">{(method ?? '').toUpperCase()}</Chip>
+        <Verb method={method ?? ''} large />
         <code>{full}</code>
       </h1>
       {operation.display_name && <p className="subtitle">{operation.display_name}</p>}

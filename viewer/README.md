@@ -102,8 +102,26 @@ raml2html has no answer to — its `test/outofmemory.raml` is 36 lines.
 ## Checks
 
 ```bash
-npm run check     # tsc, then render every page of public/api.json
+npm run check     # tsc, then render every page, then load every page in a browser
 ```
+
+Three layers, because each sees what the one before it cannot:
+
+| | catches |
+|---|---|
+| `tsc` | types |
+| `npm run smoke` | a page that throws or comes back empty; a union member named by its container; a `$ref` that resolves nowhere |
+| `npm run shots` | anything that only happens in a browser, **and** the layout |
+
+The third is not decoration. `smoke` renders to static markup, which does not
+run the client: an icon package that resolved a second copy of React threw
+`Invalid hook call` on every page and `smoke` still reported 38/38. `shots`
+fails on any console error or uncaught exception, naming the route.
+
+Every visual fault in this app was invisible in the DOM and obvious in a
+picture — a caret too small to read as a control, a description printed twice, a
+type's own example reading as the last attribute's, two rules where one step of
+nesting happened.
 
 `src/smoke.tsx` walks the document's own contents rather than a route list and
 renders each page to static markup. `tsc` says the components type-check, which

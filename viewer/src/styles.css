@@ -273,19 +273,81 @@ h4 {
   gap: 4px;
 }
 
+/* An SVG on a fixed box, so every icon lands on the same grid. The characters
+   used before -- a chevron and a single angle quote -- have different widths
+   and baselines, so the nav's rows did not line up. */
 .nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
   background: none;
   border: 0;
-  padding: 0 2px;
-  width: 16px;
+  padding: 0;
   color: var(--faint);
   cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
 }
 
 .nav-toggle:hover {
   color: var(--ink);
+}
+
+.nav-spacer {
+  flex: none;
+  width: 18px;
+}
+
+.nav-toggle:hover {
+  color: var(--ink);
+}
+
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.nav-row > .nav-item,
+.nav-row > .nav-static {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-static {
+  padding: 3px 8px;
+  font-size: 13px;
+  font-family: var(--mono);
+  color: var(--faint);
+}
+
+.nav-op {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--dim);
+}
+
+.nav-op:hover {
+  background: var(--line-soft);
+  text-decoration: none;
+}
+
+.nav-op.is-here {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.nav-op-name {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nav-empty {
@@ -389,6 +451,37 @@ h4 {
   color: var(--faint);
 }
 
+/*
+ * A verb is a colour before it is a word: a reader finds "the red one" in a nav
+ * before reading DELETE. The hues are the ones every API reference has
+ * converged on, so they carry meaning a reader arrives with.
+ */
+.verb {
+  display: inline-block;
+  min-width: 52px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: #fff;
+  background: var(--verb, #5a6472);
+}
+
+.verb-get { --verb: #1a7f5a; }
+.verb-post { --verb: #2b6cb0; }
+.verb-put { --verb: #9a6700; }
+.verb-patch { --verb: #7c5295; }
+.verb-delete { --verb: #b3261e; }
+
+.verb-lg {
+  min-width: 64px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
 .chip-method {
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -457,6 +550,11 @@ h4 {
   color: var(--ink);
   font-size: 14px;
   line-height: 20px;
+}
+
+.attr-display {
+  color: var(--dim);
+  font-size: 13px;
 }
 
 .attr-type,
@@ -755,15 +853,19 @@ h4 {
 
 /* -- misc ------------------------------------------------------------------------ */
 
+/* Background, no outline. Inside an attribute the box's left border sat a few
+   pixels from the attribute's own rule, which reads as one doubled border
+   rather than as two separate things. */
 .code {
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 0;
+  border-radius: 6px;
   padding: 10px 12px;
   overflow-x: auto;
   margin: 6px 0;
   white-space: pre-wrap;
   color: var(--ink);
+  max-width: 100%;
 }
 
 .labelled {

@@ -10,6 +10,39 @@ export function Chip({ tone = 'plain', title, children }: { tone?: Tone; title?:
   );
 }
 
+/**
+ * A disclosure chevron.
+ *
+ * Inline SVG on a fixed 16-unit viewBox, so open and closed occupy the same box
+ * and every row in the nav lines up. The characters this replaced -- a chevron
+ * and a single angle quote -- have different widths and baselines, which is why
+ * the rows did not.
+ *
+ * Not an icon package. `lucide-react` resolved its own copy of React and every
+ * icon threw `Invalid hook call` on the first render; two chevrons are not
+ * worth a dependency that can do that.
+ */
+export function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+      <path
+        d={open ? 'M4 6.5 8 10.5 12 6.5' : 'M6.5 4 10.5 8 6.5 12'}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** An HTTP method, as a coloured badge. */
+export function Verb({ method, large }: { method: string; large?: boolean }) {
+  const name = method.toLowerCase();
+  return <span className={`verb verb-${name} ${large ? 'verb-lg' : ''}`}>{method.toUpperCase()}</span>;
+}
+
 export type Tone = 'plain' | 'type' | 'required' | 'optional' | 'method' | 'status' | 'warn' | 'recursive' | 'enum';
 
 export function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {

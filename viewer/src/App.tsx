@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { HashRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router';
-import { Empty, ThemeToggle } from './components/ui';
+import { Chevron, Empty, ThemeToggle, Verb } from './components/ui';
 import { DEFAULT_SOURCE, loadDocument, readFile } from './load';
 import { type Document, Index, methodsOf, pathTree, type PathNode, declarations } from './model';
 import {
@@ -207,35 +207,64 @@ function Sidebar({
  * leaving it out would break the nesting, and it is not a link, because there
  * is nothing to show.
  */
+/**
+ * One path segment: its own row, its methods, and everything under it.
+ *
+ * Collapsible, like the sections above it. A path with four methods and three
+ * child resources is eight rows, and a document has dozens of paths -- without
+ * this, reaching the types means scrolling past all of them.
+ *
+ * A branch with no `endpoint` is a segment nothing declared methods on: the
+ * `/books` of a document that only writes `/books/{isbn}`. It is shown, because
+ * leaving it out would break the nesting, and it does not link, because there
+ * is nothing to show.
+ */
 function PathBranch({ node, matches }: { node: PathNode; matches: (text: string) => boolean }) {
+  const [open, setOpen] = useState(true);
   const relevant = matches(node.path) || node.children.some((child) => within(child, matches));
   if (!relevant) return null;
   const methods = node.endpoint ? methodsOf(node.endpoint) : [];
+  const expandable = methods.length > 0 || node.children.length > 0;
   return (
     <li>
-      {node.endpoint ? (
-        <NavItem to={`/endpoints/${encodeURIComponent(node.path)}`} label={node.segment} />
-      ) : (
-        <span className="nav-item is-empty">{node.segment}</span>
-      )}
-      {/* The methods, in the nav. An operation is the unit a reader navigates
-          to, so it needs a name in the place names are chosen from -- a
-          resource page listing six of them is one hop too many. */}
-      {methods.length > 0 && (
+      <div className="nav-row">
+        {expandable ? (
+          <button
+            type="button"
+            className="nav-toggle"
+            aria-expanded={open}
+            aria-label={`${open ? 'Collapse' : 'Expand'} ${node.path}`}
+            onClick={() => setOpen(!open)}
+          >
+            <Chevron open={open} />
+          </button>
+        ) : (
+          <span className="nav-spacer" />
+        )}
+        {node.endpoint ? (
+          <NavItem to={`/endpoints/${encodeURIComponent(node.path)}`} label={node.segment} />
+        ) : (
+          <span className="nav-static">{node.segment}</span>
+        )}
+      </div>
+      {open && methods.length > 0 && (
         <ul className="nav-children">
-          {methods.map(([method]) => (
+          {methods.map(([method, operation]) => (
             <li key={method}>
               <NavLink
                 to={`/endpoints/${encodeURIComponent(node.path)}/${method}`}
-                className={({ isActive }) => `nav-item nav-method ${isActive ? 'is-here' : ''}`}
+                className={({ isActive }) => `nav-op ${isActive ? 'is-here' : ''}`}
               >
-                {method.toUpperCase()}
+                <Verb method={method} />
+                {/* The display name, where there is one. A column of six
+                    identical verbs says nothing about which one to open. */}
+                {operation.display_name && <span className="nav-op-name">{operation.display_name}</span>}
               </NavLink>
             </li>
           ))}
         </ul>
       )}
-      {node.children.length > 0 && (
+      {open && node.children.length > 0 && (
         <ul className="nav-children">
           {node.children.map((child) => (
             <PathBranch key={child.path} node={child} matches={matches} />
@@ -271,7 +300,7 @@ function NavGroup({ title, href, children }: { title: string; href?: string; chi
           aria-label={`${open ? 'Collapse' : 'Expand'} ${title}`}
           onClick={() => setOpen(!open)}
         >
-          {open ? '⌄' : '›'}
+          <Chevron open={open} />
         </button>
         {href ? <NavLink to={href}>{title}</NavLink> : <span>{title}</span>}
       </h3>

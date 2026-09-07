@@ -242,7 +242,7 @@ function PathBranch({ node, matches }: { node: PathNode; matches: (text: string)
           <span className="nav-spacer" />
         )}
         {node.endpoint ? (
-          <NavItem to={`/endpoints/${encodeURIComponent(node.path)}`} label={node.segment} />
+          <NavTo to={`/endpoints/${encodeURIComponent(node.path)}`} label={node.segment} />
         ) : (
           <span className="nav-static">{node.segment}</span>
         )}
@@ -309,13 +309,28 @@ function NavGroup({ title, href, children }: { title: string; href?: string; chi
   );
 }
 
-function NavItem({ to, label }: { to: string; label: string }) {
+/**
+ * The link alone, for a row that supplies its own container.
+ *
+ * Split from `NavItem` because a path branch is already an `<li>` -- it holds
+ * its own methods and children -- so wrapping the link in a second one nested
+ * `<li>` inside `<li>`. Invalid, and invisible to every check here until
+ * `shots.mjs` moved to the dev server: static rendering does not validate
+ * nesting, and a production build strips the warning that does.
+ */
+function NavTo({ to, label }: { to: string; label: string }) {
   const { pathname } = useLocation();
   return (
+    <NavLink to={to} className={`nav-item ${decodeURIComponent(pathname) === decodeURIComponent(to) ? 'is-here' : ''}`}>
+      {label}
+    </NavLink>
+  );
+}
+
+function NavItem({ to, label }: { to: string; label: string }) {
+  return (
     <li>
-      <NavLink to={to} className={`nav-item ${decodeURIComponent(pathname) === decodeURIComponent(to) ? 'is-here' : ''}`}>
-        {label}
-      </NavLink>
+      <NavTo to={to} label={label} />
     </li>
   );
 }

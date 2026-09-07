@@ -149,14 +149,23 @@ function RecursionView({ node, index }: { node: Shape & { head: Ref }; index: In
 /**
  * Whether an array's items are already said by its own type line.
  *
- * `tags array of string` and `related Book[]` need no nested block: it was a
- * label and a rule around one word, and for a `[]` expression it repeated what
- * the reader had just read. An item with structure of its own -- an inline
- * object, a union -- still gets one.
+ * `tags array of string` needs no nested block: it was a label and a rule
+ * around one word. An item with structure -- an inline object, a union, or a
+ * reference to a type that has attributes -- gets one, because that block is
+ * the only place its expander can live. Suppressing it for every `$ref` left
+ * `related Book[]` and `priceHistory Prices` naming a type with no way to see
+ * inside it: the row a reader wants is the item's, not the array's.
+ *
+ * A recursion marker gets a row too. It is a stop, so nothing expands, but the
+ * row is where the marker says the structure repeats and where its `head`
+ * links -- and `related: Book[]` inside `Book` is exactly that case, so
+ * suppressing it left the one attribute that most needed saying so silent.
  */
-function simpleItems(shape: Shape): boolean {
+function simpleItems(shape: Shape, index: Index): boolean {
   const items = shape.items;
-  if (items === null || items === undefined || isRef(items) || isRecursive(items)) return true;
+  if (items === null || items === undefined) return true;
+  if (isRecursive(items)) return false;
+  if (isRef(items)) return !expandable(index.shape(items.$ref));
   return !items.properties && !items.any_of && !items.pattern_properties && !items.items;
 }
 
@@ -389,7 +398,16 @@ function Attribute({
           )}
         </>
       )}
-      {inline && <Body shape={shape} index={index} hideType hideDescription hideItems={simpleItems(shape)} />}
+      {/* A reference to a named array -- `priceHistory: Prices` -- renders as a
+          link and nothing else, so what it holds was reachable only through the
+          array's own page. The item row belongs here, and the expander belongs
+          on the item and not on the array. */}
+      {target?.type === 'array' && !simpleItems(target, index) && (
+        <Group label="each item">
+          <ShapeView shape={target.items} index={index} />
+        </Group>
+      )}
+      {inline && <Body shape={shape} index={index} hideType hideDescription hideItems={simpleItems(shape, index)} />}
     </div>
   );
 }

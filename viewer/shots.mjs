@@ -14,6 +14,7 @@
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 
 const PORT = 4317;
@@ -38,9 +39,26 @@ const PAGES = [
 
 const only = process.argv.includes('--dark') ? ['dark'] : process.argv.includes('--light') ? ['light'] : ['light', 'dark'];
 
-const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
-  stdio: 'ignore',
-  shell: true,
+/*
+ * The dev server, not `vite preview`, though `npm run shots` builds first and
+ * so still gates on the build.
+ *
+ * A production build strips React's development warnings, and those are the
+ * only thing that reports invalid DOM: a path branch nested `<li>` inside
+ * `<li>`, with `tsc`, `smoke` and this all green, because static rendering
+ * does not validate nesting either.
+ *
+ * Spawned as `node <vite bin>` and not through a shell, because `kill()` on a
+ * shell kills the shell. The orphan kept the port, `--strictPort` made the
+ * next run's server exit rather than move, and `waitFor` found the orphan and
+ * said the server was up -- so a run screenshotted a build made hours before
+ * the code it claimed to be checking.
+ */
+const vite = fileURLToPath(new URL('node_modules/vite/bin/vite.js', import.meta.url));
+const server = spawn(process.execPath, [vite, '--port', String(PORT), '--strictPort'], { stdio: 'ignore' });
+let exited = null;
+server.on('exit', (code) => {
+  exited = code;
 });
 
 try {
@@ -61,10 +79,22 @@ try {
    * as a selector timeout with nothing about the cause in it.
    */
   const failures = [];
+  const pending = [];
   const firstLine = (text) => String(text).split(/\r?\n/)[0];
   page.on('pageerror', (error) => failures.push(`${route}: ${firstLine(error.message)}`));
   page.on('console', (message) => {
-    if (message.type() === 'error') failures.push(`${route}: ${firstLine(message.text())}`);
+    if (message.type() !== 'error') return;
+    // React's warnings are `console.error(format, ...args)`, and `text()`
+    // hands back the format string with its `%s` unfilled -- "%s cannot be a
+    // descendant of <%s>" names neither element, which is the whole content of
+    // the report. Resolving the arguments is async, so the promise is held and
+    // awaited before anything is printed.
+    const at = route;
+    pending.push(
+      Promise.all(message.args().map((argument) => argument.jsonValue().catch(() => null)))
+        .then((values) => failures.push(`${at}: ${firstLine(interpolate(values))}`))
+        .catch(() => failures.push(`${at}: ${firstLine(message.text())}`)),
+    );
   });
   let route = '(startup)';
 
@@ -82,6 +112,7 @@ try {
     }
   }
   await browser.close();
+  await Promise.all(pending);
 
   if (failures.length > 0) {
     for (const failure of [...new Set(failures)]) console.error('ERROR', failure);
@@ -91,8 +122,19 @@ try {
   server.kill();
 }
 
+/** `console.error(format, ...rest)` as one line: `%s`, `%d`, `%o` and `%i`. */
+function interpolate([format, ...rest]) {
+  if (typeof format !== 'string') return [format, ...rest].map(String).join(' ');
+  let next = 0;
+  const filled = format.replace(/%[sdoOif]/g, () => (next < rest.length ? String(rest[next++]) : '%s'));
+  return [filled, ...rest.slice(next)].join(' ');
+}
+
 async function waitFor(url) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
+    // Our server, or nothing. A reply from a port we did not open means
+    // something else is answering, and shooting that is worse than failing.
+    if (exited !== null) throw new Error(`the dev server exited (${exited}); is ${PORT} already in use?`);
     try {
       const response = await fetch(url);
       if (response.ok) return;

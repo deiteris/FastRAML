@@ -94,8 +94,13 @@ function Shell() {
  */
 export function Pages({ document, index }: { document: Document; index: Index }) {
   const pages = { document, index };
+  const { pathname } = useLocation();
+  // Keyed on the path so a route change remounts. React reconciles by position,
+  // so without this a `$ref` expanded under one type stays expanded at the same
+  // position under the next -- showing a disclosure open on a shape nobody
+  // opened, which reads as a property of the document.
   return (
-    <Routes>
+    <Routes key={pathname}>
       <Route path="/" element={<Overview {...pages} />} />
       <Route path="/endpoints/:path" element={<EndpointPage {...pages} />} />
       <Route path="/types" element={<TypeList {...pages} />} />

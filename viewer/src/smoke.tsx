@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { Pages } from './App';
-import { Index, declarations, type Document } from './model';
+import { Index, declarations, isRecursive, isRef, spelling, type Document, type Shape } from './model';
 
 const source = process.argv[2] ?? 'public/api.json';
 const document = JSON.parse(readFileSync(source, 'utf-8')) as Document;
@@ -66,4 +66,57 @@ process.stdout.write(
   `${routes.length - failed}/${routes.length} routes rendered ` +
     `(smallest ${smallest.size} bytes at ${smallest.route})\n`,
 );
+
+/*
+ * Two things rendering cannot tell you, because both produce a page that looks
+ * fine and says something untrue.
+ */
+
+let shapes = 0;
+let members = 0;
+walk(document, (shape) => {
+  shapes += 1;
+
+  // A union member labelled with the *union's* expression. `type_expr` records
+  // the expression a shape was built from, and P7 builds every member of
+  // `string | number` from that one node -- so each carries the whole thing.
+  // Rendered as the member's own name it reads `string | number` twice, which
+  // is a wrong answer and not a missing one.
+  for (const member of shape.any_of ?? []) {
+    members += 1;
+    if (isRef(member) || isRecursive(member)) continue;
+    const label = spelling(member, shape.type_expr);
+    if (label === spelling(shape)) {
+      process.stderr.write(`UNION  ${shape.name ?? shape.id}: member reads "${label}", the union's own name\n`);
+      failed += 1;
+    }
+  }
+
+  // The JavaScript form of law 15. A `$ref` to something the index does not
+  // hold renders as "unresolved", which a reader cannot tell from a document
+  // that genuinely pointed nowhere.
+  for (const node of [shape.items, ...(shape.inherits ?? []), ...(shape.any_of ?? [])]) {
+    if (isRef(node) && !index.get(node.$ref)) {
+      process.stderr.write(`DANGLE ${shape.name ?? shape.id}: ${node.$ref}\n`);
+      failed += 1;
+    }
+  }
+});
+
+process.stdout.write(`${shapes} shapes checked, ${members} union members\n`);
+if (shapes < 10) {
+  process.stderr.write('the document produced almost no shapes; the checks above are vacuous\n');
+  failed += 1;
+}
 process.exit(failed === 0 ? 0 : 1);
+
+/** Every shape in the document, by the three keys `shape()` always writes. */
+function walk(node: unknown, visit: (shape: Shape) => void): void {
+  if (Array.isArray(node)) {
+    for (const item of node) walk(item, visit);
+  } else if (typeof node === 'object' && node !== null) {
+    const record = node as Record<string, unknown>;
+    if ('id' in record && 'name' in record && 'type' in record) visit(node as Shape);
+    for (const value of Object.values(record)) walk(value, visit);
+  }
+}

@@ -8,6 +8,7 @@
  * that is the property `tests/unit/test_consumer_traversal.py` pins.
  */
 
+import { useState } from 'react';
 import { Link } from 'react-router';
 import {
   type Applied,
@@ -27,21 +28,45 @@ import { Chip, Code, Disclosure, Prose } from './ui';
 interface Props {
   shape: Shape | Ref | null | undefined;
   index: Index;
-  /** Suppress the heading when the surrounding row already carries the name. */
-  bare?: boolean;
   /**
-   * Suppress the description too, for a table that has a column for it.
-   * Separate from `bare`: a request body is `bare` and wants its prose, so one
-   * flag for both printed every header's description twice.
+   * What the surrounding context already displays, so this does not repeat it.
+   *
+   * Two independent flags rather than one, because the two callers that need
+   * them need different halves: a property table has a Description column and
+   * shows the type in its own cell, while a declaration page puts the type in
+   * the heading and wants the prose. One flag for both printed every header's
+   * description twice; no flag at all printed `string | number` under a
+   * heading that had just said it.
    */
-  quiet?: boolean;
+  hideType?: boolean;
+  hideDescription?: boolean;
+  /**
+   * The enclosing shape's `type_expr`. A nested shape carrying the same one did
+   * not declare it, so its own `type` is what to show -- see `spelling`.
+   */
+  inherited?: string;
 }
 
-export function ShapeView({ shape, index, bare, quiet }: Props) {
+export function ShapeView({ shape, index, hideType, hideDescription, inherited }: Props) {
   if (shape === null || shape === undefined) return <Chip tone="type">any</Chip>;
   if (isRef(shape)) return <RefView node={shape} index={index} />;
   if (isRecursive(shape)) return <RecursionView node={shape} index={index} />;
-  return <Body shape={shape} index={index} bare={bare} quiet={quiet} />;
+  return (
+    <Body
+      shape={shape}
+      index={index}
+      hideType={hideType}
+      hideDescription={hideDescription}
+      inherited={inherited}
+    />
+  );
+}
+
+/** What to call one member of a union, in a tab or a list. */
+function labelOf(member: Shape | Ref, index: Index, inherited?: string): string {
+  if (isRef(member)) return index.label(member.$ref);
+  if (isRecursive(member)) return member.name ?? 'recursive';
+  return spelling(member, inherited);
 }
 
 /**
@@ -69,7 +94,7 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
   if (!target) return label;
   return (
     <Disclosure summary={label}>
-      <Body shape={target} index={index} bare />
+      <Body shape={target} index={index} />
     </Disclosure>
   );
 }
@@ -98,7 +123,22 @@ function RecursionView({ node, index }: { node: Shape & { head: Ref }; index: In
   );
 }
 
-function Body({ shape, index, bare, quiet }: { shape: Shape; index: Index; bare?: boolean; quiet?: boolean }) {
+function Body({
+  shape,
+  index,
+  hideType,
+  hideDescription,
+  inherited,
+}: {
+  shape: Shape;
+  index: Index;
+  hideType?: boolean;
+  hideDescription?: boolean;
+  inherited?: string;
+}) {
+  //: What every shape below this one inherits, if it declares no expression of
+  //: its own. Read once here rather than at each descent.
+  const own = typeof shape.type_expr === 'string' ? shape.type_expr : undefined;
   const facets = facetsOf(shape);
   const inherits = shape.inherits ?? [];
   const properties = Object.entries(shape.properties ?? {});
@@ -107,23 +147,20 @@ function Body({ shape, index, bare, quiet }: { shape: Shape; index: Index; bare?
 
   return (
     <div className="shape">
-      {!bare && (
-        <div className="shape-head">
-          {shape.display_name && shape.display_name !== shape.name && (
-            <span className="shape-display">{shape.display_name}</span>
-          )}
-          <TypeChip shape={shape} />
-        </div>
-      )}
-      {bare && <TypeChip shape={shape} />}
-      {!quiet && <Prose>{shape.description}</Prose>}
+      <div className="shape-head">
+        {shape.display_name && shape.display_name !== shape.name && (
+          <span className="shape-display">{shape.display_name}</span>
+        )}
+        {!hideType && <TypeChip shape={shape} inherited={inherited} />}
+      </div>
+      {!hideDescription && <Prose>{shape.description}</Prose>}
 
       {inherits.length > 0 && (
         <div className="shape-line">
           <span className="label">extends</span>
           {inherits.map((parent, at) => (
             <span key={at} className="inherit">
-              <ShapeView shape={parent} index={index} bare />
+              <ShapeView shape={parent} index={index} inherited={own} />
             </span>
           ))}
         </div>
@@ -181,22 +218,13 @@ function Body({ shape, index, bare, quiet }: { shape: Shape; index: Index; bare?
 
       <Annotations applied={shape.annotations} index={index} />
 
-      {members.length > 0 && (
-        <div className="members">
-          <span className="label">one of</span>
-          {members.map((member, at) => (
-            <div key={at} className="member">
-              <ShapeView shape={member} index={index} bare />
-            </div>
-          ))}
-        </div>
-      )}
+      {members.length > 0 && <Union members={members} index={index} inherited={own} />}
 
       {shape.items !== undefined && (
         <div className="members">
           <span className="label">items</span>
           <div className="member">
-            <ShapeView shape={shape.items} index={index} bare />
+            <ShapeView shape={shape.items} index={index} inherited={own} />
           </div>
         </div>
       )}
@@ -212,10 +240,17 @@ function Body({ shape, index, bare, quiet }: { shape: Shape; index: Index; bare?
           </thead>
           <tbody>
             {properties.map(([name, property]) => (
-              <PropertyRow key={name} name={name} property={property} index={index} />
+              <PropertyRow key={name} name={name} property={property} index={index} inherited={own} />
             ))}
             {patterns.map(([pattern, property]) => (
-              <PropertyRow key={pattern} name={`/${property.pattern}/`} property={property} index={index} pattern />
+              <PropertyRow
+                key={pattern}
+                name={`/${property.pattern}/`}
+                property={property}
+                index={index}
+                inherited={own}
+                pattern
+              />
             ))}
           </tbody>
         </table>
@@ -237,11 +272,13 @@ function PropertyRow({
   property,
   index,
   pattern,
+  inherited,
 }: {
   name: string;
   property: Property | PatternProperty;
   index: Index;
   pattern?: boolean;
+  inherited?: string;
 }) {
   const required = 'required' in property ? property.required : false;
   const type = property.type;
@@ -257,7 +294,7 @@ function PropertyRow({
         )}
       </td>
       <td className="property-type">
-        <ShapeView shape={type} index={index} bare quiet />
+        <ShapeView shape={type} index={index} hideDescription inherited={inherited} />
       </td>
       <td className="property-description">{description}</td>
     </tr>
@@ -265,12 +302,50 @@ function PropertyRow({
 }
 
 /** The type name a reader recognises: the expression as written, else the kind. */
-export function TypeChip({ shape }: { shape: Shape }) {
-  const written = spelling(shape);
+export function TypeChip({ shape, inherited }: { shape: Shape; inherited?: string }) {
+  const written = spelling(shape, inherited);
   return (
     <Chip tone="type" title={written === shape.type ? undefined : `a ${shape.type}`}>
       {written}
     </Chip>
+  );
+}
+
+/**
+ * A union, as a selector over its members.
+ *
+ * **`anyOf`, not "one of".** The model's field is `any_of`, the JSON says
+ * `any_of`, and this view uses the model's own vocabulary throughout (docs/16
+ * § 11.9). They also do not mean the same thing: a value satisfying more than
+ * one member is still valid, which "one of" denies.
+ *
+ * A selector rather than a stack because a union member is a whole type. Two
+ * object members rendered one after another produce two property tables with
+ * nothing between them saying where the first ended. One at a time, with the
+ * alternatives always visible, is what makes a union readable at all.
+ */
+function Union({ members, index, inherited }: { members: (Shape | Ref)[]; index: Index; inherited?: string }) {
+  const [chosen, setChosen] = useState(0);
+  const at = Math.min(chosen, members.length - 1);
+  return (
+    <div className="union">
+      <div className="union-tabs">
+        <span className="label">anyOf</span>
+        {members.map((member, position) => (
+          <button
+            key={position}
+            type="button"
+            className={`union-tab ${position === at ? 'is-chosen' : ''}`}
+            onClick={() => setChosen(position)}
+          >
+            {labelOf(member, index, inherited)}
+          </button>
+        ))}
+      </div>
+      <div className="union-member">
+        <ShapeView shape={members[at]} index={index} hideType inherited={inherited} />
+      </div>
+    </div>
   );
 }
 
@@ -333,7 +408,7 @@ export function ParameterTable({
                   </Chip>
                 </td>
                 <td className="property-type">
-                  <ShapeView shape={type} index={index} bare quiet />
+                  <ShapeView shape={type} index={index} hideDescription />
                 </td>
                 <td className="property-description">{type && !isRef(type) ? type.description : undefined}</td>
               </tr>

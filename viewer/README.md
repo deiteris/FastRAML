@@ -67,6 +67,18 @@ is an object where a string was assumed, and a recursion marker read as a link
 all compile. It is the JavaScript half of law 13 — every declared type and every
 endpoint has a view.
 
+It then asks two things rendering cannot answer, because both produce a page
+that looks fine and says something untrue:
+
+- **No union member is labelled with the union's own expression.** `type_expr`
+  records the expression a shape was *built from*, and P7 builds every member of
+  `string | number` from that one node — so each member carries the whole thing.
+  Rendered as the member's own name, a two-member union reads `string | number`
+  twice. Reintroducing the bug makes this exit 1, which is how it was checked.
+- **Every `$ref` resolves in the index** — the JavaScript form of law 15. One
+  that does not renders as `unresolved`, which a reader cannot tell from a
+  document that genuinely pointed nowhere.
+
 ## Layout
 
 ```

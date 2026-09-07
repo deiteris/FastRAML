@@ -197,9 +197,26 @@ export function titleOf(shape: Shape, index: Index): string {
   return shape.type;
 }
 
-/** The type name a reader recognises: the expression as written, else the kind. */
-export function spelling(shape: Shape): string {
-  return typeof shape.type_expr === 'string' && shape.type_expr.trim() ? shape.type_expr.trim() : shape.type;
+/**
+ * The type name a reader recognises: the expression as written, else the kind.
+ *
+ * `inherited` is the enclosing shape's `type_expr`, and passing it is what makes
+ * this right rather than usually-right. **`type_expr` records the expression a
+ * shape was built from, which is not always its own.** Every member of
+ * `type: string | number` carries `"string | number"`, because P7 builds all of
+ * them from that one node -- so a union rendered from `type_expr` alone reads
+ * `string | number` twice under a heading that already said it, which is a
+ * wrong answer rather than a missing one.
+ *
+ * An expression equal to the container's was not written for this shape, so its
+ * own `type` is what to show. Where a member does have one -- `items` under
+ * `tags: {type: array, items: string}` carries `"string"` against the array's
+ * `"array"` -- the two differ and the expression wins, which is the case this
+ * exists for.
+ */
+export function spelling(shape: Shape, inherited?: string): string {
+  const written = typeof shape.type_expr === 'string' ? shape.type_expr.trim() : '';
+  return !written || written === inherited?.trim() ? shape.type : written;
 }
 
 /* -- endpoints as a tree -------------------------------------------------------- */

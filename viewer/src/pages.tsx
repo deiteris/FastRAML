@@ -14,8 +14,10 @@ import {
   type Document,
   type Index,
   type Operation,
+  type Ref,
   type Response,
   type SecuredBy,
+  type Shape,
   declarations,
   methodsOf,
   spelling,
@@ -162,7 +164,7 @@ function OperationView({ method, operation, index }: { method: string; operation
       {operation.query_string && (
         <div className="parameters">
           <h4>Query string</h4>
-          <ShapeView shape={operation.query_string} index={index} bare />
+          <ShapeView shape={operation.query_string} index={index} />
         </div>
       )}
 
@@ -206,7 +208,7 @@ function Bodies({
   index,
 }: {
   title: string;
-  bodies?: Record<string, Parameters<typeof ShapeView>[0]['shape']>;
+  bodies?: Record<string, Shape | Ref | null>;
   index: Index;
 }) {
   const entries = Object.entries(bodies ?? {});
@@ -217,7 +219,7 @@ function Bodies({
       {entries.map(([media, shape]) => (
         <div key={media} className="body">
           <Chip tone="plain">{media}</Chip>
-          <ShapeView shape={shape} index={index} bare />
+          <ShapeView shape={shape} index={index} hideType />
         </div>
       ))}
     </div>
@@ -282,11 +284,19 @@ export function TypePage({ document, index }: Props) {
   return (
     <article>
       <h1>{shape.name ?? name}</h1>
+      {/* The subtitle carries the type chip, so the shape below is rendered
+          `hideType` -- rendering both printed `string | number` twice under a
+          heading that had already said it. */}
       <p className="subtitle">
         <code>{file}</code> · <Chip tone="type">{spelling(shape)}</Chip>
+        {/* The expression and the kind are different answers: `Prices` is
+            written `Money[]` and is an array, and `Book` is written `Entity`
+            and is an object. Showing only the first reads as though Book were
+            Entity, which is what `extends` is for. */}
+        {spelling(shape) !== shape.type && <Chip>{shape.type}</Chip>}
       </p>
-      <ShapeView shape={shape} index={index} bare />
-      <Usages document={document} index={index} address={shape.id} />
+      <ShapeView shape={shape} index={index} hideType />
+      <Usages document={document} address={shape.id} />
     </article>
   );
 }
@@ -302,7 +312,7 @@ export function AnnotationTypePage({ document, index }: Props) {
       <p className="subtitle">
         <code>{file}</code> · annotation type
       </p>
-      <ShapeView shape={shape} index={index} bare />
+      <ShapeView shape={shape} index={index} hideType />
       {applied.length > 0 && (
         <Section title={`Applied ${applied.length} time${applied.length === 1 ? '' : 's'}`}>
           <table className="properties">
@@ -369,7 +379,7 @@ export function SecuritySchemePage({ document, index }: Props) {
         <Section title="What a secured request carries">
           <ParameterTable title="Headers" parameters={described.headers} index={index} />
           <ParameterTable title="Query parameters" parameters={described.query_parameters} index={index} />
-          {described.query_string && <ShapeView shape={described.query_string} index={index} bare />}
+          {described.query_string && <ShapeView shape={described.query_string} index={index} />}
           {described.responses &&
             Object.entries(described.responses).map(([code, response]) => (
               <ResponseView key={code} code={code} response={response} index={index} />
@@ -377,7 +387,7 @@ export function SecuritySchemePage({ document, index }: Props) {
         </Section>
       )}
 
-      <Usages document={document} index={index} address={scheme.id} />
+      <Usages document={document} address={scheme.id} />
     </article>
   );
 }
@@ -390,7 +400,7 @@ export function SecuritySchemePage({ document, index }: Props) {
  * size a browser holds a document, a scan is the right trade; a consumer that
  * wants it indexed reads `pyraml refs` instead.
  */
-function Usages({ document, index, address }: Props & { address: string | null }) {
+function Usages({ document, address }: { document: Document; address: string | null }) {
   if (address === null) return null;
   const found: string[] = [];
   for (const [path, endpoint] of Object.entries(document.endpoints)) {
@@ -408,7 +418,6 @@ function Usages({ document, index, address }: Props & { address: string | null }
           </li>
         ))}
       </ul>
-      {void index}
     </Section>
   );
 }

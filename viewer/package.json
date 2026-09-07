@@ -10,7 +10,8 @@
     "check": "tsc --noEmit && npm run smoke",
     "smoke": "tsx src/smoke.tsx",
     "preview": "vite preview",
-    "sample": "cd .. && uv run pyraml tree viewer/sample/api.raml > viewer/public/api.json"
+    "sample": "cd .. && uv run pyraml tree viewer/sample/api.raml > viewer/public/api.json",
+    "shots": "npm run build && node shots.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",
@@ -18,12 +19,13 @@
     "react-router": "^7.9.0"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.1.0",
-    "typescript": "^5.9.0",
-    "vite": "^7.1.0",
+    "puppeteer": "^25.10.0",
     "tsx": "^4.20.0",
-    "@types/node": "^24.0.0"
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0"
   }
 }

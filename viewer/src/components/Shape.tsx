@@ -6,6 +6,12 @@
  * is no ancestor set and no depth budget anywhere below, because the emitter
  * guarantees a cycle is always *marked* -- an unmarked one would hang this, and
  * that is the property `tests/unit/test_consumer_traversal.py` pins.
+ *
+ * The arrangement is an attribute list, not a table. A type is a tree and a
+ * table can only grow one way: nesting went into the Type column, so a nested
+ * object pushed its children rightward into a narrower and narrower strip while
+ * the page's whole right half stayed empty. Children belong *under* the
+ * attribute they belong to, indented by a rule.
  */
 
 import { useState } from 'react';
@@ -21,9 +27,10 @@ import {
   facetsOf,
   isRecursive,
   isRef,
+  labelOf,
   spelling,
 } from '../model';
-import { Chip, Code, Disclosure, Prose } from './ui';
+import { Chip, Code, Prose, Tabs } from './ui';
 
 interface Props {
   shape: Shape | Ref | null | undefined;
@@ -31,52 +38,39 @@ interface Props {
   /**
    * What the surrounding context already displays, so this does not repeat it.
    *
-   * Two independent flags rather than one, because the two callers that need
-   * them need different halves: a property table has a Description column and
-   * shows the type in its own cell, while a declaration page puts the type in
-   * the heading and wants the prose. One flag for both printed every header's
-   * description twice; no flag at all printed `string | number` under a
-   * heading that had just said it.
+   * Two independent flags rather than one: an attribute row shows the type on
+   * its own head line and has room for prose beneath, while a declaration page
+   * puts the type in the heading and wants the prose.
    */
   hideType?: boolean;
   hideDescription?: boolean;
   /**
-   * The enclosing shape's `type_expr`. A nested shape carrying the same one did
-   * not declare it, so its own `type` is what to show -- see `spelling`.
+   * This shape's `type_expr` belongs to its container, so only its `type` is
+   * its own. True of a union member and an inlined supertype -- see `spelling`.
    */
-  inherited?: string;
+  borrowed?: boolean;
 }
 
-export function ShapeView({ shape, index, hideType, hideDescription, inherited }: Props) {
+export function ShapeView({ shape, index, hideType, hideDescription, borrowed }: Props) {
   if (shape === null || shape === undefined) return <Chip tone="type">any</Chip>;
   if (isRef(shape)) return <RefView node={shape} index={index} />;
   if (isRecursive(shape)) return <RecursionView node={shape} index={index} />;
-  return (
-    <Body
-      shape={shape}
-      index={index}
-      hideType={hideType}
-      hideDescription={hideDescription}
-      inherited={inherited}
-    />
-  );
-}
-
-/** What to call one member of a union, in a tab or a list. */
-function labelOf(member: Shape | Ref, index: Index, inherited?: string): string {
-  if (isRef(member)) return index.label(member.$ref);
-  if (isRecursive(member)) return member.name ?? 'recursive';
-  return spelling(member, inherited);
+  return <Body shape={shape} index={index} hideType={hideType} hideDescription={hideDescription} borrowed={borrowed} />;
 }
 
 /**
- * A link: a name that navigates, and a disclosure that expands it in place.
+ * A link: a name that navigates, and a control that expands it in place.
  *
- * Both, because they answer different questions. Navigating loses your place in
- * a response body; expanding keeps it but buries the declaration's own page.
- * Neither expands on render -- that is the loop.
+ * Both, because they answer different questions -- navigating loses your place
+ * in a response body, expanding keeps it but buries the declaration's own page.
+ * They are two visibly different controls for that reason. A caret glyph beside
+ * a link read as decoration *on* the link, so the two flows were one ambiguous
+ * one; the expander is now a labelled button that says what it will do.
+ *
+ * Neither expands on render. That is the loop.
  */
 function RefView({ node, index }: { node: Ref; index: Index }) {
+  const [open, setOpen] = useState(false);
   const entry = index.get(node.$ref);
   const target = index.shape(node.$ref);
   if (!entry) {
@@ -86,30 +80,39 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
       </Chip>
     );
   }
-  const label = (
-    <Link to={entry.href} className="typelink">
-      {entry.name}
-    </Link>
-  );
-  if (!target) return label;
   return (
-    <Disclosure summary={label}>
-      <Body shape={target} index={index} />
-    </Disclosure>
+    <span className="reference">
+      <Link to={entry.href} className="typelink">
+        {entry.name}
+      </Link>
+      {target && (
+        <>
+          <button type="button" className="expander" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? 'Hide attributes' : 'Show attributes'}
+          </button>
+          {open && (
+            <div className="nested">
+              <Body shape={target} index={index} hideType />
+            </div>
+          )}
+        </>
+      )}
+    </span>
   );
 }
 
 /**
  * The marker that says the structure repeats.
  *
- * Rendered as a stop, never as an expandable link: `head` points at something
- * the walk is already inside, so expanding it here is the loop by another name.
+ * A stop, never something expandable: `head` points at what the walk is already
+ * inside, so an expander here is the loop by another name. The name still
+ * links, because navigating to a declaration is finite.
  */
 function RecursionView({ node, index }: { node: Shape & { head: Ref }; index: Index }) {
   const entry = index.get(node.head.$ref);
   return (
-    <span className="recursion">
-      <Chip tone="recursive" title="the structure repeats from here">
+    <span className="reference">
+      <Chip tone="recursive" title="the structure repeats from here; it is not expanded">
         recursive
       </Chip>
       {entry ? (
@@ -128,82 +131,49 @@ function Body({
   index,
   hideType,
   hideDescription,
-  inherited,
+  borrowed,
 }: {
   shape: Shape;
   index: Index;
   hideType?: boolean;
   hideDescription?: boolean;
-  inherited?: string;
+  borrowed?: boolean;
 }) {
-  //: What every shape below this one inherits, if it declares no expression of
-  //: its own. Read once here rather than at each descent.
-  const own = typeof shape.type_expr === 'string' ? shape.type_expr : undefined;
   const facets = facetsOf(shape);
   const inherits = shape.inherits ?? [];
   const properties = Object.entries(shape.properties ?? {});
   const patterns = Object.entries(shape.pattern_properties ?? {});
   const members = shape.any_of ?? [];
+  const named = shape.display_name && shape.display_name !== shape.name;
 
   return (
     <div className="shape">
-      <div className="shape-head">
-        {shape.display_name && shape.display_name !== shape.name && (
-          <span className="shape-display">{shape.display_name}</span>
-        )}
-        {!hideType && <TypeChip shape={shape} inherited={inherited} />}
-      </div>
-      {!hideDescription && <Prose>{shape.description}</Prose>}
-
-      {inherits.length > 0 && (
-        <div className="shape-line">
-          <span className="label">extends</span>
-          {inherits.map((parent, at) => (
-            <span key={at} className="inherit">
-              <ShapeView shape={parent} index={index} inherited={own} />
-            </span>
-          ))}
+      {(!hideType || named) && (
+        <div className="shape-head">
+          {named && <span className="shape-display">{shape.display_name}</span>}
+          {!hideType && <TypeChip shape={shape} borrowed={borrowed} />}
         </div>
       )}
+      {!hideDescription && <Prose>{shape.description}</Prose>}
 
-      {facets.length > 0 && (
+      {(facets.length > 0 || shape.enum) && (
         <div className="facets">
           {facets.map(([name, value]) => (
-            <Chip key={name} tone="plain">
+            <Chip key={name}>
               <span className="facet-name">{name}</span>
               <span className="facet-value">{render(value)}</span>
+            </Chip>
+          ))}
+          {shape.enum?.map((value, at) => (
+            <Chip key={`enum-${at}`} tone="enum">
+              {render(value)}
             </Chip>
           ))}
         </div>
       )}
 
-      {shape.enum && (
-        <div className="shape-line">
-          <span className="label">enum</span>
-          {shape.enum.map((value, at) => (
-            <Chip key={at}>{render(value)}</Chip>
-          ))}
-        </div>
-      )}
-
-      {shape.allowed_targets && (
-        <div className="shape-line">
-          <span className="label">allowedTargets</span>
-          {shape.allowed_targets.map((target) => (
-            <Chip key={target}>{target}</Chip>
-          ))}
-        </div>
-      )}
-
-      {shape.declares_facets && (
-        <div className="shape-line">
-          <span className="label">declares facets</span>
-          {shape.declares_facets.map((name) => (
-            <Chip key={name}>{name}</Chip>
-          ))}
-        </div>
-      )}
-
+      {shape.allowed_targets && <Tagged label="allowedTargets" values={shape.allowed_targets} />}
+      {shape.declares_facets && <Tagged label="declares facets" values={shape.declares_facets} />}
       {shape.custom_facets && Object.keys(shape.custom_facets).length > 0 && (
         <div className="shape-line">
           <span className="label">facets</span>
@@ -218,42 +188,32 @@ function Body({
 
       <Annotations applied={shape.annotations} index={index} />
 
-      {members.length > 0 && <Union members={members} index={index} inherited={own} />}
-
-      {shape.items !== undefined && (
-        <div className="members">
-          <span className="label">items</span>
-          <div className="member">
-            <ShapeView shape={shape.items} index={index} inherited={own} />
-          </div>
+      {inherits.length > 0 && (
+        <div className="shape-line">
+          <span className="label">extends</span>
+          {inherits.map((parent, at) => (
+            <Supertype key={at} parent={parent} index={index} />
+          ))}
         </div>
       )}
 
+      {members.length > 0 && <Union members={members} index={index} />}
+
+      {shape.items !== undefined && (
+        <Group label="items">
+          <ShapeView shape={shape.items} index={index} />
+        </Group>
+      )}
+
       {(properties.length > 0 || patterns.length > 0) && (
-        <table className="properties">
-          <thead>
-            <tr>
-              <th>Property</th>
-              <th>Type</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            {properties.map(([name, property]) => (
-              <PropertyRow key={name} name={name} property={property} index={index} inherited={own} />
-            ))}
-            {patterns.map(([pattern, property]) => (
-              <PropertyRow
-                key={pattern}
-                name={`/${property.pattern}/`}
-                property={property}
-                index={index}
-                inherited={own}
-                pattern
-              />
-            ))}
-          </tbody>
-        </table>
+        <div className="attributes">
+          {properties.map(([name, property]) => (
+            <Attribute key={name} name={name} property={property} index={index} />
+          ))}
+          {patterns.map(([pattern, property]) => (
+            <Attribute key={pattern} name={`/${property.pattern}/`} property={property} index={index} pattern />
+          ))}
+        </div>
       )}
 
       {shape.default !== undefined && <Labelled label="default" value={shape.default} />}
@@ -267,43 +227,76 @@ function Body({
   );
 }
 
-function PropertyRow({
+/**
+ * One named thing -- a property, a pattern property, a parameter, a header.
+ *
+ * Name, type and whether it is required on one line; prose under it; anything
+ * nested under that again. Everything a reader scans for sits in one column,
+ * which is what a table put in three.
+ */
+function Attribute({
   name,
   property,
   index,
   pattern,
-  inherited,
 }: {
   name: string;
-  property: Property | PatternProperty;
+  property: Property | PatternProperty | Parameter;
   index: Index;
   pattern?: boolean;
-  inherited?: string;
 }) {
+  const [open, setOpen] = useState(false);
   const required = 'required' in property ? property.required : false;
-  const type = property.type;
-  const description = type && !isRef(type) ? type.description : undefined;
+  const shape = property.type;
+
+  // The head line is name, type, flag -- in that order, always. Letting a
+  // reference render itself here put its expander between the type and
+  // `Required`, so the one word a reader scans for moved depending on whether
+  // the type happened to be a link.
+  const link = shape !== null && shape !== undefined && isRef(shape) ? index.get(shape.$ref) : undefined;
+  const target = shape !== null && shape !== undefined && isRef(shape) ? index.shape(shape.$ref) : undefined;
+  const inline = shape !== null && shape !== undefined && !isRef(shape) && !isRecursive(shape);
+
   return (
-    <tr>
-      <td className="property-name">
-        <code>{name}</code>
-        {pattern ? (
-          <Chip tone="optional">pattern</Chip>
+    <div className="attr">
+      <div className="attr-head">
+        <code className="attr-name">{name}</code>
+        {inline ? (
+          <span className="attr-type">{spelling(shape)}</span>
+        ) : link ? (
+          <Link to={link.href} className="typelink">
+            {link.name}
+          </Link>
         ) : (
-          <Chip tone={required ? 'required' : 'optional'}>{required ? 'required' : 'optional'}</Chip>
+          <ShapeView shape={shape} index={index} />
         )}
-      </td>
-      <td className="property-type">
-        <ShapeView shape={type} index={index} hideDescription inherited={inherited} />
-      </td>
-      <td className="property-description">{description}</td>
-    </tr>
+        {pattern ? (
+          <span className="attr-flag">pattern</span>
+        ) : (
+          required && <span className="attr-flag is-required">Required</span>
+        )}
+      </div>
+      {inline && shape.description && <p className="attr-desc">{shape.description}</p>}
+      {target && (
+        <>
+          <button type="button" className="expander" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? 'Hide attributes' : 'Show attributes'}
+          </button>
+          {open && (
+            <div className="nested">
+              <Body shape={target} index={index} hideType />
+            </div>
+          )}
+        </>
+      )}
+      {inline && <Body shape={shape} index={index} hideType hideDescription />}
+    </div>
   );
 }
 
 /** The type name a reader recognises: the expression as written, else the kind. */
-export function TypeChip({ shape, inherited }: { shape: Shape; inherited?: string }) {
-  const written = spelling(shape, inherited);
+export function TypeChip({ shape, borrowed }: { shape: Shape; borrowed?: boolean }) {
+  const written = spelling(shape, borrowed);
   return (
     <Chip tone="type" title={written === shape.type ? undefined : `a ${shape.type}`}>
       {written}
@@ -314,37 +307,74 @@ export function TypeChip({ shape, inherited }: { shape: Shape; inherited?: strin
 /**
  * A union, as a selector over its members.
  *
- * **`anyOf`, not "one of".** The model's field is `any_of`, the JSON says
- * `any_of`, and this view uses the model's own vocabulary throughout (docs/16
- * § 11.9). They also do not mean the same thing: a value satisfying more than
- * one member is still valid, which "one of" denies.
+ * **`anyOf`, not "one of".** That is the model's field name, which this view
+ * uses throughout (docs/16 § 11.9), and the two do not mean the same thing: a
+ * value satisfying more than one member is still valid, which "one of" denies.
  *
  * A selector rather than a stack because a union member is a whole type. Two
- * object members rendered one after another produce two property tables with
- * nothing between them saying where the first ended. One at a time, with the
- * alternatives always visible, is what makes a union readable at all.
+ * object members rendered in sequence produce two attribute lists with nothing
+ * between them saying where the first ended.
  */
-function Union({ members, index, inherited }: { members: (Shape | Ref)[]; index: Index; inherited?: string }) {
-  const [chosen, setChosen] = useState(0);
-  const at = Math.min(chosen, members.length - 1);
+function Union({ members, index }: { members: (Shape | Ref)[]; index: Index }) {
   return (
-    <div className="union">
-      <div className="union-tabs">
-        <span className="label">anyOf</span>
-        {members.map((member, position) => (
-          <button
-            key={position}
-            type="button"
-            className={`union-tab ${position === at ? 'is-chosen' : ''}`}
-            onClick={() => setChosen(position)}
-          >
-            {labelOf(member, index, inherited)}
-          </button>
-        ))}
-      </div>
-      <div className="union-member">
-        <ShapeView shape={members[at]} index={index} hideType inherited={inherited} />
-      </div>
+    <Tabs
+      label="anyOf"
+      items={members.map((member, at) => ({
+        key: String(at),
+        label: labelOf(member, index),
+        body: <ShapeView shape={member} index={index} hideType borrowed />,
+      }))}
+    />
+  );
+}
+
+/**
+ * A supertype: a link, and no expander.
+ *
+ * This is the one reference position where expanding shows nothing new. The
+ * projection is unwrapped, so every attribute the supertype contributes is
+ * already in the list below -- `Book extends Entity` lists `id` and `createdAt`
+ * among its own. An expander here printed them a second time, a few pixels
+ * away from the first. The link still matters: the supertype has a page, with
+ * its own prose, examples and the other types that extend it.
+ *
+ * An *anonymous* supertype is not a link and not a declaration -- the `integer`
+ * in `type: integer | number` after P9 distributes a facet exists nowhere else
+ * -- so it is rendered where it sits.
+ */
+function Supertype({ parent, index }: { parent: Shape | Ref; index: Index }) {
+  if (!isRef(parent)) return <ShapeView shape={parent} index={index} borrowed />;
+  const entry = index.get(parent.$ref);
+  if (!entry) {
+    return (
+      <Chip tone="warn" title={parent.$ref}>
+        unresolved
+      </Chip>
+    );
+  }
+  return (
+    <Link to={entry.href} className="typelink">
+      {entry.name}
+    </Link>
+  );
+}
+
+function Group({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="group">
+      <span className="label">{label}</span>
+      <div className="nested">{children}</div>
+    </div>
+  );
+}
+
+function Tagged({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div className="shape-line">
+      <span className="label">{label}</span>
+      {values.map((value) => (
+        <Chip key={value}>{value}</Chip>
+      ))}
     </div>
   );
 }
@@ -364,9 +394,7 @@ export function Annotations({ applied, index }: { applied?: Applied[]; index: In
             ) : (
               <span>({one.name})</span>
             )}
-            {one.value !== null && one.value !== undefined && (
-              <span className="facet-value">{render(one.value)}</span>
-            )}
+            {one.value !== null && one.value !== undefined && <span className="facet-value">{render(one.value)}</span>}
           </Chip>
         );
       })}
@@ -386,37 +414,14 @@ export function ParameterTable({
   const rows = Object.entries(parameters ?? {});
   if (rows.length === 0) return null;
   return (
-    <div className="parameters">
+    <section className="parameters">
       <h4>{title}</h4>
-      <table className="properties">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(([name, parameter]) => {
-            const type = parameter.type;
-            return (
-              <tr key={name}>
-                <td className="property-name">
-                  <code>{name}</code>
-                  <Chip tone={parameter.required ? 'required' : 'optional'}>
-                    {parameter.required ? 'required' : 'optional'}
-                  </Chip>
-                </td>
-                <td className="property-type">
-                  <ShapeView shape={type} index={index} hideDescription />
-                </td>
-                <td className="property-description">{type && !isRef(type) ? type.description : undefined}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+      <div className="attributes">
+        {rows.map(([name, parameter]) => (
+          <Attribute key={name} name={name} property={parameter} index={index} />
+        ))}
+      </div>
+    </section>
   );
 }
 

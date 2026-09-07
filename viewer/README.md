@@ -12,7 +12,27 @@ that is evidence about the format, and it has already produced three fixes.
 npm install
 npm run sample        # pyraml tree sample/api.raml > public/api.json
 npm run dev
+npm run shots         # screenshot every page, both themes, into shots/
 ```
+
+## Shape of the app
+
+An **operation** is the page, not a resource. A resource with six methods
+rendered all six on one screen, so the one being read was one of six full
+schemas and the URI parameters that apply to all of them scrolled away. The nav
+lists methods under each path, because that is where a name is chosen.
+
+Nesting runs **downward**, indented by one rule per level. A type is a tree and
+a table can only grow one way: nesting went into the Type column, so a nested
+object pushed its children into a narrowing strip while the page's right half
+stayed blank.
+
+Alternatives are **tabs** -- a union's members, an operation's responses. Each is
+a whole thing to read, so stacked they run together and collapsed they have to
+be opened one at a time.
+
+Both themes follow the system by default; the toggle has three states, because
+one with two silently makes the choice for a reader who never made it.
 
 ## Where the document comes from
 
@@ -45,9 +65,20 @@ Three constructs, and telling the last two apart is the whole discipline
 
 | | means | what the UI does |
 |---|---|---|
-| `{"$ref": <address>}` | a link | a name that navigates, and a disclosure that expands in place — **never on render** |
+| `{"$ref": <address>}` | a link | a name that navigates, and a separate **Show attributes** button that expands in place — **never on render** |
 | `{"type": "recursive", …}` | repeats from here | a stop. Its `head` is shown as a name, never as something expandable |
 | anything else | containment | descend |
+
+The two controls are visibly different on purpose. A caret glyph beside the
+link read as decoration *on* the link, so navigating and expanding looked like
+one ambiguous gesture; a word says which is which.
+
+**A supertype gets the link and no expander.** The projection is unwrapped, so
+every attribute a supertype contributes is already in the list below —
+expanding it printed the same rows a second time a few pixels from the first.
+That is the one reference position where expansion shows nothing new; a
+property's `$ref` is not, because `Money`'s attributes are genuinely not
+inlined into `Book`.
 
 No ancestor set and no depth budget exist anywhere in `Shape.tsx`, because the
 emitter guarantees a cycle is always *marked*. Collapsing the two into a bare

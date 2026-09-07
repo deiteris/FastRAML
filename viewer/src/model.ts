@@ -58,7 +58,7 @@ export function isRecursive(node: unknown): node is Shape & { head: Ref } {
 
 /* -- the index ---------------------------------------------------------------- */
 
-export type Section = 'type' | 'annotationType' | 'securityScheme' | 'endpoint';
+export type Section = 'type' | 'annotationType' | 'securityScheme' | 'endpoint' | 'operation';
 
 export interface Entry {
   address: Address;
@@ -98,10 +98,12 @@ export class Index {
     }
     for (const [path, endpoint] of Object.entries(document.endpoints)) {
       this.add(endpoint.id, path, 'endpoint');
-      // An operation's address resolves to its resource's page: that is where
-      // it is rendered, and a `$ref` at one should land somewhere it is visible.
-      for (const operation of Object.values(endpoint.operations)) {
-        this.add(operation.id, path, 'endpoint');
+      // An operation has a page of its own. A resource with six methods is six
+      // pages of detail on one screen otherwise, and only one of them is ever
+      // the one being read.
+      for (const method of Object.keys(endpoint.operations)) {
+        const operation = endpoint.operations[method];
+        if (operation) this.add(operation.id, `${method} ${path}`, 'operation');
       }
     }
   }
@@ -137,6 +139,11 @@ export function hrefOf(section: Section, name: string, file?: string): string {
       return at('annotation-types');
     case 'securityScheme':
       return at('security');
+    case 'operation': {
+      // `name` is "get /books/{isbn}" -- the method, a space, then the path.
+      const cut = name.indexOf(' ');
+      return `/endpoints/${encodeURIComponent(name.slice(cut + 1))}/${name.slice(0, cut)}`;
+    }
     default:
       return `/endpoints/${encodeURIComponent(name)}`;
   }
@@ -200,23 +207,31 @@ export function titleOf(shape: Shape, index: Index): string {
 /**
  * The type name a reader recognises: the expression as written, else the kind.
  *
- * `inherited` is the enclosing shape's `type_expr`, and passing it is what makes
- * this right rather than usually-right. **`type_expr` records the expression a
- * shape was built from, which is not always its own.** Every member of
- * `type: string | number` carries `"string | number"`, because P7 builds all of
- * them from that one node -- so a union rendered from `type_expr` alone reads
- * `string | number` twice under a heading that already said it, which is a
- * wrong answer rather than a missing one.
- *
- * An expression equal to the container's was not written for this shape, so its
- * own `type` is what to show. Where a member does have one -- `items` under
- * `tags: {type: array, items: string}` carries `"string"` against the array's
- * `"array"` -- the two differ and the expression wins, which is the case this
- * exists for.
+ * `borrowed` says the expression on this shape belongs to its **container**, so
+ * only its `type` is its own. That is the state of every union member and every
+ * inlined supertype: P7 builds all of them from the one node the expression was
+ * written on, so each carries the whole of it. `type: string | number` gives two
+ * members that both read `string | number`, and `type: Search` at a query
+ * parameter gives two members that *still* read `string | number` while the
+ * parameter itself reads `Search` -- which is why comparing the two strings
+ * does not find it, and why this is a flag and not a comparison.
  */
-export function spelling(shape: Shape, inherited?: string): string {
+export function spelling(shape: Shape, borrowed = false): string {
   const written = typeof shape.type_expr === 'string' ? shape.type_expr.trim() : '';
-  return !written || written === inherited?.trim() ? shape.type : written;
+  return borrowed || !written ? shape.type : written;
+}
+
+/**
+ * What to call one member of a union or one inlined supertype.
+ *
+ * The three constructs, in the order the metamodel puts them: a link is named
+ * by its target, a recursion marker by what repeats, and anything else by its
+ * own `type` -- never by `type_expr`, for the reason `spelling` gives.
+ */
+export function labelOf(member: Shape | Ref, index: Index): string {
+  if (isRef(member)) return index.label(member.$ref);
+  if (isRecursive(member)) return member.name ?? 'recursive';
+  return spelling(member, true);
 }
 
 /* -- endpoints as a tree -------------------------------------------------------- */

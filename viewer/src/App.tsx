@@ -8,14 +8,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { HashRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router';
-import { Empty } from './components/ui';
+import { Empty, ThemeToggle } from './components/ui';
 import { DEFAULT_SOURCE, loadDocument, readFile } from './load';
-import { type Document, Index, pathTree, type PathNode, declarations } from './model';
+import { type Document, Index, methodsOf, pathTree, type PathNode, declarations } from './model';
 import {
   AnnotationTypeList,
   AnnotationTypePage,
   EndpointPage,
   NotFound,
+  OperationPage,
   Overview,
   ResolveAddress,
   SecurityList,
@@ -103,6 +104,7 @@ export function Pages({ document, index }: { document: Document; index: Index })
     <Routes key={pathname}>
       <Route path="/" element={<Overview {...pages} />} />
       <Route path="/endpoints/:path" element={<EndpointPage {...pages} />} />
+      <Route path="/endpoints/:path/:method" element={<OperationPage {...pages} />} />
       <Route path="/types" element={<TypeList {...pages} />} />
       <Route path="/types/:file/:name" element={<TypePage {...pages} />} />
       <Route path="/annotation-types" element={<AnnotationTypeList {...pages} />} />
@@ -190,6 +192,7 @@ function Sidebar({
       )}
 
       <div className="sidebar-foot">
+        <ThemeToggle />
         <FilePicker onOpen={onOpen} />
       </div>
     </nav>
@@ -207,12 +210,30 @@ function Sidebar({
 function PathBranch({ node, matches }: { node: PathNode; matches: (text: string) => boolean }) {
   const relevant = matches(node.path) || node.children.some((child) => within(child, matches));
   if (!relevant) return null;
+  const methods = node.endpoint ? methodsOf(node.endpoint) : [];
   return (
     <li>
       {node.endpoint ? (
         <NavItem to={`/endpoints/${encodeURIComponent(node.path)}`} label={node.segment} />
       ) : (
         <span className="nav-item is-empty">{node.segment}</span>
+      )}
+      {/* The methods, in the nav. An operation is the unit a reader navigates
+          to, so it needs a name in the place names are chosen from -- a
+          resource page listing six of them is one hop too many. */}
+      {methods.length > 0 && (
+        <ul className="nav-children">
+          {methods.map(([method]) => (
+            <li key={method}>
+              <NavLink
+                to={`/endpoints/${encodeURIComponent(node.path)}/${method}`}
+                className={({ isActive }) => `nav-item nav-method ${isActive ? 'is-here' : ''}`}
+              >
+                {method.toUpperCase()}
+              </NavLink>
+            </li>
+          ))}
+        </ul>
       )}
       {node.children.length > 0 && (
         <ul className="nav-children">

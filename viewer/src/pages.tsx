@@ -9,11 +9,10 @@
 
 import { Link, useParams } from 'react-router';
 import { Annotations, ParameterTable, ShapeView } from './components/Shape';
-import { Chip, Code, Disclosure, Empty, KeyValues, Prose, Section } from './components/ui';
+import { Chip, Code, Disclosure, Empty, KeyValues, Prose, Section, Tabs } from './components/ui';
 import {
   type Document,
   type Index,
-  type Operation,
   type Ref,
   type Response,
   type SecuredBy,
@@ -115,6 +114,13 @@ export function Overview({ document, index }: Props) {
 
 /* -- endpoints ----------------------------------------------------------------- */
 
+/**
+ * A resource: what is true of every call to it, and the way in to its methods.
+ *
+ * Not the methods themselves. A resource with six of them rendered every one on
+ * a single page, so the operation a reader came for was one of six full
+ * schemas, and the URI parameters that apply to all of them scrolled away.
+ */
 export function EndpointPage({ document, index }: Props) {
   const { path } = useParams();
   const full = decodeURIComponent(path ?? '');
@@ -126,6 +132,7 @@ export function EndpointPage({ document, index }: Props) {
       </Empty>
     );
   }
+  const methods = methodsOf(endpoint);
   return (
     <article>
       <h1>
@@ -140,65 +147,96 @@ export function EndpointPage({ document, index }: Props) {
           as well as its own -- which is what a caller has to supply. */}
       <ParameterTable title="URI parameters" parameters={endpoint.uri_parameters} index={index} />
 
-      {methodsOf(endpoint).map(([method, operation]) => (
-        <OperationView key={method} method={method} operation={operation} index={index} />
-      ))}
-      {Object.keys(endpoint.operations).length === 0 && <Empty>This resource declares no methods.</Empty>}
+      {methods.length > 0 ? (
+        <Section title="Methods">
+          <ul className="methods">
+            {methods.map(([method, operation]) => (
+              <li key={method}>
+                <Link to={`/endpoints/${encodeURIComponent(full)}/${method}`} className="method-link">
+                  <Chip tone="method">{method.toUpperCase()}</Chip>
+                  <span className="method-name">{operation.display_name ?? operation.description ?? full}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : (
+        <Empty>This resource declares no methods.</Empty>
+      )}
     </article>
   );
 }
 
-function OperationView({ method, operation, index }: { method: string; operation: Operation; index: Index }) {
+/** One method, which is the unit a reader actually came for. */
+export function OperationPage({ document, index }: Props) {
+  const { path, method } = useParams();
+  const full = decodeURIComponent(path ?? '');
+  const endpoint = document.endpoints[full];
+  const operation = endpoint?.operations[method ?? ''];
+  if (!endpoint || !operation) {
+    return (
+      <Empty>
+        No <code>{method?.toUpperCase()}</code> on <code>{full}</code>.
+      </Empty>
+    );
+  }
   return (
-    <section className="operation">
-      <h2>
-        <Chip tone="method">{method.toUpperCase()}</Chip>
-        {operation.display_name && <span className="operation-name">{operation.display_name}</span>}
-      </h2>
+    <article>
+      <h1 className="operation-title">
+        <Chip tone="method">{(method ?? '').toUpperCase()}</Chip>
+        <code>{full}</code>
+      </h1>
+      {operation.display_name && <p className="subtitle">{operation.display_name}</p>}
       <Prose>{operation.description}</Prose>
-      <SecuredByList schemes={operation.secured_by} index={index} />
+      <SecuredByList schemes={operation.secured_by ?? endpoint.secured_by} index={index} />
       <Annotations applied={operation.annotations} index={index} />
 
+      <ParameterTable title="URI parameters" parameters={endpoint.uri_parameters} index={index} />
       <ParameterTable title="Headers" parameters={operation.headers} index={index} />
       <ParameterTable title="Query parameters" parameters={operation.query_parameters} index={index} />
       {operation.query_string && (
-        <div className="parameters">
+        <section className="parameters">
           <h4>Query string</h4>
           <ShapeView shape={operation.query_string} index={index} />
-        </div>
+        </section>
       )}
 
       <Bodies title="Request body" bodies={operation.bodies} index={index} />
-
-      {Object.entries(operation.responses).length > 0 && (
-        <div className="responses">
-          <h4>Responses</h4>
-          {Object.entries(operation.responses)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([code, response]) => (
-              <ResponseView key={code} code={code} response={response} index={index} />
-            ))}
-        </div>
-      )}
-    </section>
+      <Responses responses={operation.responses} index={index} />
+    </article>
   );
 }
 
-function ResponseView({ code, response, index }: { code: string; response: Response; index: Index }) {
+/**
+ * Responses, as tabs.
+ *
+ * A status code is a whole alternative outcome, and a list of collapsed rows
+ * makes a reader open them one at a time to find the one they want. The codes
+ * are all visible at once here, and exactly one body is on screen.
+ */
+function Responses({ responses, index }: { responses: Record<string, Response>; index: Index }) {
+  const codes = Object.entries(responses).sort(([a], [b]) => a.localeCompare(b));
+  if (codes.length === 0) return null;
   return (
-    <Disclosure
-      open
-      summary={
-        <>
-          <Chip tone="status">{code}</Chip>
-          <span className="response-description">{response.description}</span>
-        </>
-      }
-    >
-      <Annotations applied={response.annotations} index={index} />
-      <ParameterTable title="Headers" parameters={response.headers} index={index} />
-      <Bodies title="Body" bodies={response.bodies} index={index} />
-    </Disclosure>
+    <section className="responses">
+      <h4>Responses</h4>
+      <Tabs
+        items={codes.map(([code, response]) => ({
+          key: code,
+          label: code,
+          tone: 'status' as const,
+          body: (
+            <>
+              <Prose>{response.description}</Prose>
+              <Annotations applied={response.annotations} index={index} />
+              <ParameterTable title="Headers" parameters={response.headers} index={index} />
+              <Bodies title="Body" bodies={response.bodies} index={index} />
+              {!response.description && !response.bodies && !response.headers && <Empty>No content.</Empty>}
+            </>
+          ),
+        }))}
+      />
+    </section>
   );
 }
 
@@ -380,10 +418,7 @@ export function SecuritySchemePage({ document, index }: Props) {
           <ParameterTable title="Headers" parameters={described.headers} index={index} />
           <ParameterTable title="Query parameters" parameters={described.query_parameters} index={index} />
           {described.query_string && <ShapeView shape={described.query_string} index={index} />}
-          {described.responses &&
-            Object.entries(described.responses).map(([code, response]) => (
-              <ResponseView key={code} code={code} response={response} index={index} />
-            ))}
+          {described.responses && <Responses responses={described.responses} index={index} />}
         </Section>
       )}
 

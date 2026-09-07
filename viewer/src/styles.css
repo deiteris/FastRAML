@@ -4,22 +4,88 @@
  * The app exists to show what the tree carries; a utility framework would put a
  * build step and a class vocabulary between a reader of this repository and
  * that. Everything below is named after the thing it styles.
+ *
+ * Both themes are tokens on `:root`. Dark follows the system by default and is
+ * overridden by `data-theme` on `<html>` when a reader picks one, so the toggle
+ * is three lines of JavaScript and no component knows a theme exists.
  */
 
 :root {
-  --bg: #fbfbfc;
-  --panel: #ffffff;
-  --line: #e3e5ea;
-  --ink: #1c1e24;
-  --dim: #6b7280;
-  --accent: #2f5bd0;
-  --type: #0b6b5e;
+  --bg: #ffffff;
+  --panel: #f6f8fa;
+  --raised: #ffffff;
+  --line: #e3e6ea;
+  --line-soft: #eef0f3;
+  --ink: #1a1f26;
+  --dim: #616d7e;
+  --faint: #8a94a3;
+  --accent: #3556d4;
+  --type: #0a6c5d;
   --required: #a3372b;
-  --optional: #6b7280;
-  --warn: #8a5300;
-  --recursive: #6b2fb5;
+  --warn: #8a5a00;
+  --recursive: #6b3fb5;
+  --enum: #5a4b9c;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%);
   --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216;
+    --panel: #151a20;
+    --raised: #171d24;
+    --line: #262e38;
+    --line-soft: #1e252d;
+    --ink: #dfe4ea;
+    --dim: #9aa5b3;
+    --faint: #6b7684;
+    --accent: #7fa2ff;
+    --type: #4fbfa8;
+    --required: #f08b7d;
+    --warn: #d8ab5e;
+    --recursive: #b394f0;
+    --enum: #a396e8;
+    --shadow: none;
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --panel: #f6f8fa;
+  --raised: #ffffff;
+  --line: #e3e6ea;
+  --line-soft: #eef0f3;
+  --ink: #1a1f26;
+  --dim: #616d7e;
+  --faint: #8a94a3;
+  --accent: #3556d4;
+  --type: #0a6c5d;
+  --required: #a3372b;
+  --warn: #8a5a00;
+  --recursive: #6b3fb5;
+  --enum: #5a4b9c;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0f1216;
+  --panel: #151a20;
+  --raised: #171d24;
+  --line: #262e38;
+  --line-soft: #1e252d;
+  --ink: #dfe4ea;
+  --dim: #9aa5b3;
+  --faint: #6b7684;
+  --accent: #7fa2ff;
+  --type: #4fbfa8;
+  --required: #f08b7d;
+  --warn: #d8ab5e;
+  --recursive: #b394f0;
+  --enum: #a396e8;
+  --shadow: none;
 }
 
 * {
@@ -30,13 +96,14 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.55 var(--sans);
+  font: 15px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
 }
 
 code,
 pre {
   font-family: var(--mono);
-  font-size: 0.9em;
+  font-size: 0.875em;
 }
 
 a {
@@ -48,22 +115,32 @@ a:hover {
   text-decoration: underline;
 }
 
+button {
+  font: inherit;
+}
+
 /* -- layout ---------------------------------------------------------------- */
 
 .app {
   display: grid;
-  grid-template-columns: 290px minmax(0, 1fr);
+  grid-template-columns: 272px minmax(0, 1fr);
   min-height: 100vh;
+  /* Paints the nav column for the page's whole height. The sidebar itself is
+     sticky and one viewport tall, so on a long page the column below it would
+     otherwise fall back to the body background. */
+  background: linear-gradient(to right, var(--panel) 0 272px, var(--bg) 272px);
 }
 
 main {
-  padding: 32px 40px 96px;
-  max-width: 1100px;
+  padding: 40px 56px 120px;
+  /* Wide: nesting runs downward now, so the page uses its width for prose and
+     long type expressions instead of leaving half of it blank. */
+  max-width: 1000px;
   min-width: 0;
 }
 
 .loading {
-  padding: 64px;
+  padding: 72px;
 }
 
 .error {
@@ -71,38 +148,43 @@ main {
 }
 
 h1 {
-  font-size: 26px;
-  margin: 0 0 4px;
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
 }
 
 h2 {
-  font-size: 18px;
-  margin: 32px 0 10px;
+  font-size: 17px;
+  margin: 36px 0 12px;
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
 h3 {
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--dim);
-  margin: 20px 0 6px;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  margin: 22px 0 6px;
+  font-weight: 600;
 }
 
 h4 {
   font-size: 13px;
-  margin: 18px 0 6px;
-  color: var(--dim);
+  font-weight: 650;
+  margin: 22px 0 8px;
+  color: var(--ink);
 }
 
 .subtitle {
   color: var(--dim);
-  margin: 0 0 16px;
+  margin: 0 0 20px;
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .aside {
@@ -114,9 +196,8 @@ h4 {
 /* -- sidebar --------------------------------------------------------------- */
 
 .sidebar {
-  background: var(--panel);
   border-right: 1px solid var(--line);
-  padding: 20px 16px 60px;
+  padding: 22px 14px 60px;
   overflow-y: auto;
   max-height: 100vh;
   position: sticky;
@@ -125,17 +206,19 @@ h4 {
 
 .brand {
   display: block;
-  font-weight: 600;
-  font-size: 16px;
+  font-weight: 650;
+  font-size: 15px;
   color: var(--ink);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .filter {
   width: 100%;
-  padding: 6px 9px;
+  padding: 6px 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--ink);
   font: inherit;
   font-size: 13px;
 }
@@ -147,63 +230,71 @@ h4 {
 }
 
 .nav-children {
-  margin-left: 12px !important;
+  margin-left: 10px !important;
   border-left: 1px solid var(--line);
   padding-left: 6px !important;
 }
 
 .nav-item {
   display: block;
-  padding: 3px 6px;
-  border-radius: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
   font-size: 13px;
-  color: var(--ink);
+  color: var(--dim);
   font-family: var(--mono);
   overflow-wrap: anywhere;
 }
 
 .nav-item:hover {
-  background: #eef1f8;
+  background: var(--line-soft);
+  color: var(--ink);
   text-decoration: none;
 }
 
 .nav-item.is-here {
-  background: #e6ecfb;
-  color: var(--accent);
+  background: var(--line);
+  color: var(--ink);
   font-weight: 600;
 }
 
 .nav-item.is-empty {
-  color: var(--dim);
+  color: var(--faint);
 }
 
 .nav-empty {
   font-size: 12px;
-  color: var(--dim);
-  margin: 0 0 0 6px;
+  color: var(--faint);
+  margin: 0 0 0 8px;
 }
 
 .sidebar-foot {
   margin-top: 28px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
 }
 
 .picker input {
   display: none;
 }
 
-.picker span {
+.picker span,
+.theme {
   display: inline-block;
   padding: 5px 10px;
-  border: 1px dashed var(--line);
-  border-radius: 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
   font-size: 12px;
   color: var(--dim);
   cursor: pointer;
 }
 
-.picker span:hover {
+.picker span:hover,
+.theme:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -214,10 +305,11 @@ h4 {
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
-  padding: 1px 7px;
-  border-radius: 10px;
+  padding: 1px 8px;
+  border-radius: 11px;
   border: 1px solid var(--line);
-  background: var(--panel);
+  background: var(--raised);
+  color: var(--dim);
   font-size: 11.5px;
   font-family: var(--mono);
   white-space: nowrap;
@@ -226,51 +318,53 @@ h4 {
 
 .chip-type {
   color: var(--type);
-  border-color: #bfe0da;
-  background: #f0faf8;
-}
-
-.chip-required {
-  color: var(--required);
-  border-color: #edc9c4;
-  background: #fdf4f3;
-}
-
-.chip-optional {
-  color: var(--optional);
+  border-color: color-mix(in srgb, var(--type) 35%, var(--line));
 }
 
 .chip-warn {
   color: var(--warn);
-  border-color: #e8d3a8;
-  background: #fdf8ee;
+  border-color: color-mix(in srgb, var(--warn) 35%, var(--line));
 }
 
 .chip-recursive {
   color: var(--recursive);
-  border-color: #d9c8ef;
-  background: #f8f4fd;
+  border-color: color-mix(in srgb, var(--recursive) 35%, var(--line));
+}
+
+.chip-enum {
+  color: var(--enum);
+  border-color: color-mix(in srgb, var(--enum) 30%, var(--line));
+}
+
+.chip-required {
+  color: var(--required);
+  border-color: color-mix(in srgb, var(--required) 35%, var(--line));
+}
+
+.chip-optional {
+  color: var(--faint);
 }
 
 .chip-method {
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--accent);
-  border-color: #c5d3f2;
-  background: #eef2fd;
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
   font-size: 12px;
 }
 
 .chip-status {
-  font-weight: 600;
+  font-weight: 650;
+  color: var(--ink);
 }
 
 .facet-name {
-  color: var(--dim);
+  color: var(--faint);
 }
 
 .facet-value {
   font-weight: 600;
+  color: var(--ink);
 }
 
 .badges,
@@ -284,31 +378,231 @@ h4 {
 }
 
 .label {
-  font-size: 11px;
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--dim);
-}
-
-/* -- shapes ----------------------------------------------------------------- */
-
-.shape {
-  min-width: 0;
-}
-
-.shape-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.shape-display {
+  letter-spacing: 0.07em;
+  color: var(--faint);
   font-weight: 600;
 }
 
-.prose,
-.response-description {
-  color: #3b4049;
+/* -- attributes -------------------------------------------------------------- */
+
+.attributes {
+  border-top: 1px solid var(--line-soft);
+  margin: 6px 0 4px;
+}
+
+.attr {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.attr:last-child {
+  border-bottom: 0;
+}
+
+.attr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.attr-name {
+  font-weight: 650;
+  color: var(--ink);
+  font-size: 13.5px;
+}
+
+.attr-type {
+  color: var(--type);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.attr-flag {
+  font-size: 11px;
+  color: var(--faint);
+  letter-spacing: 0.02em;
+}
+
+.attr-flag.is-required {
+  color: var(--required);
+}
+
+.attr-desc {
+  color: var(--dim);
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+
+/*
+ * Everything an attribute owns -- its facets, its members, its own example --
+ * sits inside a rule, so the boundary between "this belongs to `title`" and
+ * "this belongs to the type `title` is a property of" is drawn rather than
+ * inferred from spacing. Without it a type's own `example` read as the last
+ * attribute's.
+ */
+.attr > .shape {
+  margin-top: 8px;
+  padding-left: 16px;
+  border-left: 2px solid var(--line-soft);
+}
+
+.nested,
+.attr .attributes {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  border-left: 2px solid var(--line);
+}
+
+.attr .attributes {
+  border-top: 0;
+}
+
+/* One rule per level. An attribute already draws the rule for everything it
+   owns, so a `.nested` or an attribute list directly inside it would draw a
+   second one beside the first -- two lines for one step of nesting. */
+.attr > .shape > .nested,
+.attr > .shape > .attributes,
+.attr > .shape > .group > .nested,
+.attr > .shape > .tabs .nested {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.group {
+  margin: 10px 0;
+}
+
+/* A type's own trailing blocks, after its attribute list. */
+.shape > .attributes + .labelled,
+.shape > .attributes ~ .labelled:first-of-type {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.methods {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.method-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin: 0 -12px;
+  border-radius: 8px;
+  color: var(--ink);
+}
+
+.method-link:hover {
+  background: var(--line-soft);
+  text-decoration: none;
+}
+
+.method-name {
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.operation-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.nav-method {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+}
+
+/* -- tabs ---------------------------------------------------------------------- */
+
+.tabs-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.tab {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.tab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tab.is-chosen {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 650;
+}
+
+.tabs-panel {
+  padding-top: 12px;
+}
+
+.reference {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.reference .nested {
+  flex-basis: 100%;
+}
+
+.typelink {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+/*
+ * The expander.
+ *
+ * A caret glyph was 10 px of punctuation next to a link, so it read as
+ * decoration on the link and the two flows -- navigate, expand -- looked like
+ * one. A word says which is which.
+ */
+.expander {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--faint);
+  font-size: 11.5px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-style: dotted;
+}
+
+.expander:hover {
+  color: var(--accent);
+}
+
+.prose {
+  color: var(--dim);
   margin: 6px 0;
 }
 
@@ -316,113 +610,22 @@ h4 {
   white-space: pre-wrap;
   font-family: var(--sans);
   margin: 0;
-}
-
-.members {
-  margin: 8px 0 8px 2px;
-  padding-left: 12px;
-  border-left: 2px solid var(--line);
-}
-
-.member {
-  margin: 4px 0;
-}
-
-table.properties {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 8px 0 16px;
-  font-size: 14px;
-}
-
-table.properties th {
-  text-align: left;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--dim);
-  border-bottom: 1px solid var(--line);
-  padding: 4px 10px 4px 0;
-  font-weight: 600;
-}
-
-table.properties td {
-  border-bottom: 1px solid var(--line);
-  padding: 8px 10px 8px 0;
-  vertical-align: top;
-}
-
-.property-name {
-  white-space: nowrap;
-}
-
-.property-name code {
-  font-weight: 600;
-  margin-right: 6px;
-}
-
-.property-type {
-  width: 45%;
-}
-
-.property-description {
   color: var(--dim);
 }
 
 .dim {
-  color: var(--dim);
+  color: var(--faint);
 }
 
-.typelink {
-  font-family: var(--mono);
-  font-weight: 600;
-}
-
-.recursion {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
-
-/* -- disclosure -------------------------------------------------------------- */
-
-.disclosure {
-  margin: 4px 0;
-}
-
-.disclosure-summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: none;
-  border: 0;
-  padding: 1px 0;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.disclosure-caret {
-  color: var(--dim);
-  font-size: 10px;
-  width: 10px;
-}
-
-.disclosure-body {
-  margin: 4px 0 8px 12px;
-  padding-left: 12px;
-  border-left: 2px solid var(--line);
-}
-
-/* -- operations --------------------------------------------------------------- */
+/* -- operations ---------------------------------------------------------------- */
 
 .operation {
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  padding: 14px 18px 18px;
-  margin: 18px 0;
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: var(--shadow);
+  padding: 16px 20px 20px;
+  margin: 20px 0;
 }
 
 .operation h2 {
@@ -431,23 +634,31 @@ table.properties td {
 
 .operation-name {
   font-size: 16px;
+  font-weight: 600;
+}
+
+.parameters,
+.bodies,
+.responses {
+  margin-top: 4px;
 }
 
 .body {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  margin: 6px 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
 
-.body > .shape {
-  flex: 1;
-  min-width: 0;
+.body:last-child {
+  border-bottom: 0;
+}
+
+.body-media {
+  margin-bottom: 4px;
 }
 
 .responses .disclosure {
-  border-top: 1px solid var(--line);
-  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 10px;
 }
 
 .scopes,
@@ -457,36 +668,72 @@ table.properties td {
   align-items: center;
 }
 
-/* -- misc ---------------------------------------------------------------------- */
+/* -- disclosure ----------------------------------------------------------------- */
+
+.disclosure-summary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: 0;
+  padding: 6px 8px;
+  margin-left: -8px;
+  border-radius: 7px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.disclosure-summary:hover {
+  background: var(--line-soft);
+}
+
+.disclosure-caret {
+  color: var(--faint);
+  font-size: 13px;
+  width: 14px;
+  flex: none;
+}
+
+.disclosure-body {
+  margin: 6px 0 10px;
+  padding-left: 16px;
+  border-left: 2px solid var(--line);
+}
+
+/* -- misc ------------------------------------------------------------------------ */
 
 .code {
-  background: #f4f5f7;
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
   overflow-x: auto;
-  margin: 4px 0;
+  margin: 6px 0;
   white-space: pre-wrap;
+  color: var(--ink);
 }
 
 .labelled {
-  margin: 8px 0;
+  margin: 10px 0;
 }
 
 .keyvalues {
-  margin: 12px 0;
+  margin: 14px 0;
 }
 
 .keyvalue {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
-  gap: 10px;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--line);
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .keyvalue dt {
-  color: var(--dim);
+  color: var(--faint);
   font-size: 13px;
 }
 
@@ -494,12 +741,12 @@ table.properties td {
   margin: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 6px;
 }
 
 .empty {
   color: var(--dim);
-  padding: 12px 0;
+  padding: 14px 0;
 }
 
 .usages {
@@ -513,49 +760,44 @@ table.properties td {
 }
 
 .section {
-  margin: 28px 0;
+  margin: 32px 0;
 }
 
-/* -- unions ------------------------------------------------------------------- */
-
-.union {
-  margin: 10px 0;
+table.properties {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0 16px;
+  font-size: 14px;
 }
 
-.union-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-.union-tab {
-  font: inherit;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  padding: 2px 9px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-  color: var(--type);
-  cursor: pointer;
-}
-
-.union-tab:hover {
-  border-color: var(--type);
-}
-
-.union-tab.is-chosen {
-  background: #0b6b5e;
-  border-color: #0b6b5e;
-  color: #fff;
+table.properties th {
+  text-align: left;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  border-bottom: 1px solid var(--line);
+  padding: 6px 12px 6px 0;
   font-weight: 600;
 }
 
-.union-member {
-  margin-top: 8px;
-  padding-left: 12px;
-  border-left: 2px solid var(--line);
+table.properties td {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 9px 12px 9px 0;
+  vertical-align: top;
+}
+
+.property-name {
+  white-space: nowrap;
+}
+
+.property-name code {
+  font-weight: 650;
+  margin-right: 6px;
+}
+
+.property-description {
+  color: var(--dim);
 }
 
 .shape-head:empty {

@@ -1,6 +1,6 @@
 /** Small pieces every page uses. Nothing here knows about RAML. */
 
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 export function Chip({ tone = 'plain', title, children }: { tone?: Tone; title?: string; children: ReactNode }) {
   return (
@@ -10,7 +10,7 @@ export function Chip({ tone = 'plain', title, children }: { tone?: Tone; title?:
   );
 }
 
-export type Tone = 'plain' | 'type' | 'required' | 'optional' | 'method' | 'status' | 'warn' | 'recursive';
+export type Tone = 'plain' | 'type' | 'required' | 'optional' | 'method' | 'status' | 'warn' | 'recursive' | 'enum';
 
 export function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
@@ -43,7 +43,10 @@ export function Disclosure({
   const [isOpen, setOpen] = useState(open);
   return (
     <div className={`disclosure ${isOpen ? 'is-open' : ''}`}>
-      <button type="button" className="disclosure-summary" onClick={() => setOpen(!isOpen)}>
+      <button type="button" className="disclosure-summary" aria-expanded={isOpen} onClick={() => setOpen(!isOpen)}>
+        {/* A whole clickable row rather than a glyph: a 10px caret beside a
+            chip reads as decoration on the chip, so nothing said the row was a
+            control. The caret stays as the state indicator. */}
         <span className="disclosure-caret">{isOpen ? '▾' : '▸'}</span>
         {summary}
       </button>
@@ -87,3 +90,80 @@ export function KeyValues({ rows }: { rows: [string, ReactNode][] }) {
     </dl>
   );
 }
+
+/**
+ * A tab strip over whole panels.
+ *
+ * Used wherever a set of alternatives is each a *whole* thing to read: the
+ * members of a union, the responses of an operation. Stacked, they run together
+ * -- two object members produce two attribute lists with nothing between them
+ * saying where the first ended, and eight response codes produce eight
+ * collapsed rows a reader has to open one at a time.
+ */
+export function Tabs({ label, items }: { label?: string; items: Tab[] }) {
+  const [chosen, setChosen] = useState(0);
+  if (items.length === 0) return null;
+  const at = Math.min(chosen, items.length - 1);
+  return (
+    <div className="tabs">
+      <div className="tabs-strip">
+        {label && <span className="label">{label}</span>}
+        {items.map((item, position) => (
+          <button
+            key={item.key}
+            type="button"
+            className={`tab tab-${item.tone ?? 'plain'} ${position === at ? 'is-chosen' : ''}`}
+            aria-selected={position === at}
+            onClick={() => setChosen(position)}
+          >
+            {item.label}
+            {item.note && <span className="tab-note">{item.note}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="tabs-panel">{items[at]?.body}</div>
+    </div>
+  );
+}
+
+export interface Tab {
+  key: string;
+  label: ReactNode;
+  /** A second line inside the tab -- a response's description, say. */
+  note?: ReactNode;
+  tone?: 'plain' | 'status';
+  body: ReactNode;
+}
+
+/**
+ * Light, dark, or whatever the system says.
+ *
+ * Three states and not two: a reader who has not chosen should follow the
+ * system, and a toggle with two states silently makes that choice for them the
+ * first time they use it. `data-theme` is absent in the third state, which is
+ * how the stylesheet's media query stays in charge.
+ */
+export function ThemeToggle() {
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme | null) ?? 'system');
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (theme === 'system') {
+      root.removeAttribute('data-theme');
+      localStorage.removeItem('theme');
+    } else {
+      root.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+    }
+  }, [theme]);
+
+  const next: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' };
+  const shown: Record<Theme, string> = { system: 'Theme: system', light: 'Theme: light', dark: 'Theme: dark' };
+  return (
+    <button type="button" className="theme" onClick={() => setTheme(next[theme])}>
+      {shown[theme]}
+    </button>
+  );
+}
+
+type Theme = 'system' | 'light' | 'dark';

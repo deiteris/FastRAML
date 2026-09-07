@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { Pages } from './App';
-import { Index, declarations, isRecursive, isRef, spelling, type Document, type Shape } from './model';
+import { Index, declarations, isRecursive, isRef, labelOf, type Document, type Shape } from './model';
 
 const source = process.argv[2] ?? 'public/api.json';
 const document = JSON.parse(readFileSync(source, 'utf-8')) as Document;
@@ -77,17 +77,24 @@ let members = 0;
 walk(document, (shape) => {
   shapes += 1;
 
-  // A union member labelled with the *union's* expression. `type_expr` records
-  // the expression a shape was built from, and P7 builds every member of
-  // `string | number` from that one node -- so each carries the whole thing.
-  // Rendered as the member's own name it reads `string | number` twice, which
-  // is a wrong answer and not a missing one.
+  // A union member must be named by its own `type`, its ref target, or what
+  // repeats -- never by `type_expr`, which P7 stamps with the whole expression
+  // every member was built from.
+  //
+  // Stated as the rule and not as "does not equal the parent's expression",
+  // which is what this asked first and why it passed on a query parameter
+  // typed `Search`: the parent read `Search`, the members read `string |
+  // number`, the two differed, and both members were still wrong.
   for (const member of shape.any_of ?? []) {
     members += 1;
-    if (isRef(member) || isRecursive(member)) continue;
-    const label = spelling(member, shape.type_expr);
-    if (label === spelling(shape)) {
-      process.stderr.write(`UNION  ${shape.name ?? shape.id}: member reads "${label}", the union's own name\n`);
+    const label = labelOf(member, index);
+    const own = isRef(member)
+      ? index.label(member.$ref)
+      : isRecursive(member)
+        ? (member.name ?? 'recursive')
+        : member.type;
+    if (label !== own) {
+      process.stderr.write(`UNION  ${shape.name ?? shape.id}: member reads "${label}", its own type is "${own}"\n`);
       failed += 1;
     }
   }

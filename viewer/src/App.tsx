@@ -18,6 +18,8 @@ import { type Document, Index } from './model';
 import {
   AnnotationTypeList,
   AnnotationTypePage,
+  DocumentationList,
+  DocumentationPage,
   EndpointPage,
   NotFound,
   OperationPage,
@@ -107,6 +109,8 @@ export function Pages({ document, index }: { document: Document; index: Index })
   return (
     <Routes key={pathname}>
       <Route path="/" element={<Overview {...pages} />} />
+      <Route path="/documentation" element={<DocumentationList {...pages} />} />
+      <Route path="/documentation/:at" element={<DocumentationPage {...pages} />} />
       <Route path="/endpoints/:path" element={<EndpointPage {...pages} />} />
       <Route path="/endpoints/:path/:method" element={<OperationPage {...pages} />} />
       <Route path="/types" element={<TypeList {...pages} />} />

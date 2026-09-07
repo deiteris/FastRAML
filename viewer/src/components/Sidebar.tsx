@@ -25,6 +25,9 @@ export function Sidebar({
   const roots = useMemo(() => pathTree(document.endpoints), [document]);
   const matches = (text: string) => !filter || text.toLowerCase().includes(filter.toLowerCase());
 
+  const docs = (document.entry_point?.documentation ?? [])
+    .map((item, at) => ({ item, at }))
+    .filter(({ item }) => matches(item.title));
   const types = declarations(document.types).filter(({ name }) => matches(name));
   const annotationTypes = declarations(document.annotation_types).filter(({ name }) => matches(name));
   const schemes = declarations(document.security_schemes).filter(({ name }) => matches(name));
@@ -41,6 +44,17 @@ export function Sidebar({
         value={filter}
         onChange={(event) => setFilter(event.target.value)}
       />
+
+      {/* First, because it is the part meant to be read rather than looked up
+          -- and paired with its position, before the filter, because filtering
+          a list renumbers it and the route is the position. */}
+      {docs.length > 0 && (
+        <NavGroup title="Documentation" href="/documentation">
+          {docs.map(({ item, at }) => (
+            <NavItem key={at} to={`/documentation/${at}`} label={item.title} />
+          ))}
+        </NavGroup>
+      )}
 
       <NavGroup title="Endpoints">
         {roots.map((node) => (

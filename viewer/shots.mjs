@@ -20,6 +20,8 @@ import puppeteer from 'puppeteer';
 const PORT = 4317;
 const PAGES = [
   ['overview', '/'],
+  ['documentation', '/documentation'],
+  ['documentation-item', '/documentation/1'],
   ['types', '/types'],
   ['type-object', '/types/api.raml/Book'],
   ['type-union', '/types/api.raml/Search'],

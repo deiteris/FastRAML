@@ -13,7 +13,48 @@ description: |
   A worked example exercising every construct the tree carries.
 documentation:
   - title: Getting started
-    content: Obtain a token, then call `/books`.
+    content: |
+      Every request goes to your own tenant, so the first thing to settle is
+      the `{tenant}` in the base URI: it is the subdomain you were given at
+      sign-up, and it is not optional.
+
+          curl https://acme.books.example.com/v2/books
+
+      Reads of the catalogue are open. Anything that writes needs a token —
+      see **Authentication** below.
+  - title: Authentication
+    content: |
+      The API speaks OAuth 2.0. Send the caller to `/oauth/authorize`, exchange
+      the code at `/oauth/token`, and put the result in an `Authorization`
+      header:
+
+          Authorization: Bearer <token>
+
+      Ask for the narrowest scopes that will do. `read:books` is enough to
+      list and retrieve; `write:books` is needed to add one; `admin:catalogue`
+      is for tools, not for applications.
+
+      `GET /books/{isbn}` may also be called with no token at all, which is
+      what the open padlock on that method means.
+  - title: Pagination
+    content: |
+      Collections are paged with `offset` and `limit`. `limit` defaults to 20
+      and is capped at 100; asking for more is not an error, it is quietly
+      reduced.
+
+      There is no cursor. Adding a book while you page can shift the window,
+      so a client walking the whole catalogue should sort and de-duplicate on
+      `isbn` rather than trusting the offsets.
+  - title: Errors
+    content: |
+      Failures use the status code and nothing else — there is no error
+      envelope to parse.
+
+      * `400` — the body did not match the schema on this page.
+      * `401` — no token, or one that has expired.
+      * `422` — the body was well-formed but matched no member of a union.
+      * `500` — ours. Retry with backoff; it is safe for every method here
+        except `POST /books`, which is not idempotent.
 annotationTypes:
   deprecated:
     type: string

@@ -8,6 +8,7 @@
 
 import { Link } from 'react-router';
 import { Annotations } from '../components/Annotations';
+import { fromBaseUri } from '../components/Borrowed';
 import { ParameterTable } from '../components/Parameters';
 import { SecuredByList } from '../components/Security';
 import { Url } from '../components/Url';
@@ -39,8 +40,15 @@ export function EndpointPage({ document, index }: Props) {
       <Annotations applied={endpoint.annotations} index={index} />
 
       {/* Propagated down by P6, so a nested resource shows the ones it inherited
-          as well as its own -- which is what a caller has to supply. */}
-      <ParameterTable title="URI parameters" parameters={endpoint.uri_parameters} index={index} />
+          as well as its own -- which is what a caller has to supply. The base
+          URI's are joined to them for the same reason: `{tenant}` is not part
+          of this path, and a caller cannot address the resource without it. */}
+      <ParameterTable
+        title="URI parameters"
+        parameters={endpoint.uri_parameters}
+        borrowed={fromBaseUri(document.entry_point?.base_uri_parameters)}
+        index={index}
+      />
 
       {methods.length > 0 ? (
         <Section title="Methods">

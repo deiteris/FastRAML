@@ -3,7 +3,7 @@
 import { Link } from 'react-router';
 import { Annotations } from '../components/Annotations';
 import { ParameterTable } from '../components/Parameters';
-import { Chip, Disclosure, Empty, KeyValues, Prose, Section } from '../components/ui';
+import { Chip, Empty, KeyValues, Prose, Section } from '../components/ui';
 import { baseUriOf, declarations } from '../model';
 import type { Props } from './props';
 
@@ -49,13 +49,18 @@ export function Overview({ document, index }: Props) {
           reader who cannot see it cannot build a request at all (docs/16 § 11.4). */}
       <ParameterTable title="Base URI parameters" parameters={api.base_uri_parameters} index={index} />
 
+      {/* Titles and links, not the prose. Each item has a page of its own now,
+          and inlined here they were four collapsed rows nobody could link to
+          below a table of counts. */}
       {api.documentation && api.documentation.length > 0 && (
         <Section title="Documentation">
-          {api.documentation.map((item, at) => (
-            <Disclosure key={at} summary={<strong>{item.title}</strong>} open={api.documentation!.length === 1}>
-              <pre className="prose-block">{item.content}</pre>
-            </Disclosure>
-          ))}
+          <ul className="usages">
+            {api.documentation.map((item, at) => (
+              <li key={at}>
+                <Link to={`/documentation/${at}`}>{item.title}</Link>
+              </li>
+            ))}
+          </ul>
         </Section>
       )}
 

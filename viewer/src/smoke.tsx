@@ -28,7 +28,12 @@ const routes = [
   '/types',
   '/annotation-types',
   '/security',
+  '/documentation',
   '/nonsense',
+  // Every documentation item, by the position its route is keyed on. An item
+  // is the one thing in the tree with no address, so this is the only check
+  // that the numbering the nav writes and the numbering the page reads agree.
+  ...(document.entry_point?.documentation ?? []).map((_, at) => `/documentation/${at}`),
   ...Object.keys(document.endpoints).map((path) => `/endpoints/${encodeURIComponent(path)}`),
   ...declarations(document.types).map(({ file, name }) => at('types', file, name)),
   ...declarations(document.annotation_types).map(({ file, name }) => at('annotation-types', file, name)),

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router';
 import { Annotations } from '../components/Annotations';
 import { Bodies } from '../components/Bodies';
+import { fromBaseUri, fromScheme } from '../components/Borrowed';
 import { ParameterTable } from '../components/Parameters';
 import { Responses } from '../components/Responses';
 import { SecurityChoice } from '../components/Security';
@@ -63,19 +64,25 @@ export function OperationPage({ document, index }: Props) {
 
       <SecurityChoice schemes={schemes} declared={active} chosen={at} onChoose={setChosen} index={index} />
 
-      <ParameterTable title="URI parameters" parameters={endpoint.uri_parameters} index={index} />
+      {/* The base URI's parameters belong here: `{tenant}` is not part of this
+          path and is not optional, so a caller reading only the path cannot
+          build the request. */}
+      <ParameterTable
+        title="URI parameters"
+        parameters={endpoint.uri_parameters}
+        borrowed={fromBaseUri(document.entry_point?.base_uri_parameters)}
+        index={index}
+      />
       <ParameterTable
         title="Headers"
         parameters={operation.headers}
-        added={adds?.headers}
-        from={active?.name}
+        borrowed={fromScheme(adds?.headers, active?.name)}
         index={index}
       />
       <ParameterTable
         title="Query parameters"
         parameters={operation.query_parameters}
-        added={adds?.query_parameters}
-        from={active?.name}
+        borrowed={fromScheme(adds?.query_parameters, active?.name)}
         index={index}
       />
       {operation.query_string && (
@@ -86,7 +93,11 @@ export function OperationPage({ document, index }: Props) {
       )}
 
       <Bodies title="Request body" bodies={operation.bodies} index={index} />
-      <Responses responses={operation.responses} added={adds?.responses} from={active?.name} index={index} />
+      <Responses
+        responses={operation.responses}
+        borrowed={fromScheme(adds?.responses, active?.name)}
+        index={index}
+      />
     </article>
   );
 }

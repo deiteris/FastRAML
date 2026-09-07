@@ -30,7 +30,19 @@
     "documentation": [
       {
         "title": "Getting started",
-        "content": "Obtain a token, then call `/books`."
+        "content": "Every request goes to your own tenant, so the first thing to settle is\nthe `{tenant}` in the base URI: it is the subdomain you were given at\nsign-up, and it is not optional.\n\n    curl https://acme.books.example.com/v2/books\n\nReads of the catalogue are open. Anything that writes needs a token \u2014\nsee **Authentication** below.\n"
+      },
+      {
+        "title": "Authentication",
+        "content": "The API speaks OAuth 2.0. Send the caller to `/oauth/authorize`, exchange\nthe code at `/oauth/token`, and put the result in an `Authorization`\nheader:\n\n    Authorization: Bearer <token>\n\nAsk for the narrowest scopes that will do. `read:books` is enough to\nlist and retrieve; `write:books` is needed to add one; `admin:catalogue`\nis for tools, not for applications.\n\n`GET /books/{isbn}` may also be called with no token at all, which is\nwhat the open padlock on that method means.\n"
+      },
+      {
+        "title": "Pagination",
+        "content": "Collections are paged with `offset` and `limit`. `limit` defaults to 20\nand is capped at 100; asking for more is not an error, it is quietly\nreduced.\n\nThere is no cursor. Adding a book while you page can shift the window,\nso a client walking the whole catalogue should sort and de-duplicate on\n`isbn` rather than trusting the offsets.\n"
+      },
+      {
+        "title": "Errors",
+        "content": "Failures use the status code and nothing else \u2014 there is no error\nenvelope to parse.\n\n* `400` \u2014 the body did not match the schema on this page.\n* `401` \u2014 no token, or one that has expired.\n* `422` \u2014 the body was well-formed but matched no member of a union.\n* `500` \u2014 ours. Retry with backoff; it is safe for every method here\n  except `POST /books`, which is not idempotent.\n"
       }
     ]
   },

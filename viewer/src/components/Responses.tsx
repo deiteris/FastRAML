@@ -9,26 +9,24 @@
 import type { Index, Response } from '../model';
 import { Annotations } from './Annotations';
 import { Bodies } from './Bodies';
+import { type Borrowed, From } from './Borrowed';
 import { ParameterTable } from './Parameters';
-import { From } from './Shape';
 import { Empty, Prose, Tabs } from './ui';
 
 export function Responses({
   responses,
-  added,
-  from,
+  borrowed,
   index,
   title = 'Responses',
 }: {
   responses: Record<string, Response>;
   /** What the chosen security scheme adds -- a `401`, typically. */
-  added?: Record<string, Response>;
-  from?: string;
+  borrowed?: Borrowed<Response>;
   index: Index;
   title?: string;
 }) {
   const own = new Set(Object.keys(responses));
-  const codes = Object.entries({ ...responses, ...added }).sort(([a], [b]) => a.localeCompare(b));
+  const codes = Object.entries({ ...responses, ...borrowed?.rows }).sort(([a], [b]) => a.localeCompare(b));
   if (codes.length === 0) return null;
   return (
     <section className="responses">
@@ -41,7 +39,9 @@ export function Responses({
           tone: code[0] ?? 'plain',
           body: (
             <>
-              {!own.has(code) && from && <From scheme={from} />}
+              {!own.has(code) && borrowed && (
+                <From label={borrowed.label} title={borrowed.title} secured={borrowed.secured} />
+              )}
               <Prose>{response.description}</Prose>
               <Annotations applied={response.annotations} index={index} />
               <ParameterTable title="Headers" parameters={response.headers} index={index} />

@@ -38,8 +38,9 @@ import {
   spellingOf,
 } from '../model';
 import { Annotations } from './Annotations';
+import { From } from './Borrowed';
 import { Code, Labelled, oneLine } from './json';
-import { Chip, Lock, Prose, Tabs } from './ui';
+import { Chip, Prose, Tabs } from './ui';
 
 interface Props {
   shape: Shape | Ref | null | undefined;
@@ -339,8 +340,8 @@ export function Attribute({
   property: Property | PatternProperty | Parameter;
   index: Index;
   pattern?: boolean;
-  /** The security scheme that contributed this row, if it was not declared. */
-  from?: string;
+  /** Where this row came from, if it was not declared here. */
+  from?: { label: string; title: string; secured?: boolean };
 }) {
   const [open, setOpen] = useState(false);
   const required = 'required' in property ? property.required : false;
@@ -381,7 +382,7 @@ export function Attribute({
         ) : (
           required && <span className="attr-flag is-required">Required</span>
         )}
-        {from && <From scheme={from} />}
+        {from && <From label={from.label} title={from.title} secured={from.secured} />}
       </div>
       {/* A description is not an attribute, so it does not live behind the
           control that expands them. Where the type is a reference the prose
@@ -410,16 +411,6 @@ export function Attribute({
       )}
       {inline && <Body shape={shape} index={index} hideType hideDescription hideItems={simpleItems(shape, index)} />}
     </div>
-  );
-}
-
-/** Where a row came from, when it was not the operation's own. */
-export function From({ scheme }: { scheme: string }) {
-  return (
-    <span className="from" title={`added by the ${scheme} security scheme`}>
-      <Lock />
-      {scheme}
-    </span>
   );
 }
 

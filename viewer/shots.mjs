@@ -75,6 +75,25 @@ const VIEWPORTS = [
   { suffix: '-narrow', width: 760, pages: NARROW },
 ];
 
+/**
+ * The regions that open a level, each of which must look the same everywhere.
+ *
+ * An item type, an expanded declaration and a union member are all *a separate
+ * type inside another one*, and a reader learns one boundary per construct --
+ * so a construct drawn with a rule on one page and flush on the next teaches
+ * that the rule means something, which it then does not.
+ *
+ * `each item` was flush on an attribute row and indented everywhere else, which
+ * put an array's `maxItems` and its item's `maxLength` in one column under one
+ * heading. A tab strip draws its own boundary and needs no rule; what matters
+ * is that it needs none consistently.
+ */
+const NESTINGS = [
+  ['each item', '.group > .nested'],
+  ['an expanded type', '.expand > .nested'],
+  ['a union member', '.tabs-panel'],
+];
+
 const only = process.argv.includes('--dark') ? ['dark'] : process.argv.includes('--light') ? ['light'] : ['light', 'dark'];
 
 /*
@@ -117,6 +136,8 @@ try {
    */
   const failures = [];
   const pending = [];
+  /** Per nesting construct, every indent it was drawn at and where. */
+  const levels = {};
   const firstLine = (text) => String(text).split(/\r?\n/)[0];
   page.on('pageerror', (error) => failures.push(`${route}: ${firstLine(error.message)}`));
   page.on('console', (message) => {
@@ -150,11 +171,29 @@ try {
         const file = `shots/${name}${view.suffix}${only.length > 1 ? `-${theme}` : ''}.png`;
         await page.screenshot({ path: file, fullPage: true });
         process.stdout.write(`${file}\n`);
+        // After the shot: this opens every control, and the picture is of the
+        // page as a reader first meets it.
+        for (const [kind, seen] of await nesting(page)) {
+          for (const [step, chain] of seen) (levels[kind] ??= new Map()).set(step, `${route} ${chain}`);
+        }
       }
     }
   }
   await browser.close();
   await Promise.all(pending);
+
+  for (const [kind] of NESTINGS) {
+    const seen = levels[kind] ?? new Map();
+    if (seen.size === 0) {
+      failures.push(`no page draws ${kind}; the check on it is vacuous`);
+    } else if (seen.size > 1) {
+      const where = [...seen].map(([step, at]) => `\n         ${step} at ${at}`).join('');
+      failures.push(`${kind} is drawn at ${seen.size} different indents:${where}`);
+    }
+  }
+  process.stdout.write(
+    `${NESTINGS.map(([kind]) => `${kind} ${[...(levels[kind] ?? new Map()).keys()][0]}`).join(', ')}\n`,
+  );
 
   if (failures.length > 0) {
     for (const failure of [...new Set(failures)]) console.error('ERROR', failure);
@@ -224,6 +263,49 @@ async function overflowing(page) {
     }
     return [...new Set(spills)];
   });
+}
+
+
+/**
+ * Where each construct was drawn on this page, as indent and rule.
+ *
+ * Every control is opened first, because a region that renders collapsed is a
+ * region this cannot measure -- and `.expand > .nested` exists only when open.
+ * Three passes, since opening one reveals the next; a recursion marker carries
+ * no control, so the descent is finite either way.
+ */
+async function nesting(page) {
+  for (let pass = 0; pass < 3; pass += 1) {
+    // One `evaluate` per pass, not one loop inside one: a click schedules a
+    // React render, so the controls it reveals are not in the DOM until the
+    // call returns and the page has ticked.
+    await page.evaluate(() => {
+      for (const control of document.querySelectorAll('.expander[aria-expanded="false"]')) control.click();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return page.evaluate(
+    (kinds) => {
+      const chain = (element) => {
+        const parts = [];
+        for (let at = element; at && !at.matches('article'); at = at.parentElement) {
+          const own = String(at.className || '')
+            .split(' ')
+            .filter((name) => ['shape', 'attr', 'group', 'expand', 'nested', 'attributes', 'tabs-panel'].includes(name));
+          if (own.length > 0) parts.unshift(own.join('.'));
+        }
+        return parts.join('>');
+      };
+      return kinds.map(([kind, selector]) => [
+        kind,
+        [...document.querySelectorAll(selector)].map((element) => {
+          const style = getComputedStyle(element);
+          return [`${style.paddingLeft} + ${style.borderLeftWidth} rule`, chain(element)];
+        }),
+      ]);
+    },
+    NESTINGS,
+  );
 }
 
 /** `console.error(format, ...rest)` as one line: `%s`, `%d`, `%o` and `%i`. */

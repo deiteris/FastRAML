@@ -665,12 +665,16 @@ h4 + .tabs > .tabs-bar,
 }
 
 /* One rule per level. An attribute already draws the rule for everything it
-   owns, so a `.nested` or an attribute list directly inside it would draw a
-   second one beside the first -- two lines for one step of nesting. */
+   owns, so a region starting immediately inside that rule would draw a second
+   one beside the first -- two lines for one step of nesting.
+
+   *Immediately*: with nothing between them saying a new level has begun. A
+   `each item` label, an expander, a tab strip all say it, and what follows one
+   is a separate type that keeps its own rule -- which is why `.expand >
+   .nested` was never listed here. Flattening `each item` put an array's
+   `maxItems` and its item's `maxLength` in one column under one heading. */
 .attr > .shape > .nested,
-.attr > .shape > .attributes,
-.attr > .shape > .group > .nested,
-.attr > .shape > .tabs .nested {
+.attr > .shape > .attributes {
   border-left: 0;
   padding-left: 0;
 }

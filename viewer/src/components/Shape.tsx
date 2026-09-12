@@ -21,6 +21,12 @@
  * learn that `Book[]` on one line and `Money` on the next are the same kind of
  * thing shown two ways, or that only one of them can be followed.
  *
+ * The same holds for what a type *contains*. `Body` draws every kind's
+ * structure -- the `each item` group, the `anyOf` selector, the attribute list
+ * -- and an attribute row renders its inline type through `Body` rather than
+ * arranging the parts itself. An array is one construct whether it is a
+ * declaration, a response body or a property.
+ *
  * *Declared here, shown here; named here, behind a control.* What a row
  * declares -- its facets, its enum, its own example, an inline object's
  * properties -- has nowhere else to be read, so it is open. What it names is
@@ -76,44 +82,17 @@ interface Props {
   hideType?: boolean;
   hideDescription?: boolean;
   /**
-   * The caller's own line already named the item type -- `tags string[]` -- so
-   * the nested block would repeat it.
-   *
-   * A property of the *caller*, not of the shape: a union panel hides the type
-   * line, so a `Body` deciding this for itself left the `array` member of
-   * `Book[] | Review` rendering nothing at all.
-   */
-  hideItems?: boolean;
-  /**
    * This shape's `type_expr` belongs to its container, so only its `type` is
    * its own. True of a union member and an inlined supertype -- see `spelling`.
    */
   borrowed?: boolean;
-  /**
-   * A control has already been opened to reach this, so a reference shows its
-   * target rather than a second control onto it.
-   *
-   * `reviews Review[]` is one question -- what is in the list -- and answering
-   * it took two clicks: one to open the items, one to open the `Review` behind
-   * them. The link is still here; only the button is gone.
-   */
-  opened?: boolean;
 }
 
-export function ShapeView({ shape, index, hideType, hideDescription, hideItems, borrowed, opened }: Props) {
+export function ShapeView({ shape, index, hideType, hideDescription, borrowed }: Props) {
   if (shape === null || shape === undefined) return <TypeName shape={shape} index={index} />;
-  if (isRef(shape)) return <RefView node={shape} index={index} opened={opened} />;
+  if (isRef(shape)) return <RefView node={shape} index={index} />;
   if (isRecursive(shape)) return <RecursionView node={shape} index={index} />;
-  return (
-    <Body
-      shape={shape}
-      index={index}
-      hideType={hideType}
-      hideDescription={hideDescription}
-      hideItems={hideItems}
-      borrowed={borrowed}
-    />
-  );
+  return <Body shape={shape} index={index} hideType={hideType} hideDescription={hideDescription} borrowed={borrowed} />;
 }
 
 /**
@@ -126,7 +105,7 @@ export function ShapeView({ shape, index, hideType, hideDescription, hideItems, 
  *
  * Neither expands on render. That is the loop.
  */
-function RefView({ node, index, opened }: { node: Ref; index: Index; opened?: boolean }) {
+function RefView({ node, index }: { node: Ref; index: Index }) {
   const entry = index.get(node.$ref);
   const target = index.shape(node.$ref);
   if (!entry) {
@@ -142,16 +121,11 @@ function RefView({ node, index, opened }: { node: Ref; index: Index; opened?: bo
         {entry.name}
       </Link>
       <ProseInline className="reference-desc">{target?.description}</ProseInline>
-      {detailed(target) &&
-        (opened ? (
-          <div className="nested">
-            <Body shape={target} index={index} hideType hideDescription />
-          </div>
-        ) : (
-          <Expandable what={behind(target)}>
-            <Body shape={target} index={index} hideType hideDescription />
-          </Expandable>
-        ))}
+      {detailed(target) && (
+        <Expandable what={behind(target)}>
+          <Body shape={target} index={index} hideType hideDescription />
+        </Expandable>
+      )}
     </span>
   );
 }
@@ -334,7 +308,6 @@ function Body({
   index,
   hideType,
   hideDescription,
-  hideItems,
   hideInherits,
   borrowed,
 }: {
@@ -342,7 +315,6 @@ function Body({
   index: Index;
   hideType?: boolean;
   hideDescription?: boolean;
-  hideItems?: boolean;
   /** The caller's own line is a link to the one supertype -- see `Attribute`. */
   hideInherits?: boolean;
   borrowed?: boolean;
@@ -463,10 +435,16 @@ function Body({
 
       {members.length > 0 && <Union members={members} index={index} />}
 
-      {/* Only where the items say something the head line did not. `string[]`
+      {/* What an array holds, wherever an array appears -- a declaration page, a
+          response body, an attribute row. One construct, because an array is
+          one thing and a reader should not have to learn that `Book[]` in a
+          body and `items Anything[]` in an attribute list disclose their item
+          type two different ways.
+
+          Only where the items say something the head line did not. `string[]`
           named its item on the head and then drew a label and a rule around
           the word `string`. */}
-      {!hideItems && leadsSomewhere(content.items, index) && (
+      {leadsSomewhere(content.items, index) && (
         <Group label="each item">
           <ShapeView shape={content.items} index={index} />
         </Group>
@@ -528,7 +506,6 @@ export function Attribute({
   const target = ref ? index.shape(ref.$ref) : undefined;
   const inline = shape !== null && shape !== undefined && !isRef(shape) && !isRecursive(shape) ? shape : null;
   const described = inline ? inline.description : target?.description;
-  const items = inline?.type === 'array' ? inline.items : undefined;
 
   return (
     <div className="attr">
@@ -558,15 +535,11 @@ export function Attribute({
       {/* `hideInherits` where the head line is already a link to the one
           supertype: a query parameter typed `Search` read `Search` above
           `EXTENDS Search`, the same word twice with nothing between them. */}
+      {/* Everything this row declares, including what an inline array holds:
+          `Body` draws the `each item` group, so the treatment is the one a
+          declaration page and a response body already use. */}
       {inline && (
-        <Body
-          shape={inline}
-          index={index}
-          hideType
-          hideDescription
-          hideItems
-          hideInherits={restates(inline, index)}
-        />
+        <Body shape={inline} index={index} hideType hideDescription hideInherits={restates(inline, index)} />
       )}
       {/* The one control. A named type's whole body is behind it -- which for
           an array is its own facets and then its items, so `priceHistory
@@ -574,14 +547,6 @@ export function Attribute({
       {detailed(target) && (
         <Expandable what={behind(target)}>
           <Body shape={target} index={index} hideType hideDescription />
-        </Expandable>
-      )}
-      {/* An inline array's items. `opened` because this control is already the
-          one click: a `Review[]` opens onto `Review`, not onto a second button
-          reading "Show child attributes". */}
-      {leadsSomewhere(items, index) && (
-        <Expandable what="item type">
-          <ShapeView shape={items} index={index} opened />
         </Expandable>
       )}
     </div>

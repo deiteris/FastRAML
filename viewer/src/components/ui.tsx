@@ -1,6 +1,6 @@
 /** Small pieces every page uses. Nothing here knows about RAML. */
 
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
 export function Chip({ tone = 'plain', title, children }: { tone?: Tone; title?: string; children: ReactNode }) {
   return (
@@ -108,30 +108,118 @@ export function KeyValues({ rows }: { rows: [string, ReactNode][] }) {
  * -- two object members produce two attribute lists with nothing between them
  * saying where the first ended, and eight response codes produce eight
  * collapsed rows a reader has to open one at a time.
+ *
+ * **One line, scrolled -- not wrapped.** A strip is the index to the panel under
+ * it, and an index whose height depends on the window is not one: a ten-member
+ * union wrapped to three rows, and the rule under the chosen tab then pointed at
+ * a panel two rows away. Scrolling keeps the strip one row at every width, and
+ * the strip is the only thing that moves.
+ *
+ * The chevrons only appear where there is something to reach. They are laid out
+ * beside the strip rather than over it, because an overlay covers the first and
+ * last tab -- the two a reader scrolling is trying to read.
  */
 export function Tabs({ label, items }: { label?: string; items: Tab[] }) {
   const [chosen, setChosen] = useState(0);
+  const strip = useRef<HTMLDivElement>(null);
+  const [reach, setReach] = useState<Reach>(FITS);
+  const at = Math.min(chosen, Math.max(items.length - 1, 0));
+
+  const measure = useCallback(() => {
+    const node = strip.current;
+    if (!node) return;
+    const slack = node.scrollWidth - node.clientWidth;
+    // The threshold is a pixel, not zero: a fractional layout leaves sub-pixel
+    // slack on a strip that fits, and chevrons that scroll nothing are worse
+    // than none.
+    setReach(slack <= 1 ? FITS : { back: node.scrollLeft > 1, on: node.scrollLeft < slack - 1 });
+  }, []);
+
+  // The strip's width follows the window and its content follows the document,
+  // so neither a resize listener nor a render alone sees every change.
+  useEffect(() => {
+    const node = strip.current;
+    if (!node) return;
+    const watch = new ResizeObserver(measure);
+    watch.observe(node);
+    for (const tab of node.children) watch.observe(tab);
+    return () => watch.disconnect();
+  }, [measure, items]);
+
+  // Choosing a tab the strip had scrolled past leaves the underline off-screen,
+  // pointing at nothing. Written by hand rather than with `scrollIntoView`,
+  // which also scrolls every ancestor -- including the page.
+  useEffect(() => {
+    const node = strip.current;
+    const tab = node?.children[at];
+    if (!node || !(tab instanceof HTMLElement)) return;
+    const right = tab.offsetLeft + tab.offsetWidth;
+    if (tab.offsetLeft < node.scrollLeft) node.scrollLeft = tab.offsetLeft;
+    else if (right > node.scrollLeft + node.clientWidth) node.scrollLeft = right - node.clientWidth;
+  }, [at]);
+
   if (items.length === 0) return null;
-  const at = Math.min(chosen, items.length - 1);
+  const step = (way: number) => {
+    const node = strip.current;
+    if (node) node.scrollBy({ left: way * node.clientWidth * 0.8, behavior: 'smooth' });
+  };
+
   return (
     <div className="tabs">
-      <div className="tabs-strip">
+      <div className="tabs-bar">
         {label && <span className="label">{label}</span>}
-        {items.map((item, position) => (
-          <button
-            key={item.key}
-            type="button"
-            className={`tab tab-${item.tone ?? 'plain'} ${position === at ? 'is-chosen' : ''}`}
-            aria-selected={position === at}
-            onClick={() => setChosen(position)}
-          >
-            {item.label}
-            {item.note && <span className="tab-note">{item.note}</span>}
-          </button>
-        ))}
+        {reach !== FITS && <Step way={-1} enabled={reach.back} onClick={() => step(-1)} />}
+        {/* `data-scroll` says this box shows what it clips, on a control that
+            says so -- which is what excuses it from the "nothing is wider than
+            its box" check in `shots.mjs`. */}
+        <div className="tabs-strip" data-scroll ref={strip} onScroll={measure}>
+          {items.map((item, position) => (
+            <button
+              key={item.key}
+              type="button"
+              className={`tab tab-${item.tone ?? 'plain'} ${position === at ? 'is-chosen' : ''}`}
+              aria-selected={position === at}
+              onClick={() => setChosen(position)}
+            >
+              {item.label}
+              {item.note && <span className="tab-note">{item.note}</span>}
+            </button>
+          ))}
+        </div>
+        {reach !== FITS && <Step way={1} enabled={reach.on} onClick={() => step(1)} />}
       </div>
       <div className="tabs-panel">{items[at]?.body}</div>
     </div>
+  );
+}
+
+/**
+ * How far the strip can still be scrolled, each way.
+ *
+ * `FITS` is one shared object so that `reach !== FITS` is the question "does
+ * this strip scroll at all", which decides whether the chevrons take up room.
+ * Reserving their width only while scrolling made the tabs jump sideways the
+ * moment a reader touched them.
+ */
+interface Reach {
+  back: boolean;
+  on: boolean;
+}
+
+const FITS: Reach = { back: false, on: false };
+
+/** One chevron. Disabled rather than hidden at the end, so the strip stays put. */
+function Step({ way, enabled, onClick }: { way: 1 | -1; enabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`tabs-step tabs-step-${way === 1 ? 'on' : 'back'}`}
+      disabled={!enabled}
+      aria-label={way === 1 ? 'Scroll tabs right' : 'Scroll tabs left'}
+      onClick={onClick}
+    >
+      <Chevron open={false} />
+    </button>
   );
 }
 

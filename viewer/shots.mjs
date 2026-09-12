@@ -53,6 +53,28 @@ const PAGES = [
   ['annotation-type', '/annotation-types/sample%2Fapi.raml/deprecated'],
 ];
 
+/*
+ * Wide, and then narrow over the pages where width is the thing under test.
+ *
+ * A layout only fails at the width it fails at. A tab strip with ten members, a
+ * response selector with six codes and an attribute row carrying a long value
+ * all fit at 1400 and none of them fit at 760, so a run at one width says
+ * nothing about the other -- and 760 is a window split beside an editor, which
+ * is where API documentation is actually read.
+ */
+const NARROW = new Set([
+  'type-union-large',
+  'type-union-referenced',
+  'operation-responses',
+  'operation-post',
+  'type-examples',
+  'type-at-the-limits',
+]);
+const VIEWPORTS = [
+  { suffix: '', width: 1400 },
+  { suffix: '-narrow', width: 760, pages: NARROW },
+];
+
 const only = process.argv.includes('--dark') ? ['dark'] : process.argv.includes('--light') ? ['light'] : ['light', 'dark'];
 
 /*
@@ -84,7 +106,6 @@ try {
 
   const browser = await puppeteer.launch({ headless: true });
   const page = await browser.newPage();
-  await page.setViewport({ width: 1400, height: 1000, deviceScaleFactor: 2 });
 
   /*
    * Browser failures, reported by name.
@@ -116,16 +137,20 @@ try {
 
   for (const theme of only) {
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: theme }]);
-    for (const [name, at] of PAGES) {
-      route = at;
-      await page.goto(`http://localhost:${PORT}/#${at}`, { waitUntil: 'networkidle0' });
-      // The document loads after the first paint, so wait for content rather
-      // than for the network: a screenshot of the loading state proves nothing.
-      await page.waitForSelector('main article, main .empty', { timeout: 5000 });
-      for (const spill of await overflowing(page)) failures.push(`${at}: ${spill}`);
-      const file = `shots/${name}${only.length > 1 ? `-${theme}` : ''}.png`;
-      await page.screenshot({ path: file, fullPage: true });
-      process.stdout.write(`${file}\n`);
+    for (const view of VIEWPORTS) {
+      await page.setViewport({ width: view.width, height: 1000, deviceScaleFactor: 2 });
+      for (const [name, at] of PAGES) {
+        if (view.pages && !view.pages.has(name)) continue;
+        route = `${at}${view.suffix}`;
+        await page.goto(`http://localhost:${PORT}/#${at}`, { waitUntil: 'networkidle0' });
+        // The document loads after the first paint, so wait for content rather
+        // than for the network: a screenshot of the loading state proves nothing.
+        await page.waitForSelector('main article, main .empty', { timeout: 5000 });
+        for (const spill of await overflowing(page)) failures.push(`${route}: ${spill}`);
+        const file = `shots/${name}${view.suffix}${only.length > 1 ? `-${theme}` : ''}.png`;
+        await page.screenshot({ path: file, fullPage: true });
+        process.stdout.write(`${file}\n`);
+      }
     }
   }
   await browser.close();
@@ -157,20 +182,43 @@ try {
  * Only leaves are reported -- an overflowing chip also overflows every ancestor
  * it sits in, and naming all of them buries the one that is too wide. `.code`
  * is exempt: a code block scrolls on purpose.
+ *
+ * So is a box marked `data-scroll`, and only as narrowly as that means: content
+ * it can reach is not content lost, and a child's position is wherever the
+ * scroll offset put it. The box itself is still measured against the page -- a
+ * scroller wider than the column it sits in is the same bug as any other -- and
+ * every child is still measured against its own box.
+ *
+ * The mark is a claim and the claim is checked. An element that says it scrolls
+ * and does not clips its content with no way to reach it, which is exactly the
+ * bug being looked for; trusting the attribute would excuse it.
  */
 async function overflowing(page) {
   return page.evaluate(() => {
     const main = document.querySelector('main');
     if (!main) return [];
     const limit = main.getBoundingClientRect().right;
+    const scrolls = (element) =>
+      element.hasAttribute('data-scroll') && ['auto', 'scroll'].includes(getComputedStyle(element).overflowX);
+    const within = (element) => {
+      for (let at = element.parentElement; at !== null && at !== main; at = at.parentElement) {
+        if (scrolls(at)) return true;
+      }
+      return false;
+    };
     const past = (element) => element.getBoundingClientRect().right > limit + 1;
     const spilt = (element) => element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 1;
+    const problem = (element) => {
+      if (element.closest('.code, pre')) return null;
+      if (past(element) && !within(element)) return 'runs past the page';
+      if (spilt(element) && !scrolls(element)) return 'is wider than its box';
+      return null;
+    };
     const spills = [];
     for (const element of main.querySelectorAll('*')) {
-      if (element.closest('.code, pre')) continue;
-      const how = past(element) ? 'runs past the page' : spilt(element) ? 'is wider than its box' : null;
+      const how = problem(element);
       if (how === null) continue;
-      if ([...element.children].some((child) => past(child) || spilt(child))) continue;
+      if ([...element.children].some((child) => problem(child) !== null)) continue;
       const name = `${element.tagName.toLowerCase()}${element.className ? `.${String(element.className).split(' ').join('.')}` : ''}`;
       spills.push(`${name} "${(element.textContent ?? '').trim().slice(0, 48)}" ${how}`);
     }

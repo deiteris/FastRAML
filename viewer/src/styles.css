@@ -555,7 +555,7 @@ h4 {
 /* An `h4` now carries a rule of its own, so a list directly under one would
    draw a second immediately below it. Same for a tab strip. */
 h4 + .attributes,
-h4 + .tabs > .tabs-strip,
+h4 + .tabs > .tabs-bar,
 .parameters > h4 + .attributes {
   border-top: 0;
   margin-top: 0;
@@ -745,12 +745,67 @@ h4 + .tabs > .tabs-strip,
 
 /* -- tabs ---------------------------------------------------------------------- */
 
+/* The rule under the strip belongs to the bar, so it runs the full width --
+   under the label and the chevrons too -- and is not something the scrolling
+   box has to carry. An inset shadow and not a border: the chosen tab's
+   underline is 2px at the very bottom of the scrollport, and a border would sit
+   below that where `overflow-x` clips. */
+.tabs-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
 .tabs-strip {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 20px;
   align-items: flex-end;
-  border-bottom: 1px solid var(--line);
+  /* `min-width: 0` or the strip sizes to its content and the flex parent grows
+     past the page instead of the strip scrolling. */
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  /* The offset parent of every tab, so a tab's `offsetLeft` is a position
+     within the scrollport and comparable with `scrollLeft`. Unpositioned, it
+     hands back a page coordinate and the strip scrolls to it. */
+  position: relative;
+  scroll-behavior: smooth;
+  /* The chevrons are the control. A scrollbar under the tabs would sit on the
+     rule, and on a trackpad it is not there at all. */
+  scrollbar-width: none;
+}
+
+.tabs-strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* On the tabs' line, not the bar's centre: the bar is as tall as a tab and the
+   chevron is half that, so centring it left it floating above the labels. */
+.tabs-step {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 4px 9px;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.tabs-step-back {
+  transform: rotate(180deg);
+}
+
+.tabs-step:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+/* Dimmed and inert, not gone: a chevron that disappears at the end of the strip
+   takes its width with it and shifts every tab sideways. */
+.tabs-step:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 /* Text on a shared baseline, the active one underlined. A row of filled pills
@@ -766,10 +821,12 @@ h4 + .tabs > .tabs-strip,
   cursor: pointer;
   /* A tab is labelled with whatever it selects -- a media type, a union
      member's name, an example's name -- and the widest of those decides
-     nothing about how wide the strip may be. */
-  max-width: 100%;
+     nothing about how wide the strip may be. It keeps its own width and the
+     strip scrolls: shrinking tabs to fit wraps `application/json` down the
+     middle, and a label broken across lines is not a label. */
+  flex: 0 0 auto;
+  white-space: nowrap;
   text-align: left;
-  overflow-wrap: anywhere;
 }
 
 .tab:hover {
@@ -781,18 +838,23 @@ h4 + .tabs > .tabs-strip,
   font-weight: 700;
 }
 
+/* At the very bottom of the tab, which is the bottom of the scrollport, so it
+   paints over the bar's rule rather than a pixel below it where it would be
+   clipped away. */
 .tab.is-chosen::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -1px;
+  bottom: 0;
   height: 2px;
   background: var(--accent);
 }
 
-.tabs-strip .label {
+.tabs-bar .label {
+  align-self: flex-end;
   padding-bottom: 10px;
+  white-space: nowrap;
 }
 
 .tabs-panel {
@@ -802,6 +864,7 @@ h4 + .tabs > .tabs-strip,
 /* A strip inside another strip's panel -- the responses a security scheme adds,
    inside the scheme selector -- is quieter than the one that contains it.
    Identical, the two read as one row of peers at the same level. */
+.tabs-panel .tabs-bar,
 .tabs-panel .tabs-strip {
   gap: 16px;
 }

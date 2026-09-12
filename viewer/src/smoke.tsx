@@ -142,8 +142,29 @@ walk(document, (shape) => {
 
 process.stdout.write(`${shapes} shapes checked, ${members} union members\n`);
 
+/**
+ * Everything the row naming a shape already shows.
+ *
+ * Used two ways: a shape with nothing outside this set says nothing a control
+ * could open onto, and a key outside it is a value with one place to be read.
+ */
+const ALREADY_ON_THE_ROW = new Set([
+  'id',
+  'name',
+  'type',
+  'type_expr',
+  'display_name',
+  'description',
+  'required',
+  'inherits',
+  'annotations',
+  'head',
+  'discriminator_value',
+  'projection',
+]);
+
 /*
- * Every name that hides something offers the control that shows it.
+ * Nothing a type says is missing from the page that names it.
  *
  * The bug this exists for was silent in the strongest sense: a property typed
  * by a named `string` with a `pattern` rendered as a link and a full stop. The
@@ -153,15 +174,26 @@ process.stdout.write(`${shapes} shapes checked, ${members} union members\n`);
  * because a page that omits something looks exactly like a type that says
  * nothing.
  *
- * Counted rather than located, because a page renders in its collapsed state
- * and a count is what is observable from outside. `>=`, not `==`: an inline
- * object contributes controls of its own, and this is a floor.
+ * Two measurements, because the view has two answers and only one of them is a
+ * count:
+ *
+ * - What a row *names* is declared elsewhere and sits behind a control, so the
+ *   controls are counted. A page renders collapsed, so a count is all that is
+ *   observable from outside. `>=`, not `==`: an inline object contributes
+ *   controls of its own, and this is a floor.
+ * - What a row *declares* -- an array whose item type is written out in place --
+ *   is shown, so its text must be in the collapsed markup. Located, not
+ *   counted: the value itself is the expectation, and a page that drops it
+ *   fails by name.
  */
 let expected = 0;
+let literal = 0;
 for (const { file, name, value } of declarations(document.types)) {
   const want = controls(value);
+  const open = declares(value);
   expected += want;
-  if (want === 0) continue;
+  literal += open.length;
+  if (want === 0 && open.length === 0) continue;
   const html = renderToStaticMarkup(
     <MemoryRouter initialEntries={[at('types', file, name)]}>
       <Pages document={document} index={index} />
@@ -172,12 +204,17 @@ for (const { file, name, value } of declarations(document.types)) {
     process.stderr.write(`HIDDEN ${name}: ${want} attributes lead somewhere, ${got} controls to get there\n`);
     failed += 1;
   }
+  for (const text of open) {
+    if (html.includes(escaped(text))) continue;
+    process.stderr.write(`LOST ${name}: an item type declares ${JSON.stringify(text)} and the page does not say it\n`);
+    failed += 1;
+  }
 }
-if (expected === 0) {
+if (expected === 0 || literal === 0) {
   process.stderr.write('no declared type has an attribute that leads anywhere; the check above is vacuous\n');
   failed += 1;
 }
-process.stdout.write(`${expected} attributes lead somewhere, all reachable\n`);
+process.stdout.write(`${expected} attributes lead somewhere, ${literal} item constraints shown in place\n`);
 
 /** How many of a type's own attributes keep what they say behind a control. */
 function controls(shape: Shape): number {
@@ -187,11 +224,40 @@ function controls(shape: Shape): number {
     // A name declared elsewhere: the page it names is not this page.
     if (isRef(type)) return says(index.shape(type.$ref));
     if (isRecursive(type)) return false;
-    // An array declared here, whose *items* are the thing with something to say.
+    // An array *naming* its item type: the name is on the row, the declaration
+    // is on another page, and one control reaches it.
     if (type.type !== 'array') return false;
-    const items = type.items;
-    return isRef(items) ? says(index.shape(items.$ref)) : !isRecursive(items) && says(items);
+    return isRef(type.items) && says(index.shape(type.items.$ref));
   }).length;
+}
+
+/**
+ * What the item types written inside this declaration say, as literal text.
+ *
+ * `items: {type: string, pattern: ...}` has no page of its own, so the page
+ * naming it is the only place that text can be read. Every value is one the
+ * facet chips render verbatim.
+ */
+function declares(shape: Shape): string[] {
+  const rows = [...Object.values(shape.properties ?? {}), ...Object.values(shape.pattern_properties ?? {})];
+  const said: string[] = [];
+  for (const { type } of rows) {
+    if (type === null || type === undefined || isRef(type) || isRecursive(type)) continue;
+    const items = type.items;
+    if (type.type !== 'array' || items === null || items === undefined) continue;
+    if (isRef(items) || isRecursive(items)) continue;
+    for (const [key, value] of Object.entries(items)) {
+      if (ALREADY_ON_THE_ROW.has(key)) continue;
+      if (typeof value === 'string' || typeof value === 'number') said.push(String(value));
+    }
+  }
+  return said;
+}
+
+/** Text as React writes it into markup, so a `pattern` full of punctuation matches. */
+function escaped(text: string): string {
+  const as: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' };
+  return text.replace(/[&<>"']/g, (character) => as[character] ?? character);
 }
 
 /**
@@ -203,27 +269,10 @@ function controls(shape: Shape): number {
  * equally and the count still matches. Falsified exactly that way, and it
  * passed.
  *
- * So the expectation comes from the tree instead. Every key below is something
- * the row that names the shape already shows -- its name, its type, its prose,
- * whether it is required -- and a shape with nothing else is a shape a control
- * would open onto blank space. Anything else is content with one place to be.
+ * So the expectation comes from the tree instead.
  */
 function says(shape: Shape | undefined): boolean {
   if (!shape) return false;
-  const ALREADY_ON_THE_ROW = new Set([
-    'id',
-    'name',
-    'type',
-    'type_expr',
-    'display_name',
-    'description',
-    'required',
-    'inherits',
-    'annotations',
-    'head',
-    'discriminator_value',
-    'projection',
-  ]);
   return Object.keys(shape).some((key) => !ALREADY_ON_THE_ROW.has(key));
 }
 

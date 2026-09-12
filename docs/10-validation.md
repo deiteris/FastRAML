@@ -121,6 +121,19 @@ The member it could not be placed on is where the diagnostic lands, because the
 distributed facet is decoded onto a subtype of that member — which is also what
 lets a member's own `facets:` declaration cover it.
 
+**A recursion marker is a stop, and is not checked here.** P9 builds one by
+cloning the cycle's head and clearing `inherits` (docs/07 § 4), so the clone
+still carries the head's `custom_facets` with nothing left in the chain to
+declare them. Walked as though it were a declaration of its own, every one of
+them came back `unknown facet` — a valid document rejected, once per path that
+reached the cycle. `Book: Entity` supplying a facet `Entity` declares was
+rejected the moment `Book` held a `Book[]`.
+
+The rule is the one `RecursiveShape.check` already states for its own half: the
+head is checked where it is declared, and by the time the walk arrives at the
+marker it already has been. `_validate_commons` returns at a marker, so its
+examples are not re-checked either, for the same reason.
+
 Known limitation, inherited: the chain walk follows `inherits[0]` only, so a facet
 declared on the second parent of a multiply-inheriting type is not seen. Fixing it
 means walking all parents with a visited set; it is a small change, tracked as a

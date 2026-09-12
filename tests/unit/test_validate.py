@@ -440,6 +440,26 @@ class TestCustomFacets:
             is None
         )
 
+    def test_a_recursive_subtype_still_satisfies_its_parents_facet(self, workspace):
+        """A recursion marker is a stop, and was being read as a declaration.
+
+        P9 builds one by cloning the cycle's head and clearing `inherits`, so
+        the clone keeps the head's `custom_facets` with nothing left to declare
+        them. Validated as though it were a type of its own, every facet on it
+        came back `unknown facet` — a valid document rejected, and rejected
+        once per path that reached the cycle.
+
+        The facet has to be on the *parent*: the rule walks from `inherits[0]`,
+        so a type declaring its own facet would pass this by the route § 4
+        already covers.
+        """
+        error = parse_validating(
+            workspace,
+            '  P:\n    type: object\n    facets:\n      extra: integer\n'
+            '  T:\n    type: P\n    extra: 5\n    properties:\n      next?: T\n',
+        )
+        assert error is None, messages(error)
+
     def test_a_facet_on_a_second_parent_is_not_seen(self, workspace):
         """The `inherits[0]`-only limitation, pinned so the fix is visible.
 

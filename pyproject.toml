@@ -20,6 +20,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# A synchronous HTTP client for remote `!include`, and for `pyraml ... -r`.
+# `HTTPLoader` duck-types `get(url)`, so a `requests.Session` already installed
+# works just as well and this pins neither into the base dependencies. httpx
+# because the CLI tries it first and because its `Client` is thread-safe, which
+# `requests.Session` does not promise.
+http = ["httpx>=0.27"]
 # Linear-time regex engine for `pattern:` facets. See docs/01 deviation D3.
 re2 = ["google-re2"]
 # An RDF store for `pyraml query`. The graph itself needs nothing; only SPARQL

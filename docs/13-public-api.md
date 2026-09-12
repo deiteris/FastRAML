@@ -329,8 +329,8 @@ make the tool useless exactly where navigating is most wanted.
   entirely, as go-raml's flag of the same name does.
 - `-r` enables remote includes. It builds a client from `httpx` or `requests`,
   whichever is installed — pyRAML depends on neither ([03](03-yaml-and-io.md)
-  § 5), so the CLI is where one has to be produced, and where a user who asks
-  for `-r` without either gets told so.
+  § 5.1), so the CLI is where one has to be produced, and where a user who asks
+  for `-r` without either is pointed at `pyraml[http]`.
 - `-v` reports each file and its timing on stdout; `-vv` adds the backend and
   the model counts.
 - Diagnostics go to **stderr**, everything else to stdout, so `-v` stays

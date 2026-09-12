@@ -12,6 +12,7 @@ of the protection.
 from __future__ import annotations
 
 import errno
+import inspect
 import os
 import stat
 from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
@@ -176,17 +177,39 @@ class SafeFileLoader:
             raise WorkspaceEscapeError(msg)
 
 
+#: What a caller is told when they hand over an `httpx.AsyncClient`.
+#:
+#: A parse is one synchronous recursive descent — an `!include` is resolved
+#: where it is found, four dozen decoders deep — so there is no point at which
+#: this could await anything. Left to fail on its own, an async client produces
+#: `'coroutine' object has no attribute 'status_code'` and an un-awaited
+#: coroutine warning, neither of which names the mistake.
+_ASYNC_CLIENT = (
+    'the HTTP client is asynchronous and a parse is synchronous. '
+    'Pass a synchronous client (httpx.Client, requests.Session); '
+    'to keep an event loop free, run the whole parse in a thread '
+    '(asyncio.to_thread), which is what its CPU-bound work needs anyway.'
+)
+
+
 class HTTPLoader:
     """Reads `http://` and `https://` URIs through a caller-supplied client.
 
     The client is duck-typed: it needs a `get(url)` method returning an object
     with `status_code` and `content`. Both `httpx.Client` and `requests.Session`
-    satisfy that, so pyRAML depends on neither.
+    satisfy that, so pyRAML depends on neither. `pyraml[http]` installs one.
+
+    **Synchronous, by the same decision that makes a parse single-threaded**
+    (docs/01 § 2, docs/13 § 6). An async client is refused rather than
+    mishandled — at construction where the client says what it is, and again
+    per call for one that only reveals it by returning an awaitable.
     """
 
     __slots__ = ('client',)
 
     def __init__(self, client: Any) -> None:
+        if inspect.iscoroutinefunction(getattr(client, 'get', None)):
+            raise LoaderError(_ASYNC_CLIENT)
         self.client = client
 
     def load(self, uri: str, *, max_bytes: int | None = None) -> bytes:
@@ -195,6 +218,16 @@ class HTTPLoader:
         except Exception as err:
             msg = f'http get {uri}: {err}'
             raise LoaderError(msg) from err
+
+        # A wrapper whose `get` is an ordinary function returning a coroutine
+        # passes the check in `__init__`. Closed before raising, or the refusal
+        # arrives with an un-awaited coroutine warning stapled to it.
+        if inspect.isawaitable(response):
+            close = getattr(response, 'close', None)
+            if close is not None:
+                close()
+            msg = f'http get {uri}: {_ASYNC_CLIENT}'
+            raise LoaderError(msg)
 
         status = int(response.status_code)
         if not (200 <= status < 300):  # noqa: PLR2004 - the HTTP success range

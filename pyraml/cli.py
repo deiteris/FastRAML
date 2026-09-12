@@ -827,7 +827,7 @@ def _http_client() -> Any:
         except ImportError:
             continue
         return getattr(module, factory)()
-    message = '--remote needs an HTTP client: install httpx or requests'
+    message = '--remote needs an HTTP client: pip install "pyraml[http]" (or any httpx / requests already present)'
     raise SystemExit(message)
 
 

@@ -8,6 +8,7 @@ intermediate component. A fourth test covers non-regular files.
 from __future__ import annotations
 
 import errno
+import gc
 import os
 
 import pytest
@@ -202,6 +203,50 @@ class TestHTTPLoader:
     def test_honours_max_bytes(self):
         client = _FakeClient({'https://e.com/t.raml': _FakeResponse(200, b'x' * 5000)})
         assert len(HTTPLoader(client).load('https://e.com/t.raml', max_bytes=100)) == 101
+
+
+class TestAnAsyncClientIsRefused:
+    """A parse is one synchronous descent, so there is nowhere to await.
+
+    Unrefused, an `httpx.AsyncClient` fails two lines later as `'coroutine'
+    object has no attribute 'status_code'`, with an un-awaited coroutine warning
+    behind it — neither of which names the mistake or the fix.
+    """
+
+    def test_at_construction_where_the_client_says_what_it_is(self):
+        class AsyncClient:
+            async def get(self, url): ...
+
+        with pytest.raises(LoaderError, match='asynchronous'):
+            HTTPLoader(AsyncClient())
+
+    def test_at_the_call_for_a_wrapper_that_only_returns_an_awaitable(self):
+        # `get` is an ordinary function, so `iscoroutinefunction` says nothing;
+        # what it returns is what gives it away.
+        class Wrapper:
+            def get(self, url):
+                async def fetch(): ...
+
+                return fetch()
+
+        with pytest.raises(LoaderError, match='asynchronous'):
+            HTTPLoader(Wrapper()).load('https://e.com/t.raml')
+
+    def test_the_refusal_carries_no_un_awaited_coroutine_warning(self, recwarn):
+        class Wrapper:
+            def get(self, url):
+                async def fetch(): ...
+
+                return fetch()
+
+        with pytest.raises(LoaderError):
+            HTTPLoader(Wrapper()).load('https://e.com/t.raml')
+        gc.collect()  # the warning is emitted when the coroutine is collected
+        assert [w for w in recwarn if 'never awaited' in str(w.message)] == []
+
+    def test_a_synchronous_client_is_untouched(self):
+        client = _FakeClient({'https://e.com/t.raml': _FakeResponse(200, b'ok')})
+        assert HTTPLoader(client).load('https://e.com/t.raml') == b'ok'
 
 
 class TestSchemeLoader:

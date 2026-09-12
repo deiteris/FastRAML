@@ -122,7 +122,7 @@ PYRAML_BENCH=1 uv run pytest tests/bench # the same gate, under pytest
 |-------|-----|
 | `google-re2` | `ParseOptions(regex_engine="re2")` — linear-time patterns for untrusted input |
 | `pyoxigraph` | `pyraml query` — SPARQL over the graph projection ([the catalogue](docs/16-graph.md)); the graph itself needs nothing |
-| `httpx` or `requests` | remote `!include`; supply the client yourself, or use `pyraml validate -r` |
+| `httpx` (`pyraml[http]`) or `requests` | remote `!include`; supply the client yourself, or use `pyraml validate -r`. Synchronous clients only — from async code run the parse in `asyncio.to_thread` ([why](docs/03-yaml-and-io.md#51-the-http-client-is-synchronous-and-refused-if-it-is-not)) |
 | libyaml | selected automatically when PyYAML was built with it; roughly an order of magnitude faster, and **not only** a speed choice ([D9](docs/01-scope-and-coverage.md)) |
 
 ## Licence

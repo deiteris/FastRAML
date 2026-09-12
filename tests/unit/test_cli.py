@@ -142,7 +142,9 @@ class TestOptions:
         monkeypatch.setattr(builtins, '__import__', refuse)
         with pytest.raises(SystemExit) as caught:
             main(['validate', '-r', files('good.raml')])
-        assert 'httpx or requests' in str(caught.value)
+        # Names the extra, not just the two libraries: "install httpx" left a
+        # reader to work out that the package declares one.
+        assert 'pyraml[http]' in str(caught.value)
 
 
 class TestUsage:

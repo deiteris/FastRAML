@@ -301,7 +301,7 @@ truncated file from a complete one.
 |--------|-----------|
 | `FileLoader` | plain `open()`; no sandbox. For trusted CLI use only. |
 | `SafeFileLoader(root)` | **default.** Refuses any path not beneath `root`, including via symlinks. |
-| `HTTPLoader(client)` | `http`/`https`; only registered when a client is supplied. |
+| `HTTPLoader(client)` | `http`/`https`; only registered when a client is supplied. **Synchronous client only.** |
 | `SchemeLoader({...})` | dispatches on URI scheme; `Raml.loader` holds one of these. |
 
 `SafeFileLoader` enforces the sandbox. Go uses `safeopen.OpenBeneath`
@@ -328,6 +328,32 @@ planted symlink.
 `ParseOptions(file_loader=...)` accepts a custom loader; an LSP uses this to
 shadow unsaved buffers. When you supply a loader, **you own the sandbox**. The
 workspace root then affects only path resolution, not what the loader may open.
+
+### 5.1 The HTTP client is synchronous, and refused if it is not
+
+`ParseOptions(http_client=...)` takes anything with `get(url) -> (status_code,
+content)`; `pyraml[http]` installs `httpx`, and a `requests.Session` already
+present serves as well. pyRAML depends on neither.
+
+A parse is one synchronous recursive descent — an `!include` is resolved where
+it is found, four dozen decoders deep — so there is no point at which a loader
+could await anything. An async client is therefore **refused**, at construction
+when `get` is a coroutine function and per call when a wrapper only reveals
+itself by returning an awaitable. Unrefused it fails two lines later as
+`'coroutine' object has no attribute 'status_code'`, with an un-awaited
+coroutine warning behind it, and neither names the mistake.
+
+From async code, run the whole parse in a thread (`asyncio.to_thread`). That is
+not a workaround for the loader: the parse is CPU-bound — 0.3 s to 2.9 s on the
+bench corpora, before any network — so an event loop has to be kept off it
+regardless of how the bytes arrive.
+
+**Remote includes are fetched one at a time**, because the descent discovers
+each one only when it reaches it. Eight independent `uses:` libraries at 50 ms
+cost 410 ms, against a 50 ms floor. Removing that is a *concurrency* change and
+not an async one — awaiting serially is still serial — and it needs the URIs
+known before they are needed, which means a prefetch pass. Not built;
+[15](15-implementation-plan.md) After v1 records it.
 
 ## 6. `DataNode`: structured user data
 

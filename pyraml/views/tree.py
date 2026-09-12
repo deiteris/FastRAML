@@ -472,14 +472,21 @@ class _Projector:
         it, and merging would silently pick a winner between two things the
         author wrote separately.
 
-        The schema text comes from `raw` and not from `type_expr`: with
-        `type: !include invoice.json` the shape's own expression is the
-        *reference*, `invoice.json`, and the schema sits on the supertype the
-        include produced.
+        `json_schema` is the *resolved* document, not the text as written: a
+        `$ref` naming another file names nothing a reader has, and a schema
+        carrying one describes a type only to someone holding the directory it
+        was written in. `as_schema` pulls those in, so what arrives validates
+        the same documents and needs nothing else to read. A pointer within the
+        document stays a pointer, being followable where it stands.
+
+        It is a JSON value rather than a string, because that is what it is.
+        Emitting the source text made a consumer parse a document this one had
+        already parsed in order to show it.
         """
         out: dict[str, Json] = {}
-        if shape.raw:
-            out['json_schema'] = shape.raw
+        resolved = shape.as_schema()
+        if resolved is not None:
+            out['json_schema'] = resolved
         view = shape.as_shape()
         if view is not None:
             # A view object, never in `Raml.shapes` and never fed back into a

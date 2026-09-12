@@ -26,7 +26,7 @@ export function DocumentationPage({ document }: Props) {
   // labelling itself for nobody: the reader arrived from the Documentation
   // section of the nav, which is still showing this item as the current one.
   return (
-    <article>
+    <article className="reading">
       <h1>{item.title}</h1>
       <Prose>{item.content}</Prose>
     </article>

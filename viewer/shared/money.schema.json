@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Amount": {
+      "type": "object",
+      "description": "A sum of money, in the smallest unit of its currency.",
+      "required": ["minor", "currency"],
+      "properties": {
+        "minor": { "type": "integer", "description": "Pence, cents, or the equivalent." },
+        "currency": { "type": "string", "enum": ["USD", "EUR", "GBP"] }
+      }
+    }
+  }
+}

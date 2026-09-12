@@ -332,6 +332,28 @@ part of why removing it changes no behaviour beyond permitting the construct.
 Inner-element references (`!include elements.json#/definitions/Foo`) are handled
 by the JSON Pointer fragment of the URI, resolved by the schema library.
 
+### 6.2a The schema as one self-contained document
+
+`JsonShape.as_schema()` is the compiled document with every reference *out* of
+it pulled in under `definitions` and rewritten to a local pointer. Cached on
+first call, like the projection.
+
+A consumer of a view holds one document and not the directory the schema was
+written in, so `$ref: "money.json#/definitions/Amount"` names something it has
+no way to reach. Resolution is already done — `compile` reads every target
+through the `ResourceLoader` and `_prefetch` walks them all — so this is a
+second reading of what the registry holds, not a second fetch.
+
+A pointer *within* the document stays a pointer. It is followable where it
+stands, inlining it discards the sharing the author expressed, and
+`#/definitions/node` inside `node` has no finite expansion. A pointer inside a
+pulled-in file is rewritten, because it is a pointer into that file and the
+result is not that file: left alone it names whatever the bundle has at the
+same path.
+
+Names come from the pointer's last segment, and a collision with a name the
+document already uses takes a suffix rather than the existing entry.
+
 ### 6.3 Projection to a RAML shape
 
 `JsonShape.as_shape()` lazily converts a compiled JSON Schema into the nearest

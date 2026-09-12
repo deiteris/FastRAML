@@ -16,6 +16,7 @@
       "minimum": 0,
       "multipleOf": 0.01
     },
+    "settled": { "$ref": "../shared/money.schema.json#/definitions/Amount" },
     "paid": {
       "type": "boolean",
       "default": false

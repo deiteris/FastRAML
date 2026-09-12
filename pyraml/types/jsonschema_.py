@@ -47,6 +47,7 @@ from pyraml.types.complex_ import ArrayShape, ComplexKind, ObjectShape, Recursiv
 from pyraml.types.examples import Example, Examples
 from pyraml.types.inherit import inherit
 from pyraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
+from pyraml.uris import uri_base
 from pyraml.yamlnode import node_error
 
 if TYPE_CHECKING:
@@ -390,7 +391,7 @@ class JsonShape(ComplexKind):
     `validate=True` would let a broken schema through the default parse.
     """
 
-    __slots__ = ('_cached_defs', '_cached_shape', '_compiled', 'raw', 'validator')
+    __slots__ = ('_cached_defs', '_cached_schema', '_cached_shape', '_compiled', 'raw', 'validator')
 
     def __init__(self, base: BaseShape, raw: str = '') -> None:
         super().__init__(base)
@@ -400,6 +401,7 @@ class JsonShape(ComplexKind):
         self._compiled: CompiledSchema | None = None
         self._cached_shape: BaseShape | None = None
         self._cached_defs: dict[str, BaseShape] | None = None
+        self._cached_schema: Any | None = None
         if raw:
             self._compiled = schema_registry(base._raml).compile(raw, base.location, base.key_pos)  # noqa: SLF001
             self.validator = self._compiled.validator
@@ -469,6 +471,26 @@ class JsonShape(ComplexKind):
         `None` until `as_shape` has run — the two are one traversal.
         """
         return self._cached_defs
+
+    def as_schema(self) -> Any | None:
+        """The schema as one self-contained document, built once and cached.
+
+        Every reference a reader cannot follow is pulled in: a `$ref` naming
+        another file names nothing they have, and a schema carrying one
+        describes a type only to someone holding the rest of the directory it
+        was written in. What comes back is the schema in the same vocabulary the
+        author used — which is the point of showing a schema at all, the RAML
+        reading of it being `as_shape` — and it validates the same documents.
+
+        A pointer *within* the document stays a pointer. It is followable where
+        it stands, inlining it loses the sharing the author expressed, and
+        `#/definitions/node` inside `node` has no finite expansion.
+        """
+        if self._compiled is None:
+            return None
+        if self._cached_schema is None:
+            self._cached_schema = _bundle(self._compiled)
+        return self._cached_schema
 
 
 def projected(base: BaseShape) -> BaseShape:
@@ -865,3 +887,115 @@ def _attach(base: BaseShape, kind: str, shape: Shape) -> BaseShape:
 
 def _kind(base: BaseShape, kind: str, cls: Any, **built: Any) -> BaseShape:
     return _attach(base, kind, cls(base, **built))
+
+
+# -- one self-contained schema -------------------------------------------------
+
+#: Where a pulled-in reference is hung. `definitions` rather than `$defs`: every
+#: draft understands it as a place to put subschemas, and a `$ref` into it is
+#: the same pointer in all of them.
+_BUNDLE_KEY = 'definitions'
+
+
+@dataclass(frozen=True, slots=True)
+class _Bundling:
+    """What every level of the walk shares: where to resolve from, and into."""
+
+    resolver: Resolver[Any]
+    #: Name -> the pulled-in subschema, in encounter order.
+    pulled: dict[str, Any]
+    #: The identity of a resolved document -> the name it was given, so a second
+    #: reference to it points at the first copy and a cycle terminates.
+    named: dict[int, str]
+    #: Every name in use, including the ones the document already had.
+    taken: set[str]
+    #: True while walking the document the bundle is *of*. A pointer there is a
+    #: pointer into the result and stands. Inside anything pulled in it is a
+    #: pointer into the file that was pulled, which the result is not: left
+    #: alone it names whatever the result happens to have at that path, and a
+    #: schema that validates something else is worse than one that is opaque.
+    root: bool
+
+    def at(self, resolver: Resolver[Any]) -> _Bundling:
+        return _Bundling(resolver, self.pulled, self.named, self.taken, root=False)
+
+
+def _bundle(compiled: CompiledSchema) -> Any:
+    """`compiled`'s document with every reference out of it pulled in."""
+    document = compiled.contents
+    taken = (
+        set(document[_BUNDLE_KEY])
+        if isinstance(document, dict) and isinstance(document.get(_BUNDLE_KEY), dict)
+        else set()
+    )
+    context = _Bundling(compiled.resolver, {}, {}, taken, root=True)
+    bundled = _bundle_node(context, document)
+    if not context.pulled or not isinstance(bundled, dict):
+        return bundled
+    existing = bundled.get(_BUNDLE_KEY)
+    merged = {**existing, **context.pulled} if isinstance(existing, dict) else context.pulled
+    return {**bundled, _BUNDLE_KEY: merged}
+
+
+def _bundle_node(context: _Bundling, node: Any) -> Any:
+    """`node` rebuilt, with each reference out of the document rewritten local.
+
+    Rebuilt and not edited: the documents being walked are the registry's, shared
+    with the validator and with every other type that names the same schema.
+    """
+    if isinstance(node, list):
+        return [_bundle_node(context, item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    reference = node.get('$ref')
+    if not isinstance(reference, str) or (context.root and reference.startswith('#')):
+        return {key: _bundle_node(context, value) for key, value in node.items()}
+    name = _pull(context, reference)
+    if name is None:
+        return {key: _bundle_node(context, value) for key, value in node.items()}
+    # `$ref` first, where the author wrote it, and its siblings after: draft 2019
+    # onward gives a schema beside a `$ref` meaning, so they are not dropped.
+    rest = {key: _bundle_node(context, value) for key, value in node.items() if key != '$ref'}
+    return {'$ref': f'#/{_BUNDLE_KEY}/{name}', **rest}
+
+
+def _pull(context: _Bundling, reference: str) -> str | None:
+    """Resolve `reference`, register what it names, and answer with that name.
+
+    `None` where it does not resolve, which leaves the reference as the author
+    wrote it. `_prefetch` has already resolved every reference in the schema by
+    the time anything here runs, so this is the arm that should not be reachable
+    rather than a fallback that is expected to fire.
+    """
+    from referencing.exceptions import Unresolvable  # noqa: PLC0415 - deferred for startup cost
+
+    try:
+        resolved = context.resolver.lookup(reference)
+    except Unresolvable:
+        return None
+    known = context.named.get(id(resolved.contents))
+    if known is not None:
+        return known
+    name = _bundle_name(reference, context.taken)
+    # Registered before the walk into it, so a reference that leads back here
+    # finds the name rather than descending again.
+    context.named[id(resolved.contents)] = name
+    context.pulled[name] = None
+    context.pulled[name] = _bundle_node(context.at(resolved.resolver), resolved.contents)
+    return name
+
+
+def _bundle_name(reference: str, taken: set[str]) -> str:
+    """A local name for what `reference` points at, unique within the document.
+
+    The pointer's last segment where it has one, so `money.json#/definitions/
+    Amount` stays `Amount`; otherwise the file's own stem.
+    """
+    stem = _definition_name(reference) or uri_base(reference.partition('#')[0]).rsplit('.', 1)[0] or 'schema'
+    name = stem
+    at = 2
+    while name in taken:
+        name = f'{stem}{at}'
+        at += 1
+    taken.add(name)
+    return name

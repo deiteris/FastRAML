@@ -12,6 +12,8 @@ remove.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from pyraml import ParseOptions, parse_from_path
@@ -486,3 +488,83 @@ class TestAPathIsRelativeToTheWorkspaceRoot:
         monkeypatch.chdir(root)
         raml = parse_from_path('apis/store/api.raml', ParseOptions(unwrap=True, workspace_root='.'))
         assert list(build_tree(raml)['types']) == ['apis/store/api.raml', 'shared/money.raml']
+
+
+SCHEMA_API = {
+    'api.raml': """#%RAML 1.0
+title: Schemas
+types:
+  Invoice:
+    type: !include invoice.json
+""",
+    'invoice.json': """{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "line": { "$ref": "#/definitions/line" },
+    "paid": { "$ref": "money.json#/definitions/Amount" },
+    "also": { "$ref": "money.json#/definitions/Amount" }
+  },
+  "definitions": {
+    "line": { "type": "string" },
+    "Amount": { "type": "string", "description": "The invoice's own, unrelated." }
+  }
+}""",
+    'money.json': """{
+  "definitions": {
+    "Amount": {
+      "type": "object",
+      "properties": { "minor": { "type": "integer" }, "of": { "$ref": "#/definitions/Amount" } }
+    }
+  }
+}""",
+}
+
+
+class TestASchemaArrivesSelfContained:
+    """docs/16 § 11: `json_schema` is the resolved document.
+
+    A `$ref` naming another file names nothing a reader of the tree has, so a
+    schema carrying one describes a type only to someone holding the directory
+    it was written in.
+    """
+
+    @pytest.fixture
+    def schema(self, workspace):
+        root = workspace(SCHEMA_API)
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        return build_tree(raml)['types']['api.raml']['Invoice']['json_schema']
+
+    def test_it_is_a_json_value_and_not_a_string(self, schema):
+        # A consumer showing it should not have to parse a document the parser
+        # has already parsed.
+        assert isinstance(schema, dict)
+
+    def test_a_reference_out_of_the_document_is_pulled_in(self, schema):
+        assert schema['properties']['paid'] == {'$ref': '#/definitions/Amount2'}
+        assert schema['definitions']['Amount2']['properties']['minor'] == {'type': 'integer'}
+
+    def test_a_pointer_within_the_document_stays_a_pointer(self, schema):
+        # Followable where it stands, and inlining it loses the sharing the
+        # author expressed.
+        assert schema['properties']['line'] == {'$ref': '#/definitions/line'}
+        assert schema['definitions']['line'] == {'type': 'string'}
+
+    def test_one_target_named_twice_is_pulled_in_once(self, schema):
+        assert schema['properties']['also'] == schema['properties']['paid']
+        assert sorted(schema['definitions']) == ['Amount', 'Amount2', 'line']
+
+    def test_a_name_the_document_already_uses_is_not_taken(self, schema):
+        # The invoice has an `Amount` of its own, and it is not the one being
+        # pulled in. A bundle that overwrote it would change what the schema
+        # accepts.
+        assert schema['definitions']['Amount'] == {'type': 'string', 'description': "The invoice's own, unrelated."}
+
+    def test_a_reference_inside_what_was_pulled_in_resolves_too(self, schema):
+        # `money.json`'s own `#/definitions/Amount` is local to *that* file, so
+        # it has to be rewritten against where the subschema now lives.
+        assert schema['definitions']['Amount2']['properties']['of'] == {'$ref': '#/definitions/Amount2'}
+
+    def test_nothing_names_a_file(self, schema):
+        text = json.dumps(schema)
+        assert 'money.json' not in text

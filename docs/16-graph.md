@@ -1405,13 +1405,27 @@ A `json` shape is the one kind that carries the same type twice, and it has to.
 The spec forbids a JSON-schema type from participating in inheritance or
 specialization, so the parser decodes no RAML facet from it: the shape has no
 properties, no items and no facets, and a consumer reading only that reports a
-type made of nothing. `json_schema` is the schema as written — what an author
-edits, and the only form in which a schema's own vocabulary survives — and
+type made of nothing. `json_schema` is the schema in its own vocabulary, and
 `projection` is the § 6.3 projection of it onto the nearest RAML shape, where
-`$ref` is resolved and `#/definitions/line` is an ordinary nested type. Neither
-is derivable from the other by a consumer: the first needs a JSON Schema
-implementation to read, and the second has already thrown away whatever § 6.3
-could not express.
+`#/definitions/line` is an ordinary nested type. Neither is derivable from the
+other by a consumer: the first needs a JSON Schema implementation to read, and
+the second has already thrown away whatever § 6.3 could not express.
+
+**`json_schema` is the resolved document, and a JSON value rather than a
+string.** A `$ref` naming another file names nothing a consumer of the tree
+has — the tree is one document and the directory the schema was written in is
+not in it — so `as_schema` pulls every such reference in under `definitions`
+and rewrites it to a local pointer. What arrives validates the same instances
+and needs nothing else to read. A pointer *within* the document stays a
+pointer: it is followable where it stands, inlining it discards the sharing the
+author expressed, and `#/definitions/node` inside `node` has no finite
+expansion.
+
+A pointer inside a pulled-in file does **not** stay a pointer, because it is a
+pointer into that file and the result is not that file. Left alone it names
+whatever the bundle happens to have at the same path, and a schema that
+validates something other than what its author wrote is worse than one a reader
+cannot follow.
 
 Nested rather than merged onto the shape. A schema carries its own
 `description` and `example`, and so does the RAML declaration wrapping it;

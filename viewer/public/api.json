@@ -657,7 +657,28 @@
           "code": "9780441013593"
         },
         "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"required\": [\"symbology\", \"code\"],\n  \"properties\": {\n    \"symbology\": { \"type\": \"string\", \"enum\": [\"EAN-13\", \"UPC-A\", \"CODE-128\"] },\n    \"code\": { \"type\": \"string\", \"minLength\": 1 }\n  }\n}\n",
-        "json_schema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"required\": [\"symbology\", \"code\"],\n  \"properties\": {\n    \"symbology\": { \"type\": \"string\", \"enum\": [\"EAN-13\", \"UPC-A\", \"CODE-128\"] },\n    \"code\": { \"type\": \"string\", \"minLength\": 1 }\n  }\n}\n",
+        "json_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": [
+            "symbology",
+            "code"
+          ],
+          "properties": {
+            "symbology": {
+              "type": "string",
+              "enum": [
+                "EAN-13",
+                "UPC-A",
+                "CODE-128"
+              ]
+            },
+            "code": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
         "projection": {
           "id": null,
           "name": null,
@@ -824,8 +845,83 @@
             "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json",
             "name": "invoice.json",
             "type": "json",
-            "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n",
-            "json_schema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n",
+            "type_expr": "{\r\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\r\n  \"title\": \"Invoice\",\r\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\r\n  \"type\": \"object\",\r\n  \"required\": [\"number\", \"total\"],\r\n  \"properties\": {\r\n    \"number\": {\r\n      \"type\": \"string\",\r\n      \"description\": \"The invoice number, as printed.\",\r\n      \"pattern\": \"^INV-[0-9]{6}$\"\r\n    },\r\n    \"total\": {\r\n      \"type\": \"number\",\r\n      \"description\": \"The amount due, in the currency of the account.\",\r\n      \"minimum\": 0,\r\n      \"multipleOf\": 0.01\r\n    },\r\n    \"settled\": { \"$ref\": \"../shared/money.schema.json#/definitions/Amount\" },\r\n    \"paid\": {\r\n      \"type\": \"boolean\",\r\n      \"default\": false\r\n    },\r\n    \"lines\": {\r\n      \"type\": \"array\",\r\n      \"minItems\": 1,\r\n      \"items\": { \"$ref\": \"#/definitions/line\" }\r\n    }\r\n  },\r\n  \"definitions\": {\r\n    \"line\": {\r\n      \"type\": \"object\",\r\n      \"required\": [\"description\", \"amount\"],\r\n      \"properties\": {\r\n        \"description\": { \"type\": \"string\" },\r\n        \"amount\": { \"type\": \"number\" }\r\n      }\r\n    }\r\n  }\r\n}\r\n",
+            "json_schema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "title": "Invoice",
+              "description": "A type declared by JSON Schema rather than by RAML.",
+              "type": "object",
+              "required": [
+                "number",
+                "total"
+              ],
+              "properties": {
+                "number": {
+                  "type": "string",
+                  "description": "The invoice number, as printed.",
+                  "pattern": "^INV-[0-9]{6}$"
+                },
+                "total": {
+                  "type": "number",
+                  "description": "The amount due, in the currency of the account.",
+                  "minimum": 0,
+                  "multipleOf": 0.01
+                },
+                "settled": {
+                  "$ref": "#/definitions/Amount"
+                },
+                "paid": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "lines": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/definitions/line"
+                  }
+                }
+              },
+              "definitions": {
+                "line": {
+                  "type": "object",
+                  "required": [
+                    "description",
+                    "amount"
+                  ],
+                  "properties": {
+                    "description": {
+                      "type": "string"
+                    },
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "Amount": {
+                  "type": "object",
+                  "description": "A sum of money, in the smallest unit of its currency.",
+                  "required": [
+                    "minor",
+                    "currency"
+                  ],
+                  "properties": {
+                    "minor": {
+                      "type": "integer",
+                      "description": "Pence, cents, or the equivalent."
+                    },
+                    "currency": {
+                      "type": "string",
+                      "enum": [
+                        "USD",
+                        "EUR",
+                        "GBP"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             "projection": {
               "id": null,
               "name": null,
@@ -852,6 +948,39 @@
                     "description": "The amount due, in the currency of the account.",
                     "minimum": "0",
                     "multiple_of": "0.01"
+                  }
+                },
+                "settled": {
+                  "required": false,
+                  "type": {
+                    "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json/property/settled/schema",
+                    "name": "Amount",
+                    "type": "object",
+                    "description": "A sum of money, in the smallest unit of its currency.",
+                    "properties": {
+                      "minor": {
+                        "required": true,
+                        "type": {
+                          "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json/property/settled/schema/property/minor/schema",
+                          "name": null,
+                          "type": "integer",
+                          "description": "Pence, cents, or the equivalent."
+                        }
+                      },
+                      "currency": {
+                        "required": true,
+                        "type": {
+                          "id": "pyraml://id#/declarations/types/Invoice/inherits/invoice.json/property/settled/schema/property/currency/schema",
+                          "name": null,
+                          "type": "string",
+                          "enum": [
+                            "USD",
+                            "EUR",
+                            "GBP"
+                          ]
+                        }
+                      }
+                    }
                   }
                 },
                 "paid": {
@@ -900,7 +1029,82 @@
           }
         ],
         "type_expr": "invoice.json",
-        "json_schema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n",
+        "json_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "title": "Invoice",
+          "description": "A type declared by JSON Schema rather than by RAML.",
+          "type": "object",
+          "required": [
+            "number",
+            "total"
+          ],
+          "properties": {
+            "number": {
+              "type": "string",
+              "description": "The invoice number, as printed.",
+              "pattern": "^INV-[0-9]{6}$"
+            },
+            "total": {
+              "type": "number",
+              "description": "The amount due, in the currency of the account.",
+              "minimum": 0,
+              "multipleOf": 0.01
+            },
+            "settled": {
+              "$ref": "#/definitions/Amount"
+            },
+            "paid": {
+              "type": "boolean",
+              "default": false
+            },
+            "lines": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/line"
+              }
+            }
+          },
+          "definitions": {
+            "line": {
+              "type": "object",
+              "required": [
+                "description",
+                "amount"
+              ],
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "number"
+                }
+              }
+            },
+            "Amount": {
+              "type": "object",
+              "description": "A sum of money, in the smallest unit of its currency.",
+              "required": [
+                "minor",
+                "currency"
+              ],
+              "properties": {
+                "minor": {
+                  "type": "integer",
+                  "description": "Pence, cents, or the equivalent."
+                },
+                "currency": {
+                  "type": "string",
+                  "enum": [
+                    "USD",
+                    "EUR",
+                    "GBP"
+                  ]
+                }
+              }
+            }
+          }
+        },
         "projection": {
           "id": null,
           "name": null,
@@ -927,6 +1131,39 @@
                 "description": "The amount due, in the currency of the account.",
                 "minimum": "0",
                 "multiple_of": "0.01"
+              }
+            },
+            "settled": {
+              "required": false,
+              "type": {
+                "id": "pyraml://id#/declarations/types/Invoice/property/settled/schema",
+                "name": "Amount",
+                "type": "object",
+                "description": "A sum of money, in the smallest unit of its currency.",
+                "properties": {
+                  "minor": {
+                    "required": true,
+                    "type": {
+                      "id": "pyraml://id#/declarations/types/Invoice/property/settled/schema/property/minor/schema",
+                      "name": null,
+                      "type": "integer",
+                      "description": "Pence, cents, or the equivalent."
+                    }
+                  },
+                  "currency": {
+                    "required": true,
+                    "type": {
+                      "id": "pyraml://id#/declarations/types/Invoice/property/settled/schema/property/currency/schema",
+                      "name": null,
+                      "type": "string",
+                      "enum": [
+                        "USD",
+                        "EUR",
+                        "GBP"
+                      ]
+                    }
+                  }
+                }
               }
             },
             "paid": {

@@ -516,9 +516,10 @@ _SHAPE_FIELDS: Final = {
     'declares_facets': 'string[]',
     'annotations': 'Applied[]',
     'type_expr': 'string',
-    #: Both only on a `json` shape, and both about the same schema: the text as
-    #: written, and the nearest RAML shape to it (docs/10 § 6.3).
-    'json_schema': 'string',
+    #: Both only on a `json` shape, and both about the same schema: the schema
+    #: itself with every reference out of it resolved, and the nearest RAML
+    #: shape to it (docs/10 § 6.3).
+    'json_schema': 'Json',
     'projection': 'Shape',
 }
 

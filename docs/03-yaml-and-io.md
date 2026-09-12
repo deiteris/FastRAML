@@ -197,8 +197,8 @@ the head is taken by slicing to the first `\n`, not by a buffered reader.
 ### 4.1 Resolution
 
 ```python
-def resolve_ref_uri(raml: Raml, ref: str, location: str) -> str
-def resolve_include_uri(raml: Raml, node: Node, location: str) -> str  # = resolve_ref_uri(raml, node.value, location)
+def resolve_ref_uri(raml: Raml, ref: str, location: str, position: Position | None = None) -> str
+def resolve_include_uri(raml: Raml, node: Node, location: str) -> str  # = resolve_ref_uri(raml, node.value, location, node.position)
 ```
 
 Per spec § Includes there are three argument forms:
@@ -220,6 +220,25 @@ to it, so it resolves through `resolve_ref_uri` as well. go-raml instead resolve
 a `uses:` value with plain RFC 3986, which sends `/libs/a.raml` to the filesystem
 root. Sharing one rule is a deliberate divergence from the reference
 implementation, and a small one: a `uses:` path that starts with `/` is rare.
+
+**A path may not contain a template parameter.** Spec § Resource Type and Trait
+Parameters: "Parameters cannot be used within any file location that is used in
+the context of modularization, that is, any file location defined in the
+`!include` tag or as a value of any of the `uses` or `extends` nodes." Those are
+exactly the two call sites `resolve_ref_uri` has, so the rule lives in it rather
+than in either caller, and is matched on the opening `<<` — presence, not
+grammar, and `parse_template_variables` is P6 while this is P1.
+
+Without the check the filesystem answers instead, and answers wrongly.
+Composition is P1 and templates expand in P6, so `!include <<version>>.raml`
+reaches the loader as a literal name: illegal on Windows, legal and merely
+absent on POSIX. Both report a missing file, which names a different mistake —
+and where such a file *does* exist the include resolves and the document is
+accepted. The TCK's fixture for this,
+`Libraries/include-01/invalid-dynamic-inclusion.raml`, then passes for the same
+reason `invalid-include-inexisting.raml` beside it does, which is no reason at
+all. go-raml has the same gap; the error chain its own `tck_invalid_test.go`
+records for that fixture ends in `load resource: open …<<version>>.raml`.
 
 ### 4.2 What an include produces
 

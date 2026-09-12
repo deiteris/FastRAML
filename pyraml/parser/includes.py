@@ -67,15 +67,45 @@ class IncludeRef:
     position: Position
 
 
-def resolve_ref_uri(raml: Raml, ref: str, location: str) -> str:
+#: What opens a template variable. Spec section Resource Type and Trait
+#: Parameters: "Parameters cannot be used within any file location that is used
+#: in the context of modularization, that is, any file location defined in the
+#: `!include` tag or as a value of any of the `uses` or `extends` nodes."
+#:
+#: The opening marker alone, rather than a call to `parse_template_variables`:
+#: that is P6 and this is P1, and the rule is about a parameter being *present*,
+#: not about its grammar. `<<` with no `>>` is not a filename anyone meant
+#: either.
+_PARAMETER_OPENS: Final = '<<'
+
+
+def resolve_ref_uri(raml: Raml, ref: str, location: str, position: Position | None = None) -> str:
     """Resolve a RAML path reference against `location`, or the workspace root.
 
     A reference beginning with `/` is *RAML-absolute*: the spec resolves it
     against the workspace root, not the filesystem root, which is what makes
     such a path portable. Everything else is ordinary RFC 3986 resolution
     against the referring file. Used for `!include` arguments and for `uses:`
-    values, which have the same three argument forms.
+    values, which have the same three argument forms — and which are also the
+    two places the spec forbids a template parameter, so the check belongs here
+    rather than at either call site.
+
+    **A file that happens not to exist is not this check.** Composition runs in
+    P1 and templates expand in P6, so `!include <<version>>.raml` reaches the
+    loader as a literal name: on Windows an illegal one, on POSIX a legal one
+    that is merely absent. Both report a missing file, which names the wrong
+    mistake — and where such a file does exist, the include resolves and the
+    document is accepted. go-raml has the same gap, recorded as the error chain
+    its own `tck_invalid_test.go` expects for this fixture.
     """
+    if _PARAMETER_OPENS in ref:
+        raise RamlError.new(
+            'path must not contain a template parameter',
+            location,
+            position,
+            kind=ErrorKind.PARSING,
+            info={'path': ref},
+        )
     root = raml.workspace_root_uri
     if ref.startswith('/') and root:
         base = root if root.endswith('/') else root + '/'
@@ -90,7 +120,7 @@ def resolve_include_uri(raml: Raml, node: Node, location: str) -> str:
 
     The single authoritative URI computation for every include dispatch site.
     """
-    return resolve_ref_uri(raml, node.value, location)
+    return resolve_ref_uri(raml, node.value, location, node.position)
 
 
 def _append_include_ref(raml: Raml, node: Node, location: str) -> str:

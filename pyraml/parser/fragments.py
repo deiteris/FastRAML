@@ -284,7 +284,7 @@ def resolve_uses(raml: Raml, uses: Mapping[str, LibraryLink], location: str) -> 
     accumulator = Accumulator()
     for link in uses.values():
         try:
-            link.link = parse_library(raml, resolve_ref_uri(raml, link.value, location))
+            link.link = parse_library(raml, resolve_ref_uri(raml, link.value, location, link.value_pos))
         except RamlError as err:
             accumulator.add(RamlError.wrap('parse uses library', err, location, link.key_pos))
         except (OSError, ValueError) as err:

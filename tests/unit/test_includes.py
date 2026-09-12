@@ -161,3 +161,58 @@ class TestMissingTargets:
         (tmp_path / 'secret.yaml').write_text('k: v\n', encoding='utf-8')
         with pytest.raises(RamlError):
             parse_from_path(root / 'project' / 'api.raml')
+
+
+class TestATemplateParameterIsNotAPath:
+    """Spec section Resource Type and Trait Parameters.
+
+    "Parameters cannot be used within any file location that is used in the
+    context of modularization, that is, any file location defined in the
+    `!include` tag or as a value of any of the `uses` or `extends` nodes."
+
+    Composition is P1 and templates expand in P6, so an unchecked
+    `!include <<version>>.raml` reaches the loader as a literal name: illegal on
+    Windows, legal and merely absent on POSIX. Both report a missing file, which
+    names the wrong mistake — and the TCK fixture for this
+    (`Libraries/include-01/invalid-dynamic-inclusion.raml`) is then
+    indistinguishable from `invalid-include-inexisting.raml` beside it.
+
+    The loader is what proves the rule is the parser's: it serves the
+    parameterised name, so nothing about the filesystem is doing the work.
+    """
+
+    class Serving(CountingLoader):
+        """Answers a parameterised name, so the filesystem is not the check."""
+
+        def load(self, uri: str, *, max_bytes: int | None = None) -> bytes:
+            if '%3C%3C' in uri:
+                return b'#%RAML 1.0 DataType\ntype: string\n'
+            return super().load(uri, max_bytes=max_bytes)
+
+    def test_an_include_argument_is_refused(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  T: !include <<version>>.raml\n'})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml', ParseOptions(file_loader=self.Serving(root)))
+        assert caught.value.head.message == 'path must not contain a template parameter'
+        assert caught.value.head.info == {'path': '<<version>>.raml'}
+
+    def test_a_uses_value_is_refused(self, workspace):
+        root = workspace({'api.raml': API + 'uses:\n  lib: <<version>>.raml\n'})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml', ParseOptions(file_loader=self.Serving(root)))
+        assert any('must not contain a template parameter' in m for m in caught.value.messages())
+
+    def test_the_position_is_the_argument_and_not_the_document(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  T: !include <<version>>.raml\n'})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml', ParseOptions(file_loader=self.Serving(root)))
+        assert caught.value.head.position is not None
+        assert caught.value.head.position.line > 1
+
+    def test_one_angle_bracket_is_still_a_path(self):
+        # The rule is about `<<`, not about punctuation, and this is where
+        # overreaching would show. Asserted against `resolve_ref_uri` rather
+        # than a real file because Windows will not create a name containing
+        # `<`, and the rule belongs to the parser on either platform.
+        raml = Raml(workspace_root_uri='file:///w')
+        assert resolve_ref_uri(raml, 'a<b.yaml', 'file:///w/api.raml') == 'file:///w/a%3Cb.yaml'

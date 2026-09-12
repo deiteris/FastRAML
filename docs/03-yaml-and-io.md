@@ -291,8 +291,10 @@ Windows). Python has no direct equivalent, so `SafeFileLoader` combines four
 checks:
 
 1. Reject lexically: `os.path.relpath(target, root)` must not start with `..`.
-2. Open with `os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))` where
-   available, then `os.fstat` the descriptor.
+2. Open with `os.O_RDONLY | O_NOFOLLOW` where available, then `os.fstat` the
+   descriptor. The refusal arrives as `errno.ELOOP` and is reported as a
+   `WorkspaceEscapeError`, not as an I/O error: a planted symlink and an
+   unreadable file are different findings, and only one of them is an attack.
 3. Verify containment on the *realpath* of the opened file
    (`os.path.realpath`), not on the requested path — this closes the
    symlink-swap window for the common case.

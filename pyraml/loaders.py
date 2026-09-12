@@ -11,9 +11,10 @@ of the protection.
 
 from __future__ import annotations
 
+import errno
 import os
 import stat
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
 from pyraml.uris import file_uri_to_path, uri_scheme
 
@@ -89,6 +90,17 @@ class FileLoader:
             raise LoaderError(err.errno, str(err), path) from err
 
 
+#: What a platform offers, established once. `O_NOFOLLOW` is absent on Windows
+#: and `O_BINARY` everywhere else, so both are read through a default rather
+#: than named directly — but which ones exist is a property of the interpreter,
+#: not of the file being opened.
+#:
+#: `_ELOOP` is `None` where the platform has no such errno, and an `errno` is an
+#: `int`, so the comparison that reads it is false rather than wrong.
+_OPEN_FLAGS: Final = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0)
+_ELOOP: Final = getattr(errno, 'ELOOP', None)
+
+
 class SafeFileLoader:
     """Reads `file://` URIs, refusing anything outside `root`.
 
@@ -132,14 +144,13 @@ class SafeFileLoader:
 
     @staticmethod
     def _open(path: str) -> int:
-        flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0)
         try:
-            return os.open(path, flags)
+            return os.open(path, _OPEN_FLAGS)
         except OSError as err:
             # ELOOP means the final component is a symlink and O_NOFOLLOW
             # refused it. Report that as an escape rather than a missing file,
             # because the path may well exist.
-            if err.errno == getattr(os, 'ELOOP', None):
+            if err.errno == _ELOOP:
                 msg = f'refusing to follow symlink: {path}'
                 raise WorkspaceEscapeError(msg) from err
             raise LoaderError(err.errno, str(err), path) from err

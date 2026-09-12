@@ -71,8 +71,11 @@ _INTEGER_WIDTH: dict[str, int] = {
 
 def _violation(target: BaseShape, message: str, source: Any, value: Any) -> RamlError:
     """A narrowing rule was broken. The position is the offending facet's own."""
+    # `hasattr` and not a type test: what arrives is a `ScalarFacet` of any of
+    # eight parameters, or a bare value where the rule compared one. The
+    # `isinstance(value, object)` that stood beside this was true of everything.
     position = target.key_pos
-    if isinstance(value, object) and hasattr(value, 'value_pos'):
+    if hasattr(value, 'value_pos'):
         position = value.value_pos
     return RamlError.new(
         message,

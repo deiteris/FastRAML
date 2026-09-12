@@ -7,6 +7,7 @@ intermediate component. A fourth test covers non-regular files.
 
 from __future__ import annotations
 
+import errno
 import os
 
 import pytest
@@ -73,6 +74,28 @@ class TestSafeFileLoader:
         loader = SafeFileLoader(workspace)
         with pytest.raises(WorkspaceEscapeError):
             loader.load(path_to_file_uri(link))
+
+    def test_the_refusal_is_reported_as_an_escape_and_not_as_an_io_error(self, workspace, monkeypatch):
+        """`O_NOFOLLOW` refusing the final component is `ELOOP`, and says so.
+
+        The symlink test above cannot reach this on a platform with no
+        `O_NOFOLLOW` or no symlink privilege, so it only ever ran on one of the
+        two CI jobs — and the errno it turns on was read from the wrong module,
+        which a `getattr` default turned into a comparison against `None` that
+        no errno equals. The refusal still held; the diagnostic said the file
+        could not be read rather than that a symlink had been planted.
+
+        Raised rather than symlinked, so the mapping is pinned on every
+        platform.
+        """
+        loader = SafeFileLoader(workspace)
+
+        def refuse(*_args, **_kwargs):
+            raise OSError(errno.ELOOP, 'Too many levels of symbolic links')
+
+        monkeypatch.setattr(os, 'open', refuse)
+        with pytest.raises(WorkspaceEscapeError, match='refusing to follow symlink'):
+            loader.load(path_to_file_uri(workspace / 'api.raml'))
 
     def test_refuses_a_symlink_at_an_intermediate_component(self, workspace, tmp_path):
         # O_NOFOLLOW only guards the last component, so this is the case the

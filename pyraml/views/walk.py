@@ -41,18 +41,11 @@ if TYPE_CHECKING:
 def workspace_of(raml: Raml) -> str:
     """The directory every path a view prints is relative to, with a trailing `/`.
 
-    **The workspace root, not the entry document's directory.** Those are the
-    same until a project keeps its shared libraries beside its APIs rather than
-    beneath one of them — and then the entry's directory is the wrong anchor
-    twice over: a sibling library shares no prefix with it, so a path relative
-    to it either ascends or, as it did, stays the whole
-    `file:///C:/…/common/types.raml`. That reached the tree as a declaration's
-    key and a consumer's URL.
-
-    The root is also the boundary `SafeFileLoader` enforces, so every file a
-    parse can read is at or beneath it: relative to the root, no path a view
-    prints ever ascends. It falls back to the entry's directory, which is what
-    the root defaults to when nobody passes `--workspace-root`.
+    The workspace root, which is the boundary `SafeFileLoader` enforces: every
+    file a parse can read is at or beneath it, so a path relative to it never
+    ascends, and a library beside the entry document rather than beneath it is
+    `shared/money.raml` (docs/16 § 3). It falls back to the entry's directory,
+    which is what the root defaults to without `--workspace-root`.
     """
     root = raml.workspace_root_uri
     if root:

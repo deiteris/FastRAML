@@ -88,15 +88,13 @@ _SKIP = frozenset(
 
 #: Facets whose value is a *bound on a number* rather than a count of things.
 #:
-#: Emitted as an exact decimal string, always. JSON's number is arbitrary
-#: precision on paper and a double in every consumer that matters, so a bound
-#: written as a JSON number is handed to the float this parser spends its whole
-#: effort avoiding: `maximum: 9223372036854775807` came back out of `JSON.parse`
-#: as ...808, and a document said something its author did not write.
-#:
-#: A count -- `minLength`, `maxItems` -- is bounded by what fits in memory and
-#: stays a number. The distinction is the facet's meaning, not its magnitude, so
-#: a consumer never has to ask which form arrived this time.
+#: Emitted as an exact decimal string, always (docs/16 § 11.4a). JSON's number
+#: is arbitrary precision on paper and a double in every consumer that matters,
+#: so a bound written as one is rounded on the way in: `9223372036854775807`
+#: reads back as ...808. A count -- `minLength`, `maxItems` -- is bounded by
+#: what fits in memory, so it stays a number. The split follows what a facet
+#: means rather than how large its value is, so a consumer never asks which
+#: form arrived.
 _EXACT = frozenset({'maximum', 'minimum', 'multiple_of'})
 
 #: Where a plain decimal stops being readable and scientific notation is worth
@@ -197,11 +195,10 @@ def _exact(value: object) -> Json:
     value with none keeps the ratio form, which no document can produce and
     which is left honest rather than rounded.
 
-    The ratio was all there was, and it did a reader no favours where the bound
-    was large: `1.7976931348623157e308` is an integer, so its exact ratio is
-    that integer, and it reached the tree as 309 digits -- 292 of them zeros the
-    author never wrote. Scientific notation only where it is materially shorter,
-    so `100` arrives as `100` and not as `1E+2`.
+    Scientific notation only where the plain form is long *and* the exponent is
+    materially shorter than it. `1.7976931348623157e308` is an integer, so
+    spelling it out is 309 digits of which 292 are zeros; `100` is three
+    characters and stays `100` rather than becoming `1E+2`.
     """
     if not isinstance(value, (Fraction, int)):
         return None
@@ -517,10 +514,9 @@ class _Projector:
             if value is None or value in ([], {}):
                 continue
             if name in _EXACT:
-                # A bound is emitted from its name, not from its Python type:
-                # a number's is a `Fraction` and an integer's is an `int`, and
-                # a consumer should not have to know which kind it is holding
-                # to know what it is reading. See `_EXACT`.
+                # From the facet's name, not its Python type: a number's bound
+                # is a `Fraction` and an integer's is an `int`, and a consumer
+                # reads one form for both. See `_EXACT`.
                 out[name] = _exact(value.value if isinstance(value, ScalarFacet) else value)
                 continue
             if name in _BACK_POINTERS and isinstance(value, BaseShape):

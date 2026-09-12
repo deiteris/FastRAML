@@ -5,9 +5,9 @@
  * string and needs nothing here; the emitter settled that, for the reason
  * `tree.d.ts` gives. **Example and default data is different**: it is the
  * author's payload, and an integer in a payload has to stay an integer, so the
- * tree emits it as a JSON number and `JSON.parse` rounds it to the nearest
- * double. `9223372036854775807` came back as `...808` -- an ID no caller can
- * use, printed in the one place a reader copies from.
+ * tree emits it as a JSON number and `JSON.parse` rounds anything past 2^53 to
+ * the nearest double -- `9223372036854775807` reads back as `...808`, an ID no
+ * caller can use, in the one place a reader copies from.
  *
  * So the document is parsed with the literal's own source text in hand, and a
  * literal a double cannot hold is boxed rather than rounded. `stringify` writes

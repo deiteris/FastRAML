@@ -302,9 +302,8 @@ def _exact_bounds() -> frozenset[str]:
     """The facets `tree.py` emits as an exact decimal string whatever their type.
 
     Read from the emitter rather than restated here. A bound is a `Fraction` on
-    a number and an `int` on an integer, so the annotation says `number` for one
-    of the two kinds and would be wrong -- and a second copy of the list is a
-    second thing to forget.
+    a number and an `int` on an integer, so the annotation is right for neither
+    kind, and a second copy of the list is a second thing to forget.
     """
     return _name_set('_EXACT')
 
@@ -342,10 +341,9 @@ def _kinds() -> dict[str, list[_Facet]]:
         for slot, annotation in declared[kind].items():
             if slot in _NOT_EMITTED or slot.startswith('_'):
                 continue
-            # A bound's spelling comes from what the emitter does with it, not
-            # from what the model holds: `_EXACT` renders both the `Fraction`
-            # and the `int` form as a decimal string, so the annotation would
-            # say `number` for one of the two kinds and be wrong.
+            # A bound's spelling comes from what the emitter does with it,
+            # not from what the model holds: `_EXACT` renders both the
+            # `Fraction` and the `int` form as a decimal string.
             spelling = 'string' if slot in exact else 'Ref' if slot in back else _JSON_OF.get(annotation)
             if spelling is None:
                 raise LookupError(f'{kind}.{slot}: no JSON spelling declared for {annotation!r} (see _JSON_OF)')

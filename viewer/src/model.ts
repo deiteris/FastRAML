@@ -179,9 +179,8 @@ const NOT_A_FACET: ReadonlySet<string> = new Set([
   // chip reading `discriminator kind` beside `maxLength 200` does not say.
   'discriminator',
   'discriminator_value',
-  // A JSON-schema type's two forms. Both are whole documents and neither is a
-  // constraint; unlisted, the schema's source went into a chip beside
-  // `maxLength`.
+  // A JSON-schema type's two forms. Both are whole documents, neither is a
+  // constraint, and `contentOf` is what reads the second.
   'json_schema',
   'projection',
 ]);
@@ -302,18 +301,18 @@ export const MEMBERS_SPELLED = 3;
  * forms converge and a nested array reads `string[][]` rather than `array[]`.
  *
  * A union is spelled from its members for the same reason, and truncated past
- * `MEMBERS_SPELLED`. `type_expr` is the author's text and can be any length --
- * a nine-member union is one long unbreakable word in a flex row, which is the
- * form that ran off the page.
+ * `MEMBERS_SPELLED`. `type_expr` is the author's text and can be any length: a
+ * nine-member union is one unbreakable run in a row that has a line to fit in.
  *
  * Recursion terminates on containment: the emitter marks every cycle, and a
  * marker is named, not descended.
  */
 export function spellingOf(shape: Shape, index: Index, borrowed = false): string {
-  // A JSON-schema type's expression is the `!include` that named the schema --
-  // a file path, which is not a type name and which a reader cannot open. The
-  // schema and its projection are on the page; the expression adds nothing.
-  if (shape.type === 'json') return shape.type;
+  // A JSON-schema type is named by its projection, which is the RAML shape the
+  // schema describes. Its own expression is the `!include` that named the
+  // schema -- a file path, not a type name -- and `json` is the mechanism the
+  // type arrived by, which is not what it is.
+  if (shape.type === TYPE_JSON) return shape.projection ? spellingOf(shape.projection, index, true) : shape.type;
   const members = shape.any_of ?? [];
   if (shape.type === 'union' && members.length > 0 && namedByMembers(shape, borrowed)) {
     const names = members.map((member) => labelOf(member, index));
@@ -330,14 +329,26 @@ export function spellingOf(shape: Shape, index: Index, borrowed = false): string
 }
 
 /**
+ * The kind whose content is a projection of a schema rather than RAML facets.
+ *
+ * A shape of this kind carries no RAML facet of its own -- the spec forbids one
+ * beside a schema -- so everything it says is in `projection`, and every reader
+ * of a shape's content follows that first.
+ */
+export const TYPE_JSON = 'json';
+
+/** What a JSON-schema type says, which is what its projection says. */
+export function contentOf(shape: Shape): Shape {
+  return shape.type === TYPE_JSON && shape.projection ? shape.projection : shape;
+}
+
+/**
  * Whether a shape says anything its name does not.
  *
  * The question every collapsed row asks: is there something behind this name,
- * and is it worth a control? It used to ask a narrower one -- does this have
- * *properties* -- which is true of an object and false of everything else, so a
- * property typed by a named `string` with a `pattern` rendered as a link and a
- * full stop. The constraint was declared, carried through every pass, emitted
- * into the tree, and shown nowhere a reader of that property would look.
+ * and is it worth a control? Not "does it have properties" -- that is true of
+ * an object and false of every other kind, and a named `string` with a
+ * `pattern` has as much to say as an object with two fields.
  *
  * Facets are counted through `facetsOf`, so a kind this app has never heard of
  * still answers yes: the deny-list is what is *not* a constraint, and anything

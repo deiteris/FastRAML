@@ -313,20 +313,17 @@ unit's path *relative to the workspace root* — `pyraml://id/lib.raml#…` — 
 absolute filesystem path enters the graph. The tree keys its declaration maps by
 the same path (§ 11), and a consumer builds URLs out of that key.
 
-**The workspace root, not the entry document's directory.** Those are the same
-until a project keeps its shared libraries beside its APIs rather than beneath
-one of them, and then the entry's directory is the wrong anchor twice over. It
-was a `removeprefix`, so a sibling — sharing no prefix with it — kept its
-**whole `file:///C:/…` URI**, in every IRI below it and in the tree's key for
-it, and a viewer put the producing machine's filesystem in an address bar.
-Spelling the ascent (`../shared/money.raml`) would have been machine-
-independent and still wrong: it is not where the file is relative to anything a
-reader of the project thinks about.
+**The anchor is the workspace root**, which `--workspace-root` sets and which
+defaults to the entry document's directory. It is the boundary `SafeFileLoader`
+enforces, so every file a parse can read is at or beneath it: a path relative to
+it never ascends, and a project whose shared libraries sit beside its APIs
+rather than beneath one of them gets `shared/money.raml`. Relative to the entry
+*document's* directory the same file is `../shared/money.raml` — machine-
+independent, and not where the file is in terms a reader of the project uses.
 
-The root is also the boundary `SafeFileLoader` enforces, so every file a parse
-can read is at or beneath it: relative to the root, no path a view prints ever
-ascends. `--workspace-root` sets it, and it defaults to the entry document's
-directory, which is why the two agreed for as long as they did.
+`pyraml.uris.relative_to` computes it, in one place. A `removeprefix` is not the
+same function: a path that shares no prefix with the root falls back to the
+whole URI, which is the one outcome this property exists to exclude.
 
 **Assigned once.** A shape reached twice keeps its first IRI. That is what makes
 a declared type one node rather than one node per use site, and what closes a
@@ -1234,47 +1231,41 @@ unbound.
 
 ### 11.4a A bound is an exact decimal string; a count is a number
 
-`minimum`, `maximum` and `multipleOf` are emitted as decimal text on **every**
-kind that declares one — `"0.01"`, `"9223372036854775807"`,
-`"1.7976931348623157E+308"`. `minLength`, `maxItems` and the rest stay JSON
-numbers. The split is by what the facet *means*, not by how large its value is,
-so a consumer never asks which form arrived this time.
+`minimum`, `maximum` and `multipleOf` are decimal text on **every** kind that
+declares one — `"0.01"`, `"9223372036854775807"`, `"1.7976931348623157E+308"`.
+`minLength`, `maxItems` and the rest are JSON numbers. The split follows what a
+facet *means*, not how large its value is, so a consumer never has to ask which
+form arrived.
 
-Two failures, and the obvious encoding fixes one and causes the other.
+**A string, because JSON's number is a double.** It is arbitrary precision on
+paper and a double in every consumer that matters, so a bound written as one is
+rounded on the way in: `9223372036854775807` reads back as `…808`. The parser
+holds a bound exactly and never passes one through `float` (CLAUDE.md), and a
+JSON number undoes that at the last step. A count is bounded by what fits in
+memory and has no such ceiling.
 
-**JSON's number is a double.** It is arbitrary precision on paper and a double
-in every consumer that matters, so a bound written as one is handed to the
-float this parser spends its whole effort avoiding (CLAUDE.md, "Numbers never
-pass through `float`"). `maximum: 9223372036854775807` came back out of
-`JSON.parse` as `…808`: the parser held it exactly through ten passes and gave
-it away at the last step, and the view that showed it had no way to know.
+**A decimal, not the exact ratio.** `Fraction` is what the model holds and
+`str(Fraction)` is exact, but a float-valued bound near the top of its range is
+an integer, so its ratio is that integer: `1.7976931348623157e308` spells out to
+309 digits, 292 of them zeros. A decimal is exact as well and is what the author
+wrote. Every numeric scalar RAML can carry is decimal, so every bound built from
+one has a terminating expansion and the conversion loses nothing; a ratio with
+no terminating expansion keeps the `n/d` form.
 
-**The exact ratio is unreadable.** `Fraction` is what the model holds and
-`str(Fraction)` is exact, which is why it was emitted — but a float-valued
-bound at the top of its range is an *integer*, so its ratio is that integer.
-`maximum: 1.7976931348623157e308` reached the tree as **309 digits**, 292 of
-them zeros its author never wrote, and `minimum: 2.2250738585072014e-308` as a
-ratio with a 309-digit denominator. Faithful, and no use to anyone.
+Scientific notation only where the plain form passes 21 characters *and* the
+exponent is materially shorter, so `100` is `100` rather than `1E+2` and
+`123456789012345678901234567890.5` stays as written.
 
-So: the exact decimal, which is both. Every numeric scalar RAML can carry is
-written in decimal, so every bound built from one terminates and the conversion
-is lossless. Scientific notation only where the plain form exceeds 21
-characters *and* the exponent is materially shorter — `100` is `100`, not
-`1E+2`, and `123456789012345678901234567890.5` stays as written. A ratio that
-does not terminate keeps the `n/d` form, which no document can produce and
-which is left honest rather than rounded.
+**The conversion belongs to the producer.** `Fraction` has already done the
+arithmetic here. Left to consumers, each one needs exact long division to
+display a bound, and the one that skips it writes `Number(n) / Number(d)` and
+puts the value back through the float the encoding exists to avoid.
 
-**The conversion belongs to the producer.** The arithmetic is exact here and
-`Fraction` has already done it; pushed to consumers, each one writes its own
-BigInt long division to display a number, and the one that does not writes
-`Number(n) / Number(d)` and undoes the whole exercise. The reference consumer
-had 70 lines of it and now has none.
-
-This does not extend to **example and default data**. That is the author's
-payload, an integer in it has to stay an integer, and a string in its place
-would be a different value. Precision there is JSON's problem and the
-consumer's: `viewer/src/numbers.ts` keeps the literal's source text, which is
-what that reader needs to not print an ID nobody can use.
+**Example and default data is not a bound.** It is the author's payload, an
+integer in it has to stay an integer, and a string in its place is a different
+value — so it is a JSON number and precision there belongs to the consumer.
+`viewer/src/numbers.ts` is what that looks like: it keeps the literal's source
+text for anything a double cannot hold.
 
 ### 11.5 Positions are separate
 
@@ -1426,6 +1417,15 @@ Nested rather than merged onto the shape. A schema carries its own
 `description` and `example`, and so does the RAML declaration wrapping it;
 merging would pick a winner between two things the author wrote separately.
 
+**A consumer reads the projection as the type.** It is where a schema type's
+structure and constraints are, so a view that names types, lists their
+attributes or asks what one contains follows `projection` first and gets an
+`object` with properties rather than a `json` with nothing — `json` is the
+mechanism the type arrived by, not what it is. `json_schema` is then one more
+thing a reader can open, like any other. `viewer/src/model.ts` does this in one
+accessor, `contentOf`, which is what keeps a schema type from being a branch in
+every block that renders a shape.
+
 Every node carries `id`, its address. Three constructs and nothing else:
 
 | | means |
@@ -1482,11 +1482,12 @@ Three things this found on its first two runs, none of which any test could see:
   a Python `repr` carrying an **absolute filesystem path**. Now one rule: a
   leading underscore is a working buffer. `raw` goes too, being the schema text
   `type_expr` already carries.
-- **`minimum` was a `number` on an integer and a `string` on a number**, because
-  a number's bound is a `Fraction` and an integer's is an `int`. Two kinds
-  declaring one facet name is one member typed as the union, so the contract
-  read `string | number` and a consumer had to ask which kind it was holding.
-  It is one type now, for a reason the spelling was hiding — § 11.4a.
+- **A facet's spelling comes from what the emitter does with it**, not from the
+  annotation the model declares. `minimum` is a `Fraction` on a number and an
+  `int` on an integer, and both are emitted as a decimal string (§ 11.4a), so
+  the annotation alone is right for neither kind. `_EXACT` is read out of
+  `tree.py` for the same reason `_BACK_POINTERS` is: two copies of one list are
+  two things to forget.
 - **Three keys were missing from the first generated file.** `shape()` has two
   `for field in (...)` loops and both call the variable `field`; a last-wins
   mapping kept only the second, dropping `display_name`, `description` and

@@ -16,12 +16,10 @@
  * **Two rules decide everything below.**
  *
  * *One name, one treatment.* Every place a type is named goes through
- * `TypeName`, and a name that identifies a declaration is a link. Three
- * treatments of one idea had grown up -- a bordered chip on a declaration page,
- * plain grey text on an attribute row, an accent link when and only when the
- * type happened to be written as a `$ref` -- so the same type looked like a
- * different kind of thing depending on where it was read, and half of them were
- * dead ends.
+ * `TypeName`: the same expression, the same muted mono text, and a link
+ * wherever the name identifies a declaration. A reader should not have to
+ * learn that `Book[]` on one line and `Money` on the next are the same kind of
+ * thing shown two ways, or that only one of them can be followed.
  *
  * *Declared here, shown here; named here, behind a control.* What a row
  * declares -- its facets, its enum, its own example, an inline object's
@@ -47,6 +45,7 @@ import {
   type Property,
   type Ref,
   type Shape,
+  contentOf,
   detailed,
   facetsOf,
   isRecursive,
@@ -62,7 +61,7 @@ import { Annotations } from './Annotations';
 import { From } from './Borrowed';
 import { Code, Labelled, oneLine } from './json';
 import { Prose, ProseInline } from './markdown';
-import { Chip, type Tab, Tabs } from './ui';
+import { Chip, Tabs } from './ui';
 
 interface Props {
   shape: Shape | Ref | null | undefined;
@@ -122,9 +121,8 @@ export function ShapeView({ shape, index, hideType, hideDescription, hideItems, 
  *
  * Both, because they answer different questions -- navigating loses your place
  * in a response body, expanding keeps it but buries the declaration's own page.
- * They are two visibly different controls for that reason. A caret glyph beside
- * a link read as decoration *on* the link, so the two flows were one ambiguous
- * one; the expander is now a labelled button that says what it will do.
+ * They are two visibly different controls for that reason: a link, and a
+ * labelled button that says what it will open.
  *
  * Neither expands on render. That is the loop.
  */
@@ -176,14 +174,12 @@ function RecursionView({ node, index }: { node: Shape & { head: Ref }; index: In
 /**
  * One collapsed region and the control that opens it.
  *
- * On a row of its own, always. The control used to sit inside the inline row
- * that names the type, so a reference with no description put `Money` and
- * `+ Show child attributes` side by side and the button read as part of the
- * name -- while the same button under a described type sat on its own line.
- * Where a control appears should not depend on whether someone wrote prose.
+ * On a row of its own, always: where a control appears must not depend on
+ * whether someone wrote a description above it.
  *
- * `what` names what is inside rather than assuming it. "Show child attributes"
- * over a `string` with a `pattern` promised attributes that do not exist.
+ * `what` names what is inside rather than assuming it -- constraints, members,
+ * item type, child attributes. "Show child attributes" over a `string` with a
+ * `pattern` promises attributes that do not exist.
  */
 function Expandable({ what, children }: { what: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -200,9 +196,10 @@ function Expandable({ what, children }: { what: string; children: ReactNode }) {
 
 /** What is behind a name, in the words of the kind it names. */
 function behind(shape: Shape): string {
-  if (shape.properties || shape.pattern_properties) return 'child attributes';
-  if (shape.any_of) return 'members';
-  if (shape.items !== undefined) return 'item type';
+  const content = contentOf(shape);
+  if (content.properties || content.pattern_properties) return 'child attributes';
+  if (content.any_of) return 'members';
+  if (content.items !== undefined) return 'item type';
   return 'constraints';
 }
 
@@ -210,15 +207,13 @@ function behind(shape: Shape): string {
  * A type, named once and the same way everywhere.
  *
  * Every place a type is named goes through this: an attribute's head line, a
- * declaration's heading, a listing's row, an array's items. They had drifted
- * into three treatments of one idea -- a bordered chip on a declaration page,
- * plain grey text on an attribute, an accent link when and only when the type
- * happened to be written as a reference -- so the same type looked like a
- * different kind of thing depending on where it was read.
+ * declaration's heading, a listing's row, an array's items. One treatment, so
+ * the same type reads the same wherever it appears.
  *
- * **A name that identifies a declaration is a link.** `related Book[]` was dead
- * text beside `price Money` as a link, for no reason a reader could see: both
- * name `Book`, and one of them was reachable.
+ * **A name that identifies a declaration is a link.** `related Book[]` and
+ * `price Money` both name a type with a page; whether the author happened to
+ * write the reference as a bare name or inside an array expression is not a
+ * reason for one of them to be a dead end.
  *
  * `suffix` is carried down rather than appended by the caller, so the `[]` of
  * an array lands on the item's *name* and before any marker that follows it --
@@ -309,10 +304,9 @@ export function TypeName({
  * A union's name: its members, each reachable, and a count for the rest.
  *
  * Spelled from `any_of` and not from `type_expr`, for the reason `spellingOf`
- * gives -- the author's text is one unbreakable run whose length is theirs to
- * choose, and a nine-member union written out in a heading is a line of type
- * names with no way in to any of them. The `anyOf` selector below carries the
- * whole list; this is the name.
+ * gives: the author's text is one unbreakable run whose length is theirs to
+ * choose, and it names nothing a reader can follow. The `anyOf` selector below
+ * carries the whole list; this is the name.
  */
 function UnionName({ members, index, suffix }: { members: (Shape | Ref)[]; index: Index; suffix: string }) {
   const shown = members.slice(0, MEMBERS_SPELLED);
@@ -335,41 +329,6 @@ function UnionName({ members, index, suffix }: { members: (Shape | Ref)[]; index
   );
 }
 
-/**
- * A type declared by JSON Schema, in the two forms it needs.
- *
- * Such a type "MUST NOT participate in type inheritance or specialization"
- * (spec, *Using XML and JSON Schemas*): the parser decodes no RAML facet from
- * it, so the shape itself carries no properties and a view that showed only
- * that reports a type made of nothing.
- *
- * **The projection is the default panel** -- the nearest RAML shape to the
- * schema (docs/10 § 6.3), where `$ref` has been resolved and `#/definitions/…`
- * is an ordinary nested type. The schema as written is the other panel,
- * because it is what the author will edit and the projection is a reading of
- * it. Neither is a substitute for the other, which is why both are here and
- * neither is buried.
- *
- * The `extends` line goes: it names the supertype the include produced, as
- * `json`, which is true and worth nothing.
- */
-function JsonSchema({ shape, index }: { shape: Shape; index: Index }) {
-  const panels: Tab[] = [];
-  if (shape.projection) {
-    panels.push({
-      key: 'type',
-      label: 'Type',
-      body: <ShapeView shape={shape.projection} index={index} hideType />,
-    });
-  }
-  if (shape.json_schema) {
-    panels.push({ key: 'schema', label: 'JSON Schema', body: <Code>{shape.json_schema}</Code> });
-  }
-  return <Tabs label="declared by" items={panels} />;
-}
-
-const TYPE_JSON = 'json';
-
 function Body({
   shape,
   index,
@@ -388,11 +347,20 @@ function Body({
   hideInherits?: boolean;
   borrowed?: boolean;
 }) {
-  const facets = facetsOf(shape);
+  // Identity and prose come from the declaration; structure and constraint come
+  // from its content. The two are the same shape for sixteen of the seventeen
+  // kinds. For a JSON-schema type they are the declaration and its projection:
+  // the spec forbids a RAML facet beside a schema, so the declaration carries
+  // the name, the description and the example, and everything else it says is
+  // in the projection (docs/10 § 6.3). Reading structure through one accessor
+  // is what keeps that a fact about `contentOf` rather than a branch in every
+  // block below.
+  const content = contentOf(shape);
+  const facets = facetsOf(content);
   const inherits = shape.inherits ?? [];
-  const properties = Object.entries(shape.properties ?? {});
-  const patterns = Object.entries(shape.pattern_properties ?? {});
-  const members = shape.any_of ?? [];
+  const properties = Object.entries(content.properties ?? {});
+  const patterns = Object.entries(content.pattern_properties ?? {});
+  const members = content.any_of ?? [];
   // `hideType` means the container names this shape, so its `displayName`
   // belongs up there too. Rendered here it was a bare word between the
   // description and the facets, with nothing saying what it was.
@@ -401,7 +369,7 @@ function Body({
   const typed = !hideType && !restates(shape, index);
   const headed = Boolean(typed || named);
   const attributes = properties.length > 0 || patterns.length > 0;
-  const json = shape.type === TYPE_JSON;
+  const schema = shape.json_schema;
 
   return (
     <div className="shape">
@@ -413,8 +381,13 @@ function Body({
       )}
       {/* Above the prose. What a type extends is the first thing about it,
           and below the description it arrived after everything that only makes
-          sense once you know. */}
-      {inherits.length > 0 && !json && !hideInherits && (
+          sense once you know.
+
+          A schema type has none to show. `!include schema.json` produces an
+          anonymous supertype that *is* the schema, so it carries the same
+          projection this shape does and renders the whole type a second
+          time. */}
+      {inherits.length > 0 && !hideInherits && content === shape && (
         <div className="shape-line">
           <span className="label">extends</span>
           {inherits.map((parent, at) => (
@@ -423,6 +396,9 @@ function Body({
         </div>
       )}
       {!hideDescription && <Prose>{shape.description}</Prose>}
+      {/* A schema describes itself, and the RAML declaring it describes why
+          it is here. Both are authored text and neither is the other. */}
+      {content !== shape && <Prose>{content.description}</Prose>}
 
       {facets.length > 0 && (
         <div className="facets">
@@ -440,10 +416,10 @@ function Body({
           nothing saying whether they were a list of values, of names, or of
           anything else. Every other facet carries its own name; an enum's
           values are the one thing that arrived without one. */}
-      {shape.enum && shape.enum.length > 0 && (
+      {content.enum && content.enum.length > 0 && (
         <div className="shape-line">
           <span className="label">allowed values</span>
-          {shape.enum.map((value, at) => (
+          {content.enum.map((value, at) => (
             <Chip key={at} tone="enum">
               {oneLine(value)}
             </Chip>
@@ -453,10 +429,10 @@ function Body({
 
       {shape.allowed_targets && <Tagged label="allowedTargets" values={shape.allowed_targets} />}
       {shape.declares_facets && <Tagged label="declares facets" values={shape.declares_facets} />}
-      {shape.custom_facets && Object.keys(shape.custom_facets).length > 0 && (
+      {content.custom_facets && Object.keys(content.custom_facets).length > 0 && (
         <div className="shape-line">
           <span className="label">facets</span>
-          {Object.entries(shape.custom_facets).map(([name, value]) => (
+          {Object.entries(content.custom_facets).map(([name, value]) => (
             <Chip key={name}>
               <span className="facet-name">{name}</span>
               <span className="facet-value">{oneLine(value)}</span>
@@ -465,7 +441,7 @@ function Body({
         </div>
       )}
 
-      {shape.discriminator && <Discriminator shape={shape} index={index} />}
+      {content.discriminator && <Discriminator shape={content} index={index} />}
 
       <Annotations applied={shape.annotations} index={index} />
 
@@ -476,16 +452,23 @@ function Body({
       {shape.example !== undefined && <Labelled label="example" value={shape.example} />}
       <Examples examples={shape.examples} />
 
-      {json && <JsonSchema shape={shape} index={index} />}
+      {/* The schema as written, behind the same control everything else is
+          behind. The projection above is a reading of it; this is the text an
+          author edits, and `$ref` is unresolved in it. */}
+      {schema !== undefined && schema !== null && (
+        <Expandable what="JSON Schema">
+          <Code>{schema}</Code>
+        </Expandable>
+      )}
 
       {members.length > 0 && <Union members={members} index={index} />}
 
       {/* Only where the items say something the head line did not. `string[]`
           named its item on the head and then drew a label and a rule around
           the word `string`. */}
-      {!hideItems && leadsSomewhere(shape.items, index) && (
+      {!hideItems && leadsSomewhere(content.items, index) && (
         <Group label="each item">
-          <ShapeView shape={shape.items} index={index} />
+          <ShapeView shape={content.items} index={index} />
         </Group>
       )}
 
@@ -506,7 +489,7 @@ function Body({
         </div>
       )}
 
-      {shape.xml !== undefined && <Labelled label="xml" value={shape.xml} />}
+      {content.xml !== undefined && <Labelled label="xml" value={content.xml} />}
     </div>
   );
 }
@@ -522,10 +505,8 @@ function Body({
  * declares -- its facets, its enum, its own example, an inline object's
  * properties -- is written here and is shown here; a reader has no other place
  * to find it. What it *names* is declared elsewhere, has a page of its own, and
- * sits behind one control. The two were mixed: an array's item type was always
- * open, so three list-valued properties in a row pushed the rest of the type
- * off the screen, while a named `string` with a `pattern` had no control at all
- * and showed nothing.
+ * sits behind one control, so a list of attributes stays a list of attributes
+ * rather than an unrolled copy of every type it mentions.
  */
 export function Attribute({
   name,
@@ -616,6 +597,9 @@ export function Attribute({
  * not and stays.
  */
 export function restates(shape: Shape, index: Index): boolean {
+  // A schema type shows no supertype, so there is nothing for its name to
+  // restate: `Invoice` reads `object`, from the projection, and not `json`.
+  if (contentOf(shape) !== shape) return false;
   const inherits = shape.inherits ?? [];
   const only = inherits[0];
   return inherits.length === 1 && only !== undefined && spellingOf(shape, index) === labelOf(only, index);

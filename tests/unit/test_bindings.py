@@ -155,3 +155,39 @@ def _observe(node: object, into: set[str]) -> None:
     elif isinstance(node, list):
         for item in node:
             _observe(item, into)
+
+
+#: What `npm run sample` writes, and what `smoke` and `shots` then read.
+SAMPLE = 'viewer/public/api.json'
+SAMPLE_SOURCE = 'viewer/sample/api.raml'
+
+
+class TestTheViewerSampleIsNotStale:
+    """The viewer's checked-in data, held to the contract's own standard.
+
+    `tree.d.ts` is gate-checked and the data beside it was not, so a change to
+    the projection left the viewer's two gates -- `smoke` and `shots` -- running
+    against the *previous* shape of the tree. They pass, because a page rendered
+    from old data is still a page; what they stop measuring is the emitter.
+
+    Found the way it would be: wrapping an example in a record left
+    `items.example` a bare string in the committed sample, so the type page
+    dropped it and only the reachability check noticed, by a route that had
+    nothing to do with examples.
+
+    Compared as parsed JSON rather than as text: the file is written through a
+    shell redirect, so its line endings are the platform's and are not the
+    contract.
+    """
+
+    def test_regenerating_changes_nothing(self):
+        import json
+
+        from pyraml.views.tree import build_tree
+
+        raml = parse_from_path(
+            ROOT / SAMPLE_SOURCE,
+            ParseOptions(unwrap=True, workspace_root=ROOT / 'viewer'),
+        )
+        current = json.loads((ROOT / SAMPLE).read_text(encoding='utf-8'))
+        assert current == build_tree(raml), f'run `npm run sample` in viewer/ -- {SAMPLE} is stale'

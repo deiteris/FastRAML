@@ -117,7 +117,17 @@ def parse_from_string(
 
 
 def _new_registry(options: ParseOptions, *, default_root: str) -> Raml:
-    workspace_root = os.fspath(options.workspace_root) if options.workspace_root is not None else default_root
+    # Absolute, because `path_to_file_uri` has nothing to resolve a relative one
+    # against and produced `file:///viewer` for `-w viewer`. `SafeFileLoader`
+    # absolutises its own copy, so the two disagreed: reads were confined to the
+    # right directory while the URI naming it pointed nowhere.
+    #
+    # `abspath` and not `Path.resolve()`: `SafeFileLoader` keeps `root` and
+    # `_real_root` apart on purpose, and this has to name the first of the two.
+    # Resolving symlinks here would make the URI name a directory the loader
+    # never compares a lexical path against.
+    given = options.workspace_root
+    workspace_root = os.path.abspath(os.fspath(given)) if given is not None else default_root  # noqa: PTH100 - see above
     return Raml(
         loader=build_loader(workspace_root, file_loader=options.file_loader, http_client=options.http_client),
         workspace_root_uri=path_to_file_uri(workspace_root),

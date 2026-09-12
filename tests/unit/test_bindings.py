@@ -130,15 +130,15 @@ class TestEveryKindLandsInTheContract:
         # observed keys satisfies the check above and proves nothing.
         assert {'minimum', 'multiple_of', 'pattern', 'items', 'properties', 'any_of', 'file_types'} <= keys
 
-    def test_a_fraction_facet_arrives_as_a_ratio(self, workspace):
+    def test_a_bound_arrives_as_an_exact_decimal_string(self, workspace):
         # The contract says so in a comment; this is what makes the comment
-        # true. A consumer doing `parseFloat` on it gets NaN, which is worth one
-        # test naming the encoding.
+        # true. It read `1/100` and `1/2` -- exact, and neither what the author
+        # wrote nor anything a consumer could show without long division.
         root = workspace({'api.raml': DOCUMENT})
         raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
         bounded = build_tree(raml)['types']['api.raml']['Bounded']
-        assert bounded['multiple_of'] == '1/100'
-        assert bounded['minimum'] == '1/2'
+        assert bounded['multiple_of'] == '0.01'
+        assert bounded['minimum'] == '0.5'
 
 
 def _observe(node: object, into: set[str]) -> None:

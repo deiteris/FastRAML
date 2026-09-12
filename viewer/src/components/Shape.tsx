@@ -60,7 +60,7 @@ import {
 } from '../model';
 import { Annotations } from './Annotations';
 import { From } from './Borrowed';
-import { Code, Labelled, facetValue, oneLine } from './json';
+import { Code, Labelled, oneLine } from './json';
 import { Prose, ProseInline } from './markdown';
 import { Chip, type Tab, Tabs } from './ui';
 
@@ -429,7 +429,7 @@ function Body({
           {facets.map(([name, value]) => (
             <Chip key={name}>
               <span className="facet-name">{name}</span>
-              <span className="facet-value">{facetValue(name, value)}</span>
+              <span className="facet-value">{oneLine(value)}</span>
             </Chip>
           ))}
         </div>

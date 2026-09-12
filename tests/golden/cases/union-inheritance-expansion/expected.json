@@ -89,7 +89,7 @@
                 "type_expr": "integer | number"
               }
             ],
-            "maximum": 10,
+            "maximum": "10",
             "name": null,
             "type": "integer"
           },

@@ -32,6 +32,33 @@ from pyraml.parser.directives import SecurityScheme
 from pyraml.parser.fragments import APIFragment, DataTypeFragment, Library
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from pyraml.types.jsonschema_ import projected
+from pyraml.uris import relative_to
+
+if TYPE_CHECKING:
+    from pyraml.registry import Raml
+
+
+def workspace_of(raml: Raml) -> str:
+    """The directory every path a view prints is relative to, with a trailing `/`.
+
+    **The workspace root, not the entry document's directory.** Those are the
+    same until a project keeps its shared libraries beside its APIs rather than
+    beneath one of them — and then the entry's directory is the wrong anchor
+    twice over: a sibling library shares no prefix with it, so a path relative
+    to it either ascends or, as it did, stays the whole
+    `file:///C:/…/common/types.raml`. That reached the tree as a declaration's
+    key and a consumer's URL.
+
+    The root is also the boundary `SafeFileLoader` enforces, so every file a
+    parse can read is at or beneath it: relative to the root, no path a view
+    prints ever ascends. It falls back to the entry's directory, which is what
+    the root defaults to when nobody passes `--workspace-root`.
+    """
+    root = raml.workspace_root_uri
+    if root:
+        return root if root.endswith('/') else root + '/'
+    return raml.location.rsplit('/', 1)[0] + '/' if raml.location else ''
+
 
 if TYPE_CHECKING:
     from pyraml.parser.annotations import DomainExtension
@@ -199,21 +226,19 @@ class Walk:
         #: a cycle terminates.
         self.emitted: set[int] = set()
         self._segments: dict[str, str] = {}
-        self.root = raml.location.rsplit('/', 1)[0] + '/' if raml.location else ''
+        self.root = workspace_of(raml)
 
     # -- infrastructure -------------------------------------------------------
 
     def unit(self, location: str) -> str:
         """The IRI prefix for declarations authored in `location`.
 
-        Relative to the entry document's directory, so the graph does not carry
-        the absolute path of the machine that produced it. A file outside that
-        directory keeps its whole URI, which is rare and visibly different.
+        Relative to the workspace root, so the graph does not carry the absolute
+        path of the machine that produced it.
         """
         if location == self.raml.location or not location:
             return self.base
-        relative = location.removeprefix(self.root)
-        return f'{self.base}/{self.segment(relative)}'
+        return f'{self.base}/{self.segment(relative_to(location, self.root))}'
 
     def segment(self, value: str) -> str:
         escaped = self._segments.get(value)

@@ -5,8 +5,12 @@
  * someone is handed, `?src=` for a document served alongside it, and a file
  * picker for whatever `pyraml tree` just printed. All three end at the same
  * parsed value; nothing downstream knows which was used.
+ *
+ * Through `parse` and not `JSON.parse`, so an example carrying an integer
+ * larger than a double reaches the page as the author wrote it (`numbers.ts`).
  */
 
+import { parse } from './numbers';
 import type { Document } from './tree';
 
 export const DEFAULT_SOURCE = 'api.json';
@@ -14,11 +18,11 @@ export const DEFAULT_SOURCE = 'api.json';
 export async function loadDocument(source: string): Promise<Document> {
   const response = await fetch(source);
   if (!response.ok) throw new Error(`${source}: ${response.status} ${response.statusText}`);
-  return validate(await response.json());
+  return validate(parse(await response.text()));
 }
 
 export async function readFile(file: File): Promise<Document> {
-  return validate(JSON.parse(await file.text()));
+  return validate(parse(await file.text()));
 }
 
 /**

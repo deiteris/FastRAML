@@ -33,11 +33,14 @@ export interface Ref {
  * Flat rather than a union over `type` because that is how it arrives: the
  * base fields and the concrete kind's facets are merged onto one object.
  *
- * A `Fraction`-valued facet -- `minimum` and `maximum` on a number,
- * `multipleOf` anywhere -- arrives as an exact ratio in a string, so
- * `multipleOf: 0.01` reads `"1/100"`. The parser never passes a number
- * through `float`, on either side of a comparison, and neither should a
- * consumer that means to agree with it.
+ * A bound on a number -- `minimum`, `maximum`, `multipleOf` -- arrives as
+ * an exact decimal in a **string**, on every kind that declares one.
+ * JSON`s number is a double in every consumer that matters, and the parser
+ * never passes a number through `float` on either side of a comparison; a
+ * bound written as a JSON number undoes that at the last step, which is
+ * how `maximum: 9223372036854775807` came back out of `JSON.parse` as
+ * ...808. A *count* -- `minLength`, `maxItems` -- is bounded by memory and
+ * stays a number.
  */
 export interface Shape {
   id: Address | null;
@@ -71,12 +74,12 @@ export interface Shape {
   max_items?: number; // Array
   max_length?: number; // String, File
   max_properties?: number; // Object
-  maximum?: string | number; // Number, Integer -- a ratio, e.g. "1/100" for 0.01
+  maximum?: string; // Number, Integer -- an exact decimal, e.g. "0.01" or "1.7976931348623157E+308"
   min_items?: number; // Array
   min_length?: number; // String, File
   min_properties?: number; // Object
-  minimum?: string | number; // Number, Integer -- a ratio, e.g. "1/100" for 0.01
-  multiple_of?: string; // Number, Integer -- a ratio, e.g. "1/100" for 0.01
+  minimum?: string; // Number, Integer -- an exact decimal, e.g. "0.01" or "1.7976931348623157E+308"
+  multiple_of?: string; // Number, Integer -- an exact decimal, e.g. "0.01" or "1.7976931348623157E+308"
   pattern?: string; // String
   pattern_properties?: Record<string, PatternProperty>; // Object
   properties?: Record<string, Property>; // Object

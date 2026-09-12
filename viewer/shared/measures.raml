@@ -1,0 +1,42 @@
+#%RAML 1.0 Library
+usage: |
+  A library that lives *outside* the API's own directory, which is what a
+  project with more than one API does with its shared definitions.
+
+  It is here because the path from `sample/api.raml` to this file ascends, and
+  an ascent shares no prefix with the entry document's directory — so a view
+  that relativised by stripping a prefix kept the whole `file:///…` URI for
+  every declaration below, and put it in a URL.
+types:
+  Grams:
+    displayName: A weight in grams
+    description: Whole grams. Nothing here is sold by fractions of one.
+    type: integer
+    minimum: 1
+    maximum: 9223372036854775807
+    example: 9223372036854775807
+
+  Tolerance:
+    displayName: A measurement tolerance
+    description: |
+      The bounds a scale is allowed to be out by, written at the limits of a
+      64-bit float because that is where a reader finds out whether the
+      documentation survived the trip.
+    type: number
+    minimum: 2.2250738585072014e-308
+    maximum: 1.7976931348623157e308
+    multipleOf: 0.000001
+
+  Parcel:
+    displayName: A parcel
+    description: What a delivery is packed in.
+    type: object
+    properties:
+      weight: Grams
+      tolerance?: Tolerance
+      # An integer past 2^53, in payload data rather than in a bound: it stays a
+      # JSON number, because an example's integer has to remain an integer.
+      trackingNumber:
+        description: The carrier's own identifier, which is a signed 64-bit integer.
+        type: integer
+        example: 9223372036854775806

@@ -61,6 +61,8 @@ documentation:
         except `POST /books`, which is not idempotent.
 uses:
   common: !include common.raml
+  # Outside this document's directory, so the path to it ascends.
+  measures: !include ../shared/measures.raml
 annotationTypes:
   deprecated:
     type: string
@@ -291,6 +293,7 @@ types:
     properties:
       address: common.Address
       promisedFor: datetime
+      parcel?: measures.Parcel
 
   # The other form: the schema written inline as a string, with no `!include`.
   # Same kind, same two representations; only where the text came from differs.

@@ -9,10 +9,10 @@
  */
 
 import type { Json } from '../model';
-import { RATIO_FACETS, showRatio } from '../rational';
+import { stringify } from '../numbers';
 
 export function Code({ children }: { children: Json }) {
-  const text = typeof children === 'string' ? children : JSON.stringify(children, null, 2);
+  const text = typeof children === 'string' ? children : stringify(children, 2);
   return <pre className="code">{text}</pre>;
 }
 
@@ -25,20 +25,17 @@ export function Labelled({ label, value }: { label: string; value: Json }) {
   );
 }
 
-/** A value on one line: a string as itself, anything structured as compact JSON. */
+/**
+ * A value on one line: a string as itself, anything structured as compact JSON.
+ *
+ * The single way a value reaches a line of the page. It used to have a sibling,
+ * `facetValue`, which turned the three bound facets from the exact ratios the
+ * tree carried -- `multipleOf 1/100` -- into the decimals their authors wrote.
+ * The emitter does that now, where the exact arithmetic already lived, so every
+ * consumer gets a readable bound instead of each writing its own long division.
+ */
 export function oneLine(value: Json): string {
   if (typeof value === 'string') return value;
   if (value === null) return 'null';
-  return JSON.stringify(value);
-}
-
-/**
- * A facet's value, with the three that are exact ratios read back as decimals.
- *
- * `multipleOf 1/100` is what the tree carries and is faithful to the parser;
- * it is not what the author wrote and not what a reader is checking against.
- */
-export function facetValue(name: string, value: Json): string {
-  if (RATIO_FACETS.has(name) && typeof value === 'string') return showRatio(value);
-  return oneLine(value);
+  return stringify(value);
 }

@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { Annotations } from '../components/Annotations';
 import { ParameterTable } from '../components/Parameters';
 import { Prose } from '../components/markdown';
+import { oneLine } from '../components/json';
 import { Chip, Empty, KeyValues, Section } from '../components/ui';
 import { baseUriOf, declarations } from '../model';
 import type { Props } from './props';
@@ -87,7 +88,7 @@ export function Overview({ document, index }: Props) {
                       <Chip>{applied.target}</Chip>
                     </td>
                     <td>
-                      <code>{JSON.stringify(applied.value)}</code>
+                      <code>{oneLine(applied.value)}</code>
                     </td>
                   </tr>
                 );

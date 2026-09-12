@@ -295,15 +295,31 @@ _JSON_OF: Final = {
 #: declared `BaseShape` is not what arrives. Read from there so the two cannot
 #: disagree.
 def _back_pointers() -> frozenset[str]:
+    return _name_set('_BACK_POINTERS')
+
+
+def _exact_bounds() -> frozenset[str]:
+    """The facets `tree.py` emits as an exact decimal string whatever their type.
+
+    Read from the emitter rather than restated here. A bound is a `Fraction` on
+    a number and an `int` on an integer, so the annotation says `number` for one
+    of the two kinds and would be wrong -- and a second copy of the list is a
+    second thing to forget.
+    """
+    return _name_set('_EXACT')
+
+
+def _name_set(name: str) -> frozenset[str]:
+    """A module-level `frozenset({...})` of string literals in `tree.py`."""
     source = (_ROOT / 'pyraml' / 'views' / 'tree.py').read_text(encoding='utf-8')
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == '_BACK_POINTERS' for target in node.targets
+            isinstance(target, ast.Name) and target.id == name for target in node.targets
         ):
             call = node.value
             arguments = call.args if isinstance(call, ast.Call) else []
-            return frozenset(name for argument in arguments for name in _strings(getattr(argument, 'elts', None)))
-    raise LookupError('_BACK_POINTERS not found in tree.py')
+            return frozenset(item for argument in arguments for item in _strings(getattr(argument, 'elts', None)))
+    raise LookupError(f'{name} not found in tree.py')
 
 
 def _kinds() -> dict[str, list[_Facet]]:
@@ -319,13 +335,18 @@ def _kinds() -> dict[str, list[_Facet]]:
         raise LookupError(f'kinds not found in pyraml/types: {", ".join(missing)}')
 
     back = _back_pointers()
+    exact = _exact_bounds()
     out: dict[str, list[_Facet]] = {}
     for kind in _KINDS:
         facets: list[_Facet] = []
         for slot, annotation in declared[kind].items():
             if slot in _NOT_EMITTED or slot.startswith('_'):
                 continue
-            spelling = 'Ref' if slot in back else _JSON_OF.get(annotation)
+            # A bound's spelling comes from what the emitter does with it, not
+            # from what the model holds: `_EXACT` renders both the `Fraction`
+            # and the `int` form as a decimal string, so the annotation would
+            # say `number` for one of the two kinds and be wrong.
+            spelling = 'string' if slot in exact else 'Ref' if slot in back else _JSON_OF.get(annotation)
             if spelling is None:
                 raise LookupError(f'{kind}.{slot}: no JSON spelling declared for {annotation!r} (see _JSON_OF)')
             facets.append(_Facet(slot, spelling, annotation, kind))
@@ -626,6 +647,7 @@ def _shape(emitted: dict[str, _Emitted], kinds: dict[str, list[_Facet]]) -> str:
     if undeclared:
         raise LookupError(f'shape() emits {undeclared}, not declared in _SHAPE_FIELDS')
 
+    exact = _exact_bounds()
     merged: dict[str, list[_Facet]] = {}
     for facets in kinds.values():
         for facet in facets:
@@ -639,8 +661,8 @@ def _shape(emitted: dict[str, _Emitted], kinds: dict[str, list[_Facet]]) -> str:
     for name, facets in sorted(merged.items()):
         spelling = ' | '.join(dict.fromkeys(facet.typescript for facet in facets))
         note = ', '.join(dict.fromkeys(facet.kind.removesuffix('Shape') for facet in facets))
-        if any('Fraction' in facet.annotation for facet in facets):
-            note += ' -- a ratio, e.g. "1/100" for 0.01'
+        if name in exact:
+            note += ' -- an exact decimal, e.g. "0.01" or "1.7976931348623157E+308"'
         lines.append(f'  {name}?: {spelling}; // {note}')
     body = '\n'.join(lines)
     return (
@@ -650,11 +672,14 @@ def _shape(emitted: dict[str, _Emitted], kinds: dict[str, list[_Facet]]) -> str:
         ' * Flat rather than a union over `type` because that is how it arrives: the\n'
         " * base fields and the concrete kind's facets are merged onto one object.\n"
         ' *\n'
-        ' * A `Fraction`-valued facet -- `minimum` and `maximum` on a number,\n'
-        ' * `multipleOf` anywhere -- arrives as an exact ratio in a string, so\n'
-        ' * `multipleOf: 0.01` reads `"1/100"`. The parser never passes a number\n'
-        ' * through `float`, on either side of a comparison, and neither should a\n'
-        ' * consumer that means to agree with it.\n'
+        ' * A bound on a number -- `minimum`, `maximum`, `multipleOf` -- arrives as\n'
+        ' * an exact decimal in a **string**, on every kind that declares one.\n'
+        ' * JSON`s number is a double in every consumer that matters, and the parser\n'
+        ' * never passes a number through `float` on either side of a comparison; a\n'
+        ' * bound written as a JSON number undoes that at the last step, which is\n'
+        ' * how `maximum: 9223372036854775807` came back out of `JSON.parse` as\n'
+        ' * ...808. A *count* -- `minLength`, `maxItems` -- is bounded by memory and\n'
+        ' * stays a number.\n'
         ' */\n'
         f'export interface Shape {{\n{body}\n}}\n'
     )

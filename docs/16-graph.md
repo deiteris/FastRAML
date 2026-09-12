@@ -309,9 +309,24 @@ structural path depends only on the source.
 
 **Machine-independent.** The root is `pyraml://id`, mirroring AMF's `amf://id`
 for the same reason. A declaration authored outside the entry document gets its
-unit's path *relative to the entry document's directory* — `pyraml://id/lib.raml#…`
-— so no absolute filesystem path enters the graph. A file outside that directory
-keeps its whole URI, which is rare and visibly different when it happens.
+unit's path *relative to the workspace root* — `pyraml://id/lib.raml#…` — so no
+absolute filesystem path enters the graph. The tree keys its declaration maps by
+the same path (§ 11), and a consumer builds URLs out of that key.
+
+**The workspace root, not the entry document's directory.** Those are the same
+until a project keeps its shared libraries beside its APIs rather than beneath
+one of them, and then the entry's directory is the wrong anchor twice over. It
+was a `removeprefix`, so a sibling — sharing no prefix with it — kept its
+**whole `file:///C:/…` URI**, in every IRI below it and in the tree's key for
+it, and a viewer put the producing machine's filesystem in an address bar.
+Spelling the ascent (`../shared/money.raml`) would have been machine-
+independent and still wrong: it is not where the file is relative to anything a
+reader of the project thinks about.
+
+The root is also the boundary `SafeFileLoader` enforces, so every file a parse
+can read is at or beneath it: relative to the root, no path a view prints ever
+ascends. `--workspace-root` sets it, and it defaults to the entry document's
+directory, which is why the two agreed for as long as they did.
 
 **Assigned once.** A shape reached twice keeps its first IRI. That is what makes
 a declared type one node rather than one node per use site, and what closes a
@@ -1217,6 +1232,50 @@ entry binds to a synthesised definition that no document declares, so it is
 `bound` with no address — reporting only the address would make it read as
 unbound.
 
+### 11.4a A bound is an exact decimal string; a count is a number
+
+`minimum`, `maximum` and `multipleOf` are emitted as decimal text on **every**
+kind that declares one — `"0.01"`, `"9223372036854775807"`,
+`"1.7976931348623157E+308"`. `minLength`, `maxItems` and the rest stay JSON
+numbers. The split is by what the facet *means*, not by how large its value is,
+so a consumer never asks which form arrived this time.
+
+Two failures, and the obvious encoding fixes one and causes the other.
+
+**JSON's number is a double.** It is arbitrary precision on paper and a double
+in every consumer that matters, so a bound written as one is handed to the
+float this parser spends its whole effort avoiding (CLAUDE.md, "Numbers never
+pass through `float`"). `maximum: 9223372036854775807` came back out of
+`JSON.parse` as `…808`: the parser held it exactly through ten passes and gave
+it away at the last step, and the view that showed it had no way to know.
+
+**The exact ratio is unreadable.** `Fraction` is what the model holds and
+`str(Fraction)` is exact, which is why it was emitted — but a float-valued
+bound at the top of its range is an *integer*, so its ratio is that integer.
+`maximum: 1.7976931348623157e308` reached the tree as **309 digits**, 292 of
+them zeros its author never wrote, and `minimum: 2.2250738585072014e-308` as a
+ratio with a 309-digit denominator. Faithful, and no use to anyone.
+
+So: the exact decimal, which is both. Every numeric scalar RAML can carry is
+written in decimal, so every bound built from one terminates and the conversion
+is lossless. Scientific notation only where the plain form exceeds 21
+characters *and* the exponent is materially shorter — `100` is `100`, not
+`1E+2`, and `123456789012345678901234567890.5` stays as written. A ratio that
+does not terminate keeps the `n/d` form, which no document can produce and
+which is left honest rather than rounded.
+
+**The conversion belongs to the producer.** The arithmetic is exact here and
+`Fraction` has already done it; pushed to consumers, each one writes its own
+BigInt long division to display a number, and the one that does not writes
+`Number(n) / Number(d)` and undoes the whole exercise. The reference consumer
+had 70 lines of it and now has none.
+
+This does not extend to **example and default data**. That is the author's
+payload, an integer in it has to stay an integer, and a string in its place
+would be a different value. Precision there is JSON's problem and the
+consumer's: `viewer/src/numbers.ts` keeps the literal's source text, which is
+what that reader needs to not print an ID nobody can use.
+
 ### 11.5 Positions are separate
 
 `positions_of` projects them apart. A one-line edit shifts every position after
@@ -1423,11 +1482,11 @@ Three things this found on its first two runs, none of which any test could see:
   a Python `repr` carrying an **absolute filesystem path**. Now one rule: a
   leading underscore is a working buffer. `raw` goes too, being the schema text
   `type_expr` already carries.
-- **`minimum` is a `number` on an integer and a `string` on a number**, because
-  a number's bound is a `Fraction` and the parser never passes one through
-  `float`. `multipleOf: 0.01` arrives as `"1/100"`. Two kinds declaring one
-  facet name is one member typed as the union, and the encoding is stated where
-  a consumer will read it — `parseFloat` on it returns `NaN`.
+- **`minimum` was a `number` on an integer and a `string` on a number**, because
+  a number's bound is a `Fraction` and an integer's is an `int`. Two kinds
+  declaring one facet name is one member typed as the union, so the contract
+  read `string | number` and a consumer had to ask which kind it was holding.
+  It is one type now, for a reason the spelling was hiding — § 11.4a.
 - **Three keys were missing from the first generated file.** `shape()` has two
   `for field in (...)` loops and both call the variable `field`; a last-wins
   mapping kept only the second, dropping `display_name`, `description` and

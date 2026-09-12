@@ -47,7 +47,7 @@
     ]
   },
   "types": {
-    "api.raml": {
+    "sample/api.raml": {
       "Money": {
         "id": "pyraml://id#/declarations/types/Money",
         "name": "Money",
@@ -64,7 +64,7 @@
               "type": "number",
               "type_expr": "number",
               "minimum": "0",
-              "multiple_of": "1/100"
+              "multiple_of": "0.01"
             }
           },
           "currency": {
@@ -327,8 +327,8 @@
               "type": "integer",
               "description": "Stars, one to five.",
               "type_expr": "integer",
-              "maximum": 5,
-              "minimum": 1
+              "maximum": "5",
+              "minimum": "1"
             }
           },
           "body": {
@@ -626,7 +626,7 @@
           "address": {
             "required": true,
             "type": {
-              "$ref": "pyraml://id/common.raml#/declarations/types/Address"
+              "$ref": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Address"
             }
           },
           "promisedFor": {
@@ -636,6 +636,12 @@
               "name": "promisedFor",
               "type": "datetime",
               "type_expr": "datetime"
+            }
+          },
+          "parcel": {
+            "required": false,
+            "type": {
+              "$ref": "pyraml://id/shared%2Fmeasures.raml#/declarations/types/Parcel"
             }
           }
         }
@@ -845,7 +851,7 @@
                     "type": "number",
                     "description": "The amount due, in the currency of the account.",
                     "minimum": "0",
-                    "multiple_of": "1/100"
+                    "multiple_of": "0.01"
                   }
                 },
                 "paid": {
@@ -920,7 +926,7 @@
                 "type": "number",
                 "description": "The amount due, in the currency of the account.",
                 "minimum": "0",
-                "multiple_of": "1/100"
+                "multiple_of": "0.01"
               }
             },
             "paid": {
@@ -968,9 +974,9 @@
         }
       }
     },
-    "common.raml": {
+    "sample/common.raml": {
       "Address": {
-        "id": "pyraml://id/common.raml#/declarations/types/Address",
+        "id": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Address",
         "name": "Address",
         "type": "object",
         "display_name": "A postal address",
@@ -980,7 +986,7 @@
           "line1": {
             "required": true,
             "type": {
-              "id": "pyraml://id/common.raml#/declarations/types/Address/property/line1/schema",
+              "id": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Address/property/line1/schema",
               "name": "line1",
               "type": "string",
               "type_expr": "string"
@@ -989,7 +995,7 @@
           "line2": {
             "required": false,
             "type": {
-              "id": "pyraml://id/common.raml#/declarations/types/Address/property/line2/schema",
+              "id": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Address/property/line2/schema",
               "name": "line2?",
               "type": "string",
               "type_expr": "string"
@@ -998,7 +1004,7 @@
           "city": {
             "required": true,
             "type": {
-              "id": "pyraml://id/common.raml#/declarations/types/Address/property/city/schema",
+              "id": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Address/property/city/schema",
               "name": "city",
               "type": "string",
               "type_expr": "string"
@@ -1007,7 +1013,7 @@
           "postcode": {
             "required": true,
             "type": {
-              "id": "pyraml://id/common.raml#/declarations/types/Address/property/postcode/schema",
+              "id": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Address/property/postcode/schema",
               "name": "postcode",
               "type": "string",
               "type_expr": "string",
@@ -1017,7 +1023,7 @@
           "country": {
             "required": true,
             "type": {
-              "id": "pyraml://id/common.raml#/declarations/types/Address/property/country/schema",
+              "id": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Address/property/country/schema",
               "name": "country",
               "type": "string",
               "description": "An ISO 3166-1 alpha-2 code.",
@@ -1029,7 +1035,7 @@
         }
       },
       "Page": {
-        "id": "pyraml://id/common.raml#/declarations/types/Page",
+        "id": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Page",
         "name": "Page",
         "type": "object",
         "display_name": "One page of a collection",
@@ -1039,7 +1045,7 @@
           "total": {
             "required": true,
             "type": {
-              "id": "pyraml://id/common.raml#/declarations/types/Page/property/total/schema",
+              "id": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Page/property/total/schema",
               "name": "total",
               "type": "integer",
               "type_expr": "integer"
@@ -1048,7 +1054,7 @@
           "offset": {
             "required": true,
             "type": {
-              "id": "pyraml://id/common.raml#/declarations/types/Page/property/offset/schema",
+              "id": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Page/property/offset/schema",
               "name": "offset",
               "type": "integer",
               "type_expr": "integer"
@@ -1057,9 +1063,66 @@
           "limit": {
             "required": true,
             "type": {
-              "id": "pyraml://id/common.raml#/declarations/types/Page/property/limit/schema",
+              "id": "pyraml://id/sample%2Fcommon.raml#/declarations/types/Page/property/limit/schema",
               "name": "limit",
               "type": "integer",
+              "type_expr": "integer"
+            }
+          }
+        }
+      }
+    },
+    "shared/measures.raml": {
+      "Grams": {
+        "id": "pyraml://id/shared%2Fmeasures.raml#/declarations/types/Grams",
+        "name": "Grams",
+        "type": "integer",
+        "display_name": "A weight in grams",
+        "description": "Whole grams. Nothing here is sold by fractions of one.",
+        "example": 9223372036854775807,
+        "type_expr": "integer",
+        "maximum": "9223372036854775807",
+        "minimum": "1"
+      },
+      "Tolerance": {
+        "id": "pyraml://id/shared%2Fmeasures.raml#/declarations/types/Tolerance",
+        "name": "Tolerance",
+        "type": "number",
+        "display_name": "A measurement tolerance",
+        "description": "The bounds a scale is allowed to be out by, written at the limits of a\n64-bit float because that is where a reader finds out whether the\ndocumentation survived the trip.\n",
+        "type_expr": "number",
+        "maximum": "1.7976931348623157E+308",
+        "minimum": "2.2250738585072014E-308",
+        "multiple_of": "0.000001"
+      },
+      "Parcel": {
+        "id": "pyraml://id/shared%2Fmeasures.raml#/declarations/types/Parcel",
+        "name": "Parcel",
+        "type": "object",
+        "display_name": "A parcel",
+        "description": "What a delivery is packed in.",
+        "type_expr": "object",
+        "properties": {
+          "weight": {
+            "required": true,
+            "type": {
+              "$ref": "pyraml://id/shared%2Fmeasures.raml#/declarations/types/Grams"
+            }
+          },
+          "tolerance": {
+            "required": false,
+            "type": {
+              "$ref": "pyraml://id/shared%2Fmeasures.raml#/declarations/types/Tolerance"
+            }
+          },
+          "trackingNumber": {
+            "required": true,
+            "type": {
+              "id": "pyraml://id/shared%2Fmeasures.raml#/declarations/types/Parcel/property/trackingNumber/schema",
+              "name": "trackingNumber",
+              "type": "integer",
+              "description": "The carrier's own identifier, which is a signed 64-bit integer.",
+              "example": 9223372036854775806,
               "type_expr": "integer"
             }
           }
@@ -1068,7 +1131,7 @@
     }
   },
   "annotation_types": {
-    "api.raml": {
+    "sample/api.raml": {
       "deprecated": {
         "id": "pyraml://id#/declarations/annotations/deprecated",
         "name": "deprecated",
@@ -1097,9 +1160,9 @@
         }
       }
     },
-    "common.raml": {
+    "sample/common.raml": {
       "internal": {
-        "id": "pyraml://id/common.raml#/declarations/annotations/internal",
+        "id": "pyraml://id/sample%2Fcommon.raml#/declarations/annotations/internal",
         "name": "internal",
         "type": "nil",
         "description": "Marks something that is not part of the public contract.",
@@ -1112,7 +1175,7 @@
     }
   },
   "security_schemes": {
-    "api.raml": {
+    "sample/api.raml": {
       "oauth2": {
         "id": "pyraml://id#/declarations/securitySchemes/oauth2",
         "name": "oauth2",
@@ -1725,7 +1788,7 @@
                 "type": "integer",
                 "default": 20,
                 "type_expr": "integer",
-                "maximum": 100
+                "maximum": "100"
               }
             }
           }
@@ -2269,7 +2332,7 @@
           "annotations": [
             {
               "name": "common.internal",
-              "type": "pyraml://id/common.raml#/declarations/annotations/internal",
+              "type": "pyraml://id/sample%2Fcommon.raml#/declarations/annotations/internal",
               "value": null
             }
           ],
@@ -2448,7 +2511,7 @@
     {
       "name": "common.internal",
       "target": "Method",
-      "type": "pyraml://id/common.raml#/declarations/annotations/internal",
+      "type": "pyraml://id/sample%2Fcommon.raml#/declarations/annotations/internal",
       "value": null
     }
   ]

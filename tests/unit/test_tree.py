@@ -343,3 +343,146 @@ class TestAnAnnotationIsRecordedWhereItWasApplied:
         graph = build_graph(raml)
         dangling = [a for _, a in references(build_tree(raml)) if a not in graph.nodes]
         assert not dangling, dangling
+
+
+NUMBERS = """#%RAML 1.0
+title: Numbers
+types:
+  Limits:
+    properties:
+      atInt64:
+        type: integer
+        minimum: -9223372036854775808
+        maximum: 9223372036854775807
+      atFloat64:
+        type: number
+        minimum: 2.2250738585072014e-308
+        maximum: 1.7976931348623157e308
+        multipleOf: 0.1
+      ordinary:
+        type: number
+        minimum: 0
+        maximum: 100
+        multipleOf: 0.01
+      counted:
+        type: string
+        minLength: 1
+        maxLength: 200
+"""
+
+
+class TestABoundSurvivesTheTripToAConsumer:
+    """docs/16 § 11.4a: a bound is an exact decimal string, on every kind.
+
+    Both halves matter and neither is the other. **Exact**, because JSON's
+    number is a double in every consumer that matters, so `9223372036854775807`
+    written as one comes back as ...808 — the parser refuses to pass a number
+    through `float` and then handed it to one at the last step. **Decimal**,
+    because the ratio form that was exact was also unreadable: an integer-valued
+    float has an integer ratio, so `1.7976931348623157e308` reached the tree as
+    309 digits, 292 of them zeros nobody wrote.
+    """
+
+    @pytest.fixture
+    def limits(self, workspace):
+        root = workspace({'api.raml': NUMBERS})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        return build_tree(raml)['types']['api.raml']['Limits']['properties']
+
+    def bound(self, limits, name, facet):
+        return limits[name]['type'][facet]
+
+    def test_an_integer_bound_past_a_double_keeps_every_digit(self, limits):
+        assert self.bound(limits, 'atInt64', 'maximum') == '9223372036854775807'
+        assert self.bound(limits, 'atInt64', 'minimum') == '-9223372036854775808'
+
+    def test_a_float_bound_is_written_the_way_its_author_wrote_it(self, limits):
+        assert self.bound(limits, 'atFloat64', 'maximum') == '1.7976931348623157E+308'
+        assert self.bound(limits, 'atFloat64', 'minimum') == '2.2250738585072014E-308'
+
+    def test_an_ordinary_bound_is_a_plain_decimal(self, limits):
+        # Not `1E+2`. Scientific notation is for the case where the plain form
+        # is unreadable, and `100` is not that case.
+        assert self.bound(limits, 'ordinary', 'maximum') == '100'
+        assert self.bound(limits, 'ordinary', 'minimum') == '0'
+        assert self.bound(limits, 'atFloat64', 'multiple_of') == '0.1'
+        assert self.bound(limits, 'ordinary', 'multiple_of') == '0.01'
+
+    def test_a_count_stays_a_number(self, limits):
+        # The distinction is what the facet *means*, not how big it is: a count
+        # is bounded by what fits in memory, so a consumer never has to ask
+        # which form arrived this time.
+        assert self.bound(limits, 'counted', 'min_length') == 1
+        assert self.bound(limits, 'counted', 'max_length') == 200
+
+
+#: An API whose shared library sits beside it rather than beneath it, which is
+#: what a project with more than one API does. Reachable only with a workspace
+#: root wide enough to hold both, which is what `--workspace-root` is for.
+SHARED = {
+    'apis/store/api.raml': """#%RAML 1.0
+title: Store
+uses:
+  shared: !include ../../shared/money.raml
+types:
+  Order:
+    properties:
+      total: shared.Money
+/orders:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: Order
+""",
+    'shared/money.raml': """#%RAML 1.0 Library
+types:
+  Money:
+    properties:
+      amount: number
+""",
+}
+
+
+class TestAPathIsRelativeToTheWorkspaceRoot:
+    """docs/16 § 3: no absolute filesystem path enters a view.
+
+    The rule held for a library *beneath* the entry document and nowhere else,
+    because it was a prefix strip against the entry's own directory. A sibling
+    shares no prefix with it, so every declaration in the shared library kept
+    the whole `file:///C:/…/shared/money.raml` — as its key in `types`, and
+    inside the IRI of everything it declared. A consumer building a URL out of
+    either put the producing machine's filesystem in an address bar.
+
+    The workspace root is the right anchor and not merely a wider one: it is the
+    boundary `SafeFileLoader` enforces, so every file a parse can read is at or
+    beneath it and no path a view prints ever has to ascend.
+    """
+
+    @pytest.fixture
+    def tree(self, workspace):
+        root = workspace(SHARED)
+        raml = parse_from_path(root / 'apis' / 'store' / 'api.raml', ParseOptions(unwrap=True, workspace_root=root))
+        return build_tree(raml)
+
+    def test_the_library_is_keyed_by_its_path_under_the_root(self, tree):
+        assert sorted(tree['types']) == ['apis/store/api.raml', 'shared/money.raml']
+
+    def test_no_address_carries_a_filesystem_path(self, tree):
+        leaked = [address for _, address in references(tree) if 'file%3A' in address or 'file:' in address]
+        assert not leaked, leaked
+
+    def test_the_reference_into_the_library_resolves(self, tree):
+        raml = tree['types']['apis/store/api.raml']['Order']['properties']['total']['type']
+        declared = tree['types']['shared/money.raml']['Money']
+        assert raml['$ref'] == declared['id']
+
+    def test_a_relative_workspace_root_is_resolved_before_it_is_named(self, workspace, monkeypatch):
+        # `path_to_file_uri` has nothing to resolve a relative path against, so
+        # `-w apis` named `file:///apis` while the loader confined reads to the
+        # absolute one. The two disagreed and only the loader was right.
+        root = workspace(SHARED)
+        monkeypatch.chdir(root)
+        raml = parse_from_path('apis/store/api.raml', ParseOptions(unwrap=True, workspace_root='.'))
+        assert list(build_tree(raml)['types']) == ['apis/store/api.raml', 'shared/money.raml']

@@ -29,10 +29,10 @@ import {
   type Document,
   type Shape,
 } from './model';
-import { RATIO_FACETS, rationalOf, showRatio } from './rational';
+import { parse, stringify } from './numbers';
 
 const source = process.argv[2] ?? 'public/api.json';
-const document = JSON.parse(readFileSync(source, 'utf-8')) as Document;
+const document = parse(readFileSync(source, 'utf-8')) as Document;
 const index = new Index(document);
 
 /**
@@ -279,60 +279,91 @@ if (!renderMarkdown('a *list*:\n\n- one\n').includes('<li>')) {
 process.stdout.write(`${HOSTILE.length} hostile descriptions checked\n`);
 
 /*
- * The exact ratios, read back as the decimals they were written as.
+ * A number the page shows is the number the document carried.
  *
- * `Number(n) / Number(d)` would pass the first three of these and is the one
- * line that puts the value back through the float the parser spent its effort
- * avoiding -- `11/10` is the case CLAUDE.md names, where `multipleOf: 1.1` must
- * accept `2.2`.
+ * Two halves, because the failure has two causes and either one alone is a
+ * document that lies about the API it describes.
+ *
+ * **A bound** is an exact decimal string the emitter wrote, so reading it needs
+ * nothing -- but it has to *be* one. A bound that arrives as a JSON number has
+ * already been through a double by the time anything here sees it, and
+ * `maximum: 9223372036854775807` reads ...808 with no sign that it was ever
+ * anything else.
  */
-const RATIOS: [string, string][] = [
-  ['1/100', '0.01'],
-  ['11/10', '1.1'],
-  ['5/2', '2.5'],
-  ['7', '7'],
-  ['0', '0'],
-  ['-3/4', '-0.75'],
-  ['1/1024', '0.0009765625'],
-  // Beyond a double's 53 bits in both directions.
-  ['1/10000000000000000000000', '0.0000000000000000000001'],
-  ['123456789012345678901/100', '1234567890123456789.01'],
-  // Not a terminating decimal, so it stays a ratio rather than becoming a
-  // rounded one. Unreachable from a RAML scalar, and a lie if it appeared.
-  ['1/3', '1/3'],
+/** Long enough for every decimal a person writes, short enough to fit a line. */
+const LONGEST_BOUND = 40;
+const BOUNDS: ReadonlySet<string> = new Set(['minimum', 'maximum', 'multipleOf']);
+
+let bounds = 0;
+walk(document, (shape) => {
+  for (const [name, value] of facetsOf(shape)) {
+    if (!BOUNDS.has(name)) continue;
+    bounds += 1;
+    if (typeof value !== 'string' || !/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(value)) {
+      process.stderr.write(`BOUND  ${shape.name ?? shape.id}: ${name} is ${JSON.stringify(value)}, not an exact decimal\n`);
+      failed += 1;
+    }
+    // The explosion the ratio form produced: `1.7976931348623157e308` is an
+    // integer, so its exact ratio is 309 digits, 292 of them zeros nobody wrote.
+    if (typeof value === 'string' && value.length > LONGEST_BOUND) {
+      process.stderr.write(`BOUND  ${shape.name ?? shape.id}: ${name} is ${value.length} characters long\n`);
+      failed += 1;
+    }
+  }
+});
+if (bounds === 0) {
+  process.stderr.write('no bound in the document; the check above is vacuous\n');
+  failed += 1;
+}
+
+/*
+ * **Example data** is the author's payload and stays a JSON number, so an
+ * integer past 2^53 is rounded by `JSON.parse` itself -- before any of this
+ * runs. `numbers.ts` keeps the literal instead; these are the cases that
+ * separate keeping it from rounding it, and `JSON.parse` alone fails the first
+ * four.
+ */
+const LITERALS: [string, string][] = [
+  ['9223372036854775807', '9223372036854775807'],
+  ['-9223372036854775808', '-9223372036854775808'],
+  ['9007199254740993', '9007199254740993'],
+  ['123456789012345678901234567890', '123456789012345678901234567890'],
+  // Inside the safe range, and past it only in the exponent: a double holds
+  // both exactly, so boxing them would be noise.
+  ['9007199254740991', '9007199254740991'],
+  ['1.7976931348623157e+308', '1.7976931348623157e+308'],
+  ['0.1', '0.1'],
+  ['-0', '0'],
+  ['1e-7', '1e-7'],
 ];
-for (const [ratio, expected] of RATIOS) {
-  const shown = showRatio(ratio);
+for (const [literal, expected] of LITERALS) {
+  const shown = stringify(parse(`{"v":${literal}}`) as { v: unknown }).slice('{"v":'.length, -1);
   if (shown !== expected) {
-    process.stderr.write(`RATIO  ${ratio} rendered as ${shown}, expected ${expected}\n`);
+    process.stderr.write(`NUMBER ${literal} came back as ${shown}\n`);
     failed += 1;
   }
 }
 
 /*
- * And that the document really does carry ratios where this claims.
+ * And that `stringify` is `JSON.stringify` everywhere else.
  *
- * `string | number` is what the binding says, and both occur: an integer bound
- * arrives as a JSON number and a `Fraction` as a string. Only the strings are
- * this module's business -- but if none of them were strings any more, the
- * conversion above would be dead code passing its own tests, so one has to be.
+ * Against the document rather than against examples written here: it is the
+ * only input with every shape of value in it, and an agreement checked on
+ * three hand-written objects agrees with whatever those three happen to be.
+ * Compared after a round trip through `JSON.parse`, which is the value with no
+ * boxed literals in it.
  */
-let ratios = 0;
-walk(document, (shape) => {
-  for (const [name, value] of facetsOf(shape)) {
-    if (!RATIO_FACETS.has(name) || typeof value !== 'string') continue;
-    ratios += 1;
-    if (rationalOf(value) === null) {
-      process.stderr.write(`RATIO  ${shape.name ?? shape.id}: ${name} is ${JSON.stringify(value)}, not a ratio\n`);
-      failed += 1;
-    }
+const plain = JSON.parse(readFileSync(source, 'utf-8')) as unknown;
+for (const indent of [0, 2]) {
+  const mine = stringify(plain, indent);
+  const theirs = JSON.stringify(plain, null, indent);
+  if (mine !== theirs) {
+    const at = [...mine].findIndex((character, position) => character !== theirs[position]);
+    process.stderr.write(`STRING indent ${indent} differs at ${at}: ${mine.slice(at, at + 60)}\n`);
+    failed += 1;
   }
-});
-if (ratios === 0) {
-  process.stderr.write('no facet in the document arrived as a ratio; the conversion is untested against real output\n');
-  failed += 1;
 }
-process.stdout.write(`${RATIOS.length} ratios converted, ${ratios} in the document\n`);
+process.stdout.write(`${bounds} bounds exact, ${LITERALS.length} literals kept\n`);
 
 /*
  * `facetsOf` is a deny-list, so a key the tree gains is a facet chip by default.

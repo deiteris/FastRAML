@@ -7,6 +7,7 @@ import { Responses } from '../components/Responses';
 import { ShapeView } from '../components/Shape';
 import { Usages } from '../components/Usages';
 import { Prose } from '../components/markdown';
+import { oneLine } from '../components/json';
 import { Chip, Empty, KeyValues, Section } from '../components/ui';
 import { type Json, humanise } from '../model';
 import type { Props } from './props';
@@ -64,11 +65,10 @@ function Setting({ value }: { value: Json }) {
     return (
       <>
         {value.map((item, at) => (
-          <Chip key={at}>{typeof item === 'string' ? item : JSON.stringify(item)}</Chip>
+          <Chip key={at}>{oneLine(item)}</Chip>
         ))}
       </>
     );
   }
-  if (value !== null && typeof value === 'object') return <code>{JSON.stringify(value)}</code>;
-  return <code>{String(value)}</code>;
+  return <code>{oneLine(value)}</code>;
 }

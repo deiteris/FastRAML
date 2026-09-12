@@ -36,7 +36,8 @@ from pyraml.parser.fragments import DataTypeFragment
 from pyraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet, copyable_slots
 from pyraml.types.examples import Example, Examples
 from pyraml.types.jsonschema_ import JsonShape
-from pyraml.views.walk import DEFAULT_BASE, Addresses, address
+from pyraml.uris import relative_to
+from pyraml.views.walk import DEFAULT_BASE, Addresses, address, workspace_of
 from pyraml.yamlnode import Node, NodeKind
 
 if TYPE_CHECKING:
@@ -84,6 +85,24 @@ _SKIP = frozenset(
         'validator',
     }
 )
+
+#: Facets whose value is a *bound on a number* rather than a count of things.
+#:
+#: Emitted as an exact decimal string, always. JSON's number is arbitrary
+#: precision on paper and a double in every consumer that matters, so a bound
+#: written as a JSON number is handed to the float this parser spends its whole
+#: effort avoiding: `maximum: 9223372036854775807` came back out of `JSON.parse`
+#: as ...808, and a document said something its author did not write.
+#:
+#: A count -- `minLength`, `maxItems` -- is bounded by what fits in memory and
+#: stays a number. The distinction is the facet's meaning, not its magnitude, so
+#: a consumer never has to ask which form arrived this time.
+_EXACT = frozenset({'maximum', 'minimum', 'multiple_of'})
+
+#: Where a plain decimal stops being readable and scientific notation is worth
+#: the exponent. JS switches its own `toString` to exponential at 1e21, so this
+#: is a boundary a reader has already met.
+_PLAIN_DIGITS = 21
 
 
 def build_tree(raml: Raml, *, addresses: Addresses | None = None, base: str = DEFAULT_BASE) -> Json:
@@ -162,17 +181,69 @@ def positions_of(raml: Raml) -> Json:
 
 
 def _relative(raml: Raml, uri: str) -> str:
-    """A URI as a path relative to the entry point's directory.
-
-    Absolute paths differ per machine and per temporary directory, so a view
-    that kept them would be unreadable and unrepeatable.
-    """
-    root = raml.location.rsplit('/', 1)[0] + '/'
-    return uri.removeprefix(root)
+    """A URI as a path relative to the workspace root."""
+    return relative_to(uri, workspace_of(raml))
 
 
 def _position(position: Position | None) -> Json:
     return None if position is None else [position.line, position.column]
+
+
+def _exact(value: object) -> Json:
+    """A numeric bound as the shortest decimal string exactly equal to it.
+
+    Every numeric scalar RAML can carry is written in decimal, so every bound
+    built from one has a terminating decimal expansion and this is lossless. A
+    value with none keeps the ratio form, which no document can produce and
+    which is left honest rather than rounded.
+
+    The ratio was all there was, and it did a reader no favours where the bound
+    was large: `1.7976931348623157e308` is an integer, so its exact ratio is
+    that integer, and it reached the tree as 309 digits -- 292 of them zeros the
+    author never wrote. Scientific notation only where it is materially shorter,
+    so `100` arrives as `100` and not as `1E+2`.
+    """
+    if not isinstance(value, (Fraction, int)):
+        return None
+    number = Fraction(value)
+    denominator = number.denominator
+    twos = fives = 0
+    while denominator % 2 == 0:
+        denominator //= 2
+        twos += 1
+    while denominator % 5 == 0:
+        denominator //= 5
+        fives += 1
+    if denominator != 1:
+        return str(number)
+    scale = max(twos, fives)
+    digits = number.numerator * 2 ** (scale - twos) * 5 ** (scale - fives)
+    # The smallest exponent that is still exact, so a bound arrives neither as
+    # `1000E-1` nor as 309 digits ending in 292 zeros.
+    while digits and digits % 10 == 0:
+        digits //= 10
+        scale -= 1
+    plain = _as_plain(digits, scale)
+    scientific = _as_scientific(digits, scale)
+    return scientific if len(plain) > _PLAIN_DIGITS and len(scientific) < len(plain) else plain
+
+
+def _as_plain(digits: int, scale: int) -> str:
+    """`digits * 10**-scale` written out, with no exponent."""
+    sign = '-' if digits < 0 else ''
+    text = str(abs(digits))
+    if scale <= 0:
+        return f'{sign}{text}{"0" * -scale}'
+    padded = text.rjust(scale + 1, '0')
+    return f'{sign}{padded[:-scale]}.{padded[-scale:]}'
+
+
+def _as_scientific(digits: int, scale: int) -> str:
+    """The same value as one digit, a point, the rest, and an exponent."""
+    sign = '-' if digits < 0 else ''
+    text = str(abs(digits))
+    mantissa = text if len(text) == 1 else f'{text[0]}.{text[1:]}'
+    return f'{sign}{mantissa}E{len(text) - 1 - scale:+d}'
 
 
 class _Projector:
@@ -444,6 +515,13 @@ class _Projector:
                 continue
             value = getattr(shape, name, None)
             if value is None or value in ([], {}):
+                continue
+            if name in _EXACT:
+                # A bound is emitted from its name, not from its Python type:
+                # a number's is a `Fraction` and an integer's is an `int`, and
+                # a consumer should not have to know which kind it is holding
+                # to know what it is reading. See `_EXACT`.
+                out[name] = _exact(value.value if isinstance(value, ScalarFacet) else value)
                 continue
             if name in _BACK_POINTERS and isinstance(value, BaseShape):
                 # A back-pointer names what repeats; it is not containment. The

@@ -1214,6 +1214,19 @@ already points at it by address — the rule § 11.3 applies to a supertype.
 Repeating a scheme at every use site would be the duplication that rule exists
 to prevent.
 
+**A scheme is projected through the link it holds, under the name that holds
+it.** `oauth2: !include scheme.raml` decodes to a definition carrying a link
+and nothing else — no `type`, no `settings`, no `describedBy` — and the
+SecurityScheme fragment it points at is one scheme rather than a
+`securitySchemes:` map, so the section built by walking the fragments never
+reaches it. The content therefore comes through `resolved()`, which is the
+security-scheme form of the rule § 2.4 states for a type alias: a traversal
+that stops at the holder reports the wrong answer rather than an error, and
+here the wrong answer is an empty scheme beside a use site that says it is
+bound, because P5 applies what `resolved()` gives. The **name and the address
+stay the holder's**: `oauth2` is what `securedBy:` writes and what a use site's
+`declaration` points at, while the link target is named for its file.
+
 **An annotation is recorded where it was applied, with its value.** The
 document-wide `annotations` list gives `target: "Resource"` — a *kind*, not an
 address — so a reader could see that something was deprecated and not what.

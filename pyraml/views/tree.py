@@ -327,17 +327,28 @@ class _Projector:
         and scopes on one side, and the headers and query parameters a request
         must carry on the other. Without them a reader knows a scheme is
         required and nothing about how to satisfy it.
+
+        **Identity from the declaration, content through `resolved()`.**
+        `oauth2: !include scheme.raml` decodes to a definition holding a link
+        and nothing else — no type, no settings, no `describedBy` — and the
+        SecurityScheme fragment it points at is not a `securitySchemes:` map, so
+        nothing above reaches it. Read directly, the scheme arrives empty while
+        every use site says it is bound, because P5 applies what `resolved()`
+        gives. The name and the address stay the declaration's: `included` is
+        what `securedBy:` writes and what the use site's `declaration` points
+        at, and the link target is named for its file.
         """
+        declared = definition.resolved()
         out: dict[str, Json] = {
             'id': self.at(definition.id),
             'name': definition.name,
-            'type': definition.type,
+            'type': declared.type,
         }
         for field in ('display_name', 'description'):
-            value = getattr(definition, field, None)
+            value = getattr(declared, field, None)
             if value is not None:
                 out[field] = self.value(value, frozenset())
-        settings = definition.settings
+        settings = declared.settings
         if settings is not None:
             # `values` holds the scalars and `lists` the sequences, so both have
             # to be read; either alone drops half of an OAuth 2.0 declaration.
@@ -345,10 +356,10 @@ class _Projector:
             spelled.update({name: [*items] for name, items in settings.lists.items()})
             if spelled:
                 out['settings'] = spelled
-        if definition.described_by is not None:
-            out['described_by'] = self.described(definition.described_by)
-        if definition.annotations:
-            out['annotations'] = self.applied_to(definition.annotations)
+        if declared.described_by is not None:
+            out['described_by'] = self.described(declared.described_by)
+        if declared.annotations:
+            out['annotations'] = self.applied_to(declared.annotations)
         return out
 
     def described(self, described: SecuritySchemeDescription) -> Json:

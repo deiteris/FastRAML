@@ -88,6 +88,10 @@ securitySchemes:
       responses:
         401:
           description: Not authenticated
+  # Declared in a file of its own, and outside the API's directory, so the
+  # scheme a view shows has to come through the link rather than off the
+  # declaration that holds it.
+  machineToken: !include ../shared/machine.raml
   basic:
     type: Basic Authentication
     description: Username and password, for server-to-server callers only.
@@ -447,6 +451,9 @@ securedBy: [oauth2]
   get:
     displayName: List deliveries
     description: Every delivery, newest first.
+    # A use site for the included scheme, so the page that reports it bound and
+    # the page that says how to satisfy it are both exercised.
+    securedBy: [machineToken: { scopes: [read:deliveries] }, oauth2: { scopes: [read:books] }]
     (common.internal):
     queryString: DeliveryQuery
     responses:

@@ -1455,6 +1455,57 @@
           }
         }
       },
+      "machineToken": {
+        "id": "pyraml://id#/declarations/securitySchemes/machineToken",
+        "name": "machineToken",
+        "type": "OAuth 2.0",
+        "display_name": "Machine token",
+        "description": "Two-legged client credentials, for server-to-server callers that have no user\nto send through a browser.\n",
+        "settings": {
+          "accessTokenUri": "https://books.example.com/oauth/token",
+          "authorizationGrants": [
+            "client_credentials"
+          ],
+          "scopes": [
+            "read:books",
+            "read:deliveries"
+          ]
+        },
+        "described_by": {
+          "headers": {
+            "Authorization": {
+              "binding": "header",
+              "required": true,
+              "type": {
+                "id": null,
+                "name": "Authorization",
+                "type": "string",
+                "description": "The word Bearer, a space, then the access token.",
+                "type_expr": "string",
+                "pattern": "^Bearer [A-Za-z0-9._~+/-]+=*$"
+              }
+            }
+          },
+          "query_parameters": {
+            "access_token": {
+              "binding": "query",
+              "required": false,
+              "type": {
+                "id": null,
+                "name": "access_token?",
+                "type": "string",
+                "description": "The same token, for callers that cannot set a header (RFC 6750 \u00a7 2.3).\nPrefer the header: a query string is logged by every proxy in between.\n",
+                "type_expr": "string"
+              }
+            }
+          },
+          "responses": {
+            "401": {
+              "description": "The token was missing, expired, or issued to another client."
+            }
+          }
+        }
+      },
       "basic": {
         "id": "pyraml://id#/declarations/securitySchemes/basic",
         "name": "basic",
@@ -2559,11 +2610,22 @@
           "display_name": "List deliveries",
           "secured_by": [
             {
+              "name": "machineToken",
+              "is_null": false,
+              "bound": true,
+              "declaration": "pyraml://id#/declarations/securitySchemes/machineToken",
+              "scopes": [
+                "read:deliveries"
+              ]
+            },
+            {
               "name": "oauth2",
               "is_null": false,
               "bound": true,
               "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
-              "scopes": null
+              "scopes": [
+                "read:books"
+              ]
             }
           ],
           "annotations": [

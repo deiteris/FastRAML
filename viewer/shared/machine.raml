@@ -1,0 +1,32 @@
+#%RAML 1.0 SecurityScheme
+# A scheme in a file of its own, reached by `!include`. The declaration that
+# includes it holds a link and nothing else, so a view reading the declaration
+# rather than what it links to shows an empty scheme beside a use site that
+# reports it bound (docs/16 § 11.4).
+type: OAuth 2.0
+displayName: Machine token
+description: |
+  Two-legged client credentials, for server-to-server callers that have no user
+  to send through a browser.
+settings:
+  # No `authorizationUri`: client credentials has no authorization endpoint,
+  # because there is no resource owner to redirect. The caller presents its own
+  # credentials to the token endpoint and gets a token back.
+  accessTokenUri: https://books.example.com/oauth/token
+  authorizationGrants: [client_credentials]
+  scopes: [read:books, read:deliveries]
+describedBy:
+  headers:
+    Authorization:
+      description: The word Bearer, a space, then the access token.
+      type: string
+      pattern: ^Bearer [A-Za-z0-9._~+/-]+=*$
+  queryParameters:
+    access_token?:
+      description: |
+        The same token, for callers that cannot set a header (RFC 6750 § 2.3).
+        Prefer the header: a query string is logged by every proxy in between.
+      type: string
+  responses:
+    401:
+      description: The token was missing, expired, or issued to another client.

@@ -568,3 +568,85 @@ class TestASchemaArrivesSelfContained:
     def test_nothing_names_a_file(self, schema):
         text = json.dumps(schema)
         assert 'money.json' not in text
+
+
+INCLUDED_SCHEME = {
+    'api.raml': """#%RAML 1.0
+title: Schemes
+securitySchemes:
+  inline:
+    type: OAuth 2.0
+    description: Declared in place.
+    settings:
+      authorizationUri: https://example.com/authorize
+      accessTokenUri: https://example.com/token
+      authorizationGrants: [authorization_code]
+      scopes: [read, write]
+  included: !include scheme.raml
+/things:
+  get:
+    securedBy: [included]
+""",
+    'scheme.raml': """#%RAML 1.0 SecurityScheme
+type: OAuth 2.0
+description: Declared in a file of its own.
+describedBy:
+  headers:
+    Authorization:
+      description: Bearer token
+settings:
+  authorizationUri: https://example.com/authorize
+  accessTokenUri: https://example.com/token
+  authorizationGrants: [authorization_code]
+  scopes: [read, write]
+""",
+}
+
+
+class TestAnIncludedSchemeSaysWhatItIs:
+    """docs/16 § 11.4: a scheme is projected through the link it holds.
+
+    `included: !include scheme.raml` decodes to a definition carrying a link and
+    nothing else, and the SecurityScheme fragment it points at is one scheme
+    rather than a `securitySchemes:` map — so the section built from the
+    fragments never reaches it. Read directly, the scheme arrives with an empty
+    `type` and no settings while every use site reports it bound, because P5
+    applies what `resolved()` gives. A reader is told a request must be
+    authenticated and nothing about how.
+    """
+
+    @pytest.fixture
+    def schemes(self, workspace):
+        root = workspace(INCLUDED_SCHEME)
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, validate=True, workspace_root=root))
+        return build_tree(raml)['security_schemes']['api.raml']
+
+    def test_the_type_is_the_one_the_fragment_declares(self, schemes):
+        assert schemes['included']['type'] == 'OAuth 2.0'
+
+    def test_the_settings_are_the_ones_the_fragment_declares(self, schemes):
+        assert schemes['included']['settings']['scopes'] == ['read', 'write']
+
+    def test_the_description_is_the_one_the_fragment_declares(self, schemes):
+        assert schemes['included']['description'] == 'Declared in a file of its own.'
+
+    def test_described_by_arrives_too(self, schemes):
+        assert 'Authorization' in schemes['included']['described_by']['headers']
+
+    def test_it_is_named_for_the_declaration_and_not_for_the_file(self, schemes):
+        # `securedBy:` writes `included`; the link target is named `scheme.raml`.
+        assert schemes['included']['name'] == 'included'
+
+    def test_it_says_what_an_equivalent_inline_declaration_says(self, schemes):
+        said = {name: dict(scheme) for name, scheme in schemes.items()}
+        for scheme in said.values():
+            del scheme['id'], scheme['name'], scheme['description']
+            scheme.pop('described_by', None)
+        assert said['included'] == said['inline']
+
+    def test_the_use_site_points_at_the_declaration(self, workspace):
+        root = workspace(INCLUDED_SCHEME)
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, validate=True, workspace_root=root))
+        tree = build_tree(raml)
+        secured = tree['endpoints']['/things']['operations']['get']['secured_by'][0]
+        assert secured['declaration'] == tree['security_schemes']['api.raml']['included']['id']

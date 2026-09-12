@@ -50,6 +50,7 @@ const PAGES = [
   ['operation-search', '/endpoints/%2Fsearch/get'],
   ['operation-responses', '/endpoints/%2Fshelves/post'],
   ['security', '/security/sample%2Fapi.raml/oauth2'],
+  ['security-included', '/security/sample%2Fapi.raml/machineToken'],
   ['annotation-type', '/annotation-types/sample%2Fapi.raml/deprecated'],
 ];
 

@@ -44,6 +44,15 @@
         "title": "Errors",
         "content": "Failures use the status code and nothing else \u2014 there is no error\nenvelope to parse.\n\n* `400` \u2014 the body did not match the schema on this page.\n* `401` \u2014 no token, or one that has expired.\n* `422` \u2014 the body was well-formed but matched no member of a union.\n* `500` \u2014 ours. Retry with backoff; it is safe for every method here\n  except `POST /books`, which is not idempotent.\n"
       }
+    ],
+    "secured_by": [
+      {
+        "name": "oauth2",
+        "is_null": false,
+        "bound": true,
+        "declaration": "pyraml://id#/declarations/securitySchemes/oauth2",
+        "scopes": null
+      }
     ]
   },
   "types": {
@@ -87,6 +96,26 @@
         "id": "pyraml://id#/declarations/types/Entity",
         "name": "Entity",
         "type": "object",
+        "declared_facets": {
+          "stewardedBy": {
+            "required": true,
+            "type": {
+              "id": null,
+              "name": "stewardedBy",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "retiredAfter": {
+            "required": false,
+            "type": {
+              "id": null,
+              "name": "retiredAfter?",
+              "type": "date-only",
+              "type_expr": "date-only"
+            }
+          }
+        },
         "type_expr": "object",
         "properties": {
           "id": {
@@ -115,7 +144,9 @@
         "type": "string",
         "display_name": "ISBN-13",
         "description": "The thirteen-digit ISBN, without separators.",
-        "example": "9780441013593",
+        "example": {
+          "value": "9780441013593"
+        },
         "type_expr": "string",
         "max_length": 13,
         "min_length": 13,
@@ -128,13 +159,15 @@
         "display_name": "A Book",
         "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
         "example": {
-          "id": "b-1",
-          "createdAt": "2024-01-01T00:00:00Z",
-          "title": "Dune",
-          "isbn": "9780441013593",
-          "price": {
-            "amount": 9.99,
-            "currency": "USD"
+          "value": {
+            "id": "b-1",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "title": "Dune",
+            "isbn": "9780441013593",
+            "price": {
+              "amount": 9.99,
+              "currency": "USD"
+            }
           }
         },
         "inherits": [
@@ -142,6 +175,9 @@
             "$ref": "pyraml://id#/declarations/types/Entity"
           }
         ],
+        "custom_facets": {
+          "stewardedBy": "catalogue-team"
+        },
         "annotations": [
           {
             "name": "deprecated",
@@ -159,7 +195,9 @@
               "type": "string",
               "display_name": "Title",
               "description": "The book's title as printed on the cover.",
-              "example": "Dune",
+              "example": {
+                "value": "Dune"
+              },
               "type_expr": "string",
               "max_length": 200,
               "min_length": 1
@@ -188,7 +226,9 @@
                 "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                 "name": "items",
                 "type": "string",
-                "example": "science-fiction",
+                "example": {
+                  "value": "science-fiction"
+                },
                 "type_expr": "string",
                 "max_length": 24,
                 "min_length": 2,
@@ -210,6 +250,9 @@
                 "name": "Book",
                 "type": "recursive",
                 "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                "custom_facets": {
+                  "stewardedBy": "catalogue-team"
+                },
                 "annotations": [
                   {
                     "name": "deprecated",
@@ -302,19 +345,34 @@
         "description": "One reader's verdict on a book.",
         "examples": {
           "terse": {
-            "rating": 5,
-            "author": {
-              "name": "Ada",
-              "verified": true
+            "value": {
+              "rating": 5,
+              "author": {
+                "name": "Ada",
+                "verified": true
+              }
             }
           },
           "full": {
-            "rating": 3,
-            "body": "Uneven, but the middle third is superb.",
-            "author": {
-              "name": "Grace",
-              "verified": false
-            }
+            "value": {
+              "rating": 3,
+              "body": "Uneven, but the middle third is superb.",
+              "author": {
+                "name": "Grace",
+                "verified": false
+              }
+            },
+            "display_name": "A full review",
+            "description": "Everything a review may carry, including the optional body."
+          },
+          "legacy": {
+            "value": {
+              "rating": 3,
+              "author": "Grace"
+            },
+            "display_name": "An older record",
+            "description": "Kept to show what the v1 API used to return.",
+            "strict": false
           }
         },
         "type_expr": "object",
@@ -417,7 +475,9 @@
                 "name": "locator?",
                 "type": "string",
                 "description": "Where the physical copy sits, as one string.",
-                "example": "GB-SHELF-12.3-LEFT/reserve",
+                "example": {
+                  "value": "GB-SHELF-12.3-LEFT/reserve"
+                },
                 "type_expr": "string",
                 "pattern": "^(?:[A-Z]{2}-)?(?:AISLE|BAY|SHELF)-[0-9]{1,3}(?:\\.[0-9]{1,2})?(?:-(?:LEFT|RIGHT|CENTRE))?(?:/[A-Za-z0-9_]{1,16})*$"
               }
@@ -568,7 +628,9 @@
               "name": "since",
               "type": "datetime",
               "description": "Only deliveries promised on or after this instant.",
-              "example": "2024-06-01T00:00:00Z",
+              "example": {
+                "value": "2024-06-01T00:00:00Z"
+              },
               "type_expr": "datetime"
             }
           },
@@ -578,7 +640,9 @@
               "id": "pyraml://id#/declarations/types/DeliveryQuery/property/status/schema",
               "name": "status?",
               "type": "string",
-              "example": "sent",
+              "example": {
+                "value": "sent"
+              },
               "enum": [
                 "pending",
                 "sent",
@@ -594,7 +658,9 @@
               "name": "city?",
               "type": "string",
               "description": "Matched against the address, case-insensitively.",
-              "example": "Bristol",
+              "example": {
+                "value": "Bristol"
+              },
               "type_expr": "string"
             }
           },
@@ -653,8 +719,10 @@
         "display_name": "A barcode",
         "description": "Declared by a JSON Schema written in place.",
         "example": {
-          "symbology": "EAN-13",
-          "code": "9780441013593"
+          "value": {
+            "symbology": "EAN-13",
+            "code": "9780441013593"
+          }
         },
         "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"required\": [\"symbology\", \"code\"],\n  \"properties\": {\n    \"symbology\": { \"type\": \"string\", \"enum\": [\"EAN-13\", \"UPC-A\", \"CODE-128\"] },\n    \"code\": { \"type\": \"string\", \"minLength\": 1 }\n  }\n}\n",
         "json_schema": {
@@ -830,15 +898,17 @@
         "display_name": "An invoice",
         "description": "Declared by an external JSON Schema, not by RAML facets.",
         "example": {
-          "number": "INV-000417",
-          "total": 24.5,
-          "paid": false,
-          "lines": [
-            {
-              "description": "One paperback",
-              "amount": 24.5
-            }
-          ]
+          "value": {
+            "number": "INV-000417",
+            "total": 24.5,
+            "paid": false,
+            "lines": [
+              {
+                "description": "One paperback",
+                "amount": 24.5
+              }
+            ]
+          }
         },
         "inherits": [
           {
@@ -1316,7 +1386,9 @@
         "type": "integer",
         "display_name": "A weight in grams",
         "description": "Whole grams. Nothing here is sold by fractions of one.",
-        "example": 9223372036854775807,
+        "example": {
+          "value": 9223372036854775807
+        },
         "type_expr": "integer",
         "maximum": "9223372036854775807",
         "minimum": "1"
@@ -1359,7 +1431,9 @@
               "name": "trackingNumber",
               "type": "integer",
               "description": "The carrier's own identifier, which is a signed 64-bit integer.",
-              "example": 9223372036854775806,
+              "example": {
+                "value": 9223372036854775806
+              },
               "type_expr": "integer"
             }
           }
@@ -1566,6 +1640,9 @@
                       "$ref": "pyraml://id#/declarations/types/Book"
                     }
                   ],
+                  "custom_facets": {
+                    "stewardedBy": "catalogue-team"
+                  },
                   "type_expr": "Book",
                   "properties": {
                     "title": {
@@ -1576,7 +1653,9 @@
                         "type": "string",
                         "display_name": "Title",
                         "description": "The book's title as printed on the cover.",
-                        "example": "Dune",
+                        "example": {
+                          "value": "Dune"
+                        },
                         "type_expr": "string",
                         "max_length": 200,
                         "min_length": 1
@@ -1605,7 +1684,9 @@
                           "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                           "name": "items",
                           "type": "string",
-                          "example": "science-fiction",
+                          "example": {
+                            "value": "science-fiction"
+                          },
                           "type_expr": "string",
                           "max_length": 24,
                           "min_length": 2,
@@ -1627,6 +1708,9 @@
                           "name": "Book",
                           "type": "recursive",
                           "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                          "custom_facets": {
+                            "stewardedBy": "catalogue-team"
+                          },
                           "annotations": [
                             {
                               "name": "deprecated",
@@ -1747,6 +1831,9 @@
                   "$ref": "pyraml://id#/declarations/types/Book"
                 }
               ],
+              "custom_facets": {
+                "stewardedBy": "catalogue-team"
+              },
               "type_expr": "Book",
               "properties": {
                 "title": {
@@ -1757,7 +1844,9 @@
                     "type": "string",
                     "display_name": "Title",
                     "description": "The book's title as printed on the cover.",
-                    "example": "Dune",
+                    "example": {
+                      "value": "Dune"
+                    },
                     "type_expr": "string",
                     "max_length": 200,
                     "min_length": 1
@@ -1786,7 +1875,9 @@
                       "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                       "name": "items",
                       "type": "string",
-                      "example": "science-fiction",
+                      "example": {
+                        "value": "science-fiction"
+                      },
                       "type_expr": "string",
                       "max_length": 24,
                       "min_length": 2,
@@ -1808,6 +1899,9 @@
                       "name": "Book",
                       "type": "recursive",
                       "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                      "custom_facets": {
+                        "stewardedBy": "catalogue-team"
+                      },
                       "annotations": [
                         {
                           "name": "deprecated",
@@ -1891,6 +1985,9 @@
                   "$ref": "pyraml://id#/declarations/types/Book"
                 }
               ],
+              "custom_facets": {
+                "stewardedBy": "catalogue-team"
+              },
               "type_expr": "Book",
               "properties": {
                 "title": {
@@ -1901,7 +1998,9 @@
                     "type": "string",
                     "display_name": "Title",
                     "description": "The book's title as printed on the cover.",
-                    "example": "Dune",
+                    "example": {
+                      "value": "Dune"
+                    },
                     "type_expr": "string",
                     "max_length": 200,
                     "min_length": 1
@@ -1930,7 +2029,9 @@
                       "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                       "name": "items",
                       "type": "string",
-                      "example": "science-fiction",
+                      "example": {
+                        "value": "science-fiction"
+                      },
                       "type_expr": "string",
                       "max_length": 24,
                       "min_length": 2,
@@ -1952,6 +2053,9 @@
                       "name": "Book",
                       "type": "recursive",
                       "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                      "custom_facets": {
+                        "stewardedBy": "catalogue-team"
+                      },
                       "annotations": [
                         {
                           "name": "deprecated",
@@ -2112,6 +2216,9 @@
                       "$ref": "pyraml://id#/declarations/types/Book"
                     }
                   ],
+                  "custom_facets": {
+                    "stewardedBy": "catalogue-team"
+                  },
                   "type_expr": "Book",
                   "properties": {
                     "title": {
@@ -2122,7 +2229,9 @@
                         "type": "string",
                         "display_name": "Title",
                         "description": "The book's title as printed on the cover.",
-                        "example": "Dune",
+                        "example": {
+                          "value": "Dune"
+                        },
                         "type_expr": "string",
                         "max_length": 200,
                         "min_length": 1
@@ -2151,7 +2260,9 @@
                           "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                           "name": "items",
                           "type": "string",
-                          "example": "science-fiction",
+                          "example": {
+                            "value": "science-fiction"
+                          },
                           "type_expr": "string",
                           "max_length": 24,
                           "min_length": 2,
@@ -2173,6 +2284,9 @@
                           "name": "Book",
                           "type": "recursive",
                           "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                          "custom_facets": {
+                            "stewardedBy": "catalogue-team"
+                          },
                           "annotations": [
                             {
                               "name": "deprecated",
@@ -2256,6 +2370,9 @@
                       "$ref": "pyraml://id#/declarations/types/Book"
                     }
                   ],
+                  "custom_facets": {
+                    "stewardedBy": "catalogue-team"
+                  },
                   "type_expr": "Book",
                   "properties": {
                     "title": {
@@ -2266,7 +2383,9 @@
                         "type": "string",
                         "display_name": "Title",
                         "description": "The book's title as printed on the cover.",
-                        "example": "Dune",
+                        "example": {
+                          "value": "Dune"
+                        },
                         "type_expr": "string",
                         "max_length": 200,
                         "min_length": 1
@@ -2295,7 +2414,9 @@
                           "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                           "name": "items",
                           "type": "string",
-                          "example": "science-fiction",
+                          "example": {
+                            "value": "science-fiction"
+                          },
                           "type_expr": "string",
                           "max_length": 24,
                           "min_length": 2,
@@ -2317,6 +2438,9 @@
                           "name": "Book",
                           "type": "recursive",
                           "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                          "custom_facets": {
+                            "stewardedBy": "catalogue-team"
+                          },
                           "annotations": [
                             {
                               "name": "deprecated",
@@ -2515,7 +2639,9 @@
                           "name": "locator?",
                           "type": "string",
                           "description": "Where the physical copy sits, as one string.",
-                          "example": "GB-SHELF-12.3-LEFT/reserve",
+                          "example": {
+                            "value": "GB-SHELF-12.3-LEFT/reserve"
+                          },
                           "type_expr": "string",
                           "pattern": "^(?:[A-Z]{2}-)?(?:AISLE|BAY|SHELF)-[0-9]{1,3}(?:\\.[0-9]{1,2})?(?:-(?:LEFT|RIGHT|CENTRE))?(?:/[A-Za-z0-9_]{1,16})*$"
                         }
@@ -2742,7 +2868,9 @@
                 "display_name": "Query",
                 "description": "The words to search for. Quoted phrases are matched whole.",
                 "required": true,
-                "example": "\"the dispossessed\" le guin",
+                "example": {
+                  "value": "\"the dispossessed\" le guin"
+                },
                 "inherits": [
                   {
                     "$ref": "pyraml://id#/declarations/types/Search"
@@ -2774,7 +2902,9 @@
                 "type": "string",
                 "description": "A field name, optionally prefixed with `-` to reverse it.",
                 "default": "title",
-                "example": "-price",
+                "example": {
+                  "value": "-price"
+                },
                 "type_expr": "string",
                 "pattern": "^-?(title|isbn|price)$"
               }

@@ -44,8 +44,8 @@
 import { type ReactNode, useState } from 'react';
 import { Link } from 'react-router';
 import {
+  type Example,
   type Index,
-  type Json,
   type Parameter,
   type PatternProperty,
   type Property,
@@ -400,7 +400,19 @@ function Body({
       )}
 
       {shape.allowed_targets && <Tagged label="allowedTargets" values={shape.allowed_targets} />}
-      {shape.declares_facets && <Tagged label="declares facets" values={shape.declares_facets} />}
+
+      {/* What a *subtype* must supply (docs/10 § 4), so rows and not chips: a
+          `facets:` entry is a property in every respect -- it has a type and it
+          is required or it is not -- and the names alone did not say either. */}
+      {shape.declared_facets && Object.keys(shape.declared_facets).length > 0 && (
+        <Group label="declares facets">
+          <div className="attributes">
+            {Object.entries(shape.declared_facets).map(([name, facet]) => (
+              <Attribute key={name} name={name} property={facet} index={index} />
+            ))}
+          </div>
+        </Group>
+      )}
       {content.custom_facets && Object.keys(content.custom_facets).length > 0 && (
         <div className="shape-line">
           <span className="label">facets</span>
@@ -421,7 +433,7 @@ function Body({
           understand a type, and last it read as belonging to whichever
           attribute happened to come final. */}
       {shape.default !== undefined && <Labelled label="default" value={shape.default} />}
-      {shape.example !== undefined && <Labelled label="example" value={shape.example} />}
+      {shape.example && <OneExample label="example" example={shape.example} />}
       <Examples examples={shape.examples} />
 
       {/* The schema as written, behind the same control everything else is
@@ -639,18 +651,61 @@ function RefLink({ parent, index }: { parent: Shape | Ref; index: Index }) {
  * A single example keeps its own labelled block: a tab strip with one tab is a
  * control that does nothing.
  */
-function Examples({ examples }: { examples?: Record<string, Json> }) {
+function Examples({ examples }: { examples?: Record<string, Example> }) {
   const entries = Object.entries(examples ?? {});
   const [first] = entries;
   if (entries.length === 0) return null;
-  if (entries.length === 1 && first) return <Labelled label={`example: ${first[0]}`} value={first[1]} />;
+  if (entries.length === 1 && first) return <OneExample label={`example: ${first[0]}`} example={first[1]} />;
   return (
     <div className="labelled">
       <Tabs
         label="examples"
-        items={entries.map(([name, value]) => ({ key: name, label: name, body: <Code>{value}</Code> }))}
+        items={entries.map(([name, example]) => ({
+          // The author's own name for it where there is one. `displayName` is
+          // written to be read, and the key beside it is often `ex1`.
+          key: name,
+          label: example.display_name ?? name,
+          body: <ExampleBody example={example} />,
+        }))}
       />
     </div>
+  );
+}
+
+/**
+ * One example: its value, and what the author wrote beside it.
+ *
+ * `strict: false` is the reason such an example is in the document at all -- it
+ * marks one that deliberately does not validate -- so it is a flag on the
+ * example and not a footnote. The prose is the author's own description of what
+ * the value shows.
+ */
+function OneExample({ label, example }: { label: string; example: Example }) {
+  return (
+    <div className="labelled">
+      <div className="shape-line">
+        <span className="label">{label}</span>
+        {example.display_name && <span className="attr-display">{example.display_name}</span>}
+        {example.strict === false && <Chip tone="warn">not validated</Chip>}
+      </div>
+      <ProseInline className="attr-desc">{example.description}</ProseInline>
+      <Code>{example.value}</Code>
+    </div>
+  );
+}
+
+/** The body of one tab: the same content, without the label its tab supplies. */
+function ExampleBody({ example }: { example: Example }) {
+  return (
+    <>
+      {example.strict === false && (
+        <div className="shape-line">
+          <Chip tone="warn">not validated</Chip>
+        </div>
+      )}
+      <ProseInline className="attr-desc">{example.description}</ProseInline>
+      <Code>{example.value}</Code>
+    </>
   );
 }
 

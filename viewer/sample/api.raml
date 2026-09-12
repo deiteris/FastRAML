@@ -118,6 +118,13 @@ types:
         enum: [USD, EUR, GBP]
   Entity:
     type: object
+    # What a *subtype* must supply, which is not what this type carries:
+    # `Entity` neither has to satisfy `stewardedBy` nor may supply a value for
+    # it (docs/10 section 4). One required and one optional, because a view
+    # that shows only the names says neither.
+    facets:
+      stewardedBy: string
+      retiredAfter?: date-only
     properties:
       id: string
       createdAt: datetime
@@ -146,6 +153,8 @@ types:
         had, oldest first.
       * `related` is a list of other books, and may point back at this one.
     (deprecated): use Publication instead
+    # The other half of `Entity`'s `facets:` -- the value this subtype supplies.
+    stewardedBy: catalogue-team
     properties:
       title:
         displayName: Title
@@ -207,14 +216,26 @@ types:
           verified:
             type: boolean
             default: false
+    # Form B: the value under `value:`, with what the author wrote beside it.
+    # `strict: false` is the whole reason the third one is here.
     examples:
       terse:
         rating: 5
         author: { name: Ada, verified: true }
       full:
-        rating: 3
-        body: Uneven, but the middle third is superb.
-        author: { name: Grace, verified: false }
+        displayName: A full review
+        description: Everything a review may carry, including the optional body.
+        value:
+          rating: 3
+          body: Uneven, but the middle third is superb.
+          author: { name: Grace, verified: false }
+      legacy:
+        displayName: An older record
+        description: Kept to show what the v1 API used to return.
+        strict: false
+        value:
+          rating: 3
+          author: Grace
 
   Shelf:
     displayName: A shelf

@@ -27,6 +27,7 @@ import {
   isRef,
   labelOf,
   type Document,
+  type Example,
   type Shape,
 } from './model';
 import { parse, stringify } from './numbers';
@@ -248,10 +249,25 @@ function declares(shape: Shape): string[] {
     if (isRef(items) || isRecursive(items)) continue;
     for (const [key, value] of Object.entries(items)) {
       if (ALREADY_ON_THE_ROW.has(key)) continue;
-      if (typeof value === 'string' || typeof value === 'number') said.push(String(value));
+      said.push(...literals(key, value));
     }
   }
   return said;
+}
+
+/**
+ * The text a facet's value puts on the page, for the facets that are text.
+ *
+ * An example is a *record* -- its value beside the metadata written with it --
+ * so the text is one level down. Reading the record itself found nothing, which
+ * is a check quietly measuring less rather than failing: the count fell from
+ * four to three and every assertion still passed.
+ */
+function literals(key: string, value: unknown): string[] {
+  if (typeof value === 'string' || typeof value === 'number') return [String(value)];
+  if (key === 'example') return literals('', (value as Example).value);
+  if (key === 'examples') return Object.values(value as Record<string, Example>).flatMap((one) => literals('', one.value));
+  return [];
 }
 
 /** Text as React writes it into markup, so a `pattern` full of punctuation matches. */

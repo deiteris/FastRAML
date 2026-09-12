@@ -28,6 +28,7 @@ export type {
   DocumentAnnotation,
   Endpoint,
   EntryPoint,
+  Example,
   Json,
   Operation,
   Parameter,
@@ -173,7 +174,7 @@ const NOT_A_FACET: ReadonlySet<string> = new Set([
   'enum',
   'xml',
   'custom_facets',
-  'declares_facets',
+  'declared_facets',
   'allowed_targets',
   // Shown as a line of their own: a discriminator names a *property*, which a
   // chip reading `discriminator kind` beside `maxLength 200` does not say.
@@ -369,7 +370,7 @@ export function detailed(shape: Shape | null | undefined): shape is Shape {
       shape.default !== undefined ||
       shape.json_schema ||
       shape.xml !== undefined ||
-      shape.declares_facets ||
+      shape.declared_facets ||
       shape.allowed_targets ||
       facetsOf(shape).length > 0,
   );

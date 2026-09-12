@@ -28,6 +28,10 @@ const PAGES = [
   ['type-union-large', '/types/sample%2Fapi.raml/Anything'],
   ['type-union-referenced', '/types/sample%2Fapi.raml/Paged'],
   ['type-scalar', '/types/sample%2Fapi.raml/Isbn'],
+  // The declaring half of `facets:`. The supplying half is on `Book` above,
+  // and the two render differently on purpose: what a subtype must supply is
+  // rows, what one did supply is a chip.
+  ['type-declares-facets', '/types/sample%2Fapi.raml/Entity'],
   ['type-from-shared-library', '/types/shared%2Fmeasures.raml/Parcel'],
   ['type-at-the-limits', '/types/shared%2Fmeasures.raml/Tolerance'],
   ['type-recursive', '/types/sample%2Fapi.raml/Chain'],

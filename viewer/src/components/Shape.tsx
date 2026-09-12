@@ -13,6 +13,22 @@
  * the page's whole right half stayed empty. Children belong *under* the
  * attribute they belong to, indented by a rule.
  *
+ * **Two rules decide everything below.**
+ *
+ * *One name, one treatment.* Every place a type is named goes through
+ * `TypeName`, and a name that identifies a declaration is a link. Three
+ * treatments of one idea had grown up -- a bordered chip on a declaration page,
+ * plain grey text on an attribute row, an accent link when and only when the
+ * type happened to be written as a `$ref` -- so the same type looked like a
+ * different kind of thing depending on where it was read, and half of them were
+ * dead ends.
+ *
+ * *Declared here, shown here; named here, behind a control.* What a row
+ * declares -- its facets, its enum, its own example, an inline object's
+ * properties -- has nowhere else to be read, so it is open. What it names is
+ * declared elsewhere and has a page, so it is one control away. That control is
+ * `Expandable`, and it says what is behind it rather than assuming attributes.
+ *
  * **What stays in this file is what recurses through this file.** `ShapeView`,
  * `Body` and `Attribute` call each other in a cycle -- an object holds
  * attributes, an attribute holds a shape -- and splitting a cycle across
@@ -21,7 +37,7 @@
  * annotations, values.
  */
 
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Link } from 'react-router';
 import {
   type Index,
@@ -31,11 +47,16 @@ import {
   type Property,
   type Ref,
   type Shape,
+  detailed,
   facetsOf,
   isRecursive,
   isRef,
   labelOf,
+  leadsSomewhere,
+  namedByItems,
+  namedByMembers,
   spellingOf,
+  MEMBERS_SPELLED,
 } from '../model';
 import { Annotations } from './Annotations';
 import { From } from './Borrowed';
@@ -69,11 +90,20 @@ interface Props {
    * its own. True of a union member and an inlined supertype -- see `spelling`.
    */
   borrowed?: boolean;
+  /**
+   * A control has already been opened to reach this, so a reference shows its
+   * target rather than a second control onto it.
+   *
+   * `reviews Review[]` is one question -- what is in the list -- and answering
+   * it took two clicks: one to open the items, one to open the `Review` behind
+   * them. The link is still here; only the button is gone.
+   */
+  opened?: boolean;
 }
 
-export function ShapeView({ shape, index, hideType, hideDescription, hideItems, borrowed }: Props) {
-  if (shape === null || shape === undefined) return <Chip tone="type">any</Chip>;
-  if (isRef(shape)) return <RefView node={shape} index={index} />;
+export function ShapeView({ shape, index, hideType, hideDescription, hideItems, borrowed, opened }: Props) {
+  if (shape === null || shape === undefined) return <TypeName shape={shape} index={index} />;
+  if (isRef(shape)) return <RefView node={shape} index={index} opened={opened} />;
   if (isRecursive(shape)) return <RecursionView node={shape} index={index} />;
   return (
     <Body
@@ -98,8 +128,7 @@ export function ShapeView({ shape, index, hideType, hideDescription, hideItems, 
  *
  * Neither expands on render. That is the loop.
  */
-function RefView({ node, index }: { node: Ref; index: Index }) {
-  const [open, setOpen] = useState(false);
+function RefView({ node, index, opened }: { node: Ref; index: Index; opened?: boolean }) {
   const entry = index.get(node.$ref);
   const target = index.shape(node.$ref);
   if (!entry) {
@@ -115,16 +144,16 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
         {entry.name}
       </Link>
       <ProseInline className="reference-desc">{target?.description}</ProseInline>
-      {expandable(target) && (
-        <>
-          <Expander open={open} onToggle={() => setOpen(!open)} />
-          {open && (
-            <div className="nested">
-              <Body shape={target} index={index} hideType hideDescription />
-            </div>
-          )}
-        </>
-      )}
+      {detailed(target) &&
+        (opened ? (
+          <div className="nested">
+            <Body shape={target} index={index} hideType hideDescription />
+          </div>
+        ) : (
+          <Expandable what={behind(target)}>
+            <Body shape={target} index={index} hideType hideDescription />
+          </Expandable>
+        ))}
     </span>
   );
 }
@@ -137,54 +166,173 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
  * links, because navigating to a declaration is finite.
  */
 function RecursionView({ node, index }: { node: Shape & { head: Ref }; index: Index }) {
-  const entry = index.get(node.head.$ref);
   return (
     <span className="reference">
-      <Chip tone="recursive" title="the structure repeats from here; it is not expanded">
-        recursive
-      </Chip>
-      {entry ? (
-        <Link to={entry.href} className="typelink">
-          {entry.name}
-        </Link>
-      ) : (
-        <span className="typelink">{node.name ?? index.label(node.head.$ref)}</span>
-      )}
+      <TypeName shape={node} index={index} />
     </span>
   );
 }
 
-/** The control that opens a reference in place. One shape, two call sites. */
-function Expander({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+/**
+ * One collapsed region and the control that opens it.
+ *
+ * On a row of its own, always. The control used to sit inside the inline row
+ * that names the type, so a reference with no description put `Money` and
+ * `+ Show child attributes` side by side and the button read as part of the
+ * name -- while the same button under a described type sat on its own line.
+ * Where a control appears should not depend on whether someone wrote prose.
+ *
+ * `what` names what is inside rather than assuming it. "Show child attributes"
+ * over a `string` with a `pattern` promised attributes that do not exist.
+ */
+function Expandable({ what, children }: { what: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
   return (
-    <button type="button" className="expander" aria-expanded={open} onClick={onToggle}>
-      <span className="expander-sign">{open ? '−' : '+'}</span>
-      {open ? 'Hide child attributes' : 'Show child attributes'}
-    </button>
+    <div className="expand">
+      <button type="button" className="expander" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="expander-sign">{open ? '−' : '+'}</span>
+        {open ? `Hide ${what}` : `Show ${what}`}
+      </button>
+      {open && <div className="nested">{children}</div>}
+    </div>
+  );
+}
+
+/** What is behind a name, in the words of the kind it names. */
+function behind(shape: Shape): string {
+  if (shape.properties || shape.pattern_properties) return 'child attributes';
+  if (shape.any_of) return 'members';
+  if (shape.items !== undefined) return 'item type';
+  return 'constraints';
+}
+
+/**
+ * A type, named once and the same way everywhere.
+ *
+ * Every place a type is named goes through this: an attribute's head line, a
+ * declaration's heading, a listing's row, an array's items. They had drifted
+ * into three treatments of one idea -- a bordered chip on a declaration page,
+ * plain grey text on an attribute, an accent link when and only when the type
+ * happened to be written as a reference -- so the same type looked like a
+ * different kind of thing depending on where it was read.
+ *
+ * **A name that identifies a declaration is a link.** `related Book[]` was dead
+ * text beside `price Money` as a link, for no reason a reader could see: both
+ * name `Book`, and one of them was reachable.
+ *
+ * `suffix` is carried down rather than appended by the caller, so the `[]` of
+ * an array lands on the item's *name* and before any marker that follows it --
+ * `Book[]` with the recursion chip after the whole expression, not `Book` chip
+ * `[]`.
+ */
+export function TypeName({
+  shape,
+  index,
+  borrowed,
+  suffix = '',
+}: {
+  shape: Shape | Ref | null | undefined;
+  index: Index;
+  borrowed?: boolean;
+  suffix?: string;
+}) {
+  if (shape === null || shape === undefined) return <span className="attr-type">any{suffix}</span>;
+  if (isRef(shape)) {
+    const entry = index.get(shape.$ref);
+    const target = index.shape(shape.$ref);
+    if (!entry) {
+      return (
+        <Chip tone="warn" title={shape.$ref}>
+          unresolved
+        </Chip>
+      );
+    }
+    return (
+      <>
+        <Link to={entry.href} className="typelink">
+          {entry.name}
+          {suffix}
+        </Link>
+        {/* What a named array holds, on the line that names it. `priceHistory
+            Prices` was a link to a type whose whole content is its item type,
+            so the one fact the row was missing sat one click away. */}
+        {target?.type === 'array' && <TypeName shape={target.items} index={index} suffix="[]" />}
+      </>
+    );
+  }
+  if (isRecursive(shape)) {
+    const entry = index.get(shape.head.$ref);
+    return (
+      <>
+        {entry ? (
+          <Link to={entry.href} className="typelink">
+            {entry.name}
+            {suffix}
+          </Link>
+        ) : (
+          <span className="attr-type">
+            {shape.name ?? index.label(shape.head.$ref)}
+            {suffix}
+          </span>
+        )}
+        <Chip tone="recursive" title="the structure repeats from here; it is not expanded">
+          recursive
+        </Chip>
+      </>
+    );
+  }
+  // A name written as an expression is still a name. `type: Entity` gives a
+  // shape that is not a `$ref`, so the listing printed `Entity` as grey text
+  // beside `Money[]` as a link -- two names of declarations, one reachable.
+  const only = (shape.inherits ?? [])[0];
+  if (!borrowed && only !== undefined && isRef(only) && restates(shape, index)) {
+    return <TypeName shape={only} index={index} suffix={suffix} />;
+  }
+  // An array defers to its items wherever its own expression says no more than
+  // they do, so `Review[]` is the link `Review` and not four grey characters.
+  if (shape.type === 'array' && namedByItems(shape, borrowed ?? false)) {
+    return <TypeName shape={shape.items} index={index} suffix={`[]${suffix}`} />;
+  }
+  const members = shape.any_of ?? [];
+  if (shape.type === 'union' && members.length > 0 && namedByMembers(shape, borrowed ?? false)) {
+    return <UnionName members={members} index={index} suffix={suffix} />;
+  }
+  return (
+    <span className="attr-type" title={spellingOf(shape, index, borrowed) === shape.type ? undefined : `a ${shape.type}`}>
+      {spellingOf(shape, index, borrowed)}
+      {suffix}
+    </span>
   );
 }
 
 /**
- * Whether an array's items are already said by its own type line.
+ * A union's name: its members, each reachable, and a count for the rest.
  *
- * `tags string[]` needs no nested block: it was a label and a rule around one
- * word. An item with structure -- an inline object, a union, or a reference to
- * a type that has attributes -- gets one, because that block is the only place
- * its expander can live. Suppressing it for every `$ref` left `related Book[]`
- * and `priceHistory Prices` naming a type with no way to see inside it: the row
- * a reader wants is the item's, not the array's.
- *
- * A recursion marker gets a row too. It is a stop, so nothing expands, but the
- * row is where the marker says the structure repeats and where its `head`
- * links -- and `related: Book[]` inside `Book` is exactly that case, so
- * suppressing it left the one attribute that most needed saying so silent.
+ * Spelled from `any_of` and not from `type_expr`, for the reason `spellingOf`
+ * gives -- the author's text is one unbreakable run whose length is theirs to
+ * choose, and a nine-member union written out in a heading is a line of type
+ * names with no way in to any of them. The `anyOf` selector below carries the
+ * whole list; this is the name.
  */
-function simpleItems(shape: Shape, index: Index): boolean {
-  const items = shape.items;
-  if (items === null || items === undefined) return true;
-  if (isRecursive(items)) return false;
-  if (isRef(items)) return !expandable(index.shape(items.$ref));
-  return !items.properties && !items.any_of && !items.pattern_properties && !items.items;
+function UnionName({ members, index, suffix }: { members: (Shape | Ref)[]; index: Index; suffix: string }) {
+  const shown = members.slice(0, MEMBERS_SPELLED);
+  const rest = members.length - shown.length;
+  return (
+    <span className="union-name">
+      {shown.map((member, at) => (
+        <span key={at}>
+          {at > 0 && <span className="union-bar">|</span>}
+          <TypeName shape={member} index={index} borrowed />
+        </span>
+      ))}
+      {rest > 0 && (
+        <span className="attr-type" title={members.map((member) => labelOf(member, index)).join(' | ')}>
+          <span className="union-bar">|</span>+{rest} more
+        </span>
+      )}
+      {suffix && <span className="attr-type">{suffix}</span>}
+    </span>
+  );
 }
 
 /**
@@ -222,27 +370,13 @@ function JsonSchema({ shape, index }: { shape: Shape; index: Index }) {
 
 const TYPE_JSON = 'json';
 
-/**
- * Whether a reference is worth an expander.
- *
- * "Show child attributes" has to have child attributes. An array does not --
- * it has an item type -- so `priceHistory: Prices` offered a control that
- * opened onto `each item -> Money`, one more click to reach what the line could
- * have said. A scalar has none either.
- *
- * The item's own expander is a different question and stays: `Money` has
- * attributes, and reaching them is the point of opening anything.
- */
-function expandable(target: Shape | undefined): target is Shape {
-  return Boolean(target && (target.properties || target.pattern_properties));
-}
-
 function Body({
   shape,
   index,
   hideType,
   hideDescription,
   hideItems,
+  hideInherits,
   borrowed,
 }: {
   shape: Shape;
@@ -250,6 +384,8 @@ function Body({
   hideType?: boolean;
   hideDescription?: boolean;
   hideItems?: boolean;
+  /** The caller's own line is a link to the one supertype -- see `Attribute`. */
+  hideInherits?: boolean;
   borrowed?: boolean;
 }) {
   const facets = facetsOf(shape);
@@ -272,13 +408,13 @@ function Body({
       {headed && (
         <div className="shape-head">
           {named && <span className="shape-display">{shape.display_name}</span>}
-          {typed && <TypeChip shape={shape} index={index} borrowed={borrowed} />}
+          {typed && <TypeName shape={shape} index={index} borrowed={borrowed} />}
         </div>
       )}
       {/* Above the prose. What a type extends is the first thing about it,
           and below the description it arrived after everything that only makes
           sense once you know. */}
-      {inherits.length > 0 && !json && (
+      {inherits.length > 0 && !json && !hideInherits && (
         <div className="shape-line">
           <span className="label">extends</span>
           {inherits.map((parent, at) => (
@@ -344,7 +480,10 @@ function Body({
 
       {members.length > 0 && <Union members={members} index={index} />}
 
-      {shape.items !== undefined && !hideItems && (
+      {/* Only where the items say something the head line did not. `string[]`
+          named its item on the head and then drew a label and a rule around
+          the word `string`. */}
+      {!hideItems && leadsSomewhere(shape.items, index) && (
         <Group label="each item">
           <ShapeView shape={shape.items} index={index} />
         </Group>
@@ -378,6 +517,15 @@ function Body({
  * Name, type and whether it is required on one line; prose under it; anything
  * nested under that again. Everything a reader scans for sits in one column,
  * which is what a table put in three.
+ *
+ * **Where a thing was declared decides whether it is open.** What this row
+ * declares -- its facets, its enum, its own example, an inline object's
+ * properties -- is written here and is shown here; a reader has no other place
+ * to find it. What it *names* is declared elsewhere, has a page of its own, and
+ * sits behind one control. The two were mixed: an array's item type was always
+ * open, so three list-valued properties in a row pushed the rest of the type
+ * off the screen, while a named `string` with a `pattern` had no control at all
+ * and showed nothing.
  */
 export function Attribute({
   name,
@@ -393,40 +541,26 @@ export function Attribute({
   /** Where this row came from, if it was not declared here. */
   from?: { label: string; title: string; secured?: boolean };
 }) {
-  const [open, setOpen] = useState(false);
   const required = 'required' in property ? property.required : false;
   const shape = property.type;
-
-  // The head line is name, type, flag -- in that order, always. Letting a
-  // reference render itself here put its expander between the type and
-  // `Required`, so the one word a reader scans for moved depending on whether
-  // the type happened to be a link.
-  const link = shape !== null && shape !== undefined && isRef(shape) ? index.get(shape.$ref) : undefined;
-  const target = shape !== null && shape !== undefined && isRef(shape) ? index.shape(shape.$ref) : undefined;
-  // What the removed expander would have led to, said on the line instead.
-  const holds = target && target.type === 'array' ? spellingOf(target, index) : null;
-  const inline = shape !== null && shape !== undefined && !isRef(shape) && !isRecursive(shape);
-  const described = inline ? shape.description : target?.description;
+  const ref = shape !== null && shape !== undefined && isRef(shape) ? shape : null;
+  const target = ref ? index.shape(ref.$ref) : undefined;
+  const inline = shape !== null && shape !== undefined && !isRef(shape) && !isRecursive(shape) ? shape : null;
+  const described = inline ? inline.description : target?.description;
+  const items = inline?.type === 'array' ? inline.items : undefined;
 
   return (
     <div className="attr">
+      {/* Name, type, flag -- in that order, always. Letting a reference render
+          itself here put its expander between the type and `Required`, so the
+          one word a reader scans for moved depending on whether the type
+          happened to be a link. */}
       <div className="attr-head">
         <code className="attr-name">{name}</code>
-        {inline && shape.display_name && shape.display_name !== shape.name && (
-          <span className="attr-display">{shape.display_name}</span>
+        {inline?.display_name && inline.display_name !== inline.name && (
+          <span className="attr-display">{inline.display_name}</span>
         )}
-        {inline ? (
-          <span className="attr-type">{spellingOf(shape, index)}</span>
-        ) : link ? (
-          <>
-            <Link to={link.href} className="typelink">
-              {link.name}
-            </Link>
-            {holds && <span className="attr-type">{holds}</span>}
-          </>
-        ) : (
-          <ShapeView shape={shape} index={index} />
-        )}
+        <TypeName shape={shape} index={index} />
         {pattern ? (
           <span className="attr-flag">pattern</span>
         ) : (
@@ -440,26 +574,35 @@ export function Attribute({
           attribute list first. The expanded body suppresses it, so it appears
           once either way. */}
       <ProseInline className="attr-desc">{described}</ProseInline>
-      {expandable(target) && (
-        <>
-          <Expander open={open} onToggle={() => setOpen(!open)} />
-          {open && (
-            <div className="nested">
-              <Body shape={target} index={index} hideType hideDescription />
-            </div>
-          )}
-        </>
+      {/* `hideInherits` where the head line is already a link to the one
+          supertype: a query parameter typed `Search` read `Search` above
+          `EXTENDS Search`, the same word twice with nothing between them. */}
+      {inline && (
+        <Body
+          shape={inline}
+          index={index}
+          hideType
+          hideDescription
+          hideItems
+          hideInherits={restates(inline, index)}
+        />
       )}
-      {/* A reference to a named array -- `priceHistory: Prices` -- renders as a
-          link and nothing else, so what it holds was reachable only through the
-          array's own page. The item row belongs here, and the expander belongs
-          on the item and not on the array. */}
-      {target?.type === 'array' && !simpleItems(target, index) && (
-        <Group label="each item">
-          <ShapeView shape={target.items} index={index} />
-        </Group>
+      {/* The one control. A named type's whole body is behind it -- which for
+          an array is its own facets and then its items, so `priceHistory
+          Prices` opens once onto everything `Prices` is. */}
+      {detailed(target) && (
+        <Expandable what={behind(target)}>
+          <Body shape={target} index={index} hideType hideDescription />
+        </Expandable>
       )}
-      {inline && <Body shape={shape} index={index} hideType hideDescription hideItems={simpleItems(shape, index)} />}
+      {/* An inline array's items. `opened` because this control is already the
+          one click: a `Review[]` opens onto `Review`, not onto a second button
+          reading "Show child attributes". */}
+      {leadsSomewhere(items, index) && (
+        <Expandable what="item type">
+          <ShapeView shape={items} index={index} opened />
+        </Expandable>
+      )}
     </div>
   );
 }
@@ -476,16 +619,6 @@ export function restates(shape: Shape, index: Index): boolean {
   const inherits = shape.inherits ?? [];
   const only = inherits[0];
   return inherits.length === 1 && only !== undefined && spellingOf(shape, index) === labelOf(only, index);
-}
-
-/** The type name a reader recognises: the expression as written, else the kind. */
-export function TypeChip({ shape, index, borrowed }: { shape: Shape; index: Index; borrowed?: boolean }) {
-  const written = spellingOf(shape, index, borrowed);
-  return (
-    <Chip tone="type" title={written === shape.type ? undefined : `a ${shape.type}`}>
-      {written}
-    </Chip>
-  );
 }
 
 /**
@@ -521,7 +654,7 @@ function Union({ members, index }: { members: (Shape | Ref)[]; index: Index }) {
  *   contributes is already in the list below. `Book extends Entity` lists `id`
  *   and `createdAt` among its own, so expanding printed them a second time a
  *   few pixels from the first.
- * - anything with **no attribute list** -- see `expandable`.
+ * - anything that says no more than its name -- see `detailed`.
  *
  * The link still matters in both: the target has a page, with its own prose and
  * examples and the list of what else points at it.

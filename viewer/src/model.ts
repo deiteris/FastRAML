@@ -252,6 +252,46 @@ export function spelling(shape: Shape, borrowed = false): string {
 }
 
 /**
+ * Whether an array's own expression says no more than its `items` do, so the
+ * items may be read in its place.
+ *
+ * `type: array` says nothing; `type: Review[]` says exactly what `items` says,
+ * in text rather than as a link. Both defer. `type: Prices` on an array does
+ * not -- it names a declaration, and computing `Money[]` from the items loses
+ * the one word that identifies the type.
+ */
+export function namedByItems(shape: Shape, borrowed: boolean): boolean {
+  const written = spelling(shape, borrowed);
+  return written === 'array' || written.endsWith('[]');
+}
+
+/**
+ * The same question for a union: does its expression say no more than its
+ * members do?
+ *
+ * `type: string | number` does, and is better read as its members. `type:
+ * Search` does not -- it is the name of a declaration whose *definition*
+ * happens to be a union, and a query parameter typed `Search` that reads
+ * `string | number` has had the one word identifying it replaced by its
+ * contents.
+ */
+export function namedByMembers(shape: Shape, borrowed: boolean): boolean {
+  const written = spelling(shape, borrowed);
+  return written === 'union' || written.includes('|');
+}
+
+/**
+ * How many members of a union are spelled out before the rest become a count.
+ *
+ * A union is a *type name* in every position this appears in -- a heading, an
+ * attribute's head line -- and a name has to fit on the line it shares with
+ * everything else. Nine members do not. The members are never only here: a
+ * union always renders its `anyOf` selector below, which is where the whole
+ * list lives.
+ */
+export const MEMBERS_SPELLED = 3;
+
+/**
  * A shape's name with one spelling for arrays: `X[]`, always.
  *
  * `spelling` alone gives whatever the author wrote, and RAML lets them write an
@@ -261,6 +301,11 @@ export function spelling(shape: Shape, borrowed = false): string {
  * The item is named from `items` rather than from the expression, so the two
  * forms converge and a nested array reads `string[][]` rather than `array[]`.
  *
+ * A union is spelled from its members for the same reason, and truncated past
+ * `MEMBERS_SPELLED`. `type_expr` is the author's text and can be any length --
+ * a nine-member union is one long unbreakable word in a flex row, which is the
+ * form that ran off the page.
+ *
  * Recursion terminates on containment: the emitter marks every cycle, and a
  * marker is named, not descended.
  */
@@ -269,16 +314,68 @@ export function spellingOf(shape: Shape, index: Index, borrowed = false): string
   // a file path, which is not a type name and which a reader cannot open. The
   // schema and its projection are on the page; the expression adds nothing.
   if (shape.type === 'json') return shape.type;
+  const members = shape.any_of ?? [];
+  if (shape.type === 'union' && members.length > 0 && namedByMembers(shape, borrowed)) {
+    const names = members.map((member) => labelOf(member, index));
+    const shown = names.slice(0, MEMBERS_SPELLED).join(' | ');
+    return names.length > MEMBERS_SPELLED ? `${shown} | +${names.length - MEMBERS_SPELLED} more` : shown;
+  }
   const written = spelling(shape, borrowed);
-  // Only where the expression says no more than the kind does. `type: Shelf` on
-  // an array is a name, and computing `object[]` from its inline items in place
-  // of it loses the one word that identifies the type.
-  if (shape.type !== 'array' || written !== 'array') return written;
+  if (shape.type !== 'array' || !namedByItems(shape, borrowed)) return written;
   const items = shape.items;
   if (items === null || items === undefined) return 'any[]';
   if (isRef(items)) return `${index.label(items.$ref)}[]`;
   if (isRecursive(items)) return `${items.name ?? 'recursive'}[]`;
   return `${spellingOf(items, index, true)}[]`;
+}
+
+/**
+ * Whether a shape says anything its name does not.
+ *
+ * The question every collapsed row asks: is there something behind this name,
+ * and is it worth a control? It used to ask a narrower one -- does this have
+ * *properties* -- which is true of an object and false of everything else, so a
+ * property typed by a named `string` with a `pattern` rendered as a link and a
+ * full stop. The constraint was declared, carried through every pass, emitted
+ * into the tree, and shown nowhere a reader of that property would look.
+ *
+ * Facets are counted through `facetsOf`, so a kind this app has never heard of
+ * still answers yes: the deny-list is what is *not* a constraint, and anything
+ * left over is one.
+ */
+export function detailed(shape: Shape | null | undefined): shape is Shape {
+  if (shape === null || shape === undefined) return false;
+  return Boolean(
+    shape.properties ||
+      shape.pattern_properties ||
+      shape.any_of ||
+      shape.items !== undefined ||
+      shape.enum ||
+      shape.discriminator ||
+      shape.custom_facets ||
+      shape.example !== undefined ||
+      shape.examples ||
+      shape.default !== undefined ||
+      shape.json_schema ||
+      shape.xml !== undefined ||
+      shape.declares_facets ||
+      shape.allowed_targets ||
+      facetsOf(shape).length > 0,
+  );
+}
+
+/**
+ * The same question about a node that may be any of the three constructs.
+ *
+ * A recursion marker answers no: it is a stop, and what it says -- that the
+ * structure repeats, and from where -- fits on the line that names it. Opening
+ * one is the loop.
+ */
+export function leadsSomewhere(node: Shape | Ref | null | undefined, index: Index): boolean {
+  if (node === null || node === undefined) return false;
+  if (isRef(node)) return detailed(index.shape(node.$ref));
+  if (isRecursive(node)) return false;
+  return detailed(node);
 }
 
 /**

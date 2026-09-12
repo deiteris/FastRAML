@@ -1,9 +1,10 @@
 /** The index pages: every type, every annotation type, every scheme. */
 
 import { Link } from 'react-router';
+import { TypeName } from '../components/Shape';
 import { ProseInline } from '../components/markdown';
 import { Chip, Empty } from '../components/ui';
-import { declarations, spellingOf } from '../model';
+import { declarations } from '../model';
 import type { Props } from './props';
 
 export function TypeList({ document, index }: Props) {
@@ -35,7 +36,7 @@ function DeclarationList({ document, index, of, title }: Props & { of: 'types' |
               <tr key={`${file}/${name}`}>
                 <td className="property-name">{entry ? <Link to={entry.href}>{name}</Link> : name}</td>
                 <td>
-                  <Chip tone="type">{spellingOf(value, index)}</Chip>
+                  <TypeName shape={value} index={index} />
                 </td>
                 <td className="property-description">
                   <ProseInline>{value.description}</ProseInline>

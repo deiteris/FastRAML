@@ -115,6 +115,18 @@ types:
     properties:
       id: string
       createdAt: datetime
+
+  # A named type that is not an object. Referred to by name, it has no
+  # properties to list and everything it does say is a facet -- which is the
+  # case a view that only opens objects shows as a link and nothing else.
+  Isbn:
+    displayName: ISBN-13
+    description: The thirteen-digit ISBN, without separators.
+    type: string
+    pattern: ^\d{13}$
+    minLength: 13
+    maxLength: 13
+    example: "9780441013593"
   Book:
     type: Entity
     displayName: A Book
@@ -136,15 +148,18 @@ types:
         minLength: 1
         maxLength: 200
         example: Dune
-      isbn:
-        displayName: ISBN-13
-        description: The thirteen-digit ISBN, without separators.
-        type: string
-        pattern: ^\d{13}$
+      isbn: Isbn
       price: Money
+      # Items with constraints of their own. The array's facets say how many
+      # there may be; only the item's say what one may contain.
       tags?:
         type: array
-        items: string
+        items:
+          type: string
+          minLength: 2
+          maxLength: 24
+          pattern: ^[a-z][a-z0-9-]*$
+          example: science-fiction
         uniqueItems: true
         maxItems: 10
       related?: Book[]
@@ -207,6 +222,14 @@ types:
         position: integer
         book: Book
         note?: string
+        # A facet value longer than the column it lands in, two levels of
+        # nesting down -- the narrowest container in the app -- and with no
+        # space in it to break at.
+        locator?:
+          description: Where the physical copy sits, as one string.
+          type: string
+          pattern: ^(?:[A-Z]{2}-)?(?:AISLE|BAY|SHELF)-[0-9]{1,3}(?:\.[0-9]{1,2})?(?:-(?:LEFT|RIGHT|CENTRE))?(?:/[A-Za-z0-9_]{1,16})*$
+          example: GB-SHELF-12.3-LEFT/reserve
 
   Payload:
     displayName: Anything postable
@@ -218,11 +241,19 @@ types:
       next?: Chain
   Search:
     type: string | number
+
+  # Nine members. A union's `type_expr` is one unbreakable run of the author's
+  # text, and at this length it is what a heading has to hold.
+  Anything:
+    displayName: Any payload
+    description: Everything this API will accept in a body, as one type.
+    type: Book | Review | Money | Shelf | Prices | Publication | Magazine | Pamphlet | Delivery
+
   Paged:
     type: object
     properties:
       total: integer
-      items: array
+      items: Anything[]
 
   # A type built from a library's, reached through the `common.` prefix bound
   # in `uses:` above.
@@ -245,6 +276,13 @@ types:
         description: Matched against the address, case-insensitively.
         type: string
         example: Bristol
+      carrier?:
+        description: Only deliveries handed to this carrier.
+        type: string
+        enum:
+          - royal-mail-tracked-48-signed-for
+          - dpd-next-day-before-noon
+          - evri-standard
 
   Delivery:
     displayName: A delivery

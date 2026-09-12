@@ -403,6 +403,7 @@ h4 {
   font-family: var(--mono);
   white-space: nowrap;
   vertical-align: middle;
+  max-width: 100%;
 }
 
 /* A facet is an annotation on the attribute above it, so it reads as muted
@@ -497,13 +498,33 @@ h4 {
   color: var(--ink);
 }
 
+/*
+ * A value wraps; the name it belongs to does not.
+ *
+ * A facet's value is author text of any length and often has nothing to break
+ * at -- `pattern: ^(?:[A-Z]{2}-)?\d{4}...` is one word by every rule the
+ * browser has. Left `nowrap`, it ran out of the page: past the article, past
+ * the viewport, taking the horizontal scrollbar with it. `anywhere` breaks it
+ * at the margin, which for a regex is the only honest place to break.
+ */
+.facets .chip,
+.chip-enum {
+  white-space: normal;
+}
+
 .facet-name {
   color: var(--faint);
+  white-space: nowrap;
 }
 
 .facet-value {
   font-weight: 600;
   color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.chip-enum {
+  overflow-wrap: anywhere;
 }
 
 .badges,
@@ -561,6 +582,7 @@ h4 + .tabs > .tabs-strip,
   color: var(--ink);
   font-size: 14px;
   line-height: 20px;
+  overflow-wrap: anywhere;
 }
 
 .attr-display {
@@ -573,6 +595,35 @@ h4 + .tabs > .tabs-strip,
   color: var(--faint);
   font-family: var(--mono);
   font-size: 12px;
+}
+
+/* A pattern property's name is the pattern, and an inline type expression is
+   whatever the author wrote. Neither has a length this app controls. */
+.attr-type {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+/*
+ * A union's members, each its own name and each reachable.
+ *
+ * Wraps between members, because the count of them is the author's. The bars
+ * are their own elements so a break lands beside one rather than inside a type
+ * name.
+ */
+.union-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.union-bar {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-right: 6px;
 }
 
 .attr-flag.is-required {
@@ -642,12 +693,16 @@ h4 + .tabs > .tabs-strip,
   margin: 0;
 }
 
+/* The hover surface bleeds to the left only, so the row's text stays in the
+   column with every heading above it. Bleeding right as well made the row
+   wider than the list holding it -- 12px of nothing, and the one exception a
+   "nothing is wider than its box" check would have had to carry. */
 .method-link {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  margin: 0 -12px;
+  margin-left: -12px;
   border-radius: 8px;
   color: var(--ink);
 }
@@ -709,6 +764,12 @@ h4 + .tabs > .tabs-strip,
   background: none;
   color: var(--faint);
   cursor: pointer;
+  /* A tab is labelled with whatever it selects -- a media type, a union
+     member's name, an example's name -- and the widest of those decides
+     nothing about how wide the strip may be. */
+  max-width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .tab:hover {
@@ -775,9 +836,11 @@ h4 + .tabs > .tabs-strip,
   flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
+  max-width: 100%;
 }
 
-.reference .nested {
+.reference .nested,
+.reference > .expand {
   flex-basis: 100%;
 }
 
@@ -791,6 +854,7 @@ h4 + .tabs > .tabs-strip,
   font-family: var(--mono);
   font-weight: 600;
   font-size: 12.5px;
+  overflow-wrap: anywhere;
 }
 
 /*
@@ -799,7 +863,16 @@ h4 + .tabs > .tabs-strip,
  * A caret glyph was 10 px of punctuation next to a link, so it read as
  * decoration on the link and the two flows -- navigate, expand -- looked like
  * one. A word says which is which.
+ *
+ * `.expand` is the row it sits on. The button is `inline-flex`, so inside the
+ * inline row that names a type it followed the name on the same line whenever
+ * nobody had written a description -- the control's position depending on the
+ * prose above it.
  */
+.expand {
+  display: block;
+}
+
 .expander {
   display: inline-flex;
   align-items: center;

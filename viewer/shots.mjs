@@ -25,6 +25,9 @@ const PAGES = [
   ['types', '/types'],
   ['type-object', '/types/api.raml/Book'],
   ['type-union', '/types/api.raml/Search'],
+  ['type-union-large', '/types/api.raml/Anything'],
+  ['type-union-referenced', '/types/api.raml/Paged'],
+  ['type-scalar', '/types/api.raml/Isbn'],
   ['type-recursive', '/types/api.raml/Chain'],
   ['type-inline-items', '/types/api.raml/Shelf'],
   ['type-union-mixed', '/types/api.raml/Payload'],
@@ -117,6 +120,7 @@ try {
       // The document loads after the first paint, so wait for content rather
       // than for the network: a screenshot of the loading state proves nothing.
       await page.waitForSelector('main article, main .empty', { timeout: 5000 });
+      for (const spill of await overflowing(page)) failures.push(`${at}: ${spill}`);
       const file = `shots/${name}${only.length > 1 ? `-${theme}` : ''}.png`;
       await page.screenshot({ path: file, fullPage: true });
       process.stdout.write(`${file}\n`);
@@ -131,6 +135,45 @@ try {
   }
 } finally {
   server.kill();
+}
+
+/**
+ * Anything wider than the column it was laid out in.
+ *
+ * The one class of bug a screenshot shows and nothing else does: a `pattern:`
+ * with no space in it is a single word by every rule the browser has, so it
+ * ran out of its container, past the article, past the viewport, and took a
+ * horizontal scrollbar with it. `tsc` is happy, the page renders, the markup
+ * is correct, and the value is unreadable.
+ *
+ * Two measurements, because either one alone passes the bug it is there for.
+ * A box may sit inside the page and paint its text outside itself -- capping
+ * the box with `max-width` does exactly that, and the first version of this
+ * check called the result contained. So: a rect that ends past `<main>`, *or*
+ * content wider than the box holding it.
+ *
+ * Only leaves are reported -- an overflowing chip also overflows every ancestor
+ * it sits in, and naming all of them buries the one that is too wide. `.code`
+ * is exempt: a code block scrolls on purpose.
+ */
+async function overflowing(page) {
+  return page.evaluate(() => {
+    const main = document.querySelector('main');
+    if (!main) return [];
+    const limit = main.getBoundingClientRect().right;
+    const past = (element) => element.getBoundingClientRect().right > limit + 1;
+    const spilt = (element) => element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 1;
+    const spills = [];
+    for (const element of main.querySelectorAll('*')) {
+      if (element.closest('.code, pre')) continue;
+      const how = past(element) ? 'runs past the page' : spilt(element) ? 'is wider than its box' : null;
+      if (how === null) continue;
+      if ([...element.children].some((child) => past(child) || spilt(child))) continue;
+      const name = `${element.tagName.toLowerCase()}${element.className ? `.${String(element.className).split(' ').join('.')}` : ''}`;
+      spills.push(`${name} "${(element.textContent ?? '').trim().slice(0, 48)}" ${how}`);
+    }
+    return [...new Set(spills)];
+  });
 }
 
 /** `console.error(format, ...rest)` as one line: `%s`, `%d`, `%o` and `%i`. */

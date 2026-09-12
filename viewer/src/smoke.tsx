@@ -18,7 +18,17 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { Pages } from './App';
 import { renderMarkdown } from './components/markdown';
-import { Index, camel, declarations, facetsOf, isRef, labelOf, type Document, type Shape } from './model';
+import {
+  Index,
+  camel,
+  declarations,
+  facetsOf,
+  isRecursive,
+  isRef,
+  labelOf,
+  type Document,
+  type Shape,
+} from './model';
 import { RATIO_FACETS, rationalOf, showRatio } from './rational';
 
 const source = process.argv[2] ?? 'public/api.json';
@@ -131,6 +141,91 @@ walk(document, (shape) => {
 });
 
 process.stdout.write(`${shapes} shapes checked, ${members} union members\n`);
+
+/*
+ * Every name that hides something offers the control that shows it.
+ *
+ * The bug this exists for was silent in the strongest sense: a property typed
+ * by a named `string` with a `pattern` rendered as a link and a full stop. The
+ * constraint was written, decoded by every pass, emitted into the tree, and
+ * shown in no place a reader of that property would look -- and the page it was
+ * missing from rendered, type-checked and screenshotted without complaint,
+ * because a page that omits something looks exactly like a type that says
+ * nothing.
+ *
+ * Counted rather than located, because a page renders in its collapsed state
+ * and a count is what is observable from outside. `>=`, not `==`: an inline
+ * object contributes controls of its own, and this is a floor.
+ */
+let expected = 0;
+for (const { file, name, value } of declarations(document.types)) {
+  const want = controls(value);
+  expected += want;
+  if (want === 0) continue;
+  const html = renderToStaticMarkup(
+    <MemoryRouter initialEntries={[at('types', file, name)]}>
+      <Pages document={document} index={index} />
+    </MemoryRouter>,
+  );
+  const got = (html.match(/class="expander"/g) ?? []).length;
+  if (got < want) {
+    process.stderr.write(`HIDDEN ${name}: ${want} attributes lead somewhere, ${got} controls to get there\n`);
+    failed += 1;
+  }
+}
+if (expected === 0) {
+  process.stderr.write('no declared type has an attribute that leads anywhere; the check above is vacuous\n');
+  failed += 1;
+}
+process.stdout.write(`${expected} attributes lead somewhere, all reachable\n`);
+
+/** How many of a type's own attributes keep what they say behind a control. */
+function controls(shape: Shape): number {
+  const rows = [...Object.values(shape.properties ?? {}), ...Object.values(shape.pattern_properties ?? {})];
+  return rows.filter(({ type }) => {
+    if (type === null || type === undefined) return false;
+    // A name declared elsewhere: the page it names is not this page.
+    if (isRef(type)) return says(index.shape(type.$ref));
+    if (isRecursive(type)) return false;
+    // An array declared here, whose *items* are the thing with something to say.
+    if (type.type !== 'array') return false;
+    const items = type.items;
+    return isRef(items) ? says(index.shape(items.$ref)) : !isRecursive(items) && says(items);
+  }).length;
+}
+
+/**
+ * Whether a shape carries anything at all -- read off the JSON's keys.
+ *
+ * Deliberately **not** `detailed`. Asking the view's own predicate what the
+ * view should render is a check that can only agree with itself: narrowing
+ * `detailed` back to "has properties", which is the bug, narrows both sides
+ * equally and the count still matches. Falsified exactly that way, and it
+ * passed.
+ *
+ * So the expectation comes from the tree instead. Every key below is something
+ * the row that names the shape already shows -- its name, its type, its prose,
+ * whether it is required -- and a shape with nothing else is a shape a control
+ * would open onto blank space. Anything else is content with one place to be.
+ */
+function says(shape: Shape | undefined): boolean {
+  if (!shape) return false;
+  const ALREADY_ON_THE_ROW = new Set([
+    'id',
+    'name',
+    'type',
+    'type_expr',
+    'display_name',
+    'description',
+    'required',
+    'inherits',
+    'annotations',
+    'head',
+    'discriminator_value',
+    'projection',
+  ]);
+  return Object.keys(shape).some((key) => !ALREADY_ON_THE_ROW.has(key));
+}
 
 /*
  * The Markdown renderer, on a description written to attack the reader.

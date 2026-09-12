@@ -109,6 +109,18 @@
           }
         }
       },
+      "Isbn": {
+        "id": "pyraml://id#/declarations/types/Isbn",
+        "name": "Isbn",
+        "type": "string",
+        "display_name": "ISBN-13",
+        "description": "The thirteen-digit ISBN, without separators.",
+        "example": "9780441013593",
+        "type_expr": "string",
+        "max_length": 13,
+        "min_length": 13,
+        "pattern": "^\\d{13}$"
+      },
       "Book": {
         "id": "pyraml://id#/declarations/types/Book",
         "name": "Book",
@@ -156,13 +168,7 @@
           "isbn": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
-              "name": "isbn",
-              "type": "string",
-              "display_name": "ISBN-13",
-              "description": "The thirteen-digit ISBN, without separators.",
-              "type_expr": "string",
-              "pattern": "^\\d{13}$"
+              "$ref": "pyraml://id#/declarations/types/Isbn"
             }
           },
           "price": {
@@ -182,7 +188,11 @@
                 "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                 "name": "items",
                 "type": "string",
-                "type_expr": "string"
+                "example": "science-fiction",
+                "type_expr": "string",
+                "max_length": 24,
+                "min_length": 2,
+                "pattern": "^[a-z][a-z0-9-]*$"
               },
               "max_items": 10,
               "unique_items": true
@@ -399,6 +409,18 @@
                 "type": "string",
                 "type_expr": "string"
               }
+            },
+            "locator": {
+              "required": false,
+              "type": {
+                "id": "pyraml://id#/declarations/types/Shelf/items/property/locator/schema",
+                "name": "locator?",
+                "type": "string",
+                "description": "Where the physical copy sits, as one string.",
+                "example": "GB-SHELF-12.3-LEFT/reserve",
+                "type_expr": "string",
+                "pattern": "^(?:[A-Z]{2}-)?(?:AISLE|BAY|SHELF)-[0-9]{1,3}(?:\\.[0-9]{1,2})?(?:-(?:LEFT|RIGHT|CENTRE))?(?:/[A-Za-z0-9_]{1,16})*$"
+              }
             }
           }
         },
@@ -465,6 +487,43 @@
           }
         ]
       },
+      "Anything": {
+        "id": "pyraml://id#/declarations/types/Anything",
+        "name": "Anything",
+        "type": "union",
+        "display_name": "Any payload",
+        "description": "Everything this API will accept in a body, as one type.",
+        "type_expr": "Book | Review | Money | Shelf | Prices | Publication | Magazine | Pamphlet | Delivery",
+        "any_of": [
+          {
+            "$ref": "pyraml://id#/declarations/types/Book"
+          },
+          {
+            "$ref": "pyraml://id#/declarations/types/Review"
+          },
+          {
+            "$ref": "pyraml://id#/declarations/types/Money"
+          },
+          {
+            "$ref": "pyraml://id#/declarations/types/Shelf"
+          },
+          {
+            "$ref": "pyraml://id#/declarations/types/Prices"
+          },
+          {
+            "$ref": "pyraml://id#/declarations/types/Publication"
+          },
+          {
+            "$ref": "pyraml://id#/declarations/types/Magazine"
+          },
+          {
+            "$ref": "pyraml://id#/declarations/types/Pamphlet"
+          },
+          {
+            "$ref": "pyraml://id#/declarations/types/Delivery"
+          }
+        ]
+      },
       "Paged": {
         "id": "pyraml://id#/declarations/types/Paged",
         "name": "Paged",
@@ -486,7 +545,10 @@
               "id": "pyraml://id#/declarations/types/Paged/property/items/schema",
               "name": "items",
               "type": "array",
-              "type_expr": "array"
+              "type_expr": "Anything[]",
+              "items": {
+                "$ref": "pyraml://id#/declarations/types/Anything"
+              }
             }
           }
         }
@@ -533,6 +595,21 @@
               "type": "string",
               "description": "Matched against the address, case-insensitively.",
               "example": "Bristol",
+              "type_expr": "string"
+            }
+          },
+          "carrier": {
+            "required": false,
+            "type": {
+              "id": "pyraml://id#/declarations/types/DeliveryQuery/property/carrier/schema",
+              "name": "carrier?",
+              "type": "string",
+              "description": "Only deliveries handed to this carrier.",
+              "enum": [
+                "royal-mail-tracked-48-signed-for",
+                "dpd-next-day-before-noon",
+                "evri-standard"
+              ],
               "type_expr": "string"
             }
           }
@@ -1157,13 +1234,7 @@
                     "isbn": {
                       "required": true,
                       "type": {
-                        "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
-                        "name": "isbn",
-                        "type": "string",
-                        "display_name": "ISBN-13",
-                        "description": "The thirteen-digit ISBN, without separators.",
-                        "type_expr": "string",
-                        "pattern": "^\\d{13}$"
+                        "$ref": "pyraml://id#/declarations/types/Isbn"
                       }
                     },
                     "price": {
@@ -1183,7 +1254,11 @@
                           "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                           "name": "items",
                           "type": "string",
-                          "type_expr": "string"
+                          "example": "science-fiction",
+                          "type_expr": "string",
+                          "max_length": 24,
+                          "min_length": 2,
+                          "pattern": "^[a-z][a-z0-9-]*$"
                         },
                         "max_items": 10,
                         "unique_items": true
@@ -1340,13 +1415,7 @@
                 "isbn": {
                   "required": true,
                   "type": {
-                    "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
-                    "name": "isbn",
-                    "type": "string",
-                    "display_name": "ISBN-13",
-                    "description": "The thirteen-digit ISBN, without separators.",
-                    "type_expr": "string",
-                    "pattern": "^\\d{13}$"
+                    "$ref": "pyraml://id#/declarations/types/Isbn"
                   }
                 },
                 "price": {
@@ -1366,7 +1435,11 @@
                       "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                       "name": "items",
                       "type": "string",
-                      "type_expr": "string"
+                      "example": "science-fiction",
+                      "type_expr": "string",
+                      "max_length": 24,
+                      "min_length": 2,
+                      "pattern": "^[a-z][a-z0-9-]*$"
                     },
                     "max_items": 10,
                     "unique_items": true
@@ -1486,13 +1559,7 @@
                 "isbn": {
                   "required": true,
                   "type": {
-                    "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
-                    "name": "isbn",
-                    "type": "string",
-                    "display_name": "ISBN-13",
-                    "description": "The thirteen-digit ISBN, without separators.",
-                    "type_expr": "string",
-                    "pattern": "^\\d{13}$"
+                    "$ref": "pyraml://id#/declarations/types/Isbn"
                   }
                 },
                 "price": {
@@ -1512,7 +1579,11 @@
                       "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                       "name": "items",
                       "type": "string",
-                      "type_expr": "string"
+                      "example": "science-fiction",
+                      "type_expr": "string",
+                      "max_length": 24,
+                      "min_length": 2,
+                      "pattern": "^[a-z][a-z0-9-]*$"
                     },
                     "max_items": 10,
                     "unique_items": true
@@ -1709,13 +1780,7 @@
                     "isbn": {
                       "required": true,
                       "type": {
-                        "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
-                        "name": "isbn",
-                        "type": "string",
-                        "display_name": "ISBN-13",
-                        "description": "The thirteen-digit ISBN, without separators.",
-                        "type_expr": "string",
-                        "pattern": "^\\d{13}$"
+                        "$ref": "pyraml://id#/declarations/types/Isbn"
                       }
                     },
                     "price": {
@@ -1735,7 +1800,11 @@
                           "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                           "name": "items",
                           "type": "string",
-                          "type_expr": "string"
+                          "example": "science-fiction",
+                          "type_expr": "string",
+                          "max_length": 24,
+                          "min_length": 2,
+                          "pattern": "^[a-z][a-z0-9-]*$"
                         },
                         "max_items": 10,
                         "unique_items": true
@@ -1855,13 +1924,7 @@
                     "isbn": {
                       "required": true,
                       "type": {
-                        "id": "pyraml://id#/declarations/types/Book/property/isbn/schema",
-                        "name": "isbn",
-                        "type": "string",
-                        "display_name": "ISBN-13",
-                        "description": "The thirteen-digit ISBN, without separators.",
-                        "type_expr": "string",
-                        "pattern": "^\\d{13}$"
+                        "$ref": "pyraml://id#/declarations/types/Isbn"
                       }
                     },
                     "price": {
@@ -1881,7 +1944,11 @@
                           "id": "pyraml://id#/declarations/types/Book/property/tags/schema/items",
                           "name": "items",
                           "type": "string",
-                          "type_expr": "string"
+                          "example": "science-fiction",
+                          "type_expr": "string",
+                          "max_length": 24,
+                          "min_length": 2,
+                          "pattern": "^[a-z][a-z0-9-]*$"
                         },
                         "max_items": 10,
                         "unique_items": true
@@ -2088,6 +2155,18 @@
                           "name": "note?",
                           "type": "string",
                           "type_expr": "string"
+                        }
+                      },
+                      "locator": {
+                        "required": false,
+                        "type": {
+                          "id": "pyraml://id#/declarations/types/Shelf/items/property/locator/schema",
+                          "name": "locator?",
+                          "type": "string",
+                          "description": "Where the physical copy sits, as one string.",
+                          "example": "GB-SHELF-12.3-LEFT/reserve",
+                          "type_expr": "string",
+                          "pattern": "^(?:[A-Z]{2}-)?(?:AISLE|BAY|SHELF)-[0-9]{1,3}(?:\\.[0-9]{1,2})?(?:-(?:LEFT|RIGHT|CENTRE))?(?:/[A-Za-z0-9_]{1,16})*$"
                         }
                       }
                     }

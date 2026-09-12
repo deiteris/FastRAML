@@ -1,10 +1,9 @@
 /** One declared type, and one declared annotation type. */
 
 import { useParams } from 'react-router';
-import { ShapeView, restates } from '../components/Shape';
+import { ShapeView, TypeName, restates } from '../components/Shape';
 import { Usages } from '../components/Usages';
-import { Chip, Empty } from '../components/ui';
-import { spellingOf } from '../model';
+import { Empty } from '../components/ui';
 import type { Props } from './props';
 
 export function TypePage({ document, index }: Props) {
@@ -20,14 +19,17 @@ export function TypePage({ document, index }: Props) {
   // No file. Which of a document's files a type was written in is a fact about
   // the source, not about the API: a reader cannot open it, and a library is
   // reached through the prefix its `uses:` bound, never through its path.
-  const written = spellingOf(shape, index);
-  const adds = written !== shape.type && !restates(shape, index);
+  //
+  // One of the two, never both in two different treatments. The kind was a
+  // plain grey word and the expression a bordered box beside it, so `Shelf`
+  // read `array` `object[]` -- the same fact twice, and the only place in the
+  // app where naming a type drew a box around it.
+  const adds = !restates(shape, index);
   return (
     <article>
       <h1>{shape.name ?? name}</h1>
       <p className="subtitle">
-        <Chip tone="type">{shape.type}</Chip>
-        {adds && <Chip>{written}</Chip>}
+        {adds ? <TypeName shape={shape} index={index} /> : <span className="attr-type">{shape.type}</span>}
       </p>
       <ShapeView shape={shape} index={index} hideType />
       <Usages document={document} address={shape.id} />

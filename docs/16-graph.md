@@ -1242,6 +1242,46 @@ entry binds to a synthesised definition that no document declares, so it is
 `bound` with no address — reporting only the address would make it read as
 unbound.
 
+### 11.4b Three more that were shapes of a value rather than its absence
+
+The omissions above were keys the projection did not write. These three were
+written, in a form that carried less than the model held — the harder kind to
+find, because the key is there and a consumer reading it gets an answer.
+
+**`entry_point.secured_by` — what secures the API by default.** `securedBy:` at
+the root is harvested before the main decode and lands on `Raml`, not on the
+fragment, so the section built from the fragment never saw it. Nothing was
+*lost*: P5 gives the same list to every endpoint that declared none, so a reader
+can find it on any operation page. What was lost is that it is a **default** —
+the difference between one endpoint to check and all of them, which is the
+question a root page exists to answer. 6 documents across the corpus declare
+one.
+
+**An example is a record, not a bare value.** RAML's form B writes the value
+under `value:` beside a `displayName`, a `description`, a `strict` flag and
+annotations of its own; all four reached `Example` and none reached a consumer.
+15 across the corpus, and silently: an example with no metadata and one whose
+metadata was discarded project identically. `strict: false` is the sharpest of
+them, because it is *why* such an example is in the document — it marks one that
+deliberately does not validate, and dropped it reads as one that does.
+
+Always a record, on `example:` as well as on every entry of `examples:`. A
+consumer that has to test which form arrived is what § 11.4a exists to prevent,
+and the same argument settles it here: the shape follows what the facet *means*,
+not whether this instance happens to carry anything extra.
+
+**`declared_facets` is a map, spelled as `properties` is.** A `facets:` entry is
+a `Property` in every respect — it has a type and it is required or it is not —
+and this emitted a sorted list of names. So a consumer could say that `Nameable`
+demands `onlyIn` and neither that it demands a string nor that `since?` is
+optional: **19 of the corpus's 82 declarations name a non-string type and 7 are
+optional**. Sorting them broke the declaration-order invariant (docs/02 § 4) at
+the last step, the same way `sort_keys` did.
+
+Renamed from `declares_facets` rather than redefined under it. An old consumer
+now gets `undefined` — loud — where keeping the name would have handed it a map
+where it indexed a list.
+
 ### 11.4a A bound is an exact decimal string; a count is a number
 
 `minimum`, `maximum` and `multipleOf` are decimal text on **every** kind that
@@ -1500,6 +1540,21 @@ an expression — so those are declared in `_STRUCTURAL`. Only their types: the
 key sets come from the AST, so **a key added to the projection and not declared
 there fails generation, by name**. The hand-written half cannot fall behind,
 because it is not the half that says which keys exist.
+
+**The data beside the contract is held to the same standard.**
+`viewer/public/api.json` is what `npm run sample` writes and what the viewer's
+two gates — `smoke` and `shots` — then read. It was not checked, so a change to
+the projection left both of them running against the *previous* shape of the
+tree: they pass, because a page rendered from old data is still a page, and what
+they stop measuring is the emitter. `TestTheViewerSampleIsNotStale` regenerates
+it and compares, which is the same idiom as the goldens and as the check above
+this one — compared as parsed JSON, since the file is written through a shell
+redirect and its line endings are the platform's.
+
+Found the way it would be. Wrapping an example in a record left `items.example`
+a bare string in the committed sample, the type page dropped it, and the only
+thing that noticed was the reachability check, by a route that had nothing to do
+with examples.
 
 Three things this found on its first two runs, none of which any test could see:
 

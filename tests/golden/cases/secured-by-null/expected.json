@@ -79,6 +79,15 @@
     "kind": "APIFragment",
     "media_types": [],
     "protocols": [],
+    "secured_by": [
+      {
+        "bound": true,
+        "declaration": "pyraml://id#/declarations/securitySchemes/oauth",
+        "is_null": false,
+        "name": "oauth",
+        "scopes": null
+      }
+    ],
     "title": "Golden"
   },
   "security_schemes": {

@@ -400,6 +400,7 @@ _PRODUCES: Final = {
     'schemes': 'SecuredBy',
     'applied': 'Applied',
     'annotation': 'DocumentAnnotation',
+    'example': 'Example',
     'recursion': 'Recursion',
 }
 
@@ -426,6 +427,10 @@ _STRUCTURAL: Final[dict[str, dict[str, str]]] = {
         'description': 'string',
         'base_uri_parameters': 'Record<string, Parameter>',
         'documentation': '{ title: string; content: string }[]',
+        #: `securedBy:` at the root. Every endpoint declaring none carries the
+        #: same list, so this says the API declared a *default*, not what any
+        #: one endpoint requires.
+        'secured_by': 'SecuredBy[]',
         'annotations': 'Applied[]',
     },
     'SecurityScheme': {
@@ -490,6 +495,13 @@ _STRUCTURAL: Final[dict[str, dict[str, str]]] = {
         'type': 'Address | null',
         'value': 'Json',
     },
+    'Example': {
+        'value': 'Json',
+        'display_name': 'string',
+        'description': 'string',
+        'strict': 'boolean',
+        'annotations': 'Applied[]',
+    },
     'Recursion': {
         'type': "'recursive'",
         'name': 'string | null',
@@ -506,14 +518,16 @@ _SHAPE_FIELDS: Final = {
     'description': 'string',
     'required': 'boolean',
     'default': 'Json',
-    'example': 'Json',
-    'examples': 'Record<string, Json>',
+    'example': 'Example',
+    'examples': 'Record<string, Example>',
     'enum': 'Json[]',
     'xml': 'Json',
     'allowed_targets': 'string[]',
     'inherits': '(Shape | Ref)[]',
+    #: Custom facet *values* -- what this type supplies. `declared_facets` is
+    #: the other half: what a subtype must supply (docs/10 § 4).
     'custom_facets': 'Record<string, Json>',
-    'declares_facets': 'string[]',
+    'declared_facets': 'Record<string, Property>',
     'annotations': 'Applied[]',
     'type_expr': 'string',
     #: Both only on a `json` shape, and both about the same schema: the schema

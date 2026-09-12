@@ -650,3 +650,124 @@ class TestAnIncludedSchemeSaysWhatItIs:
         tree = build_tree(raml)
         secured = tree['endpoints']['/things']['operations']['get']['secured_by'][0]
         assert secured['declaration'] == tree['security_schemes']['api.raml']['included']['id']
+
+
+METADATA = {
+    'api.raml': """#%RAML 1.0
+title: Metadata
+annotationTypes:
+  note: string
+types:
+  Nameable:
+    type: object
+    facets:
+      onlyIn: string
+      since?: integer
+      internal?: boolean
+  Money:
+    type: Nameable
+    onlyIn: EU
+    properties:
+      amount: number
+    examples:
+      typical:
+        displayName: A typical amount
+        description: What most callers send.
+        (note): shown first
+        value:
+          amount: 3.5
+      broken:
+        strict: false
+        value:
+          amount: not a number
+  Single:
+    type: number
+    example:
+      displayName: The canonical one
+      value: 1
+""",
+}
+
+
+@pytest.fixture
+def metadata_tree(workspace):
+    root = workspace(METADATA)
+    raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, workspace_root=root))
+    return build_tree(raml)
+
+
+@pytest.fixture
+def metadata(metadata_tree):
+    return metadata_tree['types']['api.raml']
+
+
+@pytest.fixture
+def annotation_types(metadata_tree):
+    return metadata_tree['annotation_types']['api.raml']
+
+
+class TestAnExampleCarriesWhatWasWrittenBesideIt:
+    """docs/16 § 11.4: form B's metadata is data, and it was being dropped.
+
+    `displayName`, `description`, `strict` and an example's own annotations all
+    reached the model and none reached a consumer — silently, since an example
+    with no metadata and one whose metadata was discarded projected as the same
+    bare value.
+    """
+
+    def test_the_value_is_under_value_on_every_example(self, metadata):
+        examples = metadata['Money']['examples']
+        assert examples['typical']['value'] == {'amount': 3.5}
+
+    def test_the_singular_facet_has_the_same_shape_as_a_named_one(self, metadata):
+        # One form, always. A consumer that had to test which arrived is what
+        # § 11.4a exists to prevent.
+        assert metadata['Single']['example'] == {'value': 1, 'display_name': 'The canonical one'}
+
+    def test_a_display_name_and_a_description_survive(self, metadata):
+        typical = metadata['Money']['examples']['typical']
+        assert typical['display_name'] == 'A typical amount'
+        assert typical['description'] == 'What most callers send.'
+
+    def test_strict_false_survives(self, metadata):
+        # The reason that example is in the document: it deliberately does not
+        # validate. Dropped, it reads as an example that does.
+        assert metadata['Money']['examples']['broken']['strict'] is False
+
+    def test_an_annotation_on_an_example_points_at_its_type(self, metadata, annotation_types):
+        applied = metadata['Money']['examples']['typical']['annotations']
+        assert [one['name'] for one in applied] == ['note']
+        assert applied[0]['value'] == 'shown first'
+        assert applied[0]['type'] == annotation_types['note']['id']
+
+    def test_an_example_with_no_metadata_carries_only_its_value(self, metadata):
+        assert set(metadata['Money']['examples']['broken']) == {'value', 'strict'}
+
+
+class TestADeclaredFacetSaysWhatASubtypeMustSupply:
+    """docs/10 § 4: a `facets:` block declares what *subtypes* must supply.
+
+    The names alone were what this projected, so a consumer could say that
+    `Nameable` demands `onlyIn` and not that it demands a string, nor that
+    `since?` is optional — and the list was sorted, which the model's
+    declaration-order invariant does not allow.
+    """
+
+    def test_each_facet_carries_its_type(self, metadata):
+        declared = metadata['Nameable']['declared_facets']
+        assert declared['onlyIn']['type']['type'] == 'string'
+        assert declared['since']['type']['type'] == 'integer'
+
+    def test_an_optional_facet_is_distinguishable_from_a_required_one(self, metadata):
+        declared = metadata['Nameable']['declared_facets']
+        assert declared['onlyIn']['required'] is True
+        assert declared['since']['required'] is False
+
+    def test_declaration_order_is_preserved(self, metadata):
+        # Not alphabetical: `internal` sorts first and is written last.
+        assert list(metadata['Nameable']['declared_facets']) == ['onlyIn', 'since', 'internal']
+
+    def test_the_value_a_subtype_supplies_stays_in_custom_facets(self, metadata):
+        # The two halves are separate keys: what is demanded, and what is given.
+        assert metadata['Money']['custom_facets'] == {'onlyIn': 'EU'}
+        assert 'declared_facets' not in metadata['Money']

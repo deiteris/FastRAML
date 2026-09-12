@@ -48,15 +48,15 @@ export interface Shape {
   type: string;
   inherits?: (Shape | Ref)[];
   custom_facets?: Record<string, Json>;
-  declares_facets?: string[];
+  declared_facets?: Record<string, Property>;
   annotations?: Applied[];
   type_expr?: string;
   display_name?: string;
   description?: string;
   required?: boolean;
   default?: Json;
-  example?: Json;
-  examples?: Record<string, Json>;
+  example?: Example;
+  examples?: Record<string, Example>;
   enum?: Json[];
   xml?: Json;
   allowed_targets?: string[];
@@ -100,6 +100,7 @@ export interface EntryPoint {
   kind: string;
   base_uri_parameters?: Record<string, Parameter>;
   documentation?: { title: string; content: string }[];
+  secured_by?: SecuredBy[];
   annotations?: Applied[];
   title?: string;
   version?: string;
@@ -178,6 +179,14 @@ export interface DocumentAnnotation {
   target: string;
   type: Address | null;
   value: Json;
+}
+
+export interface Example {
+  value: Json;
+  annotations?: Applied[];
+  display_name?: string;
+  description?: string;
+  strict?: boolean;
 }
 
 export interface Recursion {

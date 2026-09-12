@@ -296,7 +296,7 @@ class _Projector:
     def model(self, raml: Raml) -> Json:
         return {
             'base': self.addresses.base,
-            'entry_point': self.fragment(raml.entry_point),
+            'entry_point': self.fragment(raml.entry_point, raml.global_secured_by),
             'types': self.types(raml),
             'annotation_types': self.declared_shapes(raml, raml.fragment_annotations),
             'security_schemes': self.security_schemes(raml),
@@ -453,8 +453,16 @@ class _Projector:
         if base.custom_facets:
             out['custom_facets'] = {name: self.value(node, seen) for name, node in base.custom_facets.items()}
         if base.custom_facet_defs:
-            declared: list[Json] = [*sorted(base.custom_facet_defs)]
-            out['declares_facets'] = declared
+            # What a subtype must supply, spelled as `properties` is -- a
+            # `facets:` entry *is* a `Property`, with a name, a required flag and
+            # a type. The names alone were what this emitted, so a consumer could
+            # say that `Nameable` demands `onlyIn` and not that it demands a
+            # string, nor that `onlyIn?` is optional: 19 of the corpus's 82
+            # declarations name a non-string type and 7 are optional.
+            #
+            # In declaration order, which sorting them broke -- an invariant the
+            # model holds everywhere it is exposed (docs/02 § 4).
+            out['declared_facets'] = {name: self.value(prop, seen) for name, prop in base.custom_facet_defs.items()}
         if base.annotations:
             applied: list[Json] = [self.applied(name, extension) for name, extension in base.annotations.items()]
             out['annotations'] = applied
@@ -549,6 +557,30 @@ class _Projector:
 
     # -- values ---------------------------------------------------------------
 
+    def example(self, example: Example, seen: frozenset[int]) -> Json:
+        """One example: its value, and the metadata form B carried.
+
+        A record rather than the bare value, on both `example:` and every entry
+        of `examples:`. RAML's form B writes the value under `value:` beside a
+        `displayName`, a `description`, a `strict` flag and annotations of its
+        own, and all four reached no consumer — 15 across the corpus, silently,
+        since an example with no metadata and one whose metadata was dropped
+        project identically.
+
+        Always a record, never only where metadata exists. A consumer that has
+        to test which form arrived is the thing § 11.4a exists to prevent, and
+        `strict: false` in particular is *why* an example is there — it marks
+        one that deliberately does not validate.
+        """
+        out: dict[str, Json] = {'value': self.value(example.data, seen)}
+        for field in ('display_name', 'description', 'strict'):
+            value = getattr(example, field, None)
+            if value is not None:
+                out[field] = self.value(value, seen)
+        if example.annotations:
+            out['annotations'] = self.applied_to(example.annotations)
+        return out
+
     def value(self, value: object, seen: frozenset[int]) -> Json:  # noqa: PLR0911, PLR0912 - one arm per model type
         if isinstance(value, Node):
             return _node(value)
@@ -574,9 +606,9 @@ class _Projector:
             # `entries()`, never `values`: with `examples: !include e.raml` the
             # examples live on the fragment and `values` is empty, so reading it
             # does not fail — it silently sees nothing.
-            return {name: self.value(example, seen) for name, example in value.entries().items()}
+            return {name: self.example(one, seen) for name, one in value.entries().items()}
         if isinstance(value, Example):
-            return self.value(value.data, seen)
+            return self.example(value, seen)
         if isinstance(value, dict):
             return {str(key): self.value(item, seen) for key, item in value.items()}
         if isinstance(value, (list, tuple)):
@@ -585,7 +617,16 @@ class _Projector:
 
     # -- fragments, endpoints, annotations ------------------------------------
 
-    def fragment(self, fragment: Fragment | None) -> Json:
+    def fragment(self, fragment: Fragment | None, secured_by: list[SecurityScheme] | None = None) -> Json:
+        """The root document's own facets, and what secures it by default.
+
+        `securedBy:` at the root is passed in rather than read off the fragment:
+        it is harvested before the main decode and lands on `Raml`, so the
+        fragment does not hold it. Every endpoint that declared none already
+        carries the same list, so nothing is *lost* without this — what is lost
+        is that the API declared a default at all, which is the one thing a
+        reader of the root page wants to know about security.
+        """
         if fragment is None:
             return None
         out: dict[str, Json] = {'kind': type(fragment).__name__}
@@ -604,6 +645,8 @@ class _Projector:
                 {'title': self.value(item.title, frozenset()), 'content': self.value(item.content, frozenset())}
                 for item in items
             ]
+        if secured_by:
+            out['secured_by'] = self.schemes(secured_by)
         annotations = getattr(fragment, 'annotations', None)
         if annotations:
             out['annotations'] = self.applied_to(annotations)

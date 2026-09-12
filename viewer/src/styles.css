@@ -273,6 +273,14 @@ h4 {
   gap: 4px;
 }
 
+/* A section heading that links says where you are as well as where to go, and
+   said neither: every row below it can show as current and the heading itself
+   could not, so the one page with no rows -- Overview -- had no current state
+   at all. */
+.nav-heading a.active {
+  color: var(--ink);
+}
+
 /* An SVG on a fixed box, so every icon lands on the same grid. The characters
    used before -- a chevron and a single angle quote -- have different widths
    and baselines, so the nav's rows did not line up. */

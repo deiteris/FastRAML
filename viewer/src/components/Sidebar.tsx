@@ -45,6 +45,22 @@ export function Sidebar({
         onChange={(event) => setFilter(event.target.value)}
       />
 
+      {/* A destination among the others, not only the thing the title happens
+          to link to. What the API is -- its base URI, its media types, its
+          default security, its counts -- is a page, and the only way to reach
+          it was a control that does not read as navigation and never shows as
+          current, so a reader who followed any link could not find the way
+          back. Aligned with the toggled headings by a spacer, having nothing
+          to collapse. */}
+      <h3 className="nav-heading">
+        <span className="nav-spacer" />
+        {/* `end`, or `/` is a prefix of every route and the row is always
+            current. */}
+        <NavLink to="/" end>
+          Overview
+        </NavLink>
+      </h3>
+
       {/* First, because it is the part meant to be read rather than looked up
           -- and paired with its position, before the filter, because filtering
           a list renumbers it and the route is the position. */}

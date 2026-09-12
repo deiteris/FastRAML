@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { Annotations } from '../components/Annotations';
 import { ParameterTable } from '../components/Parameters';
 import { Prose } from '../components/markdown';
+import { SecuredByList } from '../components/Security';
 import { oneLine } from '../components/json';
 import { Chip, Empty, KeyValues, Section } from '../components/ui';
 import { baseUriOf, declarations } from '../model';
@@ -44,6 +45,18 @@ export function Overview({ document, index }: Props) {
           ),
         ]}
       />
+
+      {/* `securedBy:` at the root. Every endpoint declaring none carries the
+          same list, so a reader could find it on any operation page and never
+          learn that it is the API's default rather than that endpoint's own
+          choice -- which is the difference between one endpoint to check and
+          all of them. */}
+      {api.secured_by && api.secured_by.length > 0 && (
+        <Section title="Secured by default">
+          <SecuredByList schemes={api.secured_by} index={index} />
+          <p className="prose aside">Every endpoint that declares no security of its own requires this.</p>
+        </Section>
+      )}
 
       <Annotations applied={api.annotations} index={index} />
 

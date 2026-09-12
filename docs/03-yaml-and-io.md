@@ -350,10 +350,18 @@ regardless of how the bytes arrive.
 
 **Remote includes are fetched one at a time**, because the descent discovers
 each one only when it reaches it. Eight independent `uses:` libraries at 50 ms
-cost 410 ms, against a 50 ms floor. Removing that is a *concurrency* change and
-not an async one — awaiting serially is still serial — and it needs the URIs
-known before they are needed, which means a prefetch pass. Not built;
-[15](15-implementation-plan.md) After v1 records it.
+cost 410 ms, against a 50 ms floor.
+
+Two halves, and only the second is about async. The serialisation is a
+*discovery-order* problem: nothing can fetch a second include before the first
+has been parsed, so a URI set has to be built before it is needed — a prefetch,
+whatever does the fetching, since awaiting one include at a time is still
+serial. Fetching one such set concurrently is then the part an event loop does
+well, and that is the decided shape: an async client driven by the prefetch,
+not a thread pool behind this loader. Neither half is built;
+[15](15-implementation-plan.md) After v1 records both, and the refusal above
+is what holds until then — an async client belongs to the prefetch, which does
+not exist yet, and not to `HTTPLoader`, which cannot await.
 
 ## 6. `DataNode`: structured user data
 

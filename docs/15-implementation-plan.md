@@ -757,6 +757,32 @@ In rough priority order:
    P10 skipping the *declarations* whose resolution failed, which is invariant I5
    restated as a filter rather than an assertion. That is a change inside those
    passes, not in the driver, which is why it is here and not in Phase 9.
+7. **Concurrent remote includes, as an async prefetch.** Remote `!include` and
+   `uses:` targets are fetched one at a time: the descent discovers each only
+   when it reaches it, so eight independent libraries at 50 ms cost 410 ms
+   against a 50 ms floor ([03](03-yaml-and-io.md) § 5.1).
+
+   **Two halves, and the second is the one that is a design decision.** The
+   serialisation is a discovery-order problem — nothing can fetch a second
+   include before the first has been parsed — so the URI set has to be built
+   before it is needed: compose a document, collect its `http(s)` refs, fetch
+   the level, compose those, repeat. Latency then follows include-graph *depth*,
+   typically two or three, rather than count. That prefetch is needed whatever
+   does the fetching, because awaiting one include at a time is still serial.
+
+   Fetching one level is then the part an event loop does well, and **async is
+   the decided mechanism, not a worker pool**. The parse stays synchronous and
+   single-threaded ([01](01-scope-and-coverage.md) § 2): the prefetch enters a
+   loop for the duration of one level and leaves with bytes in a cache, so no
+   pass becomes `async` and nothing else has to be coloured. It also sidesteps
+   the constraint a thread pool would carry — `httpx.Client` promises thread
+   safety for concurrent `get` and `requests.Session` does not.
+
+   The consequence for what exists today: `HTTPLoader` refusing an async client
+   is not a rule this item overturns. That loader is called from inside the
+   descent and still cannot await. An async client would be supplied *to the
+   prefetch*, which is a different seam, and `ParseOptions` would carry it as a
+   different field.
 
 ## Risk register
 

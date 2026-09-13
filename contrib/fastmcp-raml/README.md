@@ -107,6 +107,8 @@ Measured rather than assumed:
 
 ## Upstream
 
+Drafted in [UPSTREAM.md](UPSTREAM.md), ready to file.
+
 `OpenAPIProvider` accepting `routes: list[HTTPRoute]`, and dropping the
 `SchemaPath` that `RequestDirector` stores and never reads, would make any
 description format pluggable. This package would then be the RAML front half

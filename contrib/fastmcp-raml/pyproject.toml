@@ -1,0 +1,73 @@
+[project]
+name = "fastmcp-raml"
+version = "0.1.0"
+description = "Serve a RAML-described API as an MCP server, via FastMCP"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+# Pinned to a major, deliberately. Nothing private is imported -- every name
+# used is in its module's `__all__` -- but the component classes and the
+# `RouteMap` semantics are upstream's, and a major bump is where those move.
+# One undocumented fact is load-bearing and gated by a test: `RequestDirector`
+# reads nothing off the spec it is constructed with.
+#
+# Measured, not assumed:
+#   2.11.3  `fastmcp.server.providers.openapi` does not exist. Cannot import.
+#   3.0.0   every name present, `OpenAPIProvider.__init__` signature unchanged.
+#           Not tested green: the suite's mock transport does not pair with the
+#           httpx2 of that release, so support is not claimed.
+#   4.0.3   the suite runs green end to end.
+#
+# The upstream change the README proposes -- `OpenAPIProvider` taking
+# `routes: list[HTTPRoute]` -- would leave this package the RAML front half and
+# nothing else, and the pin could widen to whatever ships it.
+dependencies = ["pyraml", "fastmcp>=4.0,<5"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "mypy>=1.10", "ruff>=0.6"]
+
+[tool.uv.sources]
+pyraml = { path = "../..", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fastmcp_raml"]
+artifacts = ["fastmcp_raml/py.typed"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM", "C90", "D100", "D101", "D102", "D103", "D104", "D105", "D107",
+    "D203", "D213", "D400", "D401", "D415", "E501", "EM101", "EM102",
+    "TRY003", "CPY001", "ANN401",
+]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+multiline-quotes = "double"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["S101", "ANN", "D", "INP001", "PLR2004", "PLC0415", "SLF001", "ARG001", "ARG005", "TC003"]
+"examples/*.py" = ["INP001", "T201", "SLF001"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

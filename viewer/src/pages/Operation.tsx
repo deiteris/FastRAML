@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useParams } from 'react-router';
-import { Annotations } from '../components/Metadata';
+import { Annotations } from '../components/Extra';
 import { Bodies } from '../components/Bodies';
 import { fromBaseUri, fromScheme } from '../components/Borrowed';
 import { ParameterTable, QueryString } from '../components/Parameters';

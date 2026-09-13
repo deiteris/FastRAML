@@ -526,18 +526,19 @@ h4 {
 }
 
 /*
- * Author-defined metadata, in a region of its own.
+ * The extension points, in a region of their own.
  *
- * A built-in facet constrains the data; an annotation and a custom facet
- * describe the declaration. Drawn in the band above they read as two more
- * constraints -- `stewardedBy catalogue-team` beside `maxLength 200`, in the
- * same muted chips -- and only one of the two is something a payload has to
- * satisfy. The box says that before a word of it is read.
+ * A built-in facet constrains the data; an annotation and a user-defined facet
+ * describe the declaration, for some processor other than this one to act on.
+ * Drawn in the band above they read as two more constraints -- `stewardedBy
+ * catalogue-team` beside `maxLength 200`, in the same muted chips -- and only
+ * one of the two is something a payload has to satisfy. The box says that
+ * before a word of it is read.
  *
  * A left edge rather than an accent colour: `--accent` is the link colour here,
  * and a region outlined in it reads as something to click.
  */
-.metadata {
+.extra {
   margin: 16px 0;
   padding: 9px 14px 11px;
   border: 1px solid var(--line);
@@ -546,38 +547,38 @@ h4 {
   background: var(--panel);
 }
 
-.metadata > .label {
+.extra > .label {
   display: block;
 }
 
-.meta {
+.extra-item {
   padding-top: 7px;
 }
 
-.meta + .meta {
+.extra-item + .extra-item {
   margin-top: 7px;
   border-top: 1px solid var(--line);
 }
 
-.meta-head {
+.extra-head {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
 }
 
-.meta-name {
+.extra-name {
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 650;
   color: var(--ink);
 }
 
-.meta-name.is-link {
+.extra-name.is-link {
   color: var(--accent);
 }
 
-.meta-type {
+.extra-type {
   font-family: var(--mono);
   font-size: 12px;
   color: var(--faint);
@@ -586,7 +587,7 @@ h4 {
 /* Which of the two it is, which is the distinction the region exists to draw.
    Outlined, because both kinds sit in one list and the label is the only thing
    telling a row apart from the one above it. */
-.meta-kind {
+.extra-kind {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -598,7 +599,7 @@ h4 {
   background: var(--bg);
 }
 
-.meta-from {
+.extra-from {
   font-size: 12px;
   color: var(--faint);
 }
@@ -606,7 +607,7 @@ h4 {
 /* A value is a code block here, as it is for `default:` and `example:`. The
    region's own background is `--panel`, which is a code block's too, so on it
    the block had no edge at all. */
-.metadata .code {
+.extra .code {
   margin-top: 4px;
   background: var(--bg);
 }

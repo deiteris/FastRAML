@@ -1,7 +1,7 @@
 /** The root: what the API is, where it lives, and what it declares. */
 
 import { Link } from 'react-router';
-import { Annotations } from '../components/Metadata';
+import { Annotations } from '../components/Extra';
 import { ParameterTable } from '../components/Parameters';
 import { Prose } from '../components/markdown';
 import { SecuredByList } from '../components/Security';

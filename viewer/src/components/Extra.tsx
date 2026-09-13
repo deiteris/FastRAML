@@ -1,17 +1,26 @@
 /**
- * What the author added that RAML's type vocabulary did not define.
+ * The extension points: annotations, and the facets an author declared.
  *
- * **A built-in facet constrains the data; an annotation and a custom facet
- * describe the declaration.** `maxLength 200` says what a payload may contain,
- * and `(deprecated): use PUT` and `stewardedBy: catalogue-team` say nothing a
- * request or a response has to satisfy. Rendered in the same band, in the same
- * chips, they read as two more constraints -- the one thing they are not.
+ * **Extra, not metadata.** Both exist so that a processor other than this one
+ * can be told something RAML has no word for -- a code generator reading
+ * `(goLang.package)`, a gateway reading `(rateLimit)`, a catalogue reading
+ * `stewardedBy`. What they mean is the consumer's to decide, and this viewer is
+ * one consumer among them: it can say what was written, what type it was
+ * declared with, and where the declaration is, and it cannot say what any of it
+ * does. A region that claimed otherwise would be inventing a reading.
  *
- * So they are drawn together, once, in a region of their own. And each row
- * carries the **type** it was declared with: an annotation has an
- * `annotationTypes:` entry and a custom facet has a `facets:` entry, both of
- * them type declarations, and neither of them was on the page. A value with no
- * type is author text that a reader cannot check against anything.
+ * Which is why they are drawn apart from the facets above rather than among
+ * them. **A built-in facet constrains the data; these describe the
+ * declaration.** `maxLength 200` says what a payload may contain; `(deprecated):
+ * use PUT` and `stewardedBy: catalogue-team` say nothing a request or a response
+ * has to satisfy. In the same band, in the same chips, they read as two more
+ * constraints -- the one thing they are not.
+ *
+ * Each row carries the **type** it was declared with, because both halves of
+ * the extension point are typed: an annotation has an `annotationTypes:` entry
+ * and a custom facet has a `facets:` entry, and neither was on the page. A value
+ * with no type is author text that a reader cannot check against anything, and
+ * the processor meant to act on it is holding a contract the reader cannot see.
  *
  * One component and not one per site: `(deprecated)` on a type, a method, a
  * response and a security scheme is the same statement, and the tree gives all
@@ -23,7 +32,7 @@ import { Link } from 'react-router';
 import { type Applied, type Index, type Json, type Shape, facetDeclaration, labelOf } from '../model';
 import { Code } from './json';
 
-export function Metadata({
+export function Extra({
   applied,
   facets,
   owner,
@@ -39,8 +48,8 @@ export function Metadata({
   const supplied = Object.entries(facets ?? {});
   if ((applied ?? []).length === 0 && supplied.length === 0) return null;
   return (
-    <div className="metadata">
-      <span className="label">metadata</span>
+    <div className="extra">
+      <span className="label">extra</span>
       {(applied ?? []).map((one, at) => (
         <Annotation key={`a${at}`} applied={one} index={index} />
       ))}
@@ -56,11 +65,11 @@ export function Metadata({
  *
  * Named for what the caller has rather than for what the region is: an
  * endpoint, an operation, a response and a scheme carry annotations and
- * nothing else, and `<Metadata applied=...>` at four sites read as though the
+ * nothing else, and `<Extra applied=...>` at four sites read as though the
  * other half had been forgotten.
  */
 export function Annotations({ applied, index }: { applied?: Applied[]; index: Index }) {
-  return <Metadata applied={applied} index={index} />;
+  return <Extra applied={applied} index={index} />;
 }
 
 function Annotation({ applied, index }: { applied: Applied; index: Index }) {
@@ -132,19 +141,19 @@ function Row({
   value: Json;
 }) {
   return (
-    <div className="meta">
-      <div className="meta-head">
+    <div className="extra-item">
+      <div className="extra-head">
         {href ? (
-          <Link to={href} className="meta-name is-link">
+          <Link to={href} className="extra-name is-link">
             {name}
           </Link>
         ) : (
-          <code className="meta-name">{name}</code>
+          <code className="extra-name">{name}</code>
         )}
-        {type && <span className="meta-type">{type}</span>}
-        <span className="meta-kind">{kind}</span>
+        {type && <span className="extra-type">{type}</span>}
+        <span className="extra-kind">{kind}</span>
         {from && (
-          <span className="meta-from">
+          <span className="extra-from">
             declared by{' '}
             <Link to={from.href} className="typelink">
               {from.label}

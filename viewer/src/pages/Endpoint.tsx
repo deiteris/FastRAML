@@ -7,7 +7,7 @@
  */
 
 import { Link } from 'react-router';
-import { Annotations } from '../components/Metadata';
+import { Annotations } from '../components/Extra';
 import { fromBaseUri } from '../components/Borrowed';
 import { ParameterTable } from '../components/Parameters';
 import { SecuredByList } from '../components/Security';

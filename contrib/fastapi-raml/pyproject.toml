@@ -1,0 +1,103 @@
+[project]
+name = "fastapi-raml"
+version = "0.1.0"
+description = "Render a FastAPI application as RAML 1.0, and serve it"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+
+# A consumer of pyraml, so pyraml is a dependency here and this is not one
+# there. The parser must not depend on a web framework.
+dependencies = [
+    "pyraml",
+    "fastapi>=0.110",
+    "pydantic>=2.7",
+    "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+# Only `examples/server.py` needs a server to run under.
+examples = ["uvicorn>=0.27"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "mypy>=1.10",
+    "ruff>=0.6",
+    "httpx>=0.27",   # starlette's TestClient
+    "uvicorn>=0.27",
+]
+
+# The parent repo, in place: this project is developed against the working tree
+# rather than a release, so a parser change shows up here without a publish.
+[tool.uv.sources]
+pyraml = { path = "../..", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# `examples` and `tests` stay out of the wheel. `tests/differential.py` imports
+# `examples`, which is why the gate runs from a checkout rather than an install.
+packages = ["fastapi_raml"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM",    # flake8-commas
+    "C90",    # mccabe complexity
+    "D100",   # module/class/function docstrings are not all mandatory
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D107",
+    "D203",
+    "D213",   # summary on the first line, matching the parent project
+    "D400",
+    "D401",
+    "D415",
+    "E501",   # line length is the formatter's business
+    "EM101",
+    "EM102",
+    "TRY003",
+    "CPY001",
+    "ANN401",
+]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+multiline-quotes = "double"
+
+[tool.ruff.lint.per-file-ignores]
+# Examples are written to be read: they declare models and routes and little
+# else, and their handlers are stubs where the body is not the point.
+"examples/*.py" = ["ANN", "D", "INP001", "ARG001"]
+# Tests assert on private state and print their table.
+"tests/*.py" = ["S101", "ANN", "D", "INP001", "T201", "SLF001", "PLR2004", "PLC0415"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+# `document.py` has no third-party imports beyond yaml and is held to the
+# stricter standard; the rest reads FastAPI internals that are largely `Any`.
+module = "fastapi_raml.document"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

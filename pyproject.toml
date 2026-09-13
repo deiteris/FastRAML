@@ -70,7 +70,12 @@ line-length = 120
 # The design documents contain illustrative Python that is written for reading,
 # not for running. Formatting it expands grouped field lists one per line and
 # costs the documents their density.
-exclude = ["docs"]
+#
+# `contrib/` holds separate distributions, each with its own pyproject and its
+# own gate, exactly as `viewer/` has its own `package.json` and `npm run check`.
+# Linting them from here would apply this project's rules to a project that
+# states its own, and would need their dependencies installed to do it.
+exclude = ["docs", "contrib"]
 
 [tool.ruff.lint]
 select = [

@@ -9,10 +9,10 @@ license = "MIT"
 # A consumer of pyraml, so pyraml is a dependency here and this is not one
 # there. The parser must not depend on a web framework.
 dependencies = [
+    "raml-document",
     "pyraml",
     "fastapi>=0.110",
     "pydantic>=2.7",
-    "pyyaml>=6",
 ]
 
 [project.optional-dependencies]
@@ -32,14 +32,15 @@ dev = [
 # rather than a release, so a parser change shows up here without a publish.
 [tool.uv.sources]
 pyraml = { path = "../..", editable = true }
+raml-document = { path = "../raml-document", editable = true }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# `examples` and `tests` stay out of the wheel. `tests/differential.py` imports
-# `examples`, which is why the gate runs from a checkout rather than an install.
+# `examples` and `tests` stay out of the wheel. The tests import `examples`,
+# which is why the gate runs from a checkout rather than an install.
 packages = ["fastapi_raml"]
 
 [tool.ruff]
@@ -91,13 +92,11 @@ ignore_missing_imports = true
 warn_return_any = true
 warn_unused_configs = true
 
-[[tool.mypy.overrides]]
-# `document.py` has no third-party imports beyond yaml and is held to the
-# stricter standard; the rest reads FastAPI internals that are largely `Any`.
-module = "fastapi_raml.document"
+# The RAML model is checked strictly where it lives, in `raml-document`. What is
+# left here reads FastAPI internals, so `Any` arrives at every boundary and a
+# stricter setting would be satisfied by annotating that `Any` as `Any`.
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
-warn_unreachable = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -145,12 +145,18 @@ class RAMLProvider(Provider):
         base_uri_parameters: Mapping[str, str] | None,
         client: httpx2.AsyncClient | None,
     ) -> str:
+        """Where requests go, unless the caller's client already says.
+
+        A supplied client carries its own `base_url`, so what the document
+        declares does not have to resolve -- and a document whose `baseUri` is
+        templated per deployment is the ordinary reason to supply one.
+        """
         base_url = base_url_of(raml, base_uri_parameters)
+        if client is not None:
+            return base_url or ''
         if base_url is None:
-            if client is None:
-                msg = 'the document declares no baseUri, so a client must be supplied'
-                raise ValueError(msg)
-            return ''
+            msg = 'the document declares no baseUri, so a client must be supplied'
+            raise ValueError(msg)
         missing = unresolved_in(base_url)
         if missing:
             msg = (

@@ -2,6 +2,8 @@
 
 Draft, ready to file at `PrefectHQ/fastmcp`. Measured against **4.0.3**.
 
+Before filing, replace `FASTMCP_RAML_URL` below with this project's public URL.
+
 ---
 
 ## Let `OpenAPIProvider` take pre-built routes
@@ -57,7 +59,7 @@ discarded.
 ### Why it is worth doing
 
 Any description format becomes pluggable without reimplementing the MCP half.
-We maintain [`fastmcp-raml`](https://github.com/…), which serves a RAML 1.0
+We maintain [`fastmcp-raml`](FASTMCP_RAML_URL), which serves a RAML 1.0
 document as an MCP server. RAML's endpoint tree already separates path, query
 and header parameters — exactly the split `ParameterInfo.location` wants — so
 the integration is genuinely a front half and nothing more. It carries things

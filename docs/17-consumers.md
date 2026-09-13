@@ -2,29 +2,27 @@
 
 Everything that sits *on top of* the parser: the `viewer/` SPA, the
 distributions under `contrib/`, and the document under `fixtures/` that several
-of them read. None of it decides a RAML rule, and none of it is importable from
-`pyraml/`.
+of them read. None of it decides a RAML rule, and **nothing under `pyraml/` may
+import any of it.**
 
 This document settles the boundary and the gate. What each consumer *is* belongs
 in its own README, which is where the detail lives.
 
 ## 1. Why they exist
 
-A format with no consumer is a format whose gaps nothing measures. Every one of
-these was built to use the model rather than to test it, and each has paid for
-itself in defects that the unit suite could not have found because the unit
-suite asks the questions the implementer already thought of:
+A format with no consumer is a format whose gaps nothing measures. A unit suite
+asks the questions its author already thought to ask; a consumer asks whatever
+the job in front of it requires, which is how gaps in the model surface at all.
 
-- `viewer/` found three, all in the tree projection — a construct that is
-  awkward to display is evidence about the format.
-- `contrib/fastmcp-raml` found that `queryString:` had no route through
-  `views/jsonschema.py` at all, and that a shape's `location` and the media
-  types under one body both carry decisions nothing downstream had asked for.
+Each of these therefore uses the model rather than testing it. A construct the
+viewer finds awkward to display is evidence about the projection. A construct
+`fastmcp-raml` cannot reach — `queryString:`, which had no route through
+`views/jsonschema.py` — is evidence about the view.
 
-They are consumers, so they are allowed to be opinionated in ways a parser is
-not. `fastmcp-raml` moves a JSON media type to the front of a body's list
-because the caller it serves reads only the first; that is a decision about MCP,
-not about RAML, and it belongs on this side of the line.
+Because they are consumers, they may hold opinions a parser may not.
+`fastmcp-raml` moves a JSON media type to the front of a body's list because the
+caller it serves reads only the first. That is a decision about MCP rather than
+about RAML, so it belongs on this side of the line.
 
 ## 2. The boundary
 
@@ -42,9 +40,10 @@ reimplementation on this side. `views/jsonschema.py` is here because of exactly
 that: `fastmcp-raml` needed JSON Schema, JSON Schema is a projection of the
 model, and a projection of the model is `views/`.
 
-The reverse is also load-bearing: a consumer may not be a soft dependency of the
-parser's own tests. `tests/` may read `fixtures/` and may read the viewer's
-committed output, but may not import `contrib`.
+The dependency does not run the other way either, even through the test suite.
+`tests/` may read `fixtures/` and may read the viewer's committed output, but
+may not import `contrib`: a consumer that the parser's own gate depends on is no
+longer downstream of it.
 
 ## 3. `fixtures/`
 
@@ -58,21 +57,21 @@ fixtures/sample/     api.raml, common.raml, invoice.json
 fixtures/shared/     machine.raml, measures.raml, money.schema.json
 ```
 
-`shared/` is outside `sample/` on purpose: the includes ascend, which is what
-makes the workspace root (`-w fixtures`) a thing under test rather than a
-formality.
+`shared/` sits outside `sample/` so that the includes ascend. That is what puts
+the workspace root under test: parse `sample/api.raml` without `-w fixtures` and
+the loader refuses the ascent, which is the behaviour being checked.
 
-**Three consumers read it, so editing it moves three things:**
+**Three consumers read it, so a change here moves three things:**
 
-| Reader | What it does with it |
-|--------|----------------------|
-| `tests/unit/test_bindings.py` | regenerates `viewer/public/api.json` and fails if the committed copy differs |
-| `viewer/` | renders that committed JSON; `npm run sample` rewrites it |
-| `contrib/fastmcp-raml` | builds MCP tools from it, and its suite asserts what each construct becomes |
+| Reader | How it uses the document |
+|--------|--------------------------|
+| `tests/unit/test_bindings.py` | Regenerates `viewer/public/api.json` and fails if the committed copy differs. |
+| `viewer/` | Renders that committed JSON. `npm run sample` rewrites it. |
+| `contrib/fastmcp-raml` | Builds MCP tools from it; its suite asserts what each construct becomes. |
 
-It lives at the repo root rather than inside any one of them because it belongs
-to none of them. It was under `viewer/` first, which made a Python distribution
-reach into a React app's directory to run its tests.
+It lives at the repo root because it belongs to no one of them. Putting it
+inside any consumer makes the other two reach into that consumer's directory to
+run their own tests.
 
 ## 4. `viewer/`
 
@@ -94,11 +93,13 @@ project's `pyproject.toml` and nothing in the root gate sees them.
 | `fastapi-raml` | code → RAML | Renders a FastAPI app's routes as RAML, and serves it. |
 | `fastmcp-raml` | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
 
-`raml-document` exists because the second and third both needed the first, and
-an authoring model duplicated in two integrations is an authoring model that
-disagrees with itself. It is deliberately *not* `pyraml`'s model: the parse model
-is the shape of a document that was read, and refers to types by address after
-`unwrap`; an author writing one refers to them by name and has not run a pass.
+`fastapi-raml` and `fastmcp-raml` both need an authoring model, and one
+duplicated across two integrations is one that disagrees with itself — so
+`raml-document` holds the single copy and depends on neither of them.
+
+It is deliberately *not* `pyraml`'s model. The parse model describes a document
+that has been read, and after `unwrap` it refers to types by address. An author
+writing a document refers to types by name and has run no pass.
 
 ### 5.1 What may not go here
 
@@ -107,20 +108,21 @@ evidence it belongs in a pass or a view, not in `raml-document`.
 
 ## 6. The gate
 
-Each consumer carries its own, and CI runs all of them:
+Each consumer carries its own, and CI runs all of them.
+
+Run this in each of `contrib/raml-document`, `contrib/fastapi-raml` and
+`contrib/fastmcp-raml`:
 
 ```bash
-# each of contrib/raml-document, contrib/fastapi-raml, contrib/fastmcp-raml
 uv run ruff check . && uv run ruff format --check . && uv run mypy <package>/ && uv run pytest -q
-
-# viewer/
-npm run check        # tsc, layers, smoke, shots
-npm run ci           # the same, with the production build in place of screenshots
 ```
 
-CI runs `npm run ci` rather than `npm run check`: the screenshots are for
-looking at and `shots/` is gitignored, so capturing them on a runner nobody
-watches buys a browser download and nothing else. Everything that can fail
+Run `npm run check` in `viewer/`. It is `tsc`, `layers`, `smoke` and `shots`.
+
+CI runs `npm run ci` there instead, which replaces the screenshots with the
+production build. The screenshots are for looking at, `shots/` is gitignored,
+and capturing them on a runner nobody watches costs a browser download and
+proves nothing `smoke` has not already proved. Everything that can fail
 meaningfully is in both.
 
 The `contrib` job is a matrix over the three, and it is the job that notices

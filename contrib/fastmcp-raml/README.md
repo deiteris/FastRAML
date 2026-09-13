@@ -1,7 +1,11 @@
 # fastmcp-raml — serve a RAML-described API as an MCP server
 
-Reads a RAML 1.0 document with pyRAML and hands FastMCP the routes it builds
-components from, so an existing HTTP API becomes MCP tools with no code.
+Reads a RAML 1.0 document with pyRAML and builds MCP components from it, so an
+existing HTTP API becomes MCP tools without your writing any.
+
+```bash
+pip install fastmcp-raml      # or: uv add fastmcp-raml
+```
 
 ```python
 from fastmcp_raml import raml_mcp
@@ -10,10 +14,23 @@ mcp = raml_mcp('api.raml')
 mcp.run()
 ```
 
-`raml_mcp` is `FastMCP.from_openapi`'s signature with a RAML path in place of
-the spec — `route_maps`, `route_map_fn`, `mcp_component_fn`, `mcp_names`, `tags`
-and `validate_output` all mean what they mean there. The provider form works the
-same way:
+That short form needs the document to declare a `baseUri` with every parameter
+already bound, because it is where requests are sent. If the `baseUri` is
+templated or absent, pass a client and `raml_mcp` will use its `base_url`:
+
+```python
+import httpx2
+
+mcp = raml_mcp('api.raml', client=httpx2.AsyncClient(base_url='https://api.example/v1'))
+```
+
+Pass a client anyway when the API needs credentials: `securedBy` names the
+scheme, but nothing here sends one.
+
+`raml_mcp` otherwise takes `FastMCP.from_openapi`'s arguments, with a RAML path
+in place of the spec — `route_maps`, `route_map_fn`, `mcp_component_fn`,
+`mcp_names`, `tags` and `validate_output` all mean what they mean there. The
+provider form takes the same arguments and an already-parsed document:
 
 ```python
 from fastmcp import FastMCP
@@ -21,21 +38,25 @@ from fastmcp_raml import RAMLProvider
 from pyraml import ParseOptions, parse_from_path
 
 raml = parse_from_path('api.raml', ParseOptions(unwrap=True, validate=True))
-provider = RAMLProvider(raml, client=client)
+provider = RAMLProvider(raml, client=httpx2.AsyncClient(base_url='https://api.example/v1'))
 
 mcp = FastMCP('Bookstore')
 mcp.add_provider(provider)
 ```
 
+Parse with `unwrap=True`: a schema built from an un-flattened shape is missing
+every inherited facet, and `RAMLProvider` refuses one.
+
 ## No OpenAPI in the middle
 
-FastMCP's OpenAPI provider does two things with a spec: builds `list[HTTPRoute]`,
-and constructs a `RequestDirector` from an `openapi-core` `SchemaPath`. **Only
-the first is load-bearing** — `RequestDirector.__init__` stores the spec and
-never reads it again; `build()` works entirely off the route. So this produces
-routes directly from the pyRAML model and converts no documents. Not even an
-empty one: `RAMLProvider` sits on `Provider`, so there is no constructor
-demanding a spec to get past.
+FastMCP's OpenAPI provider does two things with a spec: it builds
+`list[HTTPRoute]`, and it constructs a `RequestDirector` from an `openapi-core`
+`SchemaPath`. **Only the first affects anything.** `RequestDirector.__init__`
+stores the spec and never reads it again; `build()` works entirely off the
+route. So this package produces routes directly from the pyRAML model and
+converts no document — not even an empty one, because `RAMLProvider` sits on
+`Provider` rather than on `OpenAPIProvider` and so meets no constructor that
+demands a spec.
 
 RAML's endpoint tree already separates path, query and header parameters, which
 is exactly the split `ParameterInfo.location` wants. Schemas come from
@@ -63,20 +84,23 @@ import lives in that test, not in the package.
 | `queryString:` typed as an object | one query parameter per property |
 | the first path segment | a tag, so `RouteMap(tags=...)` has something to select on |
 
-## What it does not carry
+## What does not survive the trip to MCP
 
-Reported per document in `provider.dropped`, rather than dropped quietly:
+Each of these is reported once per document in `provider.dropped`, so a caller
+can see what was lost and decide whether it mattered:
 
 - **Credentials.** `securedBy` names the scheme; FastMCP sends nothing. Put
   authentication on the `httpx2.AsyncClient` you pass in.
 - **Streaming.** `OpenAPITool.run` and `OpenAPIResource.read` both read the whole
   response before returning, so a `text/event-stream` body is buffered to its
   end. Upstream lists response streaming as unbuilt.
-- **Non-JSON request bodies.** `RequestDirector` encodes JSON, `multipart/form-data`
-  and `application/x-www-form-urlencoded`; anything else declared as a mapping is
-  sent as JSON. Where a body declares several media types, a JSON one is moved to
-  the front — both the director and `_combine_schemas_and_map_params` read the
-  first, and RAML's order is the author's, who had no such rule in mind.
+- **Non-JSON request bodies.** `RequestDirector` encodes JSON,
+  `multipart/form-data` and `application/x-www-form-urlencoded`. Anything else
+  declared as a mapping is sent as JSON. Where one body declares several media
+  types, this package moves a JSON one to the front, because both the director
+  and the flattening read only the first key — and a RAML author listing
+  `application/json` and `application/xml` means "either", not "prefer the one
+  I wrote first".
 - **`protocols:` narrower than the base URI.** The request goes to the client's
   base URL whatever the method said.
 
@@ -89,7 +113,7 @@ argument can be.
 in its module's `__all__`, including `_extract_mime_type_from_route`, which
 carries an underscore but is exported deliberately.
 
-One undocumented fact is still load-bearing, and is stated rather than hidden:
+One undocumented fact is depended on, and named rather than hidden:
 `RequestDirector` is constructed with `NO_SPEC`, because `build()` reads nothing
 off it. `test_the_director_reads_no_spec` builds a real request through a
 spec-less director, so if that ever changes a test fails rather than a server.
@@ -119,15 +143,16 @@ Two smaller things would help on their own: making
 finished route and cares nothing for where the route came from; and the same for
 `_determine_route_type`, which is pure `RouteMap` matching.
 
-## Checks
+## Running the checks
 
 ```bash
-uv run pytest
 uv run ruff check . && uv run ruff format --check . && uv run mypy fastmcp_raml/
-uv run python examples/bookstore.py
+uv run pytest -q
+uv run python examples/bookstore.py   # prints what the sample document becomes
 ```
 
-The suite runs against `fixtures/sample`, the repo's worked example, which
-exists to exercise every construct the model carries — `viewer` and
-`tests/unit/test_bindings.py` measure themselves against the same file. Each row
-of the two tables above is a thing that document caught.
+The suite runs against `fixtures/sample`, the repo's worked example. It exists
+to exercise every construct the model carries, and `viewer/` and
+`tests/unit/test_bindings.py` measure themselves against the same file. Every
+row of the two tables under *What RAML carries* and *What does not survive* is
+something that document caught.

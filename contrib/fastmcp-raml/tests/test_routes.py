@@ -315,6 +315,12 @@ class TestTheBaseUri:
         # Upstream built it, so upstream's lifespan closes it.
         assert provider._owns_client is True
 
+    def test_a_supplied_client_resolves_what_the_document_leaves_unbound(self, sample):
+        # What the error above tells the caller to do, so it has to work. A
+        # `baseUri` templated per deployment is the ordinary reason to pass one.
+        provider = RAMLProvider(sample, client=client())
+        assert str(provider._client.base_url).rstrip('/') == 'https://api.example/v1'
+
     def test_a_supplied_client_is_not_owned(self, sample):
         provider = RAMLProvider(sample, client=client(), base_uri_parameters=TENANT)
         assert provider._owns_client is False

@@ -10,10 +10,15 @@ that is evidence about the format, and it has already produced three fixes.
 
 ```bash
 npm install
-npm run sample        # pyraml tree sample/api.raml > public/api.json
+npm run sample        # pyraml tree ../fixtures/sample/api.raml > public/api.json
 npm run dev
 npm run shots         # screenshot every page, both themes, into shots/
 ```
+
+The document it renders is `fixtures/sample`, which is the repo's and not this
+app's: `tests/unit/test_bindings.py` holds `public/api.json` to it, and
+`contrib/fastmcp-raml` builds MCP tools from the same file. Editing it moves
+three consumers.
 
 ## Style
 

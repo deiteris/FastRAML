@@ -159,7 +159,10 @@ def _observe(node: object, into: set[str]) -> None:
 
 #: What `npm run sample` writes, and what `smoke` and `shots` then read.
 SAMPLE = 'viewer/public/api.json'
-SAMPLE_SOURCE = 'viewer/sample/api.raml'
+#: The document itself is a repo-level fixture, not the viewer's: `fastmcp-raml`
+#: measures its route building against the same file.
+SAMPLE_SOURCE = 'fixtures/sample/api.raml'
+SAMPLE_ROOT = 'fixtures'
 
 
 class TestTheViewerSampleIsNotStale:
@@ -187,7 +190,7 @@ class TestTheViewerSampleIsNotStale:
 
         raml = parse_from_path(
             ROOT / SAMPLE_SOURCE,
-            ParseOptions(unwrap=True, workspace_root=ROOT / 'viewer'),
+            ParseOptions(unwrap=True, workspace_root=ROOT / SAMPLE_ROOT),
         )
         current = json.loads((ROOT / SAMPLE).read_text(encoding='utf-8'))
         assert current == build_tree(raml), f'run `npm run sample` in viewer/ -- {SAMPLE} is stale'

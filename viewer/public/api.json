@@ -422,6 +422,13 @@
                     "name": "verified",
                     "type": "boolean",
                     "default": false,
+                    "annotations": [
+                      {
+                        "name": "deprecated",
+                        "type": "pyraml://id#/declarations/annotations/deprecated",
+                        "value": "the account service is authoritative"
+                      }
+                    ],
                     "type_expr": "boolean"
                   }
                 }
@@ -2857,6 +2864,15 @@
               "scopes": null
             }
           ],
+          "annotations": [
+            {
+              "name": "rateLimit",
+              "type": "pyraml://id#/declarations/annotations/rateLimit",
+              "value": {
+                "perMinute": 60
+              }
+            }
+          ],
           "query_parameters": {
             "q": {
               "binding": "query",
@@ -2933,6 +2949,12 @@
     },
     {
       "name": "deprecated",
+      "target": "TypeDeclaration",
+      "type": "pyraml://id#/declarations/annotations/deprecated",
+      "value": "the account service is authoritative"
+    },
+    {
+      "name": "deprecated",
       "target": "Method",
       "type": "pyraml://id#/declarations/annotations/deprecated",
       "value": "use PUT"
@@ -2942,6 +2964,14 @@
       "target": "Method",
       "type": "pyraml://id/sample%2Fcommon.raml#/declarations/annotations/internal",
       "value": null
+    },
+    {
+      "name": "rateLimit",
+      "target": "Method",
+      "type": "pyraml://id#/declarations/annotations/rateLimit",
+      "value": {
+        "perMinute": 60
+      }
     }
   ]
 }

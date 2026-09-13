@@ -1,7 +1,7 @@
 /** One security scheme: what it is, how to satisfy it, what it adds. */
 
 import { useParams } from 'react-router';
-import { Annotations } from '../components/Annotations';
+import { Annotations } from '../components/Metadata';
 import { ParameterTable } from '../components/Parameters';
 import { Responses } from '../components/Responses';
 import { ShapeView } from '../components/Shape';

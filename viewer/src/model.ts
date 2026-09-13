@@ -403,6 +403,48 @@ export function labelOf(member: Shape | Ref, index: Index): string {
   return spellingOf(member, index, true);
 }
 
+/** A `facets:` entry, and the type that declared it. */
+export interface FacetDeclaration {
+  declared: Shape | Ref;
+  by: Shape;
+  required: boolean;
+}
+
+/**
+ * What declared the custom facet `name` that this shape supplies a value for.
+ *
+ * A `facets:` block declares what *subtypes* must supply, so the declaration is
+ * never on the shape carrying the value -- it is on a supertype, on a page the
+ * reader is not looking at. Without it a custom facet is a name and a string
+ * with nothing saying what it was allowed to be.
+ *
+ * **Up `inherits[0]` only, which is what P10 does** (docs/10 section 4). The
+ * validator's chain walk follows the first parent and no other, so a facet
+ * declared on a second parent is one it does not see; finding it here would
+ * show a reader a declaration that nothing checked the value against. The
+ * limitation is tracked as a v1.1 item in that section, and both halves should
+ * move together.
+ */
+export function facetDeclaration(shape: Shape, name: string, index: Index): FacetDeclaration | null {
+  const seen = new Set<Shape>();
+  let at: Shape | undefined = parent(shape, index);
+  while (at !== undefined && !seen.has(at)) {
+    seen.add(at);
+    const found = at.declared_facets?.[name];
+    if (found?.type != null) return { declared: found.type, by: at, required: found.required };
+    at = parent(at, index);
+  }
+  return null;
+}
+
+/** The first supertype, as a shape, wherever it is one this document holds. */
+function parent(shape: Shape, index: Index): Shape | undefined {
+  const first = (shape.inherits ?? [])[0];
+  if (first === undefined) return undefined;
+  if (isRef(first)) return index.shape(first.$ref);
+  return isRecursive(first) ? undefined : first;
+}
+
 /* -- where a request actually goes ----------------------------------------------- */
 
 /**

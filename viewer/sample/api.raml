@@ -216,6 +216,9 @@ types:
           verified:
             type: boolean
             default: false
+            # An annotation on a nested property, which is where the region it
+            # draws has the least room.
+            (deprecated): the account service is authoritative
     # Form B: the value under `value:`, with what the author wrote beside it.
     # `strict: false` is the whole reason the third one is here.
     examples:
@@ -503,6 +506,10 @@ securedBy: [oauth2]
   get:
     displayName: Search the catalogue
     description: Full-text search across titles and authors.
+    # An annotation whose value is an object rather than a string -- the case
+    # that says why a reader needs the annotation type beside the value.
+    (rateLimit):
+      perMinute: 60
     queryParameters:
       q:
         displayName: Query

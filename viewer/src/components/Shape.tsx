@@ -13,7 +13,7 @@
  * the page's whole right half stayed empty. Children belong *under* the
  * attribute they belong to, indented by a rule.
  *
- * **Two rules decide everything below.**
+ * **Three rules decide everything below.**
  *
  * *One name, one treatment.* Every place a type is named goes through
  * `TypeName`: the same expression, the same muted mono text, and a link
@@ -33,12 +33,21 @@
  * declared elsewhere and has a page, so it is one control away. That control is
  * `Expandable`, and it says what is behind it rather than assuming attributes.
  *
+ * *What constrains the data and what describes the declaration are two bands.*
+ * `maxLength 200` says what a payload may contain; `(deprecated): use PUT` and
+ * `stewardedBy: catalogue-team` say nothing a request has to satisfy. Both were
+ * drawn as chips in the same row, so a reader scanning for what to send read
+ * three constraints where there was one. Everything author-defined -- a
+ * `facets:` declaration, a value supplied for one, an applied annotation --
+ * goes below the constraints and inside `Metadata`, which is a region and not a
+ * row.
+ *
  * **What stays in this file is what recurses through this file.** `ShapeView`,
  * `Body` and `Attribute` call each other in a cycle -- an object holds
  * attributes, an attribute holds a shape -- and splitting a cycle across
  * modules buys nothing but an import cycle. Everything that only *uses* a shape
  * renderer went to a module of its own: parameters, bodies, responses, security,
- * annotations, values.
+ * metadata, values.
  */
 
 import { type ReactNode, useState } from 'react';
@@ -63,7 +72,7 @@ import {
   spellingOf,
   MEMBERS_SPELLED,
 } from '../model';
-import { Annotations } from './Annotations';
+import { Metadata } from './Metadata';
 import { From } from './Borrowed';
 import { Code, Labelled, oneLine } from './json';
 import { Prose, ProseInline } from './markdown';
@@ -401,9 +410,15 @@ function Body({
 
       {shape.allowed_targets && <Tagged label="allowedTargets" values={shape.allowed_targets} />}
 
+      {content.discriminator && <Discriminator shape={content} index={index} />}
+
       {/* What a *subtype* must supply (docs/10 § 4), so rows and not chips: a
           `facets:` entry is a property in every respect -- it has a type and it
-          is required or it is not -- and the names alone did not say either. */}
+          is required or it is not -- and the names alone did not say either.
+
+          Here rather than among the facets above, next to the values supplied
+          for it: the two are the halves of one feature, and neither is part of
+          what a payload has to satisfy. */}
       {shape.declared_facets && Object.keys(shape.declared_facets).length > 0 && (
         <Group label="declares facets">
           <div className="attributes">
@@ -413,21 +428,12 @@ function Body({
           </div>
         </Group>
       )}
-      {content.custom_facets && Object.keys(content.custom_facets).length > 0 && (
-        <div className="shape-line">
-          <span className="label">facets</span>
-          {Object.entries(content.custom_facets).map(([name, value]) => (
-            <Chip key={name}>
-              <span className="facet-name">{name}</span>
-              <span className="facet-value">{oneLine(value)}</span>
-            </Chip>
-          ))}
-        </div>
-      )}
 
-      {content.discriminator && <Discriminator shape={content} index={index} />}
-
-      <Annotations applied={shape.annotations} index={index} />
+      {/* Both halves of what the author added, in one region and outside the
+          facet band above. A supplied facet rendered as a chip beside
+          `maxLength 200` claimed to constrain a payload, and an annotation
+          beside it claimed the same; neither does. */}
+      <Metadata applied={shape.annotations} facets={content.custom_facets} owner={shape} index={index} />
 
       {/* Above the attributes, not below. An example is the fastest way to
           understand a type, and last it read as belonging to whichever

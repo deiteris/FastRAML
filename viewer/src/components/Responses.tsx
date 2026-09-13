@@ -7,7 +7,7 @@
  */
 
 import type { Index, Response } from '../model';
-import { Annotations } from './Annotations';
+import { Annotations } from './Metadata';
 import { Bodies } from './Bodies';
 import { type Borrowed, From } from './Borrowed';
 import { ParameterTable } from './Parameters';

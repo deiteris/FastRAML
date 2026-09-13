@@ -350,6 +350,7 @@ function Body({
   const inherits = shape.inherits ?? [];
   const properties = Object.entries(content.properties ?? {});
   const patterns = Object.entries(content.pattern_properties ?? {});
+  const declared = Object.entries(shape.declared_facets ?? {});
   const members = content.any_of ?? [];
   // `hideType` means the container names this shape, so its `displayName`
   // belongs up there too. Rendered here it was a bare word between the
@@ -421,28 +422,24 @@ function Body({
 
       {content.discriminator && <Discriminator shape={content} index={index} />}
 
-      {/* What a *subtype* must supply (docs/10 § 4), so rows and not chips: a
-          `facets:` entry is a property in every respect -- it has a type and it
-          is required or it is not -- and the names alone did not say either.
-
-          Here rather than among the facets above, next to the values supplied
-          for it: the two are the halves of one feature, and neither is part of
-          what a payload has to satisfy. */}
-      {shape.declared_facets && Object.keys(shape.declared_facets).length > 0 && (
-        <Group label="declares facets">
-          <div className="attributes">
-            {Object.entries(shape.declared_facets).map(([name, facet]) => (
-              <Attribute key={name} name={name} property={facet} index={index} />
-            ))}
-          </div>
-        </Group>
-      )}
-
-      {/* Both halves of what the author added, in one region and outside the
-          facet band above. A supplied facet rendered as a chip beside
-          `maxLength 200` claimed to constrain a payload, and an annotation
-          beside it claimed the same; neither does. */}
-      <Extra applied={shape.annotations} facets={content.custom_facets} owner={shape} index={index} />
+      {/* Everything the author added, in one region and outside the facet band
+          above: the annotations, the values supplied for a custom facet, and
+          the `facets:` block that declares one. A supplied facet rendered as a
+          chip beside `maxLength 200` claimed to constrain a payload, and an
+          annotation beside it claimed the same; neither does. A `facets:` block
+          drawn as its own attribute list made the third version of the same
+          mistake -- beside the properties, in the properties' own treatment, it
+          read as more of them. */}
+      <Extra
+        applied={shape.annotations}
+        facets={content.custom_facets}
+        // Only when there is one: a React element is truthy even where its
+        // component returns null, so passing it unconditionally would open an
+        // empty region on every type that declares no facet.
+        declares={declared.length > 0 ? <Declares facets={declared} index={index} /> : undefined}
+        owner={shape}
+        index={index}
+      />
 
       {/* Above the attributes, not below. An example is the fastest way to
           understand a type, and last it read as belonging to whichever
@@ -756,6 +753,33 @@ function Discriminator({ shape, index }: { shape: Shape; index: Index }) {
           <Chip tone="enum">{oneLine(value)}</Chip>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * A `facets:` block: what a *subtype* of this type must supply (docs/10 § 4).
+ *
+ * Rows and not chips, because a `facets:` entry is a property in every respect
+ * -- it has a type, it is required or it is not, and it may be an object with
+ * properties of its own -- and the names alone said none of that.
+ *
+ * It renders inside `Extra` rather than beside the attribute list, where the
+ * same rows in the same treatment read as more properties. **The distinction is
+ * the one that catches people**: nothing here constrains a payload, and this
+ * type neither has to satisfy its own declaration nor may supply a value for it.
+ * The sentence under the label says so, because a reader looking at `Entity` has
+ * no other way to learn it -- the values live on `Book`.
+ */
+function Declares({ facets, index }: { facets: [string, Property][]; index: Index }) {
+  return (
+    <div className="declares">
+      <span className="label">user-defined facets</span>
+      <div className="attributes">
+        {facets.map(([name, facet]) => (
+          <Attribute key={name} name={name} property={facet} index={index} />
+        ))}
+      </div>
     </div>
   );
 }

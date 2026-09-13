@@ -22,6 +22,13 @@
  * with no type is author text that a reader cannot check against anything, and
  * the processor meant to act on it is holding a contract the reader cannot see.
  *
+ * **Both halves of a custom facet live here**, the `facets:` block that declares
+ * one and the values a subtype supplies for it. Drawn as an attribute list of
+ * its own, a `facets:` block sat beside the type's properties in the same
+ * treatment, and read as more of them -- when what a payload must carry and what
+ * a *subtype* must supply are different claims about different things. Inside
+ * this region it is bounded by the one edge that says so.
+ *
  * One component and not one per site: `(deprecated)` on a type, a method, a
  * response and a security scheme is the same statement, and the tree gives all
  * four the same shape. Only a type has custom facets, so the other sites pass
@@ -35,18 +42,25 @@ import { Code } from './json';
 export function Extra({
   applied,
   facets,
+  declares,
   owner,
   index,
 }: {
   applied?: Applied[];
   /** Values supplied for facets a supertype declared -- `shape.custom_facets`. */
   facets?: Record<string, Json>;
+  /**
+   * A `facets:` block, already rendered. Passed in rather than built here so
+   * that a declaration keeps the row treatment every other declaration has,
+   * whose component lives beside the rest of them in `Shape`.
+   */
+  declares?: React.ReactNode;
   /** Where to start looking for those facets' declarations. */
   owner?: Shape;
   index: Index;
 }) {
   const supplied = Object.entries(facets ?? {});
-  if ((applied ?? []).length === 0 && supplied.length === 0) return null;
+  if ((applied ?? []).length === 0 && supplied.length === 0 && !declares) return null;
   return (
     <div className="extra">
       <span className="label">extra</span>
@@ -56,6 +70,7 @@ export function Extra({
       {supplied.map(([name, value]) => (
         <Facet key={`f${name}`} name={name} value={value} owner={owner} index={index} />
       ))}
+      {declares}
     </div>
   );
 }

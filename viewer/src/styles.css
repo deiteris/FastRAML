@@ -612,6 +612,29 @@ h4 {
   background: var(--bg);
 }
 
+/* The `facets:` block, inside the region rather than beside the properties.
+   Separated from the rows above it because it is a list and they are single
+   lines, and run together the first row read as one more of them. */
+.declares {
+  margin-top: 10px;
+}
+
+.extra-item + .declares {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.declares > .label {
+  display: block;
+}
+
+/* The list is already bounded by the region's own edge, so its rule would be a
+   second line saying the same thing. */
+.declares .attributes {
+  border-top: 0;
+  margin-top: 6px;
+}
+
 
 .facet-value {
   font-weight: 600;

@@ -30,6 +30,17 @@ follows it or the document is amended first.
 | 15 | [Implementation plan](15-implementation-plan.md) | Milestones, ordering, definition of done per phase |
 | 16 | [The views](16-graph.md) | `pyraml/views/`: one addressing walk, the model as a graph and as a tree, RDF/SPARQL, why not AMF, the reading view, the version diff |
 
+## Research
+
+`research/` holds open questions: a problem, what was measured about it, which
+routes were tried and why they failed. **Nothing there is normative and nothing
+in the code depends on it** — a question that gets settled moves into the
+numbered documents above and leaves a pointer behind.
+
+| Document | The question |
+|----------|--------------|
+| [Document identity](research/document-identity.md) | A document's identity is its retrieval path, so two copies of a library are two libraries. RAML offers no `$id` and no inference rule; what can a parser supply, and what stays out of reach? |
+
 ## Conventions in these documents
 
 - **MUST / SHOULD / MAY** carry RFC 2119 meaning, as in the RAML spec itself.

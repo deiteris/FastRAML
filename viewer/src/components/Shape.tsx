@@ -268,8 +268,17 @@ export function TypeName({
   }
   // An array defers to its items wherever its own expression says no more than
   // they do, so `Review[]` is the link `Review` and not four grey characters.
+  //
+  // `borrowed`, because the items of an array *written as an expression* carry
+  // the whole expression: `sources?: string[]` gives items whose `type_expr` is
+  // `string[]`, not `string`. Without it the suffix was appended to a spelling
+  // that already had one and the row read `string[][]`. It is the same trap
+  // `labelOf` names for a union member, which passes `true` for this reason;
+  // only the array half was missing it. An array written `type: array` was
+  // unaffected, its items carrying their own `string`, which is why every
+  // sample array read correctly until one was written as an expression.
   if (shape.type === 'array' && namedByItems(shape, borrowed ?? false)) {
-    return <TypeName shape={shape.items} index={index} suffix={`[]${suffix}`} />;
+    return <TypeName shape={shape.items} index={index} suffix={`[]${suffix}`} borrowed />;
   }
   const members = shape.any_of ?? [];
   if (shape.type === 'union' && members.length > 0 && namedByMembers(shape, borrowed ?? false)) {

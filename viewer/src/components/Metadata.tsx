@@ -21,7 +21,7 @@
 
 import { Link } from 'react-router';
 import { type Applied, type Index, type Json, type Shape, facetDeclaration, labelOf } from '../model';
-import { Code, oneLine } from './json';
+import { Code } from './json';
 
 export function Metadata({
   applied,
@@ -152,18 +152,19 @@ function Row({
           </span>
         )}
       </div>
-      {/* `null` is what an annotation with no value projects, and it is not a
+      {/* A code block, the way `default:` and `example:` are, and for the same
+          reason: all three are a **value of a declared type**, and the block is
+          what says so. `90` as running text is a word; in a block it is the
+          integer the `facets:` entry demanded.
+
+          One form for every type, not a block for the structured ones and text
+          for the rest. A reader who has to notice which arrived is being asked
+          to infer the type from the presentation, which is the thing the row
+          above states outright.
+
+          `null` is what an annotation with no value projects, and it is not a
           value of `null`: `(internal)` on its own is the whole statement. */}
-      {value !== null &&
-        // A structured value is read the way every other structured value on
-        // the page is read. `(rateLimit): {perMinute: 60}` on one line is the
-        // compact JSON `{"perMinute":60}` -- legible at two keys and not at
-        // five, which is the size an annotation type with properties reaches.
-        (typeof value === 'object' ? (
-          <Code>{value}</Code>
-        ) : (
-          <div className="meta-value">{oneLine(value)}</div>
-        ))}
+      {value !== null && <Code>{value}</Code>}
     </div>
   );
 }

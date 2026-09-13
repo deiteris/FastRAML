@@ -603,22 +603,14 @@ h4 {
   color: var(--faint);
 }
 
-/* The region's own background is `--panel`, which is a code block's too, so a
-   structured value sat on it with no edge at all. */
+/* A value is a code block here, as it is for `default:` and `example:`. The
+   region's own background is `--panel`, which is a code block's too, so on it
+   the block had no edge at all. */
 .metadata .code {
+  margin-top: 4px;
   background: var(--bg);
 }
 
-/* On its own line. A value is author text of any length -- a paragraph, a
-   regex, a whole object -- and trailed onto the head line it wrapped into the
-   column the names are scanned in. */
-.meta-value {
-  margin-top: 3px;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--ink);
-  overflow-wrap: anywhere;
-}
 
 .facet-value {
   font-weight: 600;

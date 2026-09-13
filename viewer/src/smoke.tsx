@@ -189,12 +189,19 @@ const ALREADY_ON_THE_ROW = new Set([
  */
 let expected = 0;
 let literal = 0;
+let borrowed = 0;
 for (const { file, name, value } of declarations(document.types)) {
   const want = controls(value);
   const open = declares(value);
+  const twice = doubled(value);
   expected += want;
   literal += open.length;
-  if (want === 0 && open.length === 0) continue;
+  borrowed += twice.length;
+  // Every reason to render, in one condition. Read as two, this skipped a page
+  // whose only interest was the third: `Entity` has two scalar properties and
+  // no arrays among them, so it left by the `continue` and its `string[]` facet
+  // was never drawn. The check passed with the bug on the page.
+  if (want === 0 && open.length === 0 && twice.length === 0) continue;
   const html = renderToStaticMarkup(
     <MemoryRouter initialEntries={[at('types', file, name)]}>
       <Pages document={document} index={index} />
@@ -210,12 +217,23 @@ for (const { file, name, value } of declarations(document.types)) {
     process.stderr.write(`LOST ${name}: an item type declares ${JSON.stringify(text)} and the page does not say it\n`);
     failed += 1;
   }
+  for (const text of twice) {
+    if (!html.includes(escaped(text))) continue;
+    process.stderr.write(`TWICE ${name}: an array is named ${JSON.stringify(text)}, its own expression with a suffix\n`);
+    failed += 1;
+  }
 }
-if (expected === 0 || literal === 0) {
-  process.stderr.write('no declared type has an attribute that leads anywhere; the check above is vacuous\n');
+if (expected === 0 || literal === 0 || borrowed === 0) {
+  process.stderr.write(
+    'no declared type has an attribute that leads anywhere, an item type written in place, ' +
+      'or an array written as an expression; one of the three checks above is vacuous\n',
+  );
   failed += 1;
 }
-process.stdout.write(`${expected} attributes lead somewhere, ${literal} item constraints shown in place\n`);
+process.stdout.write(
+  `${expected} attributes lead somewhere, ${literal} item constraints shown in place, ` +
+    `${borrowed} arrays written as an expression\n`,
+);
 
 /** How many of a type's own attributes keep what they say behind a control. */
 function controls(shape: Shape): number {
@@ -268,6 +286,33 @@ function literals(key: string, value: unknown): string[] {
   if (key === 'example') return literals('', (value as Example).value);
   if (key === 'examples') return Object.values(value as Record<string, Example>).flatMap((one) => literals('', one.value));
   return [];
+}
+
+/**
+ * The spellings an array must *not* be given: its own expression, suffixed.
+ *
+ * The array half of the union check above. An array written as an expression
+ * stamps that expression onto its items -- `sources?: string[]` gives items
+ * whose `type_expr` is `string[]` -- so a renderer that spells the items from
+ * it and then appends the array's `[]` produces `string[][]`, which is a
+ * different type. An array written `type: array` is immune, its items carrying
+ * their own `string`, so every array in the sample read correctly until one was
+ * written the other way.
+ *
+ * Derived from the tree rather than from a list here: the forbidden string is
+ * the container's own `type_expr` plus `[]`, which is wrong for exactly the
+ * shapes that borrowed it and says nothing about any other.
+ */
+function doubled(shape: Shape): string[] {
+  const found: string[] = [];
+  walk(shape, (one) => {
+    const written = one.type_expr;
+    const items = one.items;
+    if (one.type !== 'array' || written === undefined || items == null) return;
+    if (isRef(items) || isRecursive(items)) return;
+    if (items.type_expr === written) found.push(`${written}[]`);
+  });
+  return found;
 }
 
 /** Text as React writes it into markup, so a `pattern` full of punctuation matches. */

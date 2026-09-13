@@ -122,9 +122,19 @@ types:
     # `Entity` neither has to satisfy `stewardedBy` nor may supply a value for
     # it (docs/10 section 4). One required and one optional, because a view
     # that shows only the names says neither.
+    # A facet is a type declaration, so its value is of whatever type it
+    # declares -- not text. Five of them, because a view that shows only the
+    # string case shows the one case where the difference does not matter.
     facets:
       stewardedBy: string
       retiredAfter?: date-only
+      reviewedEvery?: integer
+      sources?: string[]
+      provenance?:
+        type: object
+        properties:
+          team: string
+          since: date-only
     properties:
       id: string
       createdAt: datetime
@@ -153,8 +163,15 @@ types:
         had, oldest first.
       * `related` is a list of other books, and may point back at this one.
     (deprecated): use Publication instead
-    # The other half of `Entity`'s `facets:` -- the value this subtype supplies.
+    # The other half of `Entity`'s `facets:` -- the values this subtype
+    # supplies, one per declared type. `retiredAfter` is left out, which is
+    # what an optional facet nobody supplied looks like.
     stewardedBy: catalogue-team
+    reviewedEvery: 90
+    sources: [publisher-feed, isbndb]
+    provenance:
+      team: catalogue
+      since: 2024-01-01
     properties:
       title:
         displayName: Title

@@ -114,6 +114,59 @@
               "type": "date-only",
               "type_expr": "date-only"
             }
+          },
+          "reviewedEvery": {
+            "required": false,
+            "type": {
+              "id": null,
+              "name": "reviewedEvery?",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "sources": {
+            "required": false,
+            "type": {
+              "id": null,
+              "name": "sources?",
+              "type": "array",
+              "type_expr": "string[]",
+              "items": {
+                "id": null,
+                "name": null,
+                "type": "string",
+                "type_expr": "string[]"
+              }
+            }
+          },
+          "provenance": {
+            "required": false,
+            "type": {
+              "id": null,
+              "name": "provenance?",
+              "type": "object",
+              "type_expr": "object",
+              "properties": {
+                "team": {
+                  "required": true,
+                  "type": {
+                    "id": null,
+                    "name": "team",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                },
+                "since": {
+                  "required": true,
+                  "type": {
+                    "id": null,
+                    "name": "since",
+                    "type": "date-only",
+                    "type_expr": "date-only"
+                  }
+                }
+              }
+            }
           }
         },
         "type_expr": "object",
@@ -176,7 +229,16 @@
           }
         ],
         "custom_facets": {
-          "stewardedBy": "catalogue-team"
+          "stewardedBy": "catalogue-team",
+          "reviewedEvery": 90,
+          "sources": [
+            "publisher-feed",
+            "isbndb"
+          ],
+          "provenance": {
+            "team": "catalogue",
+            "since": "2024-01-01"
+          }
         },
         "annotations": [
           {
@@ -251,7 +313,16 @@
                 "type": "recursive",
                 "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                 "custom_facets": {
-                  "stewardedBy": "catalogue-team"
+                  "stewardedBy": "catalogue-team",
+                  "reviewedEvery": 90,
+                  "sources": [
+                    "publisher-feed",
+                    "isbndb"
+                  ],
+                  "provenance": {
+                    "team": "catalogue",
+                    "since": "2024-01-01"
+                  }
                 },
                 "annotations": [
                   {
@@ -1648,7 +1719,16 @@
                     }
                   ],
                   "custom_facets": {
-                    "stewardedBy": "catalogue-team"
+                    "stewardedBy": "catalogue-team",
+                    "reviewedEvery": 90,
+                    "sources": [
+                      "publisher-feed",
+                      "isbndb"
+                    ],
+                    "provenance": {
+                      "team": "catalogue",
+                      "since": "2024-01-01"
+                    }
                   },
                   "type_expr": "Book",
                   "properties": {
@@ -1716,7 +1796,16 @@
                           "type": "recursive",
                           "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                           "custom_facets": {
-                            "stewardedBy": "catalogue-team"
+                            "stewardedBy": "catalogue-team",
+                            "reviewedEvery": 90,
+                            "sources": [
+                              "publisher-feed",
+                              "isbndb"
+                            ],
+                            "provenance": {
+                              "team": "catalogue",
+                              "since": "2024-01-01"
+                            }
                           },
                           "annotations": [
                             {
@@ -1839,7 +1928,16 @@
                 }
               ],
               "custom_facets": {
-                "stewardedBy": "catalogue-team"
+                "stewardedBy": "catalogue-team",
+                "reviewedEvery": 90,
+                "sources": [
+                  "publisher-feed",
+                  "isbndb"
+                ],
+                "provenance": {
+                  "team": "catalogue",
+                  "since": "2024-01-01"
+                }
               },
               "type_expr": "Book",
               "properties": {
@@ -1907,7 +2005,16 @@
                       "type": "recursive",
                       "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                       "custom_facets": {
-                        "stewardedBy": "catalogue-team"
+                        "stewardedBy": "catalogue-team",
+                        "reviewedEvery": 90,
+                        "sources": [
+                          "publisher-feed",
+                          "isbndb"
+                        ],
+                        "provenance": {
+                          "team": "catalogue",
+                          "since": "2024-01-01"
+                        }
                       },
                       "annotations": [
                         {
@@ -1993,7 +2100,16 @@
                 }
               ],
               "custom_facets": {
-                "stewardedBy": "catalogue-team"
+                "stewardedBy": "catalogue-team",
+                "reviewedEvery": 90,
+                "sources": [
+                  "publisher-feed",
+                  "isbndb"
+                ],
+                "provenance": {
+                  "team": "catalogue",
+                  "since": "2024-01-01"
+                }
               },
               "type_expr": "Book",
               "properties": {
@@ -2061,7 +2177,16 @@
                       "type": "recursive",
                       "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                       "custom_facets": {
-                        "stewardedBy": "catalogue-team"
+                        "stewardedBy": "catalogue-team",
+                        "reviewedEvery": 90,
+                        "sources": [
+                          "publisher-feed",
+                          "isbndb"
+                        ],
+                        "provenance": {
+                          "team": "catalogue",
+                          "since": "2024-01-01"
+                        }
                       },
                       "annotations": [
                         {
@@ -2224,7 +2349,16 @@
                     }
                   ],
                   "custom_facets": {
-                    "stewardedBy": "catalogue-team"
+                    "stewardedBy": "catalogue-team",
+                    "reviewedEvery": 90,
+                    "sources": [
+                      "publisher-feed",
+                      "isbndb"
+                    ],
+                    "provenance": {
+                      "team": "catalogue",
+                      "since": "2024-01-01"
+                    }
                   },
                   "type_expr": "Book",
                   "properties": {
@@ -2292,7 +2426,16 @@
                           "type": "recursive",
                           "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                           "custom_facets": {
-                            "stewardedBy": "catalogue-team"
+                            "stewardedBy": "catalogue-team",
+                            "reviewedEvery": 90,
+                            "sources": [
+                              "publisher-feed",
+                              "isbndb"
+                            ],
+                            "provenance": {
+                              "team": "catalogue",
+                              "since": "2024-01-01"
+                            }
                           },
                           "annotations": [
                             {
@@ -2378,7 +2521,16 @@
                     }
                   ],
                   "custom_facets": {
-                    "stewardedBy": "catalogue-team"
+                    "stewardedBy": "catalogue-team",
+                    "reviewedEvery": 90,
+                    "sources": [
+                      "publisher-feed",
+                      "isbndb"
+                    ],
+                    "provenance": {
+                      "team": "catalogue",
+                      "since": "2024-01-01"
+                    }
                   },
                   "type_expr": "Book",
                   "properties": {
@@ -2446,7 +2598,16 @@
                           "type": "recursive",
                           "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
                           "custom_facets": {
-                            "stewardedBy": "catalogue-team"
+                            "stewardedBy": "catalogue-team",
+                            "reviewedEvery": 90,
+                            "sources": [
+                              "publisher-feed",
+                              "isbndb"
+                            ],
+                            "provenance": {
+                              "team": "catalogue",
+                              "since": "2024-01-01"
+                            }
                           },
                           "annotations": [
                             {

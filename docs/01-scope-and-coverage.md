@@ -20,9 +20,16 @@
 - XML Schema (XSD) external types. `!include foo.xsd` is rejected with a clear
   error, matching go-raml. XML *serialization hints* (the `xml:` facet) are parsed
   and retained, but nothing serializes to XML.
-- Code generation, HTTP middleware, an LSP server, format converters (JSON Schema,
-  OpenAPI, AMF graph). The model is designed so these can be built on top; none
-  ships in v1.
+- Code generation, HTTP middleware, an LSP server, format converters (OpenAPI,
+  AMF graph). The model is designed so these can be built on top.
+
+  **JSON Schema is the exception, and it is in.** `views/jsonschema.py` converts
+  a shape to draft-07 ([16](16-graph.md) § 12). It went in rather than beside
+  because it is the same kind of thing `views/` already holds — a projection of
+  the model that decides no RAML rule — and because the reverse direction is
+  already here: `types/jsonschema_.py` reads JSON Schema, so a parser that only
+  read one and never wrote one was the odd shape. go-raml keeps its equivalent
+  in the same repository, at `converter/jsonschema.go`, which this follows.
 - Thread safety. A parser instance is single-threaded, exactly as in go-raml
   (`// WARNING: Not thread-safe`). Parallelism, if ever needed, is across
   independent parser instances.

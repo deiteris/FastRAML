@@ -1575,3 +1575,57 @@ Three things this found on its first two runs, none of which any test could see:
   mapping kept only the second, dropping `display_name`, `description` and
   `required`. Caught by law 19, which is why that law asks the corpus rather
   than the generator.
+
+## 12. A shape as JSON Schema
+
+`views/jsonschema.py`. `to_json_schema(shape)` returns a draft-07 document and a
+list of what it could not carry. It follows go-raml's `converter/jsonschema.go`
+visitor, which is the reference for every decision below.
+
+It is a view in the same sense `render` is: a projection of one entity, deciding
+no RAML rule, importing nothing from `views/walk.py` because it addresses
+nothing — a schema refers to types by name, which is what JSON Schema has.
+
+### 12.1 What the shape of the output is
+
+```json
+{ "$schema": "http://json-schema.org/draft-07/schema",
+  "$ref": "#/definitions/Node",
+  "definitions": { "Node": { … } } }
+```
+
+**Only the entry point and recursion heads become definitions.** Everything else
+is written where it stands. This is the one thing easy to get wrong: a
+*property's* shape carries the property's name, so a rule of "a named shape is a
+definition" hoists `name`, `tags` and every `items` into `definitions` and then
+refers to each from the single place it is used.
+
+**A name is occupied before its body is walked.** The entry is set to `{}` first,
+so a type that reaches itself finds it already there. Without that the walk does
+not terminate.
+
+### 12.2 Decisions that are not obvious
+
+| | |
+|---|---|
+| **The entry point must be unwrapped** | Invariant I12. An un-flattened shape carries only what its own declaration wrote, so the schema would silently omit every inherited facet. go-raml refuses the same case. |
+| **A `RecursiveShape` emits an *empty* schema plus a `$ref`** | Not one built from its base. Every RAML type may carry custom facets and those can be recursive too, so building the base first is how the walk fails to terminate. A `$ref` ignores its siblings per the spec, so nothing is lost. |
+| **A pattern property's key is already bare** | RAML writes `/^x-/` and `patternProperties` keys are bare regexes — but P2 strips the delimiters at decode, so there is nothing to strip here. go-raml slices them off because its own model keeps them. |
+| **Numbers do not pass through `float`** | A facet holds a `Fraction` built from the raw text ([10](10-validation.md) § 5.3). An integral one is written as an integer; the rest as their shortest decimal. `multipleOf: 1.1` stays `1.1`. |
+| **A `JsonShape` hands back what the author wrote** | It is already a JSON Schema, held as its source text. Projecting it through the RAML model and back would be a round trip that can only lose. |
+
+### 12.3 What JSON Schema cannot carry
+
+Reported in the second return value, never dropped in silence. RAML's `fileTypes`
+is a list and `contentMediaType` is one value, so the rest are named. A
+`datetime` with `format: rfc2616` has no JSON Schema format at all, so the
+grammar is written out as a `pattern` — go-raml's spelling, character for
+character. `datetime-only` is the same case.
+
+### 12.4 How it is gated
+
+`tests/unit/test_jsonschema_view.py`, and the half that matters is differential:
+for each value, the RAML shape and the emitted schema must reach the same
+verdict, checked with the `jsonschema` library rather than with this project's
+own reader. A structural comparison would pass while the schema said something
+subtly different; agreeing on instances is the claim worth making.

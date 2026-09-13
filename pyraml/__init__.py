@@ -65,6 +65,7 @@ _EXPORTS = {
     'Fragment': ('pyraml.parser.fragments', 'Fragment'),
     'FragmentKind': ('pyraml.parser.fragments', 'FragmentKind'),
     'Graph': ('pyraml.views.graph', 'Graph'),
+    'to_json_schema': ('pyraml.views.jsonschema', 'to_json_schema'),
     'GraphNode': ('pyraml.nodes', 'GraphNode'),
     'HTTPLoader': ('pyraml.loaders', 'HTTPLoader'),
     'IncludeInfo': ('pyraml.parser.includes', 'IncludeInfo'),
@@ -217,4 +218,5 @@ __all__ = [
     'parse_lenient',
     'path_to_file_uri',
     'resolve_uri_ref',
+    'to_json_schema',
 ]

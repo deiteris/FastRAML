@@ -70,6 +70,7 @@ from pyraml.views.graph import Edge as Edge
 from pyraml.views.graph import Graph as Graph
 from pyraml.views.graph import Route as Route
 from pyraml.views.graph import build_graph as build_graph
+from pyraml.views.jsonschema import to_json_schema as to_json_schema
 from pyraml.views.tree import build_tree as build_tree
 from pyraml.views.walk import Addresses as Addresses
 from pyraml.views.walk import address as address
@@ -160,4 +161,5 @@ __all__ = (
     'parse_lenient',
     'path_to_file_uri',
     'resolve_uri_ref',
+    'to_json_schema',
 )

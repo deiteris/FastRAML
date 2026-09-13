@@ -1,15 +1,23 @@
-"""P9 — unwrap: flatten every inheritance chain, then mark the cycles.
+"""P9 — unwrap: flatten every inheritance chain, then settle what that decided.
 
 docs/07-resolution-and-inheritance.md sections 3.1 to 3.3 and section 4. Opt-in
 (`ParseOptions(unwrap=True)`), because the un-flattened model is what a
 formatter or a documentation generator wants: flattening is lossy about which
 declaration a facet came from.
 
-Two things run here, in order. `unwrap_shape` merges each declaration with its
-parents in place. `mark_recursions` then replaces the point where a type cycle
-closes with a `RecursiveShape`, turning the object graph into a DAG plus
-explicit back-edges — without which any consumer walking the model naively
-recurses forever.
+Two halves run here, in order. `unwrap_shape` merges each declaration with its
+parents in place. `finish_unwrap` is the post-pass over the result: one walk
+producing two things, both of which need the *settled* graph.
+
+- **Recursion marking** replaces the point where a type cycle closes with a
+  `RecursiveShape`, turning the object graph into a DAG plus explicit back-edges.
+  Without it a consumer walking the model naively recurses forever.
+- **Union dispatch tables** give a union whose members all discriminate the same
+  way a `{discriminatorValue: member}` lookup (docs/05 § 9.1).
+
+The walk carries a collector for the second. Marking is the last writer of
+`any_of` and already visits every union, so the table is built from what that
+descent has in hand rather than from a traversal of its own.
 
 Everything is driven off `Raml.fragment_typedefs`, the flat per-file index the
 decoder filled with every top-level shape. Nested shapes are reached from their
@@ -40,7 +48,7 @@ if TYPE_CHECKING:
     from pyraml.yamlnode import Node
 
 __all__ = [
-    'mark_recursions',
+    'finish_unwrap',
     'unwrap_shape',
     'unwrap_shapes',
 ]
@@ -69,7 +77,7 @@ class _Walk:
 
 
 def unwrap_shapes(raml: Raml) -> None:
-    """Flatten every declared type, then mark recursion (docs/07 sections 3-4).
+    """Flatten every declared type, then finish the pass (docs/07 sections 3-4).
 
     `Raml.shapes` is rebuilt rather than appended to. After flattening, the old
     entries describe a model that no longer exists — a union member may have
@@ -103,7 +111,7 @@ def unwrap_shapes(raml: Raml) -> None:
             extension.defined_by = walk.done.get(extension.defined_by.id, extension.defined_by)
 
     accumulator.raise_if_any()
-    mark_recursions(raml)
+    finish_unwrap(raml)
     raml.unwrapped = True
 
 
@@ -335,29 +343,43 @@ def _unwrap_custom_facet_defs(walk: _Walk, base: BaseShape, depth: int) -> None:
 # -- recursion marking (docs/07 section 4) ------------------------------------
 
 
-def mark_recursions(raml: Raml, *, roots: Iterable[BaseShape] | None = None) -> None:
-    """Close every type cycle with a `RecursiveShape`.
+def finish_unwrap(raml: Raml, *, roots: Iterable[BaseShape] | None = None) -> None:
+    """The post-pass over a flattened model: mark cycles, settle union dispatch.
 
-    Runs after unwrap, from the same roots. On re-entry this does *not* error —
-    unlike resolution, where a cycle is a genuine mistake — it returns a marker
-    the caller substitutes into the slot it came from.
+    One walk, two results (see the module docstring). On re-entry a cycle does
+    *not* error — unlike resolution, where it is a genuine mistake — it yields a
+    `RecursiveShape` the caller substitutes into the slot it came from. Unions
+    met along the way are collected, and their tables are built after the walk,
+    because marking itself writes `any_of`.
 
-    `roots` narrows the walk to shapes that are not in `fragment_typedefs`:
-    validation unwraps a private *copy* of a declaration, and that copy needs
-    marking without the registry's own shapes being walked again (docs/10 § 1).
+    Runs on **both** unwrap paths: `unwrap_shapes` for the whole registry, and
+    `_ensure_unwrapped` for the private copy P10 makes when `validate=True`
+    without `unwrap=True`. A union that reaches neither has no table and
+    validates by linear scan — correct, but slower and with a worse report.
+
+    `roots` narrows the walk to shapes outside `fragment_typedefs`: that private
+    copy needs finishing without the registry's own shapes being walked again
+    (docs/10 § 1).
     """
     max_depth = raml.max_depth
+    unions: list[UnionShape] = []
     if roots is not None:
         for base in roots:
-            _mark(raml, base, 0, max_depth)
-        return
-    for shapes in raml.fragment_typedefs.values():
-        for base in shapes:
-            _mark(raml, base, 0, max_depth)
+            _finish(raml, base, 0, max_depth, unions)
+    else:
+        for shapes in raml.fragment_typedefs.values():
+            for base in shapes:
+                _finish(raml, base, 0, max_depth, unions)
+    for union in unions:
+        union.build_dispatch()
 
 
-def _mark(raml: Raml, base: BaseShape, depth: int, max_depth: int) -> BaseShape | None:
-    """Return a marker to put in the caller's slot, or `None` to leave it be."""
+def _finish(raml: Raml, base: BaseShape, depth: int, max_depth: int, unions: list[UnionShape]) -> BaseShape | None:
+    """Return a marker to put in the caller's slot, or `None` to leave it be.
+
+    `unions` is the collector the caller builds dispatch tables off; it is filled
+    as a side effect of the descent rather than by a second walk.
+    """
     if base._visiting:  # noqa: SLF001 - unwrap and this pass co-own the flag
         return _make_recursive(raml, base)
     if base.alias is not None and base.alias._visiting:  # noqa: SLF001 - see above
@@ -377,34 +399,41 @@ def _mark(raml: Raml, base: BaseShape, depth: int, max_depth: int) -> BaseShape 
         )
     base._visiting = True  # noqa: SLF001 - see above
     if base.shape is not None:
-        _mark_children(raml, base.shape, depth, max_depth)
+        _finish_children(raml, base.shape, depth, max_depth, unions)
 
     # Cleared *before* the facet declarations, deliberately: a facet declaration
     # may reference the very type that declares it, and that is not a recursion
     # worth marking — facets cannot nest (docs/07 section 4).
     base._visiting = False  # noqa: SLF001 - see above
     for name, prop in base.custom_facet_defs.items():
-        marked = _mark(raml, prop.base, depth + 1, max_depth)
+        marked = _finish(raml, prop.base, depth + 1, max_depth, unions)
         if marked is not None:
             base.custom_facet_defs[name] = Property(name=prop.name, base=marked, required=prop.required)
     return None
 
 
-def _mark_children(raml: Raml, shape: Shape, depth: int, max_depth: int) -> None:
-    """The four slots a marker can be substituted into (docs/07 section 4)."""
+def _finish_children(raml: Raml, shape: Shape, depth: int, max_depth: int, unions: list[UnionShape]) -> None:
+    """The four slots a marker can be substituted into (docs/07 section 4).
+
+    Also where a union is collected, because this is the one place that already
+    knows it is looking at one.
+    """
     if isinstance(shape, ArrayShape):
         if shape.items is not None:
-            shape.items = _mark(raml, shape.items, depth + 1, max_depth) or shape.items
+            shape.items = _finish(raml, shape.items, depth + 1, max_depth, unions) or shape.items
     elif isinstance(shape, UnionShape):
+        # Collected whether or not it has members: `build_dispatch` is what
+        # settles `_dispatch` away from "never unwrapped".
+        unions.append(shape)
         if shape.any_of is not None:
-            shape.any_of = [_mark(raml, member, depth + 1, max_depth) or member for member in shape.any_of]
+            shape.any_of = [_finish(raml, member, depth + 1, max_depth, unions) or member for member in shape.any_of]
     elif isinstance(shape, ObjectShape):
         for name, prop in (shape.properties or {}).items():
-            marked = _mark(raml, prop.base, depth + 1, max_depth)
+            marked = _finish(raml, prop.base, depth + 1, max_depth, unions)
             if marked is not None and shape.properties is not None:
                 shape.properties[name] = Property(name=prop.name, base=marked, required=prop.required)
         for pattern_prop in (shape.pattern_properties or {}).values():
-            marked = _mark(raml, pattern_prop.base, depth + 1, max_depth)
+            marked = _finish(raml, pattern_prop.base, depth + 1, max_depth, unions)
             if marked is not None:
                 pattern_prop.base = marked
 

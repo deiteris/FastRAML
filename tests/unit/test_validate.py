@@ -22,11 +22,16 @@ from pyraml.types.values import same_value, unique_items
 API = '#%RAML 1.0\ntitle: T\n'
 
 
-def declared(workspace, body: str, name: str = 'T'):
-    """The named type from `types:\n<body>`, parsed and unwrapped."""
+def declared_in(workspace, body: str, name: str = 'T'):
+    """The parse and the named type from `types:\n<body>`, unwrapped."""
     root = workspace({'api.raml': API + 'types:\n' + body})
     raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
-    return raml.types_in(raml.location)[name]
+    return raml, raml.types_in(raml.location)[name]
+
+
+def declared(workspace, body: str, name: str = 'T'):
+    """The named type from `types:\n<body>`, parsed and unwrapped."""
+    return declared_in(workspace, body, name)[1]
 
 
 def parse_validating(workspace, body: str):
@@ -302,6 +307,232 @@ class TestUnion:
             trace.info.get('expected') for chain in error.chains() for trace in chain if trace.message == 'invalid type'
         }
         assert expected == {'string', 'integer'}
+
+
+TAGGED = (
+    '  Pet:\n    type: object\n    discriminator: kind\n    properties:\n      kind: string\n'
+    '  Cat:\n    type: Pet\n    properties:\n      meows: boolean\n'
+    '  Dog:\n    type: Pet\n    properties:\n      barks: boolean\n'
+    '  T: Cat | Dog\n'
+)
+
+
+class TestUnionDispatchesOnADiscriminator:
+    """docs/05 section 9.1 — a union of types that discriminate the same way.
+
+    The spec makes this a MAY (`raml-10.md:762`): a processor "MAY provide an
+    implementation that automatically selects a concrete type from a set of
+    possible types". Deviation D12 takes it up, and it narrows — a payload whose
+    tag names no member is refused even where a member accepts it structurally.
+    """
+
+    def test_the_tag_selects_the_member(self, workspace):
+        shape = declared(workspace, TAGGED)
+        assert shape.validate({'kind': 'Cat', 'meows': True}) is None
+        assert shape.validate({'kind': 'Dog', 'barks': True}) is None
+
+    def test_an_unknown_tag_is_refused_by_name(self, workspace):
+        error = declared(workspace, TAGGED).validate({'kind': 'Fish', 'meows': True})
+        assert error is not None
+        trace = next(t for chain in error.chains() for t in chain if t.message == 'unknown discriminator value')
+        assert trace.info['discriminator'] == 'kind'
+        assert trace.info['value'] == 'Fish'
+        assert trace.info['known'] == ['Cat', 'Dog']
+
+    def test_the_selected_member_reports_its_own_failure(self, workspace):
+        # A scan reports 'value matches no member of the union' with every
+        # member's complaint attached, which does not say `Cat` was the one meant.
+        error = declared(workspace, TAGGED).validate({'kind': 'Cat', 'meows': 'yes'})
+        assert error is not None
+        assert 'value matches no member of the union' not in messages(error)
+        assert 'invalid type' in messages(error)
+
+    def test_a_tag_belonging_to_another_member_does_not_pass(self, workspace):
+        # The narrowing D12 makes: `Cat` has no required property `Dog` lacks, so
+        # a linear scan accepts this payload against `Cat`.
+        assert declared(workspace, TAGGED).validate({'kind': 'Dog', 'meows': True}) is not None
+
+    def test_discriminator_value_overrides_the_type_name(self, workspace):
+        body = TAGGED.replace('  Cat:\n    type: Pet\n', '  Cat:\n    type: Pet\n    discriminatorValue: cat\n')
+        shape = declared(workspace, body)
+        assert shape.validate({'kind': 'cat', 'meows': True}) is None
+        assert shape.validate({'kind': 'Cat', 'meows': True}) is not None
+
+    def test_an_absent_tag_falls_back_to_the_linear_scan(self, workspace):
+        # Whether the property was required is the members' own rule, and they
+        # state it better than a dispatch failure would.
+        error = declared(workspace, TAGGED).validate({'meows': True})
+        assert error is not None
+        assert 'value matches no member of the union' in messages(error)
+
+    @pytest.mark.parametrize(
+        ('body', 'why'),
+        [
+            ('  A:\n    discriminator: k\n    properties:\n      k: string\n  T: A | string\n', 'a member is scalar'),
+            (
+                (
+                    '  A:\n    discriminator: k\n    properties:\n      k: string\n'
+                    '  B:\n    discriminator: j\n    properties:\n      j: string\n  T: A | B\n'
+                ),
+                'two discriminator names',
+            ),
+            (
+                # One name, two types under it, so one key function cannot serve
+                # both: `A` keys numerically and would read `B`'s `'1'` as `1`.
+                (
+                    '  A:\n    discriminator: k\n    properties:\n      k: integer\n'
+                    '    discriminatorValue: 1\n'
+                    '  B:\n    discriminator: k\n    properties:\n      k: string\n'
+                    '    discriminatorValue: "1"\n  T: A | B\n'
+                ),
+                'one name, two property types',
+            ),
+            (
+                (
+                    '  P:\n    discriminator: k\n    properties:\n      k: string\n'
+                    '  A:\n    type: P\n    discriminatorValue: same\n'
+                    '  B:\n    type: P\n    discriminatorValue: same\n  T: A | B\n'
+                ),
+                'two members claim one value',
+            ),
+        ],
+    )
+    def test_no_table_is_built_when_the_members_disagree(self, workspace, body, why):
+        from pyraml.types.complex_ import UnionShape
+
+        shape = declared(workspace, body)
+        assert isinstance(shape.shape, UnionShape)
+        assert shape.shape.dispatch() is None, why
+
+    def test_two_members_claiming_one_value_is_an_error(self, workspace):
+        # Spec § Type Declarations: `discriminatorValue` "is unique in the
+        # hierarchy of the type". Within a union it is also what makes the union
+        # usable — no payload can say which of the two it is.
+        error = parse_validating(
+            workspace,
+            '  P:\n    discriminator: k\n    properties:\n      k: string\n'
+            '  A:\n    type: P\n    discriminatorValue: same\n'
+            '  B:\n    type: P\n    discriminatorValue: same\n  T: A | B\n',
+        )
+        assert error is not None
+        trace = next(
+            t
+            for chain in error.chains()
+            for t in chain
+            if t.message == 'discriminator value is claimed by more than one member of the union'
+        )
+        assert trace.info['discriminator'] == 'k'
+        assert trace.info['values'] == ['same']
+
+    def test_the_default_value_collides_with_an_explicit_one(self, workspace):
+        # `discriminatorValue` defaults to the type's name, so `B` claiming `A`
+        # collides with `A`'s own default. Nothing in either declaration says so.
+        error = parse_validating(
+            workspace,
+            '  P:\n    discriminator: k\n    properties:\n      k: string\n'
+            '  A:\n    type: P\n'
+            '  B:\n    type: P\n    discriminatorValue: A\n  T: A | B\n',
+        )
+        assert error is not None
+        assert 'discriminator value is claimed by more than one member of the union' in messages(error)
+
+    def test_a_numeric_tag_is_keyed_by_value_not_by_spelling(self, workspace):
+        # An `integer` property accepts 1, 1.0, '1' and '1.0' as one value
+        # (docs/10 § 5), so all four have to select the member claiming `1`.
+        shape = declared(
+            workspace,
+            '  P:\n    discriminator: k\n    properties:\n      k: integer\n'
+            '  A:\n    type: P\n    discriminatorValue: 1\n    properties:\n      a?: string\n'
+            '  B:\n    type: P\n    discriminatorValue: 2\n    properties:\n      b?: string\n  T: A | B\n',
+        )
+        for tag in (1, 1.0, '1', '1.0'):
+            assert shape.validate({'k': tag, 'a': 'x'}) is None, tag
+        assert shape.validate({'k': 3, 'a': 'x'}) is not None
+
+    def test_a_string_tag_is_not_read_as_a_number(self, workspace):
+        # '1' and '1.0' are two different strings. Keying them numerically merges
+        # them and rejects this document as a collision — a false rejection, and
+        # the reason the key is chosen by the property's declared type.
+        assert (
+            parse_validating(
+                workspace,
+                '  P:\n    discriminator: k\n    properties:\n      k: string\n'
+                '  A:\n    type: P\n    discriminatorValue: "1"\n    properties:\n      a?: string\n'
+                '  B:\n    type: P\n    discriminatorValue: "1.0"\n    properties:\n      b?: string\n  T: A | B\n',
+            )
+            is None
+        )
+
+    def test_a_string_tag_selects_by_its_exact_spelling(self, workspace):
+        shape = declared(
+            workspace,
+            '  P:\n    discriminator: k\n    properties:\n      k: string\n'
+            '  A:\n    type: P\n    discriminatorValue: "1"\n    properties:\n      a: string\n'
+            '  B:\n    type: P\n    discriminatorValue: "1.0"\n    properties:\n      b: string\n  T: A | B\n',
+        )
+        assert shape.validate({'k': '1', 'a': 'x'}) is None
+        assert shape.validate({'k': '1.0', 'b': 'x'}) is None
+        assert shape.validate({'k': '1', 'b': 'x'}) is not None
+
+    def test_a_boolean_tag_is_not_an_integer_one(self, workspace):
+        shape = declared(
+            workspace,
+            '  P:\n    discriminator: k\n    properties:\n      k: boolean\n'
+            '  A:\n    type: P\n    discriminatorValue: true\n    properties:\n      a?: string\n'
+            '  B:\n    type: P\n    discriminatorValue: false\n    properties:\n      b?: string\n  T: A | B\n',
+        )
+        assert shape.validate({'k': True, 'a': 'x'}) is None
+        # `1` is not `true`, and reaches the property's own type check.
+        assert shape.validate({'k': 1, 'a': 'x'}) is not None
+
+    def test_a_null_tag_falls_back_to_the_linear_scan(self, workspace):
+        # Not 'unknown discriminator value: null'. The property's own type says
+        # what a tag may be, and it reports that better.
+        error = declared(workspace, TAGGED).validate({'kind': None, 'meows': True})
+        assert error is not None
+        assert 'unknown discriminator value' not in messages(error)
+        assert 'value matches no member of the union' in messages(error)
+
+    def test_a_non_scalar_tag_falls_back_to_the_linear_scan(self, workspace):
+        error = declared(workspace, TAGGED).validate({'kind': {'a': 1}, 'meows': True})
+        assert error is not None
+        assert 'unknown discriminator value' not in messages(error)
+        assert 'value matches no member of the union' in messages(error)
+
+    def test_a_clone_gets_its_own_table_when_it_is_unwrapped(self, workspace):
+        # The table holds the *members*, so a clone carrying the original's would
+        # dispatch into the original's graph. A clone is not unwrapped and has no
+        # table until P9 runs over it — the path `_ensure_unwrapped` takes for
+        # `validate=True` without `unwrap=True`.
+        from pyraml.types.complex_ import UnionShape
+        from pyraml.types.unwrap import finish_unwrap, unwrap_shape
+
+        raml, shape = declared_in(workspace, TAGGED)
+        assert isinstance(shape.shape, UnionShape)
+        table = shape.shape.dispatch()
+        assert table is not None
+
+        clone = shape.clone_detached()
+        assert isinstance(clone.shape, UnionShape)
+        assert clone.shape.dispatch() is None, 'a clone must not inherit the table'
+
+        copy = unwrap_shape(raml, clone)
+        finish_unwrap(raml, roots=[copy])
+        assert isinstance(copy.shape, UnionShape)
+        cloned = copy.shape.dispatch()
+        assert cloned is not None
+        assert cloned.members.keys() == table.members.keys()
+        for name, member in cloned.members.items():
+            assert member is not table.members[name]
+
+    def test_validating_an_unflattened_shape_is_refused(self, workspace):
+        # docs/02 section 4, invariant I12. Without unwrap a child shows only
+        # what its own declaration wrote, so it accepts a value missing the
+        # property its parent made required — silently, which is the hazard.
+        root = workspace({'api.raml': API + 'types:\n' + TAGGED})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=False))
+        with pytest.raises(AssertionError, match='unwrapped shape'):
+            raml.types_in(raml.location)['Cat'].validate({'meows': True})
 
 
 class TestRecursive:

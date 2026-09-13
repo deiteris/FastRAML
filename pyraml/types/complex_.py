@@ -34,17 +34,34 @@ projection builds object, array and union shapes from what it finds.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar, Final, NamedTuple, cast
 
 from pyraml.datanode import make_data_node
 from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.parser.facets import make_bool_facet, make_int_facet, make_string_facet
-from pyraml.types.base import ONE_SHAPE, PROPERTIES, SHAPE_LIST, KindBase, PatternProperty, Property
-from pyraml.types.values import check_non_negative, failure, index_path, key_path, type_name, unique_items
+from pyraml.types.base import (
+    ONE_SHAPE,
+    PROPERTIES,
+    SHAPE_LIST,
+    TYPE_INTEGER,
+    TYPE_NUMBER,
+    KindBase,
+    PatternProperty,
+    Property,
+)
+from pyraml.types.values import (
+    as_fraction,
+    check_non_negative,
+    failure,
+    index_path,
+    key_path,
+    type_name,
+    unique_items,
+)
 from pyraml.yamlnode import node_error
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Hashable, Mapping
     from typing import Any
 
     from pyraml.datanode import DataNode
@@ -442,16 +459,192 @@ class ArrayShape(ComplexKind):
         accumulator.raise_if_any()
 
 
+#: Sentinel for "the discriminator property is not in this value". A property
+#: present and null is a different thing, and `_select` treats both as no tag.
+_ABSENT: Final = object()
+#: Fewer than this and there is nothing for a discriminator to choose between.
+_MIN_MEMBERS: Final = 2
+
+#: What one member of a discriminated union claims: the key a payload's tag must
+#: produce to select it, that value as the author spelled it, and the member.
+_Claim = tuple['Hashable', str, 'BaseShape']
+
+
+class _Claims(NamedTuple):
+    """What `_discriminated` found: the property, how it keys, and every claim."""
+
+    name: str
+    numeric: bool
+    claims: list[_Claim]
+
+
+class _Dispatch(NamedTuple):
+    """A union's discriminator, and the member each tag value selects."""
+
+    #: The property every member discriminates on.
+    name: str
+    #: Whether that property is declared `integer` or `number`, which decides how
+    #: a tag is keyed. See `_tag_key`.
+    numeric: bool
+    #: `_tag_key(value, numeric=numeric)` -> the member that value selects.
+    members: dict[Hashable, BaseShape]
+    #: The claimed values as their authors spelled them, sorted, for diagnostics.
+    known: tuple[str, ...]
+
+
+def _spell(value: Any) -> str:
+    """A discriminator value as a diagnostic should show it."""
+    if value is True:
+        return 'true'
+    if value is False:
+        return 'false'
+    return 'null' if value is None else str(value)
+
+
+def _tag_key(value: Any, *, numeric: bool) -> Hashable | None:
+    """A discriminator value as the dispatch table keys it, or `None` if not scalar.
+
+    **The key depends on the discriminator property's declared type**, which is
+    why `numeric` is passed in rather than inferred from the value. The two cases
+    pull in opposite directions and both are measurable:
+
+    - An `integer` property accepts `1`, `1.0`, `'1'` and `'1.0'` for one value
+      (docs/10 § 5 — a number-preserving decoder may hand a numeric string
+      through). All four must select the member claiming `1`, so a numeric
+      property keys through `as_fraction`.
+    - A `string` property accepts `'1'` and `'1.0'` as two *different* strings.
+      Keying those through `as_fraction` merges them, and a union of two members
+      claiming them is then refused as a collision — a false rejection on a valid
+      document.
+
+    One table has one key function, so `_discriminated` requires every member to
+    agree on `numeric` exactly as it does on the property's name.
+    """
+    if isinstance(value, dict | list):
+        return None
+    if value is True or value is False:
+        # Before the numeric branch: Python says `bool` is an `int`, and no RAML
+        # author means `true` and `1` to select the same type.
+        return ('boolean', value)
+    if value is None:
+        return ('nil', None)
+    if numeric:
+        number = as_fraction(value)
+        if number is not None:
+            return ('number', number)
+    return (type_name(value), value)
+
+
+def _declared_name(shape: BaseShape) -> str | None:
+    """The name a union member is known by, for keying the dispatch table.
+
+    `type: Cat | Dog` gives members that are *aliases* of `Cat` and `Dog`, and an
+    alias carries no name of its own — it shares its referent's containers, so
+    the discriminator is visible on it but the name is not (docs/07 § 3.6).
+
+    **One hop reaches it.** `alias_to` points an alias at a *declaration*, and a
+    declaration is named. In `type: Moggy | Dog` the first member resolves to
+    `Moggy`, whatever `Moggy` is itself declared as — that is the name it was
+    written with, and the name `discriminatorValue` defaults from.
+    """
+    if shape.name is not None:
+        return shape.name
+    return None if shape.alias is None else shape.alias.name
+
+
+def _claim(member: BaseShape, shape: ObjectShape, *, numeric: bool) -> _Claim | None:
+    """What this member answers to: its `discriminatorValue`, or its own name.
+
+    The default is the type's name (spec § Using Discriminator), so a member with
+    no explicit value and no name — an anonymous shape — has nothing to be keyed
+    by, and `None` takes the whole union out of dispatch.
+    """
+    if shape.discriminator_value is None:
+        declared = _declared_name(member)
+        return None if declared is None else (_tag_key(declared, numeric=numeric), declared, member)
+    raw = shape.discriminator_value.raw
+    key = _tag_key(raw, numeric=numeric)
+    # A non-scalar `discriminatorValue`, which `_check_discriminator` refuses on
+    # its own; nothing here can key by it meanwhile.
+    return None if key is None else (key, _spell(raw), member)
+
+
+def _discriminated(members: list[BaseShape] | None) -> _Claims | None:
+    """The discriminator this union agrees on, and what each member claims.
+
+    `None` when the union does not discriminate uniformly. Every way to reach it
+    means a linear scan is the only correct answer, and none is an error:
+
+    - **fewer than two members** — nothing to choose between;
+    - **a member that is not an object carrying a `discriminator`** — `Cat | string`
+      cannot be selected by a property;
+    - **two discriminator names**, or two *types* under one name — a value would
+      have to be looked up under several keys, or under two key functions;
+    - **a member with nothing to be keyed by** (see `_claim`).
+
+    The claims come back **in declaration order and undeduplicated**, because the
+    two callers want different things from a repeat: `check` reports it, and
+    `build_dispatch` declines to build.
+    """
+    if members is None or len(members) < _MIN_MEMBERS:
+        return None
+    found: _Claims | None = None
+    for member in members:
+        shape = member.shape
+        if not isinstance(shape, ObjectShape) or shape.discriminator is None:
+            return None
+        name = shape.discriminator.value
+        numeric = _numeric_tag(shape, name)
+        if found is None:
+            found = _Claims(name, numeric, [])
+        elif (name, numeric) != (found.name, found.numeric):
+            return None
+        claim = _claim(member, shape, numeric=numeric)
+        if claim is None:
+            return None
+        found.claims.append(claim)
+    return found
+
+
+def _numeric_tag(shape: ObjectShape, name: str) -> bool:
+    """Is the discriminator property declared `integer` or `number`?
+
+    Read off the property rather than inferred from the values, because the
+    declaration is what decides how a tag is keyed (`_tag_key`). A property that
+    is absent or carries no type reads as non-numeric, the conservative answer:
+    it keys by spelling, so nothing is merged that the author wrote apart.
+    """
+    prop = (shape.properties or {}).get(name)
+    return prop is not None and prop.base.type in (TYPE_INTEGER, TYPE_NUMBER)
+
+
+def _duplicates(claims: list[_Claim]) -> tuple[str, ...]:
+    """The values claimed by more than one member, spelled and sorted."""
+    seen: dict[Hashable, str] = {}
+    repeated: set[str] = set()
+    for key, spelling, _ in claims:
+        if key in seen:
+            repeated.add(seen[key])
+        else:
+            seen[key] = spelling
+    return tuple(sorted(repeated))
+
+
 class UnionShape(ComplexKind):
     """`union`. Its members arrive built, one declaration each."""
 
-    __slots__ = ('any_of', 'pending_facets')
+    __slots__ = ('_dispatch', 'any_of', 'pending_facets')
 
     DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {'anyOf': SHAPE_LIST}
 
     def __init__(self, base: BaseShape, *, any_of: list[BaseShape] | None = None) -> None:
         super().__init__(base)
         self.any_of = any_of
+        #: The dispatch table (docs/05 section 9.1), filled by `build_dispatch`
+        #: at the end of P9. `None` until then, and `None` afterwards for a union
+        #: that does not discriminate: both mean the same thing to `_select`, so
+        #: nothing needs to tell them apart.
+        self._dispatch: _Dispatch | None = None
         #: The other `pending_facets` (see the module docstring): facets written
         #: beside `type: A | B`. A union recognises none of its own — every one
         #: of them belongs to the *members*, and which member decides whether
@@ -483,7 +676,74 @@ class UnionShape(ComplexKind):
     def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> UnionShape:
         clone = cast('UnionShape', super().clone(base, memo))
         clone.any_of = None if self.any_of is None else [member.clone(memo) for member in self.any_of]
+        # Not copied: the table holds the *members*, and the clone's are new
+        # shapes. Carrying it over would dispatch into the original's graph. The
+        # clone gets its own when P9 reaches it.
+        clone._dispatch = None  # noqa: SLF001 - same class, and __slots__ has no other way
         return clone
+
+    def build_dispatch(self) -> None:
+        """Settle the dispatch table. `finish_unwrap` calls this once per shape.
+
+        It belongs at the end of P9 because `finish_unwrap` is the last pass that
+        writes `any_of` — it substitutes a `RecursiveShape` for a cycle's head —
+        so a table settled any earlier would hold members the union no longer has.
+
+        Built only when the claims are **distinct**. Two members answering to one
+        value leave the table unable to say which a payload selects, so the union
+        keeps the linear scan and `check` reports the clash.
+        """
+        found = _discriminated(self.any_of)
+        if found is None or _duplicates(found.claims):
+            self._dispatch = None
+            return
+        self._dispatch = _Dispatch(
+            found.name,
+            found.numeric,
+            {key: member for key, _, member in found.claims},
+            tuple(sorted(spelling for _, spelling, _ in found.claims)),
+        )
+
+    def dispatch(self) -> _Dispatch | None:
+        """The dispatch table, or `None` where this union validates by scan."""
+        return self._dispatch
+
+    def _select(self, value: Any, path: str) -> BaseShape | None:
+        """The member this payload's tag names, or `None` to fall back to a scan.
+
+        Three ways to reach `None`, and each one has a better report waiting in
+        the scan than a dispatch failure would be:
+
+        - **no table** — the union does not discriminate (`_discriminated`);
+        - **the value is not a mapping** — it cannot carry a tag at all, and every
+          member is an object, so the scan's combined `invalid type` is the answer;
+        - **the tag is absent, null, or not a scalar** — whether the property was
+          required, and what type it had to be, are the *members'* rules, and they
+          state them precisely where this could only say the lookup missed.
+
+        A tag that is present and scalar but names nothing raises instead. That is
+        the narrowing D12 records: the author said this property identifies the
+        type, so a value identifying none of them is wrong even where a member
+        would have accepted the payload structurally.
+        """
+        table = self._dispatch
+        if table is None or not isinstance(value, dict):
+            return None
+        tag = value.get(table.name, _ABSENT)
+        if tag is _ABSENT or tag is None:
+            return None
+        key = _tag_key(tag, numeric=table.numeric)
+        if key is None:
+            return None
+        member = table.members.get(key)
+        if member is None:
+            raise failure(
+                'unknown discriminator value',
+                self.base.location,
+                self.base.value_pos,
+                info={'path': path, 'discriminator': table.name, 'value': _spell(tag), 'known': list(table.known)},
+            )
+        return member
 
     def check(self) -> None:
         accumulator = Accumulator()
@@ -492,14 +752,48 @@ class UnionShape(ComplexKind):
                 member.check()
             except RamlError as err:
                 accumulator.add(err)
+        accumulator.add(self._check_distinct_values())
         accumulator.raise_if_any()
 
-    def validate(self, value: Any, path: str) -> None:
-        """First member that validates wins; if none does, report all of them.
+    def _check_distinct_values(self) -> RamlError | None:
+        """Two members of a discriminated union may not claim one value.
 
-        Reporting only the last member's failure is the unhelpful thing to do
-        here — the reader cannot tell which member they meant to satisfy.
+        Spec § Type Declarations on `discriminatorValue`: the value "is unique in
+        the hierarchy of the type". Within a union the requirement is also what
+        makes the union usable — where two members answer to `cat`, no payload
+        can say which it is, and the dispatch table is not built.
+
+        Scoped to the union, not to the hierarchy. After P9 a subtype has no
+        `inherits` edge back to the type that declared the discriminator, so the
+        hierarchy a value must be unique *in* is no longer walkable from here;
+        what is checked is the set of members a document actually wrote together.
         """
+        found = _discriminated(self.any_of)
+        duplicates = () if found is None else _duplicates(found.claims)
+        if found is None or not duplicates:
+            return None
+        return failure(
+            'discriminator value is claimed by more than one member of the union',
+            self.base.location,
+            self.base.value_pos,
+            info={'discriminator': found.name, 'values': list(duplicates), 'members': len(found.claims)},
+        )
+
+    def validate(self, value: Any, path: str) -> None:
+        """Dispatch on the discriminator where there is one; otherwise try each member.
+
+        A scan reports *every* member's failure rather than the last one's,
+        because a reader given one complaint cannot tell which member it was
+        meant to satisfy (docs/05 § 9.1 tabulates both paths).
+        """
+        selected = self._select(value, path)
+        if selected is not None:
+            # The one member the tag names. Its failures surface as its own
+            # rather than under "matches no member", which is what writing a
+            # discriminator buys.
+            selected.validate_at(value, path)
+            return
+
         accumulator = Accumulator()
         for member in self.any_of or ():
             try:
@@ -561,7 +855,7 @@ class UnknownShape(ComplexKind):
 class RecursiveShape(ComplexKind):
     """A back-edge: the point where a type cycle returns to its head.
 
-    Produced by `mark_recursions` in P9, never by decoding (docs/07 § 4).
+    Produced by `finish_unwrap` in P9, never by decoding (docs/07 § 4).
     """
 
     __slots__ = ('head',)

@@ -59,7 +59,7 @@ as though it constrains something.
 | number/integer | `minimum ≤ maximum`; `format` in the kind's table (deviation D2); `multipleOf ≠ 0` |
 | array | `minItems ≤ maxItems`; recursive `check()` on `items` |
 | object | `minProperties ≤ maxProperties`; recursive `check()` on every property and pattern property; pattern properties forbidden with `additionalProperties: false`; discriminator rules ([05](05-type-model.md) § 9) |
-| union | recursive `check()` on every member |
+| union | recursive `check()` on every member; where the members discriminate uniformly, their `discriminatorValue` claims must be distinct ([05](05-type-model.md) § 9.1) |
 | file | `minLength ≤ maxLength`; `fileTypes` entries are media types or `*/*` |
 | unknown | always fails — reaching it means P7 was skipped |
 
@@ -165,7 +165,7 @@ Per kind:
 | file | `str` (base64) or `bytes` | `minLength`/`maxLength` in **bytes**, `fileTypes` |
 | array | `list` | `minItems`, `maxItems`, `items` per element, `uniqueItems` |
 | object | `dict` | required properties present; each declared property; `additionalProperties`; pattern properties; `minProperties`/`maxProperties` |
-| union | anything | first member that validates wins; if none, report *every* member's failure as attached detail |
+| union | anything | dispatch on the discriminator where every member declares the same one ([05](05-type-model.md) § 9.1); otherwise the first member that validates wins, and if none does, report *every* member's failure as attached detail |
 | json | anything | delegate to the compiled JSON Schema validator |
 | recursive | anything | delegate to `head` |
 

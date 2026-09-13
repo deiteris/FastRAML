@@ -423,6 +423,26 @@ class BaseShape:
             return
         self.shape.validate(value, path)
 
+    def _assert_unwrapped(self) -> None:
+        """Invariant I12: data is validated against a *flattened* declaration.
+
+        An un-flattened shape shows only what its own declaration wrote, so it
+        silently answers a different question: a child whose parent declared a
+        required property accepts a value that omits it (docs/13 § 7.4). P10
+        unwraps a private copy for this reason, and a caller holding a shape from
+        a `unwrap=False` parse has to do the same.
+
+        A bug, not a diagnostic — hence `assert` (docs/02 § 4).
+
+        At the public entry only. `validate_at` recurses through every node of a
+        value and is the hot path; the invariant covers the whole subtree once it
+        holds at the root.
+        """
+        assert self._unwrapped, (  # noqa: S101 - docs/02 section 4 invariant, not input validation
+            'validate() needs an unwrapped shape: parse with ParseOptions(unwrap=True), '
+            'or call unwrap_shape() on a detached clone'
+        )
+
     def validate(self, value: Any) -> RamlError | None:
         """The public data-validation entry point (docs/13 section 5).
 
@@ -430,6 +450,7 @@ class BaseShape:
         boolean-ish check in a request handler, where an exception is the wrong
         control flow. `validate_or_raise` is the other case.
         """
+        self._assert_unwrapped()
         try:
             self.validate_at(value, '$')
         except RamlError as err:
@@ -438,6 +459,7 @@ class BaseShape:
 
     def validate_or_raise(self, value: Any) -> None:
         """`validate`, for callers who would only re-raise what it returns."""
+        self._assert_unwrapped()
         self.validate_at(value, '$')
 
 

@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from pyraml.errors import Accumulator, ErrorKind, RamlError
 from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
-from pyraml.types.unwrap import mark_recursions, unwrap_shape
+from pyraml.types.unwrap import finish_unwrap, unwrap_shape
 from pyraml.types.values import failure
 
 if TYPE_CHECKING:
@@ -141,7 +141,7 @@ def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) 
     if cached is not None:
         return cached
     copy = unwrap_shape(raml, base.clone_detached())
-    mark_recursions(raml, roots=[copy])
+    finish_unwrap(raml, roots=[copy])
     cache[base.id] = copy
     return copy
 

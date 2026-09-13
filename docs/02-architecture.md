@@ -451,12 +451,13 @@ them; violations are bugs, not diagnostics.
 | I3 | A fragment is decoded at most once per parse | P2 (`fragments` checked before load) |
 | I4 | Every `BaseShape` created during decode is appended to `shapes`, and to `unresolved_shapes` iff its concrete kind is `UnknownShape` | P2/P7 |
 | I5 | After P7 no reachable shape is an `UnknownShape` | P7 |
-| I6 | After P9 every reachable shape has `unwrapped is True` and `link is None` | P9 |
+| I6 | After P9 every reachable shape has `unwrapped is True` and `link is None`, and every reachable `UnionShape` has had `build_dispatch()` called | P9 |
 | I7 | Every entity carries a `location` plus `key_pos`/`value_pos`, both 1-based | all |
 | I8 | Order of declaration is preserved in every mapping the model exposes | dict semantics |
 | I9 | Structural merge never mutates either input tree | P4a |
 | I10 | Node identity is stable across the merge, so provenance lookups work | P4a |
 | I11 | An entity has at most one address; an address may be shared by entities the model links, so `Addresses.of` is many-to-one and `id` remains the identity | `views/walk.py` (after P10) |
+| I12 | `validate()`/`validate_or_raise()` are only ever reached on a shape satisfying I6 — **asserted**, because an un-flattened shape silently answers a different question | P9, enforced at the P10 entry |
 
 ## 5. Error strategy
 

@@ -336,7 +336,7 @@ and reports exactly that. It is the sharing that makes the mistake reachable,
 but the sharing is not the mistake: copying the dict hides this one bug and
 costs the propagation § 3.6 exists for.
 
-`mark_recursions` runs a DFS from every declared type using the same `_visiting`
+`finish_unwrap` runs a DFS from every declared type using the same `_visiting`
 flag. On re-entry it does not error (unlike resolution) — it returns a
 `RecursiveShape` that the caller substitutes into the slot it came from:
 
@@ -349,6 +349,14 @@ Substitution happens in `items`, `properties[*].base`,
 `pattern_properties[*].base`, `anyOf[*]` and custom facet declarations. Validation
 of a `RecursiveShape` delegates to `head`, so behaviour is unchanged; only the
 object graph becomes a DAG plus explicit back-edges.
+
+**The same walk settles union dispatch tables**, which is what makes
+`finish_unwrap` the post-pass over a flattened model rather than a marking pass:
+marking is one of the two things it does. The substitution into `anyOf[*]` just
+described is why a table cannot be built earlier — it would name members the
+union no longer has — and the walk already visits every union, so a collector on
+the descent replaces a second traversal. The rules are in
+[05](05-type-model.md) § 9.1.
 
 One subtlety carried over from go-raml: the flag is cleared *before* descending
 into custom facet declarations, because a facet declaration may reference the very

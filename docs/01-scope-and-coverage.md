@@ -328,6 +328,39 @@ text. That is not specific to schemas — a plain RAML `type: object` query
 parameter is equally unsatisfiable and equally unrefused — so banning one
 spelling of it prevents nothing.
 
+### D12 — A discriminated union dispatches
+
+Spec § Using Discriminator leaves the choice open (`raml-10.md:762`):
+
+> A RAML processor **MAY** provide an implementation that automatically selects a
+> concrete type from a set of possible types, but a simpler alternative is to
+> store a unique value associated with the type inside the object.
+
+pyRAML provides one. Where every member of a union is an object declaring the
+same `discriminator` with distinct values, validation looks the tag up in a table
+instead of trying each member in turn ([05](05-type-model.md) § 9.1).
+
+**This is a deviation because it narrows.** The spec's general union rule is that
+a value is valid if it is a valid instance of at least one member, so
+`{kind: Dog, meows: true}` against `Cat | Dog` is a valid `Cat` wherever `Cat`
+does not constrain `kind`. Dispatch refuses it. The MAY clause licenses that:
+selecting the concrete type *is* the alternative implementation it offers, and an
+author who writes a discriminator has said the tag identifies the type.
+
+Two cases are deliberately left alone:
+
+- An **absent** tag falls back to the linear scan. Whether the property is
+  required is the members' own rule, and they report it better than a dispatch
+  failure would.
+- A union that does not discriminate uniformly is scanned, exactly as before.
+  A document that never wrote a discriminator sees no change at all.
+
+Costs no TCK fixture; the suite stands at 951. `discriminator` **MUST NOT**
+appear on a union type itself (`raml-10.md:833`), and that rule is untouched —
+it is still refused at decode time. The table is built from the members' own
+declarations, and a use site written `Cat | Dog` is how a discriminated hierarchy
+reaches a body.
+
 ## 5. Dependency budget
 
 | Dependency | Purpose | Required? |

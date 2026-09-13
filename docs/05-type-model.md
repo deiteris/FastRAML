@@ -491,3 +491,134 @@ lost: two unrelated hierarchies that both discriminate on `kind` share a set, so
 an instance of one may borrow the other's value. That error is permissive and
 never a false rejection, which is the right direction for a check no `strict`
 can turn off.
+
+### 9.1 Dispatch — a union that discriminates
+
+Sections above concern *declarations*. A discriminator also answers a question
+about **data**: given `Cat | Dog`, which member is this payload?
+
+The spec makes the answer optional (`raml-10.md:762`):
+
+> A RAML processor **MAY** provide an implementation that automatically selects a
+> concrete type from a set of possible types, but a simpler alternative is to
+> store a unique value associated with the type inside the object.
+
+pyRAML provides one. `UnionShape` carries a `{discriminatorValue: member}` table
+and validates by lookup. This is deviation **D12**
+([01](01-scope-and-coverage.md)), because it narrows what the union accepts.
+
+#### When a table exists
+
+`_discriminated` answers the first question: does this union discriminate
+uniformly? Four things make the answer no. Each means a linear scan is the only
+correct treatment, and none is an error:
+
+| Condition | Why |
+|-----------|-----|
+| two or more members | nothing to choose between otherwise |
+| every member an `ObjectShape` carrying a `discriminator` | `Cat \| string` cannot be selected by a property |
+| one discriminator name across all of them | a value would have to be looked up under several keys |
+| one *type* under that name | a numeric property and a string one need different key functions, and a table has one |
+| every member with something to be keyed by | see below |
+
+Each member claims a value: its `discriminatorValue`, or its declared name, which
+is the default the spec gives. A member with neither is anonymous and rules the
+union out.
+
+**Distinct claims are the fifth condition, and failing it is an error.** Spec
+§ Type Declarations requires `discriminatorValue` to be "unique in the hierarchy
+of the type". Within a union the requirement is also what makes the union usable:
+where two members answer to `cat`, no payload can say which it is.
+`UnionShape.check` reports `discriminator value is claimed by more than one
+member of the union`, and no table is built. The collision is easy to write
+unseen, because the default is silent:
+
+```raml
+A: { type: P }                         # claims "A", by default
+B: { type: P, discriminatorValue: A }  # claims "A", explicitly
+```
+
+The check is scoped to the union, not to the hierarchy. After P9 a subtype has no
+`inherits` edge back to the type that declared the discriminator, so the
+hierarchy a value must be unique *in* is not walkable from the shape that needs
+the answer; what is checked is the set of members a document wrote together. A
+hierarchy-wide check needs the declared model, and
+`check_declared_discriminators` is where it would go.
+
+#### The key depends on the property's declared type
+
+A tag is keyed by `_tag_key(value, numeric=...)`, and `numeric` is read off the
+discriminator property rather than inferred from the value. The two cases pull in
+opposite directions and both are real:
+
+| Property | Accepts | So the key is |
+|----------|---------|---------------|
+| `integer` | `1`, `1.0`, `'1'`, `'1.0'` as one value ([10](10-validation.md) § 5, a number-preserving decoder may hand a numeric string through) | the `Fraction`, so all four select the member claiming `1` |
+| `string` | `'1'` and `'1.0'` as two *different* strings | the string, so the two stay apart |
+
+Keying by value alone cannot serve both. `same_value` reads `'1'` as the number
+`1`, so using it would merge two legal string claims and report the union as a
+collision — a false rejection on a valid document. Keying by spelling alone fails
+the other row, leaving `discriminatorValue: 1` selectable by one spelling of the
+number and not the others.
+
+Nothing crosses between the rows within one member: `_check_discriminator`
+validates `discriminatorValue` against the property, so a `string` discriminator
+refuses `discriminatorValue: 1` and a `number` one refuses `discriminatorValue:
+"1"`. Across members it is the fourth table condition that holds the line — two
+types under one discriminator name mean two key functions, and the union falls
+back to the scan rather than pick one.
+
+`true` and `false` key ahead of the numeric branch, because Python makes `bool` a
+subclass of `int` and no RAML author means `true` and `1` to select one type.
+
+#### The member's name is one alias hop away
+
+`type: Cat | Dog` gives members that are aliases of `Cat` and `Dog`. An alias
+shares its referent's containers, so the *discriminator* is visible on the member
+and the *name* is not ([07](07-resolution-and-inheritance.md) § 3.6).
+
+One hop reaches the name and no further hop is needed: `alias_to` points an alias
+at a declaration, and a declaration is named. Given `Moggy: Feline` and
+`Feline: Cat`, the member written `Moggy` resolves to `Moggy` — the name the
+union was written with, which is the name `discriminatorValue` defaults from.
+
+#### The table is built at the end of P9
+
+`finish_unwrap` builds it, from a collector its walk fills. Three properties of
+that placement matter:
+
+- **It is the last pass that writes `any_of`.** Recursion marking substitutes a
+  `RecursiveShape` for a cycle's head, so a table built during `_unwrap` would
+  name members the union no longer has.
+- **Its walk already visits every union**, so the collector costs a list append
+  rather than a second traversal.
+- **It runs on both unwrap paths** — `unwrap_shapes` for the registry, and the
+  private copy `_ensure_unwrapped` makes for `validate=True` without
+  `unwrap=True` — so a shape that can be validated has a table.
+
+Settling it here rather than on first validation keeps the field out of the hot
+path and makes its correctness a property of pass order rather than of nothing
+having touched `any_of` in between.
+
+#### What dispatch does at validation time
+
+`UnionShape._select` decides, and returns the member or `None` for "fall back".
+
+| The value | What happens |
+|-----------|--------------|
+| no table | linear scan |
+| not a mapping | linear scan; it cannot carry a tag, and every member is an object, so the combined `invalid type` is the answer |
+| tag absent, null, or not a scalar | linear scan — whether the property was required, and what type it had to be, are the *members'* rules, and they state them precisely where a dispatch failure could only say the lookup missed |
+| tag present and scalar, in the table | validate against **that member only**, and report its failure as its own |
+| tag present and scalar, not in the table | `unknown discriminator value`, carrying the path, the property, the tag and the known values in `info` |
+
+Row three is what the feature buys: a failure inside the intended member is
+reported as that member's failure, not as `value matches no member of the union`
+with every member's complaint attached.
+
+Row four is the narrowing. `{kind: Dog, meows: true}` against `Cat | Dog`
+satisfies `Cat`, which has no required property `Dog` lacks, so a linear scan
+accepts it. An author who writes a discriminator means the tag to identify the
+type, so dispatch refuses it — and that refusal is why D12 is a deviation rather
+than an optimisation.

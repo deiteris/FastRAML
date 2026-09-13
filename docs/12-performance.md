@@ -174,7 +174,7 @@ stack, or carries a depth counter and raises a positioned diagnostic before
 CPython raises `RecursionError`.
 
 The traversals in question: `mark_graft`, structural merge, `Node`→`ValueNode`
-conversion, `mark_recursions`, `unwrap_shape`, and JSON-Schema→shape conversion.
+conversion, `finish_unwrap`, `unwrap_shape`, and JSON-Schema→shape conversion.
 Of these, `mark_graft` and the value conversion are the easiest to make iterative
 and the most likely to be deep, so they are iterative from the start; the rest get
 a depth guard with a configurable ceiling (default 200).
@@ -193,7 +193,7 @@ which traversal refused it, and every one of them carries the limit in `info`:
 | Message | Pass | What it bounds |
 |---------|------|----------------|
 | `document nesting too deep` | P0 | YAML levels in one composed file |
-| `type nesting too deep` | P9 | levels of `unwrap_shape` / `mark_recursions` |
+| `type nesting too deep` | P9 | levels of `unwrap_shape` / `finish_unwrap` |
 | `JSON schema nesting too deep` | P2/P7 | levels of a decoded schema, and of a `$ref` chain |
 
 Three details that are not obvious and each cost something to find:

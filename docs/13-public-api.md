@@ -302,6 +302,23 @@ Each has caused problems for users of the reference implementation.
    A `minLength` declared on the parent is not visible on the child until unwrap
    runs.
 
+   **So `validate()` and `validate_or_raise()` assert the shape is unwrapped**
+   (invariant I12, [02](02-architecture.md) § 4). An un-flattened declaration
+   cannot answer "does this value conform?": a child whose parent declared a
+   required property has no such property yet, so it accepts a value that omits
+   it, and it does so silently.
+
+   Parse with `unwrap=True`, or unwrap a detached clone:
+
+   ```python
+   copy = unwrap_shape(raml, shape.clone_detached())
+   finish_unwrap(raml, roots=[copy])   # also settles union dispatch tables
+   copy.validate(value)
+   ```
+
+   `ParseOptions(validate=True)` does this per declared type, which is how it
+   works without `unwrap=True`, and why § 4 recommends passing both.
+
 ## 8. CLI
 
 A thin console script, mirroring the reference tool. Presentation only: no

@@ -8,11 +8,16 @@ where it is and how it must be parsed are stated once, here.
 from __future__ import annotations
 
 import pathlib
+import sys
 
 import pytest
 from pyraml import ParseOptions, parse_from_path
 
 from fastmcp_raml import raml_mcp
+
+# `examples/` is not a package and is not installed, so `test_example.py` can
+# only reach it from here. Running the example is how it is kept working.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'examples'))
 
 #: The document includes from a sibling directory, so the loader's sandbox has
 #: to be wider than its own.

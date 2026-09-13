@@ -57,7 +57,7 @@ jobs:
           enable-cache: true
       - run: uv sync --dev
       - name: Reinstall PyYAML without libyaml
-        run: uv pip install --force-reinstall --no-binary :all: pyyaml
+        run: "uv pip install --force-reinstall --no-binary :all: pyyaml"
       - run: uv run python -c "import pyraml; assert pyraml.backend_name() == 'python', pyraml.backend_name()"
       - run: uv run pytest -q
 

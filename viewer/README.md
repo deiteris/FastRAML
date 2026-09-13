@@ -13,7 +13,13 @@ npm install
 npm run sample        # pyraml tree ../fixtures/sample/api.raml > public/api.json
 npm run dev
 npm run shots         # screenshot every page, both themes, into shots/
+npm run check         # tsc, layers, smoke, shots
 ```
+
+`npm run ci` is `check` with the screenshots replaced by the production build.
+The pictures are for looking at, not for diffing — `shots/` is gitignored — so
+capturing them on a runner nobody watches buys a browser download and nothing
+else. Everything that can *fail* meaningfully is in both.
 
 The document it renders is `fixtures/sample`, which is the repo's and not this
 app's: `tests/unit/test_bindings.py` holds `public/api.json` to it, and

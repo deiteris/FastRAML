@@ -92,6 +92,56 @@ jobs:
           PYRAML_BENCH: '1'
         run: uv run pytest tests/bench -q -rs
 
+  # The distributions under `contrib/` are separate uv projects with their own
+  # locks, so the root gate never sees them: without this their suites run only
+  # when someone remembers. They consume `pyraml` as an editable path
+  # dependency, which makes this the job that notices when a change to the model
+  # breaks a consumer of it rather than a test of it.
+  contrib:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dist: [raml-document, fastapi-raml, fastmcp-raml]
+    defaults:
+      run:
+        working-directory: contrib/${{ matrix.dist }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras --dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - name: Type-check the package
+        env:
+          DIST: ${{ matrix.dist }}
+        run: uv run mypy "${DIST//-/_}"
+      - run: uv run pytest -q
+
+  # `viewer/` is outside the Python gate and has its own. It renders
+  # `fixtures/sample`, so it is also what notices when a change to the tree
+  # projection leaves output that is well-formed and unrenderable.
+  viewer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - name: Install without fetching a browser
+        # `npm run ci` needs no browser; only `shots` does, and screenshots are
+        # for looking at rather than for diffing (viewer/README.md).
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: npm ci
+        working-directory: viewer
+      - run: npm run ci
+        working-directory: viewer
+
   tck:
     runs-on: ubuntu-latest
     steps:

@@ -15,8 +15,8 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal
 
 import pytest
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, RootModel, Tag
 from fastraml import ParseOptions, parse_from_path
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, RootModel, Tag
 
 from raml_document import Document
 from raml_document.from_pydantic import Walk

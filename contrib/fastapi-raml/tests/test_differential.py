@@ -17,8 +17,8 @@ import tempfile
 from typing import Any
 
 import pytest
-from pydantic import BaseModel, ValidationError
 from fastraml import ParseOptions, parse_from_path
+from pydantic import BaseModel, ValidationError
 
 from examples import hard, library
 from fastapi_raml import render

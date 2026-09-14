@@ -54,8 +54,8 @@ if TYPE_CHECKING:
     from fastmcp.server.providers.openapi.routing import ComponentFn, RouteMapFn
     from fastmcp.tools.base import Tool
     from fastmcp.utilities.openapi import HTTPRoute
-    from jsonschema_path import SchemaPath
     from fastraml.registry import Raml
+    from jsonschema_path import SchemaPath
 
     from fastmcp_raml.routes import Document
 

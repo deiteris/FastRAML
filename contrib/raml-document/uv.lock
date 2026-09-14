@@ -102,6 +102,38 @@ wheels = [
 ]
 
 [[package]]
+name = "fastraml"
+source = { editable = "../../" }
+dependencies = [
+    { name = "jsonschema" },
+    { name = "pluralizer" },
+    { name = "pyyaml" },
+    { name = "referencing" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "google-re2", marker = "extra == 're2'" },
+    { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27" },
+    { name = "jsonschema", specifier = ">=4.21" },
+    { name = "pluralizer", specifier = ">=2.0" },
+    { name = "pyoxigraph", marker = "extra == 'graph'", specifier = ">=0.4" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "referencing", specifier = ">=0.35" },
+]
+provides-extras = ["graph", "http", "re2"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruamel-yaml", specifier = ">=0.18,<0.20" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -437,39 +469,6 @@ wheels = [
 ]
 
 [[package]]
-name = "fastraml"
-version = "0.0.1"
-source = { editable = "../../" }
-dependencies = [
-    { name = "jsonschema" },
-    { name = "pluralizer" },
-    { name = "pyyaml" },
-    { name = "referencing" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "google-re2", marker = "extra == 're2'" },
-    { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27" },
-    { name = "jsonschema", specifier = ">=4.21" },
-    { name = "pluralizer", specifier = ">=2.0" },
-    { name = "pyoxigraph", marker = "extra == 'graph'", specifier = ">=0.4" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "referencing", specifier = ">=0.35" },
-]
-provides-extras = ["http", "re2", "graph"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "hypothesis" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "ruamel-yaml", specifier = ">=0.18,<0.20" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-]
-
-[[package]]
 name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -548,9 +547,9 @@ pydantic = [
 [package.dev-dependencies]
 dev = [
     { name = "annotated-types" },
+    { name = "fastraml" },
     { name = "mypy" },
     { name = "pydantic" },
-    { name = "fastraml" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -566,9 +565,9 @@ provides-extras = ["pydantic"]
 [package.metadata.requires-dev]
 dev = [
     { name = "annotated-types", specifier = ">=0.6" },
+    { name = "fastraml", editable = "../../" },
     { name = "mypy", specifier = ">=1.10" },
     { name = "pydantic", specifier = ">=2.7" },
-    { name = "fastraml", editable = "../../" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
 ]

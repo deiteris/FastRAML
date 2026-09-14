@@ -8,13 +8,17 @@ on:
 env:
   FORCE_COLOR: '1'
 
+# Action versions: `actions/*` publish a moving major tag, so `@v7` follows
+# patches. `astral-sh/setup-uv` stopped doing that after v7 -- from v8 on it
+# tags only exact releases -- so it is pinned to one and has to be bumped by
+# hand. `@v10` does not resolve and never will.
 jobs:
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
       - run: uv sync --all-extras --dev
@@ -34,7 +38,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
       - run: uv sync --dev --python ${{ matrix.python }}
@@ -55,7 +59,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
       - run: uv sync --dev
@@ -74,7 +78,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
       - run: uv sync --all-extras --dev
@@ -88,7 +92,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
       - run: uv sync --dev
@@ -114,7 +118,7 @@ jobs:
         working-directory: contrib/${{ matrix.dist }}
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
       # `fastraml-viewer` vendors `viewer/dist` in its build hook, so the
@@ -180,7 +184,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
       - run: uv sync --dev

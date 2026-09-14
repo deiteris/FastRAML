@@ -26,6 +26,10 @@ on:
       - 'fastraml-viewer-v*'
       - 'raml-mock-v*'
 
+# Action versions: `actions/*` publish a moving major tag, so `@v7` follows
+# patches. `astral-sh/setup-uv` stopped doing that after v7 -- from v8 on it
+# tags only exact releases -- so it is pinned to one and has to be bumped by
+# hand. `@v10` does not resolve and never will.
 jobs:
   parser:
     # Only the bare `vN.N.N` form. `startsWith(ref, 'refs/tags/v')` would also
@@ -39,7 +43,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
 
@@ -83,7 +87,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
 

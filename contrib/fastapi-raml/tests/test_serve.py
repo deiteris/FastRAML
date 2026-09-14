@@ -41,13 +41,17 @@ def test_the_tree_is_what_the_viewer_reads(client: TestClient) -> None:
     assert sorted(next(iter(tree['types'].values()))) == ['Book', 'Error']
 
 
-def test_the_stub_names_both_documents(client: TestClient) -> None:
-    body = client.get('/raml-docs').text
-    assert '/raml.json' in body
-    # `fastraml-viewer` is a dev dependency, so the default mount is live and
-    # the stub links to it. The "no viewer" branch is covered below, with the
-    # package hidden.
-    assert '/raml-viewer?src=/raml.json' in body
+def test_this_package_serves_no_html_of_its_own(client: TestClient) -> None:
+    """Rendering belongs to `fastraml-viewer`, not here.
+
+    The stub that used to live at `/raml-docs` existed only to compose
+    `?src=/raml.json` for a viewer that read its document from a query string.
+    The viewer reads `api.json` beside itself now, so the link had nothing left
+    to say.
+    """
+    assert client.get('/raml-docs').status_code == 404
+    for url in ('/raml', '/raml.json'):
+        assert 'text/html' not in client.get(url).headers['content-type']
 
 
 def test_the_bundled_viewer_is_mounted_and_serves_its_index(client: TestClient) -> None:
@@ -73,9 +77,11 @@ def test_without_the_package_nothing_is_mounted_and_nothing_fails(monkeypatch: A
     monkeypatch.setattr(builtins, '__import__', refuse)
     fresh = build_app()
     add_raml_routes(fresh)
-    body = TestClient(fresh).get('/raml-docs').text
-    assert 'No viewer is configured' in body
-    assert 'fastapi-raml[viewer]' in body
+    local = TestClient(fresh)
+    assert local.get('/raml-viewer/').status_code == 404
+    # The two routes that carry the content are unaffected.
+    assert local.get('/raml.json').status_code == 200
+    assert local.get('/raml').status_code == 200
 
 
 def test_mount_viewer_none_leaves_it_off(client: Any) -> None:  # noqa: ARG001 - module fixture ordering
@@ -126,16 +132,21 @@ def test_a_route_added_after_wiring_still_appears() -> None:
     assert '/later' in local.get('/raml.json').json()['endpoints']
 
 
-def test_a_viewer_url_is_linked_with_the_document(client: Any) -> None:  # noqa: ARG001 - module fixture ordering
-    fresh = build_app()
-    add_raml_routes(fresh, viewer_url='/viewer/index.html')
-    body = TestClient(fresh).get('/raml-docs').text
-    assert '/viewer/index.html?src=/raml.json' in body
+def test_the_mounted_viewer_reads_this_app_and_not_its_own_sample(client: TestClient) -> None:
+    """The bundle ships `api.json` -- the worked bookstore -- so it demos alone.
+
+    Mounted under a real app that sample would answer instead of the app's own
+    description: a convincing wrong answer rather than a visible failure. The
+    route registered before the mount shadows it.
+    """
+    served = client.get('/raml-viewer/api.json').json()
+    assert served == client.get('/raml.json').json()
+    assert sorted(served['endpoints']) == ['/books', '/books/{isbn}']
 
 
-def test_docs_url_none_adds_no_stub() -> None:
+def test_a_custom_mount_path_carries_its_own_document(client: Any) -> None:  # noqa: ARG001 - module fixture ordering
     fresh = build_app()
-    add_raml_routes(fresh, docs_url=None)
+    add_raml_routes(fresh, mount_viewer='/ui')
     local = TestClient(fresh)
-    assert local.get('/raml.json').status_code == 200
-    assert local.get('/raml-docs').status_code == 404
+    assert local.get('/ui/').status_code == 200
+    assert local.get('/ui/api.json').json() == local.get('/raml.json').json()

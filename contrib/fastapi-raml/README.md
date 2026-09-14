@@ -40,7 +40,7 @@ one:
 | `/books`, `/books/{isbn}` | the API itself, over a real dict |
 | `/raml` | the RAML source, as `application/raml+yaml` |
 | `/raml.json` | the same document as `fastraml tree` output |
-| `/raml-docs` | an HTML stub naming both |
+| `/raml-viewer` | the `fastraml-viewer` bundle, reading this app's tree |
 
 ## Use it in your own app
 
@@ -49,11 +49,11 @@ Three lines, after the routes are registered:
 ```python
 from fastapi_raml.serve import add_raml_routes
 
-# /raml, /raml.json, /raml-docs
+# /raml, /raml.json, and /raml-viewer when fastraml-viewer is installed
 add_raml_routes(app)
 
 # just the two documents
-add_raml_routes(app, docs_url=None)
+add_raml_routes(app, mount_viewer=None)
 ```
 
 Or render without serving:
@@ -125,7 +125,7 @@ directory: a real path, nothing left in it.
 |-----|----------|------------|
 | `/raml` | the RAML source | `application/raml+yaml` |
 | `/raml.json` | the tree projection | `application/json` |
-| `/raml-docs` | an HTML stub naming both | `text/html` |
+| `/raml-viewer/api.json` | this app's tree, where the bundle looks for it | `application/json` |
 
 **Nothing runs at import time.** The first request to `/raml` or `/raml.json`
 triggers `build()`; the result is held and reused. The cache key is the router's
@@ -136,32 +136,28 @@ rebuilds.
 Measured on `examples/server.py`: **6 ms** to render, parse and project; **1.7 ms**
 to serve from the cache. The 6 ms is paid once per route change, not per request.
 
-`root_path` is read per request when the stub builds its links, so mounting the
-app under a prefix keeps them correct.
+### The viewer
 
-### Wiring the viewer
-
-`viewer/` is a SPA over `fastraml tree` output, and its `load.ts` already accepts
-the document as a URL: `?src=`, described there as "a document served alongside
-it". So `/raml.json` is exactly what it wants, and nothing is parsed in the
-browser.
+`fastraml-viewer` ships the built SPA, and `add_raml_routes` mounts it at
+`/raml-viewer` when the package is installed:
 
 ```bash
-cd viewer && npm run build          # produces viewer/dist
+pip install fastapi-raml[viewer]
 ```
 
-Serve `viewer/dist` from anywhere and name it:
+The bundle reads `api.json` beside itself, so the mount serves *this app's*
+tree at `/raml-viewer/api.json` — registered before the static files, which
+shadows the worked bookstore the package ships to demo itself. Without that a
+mounted viewer would render someone else's API convincingly and say nothing.
 
-```python
-add_raml_routes(app, viewer_url='/viewer/index.html')
-```
+Pass `mount_viewer=None` to leave it off, or `mount_viewer='/ui'` to move it.
+Hosting your own copy of the bundle needs no argument here: serve `/raml.json`
+as `api.json` next to it.
 
-`/raml-docs` then links to `/viewer/index.html?src=/raml.json`. Without it the
-stub says no viewer is configured rather than pretending there is one.
-
-A URL rather than a `StaticFiles` mount, so this module does not depend on a
-built frontend: the parser, the renderer and the viewer are released on separate
-clocks, and a mount would couple them.
+**This package renders no HTML.** There used to be a stub at `/raml-docs` whose
+only job was to compose `?src=/raml.json` for a viewer that read its document
+from a query string. That parameter is gone — it let a crafted link render any
+document under the app's origin — and the stub went with it.
 
 ## Two models, and why the tree is not one of them
 

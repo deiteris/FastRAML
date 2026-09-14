@@ -43,12 +43,12 @@ def test_a_missing_bundle_is_a_clear_error(monkeypatch, tmp_path):
 
 
 def test_it_ships_the_sample_document():
-    """`api.json` is the fallback the viewer loads when given no `?src=`.
+    """`api.json` is what the viewer loads, and what a host overrides.
 
     Shipped on purpose, at 120 KiB of a 517 KiB bundle: it is this project's own
     `fixtures/sample` worked example, so opening the page bare demonstrates the
     viewer instead of failing to load. A consumer that wants its own document
-    passes `?src=` and never reads this.
+    serves its own at this name and shadows it.
     """
     sample = static_dir() / 'api.json'
     assert sample.is_file()

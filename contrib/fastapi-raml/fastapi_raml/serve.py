@@ -1,12 +1,19 @@
 """Serve a running app's RAML description, and the tree projection of it.
 
-Three routes, none of them in the app's own schema:
+Two routes, neither in the app's own schema, plus an optional viewer:
 
 | URL | Response |
 |-----|----------|
 | `/raml` | the RAML source, as `application/raml+yaml` |
-| `/raml.json` | `fastraml tree` output for it, which is what `viewer/` reads |
-| `/raml-docs` | an HTML stub naming both |
+| `/raml.json` | `fastraml tree` output for it, which is what the viewer reads |
+| `/raml-viewer` | the `fastraml-viewer` bundle, when that package is installed |
+
+**This package renders nothing itself.** It used to serve an HTML page listing
+the two routes and linking to `{viewer}?src=/raml.json`, which existed only
+because the viewer took its document from a query string. The viewer now reads
+`api.json` beside itself, so the mount serves this app's tree at that name and
+the bundle is pointed at the right document by where it is mounted rather than
+by a page whose sole job was to compose a link.
 
 The pipeline behind the first two:
 
@@ -31,11 +38,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from fastraml import ParseOptions, build_tree, parse_from_string
-from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 
 from fastapi_raml.render import render
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from starlette.requests import Request
 
 __all__ = ['RAML_MEDIA_TYPE', 'Served', 'add_raml_routes', 'build']
@@ -43,24 +52,8 @@ __all__ = ['RAML_MEDIA_TYPE', 'Served', 'add_raml_routes', 'build']
 #: RAML's registered media type (spec § Introduction).
 RAML_MEDIA_TYPE = 'application/raml+yaml'
 
-_STUB = """<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title></head>
-<body>
-<h1>{title}</h1>
-<p>This API is described in RAML 1.0.</p>
-<ul>
-  <li><a href="{raml_url}">{raml_url}</a> &mdash; the RAML source</li>
-  <li><a href="{tree_url}">{tree_url}</a> &mdash; the same document as <code>fastraml tree</code> output</li>
-</ul>
-{viewer}
-</body>
-</html>
-"""
 
-
-def _mount_viewer(app: Any, path: str | None) -> str | None:
+def _mount_viewer(app: Any, path: str | None, tree: Callable[[Request], Awaitable[JSONResponse]]) -> str | None:
     """Mount the `fastraml-viewer` bundle at `path`, if the package is there.
 
     Optional on purpose, and silent when absent. The viewer is a convenience
@@ -68,6 +61,13 @@ def _mount_viewer(app: Any, path: str | None) -> str | None:
     package must not stop an app serving its own RAML -- and `fastapi-raml`
     declaring a hard dependency on a pile of JavaScript would be the wrong
     trade for everyone who only wants `/raml`.
+
+    **`api.json` is routed before the mount, and that is the whole trick.** The
+    bundle fetches `api.json` beside itself, and it ships one -- the worked
+    bookstore, so the package is a standalone demo. Mounted under a real app
+    that sample would answer instead of the app's own description, which is a
+    convincing wrong answer rather than a visible failure. Starlette matches
+    routes in order, so registering this first shadows the shipped file.
     """
     if path is None:
         return None
@@ -76,6 +76,7 @@ def _mount_viewer(app: Any, path: str | None) -> str | None:
         from starlette.staticfiles import StaticFiles  # noqa: PLC0415 - only this path needs it
     except ImportError:
         return None
+    app.add_route(f'{path.rstrip("/")}/api.json', tree, include_in_schema=False)
     # `html=True` so `/raml-viewer/` serves index.html; the bundle is built with
     # vite `base: './'`, so its assets resolve under whatever path it lands on.
     app.mount(path, StaticFiles(directory=static_dir(), html=True), name='raml-viewer')
@@ -124,13 +125,11 @@ def build(app: Any) -> Served:
         return Served(text=report.to_raml(), tree=build_tree(raml), dropped=report.dropped)
 
 
-def add_raml_routes(  # noqa: PLR0913 - one parameter per route it adds, plus two switches
+def add_raml_routes(
     app: Any,
     *,
     raml_url: str = '/raml',
     tree_url: str = '/raml.json',
-    docs_url: str | None = '/raml-docs',
-    viewer_url: str | None = None,
     mount_viewer: str | None = '/raml-viewer',
     include_in_schema: bool = False,
 ) -> Any:
@@ -140,22 +139,18 @@ def add_raml_routes(  # noqa: PLR0913 - one parameter per route it adds, plus tw
     the cache keys on `_get_routes_version()`, so a later route invalidates it,
     but the *routes added here* have to exist before a request can reach them.
 
-    There are two ways to get a viewer, and they compose:
+    `mount_viewer` serves the bundle from the **`fastraml-viewer`** package at
+    that path, when it is installed -- `pip install fastapi-raml[viewer]`.
+    Absent the package nothing is mounted and nothing fails, because the two
+    routes above carry the content and a missing frontend must not stop an app
+    describing itself. Pass `None` to leave it off.
 
-    * `mount_viewer` serves the bundle from the **`fastraml-viewer`** package at
-      that path, when it is installed -- `pip install fastapi-raml[viewer]`.
-      Absent the package, nothing is mounted and nothing fails; this is the
-      default because the alternative used to be telling a pip user to "build
-      `viewer/`", which is a directory they do not have.
-    * `viewer_url` names a viewer you host yourself, and wins over the mount.
-
-    Either way the stub links to `{viewer}?src={tree_url}`, because the bundle
-    reads the tree projection over HTTP rather than being built around it.
+    A viewer you host yourself needs no argument here: serve this app's
+    `{tree_url}` as `api.json` beside your copy of the bundle.
 
     Returns the app, so the call chains.
     """
     cache: _Cache = _Cache()
-    viewer_url = viewer_url or _mount_viewer(app, mount_viewer)
 
     def served() -> Served:
         version = app.router._get_routes_version()  # noqa: SLF001 - the app's own cache key
@@ -172,26 +167,8 @@ def add_raml_routes(  # noqa: PLR0913 - one parameter per route it adds, plus tw
         # tree's own encoder-free contract is what reaches the wire.
         return JSONResponse(json.loads(json.dumps(served().tree)))
 
+    _mount_viewer(app, mount_viewer, raml_tree)
     app.add_route(raml_url, raml_source, include_in_schema=include_in_schema)
     app.add_route(tree_url, raml_tree, include_in_schema=include_in_schema)
 
-    if docs_url is not None:
-
-        async def raml_docs(request: Request) -> HTMLResponse:
-            # `root_path` is read per request, exactly as FastAPI's own docs
-            # routes read it, so the links survive being mounted under a prefix.
-            root = request.scope.get('root_path', '').rstrip('/')
-            tree = root + tree_url
-            viewer = (
-                f'<p><a href="{root + viewer_url if viewer_url.startswith("/") else viewer_url}?src={tree}">'
-                'Open in the viewer</a></p>'
-                if viewer_url
-                else '<p>No viewer is configured. Install <code>fastapi-raml[viewer]</code>, or serve one '
-                'yourself and pass <code>viewer_url=</code> to <code>add_raml_routes</code>.</p>'
-            )
-            return HTMLResponse(
-                _STUB.format(title=f'{app.title} - RAML', raml_url=root + raml_url, tree_url=tree, viewer=viewer)
-            )
-
-        app.add_route(docs_url, raml_docs, include_in_schema=include_in_schema)
     return app

@@ -1,10 +1,17 @@
 /**
  * Getting a document in.
  *
- * Three ways, because the app has three uses: a bundled `api.json` for a build
- * someone is handed, `?src=` for a document served alongside it, and a file
- * picker for whatever `fastraml tree` just printed. All three end at the same
- * parsed value; nothing downstream knows which was used.
+ * Two ways: `api.json` beside the bundle, and a file picker for whatever
+ * `fastraml tree` just printed. Both end at the same parsed value; nothing
+ * downstream knows which was used.
+ *
+ * **There is deliberately no `?src=`.** It used to take any URL, which meant a
+ * crafted link rendered someone else's document under this origin, convincingly
+ * and with nothing on the page saying so — and it made every host that mounts
+ * this bundle responsible for composing a query string, which is why
+ * `fastapi-raml` grew an HTML page whose only job was to write one. A host that
+ * wants its own document served here serves it at `api.json`; the file picker
+ * covers the rest.
  *
  * Through `parse` and not `JSON.parse`, so an example carrying an integer
  * larger than a double reaches the page as the author wrote it (`numbers.ts`).

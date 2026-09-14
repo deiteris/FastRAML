@@ -31,10 +31,12 @@ Anything that can serve a directory works the same way — aiohttp, Starlette,
 
 ## Point it at a document
 
-The viewer reads a `fastraml tree` projection. Give it one with `?src=`:
+The viewer reads a `fastraml tree` projection from `api.json` beside itself.
+Serve yours at that name and it is what loads:
 
 ```
-/raml-viewer/?src=/raml.json
+/raml-viewer/api.json     <- your `fastraml tree` output
+/raml-viewer/            <- the viewer, which reads it
 ```
 
 With no `src` it looks for `api.json` beside `index.html`. The bundle is built
@@ -42,7 +44,8 @@ with vite `base: './'`, so it runs from any mount path without being told which
 one.
 
 `fastapi-raml` wires this up for you: install it with its `viewer` extra and it
-mounts this package and links to it from `/raml-docs`.
+mounts this package at `/raml-viewer`, serving that app's own tree as the
+`api.json` the bundle reads.
 
 ## Building
 

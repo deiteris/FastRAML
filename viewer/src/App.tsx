@@ -46,8 +46,7 @@ function Shell() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const source = new URLSearchParams(window.location.search).get('src') ?? DEFAULT_SOURCE;
-    loadDocument(source)
+    loadDocument(DEFAULT_SOURCE)
       .then(setDocument)
       .catch((cause: Error) => setError(cause.message));
   }, []);

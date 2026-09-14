@@ -14,7 +14,7 @@ mount a directory -- FastAPI, aiohttp, a plain file server -- can serve it:
 
 The bundle is built with vite `base: './'`, so it runs from any sub-path
 without being told where it was mounted. Point it at a document with
-`?src=<url>`; with no `src` it looks for `api.json` beside `index.html`.
+`api.json` beside `index.html`, so a host serves its own document there.
 """
 
 from __future__ import annotations

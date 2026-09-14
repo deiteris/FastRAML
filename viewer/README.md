@@ -94,7 +94,6 @@ Three ways, one parsed value:
 | | for |
 |---|---|
 | `public/api.json` | a built bundle someone is handed |
-| `?src=<url>` | a document served alongside it |
 | the file picker | whatever `fastraml tree` just printed |
 
 ## The contract is generated
@@ -198,7 +197,7 @@ that looks fine and says something untrue:
 src/
   tree.d.ts            GENERATED -- the contract
   model.ts             index, addresses, path nesting, facet spelling
-  load.ts              fetch / ?src= / file picker
+  load.ts              fetch api.json / file picker
   App.tsx              shell, sidebar, routes
   pages.tsx            one page per section
   smoke.tsx            render every page, fail on the first that throws

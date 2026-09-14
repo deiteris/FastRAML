@@ -10,7 +10,7 @@ Then:
 | `/books` | the API itself |
 | `/raml` | the RAML source |
 | `/raml.json` | the same document as `fastraml tree` output |
-| `/raml-docs` | an HTML stub naming both |
+| `/raml-viewer` | the `fastraml-viewer` bundle, reading this app's tree |
 | `/openapi.json`, `/docs` | FastAPI's own, untouched |
 
 The last row is the point: OpenAPI and RAML are two renderings of one set of

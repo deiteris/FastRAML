@@ -1,4 +1,4 @@
-# pyRAML — parser design documents
+# fastRAML — parser design documents
 
 A RAML 1.0 parser for Python, modelled on [go-raml](https://github.com/acronis/go-raml)
 (reference source: `C:\Sources\go-raml-main`) and the
@@ -28,7 +28,7 @@ follows it or the document is amended first.
 | 13 | [Public API](13-public-api.md) | Entry points, options, the model surface consumers see |
 | 14 | [Testing strategy](14-testing.md) | TCK integration, unit/golden/property/benchmark layers |
 | 15 | [Implementation plan](15-implementation-plan.md) | Milestones, ordering, definition of done per phase |
-| 16 | [The views](16-graph.md) | `pyraml/views/`: one addressing walk, the model as a graph and as a tree, RDF/SPARQL, why not AMF, the reading view, the version diff |
+| 16 | [The views](16-graph.md) | `fastraml/views/`: one addressing walk, the model as a graph and as a tree, RDF/SPARQL, why not AMF, the reading view, the version diff |
 | 17 | [Consumers](17-consumers.md) | `viewer/`, `contrib/` and `fixtures/`: the one-way boundary, what may not live there, and the gates CI runs |
 
 ## Research

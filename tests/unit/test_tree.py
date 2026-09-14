@@ -16,9 +16,9 @@ import json
 
 import pytest
 
-from pyraml import ParseOptions, parse_from_path
-from pyraml.views.graph import build_graph
-from pyraml.views.tree import build_tree, positions_of
+from fastraml import ParseOptions, parse_from_path
+from fastraml.views.graph import build_graph
+from fastraml.views.tree import build_tree, positions_of
 
 #: Exercises each of the four cross-references at once: `inherits`, an alias
 #: under an array, a recursion head, and an applied annotation.
@@ -62,7 +62,7 @@ def references(value: object, key: str = '') -> list[tuple[str, str]]:
     found: list[tuple[str, str]] = []
     if isinstance(value, dict):
         for name, item in value.items():
-            if name in REFERENCE_KEYS and isinstance(item, str) and item.startswith('pyraml://'):
+            if name in REFERENCE_KEYS and isinstance(item, str) and item.startswith('fastraml://'):
                 found.append((name, item))
             found += references(item, name)
     elif isinstance(value, list):
@@ -317,7 +317,7 @@ class TestAnAnnotationIsRecordedWhereItWasApplied:
         assert doc['endpoints']['/users']['annotations'] == [
             {
                 'name': 'deprecated',
-                'type': 'pyraml://id#/declarations/annotations/deprecated',
+                'type': 'fastraml://id#/declarations/annotations/deprecated',
                 'value': 'use /people',
             }
         ]

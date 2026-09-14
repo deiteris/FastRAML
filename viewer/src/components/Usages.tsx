@@ -4,7 +4,7 @@
  * A tree carries containment and drops the reverse direction, so this is a scan
  * rather than a lookup -- the join the graph exists to make cheap (docs/16 § 4).
  * At the size a browser holds a document, a scan is the right trade; a consumer
- * that wants it indexed reads `pyraml refs` instead.
+ * that wants it indexed reads `fastraml refs` instead.
  */
 
 import { Link } from 'react-router';

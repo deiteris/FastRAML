@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pyraml.loaders import SafeFileLoader
+from fastraml.loaders import SafeFileLoader
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -95,7 +95,7 @@ Notes on that conversion:
   boundary. Within a file YAML aliases are legal. The converter keeps `ALIAS`
   nodes with a resolved target pointer; `datanode` conversion **rejects** aliases
   (go-raml: `alias nodes are not supported`) except in `enum:`, where go-raml
-  dereferences them (`MakeEnum`). pyRAML dereferences aliases uniformly at
+  dereferences them (`MakeEnum`). fastRAML dereferences aliases uniformly at
   compose time, with a depth/expansion budget to stop billion-laughs expansion,
   and records the fact so error positions still point at the alias site.
 
@@ -136,7 +136,7 @@ timestamps. Our table matches it on every form tested.
 
 The claim is checked, not asserted. `tests/conformance` composes every document
 in the TCK corpus, plus a table of scalar forms in four syntactic positions,
-through both pyRAML and `ruamel.yaml` in YAML 1.2 mode, and fails on any
+through both fastRAML and `ruamel.yaml` in YAML 1.2 mode, and fails on any
 disagreement in shape, tag or text. Ruamel is a dev dependency; it never ships,
 and nothing outside that test imports it.
 
@@ -332,8 +332,8 @@ workspace root then affects only path resolution, not what the loader may open.
 ### 5.1 The HTTP client is synchronous, and refused if it is not
 
 `ParseOptions(http_client=...)` takes anything with `get(url) -> (status_code,
-content)`; `pyraml[http]` installs `httpx`, and a `requests.Session` already
-present serves as well. pyRAML depends on neither.
+content)`; `fastraml[http]` installs `httpx`, and a `requests.Session` already
+present serves as well. fastRAML depends on neither.
 
 A parse is one synchronous recursive descent — an `!include` is resolved where
 it is found, four dozen decoders deep — so there is no point at which a loader

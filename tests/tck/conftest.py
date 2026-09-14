@@ -1,9 +1,9 @@
 """Discovery of the RAML Test Compliance Kit fixtures.
 
 The fixtures are not vendored into this repository yet. Point the suite at a
-checkout with `PYRAML_TCK_DIR`; without it the TCK tests are skipped:
+checkout with `FASTRAML_TCK_DIR`; without it the TCK tests are skipped:
 
-    PYRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck
+    FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck
 
 The kit's naming convention (from its README):
 
@@ -47,7 +47,7 @@ _NO_NETWORK = 'fetches an https include; the suite must not touch the network'
 
 #: The one fixture a deliberate deviation contradicts. The fixture is correct —
 #: it is the spec's own example of `members: Person[]` over a JSON-schema type —
-#: and pyRAML accepts it on purpose (docs/01 § 4, D11). Skipped rather than
+#: and fastRAML accepts it on purpose (docs/01 § 4, D11). Skipped rather than
 #: ratcheted to `fail`, because a `fail` entry means work outstanding
 #: (docs/14 § 1.2) and this is a decision, not a gap.
 _D11 = 'deviation D11: a JSON schema type may be used in a type expression'
@@ -57,14 +57,14 @@ SKIPPED_FIXTURES: dict[str, str] = {
     'spec-examples/APIs/external-type-extend-invalid.raml': _D11,
 }
 
-_ENV_VAR = 'PYRAML_TCK_DIR'
+_ENV_VAR = 'FASTRAML_TCK_DIR'
 _DEFAULT_RELATIVE = Path('..') / 'go-raml-main' / 'raml-tck'
 
 
 def tck_root() -> Path | None:
     """The TCK checkout, or `None` when it cannot be found.
 
-    Looks at `PYRAML_TCK_DIR` first, then at a sibling go-raml checkout, which
+    Looks at `FASTRAML_TCK_DIR` first, then at a sibling go-raml checkout, which
     is the layout this parser is developed against.
     """
     configured = os.environ.get(_ENV_VAR)

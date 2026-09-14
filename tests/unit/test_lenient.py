@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import ParseOptions, RamlError, parse_from_path, parse_lenient
+from fastraml import ParseOptions, RamlError, parse_from_path, parse_lenient
 
 API = '#%RAML 1.0\ntitle: T\n'
 LIB = '#%RAML 1.0 Library\n'

@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import RamlError
-from pyraml.registry import Raml
-from pyraml.types.examples import make_example
-from pyraml.yamlnode import Node, compose, pairs
+from fastraml import RamlError
+from fastraml.registry import Raml
+from fastraml.types.examples import make_example
+from fastraml.yamlnode import Node, compose, pairs
 
 LOCATION = 'file:///a.raml'
 
@@ -87,7 +87,7 @@ class TestIncludedNamedExamples:
     API = '#%RAML 1.0\ntitle: T\n'
 
     def parse(self, workspace, files):
-        from pyraml import ParseOptions, parse_from_path
+        from fastraml import ParseOptions, parse_from_path
 
         root = workspace(files)
         try:

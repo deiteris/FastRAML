@@ -1,6 +1,6 @@
 """docs/12-performance.md Part 4's one hard requirement, measured.
 
-Skipped unless `PYRAML_BENCH=1`, the same way the TCK skips without its fixture
+Skipped unless `FASTRAML_BENCH=1`, the same way the TCK skips without its fixture
 directory: it costs seconds, not milliseconds, and a developer running the unit
 suite in a loop should not pay for it.
 
@@ -20,8 +20,8 @@ import pytest
 from bench.__main__ import LINEARITY_TOLERANCE, run_suite
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get('PYRAML_BENCH') != '1',
-    reason='set PYRAML_BENCH=1 to run the benchmarks',
+    os.environ.get('FASTRAML_BENCH') != '1',
+    reason='set FASTRAML_BENCH=1 to run the benchmarks',
 )
 
 #: A quarter of the published corpus: enough for the ratio to mean something,

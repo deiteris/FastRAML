@@ -1,9 +1,9 @@
 {
-  "name": "pyraml-viewer",
+  "name": "fastraml-viewer",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "A reference consumer of `pyraml tree` output.",
+  "description": "A reference consumer of `fastraml tree` output.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -12,7 +12,7 @@
     "layers": "node layers.mjs",
     "smoke": "tsx src/smoke.tsx",
     "preview": "vite preview",
-    "sample": "cd .. && uv run pyraml tree -w fixtures fixtures/sample/api.raml > viewer/public/api.json",
+    "sample": "cd .. && uv run fastraml tree -w fixtures fixtures/sample/api.raml > viewer/public/api.json",
     "shots": "npm run build && node shots.mjs"
   },
   "dependencies": {

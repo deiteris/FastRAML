@@ -8,7 +8,7 @@ route (`route.method`, `route.path`, `route.parameters`, `route.parameter_map`,
 `route.request_body`). So a description format other than OpenAPI needs to
 produce routes and nothing else.
 
-That is what this does, straight from the pyRAML model. No OpenAPI document is
+That is what this does, straight from the fastRAML model. No OpenAPI document is
 constructed anywhere: RAML's own endpoint tree already separates path, query and
 header parameters, which is the split `ParameterInfo.location` wants, and
 `views/jsonschema.py` supplies the schemas.
@@ -35,18 +35,18 @@ from fastmcp.utilities.openapi import (
     RequestBodyInfo,
     ResponseInfo,
 )
-from pyraml import ObjectShape
-from pyraml.parser.fragments import APIFragment
-from pyraml.views.jsonschema import Conversion
+from fastraml import ObjectShape
+from fastraml.parser.fragments import APIFragment
+from fastraml.views.jsonschema import Conversion
 
 from fastmcp_raml.flatten import flatten
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from pyraml.parser.endpoints import Body, EndPoint, Operation
-    from pyraml.registry import Raml
-    from pyraml.types.base import BaseShape, ScalarFacet
+    from fastraml.parser.endpoints import Body, EndPoint, Operation
+    from fastraml.registry import Raml
+    from fastraml.types.base import BaseShape, ScalarFacet
 
 __all__ = [
     'DEFS',

@@ -16,8 +16,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from pyraml import ParseOptions, RamlError, parse_from_path
-from pyraml.types.values import same_value, unique_items
+from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml.types.values import same_value, unique_items
 
 API = '#%RAML 1.0\ntitle: T\n'
 
@@ -109,7 +109,7 @@ class TestNumericExactness:
         assert shape.validate(2.3) is not None
 
     def test_a_decoded_float_is_read_as_its_written_decimal(self, workspace):
-        from pyraml.types.values import as_fraction
+        from fastraml.types.values import as_fraction
 
         assert as_fraction(2.2) == Fraction(11, 5)
 
@@ -398,7 +398,7 @@ class TestUnionDispatchesOnADiscriminator:
         ],
     )
     def test_no_table_is_built_when_the_members_disagree(self, workspace, body, why):
-        from pyraml.types.complex_ import UnionShape
+        from fastraml.types.complex_ import UnionShape
 
         shape = declared(workspace, body)
         assert isinstance(shape.shape, UnionShape)
@@ -504,8 +504,8 @@ class TestUnionDispatchesOnADiscriminator:
         # dispatch into the original's graph. A clone is not unwrapped and has no
         # table until P9 runs over it — the path `_ensure_unwrapped` takes for
         # `validate=True` without `unwrap=True`.
-        from pyraml.types.complex_ import UnionShape
-        from pyraml.types.unwrap import finish_unwrap, unwrap_shape
+        from fastraml.types.complex_ import UnionShape
+        from fastraml.types.unwrap import finish_unwrap, unwrap_shape
 
         raml, shape = declared_in(workspace, TAGGED)
         assert isinstance(shape.shape, UnionShape)

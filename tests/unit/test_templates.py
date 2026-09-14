@@ -15,8 +15,8 @@ from typing import ClassVar
 
 import pytest
 
-from pyraml.errors import RamlError
-from pyraml.parser.templates import (
+from fastraml.errors import RamlError
+from fastraml.parser.templates import (
     TEMPLATE_ACTIONS,
     VariableInfo,
     apply_template_action,
@@ -26,8 +26,8 @@ from pyraml.parser.templates import (
     iter_nodes,
     parse_template_variables,
 )
-from pyraml.registry import ParseCtx
-from pyraml.yamlnode import TAG_STR, Node, NodeKind, compose, pairs
+from fastraml.registry import ParseCtx
+from fastraml.yamlnode import TAG_STR, Node, NodeKind, compose, pairs
 
 LOCATION = 'file:///t/api.raml'
 CALLER = ParseCtx()

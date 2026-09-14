@@ -5,7 +5,7 @@ Three routes, none of them in the app's own schema:
 | URL | Response |
 |-----|----------|
 | `/raml` | the RAML source, as `application/raml+yaml` |
-| `/raml.json` | `pyraml tree` output for it, which is what `viewer/` reads |
+| `/raml.json` | `fastraml tree` output for it, which is what `viewer/` reads |
 | `/raml-docs` | an HTML stub naming both |
 
 The pipeline behind the first two:
@@ -30,8 +30,8 @@ import tempfile
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from pyraml import ParseOptions, parse_from_string
-from pyraml.views.tree import build_tree
+from fastraml import ParseOptions, parse_from_string
+from fastraml.views.tree import build_tree
 from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from fastapi_raml.render import render
@@ -53,7 +53,7 @@ _STUB = """<!DOCTYPE html>
 <p>This API is described in RAML 1.0.</p>
 <ul>
   <li><a href="{raml_url}">{raml_url}</a> &mdash; the RAML source</li>
-  <li><a href="{tree_url}">{tree_url}</a> &mdash; the same document as <code>pyraml tree</code> output</li>
+  <li><a href="{tree_url}">{tree_url}</a> &mdash; the same document as <code>fastraml tree</code> output</li>
 </ul>
 {viewer}
 </body>
@@ -75,7 +75,7 @@ class Served:
 
     #: The RAML source.
     text: str
-    #: `pyraml tree` output for it, ready for `json.dumps`.
+    #: `fastraml tree` output for it, ready for `json.dumps`.
     tree: Any
     #: Everything the renderer could not express (`Report.dropped`).
     dropped: list[str]

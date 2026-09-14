@@ -1,6 +1,6 @@
 # contrib
 
-Distributions that sit on pyRAML. Each is a separate `uv` project with its own
+Distributions that sit on fastRAML. Each is a separate `uv` project with its own
 lock and its own gate; none is packaged from the root `pyproject.toml`, and the
 root gate does not see them. `docs/17-consumers.md` settles the boundary.
 
@@ -14,17 +14,17 @@ root gate does not see them. `docs/17-consumers.md` settles the boundary.
 `raml-document` is the part the other two share, so that two integrations cannot
 disagree about what a RAML document is.
 
-It is deliberately not pyRAML's own model. The parse model describes a document
+It is deliberately not fastRAML's own model. The parse model describes a document
 that has been read, and after `unwrap` it refers to types by address. An author
 writing a document refers to types by name and has run no pass.
 
 ## What may not live here
 
 A rule that the RAML language states. If two integrations both need one, that is
-evidence it belongs in a parser pass or in `pyraml/views/` instead —
+evidence it belongs in a parser pass or in `fastraml/views/` instead —
 `views/jsonschema.py` is the worked example.
 
-The dependency is one-way: these consume `pyraml`, and nothing in `pyraml/` may
+The dependency is one-way: these consume `fastraml`, and nothing in `fastraml/` may
 import them.
 
 ## Working on one
@@ -35,6 +35,6 @@ uv sync --all-extras --dev
 uv run ruff check . && uv run ruff format --check . && uv run mypy <package>/ && uv run pytest -q
 ```
 
-`pyraml` resolves to `../..` as an editable install, so a change to the parser is
+`fastraml` resolves to `../..` as an editable install, so a change to the parser is
 visible here without a reinstall. That is what lets these suites catch a change
 to the model that breaks a consumer of it. CI runs all four as a matrix.

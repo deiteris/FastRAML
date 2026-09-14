@@ -11,7 +11,7 @@ import pathlib
 import sys
 
 import pytest
-from pyraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions, parse_from_path
 
 from fastmcp_raml import raml_mcp
 

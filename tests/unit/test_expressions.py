@@ -11,10 +11,10 @@ import dataclasses
 
 import pytest
 
-import pyraml.types.expressions.parser as parser_module
-from pyraml.errors import RamlError
-from pyraml.registry import Raml
-from pyraml.types.expressions import (
+import fastraml.types.expressions.parser as parser_module
+from fastraml.errors import RamlError
+from fastraml.registry import Raml
+from fastraml.types.expressions import (
     Array,
     ExprCache,
     Optional_,
@@ -22,8 +22,8 @@ from pyraml.types.expressions import (
     Reference,
     Union,
 )
-from pyraml.types.expressions import parse_expression as parse_with_cache
-from pyraml.types.expressions.lexer import Token, TokenKind, tokenize
+from fastraml.types.expressions import parse_expression as parse_with_cache
+from fastraml.types.expressions.lexer import Token, TokenKind, tokenize
 
 
 def parse_expression(text: str, cache: ExprCache | None = None):

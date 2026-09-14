@@ -72,10 +72,10 @@ Two orderings are required for correctness:
 ## 2. Package layout
 
 ```
-pyraml/
+fastraml/
   __init__.py             lazy public API exports (see doc 13)
   __init__.pyi            eager declarations of that surface for type checkers
-  cli.py                  the `pyraml` console script (doc 13 section 8)
+  cli.py                  the `fastraml` console script (doc 13 section 8)
   py.typed
 
   views/                  everything that reads the finished model (doc 16).
@@ -146,7 +146,7 @@ them — which is what keeps them consumers rather than stages
 
 That is a package rather than six modules beside the parser so the direction is
 checkable: `tests/unit/test_views.py` asserts that nothing under `parser/` or
-`types/` imports `pyraml.views`, and that `cli.py` is the only module outside it
+`types/` imports `fastraml.views`, and that `cli.py` is the only module outside it
 that does. A rule that belongs to the language belongs in a pass, and an import
 the other way is how one quietly stops being one. `queries.py` and `diff.py` are
 inside because the package boundary *is* the layer boundary; they consume a
@@ -162,9 +162,9 @@ what they emit — a node set against containment — because every module here 
 view of the same effective model, so the input is not what tells them apart.
 
 `viewer/` is outside the package and outside the gate: a React SPA that reads
-`pyraml tree` output and renders it as API documentation. It is a **consumer**,
+`fastraml tree` output and renders it as API documentation. It is a **consumer**,
 kept in this repository to be read alongside the format it consumes. It has no
-Python dependency and nothing depends on it; `pyraml/views/bindings.py` writes
+Python dependency and nothing depends on it; `fastraml/views/bindings.py` writes
 its `tree.d.ts` and is the only link between them, in that direction only.
 
 Keeping it here has already paid: building it against the tree is what found the
@@ -254,7 +254,7 @@ Rules on the layout:
   may be added.** Imports deferred only to keep an optional or unusually heavy
   dependency off the ordinary startup path are allowed when measured and
   recorded in [12](12-performance.md); they must not introduce a hidden edge
-  between pyRAML modules.
+  between fastRAML modules.
 
   `type: !include lib.raml` and `examples: !include e.raml` have to parse a
   fragment, so `make_shape` needs `parser.fragments.parse_fragment`; and a
@@ -349,7 +349,7 @@ Rules on the layout:
     the runtime indirection this section exists to avoid, and it is invisible to
     a reader scanning the imports.
   - A module-level builder slot that `shape.py` fills at import: `import
-    pyraml.types.complex_` alone becomes a half-initialised module, and a static
+    fastraml.types.complex_` alone becomes a half-initialised module, and a static
     error becomes a runtime one.
   - The builder injected on `Raml` and reached through `base._raml`. It adds no
     import edge and it fits an existing seam, but it is a service locator: the
@@ -358,7 +358,7 @@ Rules on the layout:
   Moving `make_shape` into `base.py` does not solve this at all. It travels with
   its need to construct the kinds, so it would close a loop across the layer
   boundary — `parser/facets.py` → `types/base.py` → `types/complex_.py` →
-  `parser/facets.py` — and `import pyraml.types.base` would fail outright, since
+  `parser/facets.py` — and `import fastraml.types.base` would fail outright, since
   `complex_.py` imports `Property` from a `base` that has not defined it yet.
 - `registry.py` imports nothing from `parser/` or `types/` at module level; it
   holds the stores and uses `TYPE_CHECKING` imports for annotations. This keeps

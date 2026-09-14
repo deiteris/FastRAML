@@ -216,7 +216,7 @@ that have any; `types/` points one way, so a kind never calls back into
 `shape.py` ([02](02-architecture.md) § 2). `properties:` fills two constructor
 keywords, since a `/regex/` key inside it becomes a pattern property (§ 5.1).
 
-What remains is handed to `decode_facets`. pyRAML keeps go-raml's
+What remains is handed to `decode_facets`. fastRAML keeps go-raml's
 allocation-lean structure here: one pass, one list, no intermediate dict, and the
 concrete shape sees only the keys it might handle.
 
@@ -503,7 +503,7 @@ The spec makes the answer optional (`raml-10.md:762`):
 > concrete type from a set of possible types, but a simpler alternative is to
 > store a unique value associated with the type inside the object.
 
-pyRAML provides one. `UnionShape` carries a `{discriminatorValue: member}` table
+fastRAML provides one. `UnionShape` carries a `{discriminatorValue: member}` table
 and validates by lookup. This is deviation **D12**
 ([01](01-scope-and-coverage.md)), because it narrows what the union accepts.
 

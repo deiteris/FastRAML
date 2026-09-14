@@ -16,7 +16,7 @@ import pytest
 from conftest import TENANT
 from fastmcp.utilities.openapi import HTTPRoute, ParameterInfo, RequestBodyInfo
 from fastmcp.utilities.openapi.schemas import _combine_schemas_and_map_params
-from pyraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions, parse_from_path
 
 from fastmcp_raml import RAMLProvider, to_http_routes
 from fastmcp_raml.flatten import flatten

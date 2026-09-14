@@ -11,8 +11,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from pyraml import ParseOptions, RamlError, parse_from_path
-from pyraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 
 LIB = '#%RAML 1.0 Library\n'
 UNWRAP = ParseOptions(unwrap=True)
@@ -318,7 +318,7 @@ def test_unwrapping_is_idempotent(tmp_path_factory, declaration):
     merged a parent in twice would double bounds or duplicate members without
     failing anything else.
     """
-    from pyraml.types.unwrap import unwrap_shapes
+    from fastraml.types.unwrap import unwrap_shapes
     from tests.unit.conftest import write_files
 
     root = write_files(tmp_path_factory.mktemp('idem'), {'lib.raml': LIB + 'types:\n' + declaration})

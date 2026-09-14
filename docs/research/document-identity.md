@@ -50,8 +50,8 @@ annotationTypes:
 ```
 validate=0
 files: ['a/hints.raml', 'b/hints.raml']
-  a/hints.raml/Badge -> pyraml://id/a%2Fhints.raml#/declarations/types/Badge
-  b/hints.raml/Badge -> pyraml://id/b%2Fhints.raml#/declarations/types/Badge
+  a/hints.raml/Badge -> fastraml://id/a%2Fhints.raml#/declarations/types/Badge
+  b/hints.raml/Badge -> fastraml://id/b%2Fhints.raml#/declarations/types/Badge
   annotation x inherits {'$ref': '…a%2Fhints.raml…/Badge'}
   annotation y inherits {'$ref': '…b%2Fhints.raml…/Badge'}
 ```
@@ -79,7 +79,7 @@ anywhere else.
 
 **The comparison that frames this:** JSON Schema can do both — infer an
 identifier from the retrieval URI, or take a declared `$id` that overrides it.
-RAML does neither. Anything pyRAML offers is therefore an addition, and the two
+RAML does neither. Anything fastRAML offers is therefore an addition, and the two
 halves are separable: inference is available to a parser, declaration is not
 without a key to put it in.
 
@@ -126,7 +126,7 @@ observation about the input.
 *Merging* them is a different act. It changes `inherits` targets, changes what
 P9's `cannot inherit from different type` compares, and changes addresses.
 Nowhere does RAML say that two identical documents are one document, so merging
-would be pyRAML inventing language semantics — which the project's own rule
+would be fastRAML inventing language semantics — which the project's own rule
 forbids (`CLAUDE.md`: a rule that belongs to the language belongs in a pass, and
 `docs/` is normative). If dedup is ever wanted it belongs behind a
 `ParseOptions` flag, with `docs/01` recording it as a deliberate deviation.
@@ -266,12 +266,12 @@ opposite ways:
 
 - A `file://` URI is machine state, not data. `_SKIP` already drops `validator`
   for exactly this reason — its `repr` carries an absolute path and leaked the
-  machine into the view. The golden layer's stability rests on `pyraml://id`
+  machine into the view. The golden layer's stability rests on `fastraml://id`
   plus relative paths, so absolute local paths would churn every golden across
   machines and across CI.
 - Restricting it to non-`file:` schemes fixes that but makes identity conditional
   on *publishing*: the vocabulary must be included by URL, which means
-  `pyraml[http]`, network at parse time, and the serialisation recorded as
+  `fastraml[http]`, network at parse time, and the serialisation recorded as
   `docs/15` After-v1 item 7. Vendoring a local copy puts you straight back to a
   declared identity, because the file genuinely is a different file.
 

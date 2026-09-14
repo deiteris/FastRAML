@@ -19,10 +19,10 @@ by `python -m bench`, for the reason § 5 gives.
 implementation vendors a lightly-customised copy, at
 `C:\Sources\go-raml-main\raml-tck`.
 
-pyRAML runs against **that same copy** rather than a second one, so a
-disagreement between the two parsers is always a pyRAML bug or a documented
+fastRAML runs against **that same copy** rather than a second one, so a
+disagreement between the two parsers is always a fastRAML bug or a documented
 deviation, never a fixture difference. The harness locates it through
-`PYRAML_TCK_DIR`, falling back to a sibling go-raml checkout; when neither is
+`FASTRAML_TCK_DIR`, falling back to a sibling go-raml checkout; when neither is
 present the TCK tests skip.
 
 **Vendoring is still deferred**, and no longer to a phase. It was pencilled in
@@ -64,7 +64,7 @@ def test_tck_invalid(fixture: Path) -> None:
 `DEFAULT_OPTS` is `ParseOptions(unwrap=True, validate=True)` — an invalid fixture
 frequently only fails at validation.
 
-Two facilities the reference harness needs and so will pyRAML:
+Two facilities the reference harness needs and so will fastRAML:
 
 - **Offline network fixtures.** `Root/include-02/valid-https.raml` includes a
   resource-type fragment over HTTPS. It is run with a stub HTTP client that
@@ -120,9 +120,9 @@ and a deviation is a decision.
 ### 1.3 Cross-checking against go-raml
 
 **Not built, and not required.** The design was: a developer-only script runs
-`raml validate --json` from the reference implementation and `pyraml validate
+`raml validate --json` from the reference implementation and `fastraml validate
 --json` over the same fixture, then diffs the trace chains, and each
-disagreement is triaged as a pyRAML bug, a go-raml bug, or a documented
+disagreement is triaged as a fastRAML bug, a go-raml bug, or a documented
 deviation ([01](01-scope-and-coverage.md) § 4). It needs a Go toolchain, so it
 would not run in CI.
 
@@ -135,7 +135,7 @@ needed, and the decision is to leave it unbuilt rather than to keep it on a list
 
 Build it if the premise changes — a divergence that a single fixture does not
 isolate, or a second implementation to diff against. Both halves it needs exist
-(`pyraml validate --json` since Phase 9), so it stays a short job.
+(`fastraml validate --json` since Phase 9), so it stays a short job.
 
 ### 1.4 Differential conformance: the YAML 1.2 oracle
 
@@ -370,7 +370,7 @@ The laws. Section 4.1 records where each is checked and over what input —
     (§ 11.8), and the law records that rather than hiding it.
 
 18. **The views cannot reach into the passes' path** — `test_views.py`. Nothing
-    under `parser/` or `types/` imports `pyraml.views`, and outside that package
+    under `parser/` or `types/` imports `fastraml.views`, and outside that package
     only `cli.py` does. Asserted over the import graph rather than by review:
     the layer was described as one-way in [02](02-architecture.md) § 2 and in
     `CLAUDE.md` long before anything could fail when it stopped being. An import
@@ -460,7 +460,7 @@ than measurements:
 | `tests/unit/test_diff.py` | the change list and the backward-compatibility rules, above all that **the same edit reads differently on each side of the wire** ([16](16-graph.md) § 10.2) | always |
 | `tests/unit/test_queries.py` | every catalogue query is valid SPARQL, **returns rows on a fixture written to trigger all of them**, and answers the right question ([16](16-graph.md) § 6) | always; skips without `pyoxigraph` |
 | `tests/bench/test_corpus.py` | every generated corpus is valid RAML in **all four** configurations, generation is deterministic, and `bench_large`'s diamond really does reach one `common.raml` | always; tiny scale, milliseconds |
-| `tests/bench/test_linearity.py` | `bench_large` within 15 % of linear against a half-size corpus | `PYRAML_BENCH=1` only |
+| `tests/bench/test_linearity.py` | `bench_large` within 15 % of linear against a half-size corpus | `FASTRAML_BENCH=1` only |
 
 The first of those is not ceremony. The first draft of `write_small` had a
 required property its own example omitted: `parse` and `unwrap` were happy, and
@@ -483,8 +483,8 @@ missed, which is a bug on every machine.
 | YAML backend | libyaml **and** pure-Python. Not optional: the two scanners already disagree on `title:<TAB>value` ([12](12-performance.md) § 19), so a libyaml-only run would ship that divergence. |
 | Regex engine | `re` always; `re2` in one job (`uv sync --all-extras`) |
 
-Plus, on every PR: `ruff check`, `ruff format --check`, `mypy --strict pyraml/`,
-the TCK ratchet, and `tests/bench` with `PYRAML_BENCH=1` for the linearity gate.
+Plus, on every PR: `ruff check`, `ruff format --check`, `mypy --strict fastraml/`,
+the TCK ratchet, and `tests/bench` with `FASTRAML_BENCH=1` for the linearity gate.
 
 The `re2` job installs `google-re2` rather than merely allowing it. Its tests
 `importorskip`, so without a job that installs the package the whole option is
@@ -497,5 +497,5 @@ tested by reading it — the failure mode of every optional dependency.
   message key and the `info` dict, so rewording a message does not break 50
   tests ([11](11-diagnostics.md) § 6).
 - Third-party JSON Schema draft conformance — that is the schema library's
-  test suite, not ours. pyRAML tests only the integration: shared registry,
+  test suite, not ours. fastRAML tests only the integration: shared registry,
   `$ref` through the sandboxed loader, and the shape projection.

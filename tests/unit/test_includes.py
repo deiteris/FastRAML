@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pyraml import ParseOptions, RamlError, parse_from_path, path_to_file_uri
-from pyraml.parser.includes import resolve_include, resolve_ref_uri
-from pyraml.registry import Raml
-from pyraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind
+from fastraml import ParseOptions, RamlError, parse_from_path, path_to_file_uri
+from fastraml.parser.includes import resolve_include, resolve_ref_uri
+from fastraml.registry import Raml
+from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind
 from tests.unit.conftest import CountingLoader
 
 if TYPE_CHECKING:

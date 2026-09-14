@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import RamlError
-from pyraml.types.inference import identify_shape_type
-from pyraml.yamlnode import Node, compose, pairs
+from fastraml import RamlError
+from fastraml.types.inference import identify_shape_type
+from fastraml.yamlnode import Node, compose, pairs
 
 LOCATION = 'file:///a.raml'
 

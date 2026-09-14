@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import ParseOptions, RamlError, parse_from_path
-from pyraml.domains import DomainLocation
+from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml.domains import DomainLocation
 
 API = '#%RAML 1.0\ntitle: T\n'
 JSON = API + 'mediaType: application/json\n'

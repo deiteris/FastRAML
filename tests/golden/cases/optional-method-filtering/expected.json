@@ -1,31 +1,31 @@
 {
   "annotation_types": {},
   "annotations": [],
-  "base": "pyraml://id",
+  "base": "fastraml://id",
   "endpoints": {
     "/has-post": {
-      "id": "pyraml://id#/web-api/endpoint/%2Fhas-post",
+      "id": "fastraml://id#/web-api/endpoint/%2Fhas-post",
       "operations": {
         "get": {
           "description": "always present",
-          "id": "pyraml://id#/web-api/endpoint/%2Fhas-post/supportedOperation/get",
+          "id": "fastraml://id#/web-api/endpoint/%2Fhas-post/supportedOperation/get",
           "responses": {}
         },
         "post": {
           "description": "only where the resource declares post",
           "display_name": "declared",
-          "id": "pyraml://id#/web-api/endpoint/%2Fhas-post/supportedOperation/post",
+          "id": "fastraml://id#/web-api/endpoint/%2Fhas-post/supportedOperation/post",
           "responses": {}
         }
       },
       "secured_by": []
     },
     "/no-post": {
-      "id": "pyraml://id#/web-api/endpoint/%2Fno-post",
+      "id": "fastraml://id#/web-api/endpoint/%2Fno-post",
       "operations": {
         "get": {
           "description": "always present",
-          "id": "pyraml://id#/web-api/endpoint/%2Fno-post/supportedOperation/get",
+          "id": "fastraml://id#/web-api/endpoint/%2Fno-post/supportedOperation/get",
           "responses": {}
         }
       },

@@ -160,7 +160,7 @@ err.to_dict()  # machine: nested dicts, mirrors go-raml's JSON output
 ```
 
 The `to_dict()` shape follows the reference implementation so that go-raml's CLI
-output and pyRAML's are comparable during TCK work:
+output and fastRAML's are comparable during TCK work:
 
 ```json
 {"traces": [{"stack": [

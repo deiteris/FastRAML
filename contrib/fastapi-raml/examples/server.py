@@ -9,7 +9,7 @@ Then:
 |-----|------------|
 | `/books` | the API itself |
 | `/raml` | the RAML source |
-| `/raml.json` | the same document as `pyraml tree` output |
+| `/raml.json` | the same document as `fastraml tree` output |
 | `/raml-docs` | an HTML stub naming both |
 | `/openapi.json`, `/docs` | FastAPI's own, untouched |
 

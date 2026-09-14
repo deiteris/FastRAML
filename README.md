@@ -1,4 +1,4 @@
-# pyRAML
+# fastRAML
 
 A [RAML 1.0](https://github.com/raml-org/raml-spec/blob/master/versions/raml-10/raml-10.md)
 parser for Python 3.12+.
@@ -9,7 +9,7 @@ parser for Python 3.12+.
 > types are out of scope. **The API is not stable before 1.0.**
 
 ```python
-from pyraml import ParseOptions, ObjectShape, parse_from_path
+from fastraml import ParseOptions, ObjectShape, parse_from_path
 
 raml = parse_from_path('api.raml', ParseOptions(unwrap=True, validate=True))
 api = raml.entry_point
@@ -33,23 +33,23 @@ that needs a partial model on every keystroke.
 ## Command line
 
 ```bash
-pyraml validate api.raml           # exit 1 and a positioned trace if invalid
-pyraml validate --json *.raml      # one JSON object per file
-pyraml info api.raml               # YAML backend, timing, model counts
+fastraml validate api.raml           # exit 1 and a positioned trace if invalid
+fastraml validate --json *.raml      # one JSON object per file
+fastraml info api.raml               # YAML backend, timing, model counts
 ```
 
 And, because the tedious part of RAML is following resolved links by hand, a
 view of the **effective** model as a graph ([docs/16](docs/16-graph.md)):
 
 ```bash
-pyraml list api.raml               # what is in here: every name you can ask about
-pyraml refs api.raml User          # every operation that can carry a User, with the route
-pyraml deps api.raml User          # everything User is built from
-pyraml graph api.raml              # the whole projection as Turtle (or nt, dot, json)
-pyraml show api.raml /users        # the effective view: everything merged in, with origins
-pyraml diff v1.raml v2.raml        # what changed, and what it breaks (exit 1 if breaking)
-pyraml query --list                # 17 named analysis queries
-pyraml query api.raml -n type-fan-in   # or -q '<sparql>' for your own
+fastraml list api.raml               # what is in here: every name you can ask about
+fastraml refs api.raml User          # every operation that can carry a User, with the route
+fastraml deps api.raml User          # everything User is built from
+fastraml graph api.raml              # the whole projection as Turtle (or nt, dot, json)
+fastraml show api.raml /users        # the effective view: everything merged in, with origins
+fastraml diff v1.raml v2.raml        # what changed, and what it breaks (exit 1 if breaking)
+fastraml query --list                # 17 named analysis queries
+fastraml query api.raml -n type-fan-in   # or -q '<sparql>' for your own
 ```
 
 ```
@@ -90,7 +90,7 @@ records the deviation and its reason.
 uv sync                                  # create the environment
 uv run pytest -q                         # tests
 uv run ruff check . && uv run ruff format --check .
-uv run mypy pyraml/
+uv run mypy fastraml/
 ```
 
 All four must pass before any change lands.
@@ -100,7 +100,7 @@ All four must pass before any change lands.
 The TCK fixtures are not vendored. Point the suite at a checkout:
 
 ```bash
-PYRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck
+FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck
 ```
 
 Without that variable the TCK tests skip. `tests/tck/ratchet.json` records the
@@ -113,7 +113,7 @@ regression, or progress that was not recorded. See
 ```bash
 python -m bench run                      # every bench, every configuration
 python -m bench linearity                # the one hard requirement
-PYRAML_BENCH=1 uv run pytest tests/bench # the same gate, under pytest
+FASTRAML_BENCH=1 uv run pytest tests/bench # the same gate, under pytest
 ```
 
 ## Optional dependencies
@@ -121,8 +121,8 @@ PYRAML_BENCH=1 uv run pytest tests/bench # the same gate, under pytest
 | Extra | For |
 |-------|-----|
 | `google-re2` | `ParseOptions(regex_engine="re2")` — linear-time patterns for untrusted input |
-| `pyoxigraph` | `pyraml query` — SPARQL over the graph projection ([the catalogue](docs/16-graph.md)); the graph itself needs nothing |
-| `httpx` (`pyraml[http]`) or `requests` | remote `!include`; supply the client yourself, or use `pyraml validate -r`. Synchronous clients only — from async code run the parse in `asyncio.to_thread` ([why](docs/03-yaml-and-io.md#51-the-http-client-is-synchronous-and-refused-if-it-is-not)) |
+| `pyoxigraph` | `fastraml query` — SPARQL over the graph projection ([the catalogue](docs/16-graph.md)); the graph itself needs nothing |
+| `httpx` (`fastraml[http]`) or `requests` | remote `!include`; supply the client yourself, or use `fastraml validate -r`. Synchronous clients only — from async code run the parse in `asyncio.to_thread` ([why](docs/03-yaml-and-io.md#51-the-http-client-is-synchronous-and-refused-if-it-is-not)) |
 | libyaml | selected automatically when PyYAML was built with it; roughly an order of magnitude faster, and **not only** a speed choice ([D9](docs/01-scope-and-coverage.md)) |
 
 ## Licence

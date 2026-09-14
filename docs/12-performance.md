@@ -4,7 +4,7 @@ go-raml parses **7124 types across 148 libraries in ~280 ms using ~48 MB**, and 
 small project in ~4 ms using ~12 MB. AMF (TypeScript) takes ~17 s and ~870 MB on
 the same input. Most of that gap comes from a small number of structural
 decisions rather than from the language. Those decisions are language-independent,
-and pyRAML adopts all of them.
+and fastRAML adopts all of them.
 
 This document lists every technique the reference implementation uses, states
 whether it transfers to Python, and gives its Python form. It also identifies the
@@ -275,7 +275,7 @@ except ImportError:
     from yaml import SafeLoader as _Loader
 ```
 
-The chosen backend is reported by `pyraml.backend_info()` so a user can tell why
+The chosen backend is reported by `fastraml.backend_info()` so a user can tell why
 their parse is slow.
 
 **The backend is not purely a speed choice, and that is a defect.** The two
@@ -388,11 +388,11 @@ The pluralization dictionary is also built only when `!pluralize` or
 
 The top-level package uses module `__getattr__` to load each public export on
 first access and then caches it in the module. `__all__`, wildcard imports,
-`dir(pyraml)` and ordinary attribute access retain their normal behaviour; the
+`dir(fastraml)` and ordinary attribute access retain their normal behaviour; the
 parallel `__init__.pyi` exposes the same eager surface to type checkers without
 executing it. The CLI similarly imports parser, graph and query modules only in
-the commands that use them. On the same machine, median cold `import pyraml`
-moved from 158.5 ms to 23.2 ms, and `pyraml --version` from 168.7 ms to 48.1 ms.
+the commands that use them. On the same machine, median cold `import fastraml`
+moved from 158.5 ms to 23.2 ms, and `fastraml --version` from 168.7 ms to 48.1 ms.
 Importing the actual parse entry points remains about 96 ms, as expected: a
 parse needs PyYAML and the model even though a bare package import does not.
 
@@ -461,7 +461,7 @@ python -m bench startup                      # cold package and CLI startup
 
 The parse benches time work after imports. `startup` instead launches a fresh
 interpreter for each repeat and reports both total time and time beyond a bare
-Python process. It covers `import pyraml`, importing the parse entry points, and
+Python process. It covers `import fastraml`, importing the parse entry points, and
 the CLI's `--version` path.
 
 Three implementation decisions the specification above did not settle, each of

@@ -8,14 +8,14 @@ names the rule rather than the example.
 
 from __future__ import annotations
 
-from pyraml.parser.structural_merge import (
+from fastraml.parser.structural_merge import (
     copy_overlay,
     mark_graft,
     merge_structural,
     node_value_equal,
 )
-from pyraml.registry import ParseCtx
-from pyraml.yamlnode import NodeKind, compose, pairs
+from fastraml.registry import ParseCtx
+from fastraml.yamlnode import NodeKind, compose, pairs
 
 LOCATION = 'file:///a.raml'
 SCOPE = ParseCtx()

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml.loaders import UnsupportedSchemeError
-from pyraml.registry import DEFAULT_MAX_INCLUDE_SIZE, ParseCtx, Raml
+from fastraml.loaders import UnsupportedSchemeError
+from fastraml.registry import DEFAULT_MAX_INCLUDE_SIZE, ParseCtx, Raml
 
 
 class TestIds:

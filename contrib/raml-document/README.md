@@ -21,7 +21,7 @@ print(document.to_raml())
 
 ## One dependency
 
-`pyyaml`, and nothing else. Not a web framework, and **not `pyraml`**: this is
+`pyyaml`, and nothing else. Not a web framework, and **not `fastraml`**: this is
 the authoring side of RAML and a parser is on the other one, so an emitter can
 take this without taking either.
 
@@ -31,7 +31,7 @@ not writing RAML.
 
 ## Not the tree view
 
-`pyraml.views.tree` describes the **effective** document: it requires
+`fastraml.views.tree` describes the **effective** document: it requires
 `ParseOptions(unwrap=True)`, so inheritance is already flattened, and it refers
 to types by address rather than by name. Right for reading a parsed document,
 unusable for writing a declared one — an address is not a name a document can
@@ -49,6 +49,6 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check . && uv run mypy raml_document/
 ```
 
-`pyraml` is a **dev** dependency, for one reason: every construct in the tests is
+`fastraml` is a **dev** dependency, for one reason: every construct in the tests is
 built, rendered, and parsed back with `validate=True`. A facet spelled wrongly
 fails here rather than in whichever emitter first used it.

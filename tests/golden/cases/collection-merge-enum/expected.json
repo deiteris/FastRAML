@@ -1,13 +1,13 @@
 {
   "annotation_types": {},
   "annotations": [],
-  "base": "pyraml://id",
+  "base": "fastraml://id",
   "endpoints": {
     "/downloads": {
-      "id": "pyraml://id#/web-api/endpoint/%2Fdownloads",
+      "id": "fastraml://id#/web-api/endpoint/%2Fdownloads",
       "operations": {
         "get": {
-          "id": "pyraml://id#/web-api/endpoint/%2Fdownloads/supportedOperation/get",
+          "id": "fastraml://id#/web-api/endpoint/%2Fdownloads/supportedOperation/get",
           "query_parameters": {
             "platform": {
               "binding": "query",
@@ -18,7 +18,7 @@
                   "unix",
                   "win"
                 ],
-                "id": "pyraml://id#/web-api/endpoint/%2Fdownloads/supportedOperation/get/request/parameter/query/platform/schema",
+                "id": "fastraml://id#/web-api/endpoint/%2Fdownloads/supportedOperation/get/request/parameter/query/platform/schema",
                 "name": "platform?",
                 "type": "string",
                 "type_expr": "string"

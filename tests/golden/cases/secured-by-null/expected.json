@@ -1,18 +1,18 @@
 {
   "annotation_types": {},
   "annotations": [],
-  "base": "pyraml://id",
+  "base": "fastraml://id",
   "endpoints": {
     "/closed": {
-      "id": "pyraml://id#/web-api/endpoint/%2Fclosed",
+      "id": "fastraml://id#/web-api/endpoint/%2Fclosed",
       "operations": {
         "get": {
-          "id": "pyraml://id#/web-api/endpoint/%2Fclosed/supportedOperation/get",
+          "id": "fastraml://id#/web-api/endpoint/%2Fclosed/supportedOperation/get",
           "responses": {},
           "secured_by": [
             {
               "bound": true,
-              "declaration": "pyraml://id#/declarations/securitySchemes/oauth",
+              "declaration": "fastraml://id#/declarations/securitySchemes/oauth",
               "is_null": false,
               "name": "oauth",
               "scopes": [
@@ -25,7 +25,7 @@
       "secured_by": [
         {
           "bound": true,
-          "declaration": "pyraml://id#/declarations/securitySchemes/oauth",
+          "declaration": "fastraml://id#/declarations/securitySchemes/oauth",
           "is_null": false,
           "name": "oauth",
           "scopes": null
@@ -33,10 +33,10 @@
       ]
     },
     "/open": {
-      "id": "pyraml://id#/web-api/endpoint/%2Fopen",
+      "id": "fastraml://id#/web-api/endpoint/%2Fopen",
       "operations": {
         "get": {
-          "id": "pyraml://id#/web-api/endpoint/%2Fopen/supportedOperation/get",
+          "id": "fastraml://id#/web-api/endpoint/%2Fopen/supportedOperation/get",
           "responses": {},
           "secured_by": [
             {
@@ -50,12 +50,12 @@
         },
         "post": {
           "description": "inherits oauth",
-          "id": "pyraml://id#/web-api/endpoint/%2Fopen/supportedOperation/post",
+          "id": "fastraml://id#/web-api/endpoint/%2Fopen/supportedOperation/post",
           "responses": {},
           "secured_by": [
             {
               "bound": true,
-              "declaration": "pyraml://id#/declarations/securitySchemes/oauth",
+              "declaration": "fastraml://id#/declarations/securitySchemes/oauth",
               "is_null": false,
               "name": "oauth",
               "scopes": null
@@ -66,7 +66,7 @@
       "secured_by": [
         {
           "bound": true,
-          "declaration": "pyraml://id#/declarations/securitySchemes/oauth",
+          "declaration": "fastraml://id#/declarations/securitySchemes/oauth",
           "is_null": false,
           "name": "oauth",
           "scopes": null
@@ -82,7 +82,7 @@
     "secured_by": [
       {
         "bound": true,
-        "declaration": "pyraml://id#/declarations/securitySchemes/oauth",
+        "declaration": "fastraml://id#/declarations/securitySchemes/oauth",
         "is_null": false,
         "name": "oauth",
         "scopes": null
@@ -93,7 +93,7 @@
   "security_schemes": {
     "api.raml": {
       "oauth": {
-        "id": "pyraml://id#/declarations/securitySchemes/oauth",
+        "id": "fastraml://id#/declarations/securitySchemes/oauth",
         "name": "oauth",
         "settings": {
           "accessTokenUri": "https://example.test/token",

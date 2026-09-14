@@ -26,7 +26,7 @@ pytestmark = pytest.mark.tck
 def _root_or_skip():
     root = tck_root()
     if root is None:
-        pytest.skip('no TCK corpus; set PYRAML_TCK_DIR')
+        pytest.skip('no TCK corpus; set FASTRAML_TCK_DIR')
     return root
 
 
@@ -37,7 +37,7 @@ def corpus() -> list:
     A fixture the parser rejects is skipped: these laws are about the shape of a
     successful parse, and the ratchet already tracks which fixtures fail.
     """
-    from pyraml import ParseOptions, RamlError, parse_from_path
+    from fastraml import ParseOptions, RamlError, parse_from_path
 
     root = _root_or_skip()
     parsed = []
@@ -57,7 +57,7 @@ def verdicts() -> list:
     about a *rejection* as much as about an acceptance, and the rejecting one is
     where the private copy does its work.
     """
-    from pyraml import ParseOptions, RamlError, parse_from_path
+    from fastraml import ParseOptions, RamlError, parse_from_path
 
     root = _root_or_skip()
 
@@ -152,7 +152,7 @@ class TestDeterminism:
     """
 
     def test_two_parses_agree(self):
-        from pyraml import ParseOptions, RamlError, parse_from_path
+        from fastraml import ParseOptions, RamlError, parse_from_path
 
         root = _root_or_skip()
         options = ParseOptions(unwrap=True)
@@ -186,7 +186,7 @@ class TestI2AndI3:
     """
 
     def test_no_file_is_reachable_under_two_uris(self, corpus: list):
-        from pyraml.uris import file_uri_to_path
+        from fastraml.uris import file_uri_to_path
 
         offenders: list[str] = []
         for name, raml in corpus:
@@ -214,7 +214,7 @@ class TestPositionSanity:
     """
 
     def test_positions_are_1_based_and_inside_their_file(self, corpus: list):
-        from pyraml.uris import file_uri_to_path
+        from fastraml.uris import file_uri_to_path
 
         lengths: dict[str, int | None] = {}
 
@@ -265,8 +265,8 @@ class TestTheGraphProjectsTheWholeCorpus:
     """
 
     def test_every_parseable_fixture_projects(self):
-        from pyraml import ParseOptions, RamlError, parse_from_path
-        from pyraml.views.graph import build_graph
+        from fastraml import ParseOptions, RamlError, parse_from_path
+        from fastraml.views.graph import build_graph
 
         root = _root_or_skip()
         options = ParseOptions(unwrap=True)
@@ -319,8 +319,8 @@ class TestTheGraphProjectsTheWholeCorpus:
         it. Two *shapes* on one address is the hazard, and it is what § 3.1 is
         about.
         """
-        from pyraml import ParseOptions, RamlError, parse_from_path
-        from pyraml.views.walk import address
+        from fastraml import ParseOptions, RamlError, parse_from_path
+        from fastraml.views.walk import address
 
         root = _root_or_skip()
         options = ParseOptions(unwrap=True)
@@ -351,9 +351,9 @@ class TestEveryTypeRenders:
     def test_every_declared_type_renders_as_loadable_yaml(self):
         import yaml
 
-        from pyraml import ParseOptions, RamlError, parse_from_path
-        from pyraml.views.graph import build_graph
-        from pyraml.views.render import render
+        from fastraml import ParseOptions, RamlError, parse_from_path
+        from fastraml.views.graph import build_graph
+        from fastraml.views.render import render
 
         root = _root_or_skip()
         options = ParseOptions(unwrap=True)
@@ -390,9 +390,9 @@ class TestEveryTypeRenders:
         """
         import yaml
 
-        from pyraml import ParseOptions, RamlError, parse_from_path
-        from pyraml.views.graph import build_graph
-        from pyraml.views.render import Sources, render_endpoint
+        from fastraml import ParseOptions, RamlError, parse_from_path
+        from fastraml.views.graph import build_graph
+        from fastraml.views.render import Sources, render_endpoint
 
         root = _root_or_skip()
         options = ParseOptions(unwrap=True)
@@ -426,7 +426,7 @@ class TestEveryTypeRenders:
 class TestNothingArrivesUndeclared:
     """Law 19 — the generated contract covers what the projection emits.
 
-    `pyraml/views/bindings.py` reads source: `tree.py`'s AST for the key sets
+    `fastraml/views/bindings.py` reads source: `tree.py`'s AST for the key sets
     and the kind classes' annotations for the facets. Reading source is a
     hypothesis about what running it does, and the corpus is the only thing that
     settles it. A facet reachable only through a construct no unit fixture
@@ -444,8 +444,8 @@ class TestNothingArrivesUndeclared:
     """
 
     def test_every_shape_key_over_the_corpus_is_in_the_contract(self):
-        from pyraml import ParseOptions, RamlError, parse_from_path
-        from pyraml.views.tree import build_tree
+        from fastraml import ParseOptions, RamlError, parse_from_path
+        from fastraml.views.tree import build_tree
         from tests.unit.test_bindings import declared_members
 
         _root_or_skip()

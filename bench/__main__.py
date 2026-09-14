@@ -88,7 +88,7 @@ _BY_NAME = {bench.name: bench for bench in BENCHES}
 
 def fingerprint() -> dict[str, str]:
     """What a recorded number is only valid for."""
-    from pyraml import backend_name  # noqa: PLC0415 - kept out of the worker's import cost
+    from fastraml import backend_name  # noqa: PLC0415 - kept out of the worker's import cost
 
     return {
         'python': '.'.join(str(part) for part in sys.version_info[:2]),
@@ -102,11 +102,11 @@ def fingerprint() -> dict[str, str]:
 
 def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     """Measure one configuration. Runs in the subprocess, not the driver."""
-    from pyraml import ParseOptions, parse_from_path  # noqa: PLC0415 - see module docstring
+    from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - see module docstring
 
     options = ParseOptions(unwrap='unwrap' in config, validate='validate' in config)
     if 'graph' in config:
-        from pyraml.views.graph import build_graph  # noqa: PLC0415 - as above
+        from fastraml.views.graph import build_graph  # noqa: PLC0415 - as above
 
         return measure(bench, config, lambda: build_graph(parse_from_path(entry, options)), repeat=repeat)
     return measure(bench, config, lambda: parse_from_path(entry, options), repeat=repeat)
@@ -134,7 +134,7 @@ def run_suite(
     results: list[Measurement] = []
     for name in names:
         bench = _BY_NAME[name]
-        root = Path(tempfile.mkdtemp(prefix=f'pyraml-bench-{name}-')) if keep is None else keep / name
+        root = Path(tempfile.mkdtemp(prefix=f'fastraml-bench-{name}-')) if keep is None else keep / name
         root.mkdir(parents=True, exist_ok=True)
         try:
             # Generation is outside every timed run, and shared by all four
@@ -236,9 +236,9 @@ def linearity(repeat: int, scale: float) -> int:
 
 _STARTUP_CASES = (
     ('python', ('-c', 'pass')),
-    ('import pyraml', ('-c', 'import pyraml')),
-    ('import parse API', ('-c', 'from pyraml import ParseOptions, parse_from_path')),
-    ('cli --version', ('-m', 'pyraml.cli', '--version')),
+    ('import fastraml', ('-c', 'import fastraml')),
+    ('import parse API', ('-c', 'from fastraml import ParseOptions, parse_from_path')),
+    ('cli --version', ('-m', 'fastraml.cli', '--version')),
 )
 
 

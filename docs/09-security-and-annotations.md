@@ -161,7 +161,7 @@ can be written in an API root, a resource, a method, a trait body or a resource
 type body — and of those, the last two live in fragments that have no
 `securitySchemes:` of their own and therefore no lexical namespace that could
 hold one. A lexical lookup from a trait fragment would fail for every scheme the
-API declares. go-raml resolves against the API for the same reason; pyRAML
+API declares. go-raml resolves against the API for the same reason; fastRAML
 matches it.
 
 The API's own `uses:` still applies, so `securedBy: [lib.oauth]` reaches a
@@ -251,11 +251,11 @@ validates against the un-flattened declaration and misses inherited constraints.
 
 ### B5. `allowedTargets` — implemented here, unlike the reference
 
-go-raml parses `allowedTargets` and then ignores it. pyRAML enforces it, because
+go-raml parses `allowedTargets` and then ignores it. fastRAML enforces it, because
 "processors MAY ignore annotations" is not licence to accept an annotation the
 author explicitly restricted.
 
-Implementation: the site rides on the `ParseCtx` stack, in `pyraml/domains.py`.
+Implementation: the site rides on the `ParseCtx` stack, in `fastraml/domains.py`.
 `unmarshal_domain_extension` reads `current_ctx().target` the same way it reads
 the anchor, and a decoder that establishes a narrower site wraps itself in
 `Raml.target_scope(...)` — a context manager, so a decode that raises

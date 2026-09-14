@@ -1,7 +1,7 @@
 {
   "annotation_types": {},
   "annotations": [],
-  "base": "pyraml://id",
+  "base": "fastraml://id",
   "endpoints": {},
   "entry_point": {
     "kind": "Library"
@@ -10,13 +10,13 @@
   "types": {
     "lib.raml": {
       "A": {
-        "id": "pyraml://id#/declarations/types/A",
+        "id": "fastraml://id#/declarations/types/A",
         "name": "A",
         "properties": {
           "a": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/A/property/a/schema",
+              "id": "fastraml://id#/declarations/types/A/property/a/schema",
               "name": "a",
               "type": "string",
               "type_expr": "string"
@@ -27,13 +27,13 @@
         "type_expr": "object"
       },
       "B": {
-        "id": "pyraml://id#/declarations/types/B",
+        "id": "fastraml://id#/declarations/types/B",
         "name": "B",
         "properties": {
           "b": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/B/property/b/schema",
+              "id": "fastraml://id#/declarations/types/B/property/b/schema",
               "name": "b",
               "type": "integer",
               "type_expr": "integer"
@@ -46,13 +46,13 @@
       "Either": {
         "any_of": [
           {
-            "$ref": "pyraml://id#/declarations/types/A"
+            "$ref": "fastraml://id#/declarations/types/A"
           },
           {
-            "$ref": "pyraml://id#/declarations/types/B"
+            "$ref": "fastraml://id#/declarations/types/B"
           }
         ],
-        "id": "pyraml://id#/declarations/types/Either",
+        "id": "fastraml://id#/declarations/types/Either",
         "name": "Either",
         "type": "union",
         "type_expr": "A | B"
@@ -60,17 +60,17 @@
       "Narrowed": {
         "any_of": [
           {
-            "$ref": "pyraml://id#/declarations/types/A"
+            "$ref": "fastraml://id#/declarations/types/A"
           },
           {
-            "$ref": "pyraml://id#/declarations/types/B"
+            "$ref": "fastraml://id#/declarations/types/B"
           }
         ],
         "display_name": "narrowed union",
-        "id": "pyraml://id#/declarations/types/Narrowed",
+        "id": "fastraml://id#/declarations/types/Narrowed",
         "inherits": [
           {
-            "$ref": "pyraml://id#/declarations/types/Either"
+            "$ref": "fastraml://id#/declarations/types/Either"
           }
         ],
         "name": "Narrowed",
@@ -80,10 +80,10 @@
       "WithFacet": {
         "any_of": [
           {
-            "id": "pyraml://id#/declarations/types/WithFacet/anyOf/0",
+            "id": "fastraml://id#/declarations/types/WithFacet/anyOf/0",
             "inherits": [
               {
-                "id": "pyraml://id#/declarations/types/WithFacet/anyOf/0/inherits/anonymous",
+                "id": "fastraml://id#/declarations/types/WithFacet/anyOf/0/inherits/anonymous",
                 "name": null,
                 "type": "integer",
                 "type_expr": "integer | number"
@@ -94,10 +94,10 @@
             "type": "integer"
           },
           {
-            "id": "pyraml://id#/declarations/types/WithFacet/anyOf/1",
+            "id": "fastraml://id#/declarations/types/WithFacet/anyOf/1",
             "inherits": [
               {
-                "id": "pyraml://id#/declarations/types/WithFacet/anyOf/1/inherits/anonymous",
+                "id": "fastraml://id#/declarations/types/WithFacet/anyOf/1/inherits/anonymous",
                 "name": null,
                 "type": "number",
                 "type_expr": "integer | number"
@@ -108,7 +108,7 @@
             "type": "number"
           }
         ],
-        "id": "pyraml://id#/declarations/types/WithFacet",
+        "id": "fastraml://id#/declarations/types/WithFacet",
         "name": "WithFacet",
         "type": "union",
         "type_expr": "integer | number"

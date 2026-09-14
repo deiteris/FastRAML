@@ -28,7 +28,7 @@ stays the map.
 
 **Build:**
 
-1. `pyproject.toml` rewritten for pyRAML (the file it replaced described an
+1. `pyproject.toml` rewritten for fastRAML (the file it replaced described an
    unrelated `authkit` project; only the `[tool.ruff]` and `[tool.mypy]` blocks
    were worth keeping), package skeleton, `py.typed`, CI with ruff + mypy +
    pytest.
@@ -37,7 +37,7 @@ stays the map.
 4. `loaders` — the only module that touches the filesystem or the network.
 5. `yamlnode` — `Node`, the composer adapter, alias expansion, and the depth and
    node-count guards.
-6. The TCK harness pointed at an external checkout via `PYRAML_TCK_DIR`, and an
+6. The TCK harness pointed at an external checkout via `FASTRAML_TCK_DIR`, and an
    empty ratchet file.
 
 **Done when:** `pytest tests/unit/test_uris.py tests/unit/test_loaders.py
@@ -249,7 +249,7 @@ be written without it.
 
 **Build:**
 
-1. `DomainLocation` in `pyraml/domains.py`, a leaf module because `registry.py`
+1. `DomainLocation` in `fastraml/domains.py`, a leaf module because `registry.py`
    carries it on `ParseCtx` and `parser/annotations.py` reads it
    ([02](02-architecture.md) § 2).
 2. `ParseCtx.target` and `Raml.target_scope`, plus the per-`FragmentKind` default
@@ -444,7 +444,7 @@ application site is a security scheme.
 valid one moved in either direction, which is the shape the phase's risk
 register predicted: nothing here can be silently wrong, only wrongly rejected.
 `SecuritySchemes/`, `Fragments/` and the security `EdgeCases/` are green.
-After this phase `grep -rn '_raw_' pyraml/` returns only Phase 8b's seams.
+After this phase `grep -rn '_raw_' fastraml/` returns only Phase 8b's seams.
 
 Three things the plan did not say, all recorded in
 [09](09-security-and-annotations.md).
@@ -707,7 +707,7 @@ Four things the phase found that the plan did not anticipate:
    rejected — by the header check, as `unknown fragment kind: head: <?xml
    version="1.0"?>`. True, useless, and pointing the author at the wrong thing.
    D1 also claimed to match go-raml, which has no XSD handling at all.
-4. **`pyproject.toml` had declared the `pyraml` console script since Phase 0**,
+4. **`pyproject.toml` had declared the `fastraml` console script since Phase 0**,
    pointing at a module that did not exist. Installing the package gave an
    `ImportError`.
 
@@ -740,7 +740,7 @@ In rough priority order:
    and the `TypeExprRef`/`IncludeRef` indices exist so none of them requires a
    parser change.
 
-   **The first of these is built and lives in-tree**: `pyraml/views/`
+   **The first of these is built and lives in-tree**: `fastraml/views/`
    ([16](16-graph.md)) — one addressing walk under `graph`, `tree`, `render`,
    `queries` and `diff`, behind eight CLI verbs. It is in the package rather
    than beside it only because the CLI needs it; it is still a consumer, it

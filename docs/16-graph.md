@@ -1,6 +1,6 @@
 # 16. The graph projection
 
-**Status: built.** `pyraml/views/`, behind the `graph`, `tree`, `list`, `refs`, `deps`, `show`, `query` and
+**Status: built.** `fastraml/views/`, behind the `graph`, `tree`, `list`, `refs`, `deps`, `show`, `query` and
 `diff` verbs of the CLI ([13](13-public-api.md) § 8).
 
 This document owns one area: turning the parsed model into something you can
@@ -85,7 +85,7 @@ ontology** — there are no `rdfs:subClassOf` axioms, no `owl:Restriction`, no
 inference regime. Nothing here needs a reasoner, and a term is added when it
 makes a real question easier to ask, not because the model has a field.
 
-Namespace: `urn:pyraml:ns:raml#`, exported as `RAML_NS`.
+Namespace: `urn:fastraml:ns:raml#`, exported as `RAML_NS`.
 
 A URN rather than an `http(s)` IRI, deliberately. This project claims no domain
 name, and a namespace that resolves to a 404 is worse than one that never
@@ -188,7 +188,7 @@ a large graph together, which is the shape of a real library-using API.
 
 ### 2.7 A node's kind is its class
 
-`pyraml/nodes.py` holds one class per kind. `TypeNode` carries a `BaseShape`,
+`fastraml/nodes.py` holds one class per kind. `TypeNode` carries a `BaseShape`,
 `ResponseNode` a `Response`, `ParameterNode` a `Parameter`; the entity's type is
 a parameter of the class, so `kinds[0]` is read off the class and a node whose
 kind and entity disagree does not typecheck. There is no kind string to get
@@ -286,7 +286,7 @@ regardless of whether anything compares it.
 Node IRIs are **structural**: a path describing where the entity sits, not an
 opaque identifier.
 
-**The scheme belongs to `pyraml/views/walk.py`, not to this module.** More than one
+**The scheme belongs to `fastraml/views/walk.py`, not to this module.** More than one
 emitter addresses the same document, and a reference is followable only when the
 emitter that wrote it and the emitter that reads it agree. Assignment is one
 traversal — `Walk`, reporting to a `Sink` — and every emitter is a sink over it.
@@ -295,10 +295,10 @@ map the graph was built with, and is the join between a node here and the same
 entity in any other emitter's output.
 
 ```
-pyraml://id#/declarations/types/User
-pyraml://id/lib.raml#/declarations/types/Address
-pyraml://id#/web-api/endpoint/%2Fusers/supportedOperation/get/returns/200
-pyraml://id#/web-api/endpoint/%2Fusers/supportedOperation/get/returns/200/payload/application%2Fjson/schema
+fastraml://id#/declarations/types/User
+fastraml://id/lib.raml#/declarations/types/Address
+fastraml://id#/web-api/endpoint/%2Fusers/supportedOperation/get/returns/200
+fastraml://id#/web-api/endpoint/%2Fusers/supportedOperation/get/returns/200/payload/application%2Fjson/schema
 ```
 
 Three properties, each of which cost something to get:
@@ -307,9 +307,9 @@ Three properties, each of which cost something to get:
 on it would be meaningless in a diff, a cache or a committed query result. A
 structural path depends only on the source.
 
-**Machine-independent.** The root is `pyraml://id`, mirroring AMF's `amf://id`
+**Machine-independent.** The root is `fastraml://id`, mirroring AMF's `amf://id`
 for the same reason. A declaration authored outside the entry document gets its
-unit's path *relative to the workspace root* — `pyraml://id/lib.raml#…` — so no
+unit's path *relative to the workspace root* — `fastraml://id/lib.raml#…` — so no
 absolute filesystem path enters the graph. The tree keys its declaration maps by
 the same path (§ 11), and a consumer builds URLs out of that key.
 
@@ -321,7 +321,7 @@ rather than beneath one of them gets `shared/money.raml`. Relative to the entry
 *document's* directory the same file is `../shared/money.raml` — machine-
 independent, and not where the file is in terms a reader of the project uses.
 
-`pyraml.uris.relative_to` computes it, in one place. A `removeprefix` is not the
+`fastraml.uris.relative_to` computes it, in one place. A `removeprefix` is not the
 same function: a path that shares no prefix with the root falls back to the
 whole URI, which is the one outcome this property exists to exclude.
 
@@ -412,7 +412,7 @@ Two *declarations* of one name — the same type declared in two libraries — s
 ambiguous, and `find` returns both. That question only the caller can answer,
 which is why a whole IRI is also accepted as a name.
 
-Without this rule `pyraml refs Entity` exited 1 on a three-type document. It was
+Without this rule `fastraml refs Entity` exited 1 on a three-type document. It was
 found by asking what navigation still needed, not by a test, which is why one
 now names it.
 
@@ -420,7 +420,7 @@ now names it.
 what it contains, so a query parameter `login` matches both
 `…/parameter/query/login` and `…/parameter/query/login/schema`. Those are one
 entity at two depths, and reporting the pair asks the caller to choose between a
-thing and part of itself — `pyraml show login` exited 1 on exactly that.
+thing and part of itself — `fastraml show login` exited 1 on exactly that.
 
 The two rules are independent and both are needed. Containment cannot settle the
 synthetic-parent case, because `…/types/Admin/inherits/Entity` is not *inside*
@@ -471,7 +471,7 @@ holds a referent — `annotation` points at the annotation *type*, never at the
 value — and everything below is absent because nothing in the model refers to
 it, so no traversal can arrive at it and no query can ask.
 
-That is also the reach of the addressing traversal (`pyraml/views/walk.py`): an entity
+That is also the reach of the addressing traversal (`fastraml/views/walk.py`): an entity
 needs an address exactly when a reference to it has to be followable. An emitter
 that wants the list below places it by containment instead, which needs no
 address. So the list is a boundary a fuller emitter crosses without this module
@@ -537,7 +537,7 @@ endpoints" — SPARQL is genuinely better than hand-written code, so the graph
 serialises to N-Triples and Turtle and the CLI has a `query` verb.
 
 `pyoxigraph` is an **optional** dependency, the way `google-re2` and the CLI's
-HTTP client are: pyRAML does not import it, `pyraml query` reports its absence
+HTTP client are: fastRAML does not import it, `fastraml query` reports its absence
 with the install command, and everything else works without it. `rdflib` will
 read the same output; it is a pure-Python SPARQL engine and will be markedly
 slower on a large document set.
@@ -548,7 +548,7 @@ produces almost-valid N-Triples is the obvious failure mode.
 
 ## 6. The catalogue, and whether SPARQL earned its keep
 
-`pyraml/views/queries.py`. Seventeen named questions, run with `pyraml query -n NAME`,
+`fastraml/views/queries.py`. Seventeen named questions, run with `fastraml query -n NAME`,
 listed with `--list` and printed with `--show`. Both of the latter are text
 operations: they need no store and no document, so a reader without
 `pyoxigraph` can still see what the tool would ask.
@@ -645,7 +645,7 @@ weaker evidence than § 8's, and re-measure before relying on any single one.
 | **loading the store** | **421 ms** | **443 ms** |
 
 **Loading the store costs about six times the slowest query.** That decides how
-the tool should be used. `pyraml query` builds and loads the graph on every
+the tool should be used. `fastraml query` builds and loads the graph on every
 invocation, so a session that asks several questions should hold one store
 rather than run the command repeatedly. The queries themselves are not the cost.
 
@@ -680,7 +680,7 @@ classes produce.
 trigger. The one real payoff is interoperating with tooling written against AMF,
 notably the API-governance rulesets. Nothing needs that yet.
 
-It would be **a sink over `pyraml/views/walk.py`, not a serialiser over this graph.**
+It would be **a sink over `fastraml/views/walk.py`, not a serialiser over this graph.**
 An AMF consumer renders as well as queries, so it wants what § 4 excludes —
 api-console 6.6.69 reads 357 vocabulary terms across twelve namespaces, of which
 the `data:` DataNode tree for examples and defaults is a large part. Reading
@@ -748,7 +748,7 @@ this, and its docstring says so.
 
 ## 9. The effective view
 
-`pyraml show FILE NAME`, and `pyraml/views/render.py` behind it.
+`fastraml show FILE NAME`, and `fastraml/views/render.py` behind it.
 
 This answers the question a reader asks most often, and the one neither `refs`
 nor a query answers: **what is this type, actually?** Every inherited property
@@ -980,7 +980,7 @@ note, never inside the flow sequence where `#` is a syntax error.
 
 ## 10. What changed, and what it breaks
 
-`pyraml diff OLD NEW`, and `pyraml/views/diff.py` behind it.
+`fastraml diff OLD NEW`, and `fastraml/views/diff.py` behind it.
 
 The whole feature exists because § 3's IRIs are **structural**. The same entity
 has the same name in both versions, so matching two documents is a dict lookup
@@ -1090,18 +1090,18 @@ effect this cannot compute.
 
 `graph` answers *what points at what*. `tree` answers *what is here*.
 
-The module is `pyraml/views/tree.py`, named for the shape of what it emits.
+The module is `fastraml/views/tree.py`, named for the shape of what it emits.
 Every module in that package is a view of the effective model, so "effective"
 is the word they share and cannot be the one that tells them apart: `graph`
 emits a node set, this emits containment.
 
 ```bash
-pyraml tree api.raml            # the whole document, addressed
-pyraml tree --positions api.raml
+fastraml tree api.raml            # the whole document, addressed
+fastraml tree --positions api.raml
 ```
 
 ```python
-from pyraml import ParseOptions, build_tree, parse_from_path
+from fastraml import ParseOptions, build_tree, parse_from_path
 
 document = build_tree(parse_from_path('api.raml', ParseOptions(unwrap=True)))
 ```
@@ -1137,7 +1137,7 @@ addressing pass existed:
 
 | | was | is |
 |---|---|---|
-| recursion | `{"recursive_ref": "Chain"}` | `{"$ref": "pyraml://id#/declarations/types/Chain"}` |
+| recursion | `{"recursive_ref": "Chain"}` | `{"$ref": "fastraml://id#/declarations/types/Chain"}` |
 | `inherits` | `["Named"]`, or the parent inlined when anonymous | `[{"$ref": "…/types/Named"}]`, or inlined — § 11.3 |
 | an alias | `"alias_of": "A"` | `"alias_of": {"$ref": "…/types/A"}` |
 | an annotation | `["tier"]` | `[{"name": "tier", "type": "…/declarations/annotations/tier"}]` |
@@ -1177,7 +1177,7 @@ A `#%RAML 1.0 DataType` document is one declaration, and `fragment_types` lists
 it only when some document's `types:` included it. As the **entry point**
 nothing lists it, and reading only that map projected a document whose entire
 content is a type as having none — silently, because an empty map is what a
-document with no types looks like. `pyraml tree user.raml` printed
+document with no types looks like. `fastraml tree user.raml` printed
 `"types": {}`.
 
 Only the entry point is folded in. An included fragment is already listed under
@@ -1521,7 +1521,7 @@ different purpose (§ 2). The two disagreeing is by design, not drift.
 
 ### 11.11 The contract is generated
 
-`pyraml/views/bindings.py` writes `viewer/src/tree.d.ts` — the same key list as
+`fastraml/views/bindings.py` writes `viewer/src/tree.d.ts` — the same key list as
 TypeScript declarations, for a consumer outside Python. Hand-written it would go
 stale the first time a kind grew a facet, and stale *quietly*: a key the
 declarations omit still arrives, and a consumer that does not read it looks like

@@ -10,7 +10,7 @@ It exists so you do not have to re-derive what earlier sessions already settled.
 Twenty commits on `master`. Working tree clean. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 1288 passed, 42 skipped
 ```
 
@@ -20,30 +20,30 @@ will touch constantly:
 
 | Module | Public surface |
 |---|---|
-| `pyraml.positions` | `Position(line, column, end_line, end_column)` (1-based, end exclusive), `Position.shifted(n)`, `UNKNOWN` |
-| `pyraml.errors` | `RamlError.new/.wrap`, `err.append`, `Accumulator`, `ErrorKind`, `Trace` |
-| `pyraml.yamlnode` | `Node`, `NodeKind`, `compose`, `pairs`, `is_null`, `last_leaf`, `node_error(msg, location, node, info=)`, `TAG_*` |
-| `pyraml.datanode` | `DataNode`, `ValueNode`, `make_data_node(raml, key, value, location)`, `value_node_of`, `scalar_value(node)` |
-| `pyraml.registry` | `Raml`: `next_id()`, `push_ctx`/`pop_ctx`/`current_ctx`, `put_type`, `put_annotation_type`, `put_typedef`, `put_shape`, `unresolved_shapes`, `expr_cache`, `types_in(uri)` |
-| `pyraml.parser.facets` | `make_scalar_facet(raml, key, value, location, convert)`, `make_string_facet`, `make_seq_facet`, `scalar_str`, `resolve_annotated_scalar` |
-| `pyraml.parser.includes` | `resolve_include(raml, node, location) -> (uri, Node)`, `note_include_ref` |
-| `pyraml.parser.annotations` | `DomainExtension`, `is_annotation_key`, `unmarshal_domain_extension` |
-| `pyraml.parser.references` | `resolve_reference`, `resolve_library_reference`, `UnresolvedReferenceError`, `cut_last` |
-| `pyraml.types.base` | `ScalarFacet[T]` — the only thing in it so far. **This is your module.** |
+| `fastraml.positions` | `Position(line, column, end_line, end_column)` (1-based, end exclusive), `Position.shifted(n)`, `UNKNOWN` |
+| `fastraml.errors` | `RamlError.new/.wrap`, `err.append`, `Accumulator`, `ErrorKind`, `Trace` |
+| `fastraml.yamlnode` | `Node`, `NodeKind`, `compose`, `pairs`, `is_null`, `last_leaf`, `node_error(msg, location, node, info=)`, `TAG_*` |
+| `fastraml.datanode` | `DataNode`, `ValueNode`, `make_data_node(raml, key, value, location)`, `value_node_of`, `scalar_value(node)` |
+| `fastraml.registry` | `Raml`: `next_id()`, `push_ctx`/`pop_ctx`/`current_ctx`, `put_type`, `put_annotation_type`, `put_typedef`, `put_shape`, `unresolved_shapes`, `expr_cache`, `types_in(uri)` |
+| `fastraml.parser.facets` | `make_scalar_facet(raml, key, value, location, convert)`, `make_string_facet`, `make_seq_facet`, `scalar_str`, `resolve_annotated_scalar` |
+| `fastraml.parser.includes` | `resolve_include(raml, node, location) -> (uri, Node)`, `note_include_ref` |
+| `fastraml.parser.annotations` | `DomainExtension`, `is_annotation_key`, `unmarshal_domain_extension` |
+| `fastraml.parser.references` | `resolve_reference`, `resolve_library_reference`, `UnresolvedReferenceError`, `cut_last` |
+| `fastraml.types.base` | `ScalarFacet[T]` — the only thing in it so far. **This is your module.** |
 
 Three **leaf modules** built ahead of the critical path. Phase 2 does not touch
 them; the phase in the last column consumes them:
 
 | Module | Surface | Consumed by |
 |---|---|---|
-| `pyraml.types.expressions.parser` | `parse_expression(text) -> RdtNode` | Phase 3 |
-| `pyraml.parser.templates` | `parse_template_variables`, `apply_template_action`, … | Phase 6 |
-| `pyraml.parser.uritemplates` | `extract_uri_template_params`, `resource_path_name` | Phase 5 |
+| `fastraml.types.expressions.parser` | `parse_expression(text) -> RdtNode` | Phase 3 |
+| `fastraml.parser.templates` | `parse_template_variables`, `apply_template_action`, … | Phase 6 |
+| `fastraml.parser.uritemplates` | `extract_uri_template_params`, `resource_path_name` | Phase 5 |
 
 ### 1.1 The seams you pick up
 
 Phase 1 decoded what it owned and kept the rest as the original `Node`.
-`grep -rn '_raw_' pyraml/` lists every one; a comment beside each names its
+`grep -rn '_raw_' fastraml/` lists every one; a comment beside each names its
 phase. Yours:
 
 | Attribute | On | Holds |
@@ -82,7 +82,7 @@ The module map is settled — doc 02 § 2 now lists all six. Build them in this
 order; each step depends only on the ones above it, so the tree stays green if
 you stop between any two.
 
-### 3.1 `pyraml/types/base.py`
+### 3.1 `fastraml/types/base.py`
 
 `BaseShape` with the `__slots__` list from doc 05 § 1 — the full set, even where
 a later phase fills the field. `Property` and `PatternProperty` (doc 05 § 3), and
@@ -93,13 +93,13 @@ That is go-raml parity and it is load-bearing: the kind of a declaration is
 unknown at creation time, and it can change again during resolution, so
 references already taken to the `BaseShape` must survive a kind swap.
 
-### 3.2 `pyraml/types/inference.py`
+### 3.2 `fastraml/types/inference.py`
 
 `identify_shape_type(facets, default_type, location)` and `FACET_TYPE_HINT` from
 doc 05 § 4.2. Four rules, in order, and the `string`/`file` reconciliation is the
 one that gets mis-implemented — `pattern` is string-only and poisons it.
 
-### 3.3 `pyraml/types/xml.py` and `pyraml/types/examples.py`
+### 3.3 `fastraml/types/xml.py` and `fastraml/types/examples.py`
 
 Two leaf records with decoders: `XmlSerialization` (doc 05 § 8; unknown keys
 inside `xml:` are an error, so a typo is caught) and `Example`/`Examples`
@@ -110,7 +110,7 @@ common beyond both being facets, and `Example` is consumed by the `NamedExample`
 fragment and by Phase 8's validation, while `XmlSerialization` is consumed by
 nothing in v1.
 
-### 3.4 `pyraml/types/scalars.py` and `pyraml/types/complex_.py`
+### 3.4 `fastraml/types/scalars.py` and `fastraml/types/complex_.py`
 
 The fourteen concrete kinds plus `UnknownShape`, `JsonShape` and `RecursiveShape`
 (doc 05 § 1, last paragraph). Each implements the `Shape` protocol; in Phase 2
@@ -118,7 +118,7 @@ only `decode_facets` has a real body — `inherit`, `alias_to`, `check`, `valida
 and `clone` belong to Phases 4 and 8, and should raise `NotImplementedError` with
 a comment naming the phase.
 
-### 3.5 `pyraml/types/shape.py` — the single decode entry point
+### 3.5 `fastraml/types/shape.py` — the single decode entry point
 
 `make_shape(raml, key_node, value_node, location, default_type)` — doc 05 § 4 —
 plus the `make_body_shape` wrapper that defaults to `any` instead of `string`,
@@ -238,7 +238,7 @@ From `docs/15-implementation-plan.md` Phase 2, made concrete:
   is either a known kind or present in `unresolved_shapes`.
 - `Types/` TCK fixtures parse except where they need expressions or inheritance.
   Record the new baseline and **read the diff before committing it**:
-  `PYRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck --update-ratchet`
+  `FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck --update-ratchet`
   Today `Types/` sits at 165 pass / 137 fail, `Examples/` at 5 / 5, `Annotations/`
   at 48 / 45.
 - The full gate passes.

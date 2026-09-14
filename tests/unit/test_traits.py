@@ -12,7 +12,7 @@ from typing import ClassVar
 
 import pytest
 
-from pyraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError, parse_from_path
 
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
 

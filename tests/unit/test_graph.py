@@ -23,10 +23,10 @@ import json
 
 import pytest
 
-import pyraml.nodes as nodes_module
-import pyraml.views.walk as walk_module
-from pyraml import ParseOptions, parse_from_path
-from pyraml.views.graph import (
+import fastraml.nodes as nodes_module
+import fastraml.views.walk as walk_module
+from fastraml import ParseOptions, parse_from_path
+from fastraml.views.graph import (
     DEFAULT_BASE,
     RAML_NS,
     TYPE_EDGES,
@@ -122,7 +122,7 @@ class TestIris:
         assert graph.nodes[f'{DEFAULT_BASE}/lib.raml'].attributes['name'] == 'lib.raml'
 
     def test_no_absolute_path_reaches_the_graph(self, graph, workspace):
-        """The whole reason the root is `pyraml://id` and not the entry file URI.
+        """The whole reason the root is `fastraml://id` and not the entry file URI.
 
         A graph carrying `file:///C:/Users/.../tmp123/lib.raml` could not be
         diffed between two runs, let alone two machines.

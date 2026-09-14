@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from pyraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions, parse_from_path
 from tests.golden.project import positions_of, project
 
 CASES_DIR = Path(__file__).parent / 'cases'

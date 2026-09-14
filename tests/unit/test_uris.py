@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from pyraml.uris import (
+from fastraml.uris import (
     file_uri_to_path,
     is_file_uri,
     path_to_file_uri,

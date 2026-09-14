@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import ParseOptions, parse_from_path
-from pyraml.views.tree import build_tree
+from fastraml import ParseOptions, parse_from_path
+from fastraml.views.tree import build_tree
 
 #: Past this, the walker has failed to terminate. Deep enough that no legitimate
 #: document reaches it, small enough to fail fast.
@@ -195,7 +195,11 @@ class TestEveryReferenceResolvesInsideTheTree:
         found = [] if found is None else found
         if isinstance(node, dict):
             for key, value in node.items():
-                if key in ('$ref', 'type', 'declaration') and isinstance(value, str) and value.startswith('pyraml://'):
+                if (
+                    key in ('$ref', 'type', 'declaration')
+                    and isinstance(value, str)
+                    and value.startswith('fastraml://')
+                ):
                     found.append(value)
                 self.addresses(value, found)
         elif isinstance(node, list):

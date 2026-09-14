@@ -34,7 +34,7 @@ from fastmcp.server.providers.openapi.components import (
 from fastmcp.server.providers.openapi.routing import MCPType, RouteMap
 from fastmcp.utilities.openapi import extract_output_schema_from_responses
 from fastmcp.utilities.openapi.director import RequestDirector
-from pyraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions, parse_from_path
 
 from fastmcp_raml.routes import (
     base_url_of,
@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from fastmcp.tools.base import Tool
     from fastmcp.utilities.openapi import HTTPRoute
     from jsonschema_path import SchemaPath
-    from pyraml.registry import Raml
+    from fastraml.registry import Raml
 
     from fastmcp_raml.routes import Document
 

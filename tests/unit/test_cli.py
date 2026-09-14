@@ -1,4 +1,4 @@
-"""The `pyraml` console script — docs/13-public-api.md section 8.
+"""The `fastraml` console script — docs/13-public-api.md section 8.
 
 Exit codes and output shape, not parsing. Nothing in `cli.py` decides what is
 valid, so the assertions here are about the contract a shell script or a CI job
@@ -17,7 +17,7 @@ import sys
 import pytest
 import yaml
 
-from pyraml.cli import EXIT_INVALID, EXIT_OK, main
+from fastraml.cli import EXIT_INVALID, EXIT_OK, main
 
 API = '#%RAML 1.0\ntitle: Demo\n'
 GOOD = API + 'types:\n  T:\n    type: string\n    minLength: 2\n/things:\n  get:\n'
@@ -129,7 +129,7 @@ class TestOptions:
         assert main(argv) == EXIT_OK
 
     def test_remote_without_a_client_says_so(self, files, monkeypatch):
-        """`-r` needs httpx or requests; pyRAML depends on neither."""
+        """`-r` needs httpx or requests; fastRAML depends on neither."""
         import builtins
 
         real_import = builtins.__import__
@@ -144,14 +144,14 @@ class TestOptions:
             main(['validate', '-r', files('good.raml')])
         # Names the extra, not just the two libraries: "install httpx" left a
         # reader to work out that the package declares one.
-        assert 'pyraml[http]' in str(caught.value)
+        assert 'fastraml[http]' in str(caught.value)
 
 
 class TestUsage:
     def test_import_does_not_load_a_parser_or_graph(self):
         code = (
-            'import pyraml.cli, sys; '
-            "unexpected = {'pyraml.parser.entry', 'pyraml.views.graph', 'yaml'} & sys.modules.keys(); "
+            'import fastraml.cli, sys; '
+            "unexpected = {'fastraml.parser.entry', 'fastraml.views.graph', 'yaml'} & sys.modules.keys(); "
             'assert not unexpected, unexpected'
         )
         subprocess.run([sys.executable, '-c', code], check=True)  # noqa: S603 - this interpreter, fixed code
@@ -165,7 +165,7 @@ class TestUsage:
         with pytest.raises(SystemExit) as caught:
             main(['--version'])
         assert caught.value.code == 0
-        assert 'pyraml' in capsys.readouterr().out
+        assert 'fastraml' in capsys.readouterr().out
 
 
 GRAPHED = (
@@ -202,7 +202,7 @@ class TestGraphVerbs:
 
     @pytest.mark.parametrize(
         ('form', 'marker'),
-        [('turtle', '@prefix raml:'), ('nt', '<pyraml://id'), ('dot', 'digraph raml {'), ('json', '"nodes"')],
+        [('turtle', '@prefix raml:'), ('nt', '<fastraml://id'), ('dot', 'digraph raml {'), ('json', '"nodes"')],
     )
     def test_each_format_emits_its_own_syntax(self, graphed, capsys, form, marker):
         assert main(['graph', '--format', form, graphed]) == EXIT_OK
@@ -217,7 +217,7 @@ class TestGraphVerbs:
         assert user['properties']['name']['type']['type'] == 'string'
         # Unwrapped, so the inherited property is present as well as the link.
         assert 'id' in user['properties']
-        assert user['inherits'] == [{'$ref': 'pyraml://id#/declarations/types/Entity'}]
+        assert user['inherits'] == [{'$ref': 'fastraml://id#/declarations/types/Entity'}]
 
     def test_tree_prints_declarations_in_the_order_they_were_written(self, graphed, capsys):
         # docs/02 section 4: declaration order is preserved everywhere the model
@@ -387,7 +387,7 @@ class TestSuggestions:
         assert main(['show', graphed, 'zzzqqq']) == EXIT_INVALID
         err = capsys.readouterr().err
         assert 'did you mean' not in err
-        assert 'pyraml list' in err
+        assert 'fastraml list' in err
 
     def test_the_near_name_is_suggested_and_not_run(self, graphed, capsys):
         """Substituting answers a question the caller did not ask — the same
@@ -414,7 +414,7 @@ class TestQueryVerb:
 
     def test_a_select_prints_a_row_per_solution(self, graphed, capsys):
         pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
-        from pyraml.views.graph import RAML_NS
+        from fastraml.views.graph import RAML_NS
 
         query = f'PREFIX raml: <{RAML_NS}> SELECT ?m WHERE {{ ?o a raml:Operation ; raml:method ?m }}'
         assert main(['query', graphed, '-q', query]) == EXIT_OK
@@ -422,14 +422,14 @@ class TestQueryVerb:
 
     def test_an_ask_prints_a_boolean(self, graphed, capsys):
         pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
-        from pyraml.views.graph import RAML_NS
+        from fastraml.views.graph import RAML_NS
 
         assert main(['query', graphed, '-q', f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Operation }}']) == EXIT_OK
         assert capsys.readouterr().out.strip() == 'true'
 
     def test_a_query_can_come_from_a_file(self, graphed, workspace, capsys):
         pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
-        from pyraml.views.graph import RAML_NS
+        from fastraml.views.graph import RAML_NS
 
         path = workspace({'q.rq': f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Api }}'}) / 'q.rq'
         assert main(['query', graphed, '-Q', str(path)]) == EXIT_OK
@@ -448,7 +448,7 @@ class TestQueryCatalogue:
     """
 
     def test_list_names_every_query_and_its_question(self, capsys):
-        from pyraml.views.queries import QUERIES
+        from fastraml.views.queries import QUERIES
 
         assert main(['query', '--list']) == EXIT_OK
         out = capsys.readouterr().out
@@ -702,7 +702,7 @@ types:
         assert main(['show', rich, 'paged']) == EXIT_INVALID
         err = capsys.readouterr().err
         assert 'api.raml:' in err
-        assert 'pyraml refs paged' in err
+        assert 'fastraml refs paged' in err
 
 
 class TestDepsWorksOnMoreThanTypes:
@@ -725,18 +725,18 @@ class TestDepsWorksOnMoreThanTypes:
 
 class TestResultsAreBounded:
     def test_refs_stops_at_a_default_and_says_so(self, graphed, capsys, monkeypatch):
-        monkeypatch.setattr('pyraml.cli._DEFAULT_LIMIT', 1)
+        monkeypatch.setattr('fastraml.cli._DEFAULT_LIMIT', 1)
         assert main(['refs', graphed, 'User']) == EXIT_OK
         out, err = capsys.readouterr()
         assert len(out.splitlines()) == 1
         assert 'more' in err, 'the remainder must be reported'
 
     def test_the_note_goes_to_stderr_so_a_pipe_is_clean(self, graphed, capsys, monkeypatch):
-        monkeypatch.setattr('pyraml.cli._DEFAULT_LIMIT', 1)
+        monkeypatch.setattr('fastraml.cli._DEFAULT_LIMIT', 1)
         main(['refs', graphed, 'User'])
         assert 'more' not in capsys.readouterr().out
 
     def test_zero_still_means_all(self, graphed, capsys, monkeypatch):
-        monkeypatch.setattr('pyraml.cli._DEFAULT_LIMIT', 1)
+        monkeypatch.setattr('fastraml.cli._DEFAULT_LIMIT', 1)
         main(['refs', graphed, 'User', '--limit', '0'])
         assert len(capsys.readouterr().out.splitlines()) > 1

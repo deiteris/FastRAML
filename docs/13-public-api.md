@@ -7,7 +7,7 @@ keeps it out of `__init__`.
 ## 1. Entry points
 
 ```python
-from pyraml import parse_from_path, parse_from_string, ParseOptions
+from fastraml import parse_from_path, parse_from_string, ParseOptions
 
 raml = parse_from_path("api.raml", ParseOptions(validate=True, unwrap=True))
 api = raml.entry_point  # APIFragment | Library | DataTypeFragment | …
@@ -108,7 +108,7 @@ class ParseOptions:
 | `max_include_size` | per-file cap for `!include` targets. |
 | `file_loader` | replace the `file://` loader (e.g. to shadow unsaved buffers). **Disables the built-in sandbox** — see [03](03-yaml-and-io.md) § 5. |
 | `http_client` | supply a client to enable remote includes. Absent ⇒ `http(s)` URIs are rejected. |
-| `regex_engine` | `"re"` (default, ECMA-ish, backtracking) or `"re2"` (linear time; requires `google-re2`). Use `"re2"` for untrusted input — noting that it covers every regex pyRAML compiles but **not** the ones executed inside an external JSON Schema ([01](01-scope-and-coverage.md) D3). |
+| `regex_engine` | `"re"` (default, ECMA-ish, backtracking) or `"re2"` (linear time; requires `google-re2`). Use `"re2"` for untrusted input — noting that it covers every regex fastRAML compiles but **not** the ones executed inside an external JSON Schema ([01](01-scope-and-coverage.md) D3). |
 | `max_depth` | one ceiling for **every** recursive descent bounded only by the input — document conversion, unwrap, recursion-marking and the JSON Schema walks. They defend the same C stack ([12](12-performance.md) § 14). |
 
 **Recommendation, stated in the docstring:** pass `unwrap=True, validate=True`
@@ -163,7 +163,7 @@ Exported model classes, all read-oriented, all slotted, all carrying
 narrow it ([16](16-graph.md) § 2.7). `Graph.__init__` no longer takes `shapes=`
 or `entities=` — the two side maps they filled are gone.
 
-`GraphNode` lives in `pyraml.nodes` with one subclass per node kind — `TypeNode`,
+`GraphNode` lives in `fastraml.nodes` with one subclass per node kind — `TypeNode`,
 `ResponseNode`, `ParameterNode` and eleven more ([16](16-graph.md) § 2.7). The
 kind is the class and the entity's type is a parameter of it, so `node.entity`
 is typed for consumers that narrow.
@@ -201,12 +201,12 @@ six ([09](09-security-and-annotations.md) § A2).
 **I/O** — `ResourceLoader`, `FileLoader`, `SafeFileLoader`, `HTTPLoader`,
 `SchemeLoader`.
 
-**What `pyraml` re-exports, and what it does not.** Phase 9 widened `__all__`
+**What `fastraml` re-exports, and what it does not.** Phase 9 widened `__all__`
 from 45 names to 70 — the entry points, options, errors, loaders and fragments as
 before, plus everything a consumer **narrows against or walks**: all seventeen
 concrete shapes, `BaseShape`, `Property`, `PatternProperty`, `Parameter`, and
 `EndPoint`/`Operation`/`Request`/`Response`/`Body`. `isinstance` narrowing is
-what § 6 tells a caller to do, and needing `from pyraml.types.complex_ import
+what § 6 tells a caller to do, and needing `from fastraml.types.complex_ import
 ObjectShape` to do it — a module named with a trailing underscore precisely
 because it is internal — was a poor advertisement for a supported API.
 
@@ -228,7 +228,7 @@ from it.
 
 The re-exports are loaded on first access and cached. This is invisible to
 ordinary imports, wildcard imports, `hasattr` and `dir`; only code inspecting
-`pyraml.__dict__` directly can observe that an export is absent before its first
+`fastraml.__dict__` directly can observe that an export is absent before its first
 use. The package ships an `__init__.pyi` with eager declarations, so static
 analysis and editor completion see the full surface without importing the parser
 at runtime.
@@ -265,7 +265,7 @@ t.validate(123)  # invalid type, got int, expected str
 ## 6. Typing
 
 The package ships `py.typed`. Every public function and attribute is annotated;
-`mypy --strict` passes on `pyraml/` with the settings in `pyproject.toml`.
+`mypy --strict` passes on `fastraml/` with the settings in `pyproject.toml`.
 
 Generic facets use `ScalarFacet[T]`, so `string_shape.min_length` narrows to
 `ScalarFacet[int] | None` and `.value` to `int`.
@@ -322,19 +322,19 @@ Each has caused problems for users of the reference implementation.
 ## 8. CLI
 
 A thin console script, mirroring the reference tool. Presentation only: no
-parsing rule lives in `pyraml/cli.py`.
+parsing rule lives in `fastraml/cli.py`.
 
 ```
-pyraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
-pyraml info [-w ROOT] [-r] FILE       # backend, timings, counts
-pyraml graph [--format nt|turtle|dot|json] FILE
-pyraml tree [--positions] FILE                # the whole document, addressed
-pyraml list FILE [PATTERN] [--kind K] [--json]             # what is in here
-pyraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
-pyraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made of
-pyraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
-pyraml diff OLD NEW [--breaking-only] [--severity S] [--json]
-pyraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
+fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
+fastraml info [-w ROOT] [-r] FILE       # backend, timings, counts
+fastraml graph [--format nt|turtle|dot|json] FILE
+fastraml tree [--positions] FILE                # the whole document, addressed
+fastraml list FILE [PATTERN] [--kind K] [--json]             # what is in here
+fastraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
+fastraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made of
+fastraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
+fastraml diff OLD NEW [--breaking-only] [--severity S] [--json]
+fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
 ```
 
 `validate` and `info` parse with `unwrap=True, validate=True`: their job is to
@@ -345,9 +345,9 @@ make the tool useless exactly where navigating is most wanted.
 - `-w ROOT` sets the workspace root; `--no-workspace-guard` disables the sandbox
   entirely, as go-raml's flag of the same name does.
 - `-r` enables remote includes. It builds a client from `httpx` or `requests`,
-  whichever is installed — pyRAML depends on neither ([03](03-yaml-and-io.md)
+  whichever is installed — fastRAML depends on neither ([03](03-yaml-and-io.md)
   § 5.1), so the CLI is where one has to be produced, and where a user who asks
-  for `-r` without either is pointed at `pyraml[http]`.
+  for `-r` without either is pointed at `fastraml[http]`.
 - `-v` reports each file and its timing on stdout; `-vv` adds the backend and
   the model counts.
 - Diagnostics go to **stderr**, everything else to stdout, so `-v` stays
@@ -385,7 +385,7 @@ deliberately does not carry. `--positions` writes the span of every declaration
 instead.
 
 ```python
-from pyraml import ParseOptions, address, build_tree, parse_from_path
+from fastraml import ParseOptions, address, build_tree, parse_from_path
 
 raml = parse_from_path('api.raml', ParseOptions(unwrap=True))
 document = build_tree(raml)         # the tree, references as addresses
@@ -512,16 +512,16 @@ The output is loadable YAML, so it pastes back into a document and two versions
 diff. `--depth` expands nested types; the default of 1 names them instead, which
 is what keeps the output the size of a screen.
 
-`query` runs SPARQL, and needs **`pyoxigraph`**, which pyRAML does not depend on
-— `pip install pyraml[graph]`, or the verb tells you so and exits 1. All four
+`query` runs SPARQL, and needs **`pyoxigraph`**, which fastRAML does not depend on
+— `pip install fastraml[graph]`, or the verb tells you so and exits 1. All four
 result forms work: SELECT as TSV or `--json` JSON Lines, ASK as `true`/`false`,
 CONSTRUCT and DESCRIBE as N-Triples.
 
 ```
-pyraml query --list                  # the catalogue: 17 named questions
-pyraml query --show unused-types     # print one, to read or to edit
-pyraml query api.raml -n type-fan-in # run one
-pyraml query api.raml -q '<sparql>'  # or -Q file.rq
+fastraml query --list                  # the catalogue: 17 named questions
+fastraml query --show unused-types     # print one, to read or to edit
+fastraml query api.raml -n type-fan-in # run one
+fastraml query api.raml -q '<sparql>'  # or -Q file.rq
 ```
 
 `--list` and `--show` need neither a store nor a document, so a reader without

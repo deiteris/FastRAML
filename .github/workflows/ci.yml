@@ -19,7 +19,7 @@ jobs:
       - run: uv sync --all-extras --dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy pyraml/
+      - run: uv run mypy fastraml/
 
   test:
     strategy:
@@ -58,7 +58,7 @@ jobs:
       - run: uv sync --dev
       - name: Reinstall PyYAML without libyaml
         run: "uv pip install --force-reinstall --no-binary :all: pyyaml"
-      - run: uv run python -c "import pyraml; assert pyraml.backend_name() == 'python', pyraml.backend_name()"
+      - run: uv run python -c "import fastraml; assert fastraml.backend_name() == 'python', fastraml.backend_name()"
       - run: uv run pytest -q
 
   # The optional extras. Every other job installs none of them, so without this
@@ -89,12 +89,12 @@ jobs:
       - run: uv sync --dev
       - name: bench_large must stay linear in input size
         env:
-          PYRAML_BENCH: '1'
+          FASTRAML_BENCH: '1'
         run: uv run pytest tests/bench -q -rs
 
   # The distributions under `contrib/` are separate uv projects with their own
   # locks, so the root gate never sees them: without this their suites run only
-  # when someone remembers. They consume `pyraml` as an editable path
+  # when someone remembers. They consume `fastraml` as an editable path
   # dependency, which makes this the job that notices when a change to the model
   # breaks a consumer of it rather than a test of it.
   contrib:
@@ -157,5 +157,5 @@ jobs:
       - run: uv sync --dev
       - name: Run the TCK against the ratchet
         env:
-          PYRAML_TCK_DIR: go-raml/raml-tck
+          FASTRAML_TCK_DIR: go-raml/raml-tck
         run: uv run pytest tests/tck -q

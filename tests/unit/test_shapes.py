@@ -11,9 +11,9 @@ from typing import ClassVar
 
 import pytest
 
-from pyraml import RamlError
-from pyraml.registry import Raml
-from pyraml.types.base import (
+from fastraml import RamlError
+from fastraml.registry import Raml
+from fastraml.types.base import (
     ONE_SHAPE,
     PROPERTIES,
     SHAPE_LIST,
@@ -23,8 +23,8 @@ from pyraml.types.base import (
     TypeExprRef,
     declaration_facets,
 )
-from pyraml.types.xml import decode_xml_serialization
-from pyraml.yamlnode import Node, compose, pairs
+from fastraml.types.xml import decode_xml_serialization
+from fastraml.yamlnode import Node, compose, pairs
 
 LOCATION = 'file:///a.raml'
 

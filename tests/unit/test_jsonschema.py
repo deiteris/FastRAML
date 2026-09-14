@@ -19,7 +19,7 @@ from typing import ClassVar
 
 import pytest
 
-from pyraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError, parse_from_path
 from tests.unit.conftest import CountingLoader
 
 API = '#%RAML 1.0\ntitle: T\n'
@@ -264,7 +264,7 @@ class TestRestrictions:
         'expression', ['Person[]', 'Person?', 'Person | string'], ids=['array', 'optional', 'union']
     )
     def test_a_schema_type_may_appear_in_a_type_expression(self, workspace, expression):
-        """Deviation D11. The spec refuses all three; pyRAML builds them.
+        """Deviation D11. The spec refuses all three; fastRAML builds them.
 
         Nothing here asks the schema for more than `validate(value)`, which it
         answers. A union is a list of types to validate against, and the union
@@ -302,7 +302,7 @@ class TestParameterDeclarations:
     """Deviation D11: a schema type *is* a type, including in a parameter.
 
     The spec forbids one outright in a query parameter, query string, URI
-    parameter or header. pyRAML permits it — `docs/01` § 4 D11 — because a
+    parameter or header. fastRAML permits it — `docs/01` § 4 D11 — because a
     `JsonShape` is asked for nothing here but `validate(value)`, which it does.
     """
 

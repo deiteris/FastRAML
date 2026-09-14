@@ -1,7 +1,7 @@
 /**
  * The module layering, asserted over the import graph.
  *
- * `pyraml` does this to itself -- `tests/unit/test_views.py` fails if anything
+ * `fastraml` does this to itself -- `tests/unit/test_views.py` fails if anything
  * under `parser/` imports a view -- and for the same reason: a layer nobody
  * checks is a layer that erodes one convenient import at a time. This app was
  * two files of six hundred lines before it was split, and nothing but habit

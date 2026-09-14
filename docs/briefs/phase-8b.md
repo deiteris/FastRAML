@@ -47,7 +47,7 @@ and enforcing `allowedTargets`. Only the first is large.
 Master is at the Phase 7 merge. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 2153 passed, 54 skipped
 ```
 
@@ -69,12 +69,12 @@ may not belong to this phase at all — classify each by tracing it, the way Pha
 
 | Module | State |
 |---|---|
-| `pyraml.types.complex_.JsonShape` | The class exists with `raw`, `validator`, `_cached_shape`, `_cached_defs`. `check()` and `validate()` **accept everything**, deliberately: a JSON-schema-typed declaration must parse today. `decode_facets` already rejects siblings. |
-| `pyraml.registry.Raml.json_schema_registry` | Declared `dict[Any, Any]`, never written. |
-| `pyraml.parser.fragments._decode_json_data_type` | An external `.json` include already becomes a `DataTypeFragment` whose declaration is `{type: "<raw json>"}`, so nothing downstream needs a branch. |
+| `fastraml.types.complex_.JsonShape` | The class exists with `raw`, `validator`, `_cached_shape`, `_cached_defs`. `check()` and `validate()` **accept everything**, deliberately: a JSON-schema-typed declaration must parse today. `decode_facets` already rejects siblings. |
+| `fastraml.registry.Raml.json_schema_registry` | Declared `dict[Any, Any]`, never written. |
+| `fastraml.parser.fragments._decode_json_data_type` | An external `.json` include already becomes a `DataTypeFragment` whose declaration is `{type: "<raw json>"}`, so nothing downstream needs a branch. |
 | `jsonschema>=4.21`, `referencing>=0.35` | Already in `pyproject.toml`, declared in Phase 0 so the lockfile would be stable. Unused so far. |
-| `pyraml.domains` | All seventeen `DomainLocation`s, and every decode site already pushes one. |
-| `pyraml.types.base.BaseShape.allowed_targets` | Decoded in Phase 4b (`None` ≠ `[]`), never read. |
+| `fastraml.domains` | All seventeen `DomainLocation`s, and every decode site already pushes one. |
+| `fastraml.types.base.BaseShape.allowed_targets` | Decoded in Phase 4b (`None` ≠ `[]`), never read. |
 
 `types/jsonschema_.py` is in `docs/02` § 3's module list and does not exist yet.
 
@@ -199,7 +199,7 @@ Unit tests: `tests/unit/test_jsonschema.py`.
 Phase 8b finishes *correctness*. Benchmarks, depth guards, `re2`,
 `parse_lenient`, the CLI and the public-API export list are Phase 9's — including
 reconciling `docs/01` § 4's deviation list against what was actually built, and
-widening `pyraml.__all__`, which `docs/13` § 4 now says is still narrow.
+widening `fastraml.__all__`, which `docs/13` § 4 now says is still narrow.
 
 ---
 

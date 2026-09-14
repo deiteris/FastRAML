@@ -5,7 +5,7 @@ the order keys appear in, the shorthand that writes `title: string` rather than
 `title: {type: string}` -- so an emitter builds a typed structure and never
 formats RAML itself.
 
-Depends on `yaml` and nothing else. Not on a web framework, and not on `pyraml`:
+Depends on `yaml` and nothing else. Not on a web framework, and not on `fastraml`:
 this is the authoring side, and a parser is on the other one. `fastapi-raml` and
 `aiohttp-raml` both build on it, and a third integration would need no more of
 it than they do.

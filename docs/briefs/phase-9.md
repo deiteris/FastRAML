@@ -17,7 +17,7 @@ What this brief said that was not true:
   parse.** It cannot: continuing past a failing pass turns one missing library
   into 41 diagnostics. Measured, reverted, recorded as After-v1 item 6.
 - **It did not mention deviation D1**, which was documented and unimplemented,
-  or the `pyraml` console script, which `pyproject.toml` had declared since
+  or the `fastraml` console script, which `pyproject.toml` had declared since
   Phase 0 pointing at a module that did not exist.
 
 Its § 5 — "a performance phase invites changes that break an invariant no
@@ -41,7 +41,7 @@ is fast enough, safe enough, and pleasant enough to depend on.
 Master is at the Phase 8b merge. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 2239 passed, 54 skipped
 ```
 
@@ -62,8 +62,8 @@ around it.
 | Benchmarks | Nothing exists. No `bench/` directory, no baselines, no corpus generator. `docs/14` § 5 and `docs/12` Part 4 specify them. |
 | `parse_lenient` | Does not exist. Every pass already accumulates rather than failing fast, except the four cases `CLAUDE.md` lists, so the work is an entry point and a result type rather than a rewrite. |
 | CLI | Does not exist (`docs/13` § 8). |
-| `pyraml.__all__` | Narrow. It exports the fragments, the loaders, the errors and `Raml`, but **not** `BaseShape`, the seventeen kinds, `EndPoint`/`Operation`/`Request`/`Response`/`Body`, `SecurityScheme` or `DomainLocation` — so a consumer cannot `isinstance` against the model without reaching into `pyraml.types` and `pyraml.parser`. `docs/13` § 4 says this is still to fix. |
-| `pyraml/__init__.py` docstring | Says "Phases 0 and 1 of the implementation plan are complete". Stale by eight phases. |
+| `fastraml.__all__` | Narrow. It exports the fragments, the loaders, the errors and `Raml`, but **not** `BaseShape`, the seventeen kinds, `EndPoint`/`Operation`/`Request`/`Response`/`Body`, `SecurityScheme` or `DomainLocation` — so a consumer cannot `isinstance` against the model without reaching into `fastraml.types` and `fastraml.parser`. `docs/13` § 4 says this is still to fix. |
+| `fastraml/__init__.py` docstring | Says "Phases 0 and 1 of the implementation plan are complete". Stale by eight phases. |
 
 ---
 

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml.errors import Accumulator, ErrorKind, RamlError, Trace
-from pyraml.positions import Position
+from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
+from fastraml.positions import Position
 
 LOC = 'file:///t/api.raml'
 POS = Position(17, 10, 17, 14)

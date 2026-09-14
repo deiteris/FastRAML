@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import ParseOptions, RamlError, parse_from_path
-from pyraml.domains import DomainLocation
+from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml.domains import DomainLocation
 
 API = '#%RAML 1.0\ntitle: T\n'
 LIB = '#%RAML 1.0 Library\n'
@@ -164,7 +164,7 @@ class TestTargets:
         # `target_scope` is a context manager for this reason. A decoder that
         # raises mid-construct would otherwise leave its site behind, and every
         # annotation decoded afterwards would record the wrong one.
-        from pyraml.registry import Raml
+        from fastraml.registry import Raml
 
         raml = Raml(workspace_root_uri='file:///w')
         before = raml.current_ctx().target
@@ -175,7 +175,7 @@ class TestTargets:
     def test_a_scope_narrows_without_disturbing_the_anchor(self):
         # It says where an annotation is applied, never which namespace a name
         # resolves in — the two are independent (docs/04 § 4).
-        from pyraml.registry import ParseCtx, Raml
+        from fastraml.registry import ParseCtx, Raml
 
         raml = Raml(workspace_root_uri='file:///w')
         anchor = object()

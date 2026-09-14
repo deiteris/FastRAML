@@ -2,7 +2,7 @@
 
 RAML 1.0 is defined over YAML 1.2. PyYAML implements YAML 1.1, so its implicit
 resolvers disagree with the spec — and with go-raml, whose `gopkg.in/yaml.v3`
-resolves the 1.2 core schema. `pyraml.yamlnode` replaces the resolver table to
+resolves the 1.2 core schema. `fastraml.yamlnode` replaces the resolver table to
 close that gap.
 
 This module checks that claim against an oracle rather than against a reading of
@@ -11,7 +11,7 @@ resolution. Every document in the TCK corpus, plus a table of hand-written
 scalar forms, is composed twice and the two node trees are compared on shape,
 tag and text.
 
-Ruamel is a **dev dependency only**. It never ships, and pyRAML never imports it
+Ruamel is a **dev dependency only**. It never ships, and fastRAML never imports it
 outside this file. The pure-Python loader is deliberate: ruamel's C extension
 carries a pre-0.2.2 libyaml scanner that rejects `[ http://example.com ]`, which
 is valid YAML 1.2 and appears in real RAML.
@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 import pytest
 
-from pyraml.yamlnode import Node, NodeKind, compose
+from fastraml.yamlnode import Node, NodeKind, compose
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -260,7 +260,7 @@ class TestCorpus:
 
     def test_every_tck_document_composes_identically(self, tck_documents: list[Path]):
         if not tck_documents:
-            pytest.skip('no TCK corpus; set PYRAML_TCK_DIR')
+            pytest.skip('no TCK corpus; set FASTRAML_TCK_DIR')
         mismatched: dict[str, list[Divergence]] = {}
         uncomparable = 0
         for path in tck_documents:

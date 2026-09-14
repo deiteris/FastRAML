@@ -4,7 +4,7 @@
 means by a regular expression. `re2` is linear-time and is what a server parsing
 untrusted RAML should select; it accepts strictly less, which is the trade.
 
-The rule pinned here is narrow and worth stating exactly: **every regex pyRAML
+The rule pinned here is narrow and worth stating exactly: **every regex fastRAML
 compiles goes through `regex_engine`**, RAML facets and the JSON Schema
 projection alike. What it does *not* reach is the regexes executed inside an
 external JSON Schema at validation time — the schema library calls `re.search`
@@ -18,9 +18,9 @@ import json
 
 import pytest
 
-from pyraml import ParseOptions, RamlError, parse_from_path
-from pyraml.parser.facets import regex_engine
-from pyraml.registry import Raml
+from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml.parser.facets import regex_engine
+from fastraml.registry import Raml
 from tests.unit.test_jsonschema import API, indent
 
 re2 = pytest.importorskip('re2', reason='the optional google-re2 package is not installed')

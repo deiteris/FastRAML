@@ -4,7 +4,7 @@ RDT — "RAML Data Type expression" — is the tiny language in a `type:` scalar
 `Person`, `string[]`, `(Manager | Admin)[]`, `lib.Thing?`.
 
 go-raml generates a lexer/parser for it with ANTLR
-(`go-raml-main/rdt/rdtLexer.g4`, `rdtParser.g4`). pyRAML does not
+(`go-raml-main/rdt/rdtLexer.g4`, `rdtParser.g4`). fastRAML does not
 (deviation **D8**): the ANTLR Python runtime is a heavy dependency with poor
 constant factors, and this grammar is nine productions with no ambiguity.
 

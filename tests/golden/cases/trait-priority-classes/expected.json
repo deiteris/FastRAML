@@ -1,10 +1,10 @@
 {
   "annotation_types": {},
   "annotations": [],
-  "base": "pyraml://id",
+  "base": "fastraml://id",
   "endpoints": {
     "/items": {
-      "id": "pyraml://id#/web-api/endpoint/%2Fitems",
+      "id": "fastraml://id#/web-api/endpoint/%2Fitems",
       "operations": {
         "get": {
           "headers": {
@@ -12,20 +12,20 @@
               "binding": "header",
               "required": true,
               "type": {
-                "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/header/X-Trait/schema",
+                "id": "fastraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/header/X-Trait/schema",
                 "name": "X-Trait",
                 "type": "string",
                 "type_expr": "string"
               }
             }
           },
-          "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get",
+          "id": "fastraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get",
           "query_parameters": {
             "fromType": {
               "binding": "query",
               "required": false,
               "type": {
-                "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/fromType/schema",
+                "id": "fastraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/fromType/schema",
                 "name": "fromType?",
                 "type": "string",
                 "type_expr": "string"
@@ -35,7 +35,7 @@
               "binding": "query",
               "required": false,
               "type": {
-                "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/onlyFirst/schema",
+                "id": "fastraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/onlyFirst/schema",
                 "name": "onlyFirst?",
                 "type": "string",
                 "type_expr": "string"
@@ -45,7 +45,7 @@
               "binding": "query",
               "required": false,
               "type": {
-                "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/onlySecond/schema",
+                "id": "fastraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/onlySecond/schema",
                 "name": "onlySecond?",
                 "type": "string",
                 "type_expr": "string"
@@ -56,7 +56,7 @@
               "required": false,
               "type": {
                 "description": "from the method itself",
-                "id": "pyraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/shared/schema",
+                "id": "fastraml://id#/web-api/endpoint/%2Fitems/supportedOperation/get/request/parameter/query/shared/schema",
                 "name": "shared?",
                 "type": "string",
                 "type_expr": "string"

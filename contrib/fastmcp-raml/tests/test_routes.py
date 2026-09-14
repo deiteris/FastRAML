@@ -20,7 +20,7 @@ from fastmcp import Client
 from fastmcp.server.providers.openapi.routing import MCPType, RouteMap
 from fastmcp.utilities.openapi import HTTPRoute, ParameterInfo
 from fastmcp.utilities.openapi.director import RequestDirector
-from pyraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions, parse_from_path
 
 from fastmcp_raml import NO_SPEC, RAMLProvider, base_url_of, documents_of, raml_mcp, to_http_routes
 

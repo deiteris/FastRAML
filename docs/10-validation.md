@@ -312,7 +312,7 @@ default parse. `check()` therefore has nothing left to do.
 
 ### 6.2 Restrictions
 
-Spec § Using XML and JSON Schemas states three things. pyRAML enforces the first
+Spec § Using XML and JSON Schemas states three things. fastRAML enforces the first
 two and deliberately not the third ([01](01-scope-and-coverage.md) § 4, D11).
 
 **Enforced.** A schema type carries no sibling facets, and does not inherit:
@@ -328,7 +328,7 @@ two and deliberately not the third ([01](01-scope-and-coverage.md) § 4, D11).
 
 **Not enforced.** The spec also bars a schema type from "effectively any type
 expression" and from "any declaration of query parameters, query string, URI
-parameters, and headers". pyRAML allows both. A `JsonShape` is a container for a
+parameters, and headers". fastRAML allows both. A `JsonShape` is a container for a
 compiled schema exposing `validate(value)`; at every one of those sites that is
 the only thing asked of it, and validation is delegated. A union is a list of
 types to validate against and the union itself is only an entry point; an array

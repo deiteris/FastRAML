@@ -12,10 +12,10 @@ from fractions import Fraction
 
 import pytest
 
-from pyraml import RamlError
-from pyraml.parser.entry import parse_from_path
-from pyraml.types.complex_ import UnionShape
-from pyraml.types.inherit import alias_to, inherit
+from fastraml import RamlError
+from fastraml.parser.entry import parse_from_path
+from fastraml.types.complex_ import UnionShape
+from fastraml.types.inherit import alias_to, inherit
 
 LIB = '#%RAML 1.0 Library\n'
 
@@ -59,7 +59,7 @@ class TestKindCheck:
         # Reaching this means P7 was skipped, which is a bug rather than a
         # diagnostic about the document.
         declared = shapes(workspace, '  Child:\n    type: string\n')
-        from pyraml.types.complex_ import UnknownShape
+        from fastraml.types.complex_ import UnknownShape
 
         parent = declared['Child'].clone_detached()
         parent.shape = UnknownShape(parent)

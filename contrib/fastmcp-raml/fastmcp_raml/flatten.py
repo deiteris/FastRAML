@@ -16,7 +16,7 @@ splits on that suffix only as a fallback, so the map is what actually decides.
 `fastmcp._combine_schemas_and_map_params` does this for OpenAPI, and three more
 things a RAML-derived schema never needs: rewriting `#/components/schemas/`
 refs, merging a top-level `allOf`, and flattening an OpenAPI
-`discriminator.mapping`. `pyraml.views.jsonschema` emits none of the three -- a
+`discriminator.mapping`. `fastraml.views.jsonschema` emits none of the three -- a
 discriminated union arrives as a plain object, a union as `anyOf`. What is left
 is the part both formats share, and `tests/test_flatten.py` runs the two over
 the same routes and requires they agree, so it stays shared.

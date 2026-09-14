@@ -1,8 +1,8 @@
 /**
- * Reading a `pyraml tree` document.
+ * Reading a `fastraml tree` document.
  *
  * The *types* are generated -- `tree.d.ts`, written by
- * `python -m pyraml.views.bindings` from the emitter itself. Nothing here
+ * `python -m fastraml.views.bindings` from the emitter itself. Nothing here
  * restates them. What is here is everything the JSON does not carry and a
  * reader needs: which addresses have a page, what to call one, and the path
  * nesting the model flattened.
@@ -191,7 +191,7 @@ const NOT_A_FACET: ReadonlySet<string> = new Set([
  *
  * The JSON uses the model's field names, which are `snake_case` (docs/16
  * § 11.9); RAML's are `lowerCamelCase` throughout, with no exceptions --
- * `pyraml/types/base.py` says so, and dropped an exception table for saying
+ * `fastraml/types/base.py` says so, and dropped an exception table for saying
  * nothing plain camel case did not. So this is a spelling change and not a
  * translation table that can go stale.
  */

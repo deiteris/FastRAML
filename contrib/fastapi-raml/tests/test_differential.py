@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 from pydantic import BaseModel, ValidationError
-from pyraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions, parse_from_path
 
 from examples import hard, library
 from fastapi_raml import render
@@ -75,7 +75,7 @@ def shape_for(app: Any, model: type[BaseModel]) -> Any:
     """Render `app`, parse the result back, and return the shape for `model`.
 
     Through a file rather than a string so the failure mode matches what a
-    reader would hit running `pyraml validate` on the same output.
+    reader would hit running `fastraml validate` on the same output.
     """
     report = render(app)
     assert not report.dropped, f'renderer dropped: {report.dropped}'

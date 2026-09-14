@@ -20,7 +20,7 @@ def _parsed_registries(limit: int | None = None):
     A fixture the parser rejects is skipped: these tests are about the shape of
     a successful parse, and the ratchet already tracks which fixtures fail.
     """
-    from pyraml import ParseOptions, RamlError, parse_from_path
+    from fastraml import ParseOptions, RamlError, parse_from_path
 
     root = tck_root()
     if root is None:
@@ -37,7 +37,7 @@ def _parsed_registries(limit: int | None = None):
 @pytest.fixture(scope='module')
 def corpus() -> list:
     if tck_root() is None:
-        pytest.skip('no TCK corpus; set PYRAML_TCK_DIR')
+        pytest.skip('no TCK corpus; set FASTRAML_TCK_DIR')
     return list(_parsed_registries())
 
 
@@ -50,7 +50,7 @@ class TestI4:
     """
 
     def test_the_worklist_holds_exactly_the_unknown_shapes(self, corpus: list):
-        from pyraml.types.complex_ import UnknownShape
+        from fastraml.types.complex_ import UnknownShape
 
         assert corpus, 'no fixture parsed; the check would be vacuous'
         offenders: list[str] = []
@@ -80,7 +80,7 @@ def _reachable(raml):
     Recursion would not survive a self-referential type — `Node.next: Node` is
     legal and produces a cycle in the object graph until P9 marks it.
     """
-    from pyraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
+    from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
 
     stack = [base for shapes in raml.fragment_typedefs.values() for base in shapes]
     stack += [base for declared in raml.fragment_types.values() for base in declared.values()]
@@ -121,7 +121,7 @@ class TestI5:
     """
 
     def test_nothing_is_still_unknown_after_a_parse(self, corpus: list):
-        from pyraml.types.complex_ import UnknownShape
+        from fastraml.types.complex_ import UnknownShape
 
         assert corpus, 'no fixture parsed; the check would be vacuous'
         offenders = [
@@ -159,11 +159,11 @@ def unwrapped_corpus() -> list:
     A separate fixture on purpose: I4 and I5 are about the model *before*
     flattening, so the plain `corpus` must stay un-unwrapped.
     """
-    from pyraml import ParseOptions, RamlError, parse_from_path
+    from fastraml import ParseOptions, RamlError, parse_from_path
 
     root = tck_root()
     if root is None:
-        pytest.skip('no TCK corpus; set PYRAML_TCK_DIR')
+        pytest.skip('no TCK corpus; set FASTRAML_TCK_DIR')
     parsed = []
     for path in collect_fixtures('valid'):
         try:
@@ -192,7 +192,7 @@ class TestI6:
     def test_the_reachable_graph_is_finite(self, unwrapped_corpus: list):
         # Recursion marking turned every cycle into a back-edge, so the walk
         # from § I5 terminates without its own visited set doing the work.
-        from pyraml.types.complex_ import RecursiveShape
+        from fastraml.types.complex_ import RecursiveShape
 
         heads_without_a_head = [
             f'{name}: shape {base.id}'

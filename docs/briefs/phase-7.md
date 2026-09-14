@@ -43,7 +43,7 @@ every brief since Phase 5.
 Master is at the Phase 6 merge. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 2110 passed, 54 skipped
 ```
 
@@ -63,11 +63,11 @@ union-facet gaps, and a scattering of type-system corners.
 
 | Module | What you will use from it |
 |---|---|
-| `pyraml.parser.directives` | `DirectiveRef`, already decoded from every `securedBy:` — with `is_null_scheme` set for a `[null]` entry and `scope` for the site it was written at |
-| `pyraml.parser.source_decode` | `_decode_responses`, and `make_property_map` / `make_shape` through it — `describedBy:` reuses all three, and must not reimplement any |
-| `pyraml.parser.fragments` | `_one_definition` and `_definitions`, written for traits and generic over the definition kind |
-| `pyraml.registry` | `Raml.global_secured_by`, declared and never written |
-| `pyraml.domains` | `SECURITY_SCHEME` and `SECURITY_SCHEME_SETTINGS` |
+| `fastraml.parser.directives` | `DirectiveRef`, already decoded from every `securedBy:` — with `is_null_scheme` set for a `[null]` entry and `scope` for the site it was written at |
+| `fastraml.parser.source_decode` | `_decode_responses`, and `make_property_map` / `make_shape` through it — `describedBy:` reuses all three, and must not reimplement any |
+| `fastraml.parser.fragments` | `_one_definition` and `_definitions`, written for traits and generic over the definition kind |
+| `fastraml.registry` | `Raml.global_secured_by`, declared and never written |
+| `fastraml.domains` | `SECURITY_SCHEME` and `SECURITY_SCHEME_SETTINGS` |
 
 ### 1.2 The seams you pick up
 
@@ -80,7 +80,7 @@ union-facet gaps, and a scattering of type-system corners.
 - **`Raml.global_secured_by`**, typed `list[SecurityScheme]` in the field list
   and never assigned.
 
-After this phase `grep -rn '_raw_' pyraml/` should return only Phase 8b's.
+After this phase `grep -rn '_raw_' fastraml/` should return only Phase 8b's.
 
 ---
 

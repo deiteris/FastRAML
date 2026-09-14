@@ -1,7 +1,7 @@
 """What the model renders, and that a parser accepts it.
 
 The second half is the point of testing a *document* model rather than a string
-builder: every construct here is built, rendered, and parsed back by pyraml with
+builder: every construct here is built, rendered, and parsed back by fastraml with
 `validate=True`. A facet spelled wrongly fails here rather than in whichever
 emitter first used it.
 """
@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 import yaml
-from pyraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions, parse_from_path
 
 from raml_document import (
     UNSET,
@@ -30,7 +30,7 @@ from raml_document import (
 
 
 def parsed(document: Document) -> Any:
-    """`document`, through pyraml. Raises if it is not valid RAML."""
+    """`document`, through fastraml. Raises if it is not valid RAML."""
     with tempfile.TemporaryDirectory() as directory:
         source = pathlib.Path(directory) / 'api.raml'
         source.write_text(document.to_raml(), encoding='utf-8')

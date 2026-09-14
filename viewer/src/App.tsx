@@ -2,7 +2,7 @@
  * The shell: load a document, index it, and route.
  *
  * Routing on the *address* is the idea worth keeping. Every declaration has a
- * structural address, the same one `pyraml graph` prints, so `$ref` becomes an
+ * structural address, the same one `fastraml graph` prints, so `$ref` becomes an
  * ordinary link and `/n/<address>` opens whatever a query returned.
  *
  * Nothing renders here. A page lives in `pages/`, a piece of one in
@@ -71,7 +71,7 @@ function Shell() {
           <>
             <p className="error">{error}</p>
             <p>
-              Generate one with <code>pyraml tree FILE &gt; api.json</code>, then open it below.
+              Generate one with <code>fastraml tree FILE &gt; api.json</code>, then open it below.
             </p>
           </>
         ) : (

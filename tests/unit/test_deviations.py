@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import ParseOptions, RamlError, parse_from_path
-from pyraml.registry import DEFAULT_MAX_INCLUDE_SIZE
-from pyraml.types.scalars import INTEGER_FORMATS, NUMBER_FORMATS
+from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml.registry import DEFAULT_MAX_INCLUDE_SIZE
+from fastraml.types.scalars import INTEGER_FORMATS, NUMBER_FORMATS
 
 LIB = '#%RAML 1.0 Library\n'
 XSD = '<?xml version="1.0"?>\n<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/>\n'

@@ -10,7 +10,7 @@ It exists so you do not have to re-derive what earlier sessions already settled.
 Thirty-four commits on `master`. Working tree clean. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 1624 passed, 42 skipped
 ```
 
@@ -20,15 +20,15 @@ whole `types/` package. What you will touch constantly:
 
 | Module | Public surface |
 |---|---|
-| `pyraml.errors` | `RamlError.new/.wrap`, `err.append`, `Accumulator`, `ErrorKind`, `Trace` |
-| `pyraml.yamlnode` | `Node`, `NodeKind`, `pairs`, `is_null`, `node_error(msg, location, node, info=)`, `TAG_*` |
-| `pyraml.registry` | `Raml`: `next_id()`, `current_ctx()`, `put_shape`, `unresolved_shapes`, `expr_cache`, `types_in(uri)`, `annotation_types_in(uri)`, `fragments` |
-| `pyraml.parser.references` | `resolve_reference`, `resolve_library_reference`, `UnresolvedReferenceError`, `cut_last` |
-| `pyraml.parser.fragments` | `ReferenceResolver` protocol: `reference_type`, `reference_annotation_type`; `LibraryLink`; `Library`, `APIFragment` |
-| `pyraml.types.base` | `BaseShape` (all 27 slots), `Property`, `PatternProperty`, `Shape`, `KindBase`, `TYPE_*`, `BUILTIN_TYPES` |
-| `pyraml.types.shape` | `make_shape`, `_attach_kind`, `KIND_TO_CLASS`. **This and `types/resolve.py` are your modules.** |
-| `pyraml.types.complex_` | `UnknownShape`, `UnionShape`, `ArrayShape`, `ObjectShape`, `JsonShape` |
-| `pyraml.types.expressions` | `parse_expression`, `tokenize`, `Primitive`/`Reference`/`Array`/`Optional_`/`Union` |
+| `fastraml.errors` | `RamlError.new/.wrap`, `err.append`, `Accumulator`, `ErrorKind`, `Trace` |
+| `fastraml.yamlnode` | `Node`, `NodeKind`, `pairs`, `is_null`, `node_error(msg, location, node, info=)`, `TAG_*` |
+| `fastraml.registry` | `Raml`: `next_id()`, `current_ctx()`, `put_shape`, `unresolved_shapes`, `expr_cache`, `types_in(uri)`, `annotation_types_in(uri)`, `fragments` |
+| `fastraml.parser.references` | `resolve_reference`, `resolve_library_reference`, `UnresolvedReferenceError`, `cut_last` |
+| `fastraml.parser.fragments` | `ReferenceResolver` protocol: `reference_type`, `reference_annotation_type`; `LibraryLink`; `Library`, `APIFragment` |
+| `fastraml.types.base` | `BaseShape` (all 27 slots), `Property`, `PatternProperty`, `Shape`, `KindBase`, `TYPE_*`, `BUILTIN_TYPES` |
+| `fastraml.types.shape` | `make_shape`, `_attach_kind`, `KIND_TO_CLASS`. **This and `types/resolve.py` are your modules.** |
+| `fastraml.types.complex_` | `UnknownShape`, `UnionShape`, `ArrayShape`, `ObjectShape`, `JsonShape` |
+| `fastraml.types.expressions` | `parse_expression`, `tokenize`, `Primitive`/`Reference`/`Array`/`Optional_`/`Union` |
 
 ### 1.1 The seam you pick up
 
@@ -43,7 +43,7 @@ and `type: !include` links (`base.link is not None`).
 `BaseShape.type_expr_refs` exists and is always empty; `TypeExprRef` is an `Any`
 alias in `base.py` under `TYPE_CHECKING`. You replace it with the real class.
 
-`grep -rn '_raw_' pyraml/` lists the *other* phases' seams. None of them is
+`grep -rn '_raw_' fastraml/` lists the *other* phases' seams. None of them is
 yours — Phase 3 touches no fragment attribute.
 
 ---
@@ -108,7 +108,7 @@ dict[str, RdtNode | RamlError]`. It used to be a module-level dict in
 interpreter. The parser takes a `dict`, not a `Raml`, so `expressions/` stays a
 leaf that knows nothing about the registry.
 
-### 3.4 `pyraml/types/resolve.py` — the driver and the visitor — **done**
+### 3.4 `fastraml/types/resolve.py` — the driver and the visitor — **done**
 
 Free functions, not `Raml` methods: `registry.py` imports nothing from `types/`
 at runtime (doc 02 § 3). Doc 07 § 1's pseudo-code was amended to match.
@@ -212,7 +212,7 @@ From `docs/15-implementation-plan.md` Phase 3, made concrete:
   parse, no reachable shape is an `UnknownShape`.
 - The TCK ratchet moves. Record the new baseline and **read the diff before
   committing it**:
-  `PYRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck --update-ratchet`
+  `FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck --update-ratchet`
   It went 558 → 584, all twenty-six fail→pass and no regression. Every one is an
   *invalid* fixture the parser now rejects, because resolution can only add
   diagnostics; that no valid fixture moved in either direction is the useful

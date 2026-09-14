@@ -9,11 +9,11 @@ import math
 
 import pytest
 
-from pyraml import RamlError, parse_from_path, path_to_file_uri
-from pyraml.datanode import make_data_node, value_node_of
-from pyraml.parser.facets import make_string_facet, resolve_annotated_scalar
-from pyraml.registry import Raml
-from pyraml.yamlnode import compose, pairs
+from fastraml import RamlError, parse_from_path, path_to_file_uri
+from fastraml.datanode import make_data_node, value_node_of
+from fastraml.parser.facets import make_string_facet, resolve_annotated_scalar
+from fastraml.registry import Raml
+from fastraml.yamlnode import compose, pairs
 
 #: Several tests here carry their value on an annotation key, which accepts
 #: anything. P8 binds every application to a declaration, so they are declared.

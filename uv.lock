@@ -550,7 +550,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pyraml"
+name = "fastraml"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [

@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml.errors import RamlError
-from pyraml.yamlnode import (
+from fastraml.errors import RamlError
+from fastraml.yamlnode import (
     TAG_INCLUDE,
     TAG_INT,
     TAG_MERGE,
@@ -402,7 +402,7 @@ class TestSpecialisedResolver:
         from yaml.nodes import MappingNode, ScalarNode, SequenceNode
         from yaml.resolver import BaseResolver
 
-        from pyraml.yamlnode import _RamlLoader
+        from fastraml.yamlnode import _RamlLoader
 
         loader = _RamlLoader.__new__(_RamlLoader)
         for value in self.SCALARS:
@@ -417,7 +417,7 @@ class TestSpecialisedResolver:
 
     def test_the_preconditions_it_relies_on_are_checked_at_import(self):
         """A wildcard or path resolver would be skipped silently otherwise."""
-        from pyraml.yamlnode import _assert_resolver_shape, _RamlLoader
+        from fastraml.yamlnode import _assert_resolver_shape, _RamlLoader
 
         _assert_resolver_shape()  # the real table
         assert None not in _RamlLoader.yaml_implicit_resolvers

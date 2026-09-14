@@ -1,6 +1,6 @@
 # fastmcp-raml — serve a RAML-described API as an MCP server
 
-Reads a RAML 1.0 document with pyRAML and builds MCP components from it, so an
+Reads a RAML 1.0 document with fastRAML and builds MCP components from it, so an
 existing HTTP API becomes MCP tools without your writing any.
 
 ```bash
@@ -35,7 +35,7 @@ provider form takes the same arguments and an already-parsed document:
 ```python
 from fastmcp import FastMCP
 from fastmcp_raml import RAMLProvider
-from pyraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions, parse_from_path
 
 raml = parse_from_path('api.raml', ParseOptions(unwrap=True, validate=True))
 provider = RAMLProvider(raml, client=httpx2.AsyncClient(base_url='https://api.example/v1'))
@@ -53,14 +53,14 @@ FastMCP's OpenAPI provider does two things with a spec: it builds
 `list[HTTPRoute]`, and it constructs a `RequestDirector` from an `openapi-core`
 `SchemaPath`. **Only the first affects anything.** `RequestDirector.__init__`
 stores the spec and never reads it again; `build()` works entirely off the
-route. So this package produces routes directly from the pyRAML model and
+route. So this package produces routes directly from the fastRAML model and
 converts no document — not even an empty one, because `RAMLProvider` sits on
 `Provider` rather than on `OpenAPIProvider` and so meets no constructor that
 demands a spec.
 
 RAML's endpoint tree already separates path, query and header parameters, which
 is exactly the split `ParameterInfo.location` wants. Schemas come from
-`pyraml.views.jsonschema`.
+`fastraml.views.jsonschema`.
 
 What is reused is what is format-neutral and public — `OpenAPITool`,
 `OpenAPIResource`, `OpenAPIResourceTemplate`, `RequestDirector`,

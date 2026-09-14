@@ -28,7 +28,7 @@ Phase 2, but the re-binding of step 6 needs Phase 4's unwrap.
 Master is at the Phase 4 merge. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 1805 passed, 42 skipped
 ```
 
@@ -41,12 +41,12 @@ whole `types/` package. Phase 3: `types/resolve.py` (P7). Phase 4:
 
 | Module | What you will use from it |
 |---|---|
-| `pyraml.parser.annotations` | `DomainExtension`, `unmarshal_domain_extension`, `is_annotation_key` |
-| `pyraml.parser.fragments` | `ReferenceResolver.reference_annotation_type`, implemented by every fragment kind |
-| `pyraml.parser.references` | `UnresolvedReferenceError`, carrying `reason` and `name` for the caller to position |
-| `pyraml.registry` | `Raml.domain_extensions` — the flat list this pass is a single loop over |
-| `pyraml.types.unwrap` | `_Walk.done`, the `id → unwrapped shape` map step 6 needs |
-| `pyraml.errors` | `RamlError.new/.wrap`, `Accumulator`, `ErrorKind` |
+| `fastraml.parser.annotations` | `DomainExtension`, `unmarshal_domain_extension`, `is_annotation_key` |
+| `fastraml.parser.fragments` | `ReferenceResolver.reference_annotation_type`, implemented by every fragment kind |
+| `fastraml.parser.references` | `UnresolvedReferenceError`, carrying `reason` and `name` for the caller to position |
+| `fastraml.registry` | `Raml.domain_extensions` — the flat list this pass is a single loop over |
+| `fastraml.types.unwrap` | `_Walk.done`, the `id → unwrapped shape` map step 6 needs |
+| `fastraml.errors` | `RamlError.new/.wrap`, `Accumulator`, `ErrorKind` |
 
 ### 1.2 The seams you pick up
 

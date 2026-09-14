@@ -124,7 +124,7 @@ Legend: **v1** = required for the first release · **v1.1** = planned follow-up 
 | `annotationTypes` declaration | v1 |
 | Applying annotations, value validation against the annotation type | v1 |
 | Annotating scalar-valued nodes (the `value:` map form) | v1 |
-| `allowedTargets` enforcement | **v1** (go-raml leaves this unimplemented; pyRAML implements it — see [09](09-security-and-annotations.md) § Targets) |
+| `allowedTargets` enforcement | **v1** (go-raml leaves this unimplemented; fastRAML implements it — see [09](09-security-and-annotations.md) § Targets) |
 
 ### 3.7 Facets on a union declaration
 
@@ -173,7 +173,7 @@ size to this parser.
 
 Two corrections from the Phase 9 reconciliation. This section used to say
 "matching go-raml"; **go-raml has no XSD handling at all** and the TCK ships no
-`.xsd` fixture, so there was nothing to match — the message is pyRAML's own.
+`.xsd` fixture, so there was nothing to match — the message is fastRAML's own.
 And until Phase 9 there was no such message: the file reached the header check
 and produced `unknown fragment kind: head: <?xml version="1.0"?>`, which is true,
 useless, and points the author at the wrong thing to fix.
@@ -184,7 +184,7 @@ non-YAML scalar include and may perfectly well be an example.
 ### D2 — Numeric formats are not cross-compatible
 
 The spec says `integer` inherits all facets of `number`, which literally implies
-`format: float` is legal on an `integer`. pyRAML follows go-raml and rejects that:
+`format: float` is legal on an `integer`. fastRAML follows go-raml and rejects that:
 
 - `number` accepts `float`, `double` only.
 - `integer` accepts `int8`, `int16`, `int32`, `int`, `int64`, `long` only.
@@ -207,7 +207,7 @@ vulnerable to catastrophic backtracking on a hostile `pattern:` facet.
 - Document that `re` is used, so users know backreferences work here but not in
   go-raml — a compatibility note in both directions.
 
-**What `re2` covers, exactly.** Every regex pyRAML compiles goes through one
+**What `re2` covers, exactly.** Every regex fastRAML compiles goes through one
 function, `parser/facets.py::regex_engine`: `pattern:` facets, `/re/` pattern
 properties, and the patterns the § 6.3 JSON Schema projection builds. A pattern
 the engine will not take is a positioned `invalid pattern` for a RAML facet, and
@@ -252,19 +252,19 @@ Remote (`http(s)://`) includes are **disabled unless** an HTTP client is supplie
 A single `!include` target is capped (default 64 KiB, configurable, `0` disables).
 Prevents a hostile or accidental multi-gigabyte include from exhausting memory.
 Note this is go-raml's `DefaultMaxIncludeSize`; the constant name in its README
-says 1 MiB but the code says `1 << 16`. pyRAML documents 64 KiB and means it.
+says 1 MiB but the code says `1 << 16`. fastRAML documents 64 KiB and means it.
 
 ### D7 — Ordered maps are plain dicts
 
 go-raml carries a third-party ordered map because Go maps are unordered, and the
 spec requires processors to preserve declaration order (spec § The Root of the
 Document). Python dicts preserve insertion order by language guarantee, so
-pyRAML uses `dict` and gets the requirement for free.
+fastRAML uses `dict` and gets the requirement for free.
 
 ### D8 — No ANTLR
 
 go-raml generates its type-expression parser with ANTLR. The ANTLR Python runtime
-is slow and a heavy dependency for a grammar of nine productions. pyRAML uses a
+is slow and a heavy dependency for a grammar of nine productions. fastRAML uses a
 hand-written tokenizer plus recursive-descent parser with a memoised
 expression→AST cache. See [06](06-type-expressions.md).
 
@@ -272,7 +272,7 @@ expression→AST cache. See [06](06-type-expressions.md).
 
 `title:<TAB>My API` parses under libyaml and is rejected by PyYAML's pure-Python
 scanner. The tab is legal YAML; the pure scanner is wrong. Both scanners are
-PyYAML's and neither is ours to fix, so pyRAML accepts the divergence rather than
+PyYAML's and neither is ours to fix, so fastRAML accepts the divergence rather than
 pretending it does not exist.
 
 Consequences, and the reason this is a recorded deviation rather than a silent
@@ -285,7 +285,7 @@ or install libyaml.
 ### D10 — Two YAML 1.2 characters and one construct are not accepted
 
 All three are PyYAML scanner limitations, shared with `gopkg.in/yaml.v3`, so
-pyRAML is no stricter than the reference implementation:
+fastRAML is no stricter than the reference implementation:
 
 - **U+2028 and U+2029.** YAML 1.1 reads them as line breaks; YAML 1.2 says they
   are ordinary characters. In an unquoted scalar PyYAML splits the line and then
@@ -304,7 +304,7 @@ Spec § Using XML and JSON Schemas states that a type defining an external schem
 any type expression", and separately that schemas are "forbidden in any
 declaration of query parameters, query string, URI parameters, and headers".
 
-pyRAML enforces the **inheritance** half and not the rest. A `JsonShape` is a
+fastRAML enforces the **inheritance** half and not the rest. A `JsonShape` is a
 container for a compiled schema that answers `validate(value)`. Everywhere the
 spec forbids — a property, an array item, a union member, a parameter — that is
 the only thing asked of it, and delegating is the whole implementation. A union
@@ -343,7 +343,7 @@ Spec § Using Discriminator leaves the choice open (`raml-10.md:762`):
 > concrete type from a set of possible types, but a simpler alternative is to
 > store a unique value associated with the type inside the object.
 
-pyRAML provides one. Where every member of a union is an object declaring the
+fastRAML provides one. Where every member of a union is an object declaring the
 same `discriminator` with distinct values, validation looks the tag up in a table
 instead of trying each member in turn ([05](05-type-model.md) § 9.1).
 
@@ -377,7 +377,7 @@ reaches a body.
 | `inflect` (or a vendored irregular-noun table) | `!singularize` / `!pluralize` | yes |
 | `ruamel.yaml` | the YAML 1.2 oracle in `tests/conformance` | dev only |
 | `google-re2` | opt-in linear-time regex engine (D3) | optional |
-| `httpx` / `requests` | remote includes | optional, `pyraml[http]` or user-supplied; synchronous only ([03](03-yaml-and-io.md) § 5.1) |
+| `httpx` / `requests` | remote includes | optional, `fastraml[http]` or user-supplied; synchronous only ([03](03-yaml-and-io.md) § 5.1) |
 
 Everything else is standard library. No runtime dependency on a compiled
 extension is *required*; libyaml is a large but optional speed-up.

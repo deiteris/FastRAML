@@ -1,6 +1,6 @@
 """A typed model of the RAML 1.0 document an emitter writes.
 
-This is the *authoring* side of RAML, and deliberately not `pyraml.views.tree`.
+This is the *authoring* side of RAML, and deliberately not `fastraml.views.tree`.
 That view is a projection of a parsed model for reading: it requires
 `ParseOptions(unwrap=True)` so it describes the **effective** document with
 inheritance already flattened, its cross-references are addresses rather than

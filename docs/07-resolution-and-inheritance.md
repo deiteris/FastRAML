@@ -380,7 +380,7 @@ performance bug, and picking a too-shallow one is a correctness bug.
 | `clone_detached()` | `clone({})` — a fresh memo, so parents, links and aliases are copied too and the result shares nothing | union member merging; validating without mutating the declared model |
 
 `copy.deepcopy` is never used: it would copy the `Raml` back-pointer, the compiled
-regexes and the YAML nodes. A test asserts that no module in `pyraml/` imports
+regexes and the YAML nodes. A test asserts that no module in `fastraml/` imports
 the `copy` module at all.
 
 **There is no `clone_shallow`.** Earlier drafts of this table listed one, for

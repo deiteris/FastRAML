@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml.errors import RamlError
-from pyraml.parser.uritemplates import UriTemplateExpression, extract_uri_template_params, resource_path_name
-from pyraml.positions import Position
+from fastraml.errors import RamlError
+from fastraml.parser.uritemplates import UriTemplateExpression, extract_uri_template_params, resource_path_name
+from fastraml.positions import Position
 
 LOC = 'file:///t/api.raml'
 POS = Position(1, 1)

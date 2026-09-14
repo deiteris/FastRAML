@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import Library, parse_from_path
-from pyraml.parser.references import (
+from fastraml import Library, parse_from_path
+from fastraml.parser.references import (
     UnresolvedReferenceError,
     cut_last,
     resolve_library_reference,
     resolve_reference,
 )
-from pyraml.registry import Raml
+from fastraml.registry import Raml
 
 
 def library_with(raml: Raml, location: str, **tables) -> Library:
@@ -22,8 +22,8 @@ def library_with(raml: Raml, location: str, **tables) -> Library:
 
 
 def linked_uses(raml: Raml, **libraries):
-    from pyraml.parser.fragments import LibraryLink
-    from pyraml.positions import UNKNOWN
+    from fastraml.parser.fragments import LibraryLink
+    from fastraml.positions import UNKNOWN
 
     uses = {}
     for prefix, library in libraries.items():
@@ -83,8 +83,8 @@ class TestResolveReference:
         assert (caught.value.reason, caught.value.name) == ('library not found', 'files.file-type')
 
     def test_an_unlinked_library_is_distinguished_from_a_missing_one(self):
-        from pyraml.parser.fragments import LibraryLink
-        from pyraml.positions import UNKNOWN
+        from fastraml.parser.fragments import LibraryLink
+        from fastraml.positions import UNKNOWN
 
         uses = {'lib': LibraryLink(1, 'lib.raml', 'file:///a.raml', UNKNOWN, UNKNOWN)}
         with pytest.raises(UnresolvedReferenceError) as caught:

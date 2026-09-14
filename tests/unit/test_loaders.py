@@ -13,7 +13,7 @@ import os
 
 import pytest
 
-from pyraml.loaders import (
+from fastraml.loaders import (
     FileLoader,
     HTTPLoader,
     LoaderError,
@@ -23,7 +23,7 @@ from pyraml.loaders import (
     WorkspaceEscapeError,
     build_loader,
 )
-from pyraml.uris import path_to_file_uri
+from fastraml.uris import path_to_file_uri
 
 WINDOWS = os.name == 'nt'
 

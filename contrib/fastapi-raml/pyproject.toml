@@ -6,11 +6,11 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 
-# A consumer of pyraml, so pyraml is a dependency here and this is not one
+# A consumer of fastraml, so fastraml is a dependency here and this is not one
 # there. The parser must not depend on a web framework.
 dependencies = [
     "raml-document",
-    "pyraml",
+    "fastraml",
     "fastapi>=0.110",
     "pydantic>=2.7",
 ]
@@ -31,7 +31,7 @@ dev = [
 # The parent repo, in place: this project is developed against the working tree
 # rather than a release, so a parser change shows up here without a publish.
 [tool.uv.sources]
-pyraml = { path = "../..", editable = true }
+fastraml = { path = "../..", editable = true }
 raml-document = { path = "../raml-document", editable = true }
 
 [build-system]

@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import RamlError
-from pyraml.parser.entry import parse_from_path
-from pyraml.types.complex_ import ArrayShape, UnionShape, UnknownShape
+from fastraml import RamlError
+from fastraml.parser.entry import parse_from_path
+from fastraml.types.complex_ import ArrayShape, UnionShape, UnknownShape
 
 LIB = '#%RAML 1.0 Library\n'
 

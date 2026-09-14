@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import RamlError
-from pyraml.parser.source_ir import METHODS, make_source_endpoint
-from pyraml.registry import Raml
-from pyraml.yamlnode import compose, pairs
+from fastraml import RamlError
+from fastraml.parser.source_ir import METHODS, make_source_endpoint
+from fastraml.registry import Raml
+from fastraml.yamlnode import compose, pairs
 
 LOCATION = 'file:///a.raml'
 

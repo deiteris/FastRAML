@@ -1,14 +1,14 @@
 # fastapi-raml — render a FastAPI application as RAML 1.0
 
-**Its own distribution**, living in the pyRAML repo but built and gated
+**Its own distribution**, living in the fastRAML repo but built and gated
 separately — the arrangement `viewer/` already uses, which has its own
 `package.json` and its own `npm run check`. It depends on `fastapi` and
-`pydantic`, which the parser must not, so it cannot be part of `pyraml`; and it
-depends on `pyraml`, so it cannot be independent of it either.
+`pydantic`, which the parser must not, so it cannot be part of `fastraml`; and it
+depends on `fastraml`, so it cannot be independent of it either.
 
 ```
 contrib/fastapi-raml/
-  pyproject.toml      name = "fastapi-raml", and pyraml from ../.. in place
+  pyproject.toml      name = "fastapi-raml", and fastraml from ../.. in place
   fastapi_raml/       the package, and the only thing in the wheel
   examples/           runnable apps, not shipped
   tests/              the gate, not shipped
@@ -16,7 +16,7 @@ contrib/fastapi-raml/
 
 ```bash
 cd contrib/fastapi-raml
-uv sync                       # resolves pyraml from the working tree
+uv sync                       # resolves fastraml from the working tree
 uv run pytest                 # 34 tests
 uv run ruff check . && uv run ruff format --check . && uv run mypy fastapi_raml/
 ```
@@ -39,7 +39,7 @@ one:
 |-----|------------|
 | `/books`, `/books/{isbn}` | the API itself, over a real dict |
 | `/raml` | the RAML source, as `application/raml+yaml` |
-| `/raml.json` | the same document as `pyraml tree` output |
+| `/raml.json` | the same document as `fastraml tree` output |
 | `/raml-docs` | an HTML stub naming both |
 
 ## Use it in your own app
@@ -73,7 +73,7 @@ print(report.dropped)
 |--------|-----------|-------|
 | `document.py` | nothing but `yaml` | the typed model of a RAML document, and its serialisation |
 | `render.py` | `fastapi`, `pydantic` | reading an app and building one |
-| `serve.py` | `starlette`, `pyraml` | the routes, the cache, and the parse back |
+| `serve.py` | `starlette`, `fastraml` | the routes, the cache, and the parse back |
 
 `document.py` states the RAML spelling of every facet once — the `camelCase`
 names, the order keys appear in, and the shorthand that writes `title: string`
@@ -141,7 +141,7 @@ app under a prefix keeps them correct.
 
 ### Wiring the viewer
 
-`viewer/` is a SPA over `pyraml tree` output, and its `load.ts` already accepts
+`viewer/` is a SPA over `fastraml tree` output, and its `load.ts` already accepts
 the document as a URL: `?src=`, described there as "a document served alongside
 it". So `/raml.json` is exactly what it wants, and nothing is parsed in the
 browser.

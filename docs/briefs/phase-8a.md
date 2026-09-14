@@ -36,7 +36,7 @@ not about an endpoint, and cannot fail until something checks types.
 Master is at the Phase 4b merge. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 1837 passed, 42 skipped
 ```
 
@@ -45,18 +45,18 @@ no-op.**
 
 | Module | What you will use from it |
 |---|---|
-| `pyraml.types.base` | `BaseShape` (28 slots), `Property`, `PatternProperty`, `KindBase`, `Shape`, `ScalarFacet[T]` |
-| `pyraml.types.scalars` | the eleven scalar kinds and their facet fields |
-| `pyraml.types.complex_` | `ObjectShape`, `ArrayShape`, `UnionShape`, `JsonShape`, `RecursiveShape`, `UnknownShape` |
-| `pyraml.types.unwrap` | `unwrap_shape(raml, base)` — what `_ensure_unwrapped` calls on a clone |
-| `pyraml.datanode` | `DataNode`, `ValueNode`, `MappingEntry`, `SequenceItem` — positions at every depth |
-| `pyraml.types.examples` | `Example` (`data`, `strict`), `Examples` (`values`, `link`) |
-| `pyraml.parser.annotations` | `DomainExtension.defined_by`, `.target` — both filled by Phase 4b |
-| `pyraml.errors` | `RamlError.new/.wrap`, `Accumulator`, `ErrorKind.VALIDATING` |
+| `fastraml.types.base` | `BaseShape` (28 slots), `Property`, `PatternProperty`, `KindBase`, `Shape`, `ScalarFacet[T]` |
+| `fastraml.types.scalars` | the eleven scalar kinds and their facet fields |
+| `fastraml.types.complex_` | `ObjectShape`, `ArrayShape`, `UnionShape`, `JsonShape`, `RecursiveShape`, `UnknownShape` |
+| `fastraml.types.unwrap` | `unwrap_shape(raml, base)` — what `_ensure_unwrapped` calls on a clone |
+| `fastraml.datanode` | `DataNode`, `ValueNode`, `MappingEntry`, `SequenceItem` — positions at every depth |
+| `fastraml.types.examples` | `Example` (`data`, `strict`), `Examples` (`values`, `link`) |
+| `fastraml.parser.annotations` | `DomainExtension.defined_by`, `.target` — both filled by Phase 4b |
+| `fastraml.errors` | `RamlError.new/.wrap`, `Accumulator`, `ErrorKind.VALIDATING` |
 
 ### 1.2 The seams you pick up
 
-`grep -rn 'NotImplementedError' pyraml/types/` finds exactly two, both on
+`grep -rn 'NotImplementedError' fastraml/types/` finds exactly two, both on
 `KindBase`:
 
 | Method | Doc |

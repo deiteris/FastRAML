@@ -14,7 +14,7 @@ import json
 import pytest
 
 from bench import corpus
-from pyraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions, parse_from_path
 
 CONFIGURATIONS = [
     pytest.param(ParseOptions(), id='parse'),

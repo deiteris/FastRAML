@@ -1,21 +1,21 @@
 {
   "annotation_types": {},
   "annotations": [],
-  "base": "pyraml://id",
+  "base": "fastraml://id",
   "endpoints": {
     "/things": {
-      "id": "pyraml://id#/web-api/endpoint/%2Fthings",
+      "id": "fastraml://id#/web-api/endpoint/%2Fthings",
       "operations": {
         "get": {
-          "id": "pyraml://id#/web-api/endpoint/%2Fthings/supportedOperation/get",
+          "id": "fastraml://id#/web-api/endpoint/%2Fthings/supportedOperation/get",
           "responses": {
             "200": {
               "bodies": {
                 "application/json": {
-                  "id": "pyraml://id#/web-api/endpoint/%2Fthings/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "id": "fastraml://id#/web-api/endpoint/%2Fthings/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
                   "inherits": [
                     {
-                      "$ref": "pyraml://id/caller.raml#/declarations/types/CallerType"
+                      "$ref": "fastraml://id/caller.raml#/declarations/types/CallerType"
                     }
                   ],
                   "name": "application/json",
@@ -23,7 +23,7 @@
                     "fromCaller": {
                       "required": true,
                       "type": {
-                        "id": "pyraml://id/caller.raml#/declarations/types/CallerType/property/fromCaller/schema",
+                        "id": "fastraml://id/caller.raml#/declarations/types/CallerType/property/fromCaller/schema",
                         "name": "fromCaller",
                         "type": "string",
                         "type_expr": "string"
@@ -38,10 +38,10 @@
             "201": {
               "bodies": {
                 "application/json": {
-                  "id": "pyraml://id#/web-api/endpoint/%2Fthings/supportedOperation/get/returns/201/payload/application%2Fjson/schema",
+                  "id": "fastraml://id#/web-api/endpoint/%2Fthings/supportedOperation/get/returns/201/payload/application%2Fjson/schema",
                   "inherits": [
                     {
-                      "$ref": "pyraml://id/own.raml#/declarations/types/OwnType"
+                      "$ref": "fastraml://id/own.raml#/declarations/types/OwnType"
                     }
                   ],
                   "name": "application/json",
@@ -49,7 +49,7 @@
                     "fromResourceTypesLibrary": {
                       "required": true,
                       "type": {
-                        "id": "pyraml://id/own.raml#/declarations/types/OwnType/property/fromResourceTypesLibrary/schema",
+                        "id": "fastraml://id/own.raml#/declarations/types/OwnType/property/fromResourceTypesLibrary/schema",
                         "name": "fromResourceTypesLibrary",
                         "type": "string",
                         "type_expr": "string"
@@ -77,13 +77,13 @@
   "types": {
     "caller.raml": {
       "CallerType": {
-        "id": "pyraml://id/caller.raml#/declarations/types/CallerType",
+        "id": "fastraml://id/caller.raml#/declarations/types/CallerType",
         "name": "CallerType",
         "properties": {
           "fromCaller": {
             "required": true,
             "type": {
-              "id": "pyraml://id/caller.raml#/declarations/types/CallerType/property/fromCaller/schema",
+              "id": "fastraml://id/caller.raml#/declarations/types/CallerType/property/fromCaller/schema",
               "name": "fromCaller",
               "type": "string",
               "type_expr": "string"
@@ -96,13 +96,13 @@
     },
     "own.raml": {
       "OwnType": {
-        "id": "pyraml://id/own.raml#/declarations/types/OwnType",
+        "id": "fastraml://id/own.raml#/declarations/types/OwnType",
         "name": "OwnType",
         "properties": {
           "fromResourceTypesLibrary": {
             "required": true,
             "type": {
-              "id": "pyraml://id/own.raml#/declarations/types/OwnType/property/fromResourceTypesLibrary/schema",
+              "id": "fastraml://id/own.raml#/declarations/types/OwnType/property/fromResourceTypesLibrary/schema",
               "name": "fromResourceTypesLibrary",
               "type": "string",
               "type_expr": "string"

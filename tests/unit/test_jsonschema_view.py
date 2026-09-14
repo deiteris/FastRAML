@@ -11,8 +11,8 @@ from __future__ import annotations
 import jsonschema
 import pytest
 
-from pyraml import ParseOptions, parse_from_path
-from pyraml.views.jsonschema import SCHEMA_VERSION, to_json_schema
+from fastraml import ParseOptions, parse_from_path
+from fastraml.views.jsonschema import SCHEMA_VERSION, to_json_schema
 
 API = '#%RAML 1.0\ntitle: T\n'
 
@@ -168,7 +168,7 @@ class TestUnwrapped:
 
 
 class TestTheSchemaAgreesWithTheShape:
-    """The gate: `jsonschema` and pyRAML must reach the same verdict."""
+    """The gate: `jsonschema` and fastRAML must reach the same verdict."""
 
     @pytest.mark.parametrize(
         ('body', 'values'),

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 
-# Deliberately one dependency. Not a web framework, and not pyraml: this is the
+# Deliberately one dependency. Not a web framework, and not fastraml: this is the
 # authoring side of RAML and a parser is on the other one, so an emitter can
 # take this without taking either.
 dependencies = ["pyyaml>=6"]
@@ -23,12 +23,12 @@ dev = [
     "annotated-types>=0.6",
     "mypy>=1.10",
     "ruff>=0.6",
-    # The round-trip test: what this emits, pyraml must parse.
-    "pyraml",
+    # The round-trip test: what this emits, fastraml must parse.
+    "fastraml",
 ]
 
 [tool.uv.sources]
-pyraml = { path = "../..", editable = true }
+fastraml = { path = "../..", editable = true }
 
 [build-system]
 requires = ["hatchling"]

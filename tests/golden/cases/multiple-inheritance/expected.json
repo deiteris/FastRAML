@@ -1,7 +1,7 @@
 {
   "annotation_types": {},
   "annotations": [],
-  "base": "pyraml://id",
+  "base": "fastraml://id",
   "endpoints": {},
   "entry_point": {
     "kind": "Library"
@@ -10,13 +10,13 @@
   "types": {
     "lib.raml": {
       "Aged": {
-        "id": "pyraml://id#/declarations/types/Aged",
+        "id": "fastraml://id#/declarations/types/Aged",
         "name": "Aged",
         "properties": {
           "age": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/Aged/property/age/schema",
+              "id": "fastraml://id#/declarations/types/Aged/property/age/schema",
               "name": "age",
               "type": "integer",
               "type_expr": "integer"
@@ -27,13 +27,13 @@
         "type_expr": "object"
       },
       "Named": {
-        "id": "pyraml://id#/declarations/types/Named",
+        "id": "fastraml://id#/declarations/types/Named",
         "name": "Named",
         "properties": {
           "name": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/Named/property/name/schema",
+              "id": "fastraml://id#/declarations/types/Named/property/name/schema",
               "min_length": 2,
               "name": "name",
               "type": "string",
@@ -45,13 +45,13 @@
         "type_expr": "object"
       },
       "Person": {
-        "id": "pyraml://id#/declarations/types/Person",
+        "id": "fastraml://id#/declarations/types/Person",
         "inherits": [
           {
-            "$ref": "pyraml://id#/declarations/types/Named"
+            "$ref": "fastraml://id#/declarations/types/Named"
           },
           {
-            "$ref": "pyraml://id#/declarations/types/Aged"
+            "$ref": "fastraml://id#/declarations/types/Aged"
           }
         ],
         "name": "Person",
@@ -59,7 +59,7 @@
           "age": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/Aged/property/age/schema",
+              "id": "fastraml://id#/declarations/types/Aged/property/age/schema",
               "name": "age",
               "type": "integer",
               "type_expr": "integer"
@@ -68,7 +68,7 @@
           "name": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/Person/property/name/schema",
+              "id": "fastraml://id#/declarations/types/Person/property/name/schema",
               "min_length": 4,
               "name": "name",
               "type": "string",
@@ -78,7 +78,7 @@
           "nickname": {
             "required": false,
             "type": {
-              "id": "pyraml://id#/declarations/types/Person/property/nickname/schema",
+              "id": "fastraml://id#/declarations/types/Person/property/nickname/schema",
               "name": "nickname?",
               "type": "string",
               "type_expr": "string"

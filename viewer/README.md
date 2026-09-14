@@ -1,16 +1,16 @@
 # viewer
 
-A reference consumer of `pyraml tree` output: a React SPA that renders a RAML
+A reference consumer of `fastraml tree` output: a React SPA that renders a RAML
 document as API documentation.
 
-It is **not** part of the parser. Nothing in `pyraml/` knows it exists, it has
+It is **not** part of the parser. Nothing in `fastraml/` knows it exists, it has
 no build step in the Python gate, and it decides no RAML rule. It is here to be
 read alongside the format it consumes — if a construct is awkward to display,
 that is evidence about the format, and it has already produced three fixes.
 
 ```bash
 npm install
-npm run sample        # pyraml tree ../fixtures/sample/api.raml > public/api.json
+npm run sample        # fastraml tree ../fixtures/sample/api.raml > public/api.json
 npm run dev
 npm run shots         # screenshot every page, both themes, into shots/
 npm run check         # tsc, layers, smoke, shots
@@ -95,11 +95,11 @@ Three ways, one parsed value:
 |---|---|
 | `public/api.json` | a built bundle someone is handed |
 | `?src=<url>` | a document served alongside it |
-| the file picker | whatever `pyraml tree` just printed |
+| the file picker | whatever `fastraml tree` just printed |
 
 ## The contract is generated
 
-`src/tree.d.ts` is written by `python -m pyraml.views.bindings`, from the
+`src/tree.d.ts` is written by `python -m fastraml.views.bindings`, from the
 emitter's own source — **do not edit it**. The key sets come from `tree.py`'s
 AST and the facets from the kind classes' annotations, so a facet added to a
 kind arrives here without anything being touched by hand.

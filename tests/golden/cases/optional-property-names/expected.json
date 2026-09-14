@@ -1,7 +1,7 @@
 {
   "annotation_types": {},
   "annotations": [],
-  "base": "pyraml://id",
+  "base": "fastraml://id",
   "endpoints": {},
   "entry_point": {
     "kind": "Library"
@@ -10,13 +10,13 @@
   "types": {
     "lib.raml": {
       "Prefs": {
-        "id": "pyraml://id#/declarations/types/Prefs",
+        "id": "fastraml://id#/declarations/types/Prefs",
         "name": "Prefs",
         "properties": {
           "literalQuestion": {
             "required": false,
             "type": {
-              "id": "pyraml://id#/declarations/types/Prefs/property/literalQuestion/schema",
+              "id": "fastraml://id#/declarations/types/Prefs/property/literalQuestion/schema",
               "name": "literalQuestion?",
               "type": "string",
               "type_expr": "string"
@@ -25,7 +25,7 @@
           "plain": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/Prefs/property/plain/schema",
+              "id": "fastraml://id#/declarations/types/Prefs/property/plain/schema",
               "name": "plain",
               "type": "string",
               "type_expr": "string"
@@ -34,7 +34,7 @@
           "preference": {
             "required": false,
             "type": {
-              "id": "pyraml://id#/declarations/types/Prefs/property/preference/schema",
+              "id": "fastraml://id#/declarations/types/Prefs/property/preference/schema",
               "name": "preference?",
               "type": "string",
               "type_expr": "string"

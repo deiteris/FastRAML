@@ -35,7 +35,7 @@ a separate inheritance-aware merge for `headers`, for `queryParameters`, for
 resolution, because a type name contributed by a trait was never resolved in the
 operation's context. Every facet added later is another merge case.
 
-go-raml took this approach first and replaced it. pyRAML starts from the
+go-raml took this approach first and replaced it. fastRAML starts from the
 replacement.
 
 ## 3. The two stages
@@ -376,7 +376,7 @@ Scope boundaries are honoured at **facet-value granularity**. Because a single
 `BaseShape` carries a single anchor, a body that mixes a declaration-scoped media
 type with a grafted one under the same facet resolves both under one scope.
 
-This limitation is documented in go-raml ("D3, minimal-first"), and pyRAML
+This limitation is documented in go-raml ("D3, minimal-first"), and fastRAML
 accepts it. Removing it would require splitting a shape's anchor per facet. That
 work is deferred until a fixture requires it; a test records the current
 behaviour so that any change is visible.
@@ -404,14 +404,14 @@ body once, and every application looks the results up.
 **The key is the node itself, and this is a deliberate divergence from the
 reference.** go-raml keys by a *positional index* computed as "a node has index
 `idx`, its i-th child has `idx + i`" (`template.go`, `collectVariablesIndex`).
-That has two faults, and pyRAML's earlier design fixed only the first:
+That has two faults, and fastRAML's earlier design fixed only the first:
 
 1. **The numbering is not injective.** A node and its own first child both
    receive `idx`; a trait body of 17 nodes collapses onto 7 indices. Substitution
    tolerates it, because replacing an absent substring is a no-op, but
    `collect_required_variables` returns *names* from a subtree, so a collision
    makes it demand a parameter the template never used. A unique preorder
-   sequence fixes this, and pyRAML used one until the second fault surfaced.
+   sequence fixes this, and fastRAML used one until the second fault surfaced.
 
 2. **Any numbering is invalidated by § 5.1 step 3.** Optional-method filtering
    removes whole subtrees from the body *between* the scan and its use, so every
@@ -467,7 +467,7 @@ agree with the reference implementation is to share its dictionary, not to patch
 a different one.
 
 go-raml uses `go-pluralize`, a port of Blake Embrey's JavaScript `pluralize`.
-pyRAML uses `pluralizer`, a port of the *same* library, so the two agree by
+fastRAML uses `pluralizer`, a port of the *same* library, so the two agree by
 construction. An earlier draft of this section instead paired `inflect` with a
 three-word override table, chosen because three TCK fixtures named those three
 words. Measured against go-raml's own `applyTemplateAction` over go-pluralize's

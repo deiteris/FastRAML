@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pyraml.positions import UNKNOWN, Position
+from fastraml.positions import UNKNOWN, Position
 
 
 def test_positions_render_as_line_column():

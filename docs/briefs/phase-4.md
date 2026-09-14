@@ -10,7 +10,7 @@ exists so you do not have to re-derive what earlier sessions already settled.
 Master is at the Phase 3 merge. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 1694 passed, 42 skipped
 ```
 
@@ -21,18 +21,18 @@ has a concrete kind, and `inherits` / `alias` / `link` edges are recorded.
 
 | Module | What you will use from it |
 |---|---|
-| `pyraml.types.base` | `BaseShape` (all 27 slots), `Property`, `PatternProperty`, `KindBase`, `Shape`, `ScalarFacet[T]`, `TYPE_*` |
-| `pyraml.types.scalars` | the eleven scalar kinds and their facet fields |
-| `pyraml.types.complex_` | `ObjectShape`, `ArrayShape`, `UnionShape`, `JsonShape`, `RecursiveShape` |
-| `pyraml.types.shape` | `attach_kind`, `KIND_TO_CLASS` |
-| `pyraml.types.resolve` | `resolve_shapes`, `resolve_shape` — P9's precondition |
-| `pyraml.registry` | `Raml`: `next_id()`, `shapes`, `fragment_typedefs`, `put_shape`, `put_typedef`, `unwrapped` |
-| `pyraml.errors` | `RamlError.new/.wrap`, `Accumulator`, `ErrorKind.UNWRAPPING` |
+| `fastraml.types.base` | `BaseShape` (all 27 slots), `Property`, `PatternProperty`, `KindBase`, `Shape`, `ScalarFacet[T]`, `TYPE_*` |
+| `fastraml.types.scalars` | the eleven scalar kinds and their facet fields |
+| `fastraml.types.complex_` | `ObjectShape`, `ArrayShape`, `UnionShape`, `JsonShape`, `RecursiveShape` |
+| `fastraml.types.shape` | `attach_kind`, `KIND_TO_CLASS` |
+| `fastraml.types.resolve` | `resolve_shapes`, `resolve_shape` — P9's precondition |
+| `fastraml.registry` | `Raml`: `next_id()`, `shapes`, `fragment_typedefs`, `put_shape`, `put_typedef`, `unwrapped` |
+| `fastraml.errors` | `RamlError.new/.wrap`, `Accumulator`, `ErrorKind.UNWRAPPING` |
 
 ### 1.1 The seams you pick up
 
 Five methods raise `NotImplementedError` naming this phase's doc section
-(`grep -rn 'NotImplementedError' pyraml/types/`):
+(`grep -rn 'NotImplementedError' fastraml/types/`):
 
 | On `KindBase` | Doc |
 |---|---|

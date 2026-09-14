@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 import httpx2
 from fastmcp.server.lifespan import lifespan
-from pyraml import ParseOptions
+from fastraml import ParseOptions
 from raml_mock import mock_server
 
 from fastmcp_raml import RAMLProvider, raml_mcp

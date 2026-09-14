@@ -1,6 +1,6 @@
 """Serve a RAML-described API as an MCP server.
 
-Reads RAML with pyRAML and builds MCP components from the `HTTPRoute` list it
+Reads RAML with fastRAML and builds MCP components from the `HTTPRoute` list it
 produces. No OpenAPI document is constructed anywhere: FastMCP's request
 director is already route-driven, so a description format other than OpenAPI
 needs to supply routes and nothing else.

@@ -10,7 +10,7 @@ It exists so you do not have to re-derive what earlier sessions already settled.
 Eleven commits on `master`. Working tree clean. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 239 passed, 972 skipped
 ```
 
@@ -18,22 +18,22 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv
 
 | Module | Public surface you will use constantly |
 |---|---|
-| `pyraml.positions` | `Position(line, column, end_line, end_column)` (1-based, end exclusive), `Position.shifted(n)`, `UNKNOWN` |
-| `pyraml.errors` | `RamlError.new(msg, location, position, kind=, info=)`, `RamlError.wrap(msg, cause, location, ...)`, `err.append(other)`, `Accumulator`, `ErrorKind`, `Trace` |
-| `pyraml.uris` | `path_to_file_uri`, `file_uri_to_path`, `resolve_uri_ref`, `uri_base`, `uri_scheme`, `is_file_uri` |
-| `pyraml.loaders` | `ResourceLoader` protocol (`load(uri, *, max_bytes=None) -> bytes`), `SafeFileLoader`, `HTTPLoader`, `SchemeLoader`, `build_loader(root, *, file_loader=, http_client=)`, `LoaderError`, `WorkspaceEscapeError`, `UnsupportedSchemeError` |
-| `pyraml.yamlnode` | `Node`, `NodeKind`, `compose(source, *, uri)`, `pairs(node)`, `is_null`, `duplicate_keys`, `read_head`, `last_leaf`, `end_line`, `end_column`, `backend_name`, `TAG_STR`/`TAG_INT`/`TAG_NULL`/`TAG_INCLUDE`/`TAG_MAP`/… |
+| `fastraml.positions` | `Position(line, column, end_line, end_column)` (1-based, end exclusive), `Position.shifted(n)`, `UNKNOWN` |
+| `fastraml.errors` | `RamlError.new(msg, location, position, kind=, info=)`, `RamlError.wrap(msg, cause, location, ...)`, `err.append(other)`, `Accumulator`, `ErrorKind`, `Trace` |
+| `fastraml.uris` | `path_to_file_uri`, `file_uri_to_path`, `resolve_uri_ref`, `uri_base`, `uri_scheme`, `is_file_uri` |
+| `fastraml.loaders` | `ResourceLoader` protocol (`load(uri, *, max_bytes=None) -> bytes`), `SafeFileLoader`, `HTTPLoader`, `SchemeLoader`, `build_loader(root, *, file_loader=, http_client=)`, `LoaderError`, `WorkspaceEscapeError`, `UnsupportedSchemeError` |
+| `fastraml.yamlnode` | `Node`, `NodeKind`, `compose(source, *, uri)`, `pairs(node)`, `is_null`, `duplicate_keys`, `read_head`, `last_leaf`, `end_line`, `end_column`, `backend_name`, `TAG_STR`/`TAG_INT`/`TAG_NULL`/`TAG_INCLUDE`/`TAG_MAP`/… |
 
 Three **leaf modules** were built ahead of the critical path and are already
 merged. Phase 1 does not touch them; later phases consume them:
 
 | Module | Surface | Consumed by |
 |---|---|---|
-| `pyraml.types.expressions.parser` | `parse_expression(text) -> RdtNode`, AST: `Primitive`, `Reference`, `Array`, `Optional_`, `Union` | Phase 3 |
-| `pyraml.parser.templates` | `VariableInfo`, `parse_template_variables`, `collect_variables_index`, `collect_required_variables`, `iter_indexed`, `apply_template_action` | Phase 6 |
-| `pyraml.parser.uritemplates` | `UriTemplateExpression`, `extract_uri_template_params`, `resource_path_name` | Phase 5 |
+| `fastraml.types.expressions.parser` | `parse_expression(text) -> RdtNode`, AST: `Primitive`, `Reference`, `Array`, `Optional_`, `Union` | Phase 3 |
+| `fastraml.parser.templates` | `VariableInfo`, `parse_template_variables`, `collect_variables_index`, `collect_required_variables`, `iter_indexed`, `apply_template_action` | Phase 6 |
+| `fastraml.parser.uritemplates` | `UriTemplateExpression`, `extract_uri_template_params`, `resource_path_name` | Phase 5 |
 
-Empty packages `pyraml/types/` and `pyraml/parser/` exist with docstrings.
+Empty packages `fastraml/types/` and `fastraml/parser/` exist with docstrings.
 
 ---
 
@@ -53,7 +53,7 @@ Skim only: doc 05 (so you know what shape of seam Phase 2 needs), doc 15 Phase 1
 
 ## 3. What to build
 
-### 3.1 `pyraml/registry.py` — the `Raml` object
+### 3.1 `fastraml/registry.py` — the `Raml` object
 
 Create the **full** field set from `docs/02-architecture.md` § 3, even though
 Phase 1 populates only some of it. The rest are declared and left empty; later
@@ -76,7 +76,7 @@ Phase 1 must make these work:
 `ParseCtx` is `@dataclass(frozen=True, slots=True)` with one field,
 `anchor: ReferenceResolver | None`.
 
-### 3.2 `pyraml/parser/fragments.py`
+### 3.2 `fastraml/parser/fragments.py`
 
 `FragmentKind` enum, the `HEADS` table from doc 03 § 3, `identify_fragment(head)`.
 
@@ -103,35 +103,35 @@ The `mediaType`/`protocols`/`securedBy` **pre-pass** on `APIFragment` runs befor
 the main key loop and writes `raml.global_*`. Later decoding depends on those
 globals, so ordering is not optional (doc 04 § 5.1).
 
-### 3.3 `pyraml/parser/includes.py`
+### 3.3 `fastraml/parser/includes.py`
 
 `IncludeInfo`, `IncludeRef`, `resolve_include_uri`, `note_include_ref`,
 `resolve_include` — doc 03 § 4.
 
-### 3.4 `pyraml/datanode.py`
+### 3.4 `fastraml/datanode.py`
 
 `ValueNode`, `MappingValue`, `MappingEntry`, `SequenceValue`, `SequenceItem`,
 `DataNode` — doc 03 § 6. `ValueNode.raw` is computed once at construction.
 
 Inline JSON: a scalar whose text begins with `{` or `[` is parsed as JSON.
 
-### 3.5 `pyraml/parser/facets.py`
+### 3.5 `fastraml/parser/facets.py`
 
 `ScalarFacet[T]`, `make_scalar_facet(raml, key_node, value_node, location)`, and
 `resolve_annotated_scalar` — doc 03 § 7. One builder serves every scalar facet in
 the language, which is why the annotated-scalar form works everywhere without
 per-facet code.
 
-### 3.6 `pyraml/parser/references.py`
+### 3.6 `fastraml/parser/references.py`
 
 `resolve_reference` and `resolve_library_reference` — doc 04 § 3.
 
-### 3.7 `pyraml/parser/annotations.py`
+### 3.7 `fastraml/parser/annotations.py`
 
 `DomainExtension` and `unmarshal_domain_extension` — doc 09 § B1, B3. **Build and
 register them; do not resolve them.** Resolution needs annotation types (Phase 2).
 
-### 3.8 `pyraml/parser/entry.py`
+### 3.8 `fastraml/parser/entry.py`
 
 `parse_from_path`, `parse_from_string`, `ParseOptions` (doc 13 § 2), and the
 pass driver. Phase 1 runs P0–P3 only; leave the later passes as clearly marked
@@ -219,7 +219,7 @@ From `docs/15-implementation-plan.md` Phase 1, made concrete:
   kinds named.
 - `Fragments/` and `Libraries/` TCK categories are attempted. Many will still
   fail on types — that is expected. Record the new baseline:
-  `PYRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck --update-ratchet`
+  `FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck --update-ratchet`
   and read the diff before committing it.
 - The full gate passes.
 

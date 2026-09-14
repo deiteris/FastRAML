@@ -15,8 +15,8 @@ import json
 
 import pytest
 
-from pyraml import ParseOptions, RamlError, parse_from_path
-from pyraml.yamlnode import DEFAULT_MAX_DEPTH
+from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml.yamlnode import DEFAULT_MAX_DEPTH
 
 LIB = '#%RAML 1.0 Library\n'
 
@@ -105,7 +105,7 @@ class TestNoRecursionErrorEscapes:
     """The invariant behind the ceiling, stated as CLAUDE.md and docs/12 state it.
 
     A 200-level JSON Schema used to exhaust CPython's stack inside the schema
-    library's own meta-schema validation, which is not a recursion pyRAML can
+    library's own meta-schema validation, which is not a recursion fastRAML can
     guard from the inside. It is bounded by measuring the decoded document
     before anything walks it.
     """

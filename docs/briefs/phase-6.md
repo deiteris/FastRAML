@@ -56,7 +56,7 @@ every brief since Phase 5.
 Master is at the Phase 5 merge. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 2033 passed, 52 skipped
 ```
 
@@ -79,12 +79,12 @@ trait; Phase 7 needs this phase, not the other way round.
 
 | Module | What you will use from it |
 |---|---|
-| `pyraml.parser.templates` | `parse_template_variables`, `collect_variables_index`, `collect_required_variables`, `apply_template_action`, `iter_indexed` — written ahead of the critical path, still unused |
-| `pyraml.parser.source_ir` | `SourceEndPoint`, `SourceOperation`, `make_source_endpoint`, and the `traits`/`rt_traits` split that exists only for this phase |
-| `pyraml.parser.directives` | `DirectiveRef` — name, params, position, for all three directive kinds |
-| `pyraml.parser.endpoint_build` | the P4 driver, with the slot for directive resolution already marked between its two loops |
-| `pyraml.registry` | `Raml._active_overlay`, declared and never written; `ParseCtx`, `push_ctx`/`pop_ctx` |
-| `pyraml.parser.uritemplates` | `resource_path_name` — `§ 5.3`'s parameter, still unused |
+| `fastraml.parser.templates` | `parse_template_variables`, `collect_variables_index`, `collect_required_variables`, `apply_template_action`, `iter_indexed` — written ahead of the critical path, still unused |
+| `fastraml.parser.source_ir` | `SourceEndPoint`, `SourceOperation`, `make_source_endpoint`, and the `traits`/`rt_traits` split that exists only for this phase |
+| `fastraml.parser.directives` | `DirectiveRef` — name, params, position, for all three directive kinds |
+| `fastraml.parser.endpoint_build` | the P4 driver, with the slot for directive resolution already marked between its two loops |
+| `fastraml.registry` | `Raml._active_overlay`, declared and never written; `ParseCtx`, `push_ctx`/`pop_ctx` |
+| `fastraml.parser.uritemplates` | `resource_path_name` — `§ 5.3`'s parameter, still unused |
 
 ### 1.2 The seams you pick up
 

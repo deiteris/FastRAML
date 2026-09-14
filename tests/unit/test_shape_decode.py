@@ -10,11 +10,11 @@ from fractions import Fraction
 
 import pytest
 
-from pyraml import RamlError
-from pyraml.registry import Raml
-from pyraml.types.complex_ import UnknownShape
-from pyraml.types.shape import make_shape
-from pyraml.yamlnode import compose, pairs
+from fastraml import RamlError
+from fastraml.registry import Raml
+from fastraml.types.complex_ import UnknownShape
+from fastraml.types.shape import make_shape
+from fastraml.yamlnode import compose, pairs
 
 LOCATION = 'file:///a.raml'
 

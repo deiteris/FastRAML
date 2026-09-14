@@ -1,7 +1,7 @@
 {
   "annotation_types": {},
   "annotations": [],
-  "base": "pyraml://id",
+  "base": "fastraml://id",
   "endpoints": {},
   "entry_point": {
     "kind": "Library"
@@ -11,21 +11,21 @@
     "lib.raml": {
       "AnnotatedScalar": {
         "display_name": "plain string",
-        "id": "pyraml://id#/declarations/types/AnnotatedScalar",
+        "id": "fastraml://id#/declarations/types/AnnotatedScalar",
         "name": "AnnotatedScalar",
         "type": "string",
         "type_expr": "string"
       },
       "FromExplicitType": {
-        "id": "pyraml://id#/declarations/types/FromExplicitType",
+        "id": "fastraml://id#/declarations/types/FromExplicitType",
         "name": "FromExplicitType",
         "type": "integer",
         "type_expr": "integer"
       },
       "HasItems": {
-        "id": "pyraml://id#/declarations/types/HasItems",
+        "id": "fastraml://id#/declarations/types/HasItems",
         "items": {
-          "id": "pyraml://id#/declarations/types/HasItems/items",
+          "id": "fastraml://id#/declarations/types/HasItems/items",
           "name": "items",
           "type": "string",
           "type_expr": "string"
@@ -34,13 +34,13 @@
         "type": "array"
       },
       "HasProperties": {
-        "id": "pyraml://id#/declarations/types/HasProperties",
+        "id": "fastraml://id#/declarations/types/HasProperties",
         "name": "HasProperties",
         "properties": {
           "a": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/HasProperties/property/a/schema",
+              "id": "fastraml://id#/declarations/types/HasProperties/property/a/schema",
               "name": "a",
               "type": "string",
               "type_expr": "string"
@@ -50,24 +50,24 @@
         "type": "object"
       },
       "NoFacets": {
-        "id": "pyraml://id#/declarations/types/NoFacets",
+        "id": "fastraml://id#/declarations/types/NoFacets",
         "name": "NoFacets",
         "type": "string"
       },
       "PropertyShorthand": {
-        "id": "pyraml://id#/declarations/types/PropertyShorthand",
+        "id": "fastraml://id#/declarations/types/PropertyShorthand",
         "name": "PropertyShorthand",
         "properties": {
           "inferred": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/PropertyShorthand/property/inferred/schema",
+              "id": "fastraml://id#/declarations/types/PropertyShorthand/property/inferred/schema",
               "name": "inferred",
               "properties": {
                 "nested": {
                   "required": true,
                   "type": {
-                    "id": "pyraml://id#/declarations/types/PropertyShorthand/property/inferred/schema/property/nested/schema",
+                    "id": "fastraml://id#/declarations/types/PropertyShorthand/property/inferred/schema/property/nested/schema",
                     "name": "nested",
                     "type": "string",
                     "type_expr": "string"

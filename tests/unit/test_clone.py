@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml.parser.entry import parse_from_path
-from pyraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
+from fastraml.parser.entry import parse_from_path
+from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
 
 LIB = '#%RAML 1.0 Library\n'
 
@@ -181,7 +181,7 @@ class TestNoDeepcopy:
         import pathlib
 
         offenders: list[str] = []
-        for path in pathlib.Path('pyraml').rglob('*.py'):
+        for path in pathlib.Path('fastraml').rglob('*.py'):
             for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
                 if isinstance(node, ast.Import) and any(alias.name == 'copy' for alias in node.names):
                     offenders.append(f'{path}:{node.lineno} import copy')

@@ -16,9 +16,9 @@ from __future__ import annotations
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from pyraml.parser.structural_merge import merge_structural
-from pyraml.registry import ParseCtx
-from pyraml.yamlnode import TAG_MAP, TAG_SEQ, TAG_STR, Node, NodeKind, pairs
+from fastraml.parser.structural_merge import merge_structural
+from fastraml.registry import ParseCtx
+from fastraml.yamlnode import TAG_MAP, TAG_SEQ, TAG_STR, Node, NodeKind, pairs
 
 SCOPE = ParseCtx()
 

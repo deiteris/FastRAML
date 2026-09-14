@@ -1,7 +1,7 @@
 {
   "annotation_types": {},
   "annotations": [],
-  "base": "pyraml://id",
+  "base": "fastraml://id",
   "endpoints": {},
   "entry_point": {
     "kind": "Library"
@@ -10,7 +10,7 @@
   "types": {
     "lib.raml": {
       "Chain": {
-        "id": "pyraml://id#/declarations/types/Chain",
+        "id": "fastraml://id#/declarations/types/Chain",
         "name": "Chain",
         "properties": {
           "next": {
@@ -19,20 +19,20 @@
               "any_of": [
                 {
                   "head": {
-                    "$ref": "pyraml://id#/declarations/types/Chain"
+                    "$ref": "fastraml://id#/declarations/types/Chain"
                   },
-                  "id": "pyraml://id#/declarations/types/Chain/property/next/schema/anyOf/0",
+                  "id": "fastraml://id#/declarations/types/Chain/property/next/schema/anyOf/0",
                   "name": "Chain",
                   "type": "recursive"
                 },
                 {
-                  "id": "pyraml://id#/declarations/types/Chain/property/next/schema/anyOf/1",
+                  "id": "fastraml://id#/declarations/types/Chain/property/next/schema/anyOf/1",
                   "name": null,
                   "type": "nil",
                   "type_expr": "Chain | nil"
                 }
               ],
-              "id": "pyraml://id#/declarations/types/Chain/property/next/schema",
+              "id": "fastraml://id#/declarations/types/Chain/property/next/schema",
               "name": "next?",
               "type": "union",
               "type_expr": "Chain | nil"
@@ -43,16 +43,16 @@
         "type_expr": "object"
       },
       "Node": {
-        "id": "pyraml://id#/declarations/types/Node",
+        "id": "fastraml://id#/declarations/types/Node",
         "name": "Node",
         "properties": {
           "child": {
             "required": false,
             "type": {
               "head": {
-                "$ref": "pyraml://id#/declarations/types/Node"
+                "$ref": "fastraml://id#/declarations/types/Node"
               },
-              "id": "pyraml://id#/declarations/types/Node/property/child/schema",
+              "id": "fastraml://id#/declarations/types/Node/property/child/schema",
               "name": "Node",
               "type": "recursive"
             }
@@ -60,7 +60,7 @@
           "value": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/Node/property/value/schema",
+              "id": "fastraml://id#/declarations/types/Node/property/value/schema",
               "name": "value",
               "type": "string",
               "type_expr": "string"
@@ -71,18 +71,18 @@
         "type_expr": "object"
       },
       "Tree": {
-        "id": "pyraml://id#/declarations/types/Tree",
+        "id": "fastraml://id#/declarations/types/Tree",
         "name": "Tree",
         "properties": {
           "children": {
             "required": true,
             "type": {
-              "id": "pyraml://id#/declarations/types/Tree/property/children/schema",
+              "id": "fastraml://id#/declarations/types/Tree/property/children/schema",
               "items": {
                 "head": {
-                  "$ref": "pyraml://id#/declarations/types/Tree"
+                  "$ref": "fastraml://id#/declarations/types/Tree"
                 },
-                "id": "pyraml://id#/declarations/types/Tree/property/children/schema/items",
+                "id": "fastraml://id#/declarations/types/Tree/property/children/schema/items",
                 "name": "Tree",
                 "type": "recursive"
               },

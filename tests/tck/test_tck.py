@@ -9,9 +9,9 @@ either direction of drift:
 
 Regenerate after intentional change:
 
-    PYRAML_TCK_DIR=... uv run pytest tests/tck --update-ratchet
+    FASTRAML_TCK_DIR=... uv run pytest tests/tck --update-ratchet
 
-The parser itself lands in later phases. Until `pyraml.parse_from_path` exists
+The parser itself lands in later phases. Until `fastraml.parse_from_path` exists
 these tests skip: recording outcomes against an absent parser would score every
 negative fixture as a pass for the wrong reason. What is exercised now is the
 harness — discovery, keys, the skip list and the ratchet file format.
@@ -35,9 +35,9 @@ pytestmark = pytest.mark.tck
 
 def parser_available() -> bool:
     """Whether a parser entry point exists yet."""
-    import pyraml
+    import fastraml
 
-    return hasattr(pyraml, 'parse_from_path')
+    return hasattr(fastraml, 'parse_from_path')
 
 
 requires_parser = pytest.mark.skipif(
@@ -68,7 +68,7 @@ def _run_fixture(path: Path, root: Path, *, expect_error: bool) -> str:
     'pass' means the parser did what the fixture's name promises: a valid
     fixture parsed, or an invalid one produced an error.
     """
-    from pyraml import ParseOptions, RamlError, parse_from_path
+    from fastraml import ParseOptions, RamlError, parse_from_path
 
     key = skip_reason(fixture_id(root, path), path)
     if key is not None:

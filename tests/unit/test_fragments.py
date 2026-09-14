@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from pyraml import (
+from fastraml import (
     APIFragment,
     DataTypeFragment,
     DocumentationItemFragment,
@@ -23,7 +23,7 @@ from pyraml import (
     parse_lenient,
     path_to_file_uri,
 )
-from pyraml.parser.fragments import HEADS, ReferenceResolver, SecuritySchemeResolver, identify_fragment
+from fastraml.parser.fragments import HEADS, ReferenceResolver, SecuritySchemeResolver, identify_fragment
 from tests.unit.conftest import CountingLoader
 
 #: `a` and `here` are declared because P8 requires every application to bind to
@@ -78,7 +78,7 @@ class TestIdentification:
             }
         )
         raml = parse_from_path(root / 'api.raml')
-        from pyraml.parser.fragments import parse_fragment
+        from fastraml.parser.fragments import parse_fragment
 
         fragment = parse_fragment(raml, path_to_file_uri(root / 'at.raml'), FragmentKind.DATA_TYPE)
         assert isinstance(fragment, DataTypeFragment)
@@ -480,6 +480,6 @@ class TestSourceRetention:
 
 
 def _pairs(node):
-    from pyraml.yamlnode import pairs
+    from fastraml.yamlnode import pairs
 
     return list(pairs(node))

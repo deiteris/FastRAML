@@ -43,7 +43,7 @@ Kept rather than rewritten, because the corrections are the useful part.
 Master is at the Phase 8a merge plus two follow-up fixes. The gate passes:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy pyraml/ && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
 # 1965 passed, 42 skipped
 ```
 
@@ -75,11 +75,11 @@ already knows how to reject them.
 
 | Module | What you will use from it |
 |---|---|
-| `pyraml.parser.uritemplates` | `extract_uri_template_params`, `resource_path_name`, `UriTemplateExpression` — written ahead of the critical path, unused so far |
-| `pyraml.types.shape` | `make_shape`, `make_body_shape`, `make_property`, `make_property_map` |
-| `pyraml.registry` | `Raml.endpoints`, `global_media_types`, `global_protocols`, `ParseCtx`, `target_scope` |
-| `pyraml.domains` | `DomainLocation` — eleven members are unreachable until this phase and Phases 6–7 create their sites |
-| `pyraml.parser.facets` | the scalar-facet builders |
+| `fastraml.parser.uritemplates` | `extract_uri_template_params`, `resource_path_name`, `UriTemplateExpression` — written ahead of the critical path, unused so far |
+| `fastraml.types.shape` | `make_shape`, `make_body_shape`, `make_property`, `make_property_map` |
+| `fastraml.registry` | `Raml.endpoints`, `global_media_types`, `global_protocols`, `ParseCtx`, `target_scope` |
+| `fastraml.domains` | `DomainLocation` — eleven members are unreachable until this phase and Phases 6–7 create their sites |
+| `fastraml.parser.facets` | the scalar-facet builders |
 
 ### 1.2 The seams you pick up
 

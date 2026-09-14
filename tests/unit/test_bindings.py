@@ -20,9 +20,9 @@ import sys
 
 import pytest
 
-from pyraml import ParseOptions, parse_from_path
-from pyraml.views.bindings import DESTINATION, typescript
-from pyraml.views.tree import build_tree
+from fastraml import ParseOptions, parse_from_path
+from fastraml.views.bindings import DESTINATION, typescript
+from fastraml.views.tree import build_tree
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
@@ -43,13 +43,13 @@ class TestTheCheckedInFileIsGenerated:
         # read by a build this suite does not run, so nothing else would notice
         # it drifting from its source.
         current = (ROOT / DESTINATION).read_text(encoding='utf-8')
-        assert current == typescript(), f'run `python -m pyraml.views.bindings` -- {DESTINATION} is stale'
+        assert current == typescript(), f'run `python -m fastraml.views.bindings` -- {DESTINATION} is stale'
 
     def test_the_module_writes_the_file_it_names(self):
         # `python -m` is the documented way to regenerate, so it is worth one
         # test: an entry point that raises on import is a broken instruction.
         result = subprocess.run(
-            [sys.executable, '-m', 'pyraml.views.bindings'],
+            [sys.executable, '-m', 'fastraml.views.bindings'],
             check=True,
             capture_output=True,
             text=True,
@@ -186,7 +186,7 @@ class TestTheViewerSampleIsNotStale:
     def test_regenerating_changes_nothing(self):
         import json
 
-        from pyraml.views.tree import build_tree
+        from fastraml.views.tree import build_tree
 
         raml = parse_from_path(
             ROOT / SAMPLE_SOURCE,

@@ -44,7 +44,44 @@ def test_the_tree_is_what_the_viewer_reads(client: TestClient) -> None:
 def test_the_stub_names_both_documents(client: TestClient) -> None:
     body = client.get('/raml-docs').text
     assert '/raml.json' in body
+    # `fastraml-viewer` is a dev dependency, so the default mount is live and
+    # the stub links to it. The "no viewer" branch is covered below, with the
+    # package hidden.
+    assert '/raml-viewer?src=/raml.json' in body
+
+
+def test_the_bundled_viewer_is_mounted_and_serves_its_index(client: TestClient) -> None:
+    """The whole point of the `viewer` extra: no checkout, no `npm run build`."""
+    response = client.get('/raml-viewer/')
+    assert response.status_code == 200
+    assert '<div id="root">' in response.text
+    # Relative asset paths, so the mount path is not baked into the bundle.
+    assert './assets/' in response.text
+
+
+def test_without_the_package_nothing_is_mounted_and_nothing_fails(monkeypatch: Any) -> None:
+    """A missing frontend must not stop an app serving its own RAML."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def refuse(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == 'fastraml_viewer':
+            raise ImportError(name)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', refuse)
+    fresh = build_app()
+    add_raml_routes(fresh)
+    body = TestClient(fresh).get('/raml-docs').text
     assert 'No viewer is configured' in body
+    assert 'fastapi-raml[viewer]' in body
+
+
+def test_mount_viewer_none_leaves_it_off(client: Any) -> None:  # noqa: ARG001 - module fixture ordering
+    fresh = build_app()
+    add_raml_routes(fresh, mount_viewer=None)
+    assert TestClient(fresh).get('/raml-viewer/').status_code == 404
 
 
 def test_the_routes_stay_out_of_the_apps_own_schema(client: TestClient) -> None:

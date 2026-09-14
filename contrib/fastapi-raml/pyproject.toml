@@ -9,8 +9,8 @@ license = "MIT"
 # A consumer of fastraml, so fastraml is a dependency here and this is not one
 # there. The parser must not depend on a web framework.
 dependencies = [
-    "raml-document",
-    "fastraml",
+    "raml-document>=0.1,<0.2",
+    "fastraml>=0.1,<0.2",
     "fastapi>=0.110",
     "pydantic>=2.7",
 ]
@@ -18,6 +18,10 @@ dependencies = [
 [project.optional-dependencies]
 # Only `examples/server.py` needs a server to run under.
 examples = ["uvicorn>=0.27"]
+# The built SPA, mounted at `/raml-viewer`. An extra and not a dependency:
+# the two routes that carry the RAML and its tree need no frontend, and most
+# callers want exactly those.
+viewer = ["fastraml-viewer>=0.1,<0.2"]
 
 [dependency-groups]
 dev = [
@@ -26,6 +30,8 @@ dev = [
     "ruff>=0.6",
     "httpx>=0.27",   # starlette's TestClient
     "uvicorn>=0.27",
+    # So the gate exercises the mount rather than only the absent branch.
+    "fastraml-viewer",
 ]
 
 # The parent repo, in place: this project is developed against the working tree
@@ -33,6 +39,7 @@ dev = [
 [tool.uv.sources]
 fastraml = { path = "../..", editable = true }
 raml-document = { path = "../raml-document", editable = true }
+fastraml-viewer = { path = "../fastraml-viewer", editable = true }
 
 [build-system]
 requires = ["hatchling"]

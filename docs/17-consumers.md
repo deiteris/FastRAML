@@ -84,7 +84,7 @@ copy fails `tests/unit/test_bindings.py`, as does a stale `public/api.json`.
 
 ## 5. `contrib/`
 
-Four separate `uv` projects, each with its own lock, its own gate, and
+Five separate `uv` projects, each with its own lock, its own gate, and
 `fastraml` as an editable path dependency. They are not packaged from this
 project's `pyproject.toml` and nothing in the root gate sees them.
 
@@ -94,6 +94,7 @@ project's `pyproject.toml` and nothing in the root gate sees them.
 | `fastapi-raml` | code → RAML | Renders a FastAPI app's routes as RAML, and serves it. |
 | `fastmcp-raml` | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
 | `raml-mock` | RAML → HTTP | Runs an in-process aiohttp mock, validates common HTTP representations, and returns examples or generated values. |
+| `fastraml-viewer` | — | The built `viewer/` bundle as static assets, plus one function that says where they are. Depends on nothing, including `fastraml`. |
 
 `fastapi-raml` and `fastmcp-raml` both need an authoring model, and one
 duplicated across two integrations is one that disagrees with itself — so
@@ -113,7 +114,7 @@ evidence it belongs in a pass or a view, not in `raml-document`.
 Each consumer carries its own, and CI runs all of them.
 
 Run this in each of `contrib/raml-document`, `contrib/fastapi-raml`,
-`contrib/fastmcp-raml` and `contrib/raml-mock`:
+`contrib/fastmcp-raml`, `contrib/fastraml-viewer` and `contrib/raml-mock`:
 
 ```bash
 uv run ruff check . && uv run ruff format --check . && uv run mypy <package>/ && uv run pytest -q
@@ -127,6 +128,8 @@ and capturing them on a runner nobody watches costs a browser download and
 proves nothing `smoke` has not already proved. Everything that can fail
 meaningfully is in both.
 
-The `contrib` job is a matrix over the four, and it is the job that notices
+The `contrib` job is a matrix over the five, and it is the job that notices
 when a change to the model breaks a *consumer* of it rather than a test of it —
-which is the whole reason these are in the repository.
+which is the whole reason these are in the repository. `fastraml-viewer` gets a
+Node step first: its build hook vendors `viewer/dist`, so without a bundle
+`uv sync` fails at the install rather than later.

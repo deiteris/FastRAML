@@ -1,0 +1,84 @@
+[project]
+name = "fastraml-viewer"
+version = "0.1.0"
+description = "The fastRAML tree viewer, as static assets any server can mount"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Yury" }]
+keywords = ["raml", "api", "viewer", "documentation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Documentation",
+    "Typing :: Typed",
+]
+
+# None. This is a directory of static files and one function that locates it;
+# it does not parse RAML and it does not know what will serve it. Depending on
+# fastraml here would make the web assets a reason to install a parser.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/deiteris/FastRAML"
+Repository = "https://github.com/deiteris/FastRAML"
+Issues = "https://github.com/deiteris/FastRAML/issues"
+
+[dependency-groups]
+dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Vendors `viewer/dist` into the package. See hatch_build.py for why this cannot
+# just be a committed directory.
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fastraml_viewer"]
+artifacts = ["fastraml_viewer/py.typed", "fastraml_viewer/static/**"]
+
+# The bundle is generated and gitignored, so hatchling would leave it out of the
+# sdist and a build from that sdist would have nothing to copy.
+[tool.hatch.build.targets.sdist]
+include = ["/fastraml_viewer", "/hatch_build.py", "/README.md", "/pyproject.toml"]
+artifacts = ["fastraml_viewer/static/**"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM", "C90", "D100", "D101", "D102", "D103", "D104", "D105", "D107",
+    "D203", "D213", "D400", "D401", "D415", "E501", "EM101", "EM102",
+    "TRY003", "CPY001", "ANN401",
+]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+multiline-quotes = "double"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["S101", "ANN", "D", "INP001", "PLR2004", "PLC0415"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

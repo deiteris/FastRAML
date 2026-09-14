@@ -163,8 +163,8 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
-    { name = "pydantic" },
     { name = "fastraml" },
+    { name = "pydantic" },
     { name = "raml-document" },
 ]
 
@@ -172,9 +172,13 @@ dependencies = [
 examples = [
     { name = "uvicorn" },
 ]
+viewer = [
+    { name = "fastraml-viewer" },
+]
 
 [package.dev-dependencies]
 dev = [
+    { name = "fastraml-viewer" },
     { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
@@ -185,20 +189,68 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
-    { name = "pydantic", specifier = ">=2.7" },
     { name = "fastraml", editable = "../../" },
+    { name = "fastraml-viewer", marker = "extra == 'viewer'", editable = "../fastraml-viewer" },
+    { name = "pydantic", specifier = ">=2.7" },
     { name = "raml-document", editable = "../raml-document" },
     { name = "uvicorn", marker = "extra == 'examples'", specifier = ">=0.27" },
 ]
-provides-extras = ["examples"]
+provides-extras = ["examples", "viewer"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "fastraml-viewer", editable = "../fastraml-viewer" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "mypy", specifier = ">=1.10" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
     { name = "uvicorn", specifier = ">=0.27" },
+]
+
+[[package]]
+name = "fastraml"
+source = { editable = "../../" }
+dependencies = [
+    { name = "jsonschema" },
+    { name = "pluralizer" },
+    { name = "pyyaml" },
+    { name = "referencing" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "google-re2", marker = "extra == 're2'" },
+    { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27" },
+    { name = "jsonschema", specifier = ">=4.21" },
+    { name = "pluralizer", specifier = ">=2.0" },
+    { name = "pyoxigraph", marker = "extra == 'graph'", specifier = ">=0.4" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "referencing", specifier = ">=0.35" },
+]
+provides-extras = ["graph", "http", "re2"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruamel-yaml", specifier = ">=0.18,<0.20" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+
+[[package]]
+name = "fastraml-viewer"
+version = "0.1.0"
+source = { editable = "../fastraml-viewer" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.10" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.6" },
 ]
 
 [[package]]
@@ -583,39 +635,6 @@ wheels = [
 ]
 
 [[package]]
-name = "fastraml"
-version = "0.0.1"
-source = { editable = "../../" }
-dependencies = [
-    { name = "jsonschema" },
-    { name = "pluralizer" },
-    { name = "pyyaml" },
-    { name = "referencing" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "google-re2", marker = "extra == 're2'" },
-    { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27" },
-    { name = "jsonschema", specifier = ">=4.21" },
-    { name = "pluralizer", specifier = ">=2.0" },
-    { name = "pyoxigraph", marker = "extra == 'graph'", specifier = ">=0.4" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "referencing", specifier = ">=0.35" },
-]
-provides-extras = ["http", "re2", "graph"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "hypothesis" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "ruamel-yaml", specifier = ">=0.18,<0.20" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-]
-
-[[package]]
 name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -696,9 +715,9 @@ provides-extras = ["pydantic"]
 [package.metadata.requires-dev]
 dev = [
     { name = "annotated-types", specifier = ">=0.6" },
+    { name = "fastraml", editable = "../../" },
     { name = "mypy", specifier = ">=1.10" },
     { name = "pydantic", specifier = ">=2.7" },
-    { name = "fastraml", editable = "../../" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
 ]

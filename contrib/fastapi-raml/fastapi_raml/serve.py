@@ -61,6 +61,28 @@ _STUB = """<!DOCTYPE html>
 """
 
 
+def _mount_viewer(app: Any, path: str | None) -> str | None:
+    """Mount the `fastraml-viewer` bundle at `path`, if the package is there.
+
+    Optional on purpose, and silent when absent. The viewer is a convenience
+    over the two routes that carry the actual content, so a missing frontend
+    package must not stop an app serving its own RAML -- and `fastapi-raml`
+    declaring a hard dependency on a pile of JavaScript would be the wrong
+    trade for everyone who only wants `/raml`.
+    """
+    if path is None:
+        return None
+    try:
+        from fastraml_viewer import static_dir  # noqa: PLC0415 - optional extra
+        from starlette.staticfiles import StaticFiles  # noqa: PLC0415 - only this path needs it
+    except ImportError:
+        return None
+    # `html=True` so `/raml-viewer/` serves index.html; the bundle is built with
+    # vite `base: './'`, so its assets resolve under whatever path it lands on.
+    app.mount(path, StaticFiles(directory=static_dir(), html=True), name='raml-viewer')
+    return path
+
+
 @dataclass(slots=True)
 class _Cache:
     """One render, and the router version it was built from."""
@@ -110,6 +132,7 @@ def add_raml_routes(  # noqa: PLR0913 - one parameter per route it adds, plus tw
     tree_url: str = '/raml.json',
     docs_url: str | None = '/raml-docs',
     viewer_url: str | None = None,
+    mount_viewer: str | None = '/raml-viewer',
     include_in_schema: bool = False,
 ) -> Any:
     """Add the RAML routes to `app`, cached the way `app.openapi()` is cached.
@@ -118,14 +141,22 @@ def add_raml_routes(  # noqa: PLR0913 - one parameter per route it adds, plus tw
     the cache keys on `_get_routes_version()`, so a later route invalidates it,
     but the *routes added here* have to exist before a request can reach them.
 
-    `viewer_url` is where the built `viewer/dist` is served from. Given one, the
-    stub links to `{viewer_url}?src={tree_url}`; given none it says no viewer is
-    configured. A URL rather than a `StaticFiles` mount, so serving the document
-    does not depend on a built frontend.
+    There are two ways to get a viewer, and they compose:
+
+    * `mount_viewer` serves the bundle from the **`fastraml-viewer`** package at
+      that path, when it is installed -- `pip install fastapi-raml[viewer]`.
+      Absent the package, nothing is mounted and nothing fails; this is the
+      default because the alternative used to be telling a pip user to "build
+      `viewer/`", which is a directory they do not have.
+    * `viewer_url` names a viewer you host yourself, and wins over the mount.
+
+    Either way the stub links to `{viewer}?src={tree_url}`, because the bundle
+    reads the tree projection over HTTP rather than being built around it.
 
     Returns the app, so the call chains.
     """
     cache: _Cache = _Cache()
+    viewer_url = viewer_url or _mount_viewer(app, mount_viewer)
 
     def served() -> Served:
         version = app.router._get_routes_version()  # noqa: SLF001 - the app's own cache key
@@ -153,10 +184,11 @@ def add_raml_routes(  # noqa: PLR0913 - one parameter per route it adds, plus tw
             root = request.scope.get('root_path', '').rstrip('/')
             tree = root + tree_url
             viewer = (
-                f'<p><a href="{viewer_url}?src={tree}">Open in the viewer</a></p>'
+                f'<p><a href="{root + viewer_url if viewer_url.startswith("/") else viewer_url}?src={tree}">'
+                'Open in the viewer</a></p>'
                 if viewer_url
-                else '<p>No viewer is configured. Build <code>viewer/</code>, serve it, and pass '
-                '<code>viewer_url=</code> to <code>add_raml_routes</code>.</p>'
+                else '<p>No viewer is configured. Install <code>fastapi-raml[viewer]</code>, or serve one '
+                'yourself and pass <code>viewer_url=</code> to <code>add_raml_routes</code>.</p>'
             )
             return HTMLResponse(
                 _STUB.format(title=f'{app.title} - RAML', raml_url=root + raml_url, tree_url=tree, viewer=viewer)

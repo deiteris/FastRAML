@@ -2,12 +2,26 @@ from __future__ import annotations
 
 import json
 import math
+import re
 
 import pytest
 from typer.testing import CliRunner
 
 from raml_mock.cli import app
 from raml_mock.config_io import load_options
+
+_STYLING = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def plain(output: str) -> str:
+    """CLI output with styling, box drawing and line wrapping removed.
+
+    Typer renders errors through rich, which under CI's `FORCE_COLOR` emits
+    escape sequences and wraps a message to the console width -- so a literal
+    substring match tests the terminal rather than the program. Only the words
+    are asserted on.
+    """
+    return ' '.join(_STYLING.sub('', output).replace('│', ' ').replace('╭', ' ').split())
 
 
 def test_json_configuration_loads_every_declarative_policy(tmp_path) -> None:
@@ -89,7 +103,8 @@ def test_cli_reports_configuration_errors_without_a_traceback(source, tmp_path) 
     path = tmp_path / 'mock.json'
     path.write_text(json.dumps({'authentiction': {}}), encoding='utf-8')
     result = CliRunner().invoke(app, [str(source), '--config', str(path)])
+    output = plain(result.output)
     assert result.exit_code == 2
-    assert 'Invalid value for --config' in result.output
-    assert 'authentiction' in result.output
-    assert 'Traceback' not in result.output
+    assert 'Invalid value for --config' in output
+    assert 'authentiction' in output
+    assert 'Traceback' not in output

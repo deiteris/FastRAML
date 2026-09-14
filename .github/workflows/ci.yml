@@ -11,7 +11,7 @@ env:
 # Action versions: `actions/*` publish a moving major tag, so `@v7` follows
 # patches. `astral-sh/setup-uv` stopped doing that after v7 -- from v8 on it
 # tags only exact releases -- so it is pinned to one and has to be bumped by
-# hand. `@v10` does not resolve and never will.
+# hand.
 jobs:
   lint:
     runs-on: ubuntu-latest

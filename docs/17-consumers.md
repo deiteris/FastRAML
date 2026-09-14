@@ -133,3 +133,44 @@ when a change to the model breaks a *consumer* of it rather than a test of it �
 which is the whole reason these are in the repository. `fastraml-viewer` gets a
 Node step first: its build hook vendors `viewer/dist`, so without a bundle
 `uv sync` fails at the install rather than later.
+
+## 7. Publishing
+
+Six distributions, versioned independently, each published by a tag whose form
+names it — `v0.1.0` for the parser, `fastapi-raml-v0.1.0` for one consumer.
+`.github/workflows/publish.yml` re-runs that project's gate, checks the tag
+against the version it is about to publish, and uploads over Trusted Publishing,
+so no token is stored. A tag can point anywhere, which is why a green CI run on
+the commit is not accepted in place of the gate.
+
+### 7.1 The dependency on `fastraml` is bounded
+
+`[tool.uv.sources]` makes it an editable path for development and **does not
+reach the wheel** — a built `fastapi-raml` declares `Requires-Dist: fastraml`
+and resolves it from PyPI. So the bound in `[project]` is the only thing
+standing between a published consumer and a parser that has moved under it, and
+before 1.0 a *minor* bump may break: the pin is `>=0.1,<0.2`, not `<1`.
+
+### 7.2 Why `fastraml-viewer` is its own distribution
+
+`fastapi-raml` used to tell a user with no viewer to "build `viewer/`", which is
+a directory a pip install does not have. The bundle is 517 KiB, so shipping it
+is cheap; the question was only where.
+
+Not inside `fastapi-raml`, because then anything else wanting the viewer —
+`raml-mock`, a plain file server — has to take FastAPI to get it. So it is a
+distribution that depends on nothing at all, and `fastapi-raml[viewer]` mounts
+it when present and says so when absent.
+
+`viewer/dist` is generated and gitignored, so `hatch_build.py` copies it in at
+build time and refuses to build without it. Building from an *sdist* finds no
+`viewer/` and skips the copy, because the assets were vendored when the sdist
+itself was built.
+
+### 7.3 The sdist is an allow-list
+
+`[tool.hatch.build.targets.sdist]` names what ships. The default — everything
+the root `.gitignore` does not exclude — is wrong here, and quietly: hatchling
+does not read *nested* `.gitignore` files, so `viewer/node_modules` was
+invisible to git and visible to the sdist. That is 4913 files and 41 MB, against
+717 KiB with the list.

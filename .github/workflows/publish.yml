@@ -1,0 +1,135 @@
+# Release to PyPI, on a tag.
+#
+# Trusted Publishing (OIDC), so no API token is stored anywhere: PyPI is
+# configured to trust this repository, workflow file and environment, and the
+# short-lived token is minted per run. `id-token: write` is what mints it, and
+# it is granted per job rather than at the top level.
+#
+# Tag form decides what publishes, because the six distributions version
+# independently:
+#
+#   v0.1.0                  -> fastraml, the parser
+#   fastapi-raml-v0.1.0     -> that contrib project alone
+#   fastraml-viewer-v0.1.0  -> the built SPA
+#
+# Every job re-runs the gate for what it is about to publish. CI having passed
+# on the commit is not the same claim: a tag can point anywhere.
+name: publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'raml-document-v*'
+      - 'fastapi-raml-v*'
+      - 'fastmcp-raml-v*'
+      - 'fastraml-viewer-v*'
+      - 'raml-mock-v*'
+
+jobs:
+  parser:
+    # Only the bare `vN.N.N` form. `startsWith(ref, 'refs/tags/v')` would also
+    # match nothing else here, but being explicit survives a sixth project
+    # whose name happens to start with a v.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --dev
+      - name: Gate
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy fastraml/
+          uv run pytest -q
+
+      - name: The tag must match the version being published
+        # A mismatch here means the release is mislabelled, which is not
+        # something to discover from the PyPI page afterwards.
+        run: |
+          tagged="${GITHUB_REF_NAME#v}"
+          built=$(uv run python -c 'import fastraml; print(fastraml.__version__)')
+          test "$tagged" = "$built" || {
+            echo "tag $GITHUB_REF_NAME does not match fastraml.__version__ $built" >&2
+            exit 1
+          }
+
+      - run: uv build
+      - name: The sdist must not carry the world
+        # It did once: 41 MB, 4913 files of viewer/node_modules, because
+        # hatchling does not read nested .gitignore files. The explicit include
+        # list in pyproject.toml fixes it and this keeps it fixed.
+        run: |
+          size=$(stat -c%s dist/*.tar.gz)
+          echo "sdist: $((size / 1024)) KiB"
+          test "$size" -lt 5000000 || { echo 'sdist is over 5 MB; check the include list' >&2; exit 1; }
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  contrib:
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Which project the tag names
+        id: which
+        # `raml-document-v0.1.0` -> `raml-document`. Longest-match is not needed:
+        # no project name is a prefix of another once the `-v` is required.
+        run: echo "dist=${GITHUB_REF_NAME%-v*}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        # Only fastraml-viewer needs it, and it needs it before the build: its
+        # hatch hook copies `viewer/dist`, which does not exist until npm has run.
+        if: steps.which.outputs.dist == 'fastraml-viewer'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - name: Build the viewer bundle
+        if: steps.which.outputs.dist == 'fastraml-viewer'
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: npm ci && npm run build
+        working-directory: viewer
+
+      - name: Gate
+        working-directory: contrib/${{ steps.which.outputs.dist }}
+        env:
+          DIST: ${{ steps.which.outputs.dist }}
+        run: |
+          uv sync --all-extras --dev
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy "${DIST//-/_}"
+          uv run pytest -q
+
+      - name: The tag must match the version being published
+        working-directory: contrib/${{ steps.which.outputs.dist }}
+        run: |
+          tagged="${GITHUB_REF_NAME##*-v}"
+          built=$(uv run python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')
+          test "$tagged" = "$built" || {
+            echo "tag $GITHUB_REF_NAME does not match version $built" >&2
+            exit 1
+          }
+
+      - run: uv build
+        working-directory: contrib/${{ steps.which.outputs.dist }}
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: contrib/${{ steps.which.outputs.dist }}/dist

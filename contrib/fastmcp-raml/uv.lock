@@ -627,7 +627,6 @@ server = [
 
 [[package]]
 name = "fastraml"
-version = "0.0.1"
 source = { editable = "../../" }
 dependencies = [
     { name = "jsonschema" },
@@ -646,7 +645,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "referencing", specifier = ">=0.35" },
 ]
-provides-extras = ["http", "re2", "graph"]
+provides-extras = ["graph", "http", "re2"]
 
 [package.metadata.requires-dev]
 dev = [

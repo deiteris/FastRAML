@@ -21,10 +21,10 @@ license = "MIT"
 # The upstream change the README proposes -- `OpenAPIProvider` taking
 # `routes: list[HTTPRoute]` -- would leave this package the RAML front half and
 # nothing else, and the pin could widen to whatever ships it.
-dependencies = ["fastraml", "fastmcp>=4.0,<5"]
+dependencies = ["fastraml>=0.1,<0.2", "fastmcp>=4.0,<5"]
 
 [project.optional-dependencies]
-examples = ["raml-mock"]
+examples = ["raml-mock>=0.1,<0.2"]
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "mypy>=1.10", "ruff>=0.6", "raml-mock"]

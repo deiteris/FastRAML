@@ -11,6 +11,7 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -30,6 +31,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python: ['3.12', '3.13']
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -50,6 +52,7 @@ jobs:
   # behaviour difference between the two would only surface here.
   test-pure-python-yaml:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -68,6 +71,7 @@ jobs:
   # other than the code that wrote it (docs/16 section 5.1).
   test-extras:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -81,6 +85,7 @@ jobs:
   # Absolute wall-clock is not asserted anywhere; see docs/14 section 5.
   bench:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -99,6 +104,7 @@ jobs:
   # breaks a consumer of it rather than a test of it.
   contrib:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -114,14 +120,17 @@ jobs:
       # `fastraml-viewer` vendors `viewer/dist` in its build hook, so the
       # bundle has to exist before `uv sync` installs the project -- without it
       # the hook fails the install rather than shipping an empty package.
+      # `fastapi-raml` needs it too: `--all-extras` pulls its `viewer` extra,
+      # which depends on `fastraml-viewer` as an editable path, so the same hook
+      # runs during that project's install.
       - uses: actions/setup-node@v4
-        if: matrix.dist == 'fastraml-viewer'
+        if: matrix.dist == 'fastraml-viewer' || matrix.dist == 'fastapi-raml'
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: viewer/package-lock.json
       - name: Build the viewer bundle
-        if: matrix.dist == 'fastraml-viewer'
+        if: matrix.dist == 'fastraml-viewer' || matrix.dist == 'fastapi-raml'
         env:
           PUPPETEER_SKIP_DOWNLOAD: '1'
         run: npm ci && npm run build
@@ -140,6 +149,7 @@ jobs:
   # projection leaves output that is well-formed and unrenderable.
   viewer:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -159,6 +169,7 @@ jobs:
 
   tck:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # The fixtures are the `tests/tck/raml-tck` submodule. They used to be a
       # second checkout of `acronis/go-raml`, which fetched that project's

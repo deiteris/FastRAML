@@ -237,8 +237,20 @@ Pin decisions, not incidental behaviour. Assert on a diagnostic's message key an
 `info` dict, never on assembled message text. Every documented corner case in
 `docs/14-testing.md` § 2–3 gets a test that names the rule it protects.
 
-Note that symlink-escape tests skip on Windows without Developer Mode. They are
-the security-critical ones; trust CI's Linux job, not a local green run.
+Note that symlink-escape tests skip on Windows without Developer Mode, and
+`test_refuses_a_non_regular_file` skips there outright — there is no
+`os.mkfifo`. They are the security-critical ones; **trust CI's Linux job, not a
+local green run**, and when CI is not running either, reach for Docker:
+
+```bash
+docker run --rm -v "$PWD:/src:ro" -w /w python:3.12-slim bash -lc \
+  'cp -r /src/. /w/ && rm -rf /w/.venv && pip -q install uv && uv run pytest -q'
+```
+
+A whole Ubuntu job reading as "slow" is worth one run of that before it is read
+as slow: the FIFO test hung the parse outright for want of `O_NONBLOCK`, and
+every Linux job sat on it for the runner's full timeout while Windows finished
+in a minute.
 
 ## Commits
 

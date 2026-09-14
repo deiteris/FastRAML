@@ -98,7 +98,16 @@ class FileLoader:
 #:
 #: `_ELOOP` is `None` where the platform has no such errno, and an `errno` is an
 #: `int`, so the comparison that reads it is false rather than wrong.
-_OPEN_FLAGS: Final = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0)
+#:
+#: **`O_NONBLOCK` is what makes the regular-file check reachable.** `os.open` on
+#: a FIFO blocks until a writer appears, so without it the `fstat` below never
+#: runs and a named pipe inside the workspace hangs the parse for as long as
+#: nobody writes to it — the sandbox refusing the file only after opening it is
+#: no refusal at all. On a regular file the flag does nothing, which is why it
+#: costs nothing to set. Windows has no such flag and no FIFOs to open.
+_OPEN_FLAGS: Final = (
+    os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NONBLOCK', 0)
+)
 _ELOOP: Final = getattr(errno, 'ELOOP', None)
 
 

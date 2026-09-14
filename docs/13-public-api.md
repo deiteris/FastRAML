@@ -205,8 +205,8 @@ consumer that needs it has only two options, and the other one is to write its
 own — which is what [17](17-consumers.md) § 2 exists to prevent. `raml-mock`
 generating a `uniqueItems: true` array is the case that asked.
 
-**Views** — `build_graph`, `build_tree`, `to_json_schema`, `address`,
-`Addresses`, `Graph`, `Edge`, `Route`, and `Conversion`. The last is there
+**Views** — `build_graph`, `build_tree`, `to_json_schema`, `to_openapi`, `address`,
+`Addresses`, `Graph`, `Edge`, `Route`, `OAS3Document`, and `Conversion`. The last is there
 because `to_json_schema` builds a *fresh* `Conversion` per call, so converting
 many shapes that way repeats every definition instead of sharing one table.
 `fastmcp-raml` converts every parameter, body and response of an API into one
@@ -218,7 +218,7 @@ the job. See [16](16-graph.md) § 12.
 `SchemeLoader`.
 
 **What `fastraml` re-exports, and what it does not.** Phase 9 widened `__all__`
-from 45 names to 70, and the views and the two above have since taken it to 83 —
+from 45 names to 70, and the views and the two above have since taken it to 85 —
 the entry points, options, errors, loaders and fragments as
 before, plus everything a consumer **narrows against or walks**: all seventeen
 concrete shapes, `BaseShape`, `Property`, `PatternProperty`, `Parameter`, and
@@ -230,11 +230,10 @@ because it is internal — was a poor advertisement for a supported API.
 The rest stay in their own modules **on purpose, not by omission**:
 `TypeExprRef`, `DirectiveRef`, `SecurityScheme`, `DomainLocation`, the three
 template and security *definition* classes, `Example`/`Examples`,
-`XmlSerialization`, and the JSON Schema registry. No consumer exists yet — the
-LSP server and the converters are After-v1 item 5 in
-[15](15-implementation-plan.md) — and they are what will say which of these a
-caller actually reaches for. Exporting them today is a guess, and an exported
-name is one you have to keep.
+`XmlSerialization`, and the JSON Schema registry. The LSP server remains
+After-v1 item 5 in [15](15-implementation-plan.md), and it will say which of
+these a caller actually reaches for. Exporting them today is a guess, and an
+exported name is one you have to keep.
 
 **The surface is not stable before 1.0.** That is stated in the package
 docstring and the README rather than left to be inferred from the version, and
@@ -345,6 +344,7 @@ parsing rule lives in `fastraml/cli.py`.
 fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
 fastraml info [-w ROOT] [-r] FILE       # backend, timings, counts
 fastraml graph [--format nt|turtle|dot|json] FILE
+fastraml openapi [--format yaml|json] FILE       # export OpenAPI 3.0.3
 fastraml tree [--positions] FILE                # the whole document, addressed
 fastraml list FILE [PATTERN] [--kind K] [--json]             # what is in here
 fastraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
@@ -357,7 +357,7 @@ fastraml skills (list | get NAME... | install [NAME...]) [--full] [--json]
 ```
 
 `validate` and `info` parse with `unwrap=True, validate=True`: their job is to
-find faults. The eight view verbs parse with `validate=False` — a document with
+find faults. The nine view verbs parse with `validate=False` — a document with
 a bad example still has a graph worth reading, and refusing to draw one would
 make the tool useless exactly where navigating is most wanted.
 
@@ -402,6 +402,13 @@ the node `graph` prints ([16](16-graph.md) § 11). Use it when a consumer needs
 the *contents* — examples, defaults, every container inline — which the graph
 deliberately does not carry. `--positions` writes the span of every declaration
 instead.
+
+`openapi` writes the effective API as OpenAPI 3.0.3, YAML by default or JSON
+with `--format json`. Information with no exact OpenAPI representation is kept
+under an `x-raml-*` extension where a useful representation exists and reported
+as a warning on stderr; stdout therefore remains a parseable document. The
+Python surface is `to_openapi(raml) -> (OAS3Document, dropped)` ([16](16-graph.md)
+§ 13).
 
 ```python
 from fastraml import ParseOptions, address, build_tree, parse_from_path

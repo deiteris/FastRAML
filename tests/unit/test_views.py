@@ -20,7 +20,7 @@ import pathlib
 #: allowed to see both sides, which is what a command line is.
 _MODEL = ('fastraml/parser', 'fastraml/types', 'fastraml/nodes.py', 'fastraml/registry.py', 'fastraml/datanode.py')
 
-_VIEWS = ('walk', 'graph', 'tree', 'render', 'queries', 'diff', 'bindings', 'jsonschema')
+_VIEWS = ('walk', 'graph', 'tree', 'render', 'queries', 'diff', 'bindings', 'jsonschema', 'openapi')
 
 
 def _imports(path: pathlib.Path) -> list[tuple[int, str]]:

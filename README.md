@@ -49,6 +49,7 @@ The key features are:
 * **Typed**: ships `py.typed` and is checked under strict mypy, so your editor and type checker see the real model instead of `Any`.
 * **Queryable**: the model projects to a graph with a small RAML vocabulary, with 17 named analysis queries built in — unused types, unsecured operations, undocumented endpoints.
 * **Compatibility-aware**: `diff` grades what changed between two versions by whether it breaks a caller, and exits non-zero on a breaking change, so it gates CI without parsing output.
+* **OpenAPI export**: `fastraml openapi` turns the effective RAML API into OpenAPI 3.0.3 YAML or JSON, preserving annotations as extensions and reporting anything the target cannot carry.
 * **Agent-ready**: `fastraml skills install` drops an [Agent Skill](https://github.com/agentskills/agentskills) into `.agents/skills/`, so Claude Code, GitHub Copilot and other agents drive the CLI correctly.
 
 ## Status
@@ -110,12 +111,26 @@ of every type it checks, and the benchmarks measure it slower for that.
 `parse_lenient(path)` returns `(model, error)` rather than raising, for an editor
 that needs a partial model on every keystroke.
 
+OpenAPI export stays typed until the serialization boundary:
+
+```python
+from fastraml import to_openapi
+
+openapi, dropped = to_openapi(raml)
+print(openapi.info.title)
+get_users = openapi.paths['/users'].get
+if get_users is not None:
+    print(get_users.responses['200'].description)
+payload = openapi.to_dict()  # JSON/YAML-ready only when you need it
+```
+
 ## Command line
 
 ```bash
 fastraml validate api.raml           # exit 1 and a positioned trace if invalid
 fastraml validate --json *.raml      # one JSON object per file
 fastraml info api.raml               # YAML backend, timing, model counts
+fastraml openapi api.raml            # OpenAPI 3.0.3 YAML; --format json for JSON
 ```
 
 And, because the tedious part of RAML is following resolved links by hand, a

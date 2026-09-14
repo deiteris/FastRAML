@@ -314,6 +314,8 @@ fastraml graph -w . api.raml                 # Turtle (the default)
 fastraml graph -w . api.raml --format json   # Nodes and edges as JSON
 fastraml graph -w . api.raml --format dot    # Graphviz
 fastraml graph -w . api.raml --format nt     # N-Triples
+fastraml openapi -w . api.raml               # OpenAPI 3.0.3 YAML
+fastraml openapi -w . api.raml --format json # OpenAPI 3.0.3 JSON
 ```
 
 Use these to feed another tool, not to read. Choose `tree` when you need the

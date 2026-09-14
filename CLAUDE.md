@@ -64,8 +64,9 @@ over it: `views/graph.py` emits a node set — identity and reference — and
 than one filtering the other. `views/render.py` is the reading view of a single
 type or endpoint, `views/queries.py` the SPARQL catalogue, `views/diff.py` the
 version comparison and its backward-compatibility policy, `views/jsonschema.py`
-a shape as JSON Schema draft-07 (`docs/16` § 12). Eight CLI verbs —
-`graph`, `tree`, `list`, `refs`, `deps`, `show`, `query`, `diff`.
+a shape as JSON Schema draft-07 (`docs/16` § 12), and `views/openapi.py` the
+effective API as OpenAPI 3.0.3 (`docs/16` § 13). Nine CLI verbs — `graph`,
+`tree`, `list`, `refs`, `deps`, `show`, `query`, `diff`, `openapi`.
 
 All of it runs after P10 and decides no RAML rule. **Nothing under `parser/` or
 `types/` may import `fastraml.views`**, and outside it only `cli.py` may;

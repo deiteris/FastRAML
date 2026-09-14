@@ -4,6 +4,7 @@
 fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE...
 fastraml info [-w ROOT] [-r] FILE
 fastraml graph [--format nt|turtle|dot|json] FILE
+fastraml openapi [--format yaml|json] FILE
 fastraml list FILE [PATTERN]
 fastraml refs FILE NAME
 fastraml deps FILE NAME
@@ -92,6 +93,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     _add_common(graph)
 
+    openapi = commands.add_parser('openapi', help='export the effective API as OpenAPI 3.0.3')
+    openapi.add_argument('files', metavar='FILE', nargs=1)
+    openapi.add_argument(
+        '--format',
+        choices=('yaml', 'json'),
+        default='yaml',
+        help='YAML or JSON output (default: yaml)',
+    )
+    _add_common(openapi)
+
     tree = commands.add_parser('tree', help='the effective document as an addressed JSON tree (doc 16 section 11)')
     tree.add_argument('files', metavar='FILE', nargs=1)
     tree.add_argument('--positions', action='store_true', help='the span of every declaration instead of the document')
@@ -130,6 +141,7 @@ def _parser() -> argparse.ArgumentParser:
         validate=_validate,
         info=_info,
         graph=_graph,
+        openapi=_openapi,
         tree=_tree,
         refs=_walk,
         deps=_walk,
@@ -317,6 +329,29 @@ def _graph(args: argparse.Namespace) -> int:
     emit = {'nt': graph.to_ntriples, 'turtle': graph.to_turtle, 'dot': graph.to_dot}[args.format]
     for line in emit():
         print(line)
+    return EXIT_OK
+
+
+def _openapi(args: argparse.Namespace) -> int:
+    """Write the effective API in the reference converter's OAS 3.0 form."""
+    raml = _parsed(args)
+    if raml is None:
+        return EXIT_INVALID
+
+    from fastraml.views.openapi import to_openapi  # noqa: PLC0415
+
+    document, dropped = to_openapi(raml)
+    payload = document.to_dict()
+    if args.format == 'json':
+        import json  # noqa: PLC0415 - only JSON output needs the encoder
+
+        print(json.dumps(payload, indent=2))
+    else:
+        import yaml  # noqa: PLC0415 - only YAML output needs the encoder
+
+        print(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True), end='')
+    for message in dropped:
+        print(f'warning: {message}', file=sys.stderr)
     return EXIT_OK
 
 

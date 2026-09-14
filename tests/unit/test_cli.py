@@ -25,6 +25,23 @@ GOOD = API + 'types:\n  T:\n    type: string\n    minLength: 2\n/things:\n  get:
 BAD = API + 'types:\n  T:\n    type: integer\n    example: nope\n'
 
 
+def test_openapi_export_supports_json(files, capsys):
+    assert main(['openapi', '--format', 'json', files('good.raml')]) == EXIT_OK
+    captured = capsys.readouterr()
+    document = json.loads(captured.out)
+    assert document['openapi'] == '3.0.3'
+    assert '/things' in document['paths']
+    assert captured.err == ''
+
+
+def test_openapi_export_defaults_to_yaml(files, capsys):
+    assert main(['openapi', files('good.raml')]) == EXIT_OK
+    captured = capsys.readouterr()
+    document = yaml.safe_load(captured.out)
+    assert document['info']['title'] == 'Demo'
+    assert captured.err == ''
+
+
 @pytest.fixture
 def files(workspace):
     root = workspace({'good.raml': GOOD, 'bad.raml': BAD})

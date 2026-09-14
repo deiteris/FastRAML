@@ -1,7 +1,7 @@
 # 16. The graph projection
 
-**Status: built.** `fastraml/views/`, behind the `graph`, `tree`, `list`, `refs`, `deps`, `show`, `query` and
-`diff` verbs of the CLI ([13](13-public-api.md) § 8).
+**Status: built.** `fastraml/views/`, behind the `graph`, `tree`, `list`, `refs`, `deps`, `show`, `query`,
+`diff` and `openapi` verbs of the CLI ([13](13-public-api.md) § 8).
 
 This document owns one area: turning the parsed model into something you can
 *ask questions of*. It settles the vocabulary, the IRI scheme, what is projected
@@ -1750,3 +1750,36 @@ for each value, the RAML shape and the emitted schema must reach the same
 verdict, checked with the `jsonschema` library rather than with this project's
 own reader. A structural comparison would pass while the schema said something
 subtly different; agreeing on instances is the claim worth making.
+
+## 13. An API as OpenAPI 3.0.3
+
+`views/openapi.py`. `to_openapi(raml)` returns a typed `OAS3Document` and a list
+of information the target format could not carry. Every OpenAPI object is a
+slotted, non-equality dataclass mirroring `converter/oas3doc.go`; nested values
+therefore remain discoverable and statically typed instead of collapsing into
+`dict[str, Any]`. `to_dict()` is the separate wire projection, and the CLI writes
+that value as YAML or JSON with `fastraml openapi`.
+
+The mapping follows go-raml's `converter/oas3conv.go`: the input must be
+unwrapped; effective resources become flat `paths`; URI, query and header
+parameters keep their binding; bodies become media-type `content`; RAML types
+referenced by the API surface become lazy `components/schemas`; and recursive
+types occupy a component name before their body is walked. Unused declarations
+are not exported.
+
+The schema half has its own typed visitor. Reusing § 12's dictionary visitor
+would collapse every nested `OAS3Schema` back to `dict[str, Any]`, defeating the
+model this view exists to expose. It follows the same shape dispatch decisions,
+then applies the OpenAPI 3.0 differences (`nullable`, singular `example`, integer
+formats, `format: binary`, XML and discriminator). It imports no OpenAPI library.
+
+RAML annotations become `x-<name>` fields. OAuth 1.0, Pass Through and custom
+security schemes have no OpenAPI 3.0 equivalent; they use an HTTP bearer shell,
+retain their RAML identity under `x-raml-*`, and add an entry to `dropped`.
+Custom facets and OAuth grant URIs that name no standard flow are also reported,
+never silently discarded. The CLI prints these notices to stderr so stdout stays
+a valid OpenAPI document.
+
+`tests/unit/test_openapi_view.py` pins metadata, servers, documentation, paths,
+parameters, bodies, lazy components, recursion, nullable unions, query strings,
+security, annotations, loss reporting, and the unwrapped/API preconditions.

@@ -73,6 +73,8 @@ from fastraml.views.graph import Route as Route
 from fastraml.views.graph import build_graph as build_graph
 from fastraml.views.jsonschema import Conversion as Conversion
 from fastraml.views.jsonschema import to_json_schema as to_json_schema
+from fastraml.views.openapi import OAS3Document as OAS3Document
+from fastraml.views.openapi import to_openapi as to_openapi
 from fastraml.views.tree import build_tree as build_tree
 from fastraml.views.walk import Addresses as Addresses
 from fastraml.views.walk import address as address
@@ -122,6 +124,7 @@ __all__ = (
     'Node',
     'NodeKind',
     'NumberShape',
+    'OAS3Document',
     'ObjectShape',
     'Operation',
     'Parameter',
@@ -166,4 +169,5 @@ __all__ = (
     'resolve_uri_ref',
     'same_value',
     'to_json_schema',
+    'to_openapi',
 )

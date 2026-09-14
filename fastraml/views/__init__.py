@@ -19,6 +19,7 @@ enforcing.
     queries     the SPARQL catalogue over `graph` (§ 6)
     diff        two versions compared, and what breaks (§ 10)
     bindings    the tree's contract as TypeScript declarations (§ 11.11)
+    openapi     the effective API as OpenAPI 3.0.3 (§ 13)
 
 `walk` is the shared substrate rather than a view of its own: `graph` and `tree`
 are lossy on orthogonal axes, and both are addressed by the same walk so a node

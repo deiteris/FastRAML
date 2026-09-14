@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/deiteris/FastRAML"><img src="https://raw.githubusercontent.com/deiteris/FastRAML/master/assets/logo.png" alt="fastRAML" width="300"></a>
+  <a href="https://github.com/deiteris/FastRAML"><img src="assets/logo.png" alt="fastRAML" width="300"></a>
 </p>
 <p align="center">
     <em>A complete RAML 1.0 parser for Python — every construct decoded, linear in input size</em>

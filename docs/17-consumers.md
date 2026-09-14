@@ -185,6 +185,17 @@ against the version it is about to publish, and uploads over Trusted Publishing,
 so no token is stored. A tag can point anywhere, which is why a green CI run on
 the commit is not accepted in place of the gate.
 
+**The root README's logo is a repo-relative path, and PyPI cannot resolve it.**
+GitHub renders a relative image against the repository, which is the only form
+that works while the repository is private —
+`raw.githubusercontent.com` serves nothing from a private repo, to anyone. PyPI
+has no base to resolve against, so the project page will show a broken image
+until this is dealt with at the first release: either the repository is public
+by then and the path goes back to an absolute one, or the build substitutes it.
+A data URI is not an option; both sanitisers drop `src` when it is one. Every
+other link in that file is already absolute, because only the image needs a
+repository to resolve against.
+
 ### 7.1 The dependency on `fastraml` is bounded
 
 `[tool.uv.sources]` makes it an editable path for development and **does not

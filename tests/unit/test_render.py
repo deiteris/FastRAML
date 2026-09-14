@@ -446,11 +446,12 @@ types:
 
 #: `tag` names a definition *and* a property, which is the case that separates
 #: an identity test from a "the name differs from the key" guess. `sku` is
-#: inline, so it is the control: no definition, no name to print.
+#: inline, so it is the control: no definition, no name to print. `uuid` is the
+#: one-line hop: named here, bodied in another file.
 ITEM_JSON = """{
   "type": "object",
   "definitions": {
-    "uuid": {"type": "string", "minLength": 36},
+    "uuid": {"$ref": "shared.json"},
     "tag": {"type": "object", "properties": {"label": {"type": "string"}}},
     "maybe": {"oneOf": [{"type": "null"}, {"type": "integer"}]}
   },
@@ -461,6 +462,8 @@ ITEM_JSON = """{
     "sku": {"type": "string", "minLength": 3}
   }
 }"""
+
+SHARED_JSON = '{"type": "string", "minLength": 36}'
 
 
 def _typed(rendered):
@@ -488,8 +491,24 @@ class TestSchemaDefinitionsKeepTheirName:
     """
 
     @pytest.fixture
+    def defs_rendered(self, workspace):
+        """The rendered text, for the notes. `defs_shown` loads it as YAML,
+        which drops the comments the note column is made of.
+        """
+        root = workspace({'api.raml': DEFS_API, 'item.json': ITEM_JSON, 'shared.json': SHARED_JSON})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        graph = build_graph(raml)
+
+        def show(name: str, depth: int = 1) -> str:
+            shape = graph.shape_at(graph.find(name)[0])
+            assert shape is not None
+            return '\n'.join(render(shape, depth=depth, root=graph.root))
+
+        return show
+
+    @pytest.fixture
     def defs_shown(self, workspace):
-        root = workspace({'api.raml': DEFS_API, 'item.json': ITEM_JSON})
+        root = workspace({'api.raml': DEFS_API, 'item.json': ITEM_JSON, 'shared.json': SHARED_JSON})
         raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
 
@@ -530,6 +549,24 @@ class TestSchemaDefinitionsKeepTheirName:
 
     def test_the_union_members_are_one_depth_away(self, defs_shown):
         assert defs_shown('Item', depth=2)['weight?']['anyOf'] == ['nil', 'integer']
+
+    def test_a_whole_schema_type_names_its_file(self, defs_rendered):
+        """`type: object`, not `type: item.json`: the filename is the note."""
+        assert re.search(r'type: object\s+# item\.json', defs_rendered('Item'))
+
+    def test_a_definition_names_the_file_its_body_is_in(self, defs_rendered):
+        """`uuid` is named in `item.json` and bodied in `shared.json`, and
+        `shared.json` is the file a reader wants — `item.json` holds one line of
+        `$ref`. `tag` is bodied inline, so it names `item.json`.
+        """
+        assert re.search(r'type: uuid\s+# shared\.json', defs_rendered('Item'))
+        assert re.search(r'type: tag\s+# item\.json', defs_rendered('Item', depth=2))
+
+    def test_a_definition_is_distinguishable_from_a_raml_type(self, defs_rendered):
+        """`type: tag` on its own reads as a RAML type called `tag`, and sends a
+        reader looking for a `types:` entry that is not there.
+        """
+        assert re.search(r'tag\?: tag\s+# item\.json', defs_rendered('Item'))
 
 
 class TestOneFactOnce:

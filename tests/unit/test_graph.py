@@ -131,6 +131,45 @@ class TestIris:
             assert iri.startswith(DEFAULT_BASE), iri
             assert 'file:' not in iri
 
+    def test_a_subschema_is_addressed_by_its_own_document(self, workspace):
+        """docs/16 § 3.3. A `$ref` target is one thing however many RAML types
+        reach it, so its address comes from its document and JSON Pointer — the
+        way `unit()` makes a library type independent of who imports it.
+
+        Addressing it by containment gave the same subschema a different IRI per
+        referencing type, and the one that got there first lent its name to the
+        rest.
+        """
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  A: !include a.json\n  B: !include b.json\n',
+                'a.json': '{"type": "object", "properties": {"m": {"$ref": "shared.json"}}}',
+                'b.json': '{"type": "object", "properties": {"m": {"$ref": "shared.json"}}}',
+                'shared.json': '{"type": "object", "properties": {"x": {"type": "string"}}}',
+            }
+        )
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        shared = f'{DEFAULT_BASE}/shared.json#'
+        assert shared in graph.nodes, 'the shared schema is a node in its own right'
+        assert f'{shared}/properties/x' in graph.nodes
+        # Reached from both, and neither declaration owns it.
+        assert '/declarations/types/A' not in shared
+        assert '/declarations/types/B' not in shared
+
+    def test_an_inline_schema_stays_with_its_declaration(self, workspace):
+        """It compiles under the RAML file's own URI, so it has no address
+        independent of the type that wrote it — and two inline schemas in one
+        file would otherwise both claim `#/properties/x`.
+        """
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n'
+                '  A:\n    type: |\n      {"type": "object", "properties": {"x": {"type": "string"}}}\n'
+            }
+        )
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        assert any('/declarations/types/A' in iri and iri.endswith('/property/x/schema') for iri in graph.nodes)
+
     def test_a_use_site_does_not_steal_the_declaration_iri(self, graph):
         """Declarations are registered before endpoints are walked (§ 3).
 

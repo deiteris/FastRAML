@@ -194,6 +194,7 @@ class Walk:
 
     __slots__ = (
         '_segments',
+        '_units',
         'base',
         'claimed',
         'emitted',
@@ -219,6 +220,7 @@ class Walk:
         #: a cycle terminates.
         self.emitted: set[int] = set()
         self._segments: dict[str, str] = {}
+        self._units: dict[str, str] = {}
         self.root = workspace_of(raml)
 
     # -- infrastructure -------------------------------------------------------
@@ -228,10 +230,18 @@ class Walk:
 
         Relative to the workspace root, so the graph does not carry the absolute
         path of the machine that produced it.
+
+        Memoised: every subschema asks for its document's prefix, and
+        `relative_to` walks the path apart on each call.
         """
-        if location == self.raml.location or not location:
-            return self.base
-        return f'{self.base}/{self.segment(relative_to(location, self.root))}'
+        found = self._units.get(location)
+        if found is None:
+            if location == self.raml.location or not location:
+                found = self.base
+            else:
+                found = f'{self.base}/{self.segment(relative_to(location, self.root))}'
+            self._units[location] = found
+        return found
 
     def segment(self, value: str) -> str:
         escaped = self._segments.get(value)
@@ -531,18 +541,44 @@ class Walk:
 
     # -- shapes ---------------------------------------------------------------
 
-    def shape(self, base: BaseShape | None, fallback: str) -> str:
+    def schema_iri(self, base: BaseShape) -> str | None:
+        """A subschema's address, from the canonical URI in its `location`.
+
+        `fallback` addresses a shape by where it sits — parent IRI plus
+        `/schema`. For a subschema that is the wrong question: the same
+        `uuid.json` reached from forty RAML types is one thing, and addressing it
+        by whichever type reached it first makes thirty-nine of them answer to a
+        stranger's URI.
+
+        A JSON Pointer into a document is already the standard identity for a
+        subschema, and it is reference-independent in the way `unit()` makes a
+        library type's address independent of who imports it. The projection
+        writes that URI into `location`; a schema with no document of its own —
+        one written inline — gets no fragment, and keeps containment addressing
+        because it belongs to the declaration that wrote it.
+        """
+        document, hash_, pointer = base.location.partition('#')
+        return f'{self.unit(document)}#{pointer}' if hash_ else None
+
+    def shape(self, base: BaseShape | None, fallback: str, *, in_schema: bool = False) -> str:
         """One type, at its reserved IRI if it has one and at `fallback` if not.
 
         Reached twice, a shape keeps its first IRI: the second visit returns it
         and emits nothing, which is what closes a type cycle and what makes a
         declared type one node rather than one per use site.
+
+        `in_schema` marks the walk as being *inside* a § 6.3 projection, where a
+        shape is a subschema and addresses itself (`schema_iri`). It is not a
+        property of the shape: a RAML type declared from
+        `schema.json#/definitions/User` has the same kind of `location` and must
+        still answer at its declaration IRI.
         """
         if base is None:
             return ''
         iri = self.iris.get(base.id)
         if iri is None:
-            iri = self.iris[base.id] = self.claim(fallback, base.id)
+            reserved = self.schema_iri(base) if in_schema else None
+            iri = self.iris[base.id] = self.claim(reserved or fallback, base.id)
         if base.id in self.emitted:
             return iri
         self.emitted.add(base.id)
@@ -563,16 +599,22 @@ class Walk:
             self.edge(iri, 'aliasOf', self.shape(base.alias, f'{iri}/aliasOf'))
         for name, extension in base.annotations.items():
             self.annotated(iri, {name: extension})
-        self.children(iri, view.shape)
+        # A projection substituted for the declaration means its members are
+        # subschemas, and they address themselves.
+        self.children(iri, view.shape, in_schema=in_schema or view is not base)
         return iri
 
-    def children(self, iri: str, shape: Shape | None) -> None:
-        """The declarations a kind contains. One branch per container facet."""
+    def children(self, iri: str, shape: Shape | None, *, in_schema: bool = False) -> None:
+        """The declarations a kind contains. One branch per container facet.
+
+        `in_schema` travels down unchanged: everything beneath a § 6.3
+        projection is a subschema, and nothing beneath a RAML type is.
+        """
         if isinstance(shape, ObjectShape):
             for name, prop in (shape.properties or {}).items():
                 child = f'{iri}/property/{self.segment(name)}'
                 self.sink.property_(child, prop)
-                self.edge(child, 'range', self.shape(prop.base, f'{child}/schema'))
+                self.edge(child, 'range', self.shape(prop.base, f'{child}/schema', in_schema=in_schema))
                 self.edge(iri, 'property', child)
             for name, pattern in (shape.pattern_properties or {}).items():
                 # Keyed by the `/regex/` as written, not by position: a pattern
@@ -580,14 +622,14 @@ class Walk:
                 # any edit above it.
                 child = f'{iri}/patternProperty/{self.segment(name)}'
                 self.sink.pattern_property(child, pattern)
-                self.edge(child, 'range', self.shape(pattern.base, f'{child}/schema'))
+                self.edge(child, 'range', self.shape(pattern.base, f'{child}/schema', in_schema=in_schema))
                 self.edge(iri, 'patternProperty', child)
         elif isinstance(shape, ArrayShape):
             if shape.items is not None:
-                self.edge(iri, 'items', self.shape(shape.items, f'{iri}/items'))
+                self.edge(iri, 'items', self.shape(shape.items, f'{iri}/items', in_schema=in_schema))
         elif isinstance(shape, UnionShape):
             for index, member in enumerate(shape.any_of or ()):
-                self.edge(iri, 'anyOf', self.shape(member, f'{iri}/anyOf/{index}'))
+                self.edge(iri, 'anyOf', self.shape(member, f'{iri}/anyOf/{index}', in_schema=in_schema))
         elif isinstance(shape, RecursiveShape):
             # The head is always an ancestor of this marker, so it already holds
             # an IRI: `shape` assigns before it recurses. Following the back-edge

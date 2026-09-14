@@ -1116,7 +1116,7 @@
                 "number": {
                   "required": true,
                   "type": {
-                    "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json/property/number/schema",
+                    "id": "fastraml://id/sample%2Finvoice.json#/properties/number",
                     "name": null,
                     "type": "string",
                     "description": "The invoice number, as printed.",
@@ -1126,7 +1126,7 @@
                 "total": {
                   "required": true,
                   "type": {
-                    "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json/property/total/schema",
+                    "id": "fastraml://id/sample%2Finvoice.json#/properties/total",
                     "name": null,
                     "type": "number",
                     "description": "The amount due, in the currency of the account.",
@@ -1137,7 +1137,7 @@
                 "settled": {
                   "required": false,
                   "type": {
-                    "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json/property/settled/schema",
+                    "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount",
                     "name": "Amount",
                     "type": "object",
                     "description": "A sum of money, in the smallest unit of its currency.",
@@ -1145,7 +1145,7 @@
                       "minor": {
                         "required": true,
                         "type": {
-                          "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json/property/settled/schema/property/minor/schema",
+                          "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/minor",
                           "name": null,
                           "type": "integer",
                           "description": "Pence, cents, or the equivalent."
@@ -1154,7 +1154,7 @@
                       "currency": {
                         "required": true,
                         "type": {
-                          "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json/property/settled/schema/property/currency/schema",
+                          "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/currency",
                           "name": null,
                           "type": "string",
                           "enum": [
@@ -1170,7 +1170,7 @@
                 "paid": {
                   "required": false,
                   "type": {
-                    "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json/property/paid/schema",
+                    "id": "fastraml://id/sample%2Finvoice.json#/properties/paid",
                     "name": null,
                     "type": "boolean",
                     "default": false
@@ -1179,18 +1179,18 @@
                 "lines": {
                   "required": false,
                   "type": {
-                    "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json/property/lines/schema",
+                    "id": "fastraml://id/sample%2Finvoice.json#/properties/lines",
                     "name": null,
                     "type": "array",
                     "items": {
-                      "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json/property/lines/schema/items",
+                      "id": "fastraml://id/sample%2Finvoice.json#/definitions/line",
                       "name": "line",
                       "type": "object",
                       "properties": {
                         "description": {
                           "required": true,
                           "type": {
-                            "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json/property/lines/schema/items/property/description/schema",
+                            "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/description",
                             "name": null,
                             "type": "string"
                           }
@@ -1198,7 +1198,7 @@
                         "amount": {
                           "required": true,
                           "type": {
-                            "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json/property/lines/schema/items/property/amount/schema",
+                            "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/amount",
                             "name": null,
                             "type": "number"
                           }
@@ -1299,7 +1299,7 @@
             "number": {
               "required": true,
               "type": {
-                "id": "fastraml://id#/declarations/types/Invoice/property/number/schema",
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/number",
                 "name": null,
                 "type": "string",
                 "description": "The invoice number, as printed.",
@@ -1309,7 +1309,7 @@
             "total": {
               "required": true,
               "type": {
-                "id": "fastraml://id#/declarations/types/Invoice/property/total/schema",
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/total",
                 "name": null,
                 "type": "number",
                 "description": "The amount due, in the currency of the account.",
@@ -1320,7 +1320,7 @@
             "settled": {
               "required": false,
               "type": {
-                "id": "fastraml://id#/declarations/types/Invoice/property/settled/schema",
+                "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount",
                 "name": "Amount",
                 "type": "object",
                 "description": "A sum of money, in the smallest unit of its currency.",
@@ -1328,7 +1328,7 @@
                   "minor": {
                     "required": true,
                     "type": {
-                      "id": "fastraml://id#/declarations/types/Invoice/property/settled/schema/property/minor/schema",
+                      "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/minor",
                       "name": null,
                       "type": "integer",
                       "description": "Pence, cents, or the equivalent."
@@ -1337,7 +1337,7 @@
                   "currency": {
                     "required": true,
                     "type": {
-                      "id": "fastraml://id#/declarations/types/Invoice/property/settled/schema/property/currency/schema",
+                      "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/currency",
                       "name": null,
                       "type": "string",
                       "enum": [
@@ -1353,7 +1353,7 @@
             "paid": {
               "required": false,
               "type": {
-                "id": "fastraml://id#/declarations/types/Invoice/property/paid/schema",
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/paid",
                 "name": null,
                 "type": "boolean",
                 "default": false
@@ -1362,18 +1362,18 @@
             "lines": {
               "required": false,
               "type": {
-                "id": "fastraml://id#/declarations/types/Invoice/property/lines/schema",
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/lines",
                 "name": null,
                 "type": "array",
                 "items": {
-                  "id": "fastraml://id#/declarations/types/Invoice/property/lines/schema/items",
+                  "id": "fastraml://id/sample%2Finvoice.json#/definitions/line",
                   "name": "line",
                   "type": "object",
                   "properties": {
                     "description": {
                       "required": true,
                       "type": {
-                        "id": "fastraml://id#/declarations/types/Invoice/property/lines/schema/items/property/description/schema",
+                        "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/description",
                         "name": null,
                         "type": "string"
                       }
@@ -1381,7 +1381,7 @@
                     "amount": {
                       "required": true,
                       "type": {
-                        "id": "fastraml://id#/declarations/types/Invoice/property/lines/schema/items/property/amount/schema",
+                        "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/amount",
                         "name": null,
                         "type": "number"
                       }

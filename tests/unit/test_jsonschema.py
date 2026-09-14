@@ -20,6 +20,10 @@ from typing import ClassVar
 import pytest
 
 from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml.types.complex_ import RecursiveShape
+from fastraml.types.jsonschema_ import projected
+from fastraml.views.graph import build_graph
+from fastraml.views.walk import DEFAULT_BASE
 from tests.unit.conftest import CountingLoader
 
 API = '#%RAML 1.0\ntitle: T\n'
@@ -489,3 +493,79 @@ class TestProjection:
             project(workspace, schema)
         assert 'JSON schema construct has no RAML equivalent' in messages(caught.value)
         assert construct in str(caught.value)
+
+
+class TestTwoInlineSchemasStayApart:
+    """A projection is shared on the subschema's canonical URI (docs/16 § 3.2b).
+
+    An inline schema has none: it compiles under the RAML file's own URI, which
+    every other inline schema in that file shares. Keying on it made the second
+    inline schema in a file answer with the first one's projection.
+    """
+
+    INLINE: ClassVar = """#%RAML 1.0
+title: T
+types:
+  A:
+    type: |
+      {"type": "object", "properties": {"alpha": {"type": "string"}}}
+  B:
+    type: |
+      {"type": "object", "properties": {"beta": {"type": "integer"}}}
+"""
+
+    def test_each_inline_schema_keeps_its_own_properties(self, workspace):
+        root = workspace({'api.raml': self.INLINE})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        declared = raml.types_in(raml.location)
+        assert sorted(projected(declared['A']).shape.properties) == ['alpha']
+        assert sorted(projected(declared['B']).shape.properties) == ['beta']
+
+
+class TestARecursiveSchemaSharedByTwoTypes:
+    """Cycle detection and projection sharing meet here (docs/16 section 3.2b).
+
+    A cycle is closed on the identity of the schema node being re-entered, which
+    is per walk; a projection is shared on the subschema's canonical URI, which
+    is per parse. The second type must get the first type's cached projection
+    *with* its recursion marker intact, and must not walk into the cycle again.
+    """
+
+    RECURSIVE: ClassVar = """#%RAML 1.0
+title: T
+types:
+  A: !include node.json
+  B: !include node.json
+"""
+    NODE: ClassVar = '{"type": "object", "properties": {"value": {"type": "string"}, "child": {"$ref": "#"}}}'
+
+    @pytest.fixture
+    def declared(self, workspace):
+        root = workspace({'api.raml': self.RECURSIVE, 'node.json': self.NODE})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        return raml.types_in(raml.location)
+
+    def test_both_types_project_the_whole_schema(self, declared):
+        for name in ('A', 'B'):
+            assert sorted(projected(declared[name]).shape.properties) == ['child', 'value']
+
+    def test_the_cycle_is_marked_rather_than_expanded(self, declared):
+        """Not `None` and not an infinite walk: the back-edge is a marker."""
+        for name in ('A', 'B'):
+            child = projected(declared[name]).shape.properties['child'].base
+            assert isinstance(child.shape, RecursiveShape)
+
+    def test_the_two_types_share_one_projection(self, declared):
+        """One schema document, one projection — the point of sharing it."""
+        assert projected(declared['A']) is projected(declared['B'])
+
+    def test_the_schema_is_one_node_and_the_uses_are_two(self, workspace):
+        """The split the addressing exists to make. A property is a *use* and
+        stays with the declaration that wrote it; the subschema it ranges to is
+        one thing, at the schema's own URI.
+        """
+        root = workspace({'api.raml': self.RECURSIVE, 'node.json': self.NODE})
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        assert f'{DEFAULT_BASE}/node.json#/properties/value' in graph.nodes
+        for name in ('A', 'B'):
+            assert f'{DEFAULT_BASE}#/declarations/types/{name}/property/value' in graph.nodes

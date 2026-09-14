@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
+from urllib.parse import urldefrag, urljoin
 
 from fastraml.datanode import DataNode, value_node_of
 from fastraml.errors import ErrorKind, RamlError
@@ -95,6 +96,9 @@ class CompiledSchema:
     validator: Any
     contents: Any
     resolver: Resolver[Any]
+    #: The compiled subschema's canonical URI, document plus JSON Pointer. Its
+    #: identity, and the key its projection is shared under.
+    uri: str
 
 
 class _LoadFailure(Exception):  # noqa: N818 - not an error surface; a carrier
@@ -122,11 +126,35 @@ class SchemaRegistry:
     them, so the memo has to live here.
     """
 
-    __slots__ = ('_raml', '_resources')
+    __slots__ = ('_documents', '_projections', '_raml', '_resources')
 
     def __init__(self, raml: Raml) -> None:
         self._raml = raml
         self._resources: dict[str, Resource[Any]] = {}
+        #: Section 6.3 projections by the subschema's canonical URI, so one
+        #: `$ref` target is projected once however many schemas name it. Keyed by
+        #: the local name too: that name is written onto the shape and belongs to
+        #: the *referencing* document, so two schemas naming one target
+        #: differently need a shape each.
+        self._projections: dict[tuple[str, str | None], BaseShape] = {}
+        self._documents: dict[str, tuple[BaseShape, dict[str, BaseShape]]] = {}
+
+    def projected(self, uri: str, name: str | None) -> BaseShape | None:
+        return self._projections.get((uri, name))
+
+    def projected_document(self, uri: str) -> tuple[BaseShape, dict[str, BaseShape]] | None:
+        """A whole compiled schema's projection and its named definitions.
+
+        Separate from `projected`, which holds subschemas reached by `$ref` and
+        has no definitions of its own to hand back.
+        """
+        return self._documents.get(uri)
+
+    def share_document(self, uri: str, built: BaseShape, defs: dict[str, BaseShape]) -> None:
+        self._documents[uri] = (built, defs)
+
+    def share(self, uri: str, name: str | None, built: BaseShape) -> None:
+        self._projections[(uri, name)] = built
 
     @property
     def fetched(self) -> int:
@@ -176,6 +204,7 @@ class SchemaRegistry:
             validator=validator_class(contents, registry=registry, _resolver=resolver),
             contents=contents,
             resolver=resolver,
+            uri=f'{_document_of(resolver) or document_uri}#{pointer}',
         )
 
     # -- reading --------------------------------------------------------------
@@ -458,11 +487,19 @@ class JsonShape(ComplexKind):
         if self._compiled is None:
             return None
         if self._cached_shape is None:
-            defs: dict[str, BaseShape] = {}
-            self._cached_shape = _project(
-                _Projection(self.base, self._compiled.resolver, defs), self._compiled.contents, {}
-            )
-            self._cached_defs = defs
+            registry = schema_registry(self.base._raml)  # noqa: SLF001 - one registry per parse
+            uri = self.canonical_uri
+            shared = registry.projected_document(uri) if uri else None
+            if shared is None:
+                defs: dict[str, BaseShape] = {}
+                _, _, pointer = (uri or self._compiled.uri).partition('#')
+                built = _project(
+                    _Projection(self.base, self._compiled.resolver, defs, pointer), self._compiled.contents, {}
+                )
+                if uri:
+                    registry.share_document(uri, built, defs)
+                shared = (built, defs)
+            self._cached_shape, self._cached_defs = shared
         return self._cached_shape
 
     def as_shape_defs(self) -> dict[str, BaseShape] | None:
@@ -471,6 +508,31 @@ class JsonShape(ComplexKind):
         `None` until `as_shape` has run — the two are one traversal.
         """
         return self._cached_defs
+
+    @property
+    def canonical_uri(self) -> str | None:
+        """The subschema's identity, or `None` for a schema written inline.
+
+        An inline schema compiles under the RAML file's own URI, which it shares
+        with every other inline schema in that file — so it has no identity to
+        be shared under, and two of them would collapse into one projection.
+        """
+        if self._compiled is None or not self.document_uri:
+            return None
+        if not _is_one_schema(self.base._raml, self.document_uri):  # noqa: SLF001 - the parse's index
+            return None
+        return self._compiled.uri
+
+    @property
+    def document_uri(self) -> str | None:
+        """The document this schema compiled from; `None` if it was inline.
+
+        Not `base.location`, which for `type: !include person.json` is the RAML
+        file. The resolver is re-based onto the document it retrieved.
+        """
+        if self._compiled is None:
+            return None
+        return _document_of(self._compiled.resolver)
 
     def as_schema(self) -> Any | None:
         """The schema as one self-contained document, built once and cached.
@@ -512,27 +574,25 @@ def projected(base: BaseShape) -> BaseShape:
     return base
 
 
-def definition_ids(base: BaseShape) -> frozenset[int]:
-    """Which shapes in `base`'s projection came from a named `definitions` entry.
+def subschema_document(base: BaseShape) -> str | None:
+    """The schema document `base` is a subschema of, or `None` if it is not one.
 
-    `BaseShape.name` holds two unrelated things: a property key for a shape the
-    RAML document declared, and a `definitions` key for one the projection
-    built. Only the second is a *type* name, so a consumer that prints
-    `base.name` without this test renders `currencyCode: currencyCode`.
+    A view shape's `location` is its canonical URI, document plus JSON Pointer
+    (docs/16 section 3.2b), so the fragment separator *is* the test. A shape the
+    RAML document declared carries a plain file URI.
 
-    Identity against `as_shape_defs` is the test because nothing on the shape
-    itself records the difference, and the projection already keeps that table.
-    Beside `projected` for the reason `projected` gives: a consumer that forgets
-    either one does not fail, it just reports something untrue.
+    This is what makes `BaseShape.name` readable. That field holds a property key
+    on a declared shape and a `definitions` key on a projected one, and only the
+    second is a type name -- so a consumer printing it checks here first, or
+    renders `currencyCode: currencyCode`.
+
+    Read from the shape rather than from `as_shape_defs`, which a shared
+    projection leaves incomplete: a walk served a subtree from the cache never
+    re-enters it, so the names inside it are missing from *that* document's
+    table.
     """
-    shape = base.shape
-    if not isinstance(shape, JsonShape):
-        return frozenset()
-    # `as_shape_defs` is `None` until the single traversal that fills both has
-    # run, and a caller reaching here has not necessarily projected yet.
-    shape.as_shape()
-    defs = shape.as_shape_defs()
-    return frozenset(entry.id for entry in defs.values()) if defs else frozenset()
+    document, separator, _ = base.location.partition('#')
+    return document if separator else None
 
 
 # -- section 6.3: JSON Schema -> the nearest RAML shape -------------------------
@@ -545,9 +605,27 @@ class _Projection:
     parent: BaseShape
     resolver: Resolver[Any]
     defs: dict[str, BaseShape]
+    #: JSON Pointer of the subschema being walked, within `resolver`'s document.
+    pointer: str = ''
 
-    def at(self, resolver: Resolver[Any]) -> _Projection:
-        return _Projection(self.parent, resolver, self.defs)
+    def at(self, resolver: Resolver[Any], pointer: str) -> _Projection:
+        """The same walk, moved into another document at `pointer`."""
+        return _Projection(self.parent, resolver, self.defs, pointer)
+
+    def into(self, *segments: str) -> _Projection:
+        """One step deeper in the current document."""
+        suffix = ''.join(f'/{_escape_pointer(segment)}' for segment in segments)
+        return _Projection(self.parent, self.resolver, self.defs, self.pointer + suffix)
+
+
+def _escape_pointer(segment: str) -> str:
+    """One JSON Pointer segment, escaped per RFC 6901.
+
+    `~` before `/`, or the second substitution rewrites the first. Written here
+    because `referencing` only goes the other way, and inline: `Resource.pointer`
+    unescapes as it walks and exposes nothing.
+    """
+    return segment.replace('~', '~0').replace('/', '~1')
 
 
 def _unsupported(context: _Projection, what: str) -> RamlError:
@@ -560,6 +638,48 @@ def _unsupported(context: _Projection, what: str) -> RamlError:
     )
 
 
+def _document_of(resolver: Resolver[Any]) -> str | None:
+    """The document a resolver is based on. `lookup` re-bases onto its target."""
+    return getattr(resolver, '_base_uri', None) or None
+
+
+def _is_one_schema(raml: Raml, document: str | None) -> bool:
+    """Whether `document` holds exactly this schema, so its URI identifies it.
+
+    A `$ref` target is read by `SchemaRegistry` and is not a fragment at all. An
+    `!include`d schema is wrapped into a one-type `DataTypeFragment`. Either way
+    the file is the schema, and its URI is an identity a projection can be
+    shared under.
+
+    An API or a library is not: every schema written inline in it compiles under
+    that one URI, so sharing on it makes the second inline schema in a file
+    answer with the first one's projection.
+    """
+    from fastraml.parser.fragments import DataTypeFragment  # noqa: PLC0415 - avoids a cycle with `parser`
+
+    if document is None:
+        return False
+    fragment = raml.fragments.get(document)
+    return fragment is None or isinstance(fragment, DataTypeFragment)
+
+
+def _subschema_uri(context: _Projection, document: str | None) -> str | None:
+    """The canonical URI of the subschema being walked, or `None`.
+
+    Document plus JSON Pointer, so `location` *is* the identity — one field, and
+    a URI with a fragment, which `location` already carries for a RAML type
+    declared from `schema.json#/definitions/User`.
+
+    `None` where the document is not the schema: every schema written inline in
+    an API or a library compiles under that one URI, so it identifies none of
+    them. The absence of a `#` is then what tells a consumer to fall back to
+    addressing by containment.
+    """
+    if not _is_one_schema(context.parent._raml, document):  # noqa: SLF001 - the parse's index
+        return None
+    return f'{document}#{context.pointer}'
+
+
 def _view_base(context: _Projection, name: str | None = None) -> BaseShape:
     """A `BaseShape` outside the parse's own bookkeeping.
 
@@ -567,11 +687,17 @@ def _view_base(context: _Projection, name: str | None = None) -> BaseShape:
     declarations the document made, and P9 and P10 must never reach them.
     Marked unwrapped so a consumer serialising the model emits the concrete type
     inline rather than an inheritance link that leads nowhere.
+
+    `location` is the **schema** document being walked, not the RAML file that
+    reached it: it is where the type is, and it is the same answer however many
+    RAML types reference it. `key_pos` stays unknown, so nothing that pairs the
+    two prints a position.
     """
+    document = _document_of(context.resolver)
     base = BaseShape(
         id=context.parent._raml.next_id(),  # noqa: SLF001 - one counter per parse (docs/02 § 3.1)
         raml=context.parent._raml,  # noqa: SLF001 - as above
-        location=context.parent.location,
+        location=_subschema_uri(context, document) or context.parent.location,
         name=name,
     )
     base._unwrapped = True  # noqa: SLF001 - a view shape has nothing left to flatten
@@ -614,6 +740,12 @@ def _project(context: _Projection, contents: Any, visiting: dict[int, BaseShape]
 
 def _project_reference(context: _Projection, reference: str, visiting: dict[int, BaseShape]) -> BaseShape:
     resolved = context.resolver.lookup(reference)
+    # Where the reference lands, split the way `Resolver.lookup` splits it. A
+    # reference moves the walk outright rather than deeper, so this replaces the
+    # current position instead of extending it. `urljoin` needs no special case
+    # for a bare `#...`: it appends the fragment to the base, which is what
+    # `lookup` shortcuts to.
+    document, target = urldefrag(urljoin(_document_of(context.resolver) or '', reference))
     head = visiting.get(id(resolved.contents))
     if head is not None:
         # The back-edge of a cycle, which is exactly what P9 produces for a
@@ -628,10 +760,26 @@ def _project_reference(context: _Projection, reference: str, visiting: dict[int,
         existing = context.defs.get(name)
         if existing is not None:
             return existing
-    built = _project(context.at(resolved.resolver), resolved.contents, visiting)
+    # Only a target in a file of its own has a canonical URI to share under. An
+    # inline schema compiles under the RAML file's URI, which it shares with
+    # every other inline schema in that file.
+    own = _is_one_schema(context.parent._raml, document)  # noqa: SLF001 - the parse's index
+    canonical = f'{document}#{target}' if own else None
+    registry = schema_registry(context.parent._raml)  # noqa: SLF001 - one registry per parse
+    shared = registry.projected(canonical, name) if canonical else None
+    if shared is not None:
+        if name is not None:
+            context.defs[name] = shared
+        return shared
+
+    built = _project(context.at(resolved.resolver, target), resolved.contents, visiting)
     if name is not None:
         built.name = name
         context.defs[name] = built
+    if canonical is not None:
+        # After the walk, never during it: a shape still being built is one a
+        # cycle must reach through `visiting`.
+        registry.share(canonical, name, built)
     return built
 
 
@@ -656,7 +804,7 @@ def _project_body(context: _Projection, contents: dict, base: BaseShape, visitin
         # one" and there is nothing nearer; doc 10 § 6.3 records the loss.
         members = contents.get(keyword)
         if members:
-            return _project_union(context, members, base, visiting)
+            return _project_union(context, keyword, members, base, visiting)
 
     declared = contents.get('type') or _inferred_type(contents)
     if declared is None:
@@ -737,9 +885,15 @@ def _inferred_type(contents: dict) -> str | None:
 
 def _project_all_of(context: _Projection, members: list, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
     """Sequential inheritance, which is the nearest thing RAML has to `allOf`."""
-    merged = _project(context, members[0], visiting)
-    for member in members[1:]:
-        merged = inherit(merged, _project(context, member, visiting))
+    merged = _project(context.into('allOf', '0'), members[0], visiting)
+    for index, member in enumerate(members[1:], start=1):
+        merged = inherit(merged, _project(context.into('allOf', str(index)), member, visiting))
+    # The merge is a composite, not its first member: `allOf: [userFull, extra]`
+    # is neither `userFull` nor `extra`. It takes the identity of the schema that
+    # wrote the `allOf`, or it would answer to its first member's URI.
+    canonical = _subschema_uri(context, _document_of(context.resolver))
+    if canonical:
+        merged.location = canonical
     # The wrapper's own title, description, default and enum still apply.
     _decorate(merged, {})
     for field_name in ('display_name', 'description', 'default', 'enum'):
@@ -749,8 +903,11 @@ def _project_all_of(context: _Projection, members: list, base: BaseShape, visiti
     return merged
 
 
-def _project_union(context: _Projection, members: list, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
-    return _kind(base, TYPE_UNION, UnionShape, any_of=[_project(context, member, visiting) for member in members])
+def _project_union(
+    context: _Projection, keyword: str, members: list, base: BaseShape, visiting: dict[int, BaseShape]
+) -> BaseShape:
+    projected = [_project(context.into(keyword, str(i)), member, visiting) for i, member in enumerate(members)]
+    return _kind(base, TYPE_UNION, UnionShape, any_of=projected)
 
 
 def _project_type(  # noqa: PLR0911 - one return per row of the table in docs/10 § 6.3
@@ -794,13 +951,17 @@ def _project_object(context: _Projection, contents: dict, base: BaseShape, visit
 
     required = set(contents.get('required') or ())
     properties = {
-        name: Property(name=name, base=_project(context, schema, visiting), required=name in required)
+        name: Property(
+            name=name, base=_project(context.into('properties', name), schema, visiting), required=name in required
+        )
         for name, schema in (contents.get('properties') or {}).items()
     }
     patterns: dict[str, PatternProperty] = {}
     for text, schema in (contents.get('patternProperties') or {}).items():
         compiled = _compile(context, text)
-        patterns[f'/{text}/'] = PatternProperty(pattern=compiled, base=_project(context, schema, visiting))
+        patterns[f'/{text}/'] = PatternProperty(
+            pattern=compiled, base=_project(context.into('patternProperties', text), schema, visiting)
+        )
 
     shape = ObjectShape(base, properties=properties or None, pattern_properties=patterns or None)
     shape.min_properties = _int_facet(base, contents.get('minProperties'))
@@ -815,7 +976,7 @@ def _project_array(context: _Projection, contents: dict, base: BaseShape, visiti
     if isinstance(items, list):
         raise _unsupported(context, 'tuple-form items')
 
-    shape = ArrayShape(base, items=None if items is None else _project(context, items, visiting))
+    shape = ArrayShape(base, items=None if items is None else _project(context.into('items'), items, visiting))
     shape.min_items = _int_facet(base, contents.get('minItems'))
     shape.max_items = _int_facet(base, contents.get('maxItems'))
     if contents.get('uniqueItems'):

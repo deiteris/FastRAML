@@ -395,6 +395,52 @@ name, so an application is never invisible and no edge dangles. That node is an
 `Unresolved*Node` (§ 2.7), and its presence is the signal that a name matched
 nothing — not that the projection failed to look hard enough.
 
+### 3.2b A subschema is addressed by its own document
+
+A shape the § 6.3 projection built carries its **canonical URI** in `location` —
+the schema document plus the JSON Pointer within it. That is one field and not a
+new one: `location` is already a URI, and already carries a fragment for a RAML
+type declared from `schema.json#/definitions/User`. Its address is that URI
+rebased onto `unit()`: `fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount`.
+
+Containment addressing is wrong for these. `money.schema.json#/definitions/Amount`
+is **one** subschema however many RAML types `$ref` it, and addressing it by the
+type that reached it first makes every other type's copy answer to a stranger's
+URI — measured at 355 IRIs owned by more than one declaration on a mid-sized API.
+A JSON Pointer is already the standard identity for a subschema, and using it
+makes the address reference-independent in the way `unit()` does for a library
+type: `Parcel` is `shared%2Fmeasures.raml#/declarations/types/Parcel` whoever
+imports it.
+
+That identity is also what lets one projection be **shared**. `SchemaRegistry`
+keys projections on it, so a `$ref` target is projected once per parse rather
+than once per referencing schema: 18,972 view shapes down to 1,803 on the same
+API, and `tree` from 508 ms to 262 ms. Sharing without the identity is a
+corruption of exactly the kind § 3.1 describes; with it, two types pointing at
+one node is the truth.
+
+The identity holds only where **the document is the schema**, which
+`_is_one_schema` decides. A `$ref` target is read by `SchemaRegistry` and is not
+a fragment at all; an `!include`d schema is wrapped into a one-type
+`DataTypeFragment`. Either way the file is the schema.
+
+An API or a library is not: every schema written **inline** in it compiles under
+that one URI. Sharing on it made the second inline schema in a file answer with
+the first one's projection, and addressing on it had two of them claim
+`fastraml://id#/properties/x`. These get no fragment, and its absence is what
+tells a consumer to fall back to containment.
+
+Being *inside* a projection is the walk's own state, not the shape's: `Walk.shape`
+takes `in_schema`, set where `projected()` substitutes for a declaration and
+passed down unchanged. It cannot be read off the shape, because a RAML type
+declared from `schema.json#/definitions/User` has the same kind of `location` and
+must still answer at its declaration IRI.
+
+Comparing the document against the declaring shape's own `location` is *not* the
+same test. P9 moves a schema onto a synthesised parent whose location already is
+the schema file, so a real schema file reads as inline under that comparison and
+the declaration and its parent then address one subschema two ways.
+
 ### 3.3 Looking a name up: a declaration wins
 
 `Graph.find` turns a name into an IRI, and more than one node can carry the same
@@ -953,8 +999,11 @@ indistinguishable on the shape. So reading `base.name` in `_type_name` renders
 `currencyCode: currencyCode`, and retires the member naming of § 9.2 on every
 declared union, whose name is already the rendered key.
 
-`definition_ids(base)` is that marker, and it is an **identity** test against the
-projection's own table rather than a comparison of the name against the key. The
+`subschema_document(base)` is that marker: a fragment in `location` means the
+shape is a subschema, so its `name` is a `definitions` key rather than a property
+key. Reading it off the shape rather than off `as_shape_defs` also survives
+sharing — a walk served a subtree from the cache never re-enters it, so the names
+inside are missing from *that* document's table. The
 cheaper guess — print the name only where it differs from the key — fails exactly
 where the feature earns its place: a property named `contact` whose type is
 `#/definitions/contact` is the commonest shape of all, and suppressing it there
@@ -970,11 +1019,32 @@ the RAML document's own words for the type and outrank a name the schema chose �
 and above the union member join, so a definition that *is* a union reads as its
 name with its members one `--depth` away.
 
-The **file** a definition was written in is not recorded. A definition is
-routinely a one-line hop (`uuid: {"$ref": "../types/uuid.json"}`), so the name
-alone does not locate it; what locates it is the root schema, which `show`
-already prints as the type's own `type:` line. Carrying the resolved document per
-definition would need state the projection does not keep today.
+**A `type:` line naming a schema also names its file.** A bare `type: contact`
+reads as a RAML type called `contact`, and a reader goes looking for a `types:`
+declaration that is not there. The `.json` says which it is and the path says
+where.
+
+The path is the document the type's **body** was read from, not the one that
+names it. A definition is often a one-line hop:
+
+```json
+"definitions": { "uuid": { "$ref": "../_common/types/uuid.json" } }
+```
+
+`uuid` is named in this file and *is* `../_common/types/uuid.json`. That target
+is the shared schema a reader is asking about, so it is what the note gives, and
+it is free: a view shape's `location` is already its own document (§ 3.2b).
+
+A **whole-schema type** reads as its structure, `type: object`. Its only parent
+is named for the file the schema was included from, which the note already
+carries with its directory, so `_type_name` skips that parent and `_body` drops
+the `inherits:` line with it. That parent's file comes from
+`JsonShape.document_uri`, the one lookup this needs.
+
+Notes go on `type:` lines, where a RAML type carries its own `file:line`. On a
+190-line render of a nine-definition type that is 14 notes naming 9 distinct
+files, and +11.3% of the output. The repetition that remains is `uuid` and
+`dateTime` used twice each, which is a fact about the type rather than noise.
 
 ### 9.8 What each security scheme adds, and why it is not merged
 

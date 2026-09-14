@@ -30,7 +30,7 @@ import yaml
 
 from fastraml.types.base import facets_of
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
-from fastraml.types.jsonschema_ import definition_ids, projected
+from fastraml.types.jsonschema_ import JsonShape, projected, subschema_document
 from fastraml.uris import relative_to
 
 if TYPE_CHECKING:
@@ -79,11 +79,6 @@ class _Level:
     #: Shapes already open further up. A type cycle is a cycle in the model by
     #: design (docs/07 § 4), so the walk has to be finite by construction.
     seen: frozenset[int]
-    #: Shapes the enclosing JSON schema projected from a named `definitions`
-    #: entry, so `_type_name` may print their `name` as a type. Accumulated
-    #: rather than replaced: a schema reached through another schema's property
-    #: contributes its own definitions without retiring the outer ones.
-    defs: frozenset[int] = frozenset()
 
     def inside(self, base: BaseShape, *, extra: str = '  ') -> _Level:
         return replace(self, depth=self.depth - 1, indent=self.indent + extra, seen=self.seen | {base.id})
@@ -170,6 +165,22 @@ def _at(location: str, position: Position, root: str) -> str:
     return f'{relative_to(location, root)}:{position.line}'
 
 
+def _from_schema(base: BaseShape, level: _Level) -> str:
+    """The JSON schema behind this `type:` line, as a note, or `''`.
+
+    Without it `type: contact` reads as a RAML type called `contact`, and a
+    reader looks for a `types:` declaration that is not there. The `.json` says
+    which it is and the path says where.
+
+    Two shapes carry one: a whole-schema type names the document it compiled
+    from, and a definition names the document holding its body.
+    """
+    shape = base.shape
+    own = shape.document_uri if isinstance(shape, JsonShape) else None
+    document = own or subschema_document(base)
+    return relative_to(document, level.root) if document else ''
+
+
 def _aligned(lines: list[_Line]) -> Iterator[str]:
     width = max((len(line.text) for line in lines if line.note), default=0)
     for line in lines:
@@ -195,24 +206,22 @@ def render(base: BaseShape, *, depth: int = 1, root: str = '') -> Iterator[str]:
 
 
 def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
-    named = _type_name(base, defs=level.defs)
-    yield _Line(f'{level.indent}type: {named}')
-    parents = [parent.name or '<anonymous>' for parent in base.inherits]
-    # `inherits: [User]` under `type: User` is the same fact twice — `_type_name`
-    # returns the sole parent's name by construction. Two parents or more is
-    # where the line earns its place, because `type:` cannot show both.
-    if parents and parents != [named]:
-        yield _Line(f'{level.indent}inherits: [{", ".join(parents)}]')
-    yield from _facets(base, level.indent, level.root)
+    named = _type_name(base)
+    yield _Line(f'{level.indent}type: {named}', _from_schema(base, level))
 
     # The structure is read from the *projected* shape, so a type defined by a
     # JSON schema opens like any other. Its own facets above are the RAML ones,
     # which for a schema type is nothing: the schema carries the constraints.
     view = projected(base)
-    # The schema's own `definitions` join the level *after* its `type:` line
-    # above, which the enclosing context names. Everything below is inside the
-    # schema, and that is where a `definitions` key is a type name.
-    level = replace(level, defs=level.defs | definition_ids(base))
+    parents = [parent.name or '<anonymous>' for parent in base.inherits]
+    # `inherits: [User]` under `type: User` is the same fact twice — `_type_name`
+    # returns the sole parent's name by construction. Two parents or more is
+    # where the line earns its place, because `type:` cannot show both. A
+    # schema type's only parent is named for its file, which the note gives.
+    if parents and parents != [named] and view is base:
+        yield _Line(f'{level.indent}inherits: [{", ".join(parents)}]')
+    yield from _facets(base, level.indent, level.root)
+
     shape = view.shape
     if isinstance(shape, ObjectShape):
         yield from _properties(view, shape, level)
@@ -221,7 +230,7 @@ def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
     elif isinstance(shape, UnionShape) and shape.any_of:
         yield _Line(f'{level.indent}anyOf:')
         for member in shape.any_of:
-            yield _Line(f'{level.indent}  - {_type_name(member, defs=level.defs)}')
+            yield _Line(f'{level.indent}  - {_type_name(member)}')
 
 
 def _properties(base: BaseShape, shape: ObjectShape, level: _Level) -> Iterator[_Line]:
@@ -252,12 +261,15 @@ def _one(name: str, base: BaseShape, origin: str | None, level: _Level) -> Itera
         yield _Line(f'{inner.indent}{key}:', note)
         yield from _body(base, inner.inside(base))
         return
+    schema = _from_schema(base, level)
     facets = list(_facets(base, inner.indent + '  ', inner.root))
     if not facets:
-        yield _Line(f'{inner.indent}{key}: {_type_name(base, defs=level.defs)}', note)
+        # One line, so the two notes share it.
+        both = ', '.join(part for part in (note, schema) if part)
+        yield _Line(f'{inner.indent}{key}: {_type_name(base)}', both)
         return
     yield _Line(f'{inner.indent}{key}:', note)
-    yield _Line(f'{inner.indent}  type: {_type_name(base, defs=level.defs)}')
+    yield _Line(f'{inner.indent}  type: {_type_name(base)}', schema)
     yield from facets
 
 
@@ -279,7 +291,7 @@ def _member(base: BaseShape, key: str, level: _Level) -> Iterator[_Line]:
         yield _Line(f'{level.indent}{key}:')
         yield from _body(base, level.inside(base))
     else:
-        yield _Line(f'{level.indent}{key}: {_type_name(base, defs=level.defs)}')
+        yield _Line(f'{level.indent}{key}: {_type_name(base)}')
 
 
 # -- reading the model --------------------------------------------------------
@@ -297,7 +309,7 @@ def _has_structure(base: BaseShape) -> bool:
     return False
 
 
-def _type_name(base: BaseShape, *, nested: bool = False, defs: frozenset[int] = frozenset()) -> str:
+def _type_name(base: BaseShape, *, nested: bool = False) -> str:
     """What to call this type in one word.
 
     `alias` first, and that is not a detail: `address: Address` and
@@ -311,19 +323,19 @@ def _type_name(base: BaseShape, *, nested: bool = False, defs: frozenset[int] = 
     A **named JSON schema definition keeps its name**, for the same reason as
     the alias: `#/definitions/uuid` renders `string` and `#/definitions/contact`
     renders `object`, which cannot tell a reader whether a field reuses a shared
-    schema or inlines a copy of it — the question this view exists to answer.
+    schema or inlines a copy of it.
 
-    `defs` is not optional and is not a shortcut. `base.name` also holds the
-    *property key* for shapes the RAML document declared (`make_shape` sets it
-    from the key node), so reading it unguarded renders `currencyCode:
-    currencyCode` and retires the member naming below on every declared union.
-    Membership is tested against the projection's own table, because nothing on
-    the shape records which of the two its `name` is.
+    `subschema_document` decides that. `base.name` holds a property key for
+    shapes the RAML document declared and a `definitions` key for shapes the
+    projection built, and only the second is a type name.
 
-    It sits above the member join deliberately: a definition that *is* a union
-    reads as its name, and its members stay one `--depth` away. Below the alias
-    and the sole parent, which are the RAML document's own words for the type
-    and outrank a name the schema chose.
+    The test sits above the member join, so a definition that *is* a union reads
+    as its name with its members one `--depth` away. It sits below the alias and
+    the sole parent, which are the RAML document's own words for the type.
+
+    A type whose whole body is a schema reads as its **structure** —
+    `type: object`, not `type: person.json`. The filename is on the same line as
+    a note, and `_from_schema` gives it with its directory.
 
     An **anonymous union names its members** — `integer | nil`, not `union`.
     That is naming and not expansion, so it is not gated on `--depth`: a union
@@ -339,14 +351,16 @@ def _type_name(base: BaseShape, *, nested: bool = False, defs: frozenset[int] = 
         return base.shape.head.name or 'recursive'
     if base.alias is not None and base.alias.name:
         return base.alias.name
-    if len(base.inherits) == 1 and base.inherits[0].name:
-        return base.inherits[0].name
-    if base.id in defs and base.name:
+    if base.name and subschema_document(base) is not None:
         return base.name
-    shape = projected(base).shape
-    if not nested and isinstance(shape, UnionShape) and shape.any_of:
-        return ' | '.join(_type_name(member, nested=True, defs=defs) for member in shape.any_of)
-    return base.type or 'any'
+    view = projected(base)
+    # A whole-schema type skips its parent: that parent is named for the file
+    # the schema was included from, which `_from_schema` gives with its path.
+    if view is base and len(base.inherits) == 1 and base.inherits[0].name:
+        return base.inherits[0].name
+    if not nested and isinstance(view.shape, UnionShape) and view.shape.any_of:
+        return ' | '.join(_type_name(member, nested=True) for member in view.shape.any_of)
+    return view.type or 'any'
 
 
 def _origin(owner: BaseShape, name: str, prop: Property) -> str | None:

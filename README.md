@@ -210,13 +210,16 @@ All four must pass before any change lands.
 
 ### RAML Test Compliance Kit
 
-The TCK fixtures are not vendored. Point the suite at a checkout:
+The fixtures are a submodule, from
+[deiteris/raml-tck](https://github.com/deiteris/raml-tck):
 
 ```bash
-FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck
+git submodule update --init    # if you cloned without --recurse-submodules
+uv run pytest tests/tck
 ```
 
-Without that variable the TCK tests skip. `tests/tck/ratchet.json` records the
+`FASTRAML_TCK_DIR=<path>` runs against a different checkout instead. With
+neither, the TCK tests skip. `tests/tck/ratchet.json` records the
 expected outcome per fixture, and CI fails on drift in either direction — a
 regression, or progress that was not recorded. See
 [docs/14-testing.md](https://github.com/deiteris/FastRAML/blob/master/docs/14-testing.md).

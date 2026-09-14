@@ -209,12 +209,18 @@ its comments have been wrong about its own behaviour.
 
 ## TCK
 
-Fixtures are not vendored. They are found via `FASTRAML_TCK_DIR`, falling back to
-`../go-raml-main/raml-tck`; without either, TCK tests skip.
+Fixtures are the submodule `tests/tck/raml-tck`
+([deiteris/raml-tck](https://github.com/deiteris/raml-tck)). `FASTRAML_TCK_DIR`
+overrides it; without either, TCK tests skip.
 
 ```bash
-FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck -q
+git submodule update --init              # once, if you cloned without --recurse-submodules
+uv run pytest tests/tck -q
 ```
+
+A submodule and not a copy: upstream is archived and states no licence, so the
+sdist excludes the directory (`docs/14` § 1). Fixtures live at
+`tests/tck/raml-tck/raml-tck/` — the submodule root holds its own README.
 
 `tests/tck/ratchet.json` records the expected outcome per fixture. CI fails on
 drift in either direction — a regression, or unrecorded progress. Regenerate with

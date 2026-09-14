@@ -160,17 +160,18 @@ jobs:
   tck:
     runs-on: ubuntu-latest
     steps:
+      # The fixtures are the `tests/tck/raml-tck` submodule. They used to be a
+      # second checkout of `acronis/go-raml`, which fetched that project's
+      # default branch -- and the three fixture corrections the ratchet is keyed
+      # to live nowhere on it, so this job was measuring inputs no local run
+      # used. The submodule pins one commit, so CI and a developer see the same
+      # fixtures or the diff says so.
       - uses: actions/checkout@v4
-      - name: Fetch the compliance kit
-        uses: actions/checkout@v4
         with:
-          repository: acronis/go-raml
-          path: go-raml
+          submodules: true
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
       - run: uv sync --dev
       - name: Run the TCK against the ratchet
-        env:
-          FASTRAML_TCK_DIR: go-raml/raml-tck
         run: uv run pytest tests/tck -q

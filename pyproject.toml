@@ -97,6 +97,10 @@ artifacts = ["fastraml/py.typed"]
 # top-level folder has to be added here to ship, rather than shipping by
 # accident.
 [tool.hatch.build.targets.sdist]
+# `tests/tck/raml-tck` is a submodule of fixtures that are not ours to
+# redistribute -- upstream is archived and states no licence (docs/14 § 1.1) --
+# and it is 2.4 MB. `/tests` would otherwise sweep it in.
+exclude = ["/tests/tck/raml-tck"]
 include = [
     "/fastraml",
     "/tests",

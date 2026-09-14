@@ -1,0 +1,3 @@
+[submodule "tests/tck/raml-tck"]
+	path = tests/tck/raml-tck
+	url = https://github.com/deiteris/raml-tck.git

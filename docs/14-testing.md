@@ -15,19 +15,40 @@ by `python -m bench`, for the reason § 5 gives.
 
 ## 1. The TCK is the primary compliance gate
 
-`raml-tck` is the RAML organisation's compliance kit. The reference
-implementation vendors a lightly-customised copy, at
-`C:\Sources\go-raml-main\raml-tck`.
+`raml-tck` is the RAML organisation's compliance kit. It reaches this
+repository as the **submodule** `tests/tck/raml-tck`, from
+[deiteris/raml-tck](https://github.com/deiteris/raml-tck) — the fixtures from
+the archived `raml-org/raml-tck` by way of the copy in `acronis/go-raml`,
+carrying three fixture corrections that copy had already made.
 
-fastRAML runs against **that same copy** rather than a second one, so a
-disagreement between the two parsers is always a fastRAML bug or a documented
-deviation, never a fixture difference. The harness locates it through
-`FASTRAML_TCK_DIR`, falling back to a sibling go-raml checkout; when neither is
-present the TCK tests skip.
+```bash
+git clone --recurse-submodules <this repo>
+git submodule update --init            # if you already cloned
+uv run pytest tests/tck -q
+```
 
-**Vendoring is still deferred**, and no longer to a phase. It was pencilled in
-for Phase 9 as an engineering task; it is a licensing one, and this repository's
-own licence is undecided. It stays out until both are settled.
+The fixtures sit at `tests/tck/raml-tck/raml-tck/`; the submodule's own root
+holds its README and the record of those corrections.
+
+`FASTRAML_TCK_DIR` still overrides, for running against a different checkout.
+With neither the submodule nor the variable, the TCK tests **skip** — an
+uninitialised submodule is a checkout that was not finished, not a regression,
+and the harness checks the directory is non-empty rather than merely present,
+because an uninitialised submodule leaves an empty one behind.
+
+**A submodule and not a vendored copy.** The licensing question that deferred
+vendoring is not answered by pinning a commit, but it is contained by it.
+Upstream was archived on 19 January 2024 and **states no licence**, so the
+fixtures are referenced at a commit rather than copied into this tree, and
+`[tool.hatch.build.targets.sdist]` excludes the directory so no release of this
+package redistributes them.
+
+It also fixes something the previous arrangement got wrong. CI fetched
+`acronis/go-raml` and pointed `FASTRAML_TCK_DIR` at its `raml-tck/`, which
+resolves to that project's **default branch** — and the three corrections the
+ratchet is keyed to exist on no branch of it. CI was measuring inputs no local
+run used. One pinned commit means a developer and CI see the same fixtures, or
+the submodule diff says which commit each saw.
 
 Convention (from its README):
 

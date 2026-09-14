@@ -1,9 +1,23 @@
 """Discovery of the RAML Test Compliance Kit fixtures.
 
-The fixtures are not vendored into this repository yet. Point the suite at a
-checkout with `FASTRAML_TCK_DIR`; without it the TCK tests are skipped:
+The fixtures are a **submodule** at `tests/tck/raml-tck`, from
+[deiteris/raml-tck](https://github.com/deiteris/raml-tck). Get them with the
+clone, or afterwards:
+
+    git clone --recurse-submodules <this repo>
+    git submodule update --init            # if you already cloned
+
+They are a submodule rather than vendored because they are not ours: the suite
+comes from the archived `raml-org/raml-tck` and carries no licence, so it is
+referenced at a commit rather than copied into this tree (docs/14 section 1.1).
+
+`FASTRAML_TCK_DIR` still overrides, for running against a different checkout —
+upstream, or a branch with a fixture fix under review:
 
     FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck
+
+With neither, the TCK tests skip rather than fail. A missing submodule is a
+checkout that was not initialised, not a regression.
 
 The kit's naming convention (from its README):
 
@@ -58,14 +72,20 @@ SKIPPED_FIXTURES: dict[str, str] = {
 }
 
 _ENV_VAR = 'FASTRAML_TCK_DIR'
-_DEFAULT_RELATIVE = Path('..') / 'go-raml-main' / 'raml-tck'
+
+#: The submodule, then the fixture root inside it. The second `raml-tck` is not
+#: a typo: the submodule's root holds its own README and KNOWN-ISSUES, and the
+#: fixtures sit under `raml-tck/` within it.
+_SUBMODULE = Path('tests') / 'tck' / 'raml-tck' / 'raml-tck'
 
 
 def tck_root() -> Path | None:
-    """The TCK checkout, or `None` when it cannot be found.
+    """The TCK fixtures, or `None` when they cannot be found.
 
-    Looks at `FASTRAML_TCK_DIR` first, then at a sibling go-raml checkout, which
-    is the layout this parser is developed against.
+    `FASTRAML_TCK_DIR` wins, so a different checkout can be run against without
+    touching the submodule; otherwise the submodule. `None` means skip, which is
+    what an uninitialised submodule should produce -- a clone without
+    `--recurse-submodules` is not a failing test run.
     """
     configured = os.environ.get(_ENV_VAR)
     if configured:
@@ -73,8 +93,11 @@ def tck_root() -> Path | None:
         return candidate if candidate.is_dir() else None
 
     repo_root = Path(__file__).resolve().parents[2]
-    candidate = (repo_root / _DEFAULT_RELATIVE).resolve()
-    return candidate if candidate.is_dir() else None
+    candidate = repo_root / _SUBMODULE
+    # `any()` rather than `is_dir()`: an uninitialised submodule leaves the
+    # directory behind as an empty placeholder, which is a directory that would
+    # collect zero fixtures and report 951 silent passes as 951 silent skips.
+    return candidate if candidate.is_dir() and any(candidate.iterdir()) else None
 
 
 def fixture_id(root: Path, path: Path) -> str:

@@ -5,13 +5,16 @@ description = "Run an in-process mock HTTP server from a RAML 1.0 definition"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
-dependencies = ["pyraml", "aiohttp>=3.10", "simplejson>=3.19"]
+dependencies = ["fastraml>=0.1,<0.2", "aiohttp>=3.10", "simplejson>=3.19", "typer>=0.26"]
+
+[project.scripts]
+raml-mock = "raml_mock.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "mypy>=1.10", "ruff>=0.6"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "mypy>=1.10", "ruff>=0.6", "hypothesis>=6"]
 
 [tool.uv.sources]
-pyraml = { path = "../..", editable = true }
+fastraml = { path = "../..", editable = true }
 
 [build-system]
 requires = ["hatchling"]

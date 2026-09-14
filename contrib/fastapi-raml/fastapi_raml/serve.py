@@ -30,8 +30,7 @@ import tempfile
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from fastraml import ParseOptions, parse_from_string
-from fastraml.views.tree import build_tree
+from fastraml import ParseOptions, build_tree, parse_from_string
 from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from fastapi_raml.render import render

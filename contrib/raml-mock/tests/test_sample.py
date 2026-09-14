@@ -4,7 +4,7 @@ import pathlib
 
 import aiohttp
 import pytest
-from pyraml import ParseOptions
+from fastraml import ParseOptions
 
 from raml_mock import mock_server
 

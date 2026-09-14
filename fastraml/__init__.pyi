@@ -63,6 +63,7 @@ from fastraml.types.scalars import NilShape as NilShape
 from fastraml.types.scalars import NumberShape as NumberShape
 from fastraml.types.scalars import StringShape as StringShape
 from fastraml.types.scalars import TimeOnlyShape as TimeOnlyShape
+from fastraml.types.values import same_value as same_value
 from fastraml.uris import file_uri_to_path as file_uri_to_path
 from fastraml.uris import path_to_file_uri as path_to_file_uri
 from fastraml.uris import resolve_uri_ref as resolve_uri_ref
@@ -70,6 +71,7 @@ from fastraml.views.graph import Edge as Edge
 from fastraml.views.graph import Graph as Graph
 from fastraml.views.graph import Route as Route
 from fastraml.views.graph import build_graph as build_graph
+from fastraml.views.jsonschema import Conversion as Conversion
 from fastraml.views.jsonschema import to_json_schema as to_json_schema
 from fastraml.views.tree import build_tree as build_tree
 from fastraml.views.walk import Addresses as Addresses
@@ -89,6 +91,7 @@ __all__ = (
     'BaseShape',
     'Body',
     'BooleanShape',
+    'Conversion',
     'DataNode',
     'DataTypeFragment',
     'DateOnlyShape',
@@ -161,5 +164,6 @@ __all__ = (
     'parse_lenient',
     'path_to_file_uri',
     'resolve_uri_ref',
+    'same_value',
     'to_json_schema',
 )

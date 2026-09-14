@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from raml_mock.errors import MockGenerationError
 
 if TYPE_CHECKING:
-    from pyraml import EndPoint, Operation, Raml
+    from fastraml import EndPoint, Operation, Raml
 
 __all__ = ['MockRoute', 'RouteTable']
 

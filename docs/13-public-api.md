@@ -198,11 +198,28 @@ six ([09](09-security-and-annotations.md) § A2).
 
 **Errors** — `RamlError`, `Trace`, `Position`, `ErrorKind`.
 
+**Values** — `same_value`, the semantic equality `uniqueItems` and enum
+membership share: `1` and `1.0` are the same item, `1` and `True` are not. It is
+exported because it is a *rule of the language* rather than a utility, so a
+consumer that needs it has only two options, and the other one is to write its
+own — which is what [17](17-consumers.md) § 2 exists to prevent. `raml-mock`
+generating a `uniqueItems: true` array is the case that asked.
+
+**Views** — `build_graph`, `build_tree`, `to_json_schema`, `address`,
+`Addresses`, `Graph`, `Edge`, `Route`, and `Conversion`. The last is there
+because `to_json_schema` builds a *fresh* `Conversion` per call, so converting
+many shapes that way repeats every definition instead of sharing one table.
+`fastmcp-raml` converts every parameter, body and response of an API into one
+document, which is the shape of the problem `Conversion` exists for; without it
+the exported function is the only supported entry point and it cannot express
+the job. See [16](16-graph.md) § 12.
+
 **I/O** — `ResourceLoader`, `FileLoader`, `SafeFileLoader`, `HTTPLoader`,
 `SchemeLoader`.
 
 **What `fastraml` re-exports, and what it does not.** Phase 9 widened `__all__`
-from 45 names to 70 — the entry points, options, errors, loaders and fragments as
+from 45 names to 70, and the views and the two above have since taken it to 83 —
+the entry points, options, errors, loaders and fragments as
 before, plus everything a consumer **narrows against or walks**: all seventeen
 concrete shapes, `BaseShape`, `Property`, `PatternProperty`, `Parameter`, and
 `EndPoint`/`Operation`/`Request`/`Response`/`Body`. `isinstance` narrowing is

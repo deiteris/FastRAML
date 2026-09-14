@@ -40,10 +40,52 @@ reimplementation on this side. `views/jsonschema.py` is here because of exactly
 that: `fastmcp-raml` needed JSON Schema, JSON Schema is a projection of the
 model, and a projection of the model is `views/`.
 
+The gap is sometimes only in the *export list*. `raml-mock` generates
+`uniqueItems: true` arrays, which needs the equality `uniqueItems` is defined in
+terms of; it was reaching into `fastraml.types.values` for it, past the surface
+docs/13 names. Writing its own would have duplicated a rule of the language, so
+`same_value` is exported instead (docs/13 § 8). `Conversion` followed, for a
+different reason: `fastmcp-raml` converts a whole API into one JSON Schema
+document, and the exported `to_json_schema` builds a fresh conversion per call,
+so it cannot share a definitions table.
+
+**A deep import is worth catching on its own account**, whichever of those it
+turns out to be. A consumer ships pinned to `fastraml>=0.1,<0.2`, so a module
+that moves inside a patch release breaks a published wheel — and the two cases
+above import a *public* name by its internal path, which nothing would have
+flagged. The check is one line:
+
+```bash
+grep -rn '^from fastraml\.\|^import fastraml\.' contrib/*/[a-z]*/ --include='*.py'
+```
+
+Anything it prints is either a name that belongs in `__all__` or an import that
+should go through it.
+
 The dependency does not run the other way either, even through the test suite.
 `tests/` may read `fixtures/` and may read the viewer's committed output, but
 may not import `contrib`: a consumer that the parser's own gate depends on is no
 longer downstream of it.
+
+### 2.1 The other direction: a rule the language does not have
+
+The rule above has a mirror image that is easier to miss, because nothing fails
+loudly. A consumer can grow support for a construct RAML does not define, and
+then only its own fixtures will exercise it.
+
+`raml-mock` did. It carried `4xx` response classes in five places — status
+selection, the configured-status check, the state-error path, `RouteBehavior`
+validation — and a test fixture declaring `4xx:` to drive them. RAML has no such
+key: P4 rejects anything but a 3-digit code (docs/08 § 3), so no parsed
+`Operation` could ever hold one and every one of those branches was unreachable
+from a real document. The construct is OpenAPI's, arrived at by analogy.
+
+The tell is that the *fixture* had to be invalid for the feature to be reachable
+at all. A consumer's fixtures are not a second opinion about the language — they
+are documents the parser must accept, and one the parser rejects is evidence
+about the fixture first. The same question that § 2 asks of a missing rule
+applies to a surplus one: is this in the spec? If not, it does not belong on
+either side of the line.
 
 ## 3. `fixtures/`
 
@@ -68,7 +110,7 @@ the loader refuses the ascent, which is the behaviour being checked.
 | `tests/unit/test_bindings.py` | Regenerates `viewer/public/api.json` and fails if the committed copy differs. |
 | `viewer/` | Renders that committed JSON. `npm run sample` rewrites it. |
 | `contrib/fastmcp-raml` | Builds MCP tools from it; its suite asserts what each construct becomes. |
-| `contrib/raml-mock` | Runs its routes in process; its suite checks that the effective API can answer without implementing authentication. |
+| `contrib/raml-mock` | Serves its routes in process, and its `examples/server.py` keeps the book resource in memory; its suite checks that the effective API can answer every one of them. |
 
 It lives at the repo root because it belongs to no one of them. Putting it
 inside any consumer makes the other three reach into that consumer's directory to

@@ -16,9 +16,9 @@ class TestRouting:
 
     async def test_missing_route_and_wrong_method_are_distinct(self, client):
         assert (await client.get('/missing')).status == 404
-        response = await client.put('/items/1')
+        response = await client.patch('/items/1')
         assert response.status == 405
-        assert response.headers['Allow'] == 'GET, HEAD, POST'
+        assert response.headers['Allow'] == 'DELETE, GET, HEAD, POST, PUT'
 
     async def test_path_and_query_values_are_validated(self, client):
         response = await client.get('/items/nope?enabled=yes')
@@ -61,7 +61,7 @@ class TestRouting:
         finally:
             await local.close()
         assert response.status == 204
-        assert seen == {'at': '2000-01-01T00:00:00Z', 'date': '2000-01-01'}
+        assert seen == {'enabled': True, 'at': '2000-01-01T00:00:00Z', 'date': '2000-01-01'}
 
     async def test_path_values_are_decoded_exactly_once(self, source):
         seen = []
@@ -89,6 +89,53 @@ class TestRouting:
 
 
 class TestRequests:
+    async def test_a_json_body_number_keeps_every_digit_the_client_sent(self, source):
+        # The encoder already used simplejson with `use_decimal`; the decoder
+        # used the standard library, so a number arrived as a float and came
+        # back rounded. Query and header numbers were always Decimal.
+        seen = []
+
+        def inspect(request: MockRequest) -> web.Response:
+            seen.append(request.values.body)
+            return web.Response(status=204)
+
+        local = TestClient(TestServer(create_app(source, overrides={('POST', '/items/{id}'): inspect})))
+        await local.start_server()
+        sent = '1.2345678901234567890123'
+        try:
+            response = await local.post(
+                '/items/7',
+                data=f'{{"id": 7, "name": "Dune", "size": {sent}}}',
+                headers={'Content-Type': 'application/json'},
+            )
+        finally:
+            await local.close()
+        assert response.status == 204
+        assert str(seen[0]['size']) == sent
+
+    async def test_omitted_parameters_and_body_fields_receive_defaults(self, source):
+        seen = []
+
+        def inspect(request: MockRequest) -> web.Response:
+            seen.append(request.values)
+            return web.Response(status=204)
+
+        app = create_app(
+            source,
+            overrides={('GET', '/items/{id}'): inspect, ('POST', '/items/{id}'): inspect},
+        )
+        local = TestClient(TestServer(app))
+        await local.start_server()
+        try:
+            query_response = await local.get('/items/7')
+            body_response = await local.post('/items/7', json={'id': 7, 'name': 'Dune'})
+        finally:
+            await local.close()
+        assert query_response.status == body_response.status == 204
+        assert seen[0].query == {'enabled': True}
+        assert seen[0].headers == {'X-Trace': 'generated-trace'}
+        assert seen[1].body == {'id': 7, 'name': 'Dune', 'category': 'book'}
+
     async def test_json_body_is_validated(self, client):
         good = await client.post('/items/2', json={'id': 2, 'name': 'Dune'})
         assert good.status == 201
@@ -168,7 +215,10 @@ class TestResponses:
     async def test_an_unconstrained_array_uses_its_item_type_example(self, client):
         response = await client.get('/items')
         assert response.status == 200
-        assert await response.json() == [{'id': 7, 'name': 'Dune'}]
+        assert await response.json() == [
+            {'id': 7, 'name': 'Dune'},
+            {'id': 8, 'name': 'Foundation'},
+        ]
 
     async def test_an_ancestor_example_must_satisfy_the_effective_shape(self, client):
         response = await client.get('/items/narrow')
@@ -197,6 +247,28 @@ class TestResponses:
         excluded = await client.get('/items/3', headers={'Accept': 'application/json;q=0, */*;q=1'})
         assert excluded.status == 406
 
+    async def test_scalar_text_uses_ramls_spelling_of_a_boolean(self, client):
+        # `str(False)` is `'False'`, which is Python. Every other encoder here
+        # lowercases; this one did not, and put a Python repr on the wire.
+        assert await (await client.get('/scalar-text')).text() == 'false'
+
+    async def test_a_fractional_number_can_be_written_as_text(self, client):
+        # Generation produces `Decimal` for any non-integral number, which the
+        # scalar encoder did not accept -- so this answered 500 rather than 200.
+        response = await client.get('/scalar-text/number')
+        assert response.status == 200
+        assert await response.text() == '0.5'
+
+    async def test_head_reports_the_headers_get_would_have_sent(self, client):
+        # RFC 9110 section 9.3.2. Returning early on HEAD sent neither
+        # `Content-Length` nor `Content-Type`; aiohttp drops the payload itself.
+        get = await client.get('/items/3')
+        head = await client.request('HEAD', '/items/3')
+        assert head.status == get.status
+        assert head.headers['Content-Length'] == get.headers['Content-Length']
+        assert head.headers['Content-Type'] == get.headers['Content-Type']
+        assert await head.read() == b''
+
     async def test_exact_decimal_generation_never_round_trips_through_float(self, client):
         response = await client.get('/decimal')
         assert response.status == 200
@@ -205,6 +277,45 @@ class TestResponses:
         precise = await client.get('/precise')
         assert precise.status == 200
         assert await precise.text() == '1.123456789012345678901234567891'
+
+    async def test_negative_upper_bounds_are_synthesized(self, client):
+        integer = await client.get('/negative-integer')
+        number = await client.get('/negative-number')
+        assert await integer.json() == -5
+        assert await number.json() == -5.5
+
+    async def test_unique_arrays_generate_distinct_items(self, client):
+        response = await client.get('/unique')
+        assert response.status == 200
+        assert await response.json() == [0, 1]
+
+        defaulted = await client.get('/unique-default')
+        assert defaulted.status == 200
+        assert await defaulted.json() == ['preferred', 'string']
+
+    async def test_min_properties_uses_typed_pattern_properties(self, client):
+        response = await client.get('/pattern-object')
+        assert response.status == 200
+        assert await response.json() == {'x-mock0': 5, 'x-mock1': 6}
+
+    async def test_common_constrained_string_patterns_are_synthesized(self, client):
+        response = await client.get('/pattern-string')
+        assert response.status == 200
+        assert await response.json() == '0000000000000'
+
+    async def test_validation_status_can_follow_an_apis_declared_error_semantics(self, source):
+        def status(route, error):
+            assert route.path == '/items/{id}'
+            assert error.issues[0].location == 'body'
+            return 422
+
+        local = TestClient(TestServer(create_app(source, validation_status=status)))
+        await local.start_server()
+        try:
+            response = await local.post('/items/2', json={'name': 'Dune'})
+        finally:
+            await local.close()
+        assert response.status == 422
 
     async def test_multipart_response_uses_file_metadata(self, client):
         response = await client.get('/multipart-response')

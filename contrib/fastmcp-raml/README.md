@@ -147,9 +147,10 @@ finished route and cares nothing for where the route came from; and the same for
 
 `examples/bookstore.py` serves `fixtures/sample` as a working MCP server. The
 API that document describes does not exist, so `raml-mock` serves the same RAML
-document on a local port for the MCP server's lifetime. Calling a tool therefore
-builds a real HTTP request from the RAML, sends it over a socket, and validates
-the RAML example or generated reply against the schema the document declared.
+document on a local port for the MCP server's lifetime. The book resource starts
+from `Book.example` and keeps creates and deletes in memory. Calling a tool
+therefore builds a real HTTP request from the RAML, sends it over a socket, and
+validates the reply against the schema the document declared.
 
 ```bash
 uv run python examples/bookstore.py              # HTTP, prints a URL

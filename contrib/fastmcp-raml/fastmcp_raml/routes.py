@@ -35,9 +35,7 @@ from fastmcp.utilities.openapi import (
     RequestBodyInfo,
     ResponseInfo,
 )
-from fastraml import ObjectShape
-from fastraml.parser.fragments import APIFragment
-from fastraml.views.jsonschema import Conversion
+from fastraml import APIFragment, Conversion, ObjectShape
 
 from fastmcp_raml.flatten import flatten
 

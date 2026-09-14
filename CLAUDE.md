@@ -84,11 +84,15 @@ because a format with no consumer is a format whose gaps nothing measures.
   never edit it, and a stale copy fails `tests/unit/test_bindings.py`, as does a
   stale `public/api.json`. Checks: `npm run check` there; CI runs `npm run ci`,
   which swaps the screenshots for the production build.
-- **`contrib/`** — four separate `uv` projects, each with its own lock and gate:
+- **`contrib/`** — five separate `uv` projects, each with its own lock and gate:
   `raml-document` (a typed authoring model, plus a reader for pydantic models),
-  `fastapi-raml` (routes → RAML), `fastmcp-raml` (RAML → an MCP server). The
-  fourth is `raml-mock` (RAML → an in-process aiohttp mock). The root gate does
-  not see them; CI runs them as a matrix.
+  `fastapi-raml` (routes → RAML), `fastmcp-raml` (RAML → an MCP server),
+  `raml-mock` (RAML → an in-process aiohttp mock, with a `raml-mock` CLI) and
+  `fastraml-viewer` (the built `viewer/` bundle, depending on nothing). The root
+  gate does not see them; CI runs them as a matrix.
+  **A consumer may not hold a rule the language states, and may not invent one
+  it does not** — `raml-mock` carried `4xx` response classes, which are
+  OpenAPI's, until a fixture that P4 rejects gave it away (`docs/17` § 2.1).
 - **`fixtures/`** — one worked document exercising every construct the model
   carries. **Four consumers read it**, so a change there moves
   `tests/unit/test_bindings.py`, the viewer's committed JSON, and

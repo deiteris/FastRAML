@@ -1,31 +1,46 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 from urllib.parse import urlencode
 
 import simplejson as json
 from aiohttp import MultipartWriter, web
-from pyraml import AnyShape, FileShape, ObjectShape, StringShape
+from fastraml import AnyShape, FileShape, ObjectShape, StringShape
 
+from raml_mock.config import GenerationOptions, RouteBehavior
 from raml_mock.errors import MockGenerationError, RequestIssue, RequestValidationError
 from raml_mock.generate import generate
 from raml_mock.media import base_media_type, is_json_media_type
 from raml_mock.shapes import concrete_shape, file_type_accepts, shape_name
+from raml_mock.status import is_success
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from pyraml import BaseShape, Body, Operation, Response
+    from fastraml import BaseShape, Body, Operation, Response
 
     from raml_mock.codecs import BodyCodec
 
 __all__ = ['build_response']
 
-_STATUS_LENGTH = 3
-_SUCCESS_MIN = 200
-_SUCCESS_MAX = 300
+_GENERATED = object()
+#: Media types that carry a *stream* rather than a representation. RAML
+#: describes one representation of one entity and says nothing about how many
+#: events a stream holds or how they are paced, so there is nothing in a
+#: document for the mock to honour. Answering with a single frame would be a
+#: stream in name only, so these are refused like structured XML is.
+_STREAMED = frozenset({'application/x-ndjson', 'text/event-stream'})
+
+
+@dataclass(slots=True, frozen=True)
+class ResponseContext:
+    behavior: RouteBehavior = field(default_factory=RouteBehavior)
+    generation: GenerationOptions = field(default_factory=GenerationOptions)
+    key: str = ''
+    value: object = _GENERATED
 
 
 @dataclass(slots=True, frozen=True)
@@ -34,45 +49,83 @@ class _Accept:
     quality: float
 
 
-def build_response(request: web.Request, operation: Operation, codecs: Mapping[str, BodyCodec]) -> web.Response:
-    response = _select_response(request, operation)
-    status = _status_of(response.code)
+@dataclass(slots=True, frozen=True)
+class _SelectedResponse:
+    response: Response
+    status: int
+
+
+def build_response(
+    request: web.Request,
+    operation: Operation,
+    codecs: Mapping[str, BodyCodec],
+    context: ResponseContext | None = None,
+) -> web.Response:
+    """The declared response for *request*, as a complete body.
+
+    Synchronous on purpose. Nothing here suspends, so a caller that decides
+    something from the result -- committing a stateful write, say -- runs
+    without the event loop interleaving another request in between.
+    """
+    selected_context = context or ResponseContext()
+    behavior = selected_context.behavior
+    selected_response = _select_response(request, operation, behavior.status)
+    response = selected_response.response
+    status = selected_response.status
     headers = _response_headers(response)
-    if not response.bodies or status in {204, 304} or request.method == 'HEAD':
+    if not response.bodies or status in {204, 304}:
         return web.Response(status=status, headers=headers)
 
     selected = _select_body(request.headers.get('Accept'), response.bodies, codecs)
     if selected is None or selected.shape is None:
         raise RequestValidationError(406, [RequestIssue('header.Accept', 'no acceptable response representation')])
-    example = request.headers.get('X-RAML-Mock-Example')
-    value = generate(selected.shape, example=example)
+    example = request.headers.get('X-RAML-Mock-Example') or behavior.example
+    value = selected_context.value
+    if value is _GENERATED:
+        value = generate(
+            selected.shape,
+            example=example,
+            options=selected_context.generation,
+            key=f'{selected_context.key}:{status}:{selected.media_type}',
+        )
+    elif selected.shape.validate(value) is not None:
+        raise MockGenerationError(f'configured value does not satisfy {shape_name(selected.shape)}')
+    # HEAD is built exactly like GET. aiohttp drops the payload and keeps
+    # `Content-Length` and `Content-Type`, which is what RFC 9110 section 9.3.2
+    # asks for -- returning early here instead sent neither.
     return _encode(status, headers, selected, value, codecs)
 
 
-def _select_response(request: web.Request, operation: Operation) -> Response:
+def _select_response(request: web.Request, operation: Operation, configured: str | None) -> _SelectedResponse:
     if not operation.responses:
         raise RequestValidationError(500, [RequestIssue('response', 'operation declares no response')])
-    requested = request.headers.get('X-RAML-Mock-Status')
+    requested = request.headers.get('X-RAML-Mock-Status') or configured
     if requested is not None:
         selected = operation.responses.get(requested)
         if selected is None:
+            location = 'header.X-RAML-Mock-Status' if 'X-RAML-Mock-Status' in request.headers else 'response'
             raise RequestValidationError(
                 400,
-                [RequestIssue('header.X-RAML-Mock-Status', 'status is not declared', {'status': requested})],
+                [RequestIssue(location, 'status is not declared', {'status': requested})],
             )
-        return selected
-    return next(
-        (response for code, response in operation.responses.items() if _SUCCESS_MIN <= _status_of(code) < _SUCCESS_MAX),
+        return _SelectedResponse(selected, _status_of(requested))
+    response = next(
+        (item for code, item in operation.responses.items() if is_success(_status_of(code))),
         next(iter(operation.responses.values())),
     )
+    return _SelectedResponse(response, _status_of(response.code))
 
 
 def _status_of(code: str) -> int:
-    if code.isdigit():
-        return int(code)
-    if len(code) == _STATUS_LENGTH and code[0].isdigit() and code[1:].lower() == 'xx':
-        return int(code[0]) * 100
-    raise RequestValidationError(500, [RequestIssue('response', 'response status is not mockable', {'status': code})])
+    # Every `responses:` key fastRAML hands over is a 3-digit status -- it
+    # rejects anything else, `4xx` classes included (docs/08 section 3). The
+    # guard is for an `Operation` assembled in Python, not for a parsed one.
+    if not code.isdigit():
+        raise RequestValidationError(
+            500,
+            [RequestIssue('response', 'response status is not a 3-digit code', {'status': code})],
+        )
+    return int(code)
 
 
 def _response_headers(response: Response) -> dict[str, str]:
@@ -84,10 +137,19 @@ def _response_headers(response: Response) -> dict[str, str]:
 
 
 def _header_value(value: object) -> str:
-    if isinstance(value, bool):
-        return str(value).lower()
     if isinstance(value, (dict, list)):
         return cast('str', json.dumps(value, separators=(',', ':')))
+    return _text_value(value)
+
+
+def _text_value(value: object) -> str:
+    """One scalar as wire text.
+
+    `str(True)` is `'True'`, which is Python's spelling of a boolean and not
+    RAML's. Every encoder here has to agree on that, so they share this.
+    """
+    if isinstance(value, bool):
+        return str(value).lower()
     return str(value)
 
 
@@ -150,7 +212,7 @@ def _specificity(media_type: str) -> int:
 def _can_encode(media_type: str, base: BaseShape, codecs: Mapping[str, BodyCodec]) -> bool:
     media = base_media_type(media_type)
     shape = concrete_shape(base)
-    if isinstance(shape, FileShape) and not file_type_accepts(shape, media):
+    if media in _STREAMED or (isinstance(shape, FileShape) and not file_type_accepts(shape, media)):
         return False
     if media in codecs or is_json_media_type(media):
         return True
@@ -176,10 +238,7 @@ def _encode(
     if custom is not None:
         payload = custom.encode(value)
     elif is_json_media_type(media):
-        payload = cast(
-            'str',
-            json.dumps(value, separators=(',', ':'), ensure_ascii=False, use_decimal=True, allow_nan=False),
-        )
+        payload = _json_payload(value, body.shape, media)
     elif media == 'application/x-www-form-urlencoded':
         payload = _form_payload(value, body.shape, media)
     elif media == 'multipart/form-data':
@@ -201,6 +260,19 @@ def _payload_response(status: int, headers: dict[str, str], media_type: str, pay
     return web.Response(status=status, headers=headers, body=payload, content_type=media_type)
 
 
+def _json_payload(value: object, base: BaseShape, media_type: str) -> str:
+    # A value a handler or the state store supplied need not be JSON at all --
+    # a `set` reaches here intact, because RAML validation accepts it as an
+    # `any`. Without this the `TypeError` surfaced as a *state* failure.
+    try:
+        return cast(
+            'str',
+            json.dumps(value, separators=(',', ':'), ensure_ascii=False, use_decimal=True, allow_nan=False),
+        )
+    except (TypeError, ValueError) as error:
+        raise MockGenerationError(f'value for {shape_name(base)} cannot be encoded as {media_type}') from error
+
+
 def _form_payload(value: object, base: BaseShape, media_type: str) -> str:
     if not isinstance(value, dict):
         raise _encoding_error(media_type, base)
@@ -213,8 +285,13 @@ def _scalar_payload(value: object, base: BaseShape, media_type: str) -> str | by
         return base64.b64decode(value)
     if isinstance(value, bytes):
         return value
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return '' if value is None else str(value)
+    if value is None:
+        return ''
+    # `Decimal` belongs here: it is what generation produces for any `number`
+    # that is not integral, so without it `type: number` over `text/plain`
+    # answered 500 for every value with a fractional part.
+    if isinstance(value, (str, int, float, bool, Decimal)):
+        return _text_value(value)
     raise _encoding_error(media_type, base)
 
 
@@ -232,13 +309,7 @@ def _multipart(value: dict[str, object], base: BaseShape) -> MultipartWriter:
             payload = item
             if isinstance(field_shape, FileShape) and isinstance(payload, str):
                 payload = base64.b64decode(payload)
-            encoded = (
-                payload
-                if isinstance(payload, bytes)
-                else str(payload).lower()
-                if isinstance(payload, bool)
-                else str(payload)
-            )
+            encoded = payload if isinstance(payload, bytes) else _text_value(payload)
             part = writer.append(encoded, {'Content-Type': _part_media_type(field_shape)})
             if isinstance(field_shape, FileShape):
                 part.set_content_disposition('form-data', name=name, filename=name)

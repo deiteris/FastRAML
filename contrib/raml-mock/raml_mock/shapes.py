@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pyraml import BaseShape, FileShape, JsonShape
+from fastraml import BaseShape, FileShape, JsonShape
 
 from raml_mock.media import base_media_type
 

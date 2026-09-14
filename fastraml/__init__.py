@@ -47,6 +47,7 @@ _EXPORTS = {
     'BaseShape': ('fastraml.types.base', 'BaseShape'),
     'Body': ('fastraml.parser.endpoints', 'Body'),
     'BooleanShape': ('fastraml.types.scalars', 'BooleanShape'),
+    'Conversion': ('fastraml.views.jsonschema', 'Conversion'),
     'DataNode': ('fastraml.datanode', 'DataNode'),
     'DataTypeFragment': ('fastraml.parser.fragments', 'DataTypeFragment'),
     'DateOnlyShape': ('fastraml.types.scalars', 'DateOnlyShape'),
@@ -120,6 +121,7 @@ _EXPORTS = {
     'parse_lenient': ('fastraml.parser.entry', 'parse_lenient'),
     'path_to_file_uri': ('fastraml.uris', 'path_to_file_uri'),
     'resolve_uri_ref': ('fastraml.uris', 'resolve_uri_ref'),
+    'same_value': ('fastraml.types.values', 'same_value'),
 }
 
 
@@ -146,6 +148,7 @@ __all__ = [
     'BaseShape',
     'Body',
     'BooleanShape',
+    'Conversion',
     'DataNode',
     'DataTypeFragment',
     'DateOnlyShape',
@@ -218,5 +221,6 @@ __all__ = [
     'parse_lenient',
     'path_to_file_uri',
     'resolve_uri_ref',
+    'same_value',
     'to_json_schema',
 ]

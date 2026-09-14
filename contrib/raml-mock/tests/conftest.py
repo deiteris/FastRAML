@@ -12,12 +12,27 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'examples')
 
 API = """#%RAML 1.0
 title: Mock API
+securitySchemes:
+  apiKey:
+    type: x-api-key
+  basic:
+    type: Basic Authentication
+  oauth:
+    type: OAuth 2.0
+    settings:
+      authorizationUri: https://example.test/authorize
+      accessTokenUri: https://example.test/token
+      authorizationGrants: [authorization_code]
+      scopes: [read, write]
 types:
   Item:
     type: object
     properties:
       id: integer
       name: string
+      category?:
+        type: string
+        default: book
     examples:
       primary: {id: 7, name: Dune}
       alternate: {id: 8, name: Foundation}
@@ -87,18 +102,17 @@ types:
       id: integer
     get:
       queryParameters:
-        enabled?: boolean
+        enabled?:
+          type: boolean
+          default: true
         tag?: string[]
         at?: datetime
         date?: date-only
       headers:
-        X-Trace?: string
+        X-Trace?:
+          type: string
+          default: generated-trace
       responses:
-        200:
-          headers:
-            X-Generated: string
-          body:
-            application/json: Item
         404:
           body:
             application/json:
@@ -107,6 +121,12 @@ types:
                 missing:
                   id: 0
                   name: missing
+        499:
+        200:
+          headers:
+            X-Generated: string
+          body:
+            application/json: Item
     post:
       body:
         application/json: Item
@@ -114,6 +134,17 @@ types:
         201:
           body:
             application/json: Item
+        422:
+    put:
+      body:
+        application/json: Item
+      responses:
+        200:
+          body:
+            application/json: Item
+    delete:
+      responses:
+        204:
 /form:
   post:
     body:
@@ -152,6 +183,21 @@ types:
           text/plain:
             type: string
             example: hello
+/scalar-text:
+  get:
+    responses:
+      200:
+        body:
+          text/plain: boolean
+  /number:
+    get:
+      responses:
+        200:
+          body:
+            text/plain:
+              type: number
+              minimum: 0.5
+              maximum: 0.9
 /xml:
   get:
     responses:
@@ -246,6 +292,151 @@ types:
             minimum: 1.123456789012345678901234567891
             maximum: 1.123456789012345678901234567891
             multipleOf: 1.123456789012345678901234567891
+/negative-integer:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: integer
+            maximum: -5
+/negative-number:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: number
+            maximum: -5.5
+/unique:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: array
+            minItems: 2
+            uniqueItems: true
+            items: integer
+/unique-default:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: array
+            minItems: 2
+            uniqueItems: true
+            items:
+              type: string
+              default: preferred
+/pattern-object:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: object
+            minProperties: 2
+            properties:
+              /^x-/:
+                type: integer
+                minimum: 5
+/pattern-string:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: string
+            pattern: ^\\d{13}$
+            minLength: 13
+            maxLength: 13
+/generated-list:
+  get:
+    responses:
+      200:
+        body:
+          application/json: string[]
+/implicit-items:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: array
+/optional:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: object
+            properties:
+              id: integer
+              note?: string
+/default-max:
+  post:
+    body:
+      application/json:
+        type: object
+        maxProperties: 0
+        properties:
+          note?:
+            type: string
+            default: generated
+    responses:
+      204:
+/events:
+  get:
+    responses:
+      200:
+        body:
+          text/event-stream:
+            type: string
+            example: hello
+/lines:
+  get:
+    responses:
+      200:
+        body:
+          application/x-ndjson:
+            type: array
+            example: [{id: 1}, {id: 2}]
+/state-objects:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: object[]
+/protected:
+  get:
+    securedBy: [apiKey]
+    responses:
+      200:
+        body:
+          application/json:
+            type: string
+            example: protected
+/open:
+  get:
+    securedBy: [oauth, null]
+    responses:
+      200:
+        body:
+          application/json:
+            type: string
+            example: open
+/secure-write:
+  post:
+    securedBy: [oauth: {scopes: [write]}, basic, apiKey]
+    body:
+      application/json: Item
+    responses:
+      200:
+        body:
+          application/json: Item
 """
 
 

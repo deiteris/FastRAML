@@ -6,9 +6,10 @@ one body, a recursive type, four `documentation:` entries, and security on every
 method.
 
 The API it describes does not exist, so `raml-mock` serves it from the same RAML
-document for the MCP server's lifetime. Calling a tool builds a real HTTP request,
-sends it over a loopback socket, and validates the RAML example or generated reply
-against the schema the document declared.
+document for the MCP server's lifetime. Its book resource starts from the RAML
+type example and keeps writes in memory. Calling a tool builds a real HTTP request,
+sends it over a loopback socket, and validates the reply against the schema the
+document declared.
 
     uv run python examples/bookstore.py              # HTTP, prints a URL
     uv run python examples/bookstore.py --stdio      # for an MCP client config
@@ -27,7 +28,7 @@ from typing import TYPE_CHECKING
 import httpx2
 from fastmcp.server.lifespan import lifespan
 from fastraml import ParseOptions
-from raml_mock import mock_server
+from raml_mock import MockOptions, StatefulResource, mock_server
 
 from fastmcp_raml import RAMLProvider, raml_mcp
 
@@ -42,6 +43,21 @@ SAMPLE = FIXTURES / 'sample' / 'api.raml'
 # `workspace_root` because the document includes from a sibling directory, and
 # the loader's sandbox is the entry file's own directory by default.
 OPTIONS = ParseOptions(workspace_root=FIXTURES)
+MOCK_OPTIONS = MockOptions(
+    resources=(
+        StatefulResource(
+            name='books',
+            key_field='isbn',
+            key_parameter='isbn',
+            seed_from_example=True,
+            collection_get=('GET', '/books'),
+            item_get=('GET', '/books/{isbn}'),
+            create=('POST', '/books'),
+            delete=('DELETE', '/books/{isbn}'),
+            delete_missing_status=204,
+        ),
+    )
+)
 
 TENANT = {'tenant': 'acme'}
 _PENDING_MOCK_URL = 'http://raml-mock.invalid'
@@ -53,7 +69,7 @@ def build() -> FastMCP:
 
     @lifespan
     async def mock_lifespan(_server: FastMCP) -> AsyncIterator[dict[str, object]]:
-        async with mock_server(SAMPLE, options=OPTIONS) as backend, client:
+        async with mock_server(SAMPLE, options=OPTIONS, mock_options=MOCK_OPTIONS) as backend, client:
             client.base_url = backend.url
             yield {'mock': backend}
 

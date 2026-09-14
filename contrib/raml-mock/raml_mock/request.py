@@ -1,37 +1,34 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+import simplejson as json
 from aiohttp.multipart import BodyPartReader
-from pyraml import (
+from fastraml import (
     AnyShape,
     ArrayShape,
     BooleanShape,
-    DateOnlyShape,
-    DateTimeOnlyShape,
-    DateTimeShape,
     FileShape,
     IntegerShape,
     NilShape,
     NumberShape,
     ObjectShape,
     StringShape,
-    TimeOnlyShape,
     UnionShape,
 )
 
 from raml_mock.errors import RequestIssue, RequestValidationError
 from raml_mock.media import base_media_type, is_json_media_type
 from raml_mock.shapes import concrete_shape, file_type_accepts
+from raml_mock.values import detach
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from aiohttp import web
-    from pyraml import BaseShape, Body, Parameter, Request
+    from fastraml import BaseShape, Body, Parameter, Request
 
     from raml_mock.codecs import BodyCodec
 
@@ -106,6 +103,9 @@ def _parameters(
     for name, parameter in declared.items():
         values = supplied.get(name, ())
         if not values:
+            if location != 'path' and parameter.base.default is not None:
+                result[name] = _apply_defaults(parameter.base, detach(parameter.base.default.raw))
+                continue
             if parameter.required:
                 issues.append(RequestIssue(f'{location}.{name}', 'required parameter is missing'))
             continue
@@ -139,41 +139,44 @@ def _coerce_one(base: BaseShape, value: WireValue) -> object:
     return _coerce_text(shape, value)
 
 
-def _coerce_text(shape: object | None, text: str) -> object:
-    if isinstance(
-        shape,
-        (AnyShape, StringShape, DateOnlyShape, TimeOnlyShape, DateTimeOnlyShape, DateTimeShape),
-    ):
-        return text
-    if isinstance(shape, FileShape):
-        return text.encode()
-    if isinstance(shape, (IntegerShape, NumberShape)):
-        return _coerce_number(shape, text)
-    return _coerce_special(shape, text)
-
-
-def _coerce_number(shape: IntegerShape | NumberShape, text: str) -> int | Decimal:
-    if isinstance(shape, IntegerShape):
-        return int(text, 10)
+def _decimal(text: str) -> Decimal:
     try:
         return Decimal(text)
     except InvalidOperation as error:
         raise ValueError(f'{text!r} is not a number') from error
 
 
-def _coerce_special(shape: object | None, text: str) -> object:
-    if isinstance(shape, BooleanShape):
-        lowered = text.lower()
-        if lowered not in {'true', 'false'}:
-            raise ValueError(f'{text!r} is not true or false')
-        return lowered == 'true'
-    if isinstance(shape, NilShape):
-        if text.lower() not in {'null', '~'}:
-            raise ValueError(f'{text!r} is not null')
-        return None
+def _boolean(text: str) -> bool:
+    lowered = text.lower()
+    if lowered not in {'true', 'false'}:
+        raise ValueError(f'{text!r} is not true or false')
+    return lowered == 'true'
+
+
+def _nil(text: str) -> None:
+    if text.lower() not in {'null', '~'}:
+        raise ValueError(f'{text!r} is not null')
+
+
+#: How one kind reads its HTTP text. A table rather than an `isinstance` chain,
+#: which had to be split across two functions to stay under a complexity limit
+#: -- and the split put `boolean` and `nil` somewhere no reader would look for
+#: them. A kind absent here keeps the text as written, which is what `any` and
+#: every date kind want.
+_FROM_TEXT: dict[type[object], Callable[[str], object]] = {
+    FileShape: str.encode,
+    IntegerShape: lambda text: int(text, 10),
+    NumberShape: _decimal,
+    BooleanShape: _boolean,
+    NilShape: _nil,
+}
+
+
+def _coerce_text(shape: object | None, text: str) -> object:
     if isinstance(shape, UnionShape):
         return _coerce_union(shape, text)
-    return text
+    reader = _FROM_TEXT.get(type(shape))
+    return text if reader is None else reader(text)
 
 
 def _coerce_union(shape: UnionShape, text: str) -> object:
@@ -208,8 +211,28 @@ def _coerce_mapping(
             result[name] = _coerce_values(prop.base, values)
         except (ValueError, TypeError, UnicodeDecodeError) as error:
             issues.append(RequestIssue(f'{location}.{name}', 'field cannot be decoded', str(error)))
-    _valid(base, result, location, 'value does not match its RAML type', issues)
-    return result
+    defaulted = cast('dict[str, object]', _apply_defaults(base, result))
+    _valid(base, defaulted, location, 'value does not match its RAML type', issues)
+    return defaulted
+
+
+def _apply_defaults(base: BaseShape, value: object) -> object:
+    shape = concrete_shape(base)
+    if isinstance(shape, ObjectShape) and isinstance(value, dict):
+        supplied = {
+            name: _apply_defaults((shape.properties or {})[name].base, item)
+            if name in (shape.properties or {})
+            else item
+            for name, item in cast('dict[str, object]', value).items()
+        }
+        result = dict(supplied)
+        for name, prop in (shape.properties or {}).items():
+            if name not in result and prop.base.default is not None:
+                result[name] = _apply_defaults(prop.base, detach(prop.base.default.raw))
+        return supplied if base.validate(supplied) is None and base.validate(result) is not None else result
+    if isinstance(shape, ArrayShape) and isinstance(value, list) and shape.items is not None:
+        return [_apply_defaults(shape.items, item) for item in value]
+    return value
 
 
 async def _decode_body(
@@ -231,7 +254,16 @@ async def _decode_body(
         if custom is not None:
             value = await custom.decode(request)
         elif is_json_media_type(media_type):
-            value = json.loads(await request.text(), parse_constant=_reject_json_constant)
+            # `use_decimal` to match the encoder, and for the same reason the
+            # parser gives: a number that goes through `float` comes back
+            # rounded, so a body echoed to the client is not the body it sent.
+            # Query and header numbers already arrive as `Decimal` from
+            # `_coerce_number`; this is the path that did not.
+            value = json.loads(
+                await request.text(),
+                parse_constant=_reject_json_constant,
+                use_decimal=True,
+            )
         elif media_type == _FORM:
             return await _decode_form(request, body.shape, issues)
         elif media_type == _MULTIPART:
@@ -245,6 +277,7 @@ async def _decode_body(
         issues.append(RequestIssue('body', 'body is not valid text', str(error)))
         return None
 
+    value = _apply_defaults(body.shape, value)
     _valid(body.shape, value, 'body', 'body does not match its RAML type', issues)
     return value
 

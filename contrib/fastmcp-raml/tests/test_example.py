@@ -71,15 +71,31 @@ class TestACallReachesTheBackend:
                     'price': {'amount': 7.5, 'currency': 'USD'},
                 },
             )
-        # The response comes from `Book.example`, not from a Python handler that
-        # echoes the request body.
-        assert result.structured_content['title'] == 'Dune'
+        assert result.structured_content['title'] == 'Neuromancer'
 
     async def test_a_response_with_no_body_is_not_an_error(self, server):
         # `delete` declares `204:` and nothing under it.
         async with Client(server) as connected:
             result = await connected.call_tool('delete_books_isbn', {'isbn': '9780441013593'})
         assert result.structured_content is None
+
+    async def test_book_writes_change_later_reads(self, server):
+        book = {
+            'title': 'Neuromancer',
+            'isbn': '9780441569595',
+            'price': {'amount': 7.5, 'currency': 'USD'},
+            'id': 'b-2',
+            'createdAt': '2024-02-01T00:00:00Z',
+        }
+        async with Client(server) as connected:
+            await connected.call_tool('post_books', book)
+            created = await connected.call_tool('get_books', {})
+            await connected.call_tool('delete_books_isbn', {'isbn': book['isbn']})
+            repeated_delete = await connected.call_tool('delete_books_isbn', {'isbn': book['isbn']})
+            deleted = await connected.call_tool('get_books', {})
+        assert [item['title'] for item in created.structured_content['result']] == ['Dune', 'Neuromancer']
+        assert [item['title'] for item in deleted.structured_content['result']] == ['Dune']
+        assert repeated_delete.structured_content is None
 
 
 class TestTheRamlSuppliesResponses:

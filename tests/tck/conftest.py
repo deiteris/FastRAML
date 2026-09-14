@@ -73,10 +73,10 @@ SKIPPED_FIXTURES: dict[str, str] = {
 
 _ENV_VAR = 'FASTRAML_TCK_DIR'
 
-#: The submodule, then the fixture root inside it. The second `raml-tck` is not
-#: a typo: the submodule's root holds its own README and KNOWN-ISSUES, and the
-#: fixtures sit under `raml-tck/` within it.
-_SUBMODULE = Path('tests') / 'tck' / 'raml-tck' / 'raml-tck'
+#: The submodule, then the fixture root inside it. `tests/raml-1.0` is the
+#: upstream layout, which the fork keeps: the submodule's own root holds its
+#: README, CONTRIBUTING and KNOWN-ISSUES, and only that subtree is fixtures.
+_SUBMODULE = Path('tests') / 'tck' / 'raml-tck' / 'tests' / 'raml-1.0'
 
 
 def tck_root() -> Path | None:

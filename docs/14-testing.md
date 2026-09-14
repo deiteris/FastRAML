@@ -17,9 +17,9 @@ by `python -m bench`, for the reason § 5 gives.
 
 `raml-tck` is the RAML organisation's compliance kit. It reaches this
 repository as the **submodule** `tests/tck/raml-tck`, from
-[deiteris/raml-tck](https://github.com/deiteris/raml-tck) — the fixtures from
-the archived `raml-org/raml-tck` by way of the copy in `acronis/go-raml`,
-carrying three fixture corrections that copy had already made.
+[deiteris/raml-tck](https://github.com/deiteris/raml-tck) — a **fork** of the
+archived `raml-org/raml-tck`, whose fixtures it replaces with the customised
+copy vendored in `acronis/go-raml`, plus three fixture corrections.
 
 ```bash
 git clone --recurse-submodules <this repo>
@@ -27,8 +27,15 @@ git submodule update --init            # if you already cloned
 uv run pytest tests/tck -q
 ```
 
-The fixtures sit at `tests/tck/raml-tck/raml-tck/`; the submodule's own root
-holds its README and the record of those corrections.
+The fixtures sit at `tests/tck/raml-tck/tests/raml-1.0/` — upstream's layout,
+which the fork keeps. The submodule's own root holds its README, CONTRIBUTING
+and the record of those corrections.
+
+Forking rather than copying is what makes the divergence legible. Measured
+against upstream, the go-raml fixture set is **63 files modified, 38 removed and
+57 added** — not the "light customisation" its README claims. Every processor
+using that copy was running a different suite from one using upstream, and
+nothing recorded the difference; now it is a diff.
 
 `FASTRAML_TCK_DIR` still overrides, for running against a different checkout.
 With neither the submodule nor the variable, the TCK tests **skip** — an

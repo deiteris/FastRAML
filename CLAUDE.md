@@ -220,7 +220,8 @@ uv run pytest tests/tck -q
 
 A submodule and not a copy: upstream is archived and states no licence, so the
 sdist excludes the directory (`docs/14` § 1). Fixtures live at
-`tests/tck/raml-tck/raml-tck/` — the submodule root holds its own README.
+`tests/tck/raml-tck/tests/raml-1.0/` — upstream's layout, which the fork keeps;
+the submodule root holds its own README and KNOWN-ISSUES.
 
 `tests/tck/ratchet.json` records the expected outcome per fixture. CI fails on
 drift in either direction — a regression, or unrecorded progress. Regenerate with

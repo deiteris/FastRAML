@@ -91,6 +91,18 @@ Project the model as a graph.
 - `--format nt|turtle|dot|json` — N-Triples, Turtle, Graphviz DOT, or plain
   JSON. Default: `turtle`.
 
+## `fastraml openapi FILE`
+
+Convert the effective API to OpenAPI 3.0.3.
+
+- `--format yaml|json` — YAML (default) or JSON.
+- `-o FILE`, `--output FILE` — write the document to a file instead of stdout.
+  The file is UTF-8 with LF newlines regardless of shell or platform, which is
+  why this flag exists rather than a shell redirect.
+
+The exit code stays 0 when the conversion drops information. Each dropped or
+substituted piece is reported as a `warning:` line on stderr.
+
 ## `fastraml query [FILE ...]`
 
 Run SPARQL over the graph. Needs `pyoxigraph`.

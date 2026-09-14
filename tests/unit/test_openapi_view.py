@@ -87,6 +87,43 @@ def test_a_server_variable_without_a_default_gets_a_reported_placeholder(workspa
     assert dropped == ["servers.variables.tenant: OpenAPI requires a default; used 'tenant' because RAML declared none"]
 
 
+def test_a_typed_server_variable_default_is_stringified(workspace):
+    """baseUriParameters are typed, so `default: 443` is an int, not a string."""
+    document, dropped = converted(
+        workspace,
+        'title: T\n'
+        'baseUri: https://{host}:{port}\n'
+        'baseUriParameters:\n'
+        '  host:\n'
+        '    type: string\n'
+        '    default: api.example.com\n'
+        '  port:\n'
+        '    type: integer\n'
+        '    default: 443\n',
+    )
+    variables = document.servers[0].variables
+    assert variables['host'].default == 'api.example.com'
+    assert variables['port'].default == '443'
+    assert dropped == []
+
+
+def test_a_server_variable_default_with_no_string_form_is_reported(workspace):
+    document, dropped = converted(
+        workspace,
+        'title: T\n'
+        'baseUri: https://{tenant}.example.com\n'
+        'baseUriParameters:\n'
+        '  tenant:\n'
+        '    type: array\n'
+        '    items: string\n'
+        '    default: [a, b]\n',
+    )
+    assert document.servers[0].variables['tenant'].default == 'tenant'
+    assert dropped == [
+        "servers.variables.tenant: RAML default ['a', 'b'] has no string form; used 'tenant'",
+    ]
+
+
 def test_named_types_are_lazy_components_and_recursion_closes(workspace):
     document, _ = converted(
         workspace,

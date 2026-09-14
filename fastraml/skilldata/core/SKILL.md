@@ -316,6 +316,7 @@ fastraml graph -w . api.raml --format dot    # Graphviz
 fastraml graph -w . api.raml --format nt     # N-Triples
 fastraml openapi -w . api.raml               # OpenAPI 3.0.3 YAML
 fastraml openapi -w . api.raml --format json # OpenAPI 3.0.3 JSON
+fastraml openapi -w . api.raml -o api.yaml   # To a file, UTF-8 with LF newlines
 ```
 
 Use these to feed another tool, not to read. Choose `tree` when you need the
@@ -324,6 +325,13 @@ contents, because it inlines examples, defaults and every container. Choose
 
 Both assign the same addresses to the same nodes, so an address from one names
 the same thing in the other.
+
+`openapi` is the RAML 1.0 to OpenAPI 3.0.3 conversion. Write the result with
+`-o FILE` rather than a shell redirect: the file is UTF-8 with LF newlines
+whatever shell or platform ran the command, and stdout stays clean for the
+diagnostics. Things the target format cannot carry are reported as `warning:`
+lines on stderr and the exit code stays 0, so read the warnings and fix the
+spots they name.
 
 ## Audit a whole document
 

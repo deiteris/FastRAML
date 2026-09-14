@@ -1767,6 +1767,11 @@ referenced by the API surface become lazy `components/schemas`; and recursive
 types occupy a component name before their body is walked. Unused declarations
 are not exported.
 
+`baseUriParameters` feed `servers.variables`, whose defaults must be strings:
+the parameters are typed, so a scalar default is carried as that type
+(`default: 443` on an integer parameter is an int) and emitted stringified.
+A default with no string form falls back to the variable name and is reported.
+
 The schema half has its own typed visitor. Reusing § 12's dictionary visitor
 would collapse every nested `OAS3Schema` back to `dict[str, Any]`, defeating the
 model this view exists to expose. It follows the same shape dispatch decisions,

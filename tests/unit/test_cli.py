@@ -42,6 +42,25 @@ def test_openapi_export_defaults_to_yaml(files, capsys):
     assert captured.err == ''
 
 
+def test_openapi_export_writes_a_file_with_o(files, tmp_path, capsys):
+    target = tmp_path / 'api.yaml'
+    assert main(['openapi', '-o', str(target), files('good.raml')]) == EXIT_OK
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    assert captured.err == ''
+    document = yaml.safe_load(target.read_text(encoding='utf-8'))
+    assert document['info']['title'] == 'Demo'
+    assert '/things' in document['paths']
+    assert b'\r' not in target.read_bytes()
+
+
+def test_openapi_export_o_reports_an_unwritable_file(files, tmp_path, capsys):
+    assert main(['openapi', '-o', str(tmp_path / 'absent' / 'api.yaml'), files('good.raml')]) == EXIT_INVALID
+    captured = capsys.readouterr()
+    assert 'absent' in captured.err
+    assert captured.out == ''
+
+
 @pytest.fixture
 def files(workspace):
     root = workspace({'good.raml': GOOD, 'bad.raml': BAD})

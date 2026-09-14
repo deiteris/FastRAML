@@ -602,14 +602,19 @@ class OpenAPIConversion:
     def _server_variable(self, name: str, parameter: Parameter, api: APIFragment) -> OAS3ServerVariable:
         base = parameter.base
         default = api.version.value if name == 'version' and api.version is not None else ''
-        if not default and base.default is not None and isinstance(base.default.raw, str):
-            default = base.default.raw
+        if not default and base.default is not None:
+            default = _server_default(base.default.raw)
         enum = [item.raw for item in base.enum or () if isinstance(item.raw, str)]
         if not default:
             default = enum[0] if enum else name
-            self.dropped.append(
-                f'servers.variables.{name}: OpenAPI requires a default; used {default!r} because RAML declared none'
-            )
+            if base.default is None:
+                self.dropped.append(
+                    f'servers.variables.{name}: OpenAPI requires a default; used {default!r} because RAML declared none'
+                )
+            else:
+                self.dropped.append(
+                    f'servers.variables.{name}: RAML default {base.default.raw!r} has no string form; used {default!r}'
+                )
         return OAS3ServerVariable(default=default, description=_facet(base.description), enum=enum)
 
     def _endpoint(self, endpoint: EndPoint) -> OAS3PathItem:
@@ -765,6 +770,20 @@ def _number(value: Any) -> int | float | None:
     if isinstance(value, int | float):
         return value
     return float(value)
+
+
+def _server_default(value: Any) -> str:
+    """A typed baseUriParameter default as the string OpenAPI requires.
+
+    The parameters are typed, so `default:` is carried as that type rather than
+    as a string: `port: {type: integer, default: 443}` is 443, an int. Scalars
+    stringify; anything else has no string form the caller reports.
+    """
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, (int, float, str)):
+        return str(value)
+    return ''
 
 
 def _facet(value: Any) -> str:

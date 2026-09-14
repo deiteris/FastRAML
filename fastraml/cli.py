@@ -4,7 +4,7 @@
 fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE...
 fastraml info [-w ROOT] [-r] FILE
 fastraml graph [--format nt|turtle|dot|json] FILE
-fastraml openapi [--format yaml|json] FILE
+fastraml openapi [--format yaml|json] [-o FILE] FILE
 fastraml list FILE [PATTERN]
 fastraml refs FILE NAME
 fastraml deps FILE NAME
@@ -100,6 +100,12 @@ def _parser() -> argparse.ArgumentParser:
         choices=('yaml', 'json'),
         default='yaml',
         help='YAML or JSON output (default: yaml)',
+    )
+    openapi.add_argument(
+        '-o',
+        '--output',
+        metavar='FILE',
+        help='write the document to FILE instead of stdout; UTF-8 with LF newlines',
     )
     _add_common(openapi)
 
@@ -332,6 +338,24 @@ def _graph(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _emit_document(args: argparse.Namespace, text: str) -> int:
+    """Write an export to FILE with `-o`, or to stdout without it.
+
+    The file is opened UTF-8 with LF newlines regardless of platform, so the
+    result does not depend on the shell that ran the command.
+    """
+    if args.output is None:
+        print(text, end='')
+        return EXIT_OK
+    try:
+        with open(args.output, 'w', encoding='utf-8', newline='') as handle:
+            handle.write(text)
+    except OSError as err:
+        print(f'{args.output}: {err}', file=sys.stderr)
+        return EXIT_INVALID
+    return EXIT_OK
+
+
 def _openapi(args: argparse.Namespace) -> int:
     """Write the effective API in the reference converter's OAS 3.0 form."""
     raml = _parsed(args)
@@ -345,14 +369,17 @@ def _openapi(args: argparse.Namespace) -> int:
     if args.format == 'json':
         import json  # noqa: PLC0415 - only JSON output needs the encoder
 
-        print(json.dumps(payload, indent=2))
+        text = json.dumps(payload, indent=2) + '\n'
     else:
         import yaml  # noqa: PLC0415 - only YAML output needs the encoder
 
-        print(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True), end='')
+        text = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+        if not text.endswith('\n'):
+            text += '\n'
+    code = _emit_document(args, text)
     for message in dropped:
         print(f'warning: {message}', file=sys.stderr)
-    return EXIT_OK
+    return code
 
 
 def _tree(args: argparse.Namespace) -> int:

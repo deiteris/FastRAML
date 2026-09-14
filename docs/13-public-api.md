@@ -344,7 +344,7 @@ parsing rule lives in `fastraml/cli.py`.
 fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
 fastraml info [-w ROOT] [-r] FILE       # backend, timings, counts
 fastraml graph [--format nt|turtle|dot|json] FILE
-fastraml openapi [--format yaml|json] FILE       # export OpenAPI 3.0.3
+fastraml openapi [--format yaml|json] [-o FILE] FILE       # export OpenAPI 3.0.3
 fastraml tree [--positions] FILE                # the whole document, addressed
 fastraml list FILE [PATTERN] [--kind K] [--json]             # what is in here
 fastraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
@@ -404,7 +404,10 @@ deliberately does not carry. `--positions` writes the span of every declaration
 instead.
 
 `openapi` writes the effective API as OpenAPI 3.0.3, YAML by default or JSON
-with `--format json`. Information with no exact OpenAPI representation is kept
+with `--format json`, and to a file with `-o FILE` instead of stdout — the
+file is opened UTF-8 with LF newlines regardless of platform or shell, which
+is why the flag exists rather than a redirect. Information with no exact
+OpenAPI representation is kept
 under an `x-raml-*` extension where a useful representation exists and reported
 as a warning on stderr; stdout therefore remains a parseable document. The
 Python surface is `to_openapi(raml) -> (OAS3Document, dropped)` ([16](16-graph.md)

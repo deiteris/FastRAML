@@ -512,6 +512,29 @@ def projected(base: BaseShape) -> BaseShape:
     return base
 
 
+def definition_ids(base: BaseShape) -> frozenset[int]:
+    """Which shapes in `base`'s projection came from a named `definitions` entry.
+
+    `BaseShape.name` holds two unrelated things: a property key for a shape the
+    RAML document declared, and a `definitions` key for one the projection
+    built. Only the second is a *type* name, so a consumer that prints
+    `base.name` without this test renders `currencyCode: currencyCode`.
+
+    Identity against `as_shape_defs` is the test because nothing on the shape
+    itself records the difference, and the projection already keeps that table.
+    Beside `projected` for the reason `projected` gives: a consumer that forgets
+    either one does not fail, it just reports something untrue.
+    """
+    shape = base.shape
+    if not isinstance(shape, JsonShape):
+        return frozenset()
+    # `as_shape_defs` is `None` until the single traversal that fills both has
+    # run, and a caller reaching here has not necessarily projected yet.
+    shape.as_shape()
+    defs = shape.as_shape_defs()
+    return frozenset(entry.id for entry in defs.values()) if defs else frozenset()
+
+
 # -- section 6.3: JSON Schema -> the nearest RAML shape -------------------------
 
 

@@ -438,6 +438,100 @@ class TestJsonSchemaTypesExpand:
         assert declared.shape.as_shape() is not None
 
 
+DEFS_API = """#%RAML 1.0
+title: Definitions
+types:
+  Item: !include item.json
+"""
+
+#: `tag` names a definition *and* a property, which is the case that separates
+#: an identity test from a "the name differs from the key" guess. `sku` is
+#: inline, so it is the control: no definition, no name to print.
+ITEM_JSON = """{
+  "type": "object",
+  "definitions": {
+    "uuid": {"type": "string", "minLength": 36},
+    "tag": {"type": "object", "properties": {"label": {"type": "string"}}},
+    "maybe": {"oneOf": [{"type": "null"}, {"type": "integer"}]}
+  },
+  "properties": {
+    "id": {"$ref": "#/definitions/uuid"},
+    "tag": {"$ref": "#/definitions/tag"},
+    "weight": {"$ref": "#/definitions/maybe"},
+    "sku": {"type": "string", "minLength": 3}
+  }
+}"""
+
+
+def _typed(rendered):
+    """The type of one rendered property, whichever form it took.
+
+    A property with no facets renders in the short form, as the bare type name;
+    one with facets renders as a block with a `type:` line. Which applies is a
+    detail of the fixture, not of the rule under test.
+    """
+    return rendered if isinstance(rendered, str) else rendered['type']
+
+
+class TestSchemaDefinitionsKeepTheirName:
+    """docs/16 § 9.7. A `definitions` entry rendered as its structural word.
+
+    `#/definitions/uuid` printed `string` and `#/definitions/contact` printed
+    `object` — true, and useless: neither says whether a field reuses a shared
+    schema or inlines a copy of it, which is the question this view exists to
+    answer.
+
+    The name was already on the shape. What was missing is that `BaseShape.name`
+    holds a *property key* too, so reading it unguarded renames every declared
+    property after itself; `definition_ids` is the identity test that separates
+    the two.
+    """
+
+    @pytest.fixture
+    def defs_shown(self, workspace):
+        root = workspace({'api.raml': DEFS_API, 'item.json': ITEM_JSON})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        graph = build_graph(raml)
+
+        def show(name: str, depth: int = 1) -> dict:
+            shape = graph.shape_at(graph.find(name)[0])
+            assert shape is not None
+            return loaded('\n'.join(render(shape, depth=depth, root=graph.root)))[name]['properties']
+
+        return show
+
+    def test_a_property_reads_as_its_definition(self, defs_shown):
+        assert _typed(defs_shown('Item')['id?']) == 'uuid'
+
+    def test_an_inline_property_keeps_its_structural_word(self, defs_shown):
+        """The control, and the regression guard. `sku` names no definition, so
+        there is nothing to print but `string` — and the naive fix, reading
+        `base.name` unguarded, renders `sku` here.
+        """
+        assert _typed(defs_shown('Item')['sku?']) == 'string'
+
+    def test_the_name_wins_where_it_equals_the_property_key(self, defs_shown):
+        """`tag: {"$ref": "#/definitions/tag"}`. Suppressing a name that matches
+        its key would lose exactly the shared-schema case this view is for, so
+        the test is identity against the projection's table, not a comparison.
+        """
+        assert _typed(defs_shown('Item')['tag?']) == 'tag'
+
+    def test_the_name_holds_when_the_type_is_opened(self, defs_shown):
+        opened = defs_shown('Item', depth=2)['tag?']
+        assert _typed(opened) == 'tag'
+        assert set(opened['properties']) == {'label?'}
+
+    def test_a_named_union_reads_as_its_name(self, defs_shown):
+        """Above the member join on purpose: `maybe` is what the schema calls
+        it, and `nil | integer` is one `--depth` away.
+        """
+        assert _typed(defs_shown('Item')['weight?']) == 'maybe'
+
+    def test_the_union_members_are_one_depth_away(self, defs_shown):
+        assert defs_shown('Item', depth=2)['weight?']['anyOf'] == ['nil', 'integer']
+
+
 class TestOneFactOnce:
     def test_a_sole_named_parent_is_not_repeated_as_inherits(self, shown):
         """`type:` already prints the sole parent's name, so `inherits: [User]`

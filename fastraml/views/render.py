@@ -30,7 +30,7 @@ import yaml
 
 from fastraml.types.base import facets_of
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
-from fastraml.types.jsonschema_ import projected
+from fastraml.types.jsonschema_ import definition_ids, projected
 from fastraml.uris import relative_to
 
 if TYPE_CHECKING:
@@ -79,6 +79,11 @@ class _Level:
     #: Shapes already open further up. A type cycle is a cycle in the model by
     #: design (docs/07 § 4), so the walk has to be finite by construction.
     seen: frozenset[int]
+    #: Shapes the enclosing JSON schema projected from a named `definitions`
+    #: entry, so `_type_name` may print their `name` as a type. Accumulated
+    #: rather than replaced: a schema reached through another schema's property
+    #: contributes its own definitions without retiring the outer ones.
+    defs: frozenset[int] = frozenset()
 
     def inside(self, base: BaseShape, *, extra: str = '  ') -> _Level:
         return replace(self, depth=self.depth - 1, indent=self.indent + extra, seen=self.seen | {base.id})
@@ -190,7 +195,7 @@ def render(base: BaseShape, *, depth: int = 1, root: str = '') -> Iterator[str]:
 
 
 def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
-    named = _type_name(base)
+    named = _type_name(base, defs=level.defs)
     yield _Line(f'{level.indent}type: {named}')
     parents = [parent.name or '<anonymous>' for parent in base.inherits]
     # `inherits: [User]` under `type: User` is the same fact twice — `_type_name`
@@ -204,6 +209,10 @@ def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
     # JSON schema opens like any other. Its own facets above are the RAML ones,
     # which for a schema type is nothing: the schema carries the constraints.
     view = projected(base)
+    # The schema's own `definitions` join the level *after* its `type:` line
+    # above, which the enclosing context names. Everything below is inside the
+    # schema, and that is where a `definitions` key is a type name.
+    level = replace(level, defs=level.defs | definition_ids(base))
     shape = view.shape
     if isinstance(shape, ObjectShape):
         yield from _properties(view, shape, level)
@@ -212,7 +221,7 @@ def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
     elif isinstance(shape, UnionShape) and shape.any_of:
         yield _Line(f'{level.indent}anyOf:')
         for member in shape.any_of:
-            yield _Line(f'{level.indent}  - {_type_name(member)}')
+            yield _Line(f'{level.indent}  - {_type_name(member, defs=level.defs)}')
 
 
 def _properties(base: BaseShape, shape: ObjectShape, level: _Level) -> Iterator[_Line]:
@@ -245,10 +254,10 @@ def _one(name: str, base: BaseShape, origin: str | None, level: _Level) -> Itera
         return
     facets = list(_facets(base, inner.indent + '  ', inner.root))
     if not facets:
-        yield _Line(f'{inner.indent}{key}: {_type_name(base)}', note)
+        yield _Line(f'{inner.indent}{key}: {_type_name(base, defs=level.defs)}', note)
         return
     yield _Line(f'{inner.indent}{key}:', note)
-    yield _Line(f'{inner.indent}  type: {_type_name(base)}')
+    yield _Line(f'{inner.indent}  type: {_type_name(base, defs=level.defs)}')
     yield from facets
 
 
@@ -270,7 +279,7 @@ def _member(base: BaseShape, key: str, level: _Level) -> Iterator[_Line]:
         yield _Line(f'{level.indent}{key}:')
         yield from _body(base, level.inside(base))
     else:
-        yield _Line(f'{level.indent}{key}: {_type_name(base)}')
+        yield _Line(f'{level.indent}{key}: {_type_name(base, defs=level.defs)}')
 
 
 # -- reading the model --------------------------------------------------------
@@ -288,7 +297,7 @@ def _has_structure(base: BaseShape) -> bool:
     return False
 
 
-def _type_name(base: BaseShape, *, nested: bool = False) -> str:
+def _type_name(base: BaseShape, *, nested: bool = False, defs: frozenset[int] = frozenset()) -> str:
     """What to call this type in one word.
 
     `alias` first, and that is not a detail: `address: Address` and
@@ -298,6 +307,23 @@ def _type_name(base: BaseShape, *, nested: bool = False) -> str:
 
     A recursion marker names the type it closes back to. Its own `type` is
     `recursive`, which tells the reader nothing about which cycle they are in.
+
+    A **named JSON schema definition keeps its name**, for the same reason as
+    the alias: `#/definitions/uuid` renders `string` and `#/definitions/contact`
+    renders `object`, which cannot tell a reader whether a field reuses a shared
+    schema or inlines a copy of it — the question this view exists to answer.
+
+    `defs` is not optional and is not a shortcut. `base.name` also holds the
+    *property key* for shapes the RAML document declared (`make_shape` sets it
+    from the key node), so reading it unguarded renders `currencyCode:
+    currencyCode` and retires the member naming below on every declared union.
+    Membership is tested against the projection's own table, because nothing on
+    the shape records which of the two its `name` is.
+
+    It sits above the member join deliberately: a definition that *is* a union
+    reads as its name, and its members stay one `--depth` away. Below the alias
+    and the sole parent, which are the RAML document's own words for the type
+    and outrank a name the schema chose.
 
     An **anonymous union names its members** — `integer | nil`, not `union`.
     That is naming and not expansion, so it is not gated on `--depth`: a union
@@ -315,9 +341,11 @@ def _type_name(base: BaseShape, *, nested: bool = False) -> str:
         return base.alias.name
     if len(base.inherits) == 1 and base.inherits[0].name:
         return base.inherits[0].name
+    if base.id in defs and base.name:
+        return base.name
     shape = projected(base).shape
     if not nested and isinstance(shape, UnionShape) and shape.any_of:
-        return ' | '.join(_type_name(member, nested=True) for member in shape.any_of)
+        return ' | '.join(_type_name(member, nested=True, defs=defs) for member in shape.any_of)
     return base.type or 'any'
 
 

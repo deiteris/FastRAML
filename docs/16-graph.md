@@ -938,6 +938,44 @@ The substitution itself lives in `types/jsonschema_.py` as `projected(base)`, no
 here: it is a statement about what a schema type *is* to any consumer walking
 structure, and this module is one consumer of several.
 
+**A named `definitions` entry keeps its name.** `#/definitions/uuid` projects to
+a `StringShape` and `#/definitions/contact` to an `ObjectShape`, so rendering the
+structural word printed `string` and `object` — the alias problem of § 9.2 in
+JSON Schema clothing: true, and useless. Neither answers the question a reader
+opens this view to ask, which is whether a field reuses a shared schema or
+inlines a copy of it.
+
+The name was never missing. `_project_reference` sets `built.name` for every ref
+whose pointer names a definition, and `as_shape_defs()` has kept the table since
+the projection was written. What is missing is a *marker*: `BaseShape.name` holds
+a property key as well — `make_shape` sets it from the key node — and the two are
+indistinguishable on the shape. So reading `base.name` in `_type_name` renders
+`currencyCode: currencyCode`, and retires the member naming of § 9.2 on every
+declared union, whose name is already the rendered key.
+
+`definition_ids(base)` is that marker, and it is an **identity** test against the
+projection's own table rather than a comparison of the name against the key. The
+cheaper guess — print the name only where it differs from the key — fails exactly
+where the feature earns its place: a property named `contact` whose type is
+`#/definitions/contact` is the commonest shape of all, and suppressing it there
+loses the one case a reader was chasing.
+
+`_Level` carries the ids, accumulated rather than replaced, because a schema
+reached through another schema's property contributes its definitions without
+retiring the outer ones. They join the level *below* the `type:` line of the
+schema that owns them, which the enclosing context names.
+
+`_type_name` places the test below `alias` and the sole named parent — those are
+the RAML document's own words for the type and outrank a name the schema chose —
+and above the union member join, so a definition that *is* a union reads as its
+name with its members one `--depth` away.
+
+The **file** a definition was written in is not recorded. A definition is
+routinely a one-line hop (`uuid: {"$ref": "../types/uuid.json"}`), so the name
+alone does not locate it; what locates it is the root schema, which `show`
+already prints as the type's own `type:` line. Carrying the resolved document per
+definition would need state the projection does not keep today.
+
 ### 9.8 What each security scheme adds, and why it is not merged
 
 A scheme's `describedBy` declares the headers, query parameters and responses a

@@ -54,19 +54,23 @@ jobs:
 
   # The pure-Python YAML backend must stay working: libyaml is optional, and a
   # behaviour difference between the two would only surface here.
+  #
+  # The backend is forced by making the C extension unimportable, not by
+  # rebuilding PyYAML. `--no-binary :all:` only forces a *source* build, and
+  # that build still links libyaml wherever the headers are -- which is here, so
+  # the job compiled for a minute and then asserted on `libyaml` and failed. The
+  # plugin checks the backend itself, so this cannot go back to silently
+  # exercising the wrong one.
   test-pure-python-yaml:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
       - run: uv sync --dev
-      - name: Reinstall PyYAML without libyaml
-        run: "uv pip install --force-reinstall --no-binary :all: pyyaml"
-      - run: uv run python -c "import fastraml; assert fastraml.backend_name() == 'python', fastraml.backend_name()"
-      - run: uv run pytest -q
+      - run: uv run pytest -q -p tests.pure_python_yaml
 
   # The optional extras. Every other job installs none of them, so without this
   # one their tests skip everywhere and the options are tested only by reading

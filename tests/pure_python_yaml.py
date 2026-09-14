@@ -19,11 +19,11 @@ from __future__ import annotations
 
 import sys
 from importlib.abc import MetaPathFinder
-from importlib.machinery import ModuleSpec
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from importlib.machinery import ModuleSpec
     from types import ModuleType
 
 #: `yaml/__init__.py` reaches the C loaders through `yaml.cyaml`, which imports
@@ -36,8 +36,8 @@ class _NoLibyaml(MetaPathFinder):
     def find_spec(
         self,
         fullname: str,
-        path: Sequence[str] | None = None,  # noqa: ARG002
-        target: ModuleType | None = None,  # noqa: ARG002
+        path: Sequence[str] | None = None,
+        target: ModuleType | None = None,
     ) -> ModuleSpec | None:
         if fullname in _BLOCKED:
             msg = f'{fullname} is blocked: this run must exercise the pure-Python backend'

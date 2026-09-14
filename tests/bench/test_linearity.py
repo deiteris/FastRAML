@@ -29,13 +29,30 @@ pytestmark = pytest.mark.skipif(
 #: `python -m bench linearity` at full size.
 SCALE = 0.25
 
+#: How many times each size is measured. `run_suite` already takes the best of
+#: its repeats *within* one process, for the reason `bench/harness.py` gives:
+#: scheduling noise is one-sided, so it can only ever make a run look slower.
+#: The same argument applies across processes, and it has to, because one pair
+#: of measurements can land in a window where a shared runner is busy — and a
+#: window that catches the full-size run alone reads as superlinearity. CI
+#: reported 1.572 from a full-size run 2.5x slower than the same class of
+#: machine's own baseline, while an idle Linux box measures 1.05 to 1.08.
+ATTEMPTS = 3
+
+
+def _parse_seconds(scale: float) -> float:
+    return run_suite(['large'], ['parse'], scale=scale, repeat=3, keep=None)[0].seconds
+
 
 def test_large_is_linear_in_input_size():
-    full = run_suite(['large'], ['parse'], scale=SCALE, repeat=3, keep=None)[0]
-    half = run_suite(['large'], ['parse'], scale=SCALE / 2, repeat=3, keep=None)[0]
+    # Interleaved so a slow stretch is not concentrated on one of the two.
+    full = half = float('inf')
+    for _ in range(ATTEMPTS):
+        full = min(full, _parse_seconds(SCALE))
+        half = min(half, _parse_seconds(SCALE / 2))
 
-    ratio = full.seconds / (2 * half.seconds)
+    ratio = full / (2 * half)
     assert abs(ratio - 1.0) <= LINEARITY_TOLERANCE, (
-        f'{full.seconds * 1e3:.1f} ms at full size against {half.seconds * 1e3:.1f} ms at half: '
-        f'ratio to linear {ratio:.3f}'
+        f'{full * 1e3:.1f} ms at full size against {half * 1e3:.1f} ms at half: '
+        f'ratio to linear {ratio:.3f}, best of {ATTEMPTS}'
     )

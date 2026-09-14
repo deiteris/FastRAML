@@ -42,6 +42,13 @@ fastraml query -w . api.raml -Q my-query.rq
 fastraml query -w . api.raml -q 'PREFIX raml: <urn:fastraml:ns:raml#> SELECT ...'
 ```
 
+On Windows PowerShell (5.1), an inline `-q` argument containing double quotes
+— string literals, so almost any useful query — arrives with the quotes
+mangled, and the SPARQL parser fails with `expected ENCODE_FOR_URI`. Put the
+query in a file and use `-Q`; it is not mangled. Note that `Set-Content
+-Encoding utf8` on that same PowerShell writes a BOM, which the parser also
+rejects (`expected CONSTRUCT` at 1:10) — save the file as UTF-8 without BOM.
+
 fastraml checks an `-n NAME` against the catalogue before it opens the document,
 so a typo reports the typo rather than a parse error.
 
@@ -94,7 +101,7 @@ the RAML type kind.
 | `securedBy` | `EndPoint` or `Operation` | `SecurityScheme` |
 | `annotation` | anything annotated | `Type` |
 
-Four of these need a note:
+Five of these need a note:
 
 - `declares` points from the file a declaration was **written in**, not from the
   map that named it.
@@ -103,6 +110,89 @@ Four of these need a note:
 - `request` is missing when the method sends nothing.
 - `securedBy` reflects security after inheritance, and `appliesTrait` and
   `appliesResourceType` reflect templates that fastraml has already applied.
+- `queryString` is the operation's `queryString:` facet — one type describing
+  the whole query string, mutually exclusive with `queryParameters`. Named
+  query parameters never flow through it: they are `Parameter` nodes with
+  `binding "query"`, reached via `parameter`.
+
+## Data properties
+
+Edges connect nodes; the literals on a node are how you *filter* them. They are
+predicates in the same `raml:` namespace, so the one `PREFIX` covers both. The
+ones a query reaches for:
+
+| Predicate | On | Carries |
+| --- | --- | --- |
+| `name` | most declarations | the name it is declared or referenced by |
+| `type` | `Type`, `SecurityScheme` | the declared type (`string`, `object`, …) or the scheme type |
+| `binding` | `Parameter` | `"path"` (RAML's `uriParameters`), `"query"` or `"header"` |
+| `required` | `Parameter` and `Property` always, `Type` when present | `true`/`false` (an `xsd:boolean`) |
+| `path` | `EndPoint` | the resource URI, e.g. `/tenants` |
+| `method` | `Operation` | `get`, `post`, … |
+| `statusCode` | `Response` | e.g. `200` |
+| `mediaType` | `Payload` | e.g. `application/json` |
+| `isAnnotationType` | `Type` | `true` on annotation types |
+| `scopes` | `Operation` | the scopes in force after `securedBy`, when any; one triple per scope |
+| `unsecured` | `Operation` | `true` when `securedBy: [null]` removed the security |
+| `version`, `baseUri` | `Api` | the API's version and base URI |
+| `description` | `EndPoint`, `Operation`, `Response`, `Type`, `Api` | text, when present |
+| `displayName` | `Type` | text, when present — a separate attribute from `name` |
+| `definedIn` | most | the unit it was written in, relative to the root |
+| `line`, `column` | most | the source position, only when known |
+
+`definedIn`, `line` and `column` are absent on `Unit` (whose name already is
+its path), `Api`, and `Property`/`PatternProperty` (projected without a
+position). To see every attribute a node kind carries, run
+`fastraml graph --format nt` and read one node of that kind.
+
+A `Type`'s shape facets are literals on the `Type` node itself, not under a
+sub-node. `enum` (one triple per member) can appear on any kind; the rest
+depend on the shape:
+
+- strings: `minLength`, `maxLength`, `pattern`; files: `minLength`, `maxLength`, `fileTypes`
+- numbers and integers: `minimum`, `maximum`, `multipleOf`, `format`; date-time: `format`
+- arrays: `minItems`, `maxItems`, `uniqueItems`
+- objects: `minProperties`, `maxProperties`, `additionalProperties` — the parser
+  also accepts a non-standard `discriminator`
+
+Structure is not a facet: `properties`, `items`, `anyOf`, pattern properties
+and a recursive type's head are edges (`property`, `items`, `anyOf`,
+`patternProperty`, `recursionHead`).
+
+Two properties need a warning.
+
+**`name` is not universal.** It is present on `Unit`, `EndPoint`, `Operation`,
+`Parameter`, `Property`, `Trait`, `ResourceType` and `SecurityScheme`, and on a
+`Type` only when the shape is named — an inline or anonymous shape has none. A
+`Payload` never has a `name`; its identity is the `mediaType`. A query that
+filters `?n raml:name "x"` therefore skips anonymous types and all payloads.
+Filter by kind first, then by name.
+
+**Read the URI from `path`, not `name`.** An `EndPoint`'s `name` is its
+`displayName` when it has one and the URI only as a fallback; `path` is always
+the URI. An `Operation`'s `name` is likewise its `displayName` (else the verb);
+`method` is always the verb.
+
+So "which endpoints carry a `uuids` query parameter" is an edge walk plus two
+property filters — the pattern for most parameter questions:
+
+```sparql
+PREFIX raml: <urn:fastraml:ns:raml#>
+SELECT DISTINCT ?endpoint WHERE {
+  ?ep a raml:EndPoint ; raml:path ?endpoint .
+  {
+    ?ep raml:parameter ?p .   # declared on the resource: applies to every method
+  }
+  UNION
+  {
+    ?ep raml:supportedOperation ?op .
+    ?op raml:request ?req .
+    ?req raml:parameter ?p .
+  }
+  ?p a raml:Parameter ; raml:name "uuids" ; raml:binding "query" .
+}
+ORDER BY ?endpoint
+```
 
 ## Three traps
 

@@ -609,6 +609,15 @@ its frontmatter; a directory whose frontmatter will not parse still prints,
 under its directory name, because a guide that cannot be read is worse than one
 that is mislabelled.
 
+**Three of the four guides are about this CLI; `raml` is about the language.**
+`core`, `diff` and `sparql` document verbs, so they go stale with the build that
+serves them — which is the whole reason for serving rather than shipping a copy.
+`raml` condenses the RAML 1.0 specification for an agent writing or reviewing a
+document, and is served from the same place for a narrower reason: it records
+where fastRAML departs from the specification, and *that* goes stale with the
+build. Its two `references/` files hold the facet and node tables, so the body
+stays within the specification's size guidance for a loaded `SKILL.md`.
+
 A missing name is **named, not guessed** — the verb lists what exists and exits
 1, for the same reason `_resolve` refuses to pick between ambiguous nodes.
 

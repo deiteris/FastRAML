@@ -765,7 +765,7 @@ class TestSkillsVerb:
     def test_list_names_every_guide(self, capsys):
         assert main(['skills', 'list']) == EXIT_OK
         out = capsys.readouterr().out
-        for name in ('core', 'diff', 'sparql'):
+        for name in ('core', 'raml', 'diff', 'sparql'):
             assert name in out
 
     def test_the_hint_goes_to_stderr_so_a_pipe_is_clean(self, capsys):
@@ -789,7 +789,7 @@ class TestSkillsVerb:
         A stub that points at a guide this build does not serve is the one
         failure the whole pattern exists to prevent.
         """
-        for name in ('core', 'diff', 'sparql'):
+        for name in ('core', 'raml', 'diff', 'sparql'):
             assert main(['skills', 'get', name]) == EXIT_OK, name
             assert capsys.readouterr().out.strip()
 
@@ -801,6 +801,17 @@ class TestSkillsVerb:
         out = capsys.readouterr().out
         assert len(out) > short
         assert 'references/commands.md' in out
+
+    def test_the_language_guide_carries_both_its_tables(self, capsys):
+        """`raml` splits the spec's tables out so the body stays loadable.
+
+        A body that names a reference this build does not ship sends an agent
+        to a file that is not there, which is the stub's failure one level down.
+        """
+        assert main(['skills', 'get', 'raml', '--full']) == EXIT_OK
+        out = capsys.readouterr().out
+        assert 'references/facets.md' in out
+        assert 'references/nodes.md' in out
 
     def test_several_guides_are_separated(self, capsys):
         assert main(['skills', 'get', 'diff', 'sparql']) == EXIT_OK
@@ -919,7 +930,7 @@ class TestSkillsInstall:
         # fails for reasons that have nothing to do with hiding.
         listed = [line.split()[0] for line in capsys.readouterr().out.splitlines() if line.strip()]
         assert 'fastraml' not in listed
-        assert listed == ['core', 'diff', 'sparql']
+        assert listed == ['core', 'diff', 'raml', 'sparql']
         assert main(['skills', 'get', 'fastraml']) == EXIT_OK
         assert capsys.readouterr().out.strip()
 

@@ -43,6 +43,7 @@ This guide covers the everyday work. Load another when the task calls for it:
 
 ```bash
 fastraml skills get core --full   # This guide plus the complete flag reference
+fastraml skills get raml          # RAML 1.0 itself, for writing or reviewing a file
 fastraml skills get diff          # Gate CI on API compatibility; the severity policy
 fastraml skills get sparql        # Write your own fastraml query
 fastraml skills list              # Everything this version ships

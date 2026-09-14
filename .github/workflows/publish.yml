@@ -33,12 +33,13 @@ jobs:
     # whose name happens to start with a v.
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: pypi
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
 
@@ -76,12 +77,13 @@ jobs:
   contrib:
     if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: pypi
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
 
@@ -91,7 +93,7 @@ jobs:
         # no project name is a prefix of another once the `-v` is required.
         run: echo "dist=${GITHUB_REF_NAME%-v*}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         # Only fastraml-viewer needs it, and it needs it before the build: its
         # hatch hook copies `viewer/dist`, which does not exist until npm has run.
         if: steps.which.outputs.dist == 'fastraml-viewer'

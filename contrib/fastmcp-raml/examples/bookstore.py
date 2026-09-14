@@ -5,11 +5,10 @@ The document is `fixtures/sample`, the repo's worked example: a templated
 one body, a recursive type, four `documentation:` entries, and security on every
 method.
 
-The API it describes does not exist, so this starts one. A stand-in bookstore
-runs on a local port, and the MCP server is pointed at it -- so calling a tool
-builds a real HTTP request from the RAML, sends it over a real socket, and
-validates the reply against the schema the RAML declared. Every request is
-logged, which is the part worth watching.
+The API it describes does not exist, so `raml-mock` serves it from the same RAML
+document for the MCP server's lifetime. Calling a tool builds a real HTTP request,
+sends it over a loopback socket, and validates the RAML example or generated reply
+against the schema the document declared.
 
     uv run python examples/bookstore.py              # HTTP, prints a URL
     uv run python examples/bookstore.py --stdio      # for an MCP client config
@@ -21,20 +20,20 @@ logged, which is the part worth watching.
 from __future__ import annotations
 
 import argparse
-import json
 import pathlib
-import re
 import sys
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import httpx2
+from fastmcp.server.lifespan import lifespan
 from pyraml import ParseOptions
+from raml_mock import mock_server
 
-from fastmcp_raml import raml_mcp
+from fastmcp_raml import RAMLProvider, raml_mcp
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from fastmcp import FastMCP
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[3] / 'fixtures'
@@ -44,136 +43,32 @@ SAMPLE = FIXTURES / 'sample' / 'api.raml'
 # the loader's sandbox is the entry file's own directory by default.
 OPTIONS = ParseOptions(workspace_root=FIXTURES)
 
-# `baseUri` is `https://{tenant}.books.example.com/{version}`, which is not a
-# host that answers. Supplying a client overrides it, which is the same thing a
-# caller does when the real host is per-deployment.
 TENANT = {'tenant': 'acme'}
-
-# ---------------------------------------------------------------------------
-# The API the document describes.
-#
-# Every payload below satisfies the RAML, because the tools validate what comes
-# back against the schema `views/jsonschema.py` derived from it. A `title` of ''
-# or a `currency` of 'CHF' fails the call rather than passing quietly, which is
-# the property worth demonstrating.
-# ---------------------------------------------------------------------------
-
-DUNE: dict[str, Any] = {
-    'id': 'b-1',
-    'createdAt': '2024-01-01T00:00:00Z',
-    'title': 'Dune',
-    'isbn': '9780441013593',
-    'price': {'amount': 9.99, 'currency': 'USD'},
-    'tags': ['science-fiction'],
-}
-
-LEFT_HAND: dict[str, Any] = {
-    'id': 'b-2',
-    'createdAt': '2024-02-01T00:00:00Z',
-    'title': 'The Left Hand of Darkness',
-    'isbn': '9780441478125',
-    'price': {'amount': 8.5, 'currency': 'GBP'},
-}
-
-CATALOGUE = [DUNE, LEFT_HAND]
-
-DELIVERIES = [
-    {
-        'address': {'line1': '1 Bridge Street', 'city': 'Bristol', 'postcode': 'BS1 1AA', 'country': 'GB'},
-        'promisedFor': '2024-06-02T09:00:00Z',
-    }
-]
-
-PUBLICATIONS = [
-    {'kind': 'Publication', 'title': 'Dune'},
-    # `monthly` is `Magazine`'s `discriminatorValue`, so this is the subtype.
-    {'kind': 'monthly', 'title': 'Locus', 'issue': 7},
-]
-
-SHELF = [{'position': 1, 'book': DUNE, 'note': 'front of house'}]
+_PENDING_MOCK_URL = 'http://raml-mock.invalid'
 
 
-def _book_for(isbn: str) -> tuple[int, Any]:
-    for book in CATALOGUE:
-        if book['isbn'] == isbn:
-            return 200, book
-    return 404, None
+def build() -> FastMCP:
+    """The MCP server, with its RAML mock bound to the same lifespan."""
+    client = httpx2.AsyncClient(base_url=_PENDING_MOCK_URL, timeout=10.0)
 
+    @lifespan
+    async def mock_lifespan(_server: FastMCP) -> AsyncIterator[dict[str, object]]:
+        async with mock_server(SAMPLE, options=OPTIONS) as backend, client:
+            client.base_url = backend.url
+            yield {'mock': backend}
 
-#: `(method, path pattern) -> (status, body)`. A body of `None` sends no content,
-#: which is what the document's `204` declares.
-ROUTES: list[tuple[str, re.Pattern[str], Any]] = [
-    ('GET', re.compile(r'^/books$'), lambda _m, _b: (200, CATALOGUE)),
-    ('POST', re.compile(r'^/books$'), lambda _m, body: (201, {**DUNE, **(body or {})})),
-    ('GET', re.compile(r'^/books/(?P<isbn>[^/]+)$'), lambda m, _b: _book_for(m['isbn'])),
-    ('DELETE', re.compile(r'^/books/(?P<isbn>[^/]+)$'), lambda _m, _b: (204, None)),
-    ('GET', re.compile(r'^/deliveries$'), lambda _m, _b: (200, DELIVERIES)),
-    ('GET', re.compile(r'^/publications$'), lambda _m, _b: (200, PUBLICATIONS)),
-    ('GET', re.compile(r'^/search$'), lambda _m, _b: (200, CATALOGUE)),
-    ('POST', re.compile(r'^/shelves$'), lambda _m, _b: (201, SHELF)),
-]
-
-
-class Bookstore(BaseHTTPRequestHandler):
-    """Enough of the API for every tool in the document to succeed."""
-
-    protocol_version = 'HTTP/1.1'
-    server_version = 'bookstore-stand-in'
-
-    def _handle(self) -> None:
-        path = self.path.split('?', 1)[0]
-        length = int(self.headers.get('content-length') or 0)
-        raw = self.rfile.read(length) if length else b''
-        body = json.loads(raw) if raw else None
-
-        for method, pattern, answer in ROUTES:
-            match = pattern.match(path)
-            if method == self.command and match:
-                status, payload = answer(match, body)
-                self._send(status, payload)
-                return
-        self._send(404, {'error': f'no route for {self.command} {path}'})
-
-    def _send(self, status: int, payload: Any) -> None:
-        content = b'' if payload is None else json.dumps(payload).encode()
-        self.send_response(status)
-        if content:
-            self.send_header('content-type', 'application/json')
-        self.send_header('content-length', str(len(content)))
-        self.end_headers()
-        if content:
-            self.wfile.write(content)
-
-    # `BaseHTTPRequestHandler` dispatches on `do_<METHOD>`, so these are its
-    # names and not this file's.
-    do_GET = do_POST = do_DELETE = do_PUT = do_PATCH = _handle  # noqa: N815
-
-    def log_message(self, fmt: str, *args: Any) -> None:
-        # The point of the example: an MCP tool call arriving as HTTP.
-        sys.stderr.write(f'  backend  {fmt % args}\n')
-
-
-def start_backend() -> str:
-    """Run the stand-in API on a free port, and return its base URL."""
-    httpd = ThreadingHTTPServer(('127.0.0.1', 0), Bookstore)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    host, port = httpd.socket.getsockname()[:2]
-    return f'http://{host}:{port}'
-
-
-def build(base_url: str) -> FastMCP:
-    """The MCP server for the document, calling the API at *base_url*."""
     return raml_mcp(
         SAMPLE,
         options=OPTIONS,
         base_uri_parameters=TENANT,
-        client=httpx2.AsyncClient(base_url=base_url, timeout=10.0),
+        client=client,
+        lifespan=mock_lifespan,
     )
 
 
-def describe(server: Any) -> None:
-    provider = next(p for p in server.providers if hasattr(p, 'dropped'))
-    print(f'{server.name} -> {provider._client.base_url}\n')
+def describe(server: FastMCP) -> None:
+    provider = next(p for p in server.providers if isinstance(p, RAMLProvider))
+    print(f'{server.name} -> raml-mock over {SAMPLE.name}\n')
     print('tools')
     for tool in sorted(provider._tools.values(), key=lambda t: t.name):
         print(f'  {tool.name:24} {", ".join(tool.parameters.get("properties", {}))}')
@@ -185,8 +80,7 @@ def describe(server: Any) -> None:
         print(f'  - {message}')
 
 
-BACKEND = start_backend()
-mcp = build(BACKEND)
+mcp = build()
 
 
 if __name__ == '__main__':
@@ -204,5 +98,5 @@ if __name__ == '__main__':
         # Nothing may reach stdout: it carries the protocol.
         mcp.run()
     else:
-        sys.stderr.write(f'{mcp.name}: MCP on port {options.port}, calling the bookstore at {BACKEND}\n')
+        sys.stderr.write(f'{mcp.name}: MCP on port {options.port}, backed by raml-mock\n')
         mcp.run(transport='http', port=options.port)

@@ -146,11 +146,10 @@ finished route and cares nothing for where the route came from; and the same for
 ## The example
 
 `examples/bookstore.py` serves `fixtures/sample` as a working MCP server. The
-API that document describes does not exist, so the example starts one: a
-stand-in bookstore on a local port, with the MCP server pointed at it. Calling a
-tool therefore builds a real HTTP request from the RAML, sends it over a socket,
-and validates the reply against the schema the RAML declared. Each request is
-logged.
+API that document describes does not exist, so `raml-mock` serves the same RAML
+document on a local port for the MCP server's lifetime. Calling a tool therefore
+builds a real HTTP request from the RAML, sends it over a socket, and validates
+the RAML example or generated reply against the schema the document declared.
 
 ```bash
 uv run python examples/bookstore.py              # HTTP, prints a URL
@@ -159,9 +158,9 @@ uv run python examples/bookstore.py --describe   # what the document became, the
 ```
 
 `tests/test_example.py` runs it, so it cannot quietly stop working. It is also
-the only place in the suite where a request leaves for something that is not a
-mock transport — including the one that proves `enum: [USD, EUR, GBP]` in the
-RAML still rejects `CHF` by the time it is an MCP output schema.
+the only place in the suite where a request leaves for something that is not an
+`httpx2` mock transport. The HTTP mock and MCP schema both come from the same
+RAML document, so the example carries no second route table or response model.
 
 ## Running the checks
 

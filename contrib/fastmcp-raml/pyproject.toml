@@ -23,11 +23,15 @@ license = "MIT"
 # nothing else, and the pin could widen to whatever ships it.
 dependencies = ["pyraml", "fastmcp>=4.0,<5"]
 
+[project.optional-dependencies]
+examples = ["raml-mock"]
+
 [dependency-groups]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "mypy>=1.10", "ruff>=0.6"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "mypy>=1.10", "ruff>=0.6", "raml-mock"]
 
 [tool.uv.sources]
 pyraml = { path = "../..", editable = true }
+raml-mock = { path = "../raml-mock", editable = true }
 
 [build-system]
 requires = ["hatchling"]

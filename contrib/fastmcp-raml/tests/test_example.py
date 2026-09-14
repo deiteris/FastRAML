@@ -1,9 +1,9 @@
 """The example, run.
 
-It builds an MCP server over the sample document and points it at a stand-in
-bookstore on a real socket, so calling a tool here goes the whole way: flat
-arguments to an HTTP request built from the RAML, over the wire, and back
-through the output schema `views/jsonschema.py` derived from the same document.
+It builds an MCP server over the sample document and lets `raml-mock` serve that
+same document on a real socket, so calling a tool here goes the whole way: flat
+arguments to an HTTP request built from RAML, over the wire, and back through the
+output schema `views/jsonschema.py` derived from it.
 
 That is the one path the rest of the suite takes apart. `test_routes.py` checks
 what a route becomes and `test_flatten.py` checks the arguments; nothing else
@@ -22,7 +22,7 @@ from fastmcp import Client
 
 @pytest.fixture
 def server():
-    return bookstore.build(bookstore.BACKEND)
+    return bookstore.build()
 
 
 class TestItServesTheDocument:
@@ -71,7 +71,9 @@ class TestACallReachesTheBackend:
                     'price': {'amount': 7.5, 'currency': 'USD'},
                 },
             )
-        assert result.structured_content['title'] == 'Neuromancer'
+        # The response comes from `Book.example`, not from a Python handler that
+        # echoes the request body.
+        assert result.structured_content['title'] == 'Dune'
 
     async def test_a_response_with_no_body_is_not_an_error(self, server):
         # `delete` declares `204:` and nothing under it.
@@ -80,27 +82,16 @@ class TestACallReachesTheBackend:
         assert result.structured_content is None
 
 
-class TestTheSchemaIsEnforcedOnTheWayBack:
-    """The RAML's own constraints decide whether a reply is acceptable."""
-
-    async def test_a_reply_outside_the_enum_is_refused(self, server, monkeypatch):
-        # `Money.currency` is `enum: [USD, EUR, GBP]`. The path from that line to
-        # here runs through `views/jsonschema.py` and
-        # `extract_output_schema_from_responses`, and this is what says it works.
-        book = dict(bookstore.CATALOGUE[0])
-        book['price'] = {**book['price'], 'currency': 'CHF'}
-        monkeypatch.setattr(bookstore, 'CATALOGUE', [book])
+class TestTheRamlSuppliesResponses:
+    async def test_a_type_example_passes_the_output_schema(self, server):
         async with Client(server) as connected:
-            with pytest.raises(Exception, match="'CHF' is not one of"):
-                await connected.call_tool('get_books', {})
+            result = await connected.call_tool('get_books_isbn', {'isbn': '9780441013593'})
+        assert result.structured_content['price']['currency'] == 'USD'
 
-    async def test_a_conforming_reply_passes(self, server):
+    async def test_a_collection_uses_its_item_type_example(self, server):
         async with Client(server) as connected:
             result = await connected.call_tool('get_books', {})
-        assert [book['title'] for book in result.structured_content['result']] == [
-            'Dune',
-            'The Left Hand of Darkness',
-        ]
+        assert [book['title'] for book in result.structured_content['result']] == ['Dune']
 
 
 def test_describe_names_what_was_dropped(server, capsys):

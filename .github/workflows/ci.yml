@@ -102,7 +102,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dist: [raml-document, fastapi-raml, fastmcp-raml]
+        dist: [raml-document, fastapi-raml, fastmcp-raml, raml-mock]
     defaults:
       run:
         working-directory: contrib/${{ matrix.dist }}

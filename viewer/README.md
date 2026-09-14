@@ -23,8 +23,8 @@ else. Everything that can *fail* meaningfully is in both.
 
 The document it renders is `fixtures/sample`, which is the repo's and not this
 app's: `tests/unit/test_bindings.py` holds `public/api.json` to it, and
-`contrib/fastmcp-raml` builds MCP tools from the same file. Editing it moves
-three consumers.
+`contrib/fastmcp-raml` builds MCP tools while `contrib/raml-mock` runs HTTP
+routes from the same file. Editing it moves four consumers.
 
 ## Style
 

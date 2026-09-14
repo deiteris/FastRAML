@@ -514,6 +514,25 @@
         "type": "array",
         "display_name": "A shelf",
         "description": "An array whose items are declared inline rather than by name.",
+        "example": {
+          "value": [
+            {
+              "position": 1,
+              "book": {
+                "id": "b-1",
+                "createdAt": "2024-01-01T00:00:00Z",
+                "title": "Dune",
+                "isbn": "9780441013593",
+                "price": {
+                  "amount": 9.99,
+                  "currency": "USD"
+                }
+              },
+              "note": "front of house",
+              "locator": "GB-SHELF-12.3-LEFT/reserve"
+            }
+          ]
+        },
         "type_expr": "array",
         "items": {
           "id": "pyraml://id#/declarations/types/Shelf/items",
@@ -765,6 +784,17 @@
         "type": "object",
         "display_name": "A delivery",
         "description": "Where an order goes, and when it was promised.",
+        "example": {
+          "value": {
+            "address": {
+              "line1": "1 Bridge Street",
+              "city": "Bristol",
+              "postcode": "BS1 1AA",
+              "country": "GB"
+            },
+            "promisedFor": "2024-06-02T09:00:00Z"
+          }
+        },
         "type_expr": "object",
         "properties": {
           "address": {
@@ -861,6 +891,12 @@
         "type": "object",
         "display_name": "A publication",
         "description": "Everything the store sells. The `kind` property says which.",
+        "example": {
+          "value": {
+            "kind": "Publication",
+            "title": "Dune"
+          }
+        },
         "type_expr": "object",
         "discriminator": "kind",
         "properties": {

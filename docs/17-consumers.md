@@ -61,16 +61,17 @@ fixtures/shared/     machine.raml, measures.raml, money.schema.json
 the workspace root under test: parse `sample/api.raml` without `-w fixtures` and
 the loader refuses the ascent, which is the behaviour being checked.
 
-**Three consumers read it, so a change here moves three things:**
+**Four consumers read it, so a change here moves four things:**
 
 | Reader | How it uses the document |
 |--------|--------------------------|
 | `tests/unit/test_bindings.py` | Regenerates `viewer/public/api.json` and fails if the committed copy differs. |
 | `viewer/` | Renders that committed JSON. `npm run sample` rewrites it. |
 | `contrib/fastmcp-raml` | Builds MCP tools from it; its suite asserts what each construct becomes. |
+| `contrib/raml-mock` | Runs its routes in process; its suite checks that the effective API can answer without implementing authentication. |
 
 It lives at the repo root because it belongs to no one of them. Putting it
-inside any consumer makes the other two reach into that consumer's directory to
+inside any consumer makes the other three reach into that consumer's directory to
 run their own tests.
 
 ## 4. `viewer/`
@@ -83,7 +84,7 @@ copy fails `tests/unit/test_bindings.py`, as does a stale `public/api.json`.
 
 ## 5. `contrib/`
 
-Three separate `uv` projects, each with its own lock, its own gate, and
+Four separate `uv` projects, each with its own lock, its own gate, and
 `pyraml` as an editable path dependency. They are not packaged from this
 project's `pyproject.toml` and nothing in the root gate sees them.
 
@@ -92,6 +93,7 @@ project's `pyproject.toml` and nothing in the root gate sees them.
 | `raml-document` | — | A typed authoring model for a RAML document — `TypeDecl`, `Body`, `Response`, `Method`, `Resource`, `SecurityScheme`, `Document` — and a reader that builds one from pydantic models. Depends on no web framework. |
 | `fastapi-raml` | code → RAML | Renders a FastAPI app's routes as RAML, and serves it. |
 | `fastmcp-raml` | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
+| `raml-mock` | RAML → HTTP | Runs an in-process aiohttp mock, validates common HTTP representations, and returns examples or generated values. |
 
 `fastapi-raml` and `fastmcp-raml` both need an authoring model, and one
 duplicated across two integrations is one that disagrees with itself — so
@@ -110,8 +112,8 @@ evidence it belongs in a pass or a view, not in `raml-document`.
 
 Each consumer carries its own, and CI runs all of them.
 
-Run this in each of `contrib/raml-document`, `contrib/fastapi-raml` and
-`contrib/fastmcp-raml`:
+Run this in each of `contrib/raml-document`, `contrib/fastapi-raml`,
+`contrib/fastmcp-raml` and `contrib/raml-mock`:
 
 ```bash
 uv run ruff check . && uv run ruff format --check . && uv run mypy <package>/ && uv run pytest -q
@@ -125,6 +127,6 @@ and capturing them on a runner nobody watches costs a browser download and
 proves nothing `smoke` has not already proved. Everything that can fail
 meaningfully is in both.
 
-The `contrib` job is a matrix over the three, and it is the job that notices
+The `contrib` job is a matrix over the four, and it is the job that notices
 when a change to the model breaks a *consumer* of it rather than a test of it —
 which is the whole reason these are in the repository.

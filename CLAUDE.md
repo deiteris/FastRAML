@@ -84,15 +84,16 @@ because a format with no consumer is a format whose gaps nothing measures.
   never edit it, and a stale copy fails `tests/unit/test_bindings.py`, as does a
   stale `public/api.json`. Checks: `npm run check` there; CI runs `npm run ci`,
   which swaps the screenshots for the production build.
-- **`contrib/`** — three separate `uv` projects, each with its own lock and gate:
+- **`contrib/`** — four separate `uv` projects, each with its own lock and gate:
   `raml-document` (a typed authoring model, plus a reader for pydantic models),
   `fastapi-raml` (routes → RAML), `fastmcp-raml` (RAML → an MCP server). The
-  root gate does not see them; CI runs them as a matrix.
+  fourth is `raml-mock` (RAML → an in-process aiohttp mock). The root gate does
+  not see them; CI runs them as a matrix.
 - **`fixtures/`** — one worked document exercising every construct the model
-  carries. **Three consumers read it**, so a change there moves
+  carries. **Four consumers read it**, so a change there moves
   `tests/unit/test_bindings.py`, the viewer's committed JSON, and
-  `fastmcp-raml`'s suite. `shared/` sits outside `sample/` so the includes
-  ascend and the workspace root is under test.
+  the `fastmcp-raml` and `raml-mock` suites. `shared/` sits outside `sample/` so
+  the includes ascend and the workspace root is under test.
 
 **Benchmarks are a gate, not a report.** `python -m bench compare` before and
 after anything that touches a hot path; the commit message carries the delta

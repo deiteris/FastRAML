@@ -277,6 +277,16 @@ types:
           type: string
           pattern: ^(?:[A-Z]{2}-)?(?:AISLE|BAY|SHELF)-[0-9]{1,3}(?:\.[0-9]{1,2})?(?:-(?:LEFT|RIGHT|CENTRE))?(?:/[A-Za-z0-9_]{1,16})*$
           example: GB-SHELF-12.3-LEFT/reserve
+    example:
+      - position: 1
+        book:
+          id: b-1
+          createdAt: 2024-01-01T00:00:00Z
+          title: Dune
+          isbn: "9780441013593"
+          price: { amount: 9.99, currency: USD }
+        note: front of house
+        locator: GB-SHELF-12.3-LEFT/reserve
 
   Payload:
     displayName: Anything postable
@@ -339,6 +349,13 @@ types:
       address: common.Address
       promisedFor: datetime
       parcel?: measures.Parcel
+    example:
+      address:
+        line1: 1 Bridge Street
+        city: Bristol
+        postcode: BS1 1AA
+        country: GB
+      promisedFor: 2024-06-02T09:00:00Z
 
   # The other form: the schema written inline as a string, with no `!include`.
   # Same kind, same two representations; only where the text came from differs.
@@ -369,6 +386,9 @@ types:
     properties:
       kind: string
       title: string
+    example:
+      kind: Publication
+      title: Dune
   Magazine:
     description: 'A periodical, told apart by `kind: monthly`.'
     type: Publication

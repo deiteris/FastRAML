@@ -115,6 +115,59 @@ wheels = [
 ]
 
 [[package]]
+name = "fastraml"
+source = { editable = "." }
+dependencies = [
+    { name = "jsonschema" },
+    { name = "pluralizer" },
+    { name = "pyyaml" },
+    { name = "referencing" },
+]
+
+[package.optional-dependencies]
+graph = [
+    { name = "pyoxigraph" },
+]
+http = [
+    { name = "httpx" },
+]
+re2 = [
+    { name = "google-re2" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruamel-yaml" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "google-re2", marker = "extra == 're2'" },
+    { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27" },
+    { name = "jsonschema", specifier = ">=4.21" },
+    { name = "pluralizer", specifier = ">=2.0" },
+    { name = "pyoxigraph", marker = "extra == 'graph'", specifier = ">=0.4" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "referencing", specifier = ">=0.35" },
+]
+provides-extras = ["graph", "http", "re2"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruamel-yaml", specifier = ">=0.18,<0.20" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+
+[[package]]
 name = "google-re2"
 version = "1.1.20251105"
 source = { registry = "https://pypi.org/simple" }
@@ -547,60 +600,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/7a/42/222017d65d411f1993585d51b977b65680ecc0edbc28609f702a65107e65/pyoxigraph-0.5.9-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:09071f6c08b9489723dec96e2d96f64a15b9be2d165d3bbf67d40712884ba7a3", size = 9414073, upload-time = "2026-06-18T17:08:57.435Z" },
     { url = "https://files.pythonhosted.org/packages/f2/8a/7ba44c596afa3377a9c75f6ff76de91e8e45a18df72d17cb74efbb02db92/pyoxigraph-0.5.9-cp38-abi3-win_amd64.whl", hash = "sha256:efd3d03bd2a36f9b0bdf3ce70d76ce5278c481fe961d14c2bb6efcac10f57ae2", size = 5391422, upload-time = "2026-06-18T17:08:59.508Z" },
     { url = "https://files.pythonhosted.org/packages/c5/46/b092a22596c7ed11b0b26b3dade2dede638fc6a3e61ee7e5168aa3481948/pyoxigraph-0.5.9-cp38-abi3-win_arm64.whl", hash = "sha256:94c2a8b52c1ed6e445a235a4f89cd460eea936f399d28df5e9927826bf52f032", size = 5048182, upload-time = "2026-06-18T17:09:01.419Z" },
-]
-
-[[package]]
-name = "fastraml"
-version = "0.0.1"
-source = { editable = "." }
-dependencies = [
-    { name = "jsonschema" },
-    { name = "pluralizer" },
-    { name = "pyyaml" },
-    { name = "referencing" },
-]
-
-[package.optional-dependencies]
-graph = [
-    { name = "pyoxigraph" },
-]
-http = [
-    { name = "httpx" },
-]
-re2 = [
-    { name = "google-re2" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "hypothesis" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "ruamel-yaml" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "google-re2", marker = "extra == 're2'" },
-    { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27" },
-    { name = "jsonschema", specifier = ">=4.21" },
-    { name = "pluralizer", specifier = ">=2.0" },
-    { name = "pyoxigraph", marker = "extra == 'graph'", specifier = ">=0.4" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "referencing", specifier = ">=0.35" },
-]
-provides-extras = ["http", "re2", "graph"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "hypothesis" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "ruamel-yaml", specifier = ">=0.18,<0.20" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
 ]
 
 [[package]]

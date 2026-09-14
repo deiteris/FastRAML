@@ -1,9 +1,28 @@
 [project]
 name = "fastraml"
-version = "0.0.1"
+dynamic = ["version"]
 description = "A RAML 1.0 parser for Python"
 requires-python = ">=3.12"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Yury" }]
+keywords = ["raml", "api", "parser", "openapi", "specification", "json-schema"]
+# Only what CI proves. The matrix is 3.12 and 3.13 on Linux and Windows, so
+# 3.14 is not claimed until it runs there.
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup",
+    "Typing :: Typed",
+]
+
 dependencies = [
     # YAML composition. libyaml (CSafeLoader) is used automatically when the
     # wheel provides it; the pure-Python composer is the fallback.
@@ -35,6 +54,12 @@ graph = ["pyoxigraph>=0.4"]
 [project.scripts]
 fastraml = "fastraml.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/deiteris/FastRAML"
+Repository = "https://github.com/deiteris/FastRAML"
+Issues = "https://github.com/deiteris/FastRAML/issues"
+Documentation = "https://github.com/deiteris/FastRAML/blob/master/docs/README.md"
+
 [dependency-groups]
 dev = [
     "mypy",
@@ -49,11 +74,42 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# One source of truth. The literal lives in the module because importing the
+# package is deliberately cheap and `importlib.metadata` at import time is not;
+# hatchling reads it from there rather than the two drifting apart, which they
+# already had -- the module said 0.0.1 while the distribution said 0.1.0.
+[tool.hatch.version]
+path = "fastraml/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["fastraml"]
 # PEP 561: without this in the wheel the annotations are invisible to a
 # consumer's type checker and every import from here reads as `Any`.
 artifacts = ["fastraml/py.typed"]
+
+# An allow-list, not an exclude-list, because the default is "everything the
+# root .gitignore does not name" and that is wrong here in a way that is easy to
+# miss: hatchling does not read *nested* .gitignore files. `viewer/node_modules`
+# is ignored by `viewer/.gitignore`, so it is invisible to git and visible to
+# the sdist -- 4913 files and 41 MB of it. `.hypothesis` is not ignored at all.
+#
+# Named directories also keep the sdist reproducible as the tree grows: a new
+# top-level folder has to be added here to ship, rather than shipping by
+# accident.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/fastraml",
+    "/tests",
+    "/docs",
+    "/fixtures",
+    "/bench",
+    "/skills",
+    "/README.md",
+    "/LICENSE",
+    "/CLAUDE.md",
+    "/pyproject.toml",
+    "/uv.lock",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

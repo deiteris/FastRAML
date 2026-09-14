@@ -112,3 +112,18 @@ class TestEntryPoints:
 
     def test_the_docstring_says_the_api_is_unstable(self):
         assert 'not stable' in (fastraml.__doc__ or '')
+
+
+def test_the_module_version_is_the_distribution_version():
+    """One source of truth, asserted rather than trusted.
+
+    `pyproject.toml` reads `__version__` out of `fastraml/__init__.py` via
+    `[tool.hatch.version]`, so the literal below is the only place a release
+    number is written. Before that they were two literals, and they had already
+    drifted: the module said 0.0.1 while the built distribution said 0.1.0.
+    """
+    from importlib.metadata import version
+
+    import fastraml
+
+    assert fastraml.__version__ == version('fastraml')

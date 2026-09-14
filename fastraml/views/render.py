@@ -226,7 +226,11 @@ def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
     if isinstance(shape, ObjectShape):
         yield from _properties(view, shape, level)
     elif isinstance(shape, ArrayShape) and shape.items is not None:
-        yield from _member(shape.items, 'items', level)
+        # `items: notification` under `type: notification[]` is the same fact
+        # twice, as `inherits:` is above. The line earns its place when `--depth`
+        # opens the member, which is more than the name.
+        if level.opens(shape.items) or not named.endswith('[]'):
+            yield from _member(shape.items, 'items', level)
     elif isinstance(shape, UnionShape) and shape.any_of:
         yield _Line(f'{level.indent}anyOf:')
         for member in shape.any_of:
@@ -309,7 +313,7 @@ def _has_structure(base: BaseShape) -> bool:
     return False
 
 
-def _type_name(base: BaseShape, *, nested: bool = False) -> str:
+def _type_name(base: BaseShape, *, nested: bool = False) -> str:  # noqa: PLR0911 - one per naming rule
     """What to call this type in one word.
 
     `alias` first, and that is not a detail: `address: Address` and
@@ -344,7 +348,13 @@ def _type_name(base: BaseShape, *, nested: bool = False) -> str:
     Schema makes this the common case rather than a corner — every nullable
     field is a `oneOf` of the type and `null`.
 
-    `nested` stops the join one level down, so a union of unions reads
+    An **array names its member** for the same reason — `notification[]`, not
+    `array`. The bare word says nothing, and the member is the fact a reader
+    wants: whether a list holds a shared schema or an inline copy of one. Unlike
+    the union join this is not gated on `nested`, because an array chain is
+    linear rather than a tree, so `string[][]` is as deep as it goes.
+
+    `nested` stops the union join one level down, so a union of unions reads
     `union | string` instead of unrolling an arbitrary tree onto one line.
     """
     if isinstance(base.shape, RecursiveShape):
@@ -360,6 +370,11 @@ def _type_name(base: BaseShape, *, nested: bool = False) -> str:
         return base.inherits[0].name
     if not nested and isinstance(view.shape, UnionShape) and view.shape.any_of:
         return ' | '.join(_type_name(member, nested=True) for member in view.shape.any_of)
+    if isinstance(view.shape, ArrayShape) and view.shape.items is not None:
+        member = _type_name(view.shape.items, nested=nested)
+        # `(a | b)[]`, not `a | b[]`, which reads as a union with an array on
+        # one side. RAML's own type expressions parenthesise this too.
+        return f'({member})[]' if ' | ' in member else f'{member}[]'
     return view.type or 'any'
 
 

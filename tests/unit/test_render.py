@@ -161,7 +161,19 @@ class TestNamingRatherThanFlattening:
         assert loaded(shown('User'))['User']['properties']['address'] == 'Address'
 
     def test_an_array_names_its_member_type(self, shown):
-        assert loaded(shown('UserList'))['UserList']['items'] == 'User'
+        """`User[]`, not `array`. The bare word says nothing, and the member is
+        the fact a reader wants — whether a list holds a shared type or an
+        inline copy of one. It is also how the declaration was written.
+        """
+        assert loaded(shown('UserList'))['UserList']['type'] == 'User[]'
+
+    def test_the_member_line_gives_way_to_the_name(self, shown):
+        """`items: User` under `type: User[]` is the same fact twice, as
+        `inherits:` is. It returns when `--depth` opens the member, which is
+        more than the name.
+        """
+        assert 'items' not in loaded(shown('UserList', depth=1))['UserList']
+        assert set(loaded(shown('UserList', depth=2))['UserList']['items']['properties']) >= {'name', 'address'}
 
     def test_a_union_lists_its_members(self, shown):
         assert loaded(shown('Either'))['Either']['anyOf'] == ['string', 'integer']
@@ -718,11 +730,11 @@ class TestAUnionNamesItsMembers:
         body = loaded(endpoint('/items', depth=2))['/items']['get']['responses'][200]['body']
         assert body['application/json']['properties']['tag'] == 'string | nil'
 
-    def test_a_named_union_still_reads_as_its_name(self, shown):
+    def test_a_declared_name_still_beats_the_members(self, shown):
         """`_type_name` prefers the alias, so naming the members is the fallback
         for an anonymous one rather than a replacement for the declared name.
         """
-        assert loaded(shown('UserList'))['UserList']['items'] == 'User'
+        assert loaded(shown('UserList'))['UserList']['type'] == 'User[]'
 
 
 class TestSecuritySchemesContribute:

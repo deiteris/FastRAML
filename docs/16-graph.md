@@ -954,6 +954,19 @@ than a corner, since every nullable field projects to a union of the type and
 `nil`. The join stops one level down, so a union of unions reads
 `union | string` rather than unrolling a tree onto one line.
 
+**An array names its member** for the same reason — `notification[]`, not
+`array`. The member is the fact a reader wants: whether a list holds a shared
+schema or an inline copy of one. Without it that reference is a `--depth`
+away, which is the wrong price for the commonest shape in a JSON Schema
+document. Unlike the union join this is not gated on `nested`, because an array
+chain is linear rather than a tree and `string[][]` is as deep as it goes; a
+union member is parenthesised, `(a | b)[]`, or it reads as a union with an array
+on one side.
+
+`items:` then gives way to the name, as `inherits:` does — `items: notification`
+under `type: notification[]` is the same fact twice. It returns as soon as
+`--depth` opens the member, which is more than the name.
+
 ### 9.7 A JSON-schema type opens like any other
 
 Through `JsonShape.as_shape()` — the § 6.3 projection of

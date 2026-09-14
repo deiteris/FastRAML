@@ -335,6 +335,8 @@ fastraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made
 fastraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
 fastraml diff OLD NEW [--breaking-only] [--severity S] [--json]
 fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
+fastraml skills (list | get NAME... | install [NAME...]) [--full] [--json]
+                [--user | --dir PATH] [--force]          # the served agent guides
 ```
 
 `validate` and `info` parse with `unwrap=True, validate=True`: their job is to
@@ -561,3 +563,77 @@ body at once and is graded on the worse side. An earlier version wrote one side,
 which put `"direction": "request"` beside `"rule": "response-property-optional"`
 in the same record — a consumer regrading these facts could not have reached the
 published answer from them.
+
+### 8.3 `skills`
+
+The one verb that reads no RAML. It prints the agent guides shipped in
+`fastraml/skilldata/`, which is a directory of Markdown inside the package rather
+than a file in the repository.
+
+```
+fastraml skills list                 # the guides, and what each covers
+fastraml skills get core             # print one
+fastraml skills get core --full      # and its references/ files
+fastraml skills get diff sparql      # several, separated by `---`
+```
+
+**An agent skill installed elsewhere is a copy, and a copy goes stale against
+the binary that answers.** Serving the text from the package inverts that: the
+installed skill is a *stub* whose whole body points at `fastraml skills get core`,
+so the instructions an agent reads are the ones that shipped with the version it
+is about to run. The stub in `skills/fastraml/` is therefore deliberately thin,
+and the content is deliberately not duplicated there. The pattern is
+[agent-browser](https://github.com/vercel-labs/agent-browser)'s.
+
+A guide is a directory with a `SKILL.md` and an optional `references/`, matching
+the [Agent Skills specification](https://github.com/agentskills/agentskills) so
+that a guide can also be installed directly. `name` and `description` come from
+its frontmatter; a directory whose frontmatter will not parse still prints,
+under its directory name, because a guide that cannot be read is worse than one
+that is mislabelled.
+
+A missing name is **named, not guessed** — the verb lists what exists and exits
+1, for the same reason `_resolve` refuses to pick between ambiguous nodes.
+
+The verb takes none of the common flags: there is no document, so a workspace
+root, a guard and a remote client would all be noise.
+
+#### Installing
+
+```
+fastraml skills install                    # the stub, into ./.agents/skills/
+fastraml skills install --user             # into ~/.agents/skills/
+fastraml skills install --dir ~/.claude/skills   # anywhere else
+fastraml skills install core diff --force  # a guide, replacing what is there
+```
+
+**`.agents/skills` and not a client's own directory.** The Agent Skills
+specification names it the cross-client path, and Claude Code, GitHub Copilot
+and VS Code all scan it at both project and user scope — so one copy serves
+every agent rather than one copy per agent. `--dir` reaches `~/.claude/skills`,
+`~/.copilot/skills` or anything else for a client that wants its own.
+
+Project scope is the default, matching the ecosystem's installers: the skill
+then travels with the repository it was installed for, and can be committed
+beside it.
+
+**This is built in rather than delegated to `gh skill`.** That tool does the
+same job across thirty agents and would have been the obvious answer, but it is
+third-party, in preview, and not guaranteed to be present — and the operation is
+a file copy into a documented directory. Needing a second CLI for that would
+have been the only hard dependency this package has. Nothing stops a user
+running `gh skill install deiteris/FastRAML`: the repository layout already
+satisfies its `skills/*/SKILL.md` discovery rule, which `gh skill publish
+--dry-run` confirms.
+
+Installing **refuses to overwrite without `--force`**, and checks every
+collision before the first write. An installed skill is a file the user may have
+edited; replacing it silently is the one thing an installer must not do, and a
+half-finished install across several names leaves the user to work out which
+ones landed.
+
+With no name it installs the **stub**, not a guide. Installing `core` by default
+would defeat the arrangement, because that copy is exactly what goes stale. The
+stub carries `hidden: true`, so `list` does not advertise it while `get` and
+`install` still accept it by name — a listing of documentation should not
+recommend the shim whose only job is to fetch that documentation.

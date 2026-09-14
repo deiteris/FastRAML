@@ -8,6 +8,7 @@ fastraml list FILE [PATTERN]
 fastraml refs FILE NAME
 fastraml deps FILE NAME
 fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
+fastraml skills (list | get NAME...) [--full] [--json]
 ```
 
 Mirrors the reference implementation's `raml` tool closely enough that the two
@@ -24,12 +25,13 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final, NamedTuple
 
 from fastraml import __version__
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from pathlib import Path
 
     from fastraml.parser.entry import ParseOptions
     from fastraml.registry import Raml
@@ -122,6 +124,8 @@ def _parser() -> argparse.ArgumentParser:
     query.add_argument('--json', action='store_true', help='JSON rather than a table')
     _add_common(query)
 
+    _add_skills(commands)
+
     _COMMANDS.update(
         validate=_validate,
         info=_info,
@@ -133,8 +137,23 @@ def _parser() -> argparse.ArgumentParser:
         list=_list,
         diff=_diff,
         query=_query,
+        skills=_skills,
     )
     return parser
+
+
+def _add_skills(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The one verb that reads no RAML, so it takes none of the common flags."""
+    skills = commands.add_parser('skills', help='the agent guides this CLI ships with')
+    skills.add_argument(
+        'action', choices=('list', 'get', 'install'), help='list the guides, print one, or install one for an agent'
+    )
+    skills.add_argument('names', metavar='NAME', nargs='*', help='which guide; install defaults to the stub')
+    skills.add_argument('--full', action='store_true', help="get: also print each guide's reference files")
+    skills.add_argument('--json', action='store_true', help='structured output rather than Markdown')
+    skills.add_argument('--user', action='store_true', help=f'install: write to ~/{_SKILL_DIR} rather than the CWD')
+    skills.add_argument('--dir', metavar='PATH', help='install: a skills directory of your own, overriding --user')
+    skills.add_argument('--force', action='store_true', help='install: replace a skill that is already there')
 
 
 def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -795,6 +814,228 @@ def _term(term: Any) -> str | None:
     is the unbound case an `OPTIONAL` produces.
     """
     return None if term is None else str(term.value)
+
+
+# -- skills -------------------------------------------------------------------
+
+#: The guides this CLI serves, as a directory of Markdown inside the package.
+#: An agent skill installed elsewhere is a *copy*, and a copy goes stale against
+#: the version that actually answers. Serving the text from here means
+#: `fastraml skills get core` always describes this build, so the installed skill
+#: can be a stub that fetches rather than a duplicate that rots
+#: (docs/13-public-api.md section 8.3).
+_SKILLDATA: Final = 'skilldata'
+
+#: How much of a guide's description `skills list` shows before it truncates.
+#: Long enough to route on, short enough that the listing stays a listing.
+_DESCRIPTION_WIDTH: Final = 96
+
+
+#: The guide `skills install` writes when given no name: the discovery stub whose
+#: whole body points back at `skills get`. It is `hidden:`, so it is the one
+#: guide `list` does not advertise -- a listing of documentation should not
+#: recommend the shim that fetches it.
+_STUB: Final = 'fastraml'
+
+#: Where an installed skill goes. `.agents/skills` rather than a client's own
+#: directory: the Agent Skills specification names it the cross-client path, and
+#: Claude Code, GitHub Copilot and VS Code all scan it, so one copy serves every
+#: agent instead of one copy per agent. `--dir` covers anything else
+#: (docs/13-public-api.md section 8.3).
+_SKILL_DIR: Final = '.agents/skills'
+
+
+class _Guide(NamedTuple):
+    """One served guide: what `list` needs, plus where to read the rest."""
+
+    name: str
+    description: str
+    path: Path
+    hidden: bool
+
+
+def _skills(args: argparse.Namespace) -> int:
+    guides = _guides()
+    if not guides:
+        # Reachable only from a broken install -- the data ships in the wheel.
+        print(f'no guides found in {_skill_root()}', file=sys.stderr)
+        return EXIT_INVALID
+    if args.action == 'list':
+        return _skills_list(guides, json_mode=args.json)
+    if args.action == 'install':
+        return _skills_install(guides, args.names or [_STUB], args)
+    return _skills_get(guides, args.names, full=args.full, json_mode=args.json)
+
+
+def _skills_install(guides: dict[str, _Guide], names: Sequence[str], args: argparse.Namespace) -> int:
+    """Write a guide into a skills directory, where an agent will discover it.
+
+    Built in rather than delegated to `gh skill`, which is a separate tool, in
+    preview, and not guaranteed to be present. The install is a file copy into a
+    documented directory; needing a second CLI for that would be the only hard
+    dependency this package has.
+
+    Refuses to overwrite without `--force`. An installed skill is a file the user
+    may have edited, and silently replacing it is the one thing an installer must
+    not do.
+    """
+    missing = [name for name in names if name not in guides]
+    if missing:
+        print(f'no such guide: {", ".join(missing)}; try {", ".join(guides)}', file=sys.stderr)
+        return EXIT_INVALID
+
+    root = _install_root(args)
+    written = []
+    for name in names:
+        destination = root / name / 'SKILL.md'
+        if destination.exists() and not args.force:
+            print(f'{destination} exists; pass --force to replace it', file=sys.stderr)
+            return EXIT_INVALID
+        written.append((destination, guides[name].path.read_text(encoding='utf-8')))
+
+    # Every read and every collision check first: a half-finished install across
+    # several names leaves the user to work out which ones landed.
+    for destination, text in written:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(text, encoding='utf-8')
+        print(f'installed {destination}')
+    return EXIT_OK
+
+
+def _install_root(args: argparse.Namespace) -> Path:
+    """Which skills directory to write into.
+
+    Project scope by default, matching what the ecosystem's installers do: the
+    skill then travels with the repository it was installed for, and can be
+    committed beside it.
+    """
+    from pathlib import Path  # noqa: PLC0415 - this verb only
+
+    if args.dir:
+        return Path(args.dir).expanduser()
+    return (Path.home() if args.user else Path.cwd()) / _SKILL_DIR
+
+
+def _skill_root() -> Path:
+    from pathlib import Path  # noqa: PLC0415 - this verb only
+
+    return Path(__file__).parent / _SKILLDATA
+
+
+def _guides() -> dict[str, _Guide]:
+    """Every guide in the package, in name order."""
+    root = _skill_root()
+    if not root.is_dir():
+        return {}
+    found = {}
+    for path in sorted(root.iterdir()):
+        skill = path / 'SKILL.md'
+        if not skill.is_file():
+            continue
+        front = _frontmatter(skill.read_text(encoding='utf-8'))
+        name = str(front.get('name') or path.name)
+        # Hidden by *name*, not by a frontmatter flag. The stub is the file that
+        # gets installed, and `hidden` there is a word another client may act on
+        # -- agent-browser uses it to mean "keep this out of the agent's view",
+        # which is the one thing the stub must never be. Marking it in code
+        # instead keeps the installed copy byte-identical to `skills/fastraml/`.
+        found[name] = _Guide(name, str(front.get('description') or ''), skill, name == _STUB)
+    return found
+
+
+def _frontmatter(text: str) -> dict[str, Any]:
+    """The YAML block a SKILL.md opens with, or an empty mapping.
+
+    Tolerant on purpose: a guide whose frontmatter will not parse is still worth
+    printing, so it falls back to the directory name rather than failing the
+    verb.
+    """
+    import yaml  # noqa: PLC0415 - this verb only
+
+    if not text.startswith('---\n'):
+        return {}
+    block, separator, _ = text[4:].partition('\n---')
+    if not separator:
+        return {}
+    try:
+        loaded = yaml.safe_load(block)
+    except yaml.YAMLError:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _skills_list(guides: dict[str, _Guide], *, json_mode: bool) -> int:
+    """The guides worth reading. The stub is `hidden:`, so it is not one of them.
+
+    It stays `get`-able and `install`-able by name. Hiding it keeps a listing of
+    *documentation* from advertising the discovery shim whose only job is to
+    fetch that documentation.
+    """
+    listed = [guide for guide in guides.values() if not guide.hidden]
+    if json_mode:
+        import json  # noqa: PLC0415 - only JSON output needs the encoder
+
+        for guide in listed:
+            print(json.dumps({'name': guide.name, 'description': guide.description}))
+        return EXIT_OK
+
+    width = max(len(guide.name) for guide in listed)
+    for guide in listed:
+        summary = guide.description
+        if len(summary) > _DESCRIPTION_WIDTH:
+            # ASCII, not an ellipsis character: this lands on a Windows console
+            # under cp1252 as often as on a UTF-8 one, and `...` survives both.
+            summary = summary[: _DESCRIPTION_WIDTH - 3].rstrip() + '...'
+        print(f'{guide.name:<{width}}  {summary}')
+    # Flushed first, or the hint arrives ahead of the listing it is about once
+    # either stream is redirected -- the hazard `_validate` documents.
+    sys.stdout.flush()
+    print("\nRead one with 'fastraml skills get <name>'.", file=sys.stderr)
+    return EXIT_OK
+
+
+def _skills_get(guides: dict[str, _Guide], names: Sequence[str], *, full: bool, json_mode: bool) -> int:
+    if not names:
+        print(f'skills get needs a name: {", ".join(guides)}', file=sys.stderr)
+        return EXIT_INVALID
+    missing = [name for name in names if name not in guides]
+    if missing:
+        # Named, not guessed, for the same reason `_resolve` refuses to pick:
+        # printing the wrong guide answers a question nobody asked.
+        print(f'no such guide: {", ".join(missing)}; try {", ".join(guides)}', file=sys.stderr)
+        return EXIT_INVALID
+
+    wanted = [guides[name] for name in names]
+    if json_mode:
+        import json  # noqa: PLC0415 - only JSON output needs the encoder
+
+        for guide in wanted:
+            record: dict[str, object] = {'name': guide.name, 'content': guide.path.read_text(encoding='utf-8')}
+            if full:
+                record['references'] = [{'path': name, 'content': text} for name, text in _guide_references(guide)]
+            print(json.dumps(record))
+        return EXIT_OK
+
+    for index, guide in enumerate(wanted):
+        if index:
+            print('\n---\n')
+        print(guide.path.read_text(encoding='utf-8').rstrip())
+        for name, text in _guide_references(guide) if full else ():
+            print(f'\n--- {name} ---\n')
+            print(text.rstrip())
+    return EXIT_OK
+
+
+def _guide_references(guide: _Guide) -> list[tuple[str, str]]:
+    """A guide's `references/` files, in name order. Absent is not an error."""
+    folder = guide.path.parent / 'references'
+    if not folder.is_dir():
+        return []
+    return [
+        (f'references/{path.name}', path.read_text(encoding='utf-8'))
+        for path in sorted(folder.iterdir())
+        if path.suffix == '.md'
+    ]
 
 
 # -- options ------------------------------------------------------------------

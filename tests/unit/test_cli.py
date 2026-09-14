@@ -13,6 +13,7 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import yaml
@@ -740,3 +741,206 @@ class TestResultsAreBounded:
         monkeypatch.setattr('fastraml.cli._DEFAULT_LIMIT', 1)
         main(['refs', graphed, 'User', '--limit', '0'])
         assert len(capsys.readouterr().out.splitlines()) > 1
+
+
+class TestSkillsVerb:
+    """The served agent guides (docs/13 section 8.3).
+
+    The point of the verb is that an installed skill can be a *stub*: the guide
+    an agent reads ships with the build that answers it, so it cannot go stale.
+    That only holds if the data is present and the stub's own commands work, so
+    these tests name both.
+    """
+
+    def test_the_guides_ship_inside_the_package(self):
+        """Not beside the repository. A wheel with no `skilldata/` serves an
+        empty listing, and the stub it backs then points at nothing.
+        """
+        from fastraml.cli import _skill_root
+
+        root = _skill_root()
+        assert root.is_dir(), f'{root} is missing from the installed package'
+        assert (root / 'core' / 'SKILL.md').is_file()
+
+    def test_list_names_every_guide(self, capsys):
+        assert main(['skills', 'list']) == EXIT_OK
+        out = capsys.readouterr().out
+        for name in ('core', 'diff', 'sparql'):
+            assert name in out
+
+    def test_the_hint_goes_to_stderr_so_a_pipe_is_clean(self, capsys):
+        main(['skills', 'list'])
+        captured = capsys.readouterr()
+        assert 'skills get' in captured.err
+        assert 'skills get' not in captured.out
+
+    def test_get_prints_the_guide_with_its_frontmatter(self, capsys):
+        """Frontmatter included: the output is a valid SKILL.md, so an agent can
+        write it straight to disk as a skill of its own.
+        """
+        assert main(['skills', 'get', 'core']) == EXIT_OK
+        out = capsys.readouterr().out
+        assert out.startswith('---\n')
+        assert yaml.safe_load(out.split('---')[1])['name'] == 'core'
+
+    def test_the_stubs_own_commands_all_resolve(self, capsys):
+        """Every `fastraml skills get X` the installed stub tells an agent to run.
+
+        A stub that points at a guide this build does not serve is the one
+        failure the whole pattern exists to prevent.
+        """
+        for name in ('core', 'diff', 'sparql'):
+            assert main(['skills', 'get', name]) == EXIT_OK, name
+            assert capsys.readouterr().out.strip()
+
+    def test_full_appends_the_reference_files(self, capsys):
+        plain = main(['skills', 'get', 'core'])
+        short = len(capsys.readouterr().out)
+        assert plain == EXIT_OK
+        assert main(['skills', 'get', 'core', '--full']) == EXIT_OK
+        out = capsys.readouterr().out
+        assert len(out) > short
+        assert 'references/commands.md' in out
+
+    def test_several_guides_are_separated(self, capsys):
+        assert main(['skills', 'get', 'diff', 'sparql']) == EXIT_OK
+        assert '\n---\n' in capsys.readouterr().out
+
+    def test_an_unknown_guide_is_named_not_guessed(self, capsys):
+        """As `_resolve` refuses to pick between ambiguous nodes: printing the
+        wrong guide answers a question nobody asked.
+        """
+        assert main(['skills', 'get', 'cor']) == EXIT_INVALID
+        captured = capsys.readouterr()
+        assert 'no such guide' in captured.err
+        assert not captured.out
+
+    def test_get_without_a_name_lists_what_it_wanted(self, capsys):
+        assert main(['skills', 'get']) == EXIT_INVALID
+        assert 'core' in capsys.readouterr().err
+
+    def test_json_carries_the_content(self, capsys):
+        assert main(['skills', 'get', 'core', '--json']) == EXIT_OK
+        record = json.loads(capsys.readouterr().out.strip())
+        assert record['name'] == 'core'
+        assert 'fastraml' in record['content']
+
+    def test_every_guide_is_a_valid_agent_skill(self):
+        """Name, description and the directory name agree, per the Agent Skills
+        specification, so a guide can also be installed directly rather than
+        served.
+        """
+        from fastraml.cli import _skill_root
+
+        for folder in sorted(_skill_root().iterdir()):
+            skill = folder / 'SKILL.md'
+            front = yaml.safe_load(skill.read_text(encoding='utf-8').split('---')[1])
+            assert front['name'] == folder.name
+            assert 0 < len(front['description']) <= 1024
+
+
+class TestSkillsInstall:
+    """Installing a guide into a skills directory (docs/13 section 8.3).
+
+    Built in rather than delegated to `gh skill`: that tool is third-party, in
+    preview, and not guaranteed present, and the operation is a file copy into a
+    documented directory.
+    """
+
+    def test_the_default_target_is_the_cross_client_directory(self, tmp_path, capsys, monkeypatch):
+        """`.agents/skills`, not `.claude/skills`. The specification names the
+        first as the interoperability path and three harnesses scan it, so one
+        copy serves every agent rather than one copy per agent.
+        """
+        monkeypatch.chdir(tmp_path)
+        assert main(['skills', 'install']) == EXIT_OK
+        assert (tmp_path / '.agents' / 'skills' / 'fastraml' / 'SKILL.md').is_file()
+        assert 'installed' in capsys.readouterr().out
+
+    def test_it_installs_the_stub_by_default_not_a_guide(self, tmp_path, capsys, monkeypatch):
+        """The stub is what an agent needs; the guides are what the stub fetches.
+
+        Installing `core` by default would defeat the whole arrangement -- the
+        copy would go stale, which is what serving from the package prevents.
+        """
+        monkeypatch.chdir(tmp_path)
+        main(['skills', 'install'])
+        body = (tmp_path / '.agents' / 'skills' / 'fastraml' / 'SKILL.md').read_text(encoding='utf-8')
+        assert 'skills get core' in body, 'the installed skill must bootstrap from the CLI'
+
+    def test_user_scope_writes_under_home(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setattr('pathlib.Path.home', lambda: tmp_path)
+        assert main(['skills', 'install', '--user']) == EXIT_OK
+        assert (tmp_path / '.agents' / 'skills' / 'fastraml' / 'SKILL.md').is_file()
+
+    def test_dir_overrides_both_scopes(self, tmp_path, capsys):
+        assert main(['skills', 'install', '--dir', str(tmp_path / 'own')]) == EXIT_OK
+        assert (tmp_path / 'own' / 'fastraml' / 'SKILL.md').is_file()
+
+    def test_a_named_guide_installs_too(self, tmp_path, capsys):
+        assert main(['skills', 'install', 'core', 'diff', '--dir', str(tmp_path)]) == EXIT_OK
+        assert (tmp_path / 'core' / 'SKILL.md').is_file()
+        assert (tmp_path / 'diff' / 'SKILL.md').is_file()
+
+    def test_it_refuses_to_replace_without_force(self, tmp_path, capsys):
+        """An installed skill is a file the user may have edited."""
+        assert main(['skills', 'install', '--dir', str(tmp_path)]) == EXIT_OK
+        capsys.readouterr()
+        assert main(['skills', 'install', '--dir', str(tmp_path)]) == EXIT_INVALID
+        assert 'force' in capsys.readouterr().err
+
+    def test_force_replaces(self, tmp_path, capsys):
+        main(['skills', 'install', '--dir', str(tmp_path)])
+        target = tmp_path / 'fastraml' / 'SKILL.md'
+        target.write_text('edited', encoding='utf-8')
+        assert main(['skills', 'install', '--dir', str(tmp_path), '--force']) == EXIT_OK
+        assert target.read_text(encoding='utf-8') != 'edited'
+
+    def test_nothing_is_written_when_one_name_collides(self, tmp_path, capsys):
+        """Every collision is checked before the first write, or a failed install
+        leaves the user to work out which names landed.
+        """
+        (tmp_path / 'diff').mkdir()
+        (tmp_path / 'diff' / 'SKILL.md').write_text('mine', encoding='utf-8')
+        assert main(['skills', 'install', 'core', 'diff', '--dir', str(tmp_path)]) == EXIT_INVALID
+        assert not (tmp_path / 'core').exists(), 'a refused install must write nothing at all'
+
+    def test_an_unknown_guide_is_refused(self, tmp_path, capsys):
+        assert main(['skills', 'install', 'nope', '--dir', str(tmp_path)]) == EXIT_INVALID
+        assert 'no such guide' in capsys.readouterr().err
+
+    def test_the_stub_is_hidden_from_the_listing(self, capsys):
+        """Still gettable and installable by name -- a listing of documentation
+        should not advertise the shim whose only job is to fetch it.
+        """
+        main(['skills', 'list'])
+        # The name column, not the whole line: every guide's *description*
+        # mentions `fastraml`, so a substring test over the output passes and
+        # fails for reasons that have nothing to do with hiding.
+        listed = [line.split()[0] for line in capsys.readouterr().out.splitlines() if line.strip()]
+        assert 'fastraml' not in listed
+        assert listed == ['core', 'diff', 'sparql']
+        assert main(['skills', 'get', 'fastraml']) == EXIT_OK
+        assert capsys.readouterr().out.strip()
+
+    def test_the_installed_stub_is_a_valid_agent_skill(self, tmp_path):
+        """Name matches its directory, per the Agent Skills specification, so
+        every client that scans the directory accepts it.
+        """
+        main(['skills', 'install', '--dir', str(tmp_path)])
+        front = yaml.safe_load((tmp_path / 'fastraml' / 'SKILL.md').read_text(encoding='utf-8').split('---')[1])
+        assert front['name'] == 'fastraml'
+        assert 0 < len(front['description']) <= 1024
+
+    def test_the_repo_stub_matches_the_one_the_cli_serves(self):
+        """`skills/fastraml/` exists for installers that read the repository --
+        `gh skill install`, or a plugin manifest. `fastraml/skilldata/fastraml/`
+        is what `skills install` writes. Two copies drift, so they are pinned
+        byte-identical: the stub carries no serving-only frontmatter, because
+        what `install` writes is what a client reads.
+        """
+        from fastraml.cli import _skill_root
+
+        served = (_skill_root() / 'fastraml' / 'SKILL.md').read_text(encoding='utf-8')
+        committed = Path('skills/fastraml/SKILL.md').read_text(encoding='utf-8')
+        assert served == committed, 'skills/fastraml/SKILL.md is stale against fastraml/skilldata/fastraml/SKILL.md'

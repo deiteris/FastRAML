@@ -657,6 +657,75 @@ class TestEveryNodeIsBackedByTheModel:
         assert graph.entity_at(f'{DEFAULT_BASE}#/nope') is None
 
 
+class TestNameIsTheCheapPathToTheSameAnswer:
+    """docs/12 § 19e: `GraphNode.name` exists so `find` and `label` need not
+    build a whole attribute dictionary to read one key.
+
+    It is a second expression of something `attributes` already says, which is
+    exactly the shape that rots. The rule is that `attributes` reads the
+    property rather than repeating the expression, and this is what holds the
+    two together — it caught four node kinds whose name arrives through
+    `_named` rather than as a literal key, and one, `ParameterNode`, that spells
+    it directly.
+    """
+
+    def test_every_node_agrees_with_its_own_attributes(self, graph: Graph):
+        disagreed = {
+            iri: (node.name, node.attributes.get('name', ''))
+            for iri, node in graph.nodes.items()
+            if node.name != node.attributes.get('name', '')
+        }
+        assert disagreed == {}
+
+    #: `DeclaredNode` — trait, resource type and security scheme — is one of the
+    #: two classes whose name arrives from a shared base, and the module's own
+    #: `graph` fixture declares none of the three. The worked document does.
+    WORKED = 'fixtures/sample/api.raml'
+
+    @pytest.fixture
+    def declaring(self) -> Graph:
+        options = ParseOptions(unwrap=True, workspace_root='fixtures')
+        return build_graph(parse_from_path(self.WORKED, options))
+
+    def test_the_declared_kinds_agree_too(self, declaring: Graph):
+        """Traits, resource types and security schemes reach `name` through
+        `DeclaredNode`, which the module fixture never builds."""
+        assert {node.kinds[0] for node in declaring.nodes.values()} >= {
+            'ResourceType',
+            'SecurityScheme',
+            'Trait',
+        }
+        disagreed = [iri for iri, node in declaring.nodes.items() if node.name != node.attributes.get('name', '')]
+        assert disagreed == []
+
+    def test_every_node_kind_is_covered_by_that(self, graph: Graph, declaring: Graph):
+        """The agreement above is worth nothing if a kind is absent from both
+        documents, so the kinds they actually exercised are pinned here."""
+        reached = {node.kinds[0] for node in graph.nodes.values()}
+        reached |= {node.kinds[0] for node in declaring.nodes.values()}
+        assert reached >= {
+            'Api',
+            'EndPoint',
+            'Operation',
+            'Parameter',
+            'PatternProperty',
+            'Payload',
+            'Property',
+            'Request',
+            'ResourceType',
+            'Response',
+            'SecurityScheme',
+            'Trait',
+            'Type',
+            'Unit',
+        }
+
+    def test_a_node_with_no_name_reports_empty_rather_than_none(self, graph: Graph):
+        payloads = [graph.nodes[iri] for iri in iris(graph, 'Payload')]
+        assert payloads
+        assert all(node.name == '' for node in payloads)
+
+
 class TestAttributesAreDerivedNotStored:
     """docs/16 section 2.8: this layer owns the vocabulary, not the values."""
 

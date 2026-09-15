@@ -113,11 +113,30 @@ class GraphNode[E: Entity]:
         return (self.kind,)
 
     @property
+    def name(self) -> str:
+        """The node's authored name, or `''` where it has none.
+
+        Separate from `attributes` because looking a name up is the commonest
+        single-key read there is — `Graph.find` does it once per node, `label`
+        and `diff` per node pair — and `attributes` is far too expensive to
+        serve it. Building a `TypeNode`'s dictionary projects the shape, walks
+        every facet its kind declares and relativises its path, all of which is
+        discarded when the caller wanted one string: **12x slower than reading
+        the entity** over 36 510 nodes, 30.1 ms against 2.6 ms (docs/12 § 19e).
+
+        Each override is the same expression `attributes` uses for its `name`
+        key, and `attributes` reads this property rather than repeating it, so
+        the two cannot drift. `tests/unit/test_graph.py` asserts they agree for
+        every node kind.
+        """
+        return ''
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
         """The node's literals, read from the entity.
 
         A fresh dictionary per call, so a caller reading it more than once binds
-        it to a local.
+        it to a local. Where only the name is wanted, read `name`.
         """
         return {}
 
@@ -142,11 +161,15 @@ class TypeNode(GraphNode[BaseShape]):
         return (self.kind, self.shape_kind)
 
     @property
+    def name(self) -> str:
+        return self.entity.name or ''
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
         base = self.entity
         found = _drop(
             {
-                'name': base.name,
+                'name': self.name,
                 'type': base.type,
                 'displayName': _text(base.display_name),
                 'description': _text(base.description),
@@ -179,8 +202,12 @@ class PropertyNode(GraphNode[Property]):
     kind: ClassVar[str] = 'Property'
 
     @property
+    def name(self) -> str:
+        return self.entity.name
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
-        return {'name': self.entity.name, 'required': self.entity.required}
+        return {'name': self.name, 'required': self.entity.required}
 
 
 @dataclass(slots=True, eq=False)
@@ -188,8 +215,12 @@ class PatternPropertyNode(GraphNode[PatternProperty]):
     kind: ClassVar[str] = 'PatternProperty'
 
     @property
+    def name(self) -> str:
+        return self.entity.pattern.pattern
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
-        written = self.entity.pattern.pattern
+        written = self.name
         return {'name': written, 'pattern': written}
 
 
@@ -201,11 +232,13 @@ class EndPointNode(GraphNode[EndPoint]):
     kind: ClassVar[str] = 'EndPoint'
 
     @property
+    def name(self) -> str:
+        return _text(self.entity.display_name) or self.entity.full_uri
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
         endpoint = self.entity
-        named = _named(
-            {'path': endpoint.full_uri}, _text(endpoint.display_name) or endpoint.full_uri, endpoint.description
-        )
+        named = _named({'path': endpoint.full_uri}, self.name, endpoint.description)
         return named | _where(endpoint.location, endpoint.key_pos, self.root)
 
 
@@ -220,11 +253,13 @@ class OperationNode(GraphNode[Operation]):
     kind: ClassVar[str] = 'Operation'
 
     @property
+    def name(self) -> str:
+        return _text(self.entity.display_name) or self.entity.method
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
         operation = self.entity
-        found = _named(
-            {'method': operation.method}, _text(operation.display_name) or operation.method, operation.description
-        )
+        found = _named({'method': operation.method}, self.name, operation.description)
         found.update(_where(operation.location, operation.key_pos, self.root))
         # Every scheme in force, not the last one seen: an operation may be
         # secured by two OAuth schemes and narrow the scopes of both.
@@ -253,11 +288,13 @@ class ResponseNode(GraphNode[Response]):
     kind: ClassVar[str] = 'Response'
 
     @property
+    def name(self) -> str:
+        return _text(self.entity.display_name) or self.entity.code
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
         response = self.entity
-        named = _named(
-            {'statusCode': response.code}, _text(response.display_name) or response.code, response.description
-        )
+        named = _named({'statusCode': response.code}, self.name, response.description)
         return named | _where(response.location, response.key_pos, self.root)
 
 
@@ -285,10 +322,14 @@ class ParameterNode(GraphNode[Parameter]):
     kind: ClassVar[str] = 'Parameter'
 
     @property
+    def name(self) -> str:
+        return self.entity.name
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
         param = self.entity
         bound: dict[str, Literal_] = {
-            'name': param.name,
+            'name': self.name,
             'binding': _BINDING[param.binding],
             'required': param.required,
         }
@@ -309,11 +350,15 @@ class ApiNode(GraphNode[APIFragment]):
     kind: ClassVar[str] = 'Api'
 
     @property
+    def name(self) -> str:
+        return _text(self.entity.title) or ''
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
         api = self.entity
         return _drop(
             {
-                'name': _text(api.title),
+                'name': self.name,
                 'version': _text(api.version),
                 'description': _text(api.description),
                 'baseUri': _text(api.base_uri),
@@ -331,8 +376,12 @@ class UnitNode(GraphNode[Fragment]):
     kind: ClassVar[str] = 'Unit'
 
     @property
+    def name(self) -> str:
+        return relative_to(self.entity.location, self.root)
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
-        return {'name': relative_to(self.entity.location, self.root)}
+        return {'name': self.name}
 
 
 # -- declarations a name can reach ---------------------------------------------
@@ -348,8 +397,12 @@ class DeclaredNode[E: TraitDefinition | ResourceTypeDefinition | SecuritySchemeD
     """
 
     @property
+    def name(self) -> str:
+        return self.entity.name
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
-        return {'name': self.entity.name} | _where(self.entity.location, self.entity.key_pos, self.root)
+        return {'name': self.name} | _where(self.entity.location, self.entity.key_pos, self.root)
 
 
 @dataclass(slots=True, eq=False)
@@ -369,7 +422,7 @@ class SecuritySchemeNode(DeclaredNode[SecuritySchemeDefinition]):
     @property
     def attributes(self) -> dict[str, Literal_]:
         scheme = self.entity
-        found: dict[str, Literal_] = {'name': scheme.name}
+        found: dict[str, Literal_] = {'name': self.name}
         if scheme.type:
             found['type'] = scheme.type
         return found | _where(scheme.location, scheme.key_pos, self.root)
@@ -384,8 +437,12 @@ class UnresolvedNode[E: DirectiveRef | SecurityScheme](GraphNode[E]):
     """
 
     @property
+    def name(self) -> str:
+        return self.entity.name or ''
+
+    @property
     def attributes(self) -> dict[str, Literal_]:
-        return {'name': self.entity.name} if self.entity.name else {}
+        return {'name': self.name} if self.name else {}
 
 
 @dataclass(slots=True, eq=False)

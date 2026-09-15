@@ -24,7 +24,7 @@ imports the model rather than being imported by it.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, NamedTuple
 
 from fastraml.nodes import (
     ApiNode,
@@ -50,7 +50,7 @@ from fastraml.nodes import (
 )
 from fastraml.parser.endpoints import EndPoint, Operation
 from fastraml.types.base import BaseShape
-from fastraml.views.walk import DECLARATIONS, DEFAULT_BASE, Addresses, Bucket, Walk
+from fastraml.views.walk import DECLARATIONS, DEFAULT_BASE, Addresses, Bucket, Walk, workspace_of
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -73,6 +73,7 @@ __all__ = [
     'Graph',
     'Route',
     'build_graph',
+    'is_declaration',
 ]
 
 #: The vocabulary namespace. A URN rather than an `http(s)` IRI on purpose: this
@@ -126,8 +127,14 @@ _XSD: Final = 'http://www.w3.org/2001/XMLSchema#'
 #: Opens the tail of every declaration IRI (§ 3).
 
 
-def _is_declaration(iri: str) -> bool:
+def is_declaration(iri: str) -> bool:
     """Whether `iri` names a declaration rather than a node inside one.
+
+    Exported because more than one view has to agree about it: a rule that
+    judges *declared* types and a query that does the same must draw the line
+    in one place, which is the mistake docs/16 § 6.2 records — three catalogue
+    queries matched every `Type` node instead of every declared one, and
+    returned one row per use of a problem instead of one row per problem.
 
     Told apart by depth. A declaration's tail is `<bucket>/<name>` and nothing
     more — `types/User` — while a node beneath it keeps going:
@@ -188,9 +195,8 @@ _UNRESOLVED: Final[dict[Bucket, type[UnresolvedNode[Any]]]] = {
 # -- the graph ----------------------------------------------------------------
 
 
-@dataclass(slots=True, frozen=True)
-class Edge:
-    """One relationship. Frozen so a set of edges deduplicates by value."""
+class Edge(NamedTuple):
+    """One immutable relationship, shared by the list and both indexes."""
 
     subject: str
     predicate: str
@@ -231,7 +237,7 @@ class Graph:
 
     __slots__ = ('_incoming', '_outgoing', 'addresses', 'base', 'edges', 'nodes', 'root')
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - optional prebuilt indexes avoid a second edge pass
         self,
         base: str,
         nodes: dict[str, GraphNode[Any]],
@@ -239,6 +245,8 @@ class Graph:
         *,
         root: str = '',
         addresses: Addresses | None = None,
+        incoming: dict[str, list[Edge]] | None = None,
+        outgoing: dict[str, list[Edge]] | None = None,
     ) -> None:
         self.base = base
         #: Where every entity the walk reached was addressed. The join between
@@ -255,11 +263,27 @@ class Graph:
         #: recorded it for the rest (docs/16 § 2.7).
         self.nodes = nodes
         self.edges = edges
-        self._outgoing: dict[str, list[Edge]] = {}
-        self._incoming: dict[str, list[Edge]] = {}
-        for edge in edges:
-            self._outgoing.setdefault(edge.subject, []).append(edge)
-            self._incoming.setdefault(edge.object, []).append(edge)
+        if incoming is None or outgoing is None:
+            # `build_graph` supplies both, because the sink filled them as it
+            # went; this is for a `Graph` assembled from edges by hand, which
+            # the diff tests and any consumer building one do. Same `get`
+            # branch as `_GraphSink.edge`, to right-size the same singletons.
+            self._outgoing: dict[str, list[Edge]] = {}
+            self._incoming: dict[str, list[Edge]] = {}
+            for edge in edges:
+                out = self._outgoing.get(edge.subject)
+                if out is None:
+                    self._outgoing[edge.subject] = [edge]
+                else:
+                    out.append(edge)
+                into = self._incoming.get(edge.object)
+                if into is None:
+                    self._incoming[edge.object] = [edge]
+                else:
+                    into.append(edge)
+        else:
+            self._incoming = incoming
+            self._outgoing = outgoing
 
     def __repr__(self) -> str:
         return f'Graph(nodes={len(self.nodes)}, edges={len(self.edges)})'
@@ -325,12 +349,20 @@ class Graph:
         if node is None:
             return iri.rsplit('/', 1)[-1] or iri
         segment = iri.rsplit('/', 1)[-1]
+        # `name` is the first key the loop below would try, and it is the answer
+        # for all but anonymous shapes — so read it directly and skip building
+        # the dictionary entirely. The structural test has to run first: a Type
+        # whose name only repeats its own IRI segment is exactly the case the
+        # loop exists to fall through (docs/12 § 19e).
+        name = node.name
+        if name and not (name == segment and node.kinds[0] == 'Type' and not is_declaration(iri)):
+            return name
         # Bound once: derived per read, and this asks up to seven times (§ 2.8).
         attributes = node.attributes
         keys: tuple[str, ...] = ('name', 'path', 'method', 'statusCode', 'mediaType', 'type')
         # Only a `Type`: an operation's name defaults to its method, which also
         # spells its segment, and there `get` is exactly what the reader wants.
-        structural = node.kinds[0] == 'Type' and not _is_declaration(iri)
+        structural = node.kinds[0] == 'Type' and not is_declaration(iri)
         if structural and attributes.get('name') == segment:
             keys = keys[1:]
         for key in keys:
@@ -354,10 +386,13 @@ class Graph:
         — stay ambiguous. That one the caller has to resolve, and the whole IRI
         is accepted here so that it can.
         """
-        matched = [iri for iri, node in self.nodes.items() if node.attributes.get('name') == name]
+        # `node.name`, not `node.attributes['name']`: the dictionary a `TypeNode`
+        # builds projects the shape and walks every facet its kind declares, all
+        # of it discarded here (docs/12 § 19e).
+        matched = [iri for iri, node in self.nodes.items() if node.name == name]
         if not matched:
             matched = [iri for iri in self.nodes if iri == name or iri.endswith('/' + name)]
-        declared = [iri for iri in matched if _is_declaration(iri)]
+        declared = [iri for iri in matched if is_declaration(iri)]
         if declared:
             matched = declared
         matched = _outermost(matched)
@@ -389,7 +424,7 @@ class Graph:
         found = []
         for iri, node in self.nodes.items():
             kind = node.kinds[0]
-            if not (_is_declaration(iri) or kind in ('EndPoint', 'Operation')):
+            if not (is_declaration(iri) or kind in ('EndPoint', 'Operation')):
                 continue
             if wanted is not None and kind.casefold() not in wanted:
                 continue
@@ -557,10 +592,18 @@ def _dot(value: str) -> str:
 
 def build_graph(raml: Raml, *, base: str = DEFAULT_BASE) -> Graph:
     """Project a parsed model. Use `ParseOptions(unwrap=True)` — see the module docstring."""
-    sink = _GraphSink(raml.location.rsplit('/', 1)[0] + '/' if raml.location else '')
+    sink = _GraphSink(workspace_of(raml))
     walk = Walk(raml, base, sink)
     walk.run()
-    return Graph(base, sink.nodes, sink.edges, root=sink.root, addresses=Addresses(base, walk.iris))
+    return Graph(
+        base,
+        sink.nodes,
+        sink.edges,
+        root=sink.root,
+        addresses=Addresses(base, walk.iris),
+        incoming=sink.incoming,
+        outgoing=sink.outgoing,
+    )
 
 
 class _GraphSink:
@@ -574,18 +617,21 @@ class _GraphSink:
     site and a type cycle closes (`docs/16` § 3).
     """
 
-    __slots__ = ('edges', 'nodes', 'root')
+    __slots__ = ('edges', 'incoming', 'nodes', 'outgoing', 'root')
 
     def __init__(self, root: str) -> None:
         self.nodes: dict[str, GraphNode[Any]] = {}
         self.edges: list[Edge] = []
+        self.incoming: dict[str, list[Edge]] = {}
+        self.outgoing: dict[str, list[Edge]] = {}
         self.root = root
 
     def _add(self, node: GraphNode[Any]) -> None:
         self.nodes.setdefault(node.iri, node)
 
     def unit(self, iri: str, fragment: Fragment) -> None:
-        self._add(UnitNode(iri, fragment, self.root))
+        if iri not in self.nodes:
+            self.nodes[iri] = UnitNode(iri, fragment, self.root)
 
     def api(self, iri: str, fragment: APIFragment) -> None:
         self._add(ApiNode(iri, fragment, self.root))
@@ -627,7 +673,34 @@ class _GraphSink:
         self._add(SecuritySchemeNode(iri, definition, self.root))
 
     def unresolved(self, iri: str, bucket: Bucket, ref: DirectiveRef | SecurityScheme) -> None:
-        self._add(_UNRESOLVED[bucket](iri, ref, self.root))
+        if iri not in self.nodes:
+            self.nodes[iri] = _UNRESOLVED[bucket](iri, ref, self.root)
 
     def edge(self, subject: str, predicate: str, obj: str) -> None:
-        self.edges.append(Edge(subject=subject, predicate=predicate, object=obj))
+        """One relationship, appended to the list and to both adjacency indices.
+
+        Written as a `get`/branch rather than `setdefault(key, []).append(...)`
+        to **right-size the singleton lists**, which is what nearly every entry
+        in both indices is: on `bench_endpoints`, 100% of `incoming` and 73% of
+        `outgoing` hold exactly one edge. A list built as `[]` and then appended
+        to over-allocates to capacity 4 and costs 88 bytes; built as `[edge]` it
+        is exact and costs 64. At 54 505 singletons that is 1.3 MB, and the
+        measured saving is 1.23 MB of peak — about 5% of the projection.
+
+        It is **not** faster, and the discarded empty lists `setdefault` builds
+        eagerly are not why. Those come off CPython's list freelist and cost
+        effectively nothing; an A/B of `build_graph` alone is 77.1 ms against
+        77.2 ms. Only the memory moves.
+        """
+        edge = Edge(subject, predicate, obj)
+        self.edges.append(edge)
+        out = self.outgoing.get(subject)
+        if out is None:
+            self.outgoing[subject] = [edge]
+        else:
+            out.append(edge)
+        into = self.incoming.get(obj)
+        if into is None:
+            self.incoming[obj] = [edge]
+        else:
+            into.append(edge)

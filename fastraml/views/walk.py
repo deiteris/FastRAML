@@ -531,13 +531,16 @@ class Walk:
     def annotated(self, subject: str, annotations: dict[str, DomainExtension]) -> None:
         """One edge per annotation, to the annotation *type* P8 bound it to."""
         for name, extension in annotations.items():
-            defined_by = extension.defined_by
-            target = self.iris.get(defined_by.id) if defined_by is not None else None
-            if target is None:
-                # Nothing was bound, so there is no declaration to point at and
-                # nothing this layer could resolve that P8 could not.
-                target = f'{self.base}#/declarations/annotations/{self.segment(name.rsplit(".", 1)[-1])}'
-            self.edge(subject, 'annotation', target)
+            self.annotation(subject, name, extension)
+
+    def annotation(self, subject: str, name: str, extension: DomainExtension) -> None:
+        defined_by = extension.defined_by
+        target = self.iris.get(defined_by.id) if defined_by is not None else None
+        if target is None:
+            # Nothing was bound, so there is no declaration to point at and
+            # nothing this layer could resolve that P8 could not.
+            target = f'{self.base}#/declarations/annotations/{self.segment(name.rsplit(".", 1)[-1])}'
+        self.edge(subject, 'annotation', target)
 
     # -- shapes ---------------------------------------------------------------
 
@@ -598,7 +601,7 @@ class Walk:
         if base.alias is not None:
             self.edge(iri, 'aliasOf', self.shape(base.alias, f'{iri}/aliasOf'))
         for name, extension in base.annotations.items():
-            self.annotated(iri, {name: extension})
+            self.annotation(iri, name, extension)
         # A projection substituted for the declaration means its members are
         # subschemas, and they address themselves.
         self.children(iri, view.shape, in_schema=in_schema or view is not base)

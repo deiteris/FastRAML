@@ -357,6 +357,73 @@ for `large`, -1.7 % for `endpoints`, and -0.5 % for `validate`. Endpoint traced
 peak allocation moved from 34.6 MB to 34.5 MB; the other traced peaks were
 unchanged because most removed objects were short-lived.
 
+### 19d. Right-sized adjacency lists in the graph projection
+
+`setdefault(key, []).append(value)` is the idiomatic way to fill a multimap and
+the wrong one where most keys hold a single value. The empty list it inserts
+grows to capacity 4 on the first append and occupies 88 bytes; `[value]` is
+exact at 64. The graph's two adjacency indices are almost entirely singletons —
+on `bench_endpoints`, **100 % of `incoming` (36 509 keys) and 73 % of `outgoing`
+(18 002 of 24 505)** — so `_GraphSink.edge` writes the branch out instead.
+
+Measured: traced peak for `build_graph` alone moved from 21.90 MB to 20.67 MB on
+`endpoints` and from 24.93 MB to 24.23 MB on `large`, which is 54 505 singletons
+× 24 bytes and matches the predicted 1.31 MB.
+
+**It is not faster, and the reason it is not is worth recording.** The intuition
+that `setdefault` wastes time building a default it discards is wrong on
+CPython: empty lists come off a freelist and cost almost nothing. An A/B of
+`build_graph` alone is 77.1 ms against 77.2 ms on `endpoints` — inside the noise.
+The first attempt to measure this reported a 2.4× speedup and was an artefact:
+`tracemalloc` was left running across the timed region, and its overhead scales
+with allocation count, so removing allocations sped up the *traced* run and
+nothing else. **Time the untraced run; trace the untimed one.**
+
+### 19e. A cheap name accessor on the graph nodes
+
+`GraphNode.attributes` builds a fresh dictionary per call, by design (§ 2.8 of
+[16](16-graph.md)): the projection derives its literals rather than storing them.
+For a `TypeNode` that means projecting the shape, walking every facet its kind
+declares, converting each to a literal, and relativising the path — and the two
+commonest reads in the whole layer want **one key** out of it.
+
+`Graph.find` compared `node.attributes.get('name')` once per node. Over the
+36 510 nodes of `bench_endpoints` that is 30.1 ms against 2.6 ms for reading the
+entity: **12x**, and the discarded work included 30 506 calls to `relative_to`
+doing path arithmetic nobody asked for.
+
+So `GraphNode.name` is a property, overridden per kind, and `attributes` now
+reads *it* rather than repeating the expression. Measured, minimum of five:
+
+| | before | after | |
+|---|---|---|---|
+| `find` on `endpoints` | 32.0 ms | 5.5 ms | 5.8x |
+| `find` on `large` | 39.2 ms | 6.2 ms | 6.3x |
+| `entries` on `endpoints` | 10.4 ms | 7.0 ms | 1.5x |
+| `entries` on `large` | 28.7 ms | 15.6 ms | 1.8x |
+
+`label` takes the same short cut: `name` is the first of the seven keys its
+fallback chain tries and the answer for everything except an anonymous shape, so
+it returns early and never builds the dictionary. The structural test has to run
+first — a `Type` whose name merely repeats its own IRI segment is precisely the
+case the chain exists to fall through.
+
+**`diff` does not benefit and was not expected to** (168 ms before, 168 ms
+after): `_altered` genuinely compares whole attribute dictionaries, and diff's
+own hot spot is `_sides` at 41% of its time. That one is a reverse walk per
+node, measured linear on both corpora — 2.08x, 2.10x, 2.10x across four
+doublings — so it is a constant factor, not a complexity defect, and it is left
+alone.
+
+**A name is now stated twice, which is the shape that rots.** The rule that
+holds it together is that `attributes` reads the property; the test is
+`TestNameIsTheCheapPathToTheSameAnswer`, which asserts the two agree for every
+node in two documents and pins the kinds each exercises. It earned its place
+immediately: the first draft missed six kinds — `EndPointNode`, `OperationNode`,
+`ResponseNode` and `ParameterNode`, whose names arrive through `_named` rather
+than as a literal key, and the `DeclaredNode` and `UnresolvedNode` bases, which
+the graph fixture never builds.
+
 ### 20. Expression AST cache
 
 Type expressions are memoised on their text ([06](06-type-expressions.md) § 2.3).

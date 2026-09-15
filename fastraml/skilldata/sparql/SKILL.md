@@ -15,25 +15,32 @@ Running a query needs `pyoxigraph`. Reading the catalogue does not.
 
 ## Start from a catalogue query
 
-Seventeen queries ship with fastraml, and each one is a worked example of the
+Nine queries ship with fastraml, and each one is a worked example of the
 vocabulary. Read one before you write anything:
 
 ```bash
 fastraml query --list                 # The names, and the question each answers
-fastraml query --show unused-types    # Print one, to read or to copy and edit
+fastraml query --show type-fan-in     # Print one, to read or to copy and edit
 ```
 
 ```sparql
-# Declared types that nothing references. Dead weight, or a missing wiring.
+# Declared types ranked by how many operations can carry them.
 PREFIX raml: <urn:fastraml:ns:raml#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-SELECT ?unit ?name WHERE {
+SELECT ?unit ?name (COUNT(DISTINCT ?op) AS ?operations) WHERE {
   ?u raml:declares ?t ; raml:name ?unit .
   ?t a raml:Type ; raml:name ?name .
-  FILTER NOT EXISTS { ?s ?p ?t . FILTER(?p != raml:declares) }
+  ?op a raml:Operation .
+  ?op (raml:request|raml:returns)/(raml:payload|raml:parameter)/raml:range/(raml:range|raml:items|raml:anyOf|raml:inherits|raml:property|raml:patternProperty|raml:aliasOf|raml:recursionHead)* ?t .
 }
-ORDER BY ?unit ?name
+GROUP BY ?t ?unit ?name
+ORDER BY DESC(?operations) ?unit ?name
 ```
+
+**The catalogue holds reports, not judgements.** Anything with a severity and a
+right answer — unused types, unsecured operations, unbounded strings — is a lint
+rule rather than a query, and `fastraml lint` reports it with an exit code. Run
+`fastraml skills get lint` before writing a query that grades something.
 
 Then run your edited version:
 

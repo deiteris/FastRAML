@@ -890,15 +890,54 @@ class TestSkillsVerb:
         assert out.startswith('---\n')
         assert yaml.safe_load(out.split('---')[1])['name'] == 'core'
 
-    def test_the_stubs_own_commands_all_resolve(self, capsys):
-        """Every `fastraml skills get X` the installed stub tells an agent to run.
+    def test_every_guide_a_served_guide_points_at_resolves(self, capsys):
+        """Every `fastraml skills get X` any served guide tells an agent to run.
 
-        A stub that points at a guide this build does not serve is the one
-        failure the whole pattern exists to prevent.
+        A guide that points at one this build does not serve is the failure the
+        whole pattern exists to prevent. The names are **read out of the guides**
+        rather than listed here: a hardcoded list passes while a new guide goes
+        unmentioned, which is exactly how `lint` was missed.
         """
-        for name in ('core', 'raml', 'diff', 'sparql'):
+        root = Path('fastraml/skilldata')
+        referenced = set()
+        for guide in sorted(root.glob('*/SKILL.md')):
+            referenced |= set(re.findall(r'fastraml skills get ([a-z-]+)', guide.read_text(encoding='utf-8')))
+        assert referenced, 'no guide references another'
+        for name in sorted(referenced):
             assert main(['skills', 'get', name]) == EXIT_OK, name
             assert capsys.readouterr().out.strip()
+
+    def test_every_catalogue_name_a_guide_cites_still_exists(self, capsys):
+        """A guide naming a query or rule this build does not ship.
+
+        The catalogue is not frozen — eight queries became lint rules and left
+        it — and a guide that still cites one teaches an agent a command that
+        exits 1. Both guides went stale that way at once.
+        """
+        root = Path('fastraml/skilldata')
+        text = '\n'.join(guide.read_text(encoding='utf-8') for guide in sorted(root.glob('**/*.md')))
+
+        assert main(['query', '--list']) == EXIT_OK
+        queries = {line.split()[0] for line in capsys.readouterr().out.splitlines() if line[:1].isalpha()}
+        assert main(['lint', '--list-rules']) == EXIT_OK
+        rules = {line.split()[0] for line in capsys.readouterr().out.splitlines() if line.strip()}
+
+        cited = set(re.findall(r'query .*?(?:--show|-n) ([a-z][a-z-]+)', text))
+        cited |= set(re.findall(r'lint --explain ([a-z][a-z-]+)', text))
+        assert cited, 'no guide cites a catalogue entry'
+        missing = cited - queries - rules
+        assert missing == set(), missing
+
+    def test_every_served_guide_is_reachable_from_the_stub(self, capsys):
+        """The stub is the only file an agent installs, so a guide it never
+        names is a guide nobody loads."""
+        assert main(['skills', 'list']) == EXIT_OK
+        served = {line.split()[0] for line in capsys.readouterr().out.splitlines() if line and not line.startswith(' ')}
+        served.discard('Read')
+        stub = Path('fastraml/skilldata/fastraml/SKILL.md').read_text(encoding='utf-8')
+        core = Path('fastraml/skilldata/core/SKILL.md').read_text(encoding='utf-8')
+        unreachable = {name for name in served if f'skills get {name}' not in stub + core}
+        assert unreachable == set(), unreachable
 
     def test_full_appends_the_reference_files(self, capsys):
         plain = main(['skills', 'get', 'core'])
@@ -1037,7 +1076,7 @@ class TestSkillsInstall:
         # fails for reasons that have nothing to do with hiding.
         listed = [line.split()[0] for line in capsys.readouterr().out.splitlines() if line.strip()]
         assert 'fastraml' not in listed
-        assert listed == ['core', 'diff', 'raml', 'sparql']
+        assert listed == ['core', 'diff', 'lint', 'raml', 'sparql']
         assert main(['skills', 'get', 'fastraml']) == EXIT_OK
         assert capsys.readouterr().out.strip()
 

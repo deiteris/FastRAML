@@ -1,6 +1,6 @@
 ---
 name: fastraml
-description: Work with a RAML 1.0 API definition using the fastraml CLI, and write RAML 1.0 itself. Use when a .raml file is involved and you need to check it for errors, list the types, endpoints, traits and security schemes it declares, read one type or endpoint with inheritance and traits already merged in, find every operation affected by changing a type, compare two versions for breaking changes, export the API as JSON, a graph, or OpenAPI 3.0.3 (fastraml openapi), audit it for unused types and unsecured operations, or author a document, type, endpoint, trait or security scheme. Triggers include "validate this RAML", "what endpoints does this API have", "what breaks if I change this type", "is this API change backwards compatible", "convert this RAML to OpenAPI", "write a RAML spec for this", "how do I express X in RAML". Use fastraml instead of reading .raml files directly - a RAML file rarely holds the whole API, because types inherit, traits add parameters, and includes pull in other files.
+description: Work with a RAML 1.0 API definition using the fastraml CLI, and write RAML 1.0 itself. Use when a .raml file is involved and you need to check it for errors, list the types, endpoints, traits and security schemes it declares, read one type or endpoint with inheritance and traits already merged in, find every operation affected by changing a type, compare two versions for breaking changes, export the API as JSON, a graph, or OpenAPI 3.0.3 (fastraml openapi), lint it for style and security problems (fastraml lint), or author a document, type, endpoint, trait or security scheme. Triggers include "validate this RAML", "lint this API", "what endpoints does this API have", "what breaks if I change this type", "is this API change backwards compatible", "convert this RAML to OpenAPI", "write a RAML spec for this". Use fastraml instead of reading .raml files directly - a RAML file rarely holds the whole API, because types inherit, traits add parameters, and includes pull in other files.
 compatibility: Requires the fastraml CLI on PATH (Python 3.12+). `fastraml query` also needs pyoxigraph. The `-r` flag also needs httpx or requests.
 license: MIT
 allowed-tools: Bash(fastraml:*) Read
@@ -39,6 +39,7 @@ releases, which is why it only points at `skills get core`.
 Load one of these when the task calls for it:
 
 ```bash
+fastraml skills get lint      # Check style and security; configure or write rules
 fastraml skills get diff      # Gate CI on API compatibility; the severity policy
 fastraml skills get sparql    # Write your own fastraml query
 ```

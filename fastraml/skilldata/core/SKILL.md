@@ -44,6 +44,7 @@ This guide covers the everyday work. Load another when the task calls for it:
 ```bash
 fastraml skills get core --full   # This guide plus the complete flag reference
 fastraml skills get raml          # RAML 1.0 itself, for writing or reviewing a file
+fastraml skills get lint          # Check style and security; configure or write rules
 fastraml skills get diff          # Gate CI on API compatibility; the severity policy
 fastraml skills get sparql        # Write your own fastraml query
 fastraml skills list              # Everything this version ships
@@ -98,6 +99,7 @@ entirely and lets fastraml read any path the process can reach.
 | You want to know | Run |
 | --- | --- |
 | Is this document valid? | `validate` |
+| Is it a *good* document? | `lint` |
 | How large is it, and how fast does it parse? | `info` |
 | What does it declare? | `list` |
 | What does this type or endpoint actually look like? | `show` |
@@ -105,7 +107,7 @@ entirely and lets fastraml read any path the process can reach.
 | What is this type built from? | `deps` |
 | Did this change break a caller? | `diff` |
 | Can I have the whole model as data? | `tree` or `graph` |
-| Which types are unused, which operations are unsecured? | `query` |
+| What is in here, as a report? | `query` |
 
 ## Check a document for errors
 
@@ -347,26 +349,46 @@ spots they name.
 
 ## Audit a whole document
 
-`fastraml query` runs SPARQL over the model and needs `pyoxigraph`. Seventeen
-questions ship with it, so check the catalogue before writing your own:
+Two commands, and which one you want depends on whether the answer has a
+*severity*.
+
+**`fastraml lint` reports defects.** Unused types, operations left unsecured,
+strings with no upper bound, a property that is both optional and nilable. Each
+finding names a rule, carries a severity, and can fail CI:
 
 ```bash
-fastraml query --list                            # See all seventeen
-fastraml query --show unused-types               # Read one before running it
-fastraml query -w . api.raml -n unused-types     # Run it
+fastraml lint -w . api.raml                   # the default ruleset
+fastraml lint -w . api.raml --format summary  # counts per rule
+fastraml lint --list-rules                    # what is available
+fastraml lint --explain unused-type           # one rule, with good and bad RAML
+```
+
+Only the `spec` rules run by default; the OWASP `security` set is opt-in, and
+house style is yours to add. Both need a config file:
+
+```bash
+fastraml skills get lint
+```
+
+**`fastraml query` reports facts.** Questions with no right answer and nothing
+to fail on — the table of contents, which media types are in use, every enum:
+
+```bash
+fastraml query --list                            # See all nine
+fastraml query --show endpoint-tree              # Read one before running it
+fastraml query -w . api.raml -n endpoint-tree    # Run it
 fastraml query -w . api.raml -n type-fan-in --json
 ```
 
-The ones you will reach for most: `unused-types`, `unsecured-operations`,
-`undocumented-operations`, `type-fan-in`, `unbounded-strings`,
-`error-response-types` and `endpoint-tree`.
+The ones you will reach for most: `endpoint-tree`, `type-fan-in`,
+`error-response-types`, `media-types` and `scheme-usage`.
 
-`--list` and `--show` work without `pyoxigraph` and without a document, so you
-can always read what a query would ask.
+`query` runs SPARQL and needs `pyoxigraph`, but `--list` and `--show` work
+without it and without a document, so you can always read what a query would
+ask.
 
-Use `query` for questions that span the whole document. For a question about one
-name, `refs`, `deps` and `show` are faster and give you routes, which SPARQL
-cannot. To write your own query, run:
+For a question about one *name*, `refs`, `deps` and `show` are faster than
+either and give you routes, which SPARQL cannot. To write your own query:
 
 ```bash
 fastraml skills get sparql
@@ -376,8 +398,8 @@ fastraml skills get sparql
 
 - `0` — the document is valid, or the command produced its answer.
 - `1` — the document is invalid, the name did not resolve, the name was
-  ambiguous, nothing matched, `diff` found a breaking change, or an optional
-  package is missing.
+  ambiguous, nothing matched, `diff` found a breaking change, `lint` found a
+  finding at `error` severity, or an optional package is missing.
 - `2` — the command line itself was wrong, such as an unknown command or a
   missing argument.
 

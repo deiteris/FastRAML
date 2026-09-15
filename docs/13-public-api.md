@@ -644,14 +644,27 @@ its frontmatter; a directory whose frontmatter will not parse still prints,
 under its directory name, because a guide that cannot be read is worse than one
 that is mislabelled.
 
-**Three of the four guides are about this CLI; `raml` is about the language.**
-`core`, `diff` and `sparql` document verbs, so they go stale with the build that
-serves them — which is the whole reason for serving rather than shipping a copy.
-`raml` condenses the RAML 1.0 specification for an agent writing or reviewing a
-document, and is served from the same place for a narrower reason: it records
-where fastRAML departs from the specification, and *that* goes stale with the
-build. Its two `references/` files hold the facet and node tables, so the body
-stays within the specification's size guidance for a loaded `SKILL.md`.
+**Four of the five guides are about this CLI; `raml` is about the language.**
+`core`, `lint`, `diff` and `sparql` document verbs, so they go stale with the
+build that serves them — which is the whole reason for serving rather than
+shipping a copy. `raml` condenses the RAML 1.0 specification for an agent writing
+or reviewing a document, and is served from the same place for a narrower reason:
+it records where fastRAML departs from the specification, and *that* goes stale
+with the build. Its two `references/` files hold the facet and node tables, so
+the body stays within the specification's size guidance for a loaded `SKILL.md`.
+
+`lint` carries the half of the verb that is not the command line: which rules
+ship and why only `spec` runs by default, `match:` as the alternative to
+disabling a rule, and the two protocols a plugin implements
+([18](18-linting.md) §§ 3, 6). A house rule is the one thing this project
+deliberately does not ship, so the guide has to say how to write one.
+
+**A guide naming a catalogue entry is a cross-reference that rots.** The
+`query` catalogue is not frozen — eight of its entries became lint rules — and
+two guides went on citing `unused-types` after it left. `tests/unit/test_cli.py`
+now extracts every query and rule name a guide cites and asserts it still
+resolves, alongside the check that every `skills get X` a guide suggests names a
+guide this build serves.
 
 A missing name is **named, not guessed** — the verb lists what exists and exits
 1, for the same reason `_resolve` refuses to pick between ambiguous nodes.

@@ -27,6 +27,31 @@ Parse, unwrap and validate. Prints nothing for a valid file.
 Checks every file and exits 1 at the end, rather than stopping at the first
 failure.
 
+## `fastraml lint FILE [FILE ...]`
+
+Check the effective document against named rules. Exits 1 when any finding is at
+`error` severity; `warning` and `info` do not fail the run.
+
+- `--config FILE` — lint configuration in YAML: which rulesets, categories and
+  rules are enabled, and at what severity.
+- `--severity S` — show this severity **and everything worse**. Values: `error`,
+  `warning`, `info`. Default `info`, which shows everything. Filters the report;
+  does not change the exit code.
+- `--format text|json|summary` — findings, machine-readable findings with
+  counts, or a table of counts per rule. Default `text`.
+- `--list-rules` — every rule with its category, default severity and providing
+  distribution, then exit. Needs no document.
+- `--explain RULE` — one rule's summary, rationale and its good and bad RAML,
+  then exit. Needs no document.
+- `--metrics` — what each rule and provider cost, written to **stderr** so
+  stdout stays parseable.
+
+Only the `spec` rules run by default. The OWASP `security` set and any plugin
+rules are opt-in through `--config`. See `fastraml skills get lint`.
+
+Lints every file before exiting, rather than stopping at the first with
+findings.
+
 ## `fastraml info FILE`
 
 Print the YAML backend, the parse time, and counts of fragments, types, shapes,
@@ -71,8 +96,9 @@ name; `deps` finds everything the name is built from. Each result is a route.
 Compare two versions and grade each change. Exits 1 when any change is breaking.
 
 - `--breaking-only` — report only breaking changes. Still exits 1 if any.
-- `--severity S` — report only this severity. Repeat to allow several. Values:
-  `breaking`, `risky`, `safe`, `cosmetic`.
+- `--severity S` — report this severity **and everything worse**. Values:
+  `breaking`, `risky`, `safe`, `cosmetic`. Default `cosmetic`, which shows
+  everything. `--breaking-only` is `--severity breaking` said shorter.
 - `--json` — one JSON object per change, carrying the grading inputs.
 
 Do not pass one `-w` covering both versions. See `fastraml skills get diff`.
@@ -142,6 +168,7 @@ Print the version and exit.
 
 - `0` — valid, or the command produced its answer.
 - `1` — invalid document, unresolved name, ambiguous name, nothing matched, a
-  breaking change in `diff`, or a missing optional package.
+  breaking change in `diff`, an `error` finding in `lint`, or a missing optional
+  package.
 - `2` — the command line was wrong, such as an unknown command or a missing
   argument.

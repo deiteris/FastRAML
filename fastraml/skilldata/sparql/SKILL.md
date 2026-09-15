@@ -1,6 +1,6 @@
 ---
 name: sparql
-description: Write your own SPARQL query against a RAML model with fastraml query. Covers the built-in catalogue, the urn:fastraml:ns:raml# namespace, all 14 node kinds and 22 edges, the three traps that produce plausible wrong answers (the range hop, aliasOf, and JSON Schema types), and the four output formats. Use when auditing a whole API document and no catalogue query fits the question.
+description: Write your own SPARQL query against a RAML model with fastraml query. Covers the built-in catalogue, the urn:fastraml:ns:raml# namespace, all 14 node kinds and 22 edges, the three traps that produce plausible wrong answers (the range hop, aliasOf, and JSON Schema types), and the four SPARQL result shapes. Use when auditing a whole API document and no catalogue query fits the question.
 license: MIT
 allowed-tools: Bash(fastraml:*) Read
 ---
@@ -240,11 +240,11 @@ inside them. Do not filter them out.
 
 ## Output formats
 
-All four SPARQL result shapes work:
+Read the default output directly. Use `--json` only when the task requires a
+program to parse `SELECT` or `ASK` results.
 
-- `SELECT` prints TSV, or JSON Lines with `--json`. An unbound `OPTIONAL` gives
-  you an empty column, or `null` in JSON.
-- `ASK` prints `true` or `false`, or `{"ask": true}` with `--json`.
+- `SELECT` prints TSV. An unbound `OPTIONAL` gives an empty column.
+- `ASK` prints `true` or `false`.
 - `CONSTRUCT` and `DESCRIBE` print N-Triples.
 
 ## What the vocabulary is not

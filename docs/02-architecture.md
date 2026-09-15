@@ -410,7 +410,8 @@ class Raml:
         "entry_point",  # Fragment
         "unwrapped",  # bool
         "source_nodes",  # uri -> Node        (retain_source only)
-        "source_info",  # entity id -> (key Node, value Node)
+        "source_texts",  # uri -> str         (retain_source only; comments)
+        "source_info",  # shape id -> (key Node | None, value Node)
     )
 ```
 
@@ -420,7 +421,7 @@ Every model entity gets a monotonically increasing `int` id from a single
 `itertools.count(1)`. IDs are used as:
 
 - clone-memo keys, so a structure-sharing deep copy can preserve graph shape;
-- the key of the `source_info` index, so tooling can go entity → source node
+- the key of the `source_info` index, so tooling can go shape → source node
   without re-walking the AST;
 - stable identifiers in diagnostics and serialized output.
 

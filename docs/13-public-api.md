@@ -103,7 +103,7 @@ class ParseOptions:
 |--------|--------|
 | `unwrap` | run P9: flatten inheritance in place. The model then shows each type complete; `inherits` still records the chain. |
 | `validate` | run P10: `check()` every declaration, validate examples/defaults/enums/annotations. Implies an unwrap of a **copy** when `unwrap=False`. |
-| `retain_source` | keep raw node trees (`raml.source_node(uri)`) and the entity→node index (`raml.source_info`). Off by default; costs memory. |
+| `retain_source` | keep raw node trees (`raml.source_node(uri)`), source text (`raml.source_texts`) and the shape→node index (`raml.source_info`). Off by default; costs memory. |
 | `workspace_root` | widen the I/O sandbox and the base for RAML-absolute includes. Default: the entry file's directory. |
 | `max_include_size` | per-file cap for `!include` targets. |
 | `file_loader` | replace the `file://` loader (e.g. to shadow unsaved buffers). **Disables the built-in sandbox** — see [03](03-yaml-and-io.md) § 5. |
@@ -125,6 +125,7 @@ class Raml:
     domain_extensions: list[DomainExtension]
     endpoints: dict[str, EndPoint]  # by full URI
     include_refs: dict[str, list[IncludeRef]]
+    source_texts: dict[str, str]  # retain_source only
 
     location: str  # the entry point's, or '' before one is set
     is_unwrapped: bool
@@ -352,8 +353,10 @@ fastraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made
 fastraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
 fastraml diff OLD NEW [--breaking-only] [--severity S] [--json]
 fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json] [-o FILE]
-fastraml lint [--config FILE] [--severity S] [--format text|json|summary]
-              [--list-rules] [--explain RULE] [--metrics] [-o FILE] FILE [FILE ...]
+fastraml lint [--config FILE] [--severity S] [--format human|text|json|summary]
+              [--max-findings N] [--max-findings-per-rule N]
+              [--no-color] [--list-rules] [--explain RULE] [--metrics]
+              [-o FILE] FILE [FILE ...]
 fastraml skills (list | get NAME... | install [NAME...]) [--full] [--json]
                 [--user | --dir PATH] [--force]          # the served agent guides
 ```
@@ -382,6 +385,11 @@ make the tool useless exactly where navigating is most wanted.
   rather than a shell redirect: on Windows a redirect writes CRLF, and committed
   output then differs from what CI regenerates. `viewer/public/api.json` is
   `tree` output this repository commits, so that hazard is not hypothetical.
+- `lint` defaults to its grouped `human` report. It colours severities only when
+  stdout is an interactive terminal; `--no-color`, `NO_COLOR`, a pipe and `-o`
+  produce plain output. `--format text` is the compact line-oriented form for an
+  agent reading stdout directly, while `--format json` is for a program that
+  parses the versioned report before presenting it to any reader.
 - `-r` enables remote includes. It builds a client from `httpx` or `requests`,
   whichever is installed — fastRAML depends on neither ([03](03-yaml-and-io.md)
   § 5.1), so the CLI is where one has to be produced, and where a user who asks

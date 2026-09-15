@@ -1,6 +1,6 @@
 ---
 name: lint
-description: Check a RAML document against named lint rules with fastraml lint, configure which run and how severely, and write your own rules as a plugin. Covers the rule catalogue and its two categories, the config file, suppressing one finding without disabling its rule, the CI gate and exit codes, --metrics, and the two rule shapes a plugin implements. Use when auditing a document for style or security problems, wiring a lint gate into CI, silencing a noisy rule, or adding a house rule fastraml does not ship.
+description: Check a RAML document against named lint rules with fastraml lint, configure which run and how severely, and write your own rules as a plugin. Covers the rule catalogue and its three categories, the config file, suppressing one finding without disabling its rule, the CI gate and exit codes, --metrics, and the two rule shapes a plugin implements. Use when auditing a document for style or security problems, wiring a lint gate into CI, silencing a noisy rule, or adding a house rule.
 license: MIT
 allowed-tools: Bash(fastraml:*) Read Write
 ---
@@ -15,36 +15,49 @@ Run `validate` first. A document that fails to parse produces no findings at
 all, because there is nothing to lint and a rule saying so would only be noise
 beside the parse error.
 
+When running lint, pass `--format text`. Use another format only when the task
+requires that representation.
+
 ## Run it
 
 ```bash
-fastraml lint -w . api.raml                  # the default ruleset
-fastraml lint -w . api.raml --format summary # counts per rule
-fastraml lint -w . api.raml --format json    # for a script
+fastraml lint -w . api.raml --format text
+fastraml lint -w . api.raml --format text --max-findings 200
 fastraml lint --list-rules                   # what is available
-fastraml lint --explain optional-and-nil     # one rule, with good and bad RAML
+fastraml lint --explain meaningless-media-type-schema  # one rule, with examples
 ```
 
 `--list-rules` and `--explain` need no document and no parse, so they work in a
 checkout with nothing to lint yet.
 
-## Two categories, and only one is on by default
+The CLI shows at most 1,000 findings overall and 100 per rule by default. Read
+the final `SUMMARY` record when text output is truncated. Use
+`--max-findings 0` or `--max-findings-per-rule 0` only when the task requires
+every finding.
+
+## Three categories, and only one is on by default
 
 | Category | What it means | Default |
 | --- | --- | --- |
 | `spec` | Follows from RAML's own semantics | **enabled** |
 | `security` | Follows from OWASP API Security | disabled |
+| `style` | Consistent RAML notation and documentation | disabled |
 
-`spec` rules are not style preferences. `optional-and-nil` fires because RAML
-has two orthogonal ways to say a value may be absent and using both leaves a
-consumer unable to tell "key omitted" from "key present and null".
-`json-ref-siblings` fires because a draft-07 resolver silently ignores keys
-beside a `$ref`.
+`spec` rules are not style preferences. `json-ref-siblings` fires because a
+draft-07 resolver silently ignores keys beside a `$ref`. `optional-and-nil` is
+instead opt-in style: omitted, present-null and present-with-value are distinct
+states, useful in PATCH-like contracts but worth reviewing elsewhere.
 
 Turn the security set on with a config file:
 
 ```yaml
 extends: [recommended, security]
+```
+
+Add `style` when you also want notation and documentation conventions:
+
+```yaml
+extends: [recommended, security, style]
 ```
 
 `recommended` is the `spec` set. `all` is every rule registered, including any
@@ -53,7 +66,7 @@ a plugin contributed.
 ## Configure it
 
 ```bash
-fastraml lint --config lint.yaml -w . api.raml
+fastraml lint --config lint.yaml -w . api.raml --format text
 ```
 
 ```yaml
@@ -82,10 +95,21 @@ expression over the finding's message, so it silences *some* of a rule's
 findings and leaves the rest working. Disabling the rule outright gives up the
 findings you have not seen yet.
 
+Suppress a finding at one source location with a standalone comment immediately
+above the reported line:
+
+```yaml
+# fastraml: ignore missing-description,missing-example
+User: string
+```
+
+Use `*` instead of rule names to suppress every finding at that site. Inline
+suppression comments are not supported.
+
 ## Gate CI on it
 
 ```bash
-fastraml lint -w . api.raml --severity error
+fastraml lint -w . api.raml --format text --severity error
 ```
 
 Exit codes:
@@ -107,13 +131,11 @@ on `fastraml diff`. It filters the report; it does not change the exit code.
 ## Find out what a run cost
 
 ```bash
-fastraml lint --metrics -w . api.raml
+fastraml lint --metrics -w . api.raml --format text
 ```
 
-Writes a second report to **stderr**, so stdout stays exactly the findings and
-`--format json` stays parseable when piped. One block per file: the graph, then
-one row per rule with its calls and findings, then one per provider when more
-than one contributed.
+Read findings on stdout and metrics on stderr. Metrics contain one block per
+file: the graph, rule rows, and provider rows when more than one contributed.
 
 Read the graph line first. Building the projection every rule reads is normally
 the largest single cost in the run — larger than every rule put together — so a
@@ -132,9 +154,8 @@ it", use `lint`.
 
 ## Write your own rule
 
-fastraml ships no house-style rules — kebab-case paths, required descriptions,
-naming conventions — on purpose. Those are yours, and a plugin is how you add
-them.
+The built-in `style` set covers format-wide RAML conventions. Organisation-specific
+rules such as kebab-case paths and naming conventions remain plugins.
 
 ### The two shapes
 

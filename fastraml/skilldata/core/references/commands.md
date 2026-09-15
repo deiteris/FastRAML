@@ -37,8 +37,16 @@ Check the effective document against named rules. Exits 1 when any finding is at
 - `--severity S` — show this severity **and everything worse**. Values: `error`,
   `warning`, `info`. Default `info`, which shows everything. Filters the report;
   does not change the exit code.
-- `--format text|json|summary` — findings, machine-readable findings with
-  counts, or a table of counts per rule. Default `text`.
+- `--format human|text|json|summary` — a grouped terminal report, compact
+  uncoloured records, a versioned integration document, or counts per rule.
+  Default `human`. Pass `--format text` unless the task explicitly requires
+  another representation.
+- `--no-color` — disable severity colours in human output. Colour is already
+  disabled by `NO_COLOR`, a pipe, and `-o`.
+- `--max-findings N` — show at most `N` findings across the run. Default 1,000;
+  `0` disables the bound.
+- `--max-findings-per-rule N` — show at most `N` findings from one rule. Default
+  100; `0` disables the bound. Truncated reports retain complete counts.
 - `--list-rules` — every rule with its category, default severity and providing
   distribution, then exit. Needs no document.
 - `--explain RULE` — one rule's summary, rationale and its good and bad RAML,

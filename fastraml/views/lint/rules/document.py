@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
-from fastraml.views.graph import is_declaration
+from fastraml.nodes import TypeNode
+from fastraml.parser.fragments import APIFragment
+from fastraml.views.graph import USE_EDGES, is_declaration
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 
 if TYPE_CHECKING:
@@ -33,23 +35,27 @@ class UnusedType:
     )
 
     def run(self, ctx: Context) -> Iterable[Finding]:
+        if not isinstance(ctx.raml.entry_point, APIFragment):
+            return
+        api = next((iri for iri, node in ctx.graph.nodes.items() if node.kinds[0] == 'Api'), None)
+        used = set() if api is None else {route.target for route in ctx.graph.walk(api, USE_EDGES)}
         for iri, node in ctx.graph.nodes.items():
-            if node.kinds[0] != 'Type' or not is_declaration(iri):
-                continue
-            if node.attributes.get('isAnnotationType') or any(
-                edge.predicate != 'declares' for edge in ctx.graph.into(iri)
+            if (
+                not isinstance(node, TypeNode)
+                or not is_declaration(iri)
+                or node.entity.is_annotation_type
+                or iri in used
             ):
                 continue
-            base = ctx.graph.shape_at(iri)
-            if base is not None:
-                yield ctx.at(
-                    self.meta,
-                    'type is never referenced',
-                    location=base.location,
-                    position=base.key_pos,
-                    iri=iri,
-                    type=base.name,
-                )
+            base = node.entity
+            yield ctx.at(
+                self.meta,
+                'type is never referenced',
+                location=base.location,
+                position=base.key_pos,
+                iri=iri,
+                type=base.name,
+            )
 
 
 class UnusedTrait:
@@ -67,6 +73,8 @@ class UnusedTrait:
     )
 
     def run(self, ctx: Context) -> Iterable[Finding]:
+        if not isinstance(ctx.raml.entry_point, APIFragment):
+            return
         for iri, node in ctx.graph.nodes.items():
             if node.kinds[0] != 'Trait' or any(edge.predicate == 'appliesTrait' for edge in ctx.graph.into(iri)):
                 continue

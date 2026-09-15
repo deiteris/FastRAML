@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from fastraml.views.lint.engine import Severity, sorted_by_rule, worst
+from fastraml.views.lint.engine import LintReport, Severity, limit_findings
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -20,25 +20,118 @@ if TYPE_CHECKING:
 
 __all__ = ['render_findings', 'render_metrics']
 
+_RESET = '\x1b[0m'
+_RED = '\x1b[31m'
+_YELLOW = '\x1b[33m'
+_BLUE = '\x1b[34m'
+_UNDERLINE = '\x1b[4m'
 
-def render_findings(findings: Sequence[Finding], format_: str) -> str:
+
+def _styled(text: str, style: str, *, color: bool) -> str:
+    return f'{style}{text}{_RESET}' if color else text
+
+
+def _count(count: int, noun: str) -> str:
+    return f'{count} {noun if count == 1 else noun + "s"}'
+
+
+def _render_human(report: LintReport, *, color: bool) -> str:
+    """A terminal report grouped for scanning, in Vale's compact style."""
+    groups: dict[str, list[Finding]] = {}
+    for finding in report.findings:
+        groups.setdefault(finding.location, []).append(finding)
+
+    lines: list[str] = []
+    styles = {Severity.ERROR: _RED, Severity.WARNING: _YELLOW, Severity.INFO: _BLUE}
+    for location, findings in groups.items():
+        if lines:
+            lines.append('')
+        lines.extend((f' {_styled(location, _UNDERLINE, color=color)}', ''))
+        width = max((len(str(finding.position)) if finding.position.is_known else 1) for finding in findings)
+        for finding in findings:
+            position = str(finding.position) if finding.position.is_known else '-'
+            severity = _styled(f'{finding.severity:<7}', styles[finding.severity], color=color)
+            lines.append(f' {position:<{width}}  {severity}  {finding.rendered_message()}  {finding.rule}')
+
+    if lines:
+        lines.append('')
+    if report.truncated:
+        omitted = (
+            f'... {report.omitted_findings} findings omitted ({len(report.findings)} of {report.total_findings} shown)'
+        )
+        lines.extend((omitted, ''))
+
+    errors = report.severity_counts.get(Severity.ERROR, 0)
+    warnings = report.severity_counts.get(Severity.WARNING, 0)
+    infos = report.severity_counts.get(Severity.INFO, 0)
+    status = 'FAIL' if errors or warnings else 'OK'
+    error_text = _styled(_count(errors, 'error'), _RED, color=color)
+    warning_text = _styled(_count(warnings, 'warning'), _YELLOW, color=color)
+    info_text = _styled(f'{infos} info {"finding" if infos == 1 else "findings"}', _BLUE, color=color)
+    lines.append(f'{status} {error_text}, {warning_text} and {info_text}.')
+    return '\n'.join(lines) + '\n'
+
+
+def render_findings(findings: Sequence[Finding] | LintReport, format_: str, *, color: bool = False) -> str:
     """One report, in the format the CLI was asked for.
 
     `text` is the fallback rather than a named branch: an unknown format is the
     CLI's to reject, and `argparse` already does with a `choices` list.
     """
+    report = findings if isinstance(findings, LintReport) else limit_findings(findings)
+    shown = report.findings
+    if format_ == 'human':
+        return _render_human(report, color=color)
     if format_ == 'json':
-        counts = {str(severity): sum(f.severity is severity for f in findings) for severity in Severity}
-        return json.dumps({'findings': [finding.to_dict() for finding in findings], 'counts': counts}, indent=2) + '\n'
+        counts = {str(severity): report.severity_counts.get(severity, 0) for severity in Severity}
+        shown_counts = {str(severity): sum(f.severity is severity for f in shown) for severity in Severity}
+        shown_by_rule: dict[str, int] = {}
+        for finding in shown:
+            shown_by_rule[finding.rule] = shown_by_rule.get(finding.rule, 0) + 1
+        omitted_by_rule = {
+            rule: count - shown_by_rule.get(rule, 0)
+            for rule, count in report.rule_counts.items()
+            if count > shown_by_rule.get(rule, 0)
+        }
+        return (
+            json.dumps(
+                {
+                    'schemaVersion': 1,
+                    'findings': [finding.to_dict() for finding in shown],
+                    'counts': counts,
+                    'shownCounts': shown_counts,
+                    'total': report.total_findings,
+                    'shown': len(shown),
+                    'truncated': report.truncated,
+                    'omittedByRule': omitted_by_rule,
+                },
+                indent=2,
+            )
+            + '\n'
+        )
     if format_ == 'summary':
         lines = ['severity  rule                         findings']
-        for rule, grouped in sorted_by_rule(findings):
-            lines.append(f'{worst(grouped) or Severity.INFO:<9} {rule:<28} {len(grouped)}')
-        lines.append(f'total                                      {len(findings)}')
+        rank = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.INFO: 2}
+        rules = sorted(
+            report.rule_counts,
+            key=lambda rule: (rank[report.rule_severities[rule]], -report.rule_counts[rule], rule),
+        )
+        lines.extend(f'{report.rule_severities[rule]:<9} {rule:<28} {report.rule_counts[rule]}' for rule in rules)
+        lines.append(f'total                                      {report.total_findings}')
+        if report.truncated:
+            lines.append(f'shown                                      {len(shown)}')
         return '\n'.join(lines) + '\n'
-    return ''.join(
-        f'{finding.where}: {finding.severity}: {finding.rule}: {finding.rendered_message()}\n' for finding in findings
+    text = ''.join(
+        f'{str(finding.severity).upper()} {finding.rule} {finding.where} {finding.rendered_message()}\n'
+        for finding in shown
     )
+    if report.truncated:
+        count_fields = ' '.join(f'{severity}={report.severity_counts.get(severity, 0)}' for severity in Severity)
+        text += (
+            f'SUMMARY {count_fields} shown={len(shown)} total={report.total_findings} '
+            f'omitted={report.omitted_findings} truncated=true\n'
+        )
+    return text
 
 
 def _ms(nanoseconds: int | None) -> str:

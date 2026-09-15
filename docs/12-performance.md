@@ -75,10 +75,15 @@ The same idea appears three more times:
 
 ### 6. Lazy/optional side indices
 
-`retain_source` (raw node trees + entity→node index) is **off by default**. A
-validator or code generator never allocates them; an LSP turns them on. The
-`store_entity_node` helper is a no-op when the index is absent, so the call sites
-are unconditional and free.
+`retain_source` (raw node trees + source text + shape→node index) is **off by
+default**. A validator or code generator never allocates them; an LSP or linter
+turns them on. `put_source_info` is a no-op when the index is absent, so the
+shape-construction call site is unconditional and nearly free. Syntax-aware
+lint rules use the index by shape id; they never rescan a retained node tree.
+On `fixtures/sample`, source retention adds about 0.27 MB of traced allocations
+for five retained source files and 133 indexed shapes; 22.8 KB of that is source
+text. The text exists so comment-aware tooling does not have to reopen files and
+still works with virtual loaders.
 
 ### 7. Copy discipline
 
@@ -547,12 +552,15 @@ None of the above is worth anything unmeasured.
 | `bench_validate` | 1000 types each with a 50-key example | P10 |
 | `bench_jsonschema` | 200 schemas sharing 20 `$ref` targets | the shared registry |
 
-Each runs in five configurations (`parse`, `unwrap`, `validate`,
-`unwrap+validate`, `unwrap+graph`) and records wall time and peak RSS
+Each runs in six configurations (`parse`, `unwrap`, `validate`,
+`unwrap+validate`, `unwrap+graph`, `unwrap+lint`) and records wall time and peak RSS
 (`tracemalloc` for allocation counts, `resource`/`psutil` for RSS).
 
 `unwrap+graph` measures the graph projection of [16](16-graph.md) on top of the
 parse. Subtract `unwrap` from it to get the projection's own cost.
+`unwrap+lint` runs every built-in rule and builds a bounded report, including
+retained-source indexing. It measures the complete consumer path rather than
+extrapolating lint cost from the graph alone.
 
 It is not a gate: the projection is a consumer rather than a pass, and no CI job
 fails on it. It belongs in the harness anyway, because a number worth publishing

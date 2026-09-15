@@ -1,7 +1,9 @@
 """Policy above RAML conformance — docs/18-linting.md."""
 
-from fastraml.views.lint.config import parse_config
+from fastraml.views.lint.config import config_shape, parse_config
 from fastraml.views.lint.engine import (
+    DEFAULT_MAX_FINDINGS,
+    DEFAULT_MAX_FINDINGS_PER_RULE,
     Category,
     Config,
     Context,
@@ -9,6 +11,7 @@ from fastraml.views.lint.engine import (
     GraphMetric,
     Linter,
     LintMetrics,
+    LintReport,
     LintRun,
     PluginMetric,
     Registry,
@@ -17,6 +20,7 @@ from fastraml.views.lint.engine import (
     RuleSetting,
     Severity,
     at_least,
+    limit_findings,
     parse_severity,
     sorted_by_rule,
     worst,
@@ -26,12 +30,15 @@ from fastraml.views.lint.plugins import discover_plugins
 from fastraml.views.lint.rules import builtin_registry
 
 __all__ = [
+    'DEFAULT_MAX_FINDINGS',
+    'DEFAULT_MAX_FINDINGS_PER_RULE',
     'Category',
     'Config',
     'Context',
     'Finding',
     'GraphMetric',
     'LintMetrics',
+    'LintReport',
     'LintRun',
     'Linter',
     'PluginMetric',
@@ -42,7 +49,9 @@ __all__ = [
     'Severity',
     'at_least',
     'builtin_registry',
+    'config_shape',
     'discover_plugins',
+    'limit_findings',
     'parse_config',
     'parse_severity',
     'render_findings',

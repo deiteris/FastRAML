@@ -16,6 +16,7 @@ rather than being imported by it.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from time import perf_counter_ns
@@ -41,22 +42,25 @@ from fastraml.nodes import (
 )
 from fastraml.positions import UNKNOWN, Position
 from fastraml.views.graph import build_graph
+from fastraml.views.lint.source import SuppressionIndex
 from fastraml.views.severity import Ranking
 
 if TYPE_CHECKING:
-    import re
     from collections.abc import Iterable, Iterator, Mapping, Sequence
 
     from fastraml.registry import Raml
     from fastraml.views.graph import Graph
 
 __all__ = [
+    'DEFAULT_MAX_FINDINGS',
+    'DEFAULT_MAX_FINDINGS_PER_RULE',
     'Category',
     'Context',
     'DocumentRule',
     'Finding',
     'GraphMetric',
     'LintMetrics',
+    'LintReport',
     'LintRun',
     'Linter',
     'PluginMetric',
@@ -67,6 +71,7 @@ __all__ = [
     'RuleSetting',
     'Severity',
     'VisitorRule',
+    'limit_findings',
 ]
 
 
@@ -82,6 +87,8 @@ class Severity(StrEnum):
 #: The arithmetic is shared with `diff`, which grades on a different axis with
 #: the same operations (`views/severity.py`).
 _RANK: Final[Ranking[Severity]] = Ranking((Severity.ERROR, Severity.WARNING, Severity.INFO))
+DEFAULT_MAX_FINDINGS: Final = 1000
+DEFAULT_MAX_FINDINGS_PER_RULE: Final = 100
 
 #: Spellings a config file may use. `warn` and `hint` are what people type.
 _ALIASES: Final[dict[str, Severity]] = {
@@ -91,6 +98,7 @@ _ALIASES: Final[dict[str, Severity]] = {
     'hint': Severity.INFO,
     'info': Severity.INFO,
 }
+_RULE_ID: Final = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
 
 
 def parse_severity(value: str) -> Severity:
@@ -165,12 +173,17 @@ class Finding:
         return f'{self.location}:{self.position}' if self.position.is_known else self.location
 
     def to_dict(self) -> dict[str, Any]:
+        known = self.position.is_known
         return {
             'rule': self.rule,
             'severity': str(self.severity),
             'message': self.rendered_message(),
             'location': self.location,
-            'position': str(self.position) if self.position.is_known else '',
+            'position': str(self.position) if known else '',
+            'line': self.position.line if known else None,
+            'column': self.position.column if known else None,
+            'endLine': self.position.end_line or None if known else None,
+            'endColumn': self.position.end_column or None if known else None,
             'iri': self.iri,
             'info': dict(self.info),
         }
@@ -321,6 +334,62 @@ class LintMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class LintReport:
+    """A possibly bounded finding set, with totals from the complete run."""
+
+    findings: list[Finding]
+    total_findings: int
+    severity_counts: Mapping[Severity, int]
+    rule_counts: Mapping[str, int]
+    rule_severities: Mapping[str, Severity]
+
+    @property
+    def omitted_findings(self) -> int:
+        return self.total_findings - len(self.findings)
+
+    @property
+    def truncated(self) -> bool:
+        return self.omitted_findings > 0
+
+
+def limit_findings(
+    findings: Sequence[Finding],
+    *,
+    max_findings: int | None = None,
+    max_findings_per_rule: int | None = None,
+) -> LintReport:
+    """Bound a sorted report while preserving totals for omitted findings."""
+    for name, value in (('max_findings', max_findings), ('max_findings_per_rule', max_findings_per_rule)):
+        if value is not None and value < 1:
+            raise ValueError(f'{name} must be positive or None')
+
+    severity_counts = dict.fromkeys(Severity, 0)
+    rule_counts: dict[str, int] = {}
+    rule_severities: dict[str, Severity] = {}
+    shown: list[Finding] = []
+    shown_by_rule: dict[str, int] = {}
+    for finding in findings:
+        severity_counts[finding.severity] += 1
+        rule_counts[finding.rule] = rule_counts.get(finding.rule, 0) + 1
+        previous = rule_severities.get(finding.rule)
+        if previous is None or _RANK.rank(finding.severity) < _RANK.rank(previous):
+            rule_severities[finding.rule] = finding.severity
+        if max_findings_per_rule is not None and shown_by_rule.get(finding.rule, 0) >= max_findings_per_rule:
+            continue
+        if max_findings is not None and len(shown) >= max_findings:
+            continue
+        shown.append(finding)
+        shown_by_rule[finding.rule] = shown_by_rule.get(finding.rule, 0) + 1
+    return LintReport(
+        findings=shown,
+        total_findings=len(findings),
+        severity_counts=severity_counts,
+        rule_counts=rule_counts,
+        rule_severities=rule_severities,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class LintRun:
     """What `Linter.measure` returns: the report, and what it cost to produce.
 
@@ -330,6 +399,27 @@ class LintRun:
 
     findings: list[Finding]
     metrics: LintMetrics
+    total_findings: int
+    severity_counts: Mapping[Severity, int]
+    rule_counts: Mapping[str, int]
+    rule_severities: Mapping[str, Severity]
+
+    @property
+    def omitted_findings(self) -> int:
+        return self.total_findings - len(self.findings)
+
+    @property
+    def truncated(self) -> bool:
+        return self.omitted_findings > 0
+
+    def report(self) -> LintReport:
+        return LintReport(
+            findings=self.findings,
+            total_findings=self.total_findings,
+            severity_counts=self.severity_counts,
+            rule_counts=self.rule_counts,
+            rule_severities=self.rule_severities,
+        )
 
 
 #: What an unmeasured run reports: every counter zero and no rows. `run` unwraps
@@ -519,8 +609,8 @@ class Registry:
         install that fails loudly.
         """
         rule_id = rule.meta.id
-        if not rule_id:
-            raise ValueError('rule id must not be empty')
+        if _RULE_ID.fullmatch(rule_id) is None:
+            raise ValueError(f'invalid rule id: {rule_id!r}')
         if rule_id in self._rules:
             raise ValueError(f'duplicate rule id: {rule_id}')
         is_document = callable(getattr(rule, 'run', None))
@@ -734,9 +824,33 @@ class Linter:
         one pays nothing for them, which is why the two are separate entry
         points rather than one with a flag defaulting to off.
         """
-        return self._execute(raml, graph=graph, measure=False).findings
+        return self._execute(raml, graph=graph, measure=False, max_findings=None, max_findings_per_rule=None).findings
 
-    def measure(self, raml: Raml, *, graph: Graph | None = None) -> LintRun:
+    def report(
+        self,
+        raml: Raml,
+        *,
+        graph: Graph | None = None,
+        max_findings: int | None = DEFAULT_MAX_FINDINGS,
+        max_findings_per_rule: int | None = DEFAULT_MAX_FINDINGS_PER_RULE,
+    ) -> LintReport:
+        """A bounded report with complete counts; `None` disables either bound."""
+        return self._execute(
+            raml,
+            graph=graph,
+            measure=False,
+            max_findings=max_findings,
+            max_findings_per_rule=max_findings_per_rule,
+        ).report()
+
+    def measure(
+        self,
+        raml: Raml,
+        *,
+        graph: Graph | None = None,
+        max_findings: int | None = None,
+        max_findings_per_rule: int | None = None,
+    ) -> LintRun:
         """`run`, plus what each rule, each plugin and the graph cost.
 
         Instrumenting is not free — every rule's output is materialised inside
@@ -746,9 +860,23 @@ class Linter:
         proportion is the useful part, and it is stable: the graph dominates
         (§ 4).
         """
-        return self._execute(raml, graph=graph, measure=True)
+        return self._execute(
+            raml,
+            graph=graph,
+            measure=True,
+            max_findings=max_findings,
+            max_findings_per_rule=max_findings_per_rule,
+        )
 
-    def _execute(self, raml: Raml, *, graph: Graph | None, measure: bool) -> LintRun:
+    def _execute(
+        self,
+        raml: Raml,
+        *,
+        graph: Graph | None,
+        measure: bool,
+        max_findings: int | None,
+        max_findings_per_rule: int | None,
+    ) -> LintRun:
         """One run, measured or not. The single path, so the two cannot drift."""
         if not raml.is_unwrapped:
             raise RuntimeError('lint needs an unwrapped model: parse with ParseOptions(unwrap=True)')
@@ -801,12 +929,23 @@ class Linter:
             tally.findings += len(produced)
             findings.extend(produced)
 
-        kept = self._finish(findings)
+        report = limit_findings(
+            self._finish(findings, raml),
+            max_findings=max_findings,
+            max_findings_per_rule=max_findings_per_rule,
+        )
         if not measure:
-            return LintRun(findings=kept, metrics=_NO_METRICS)
+            return LintRun(
+                findings=report.findings,
+                metrics=_NO_METRICS,
+                total_findings=report.total_findings,
+                severity_counts=report.severity_counts,
+                rule_counts=report.rule_counts,
+                rule_severities=report.rule_severities,
+            )
         total = perf_counter_ns() - started
         return LintRun(
-            findings=kept,
+            findings=report.findings,
             metrics=self._metrics(
                 tallies,
                 total=total,
@@ -814,6 +953,10 @@ class Linter:
                     source=graph_source, nanoseconds=graph_ns, nodes=len(graph.nodes), edges=len(graph.edges)
                 ),
             ),
+            total_findings=report.total_findings,
+            severity_counts=report.severity_counts,
+            rule_counts=report.rule_counts,
+            rule_severities=report.rule_severities,
         )
 
     def _metrics(self, tallies: Mapping[str, _Tally], *, total: int, graph: GraphMetric) -> LintMetrics:
@@ -878,9 +1021,14 @@ class Linter:
             produced_findings=sum(metric.findings for metric in rules),
         )
 
-    def _finish(self, findings: Iterable[Finding]) -> list[Finding]:
-        """Apply severity overrides and `match:` filters, then sort."""
-        kept = [graded for finding in findings if (graded := self._apply(finding)) is not None]
+    def _finish(self, findings: Iterable[Finding], raml: Raml) -> list[Finding]:
+        """Apply source/config suppressions and severity overrides, then sort."""
+        suppressions = SuppressionIndex(raml.source_texts)
+        kept = [
+            graded
+            for finding in findings
+            if (graded := self._apply(finding)) is not None and not suppressions.suppresses(graded)
+        ]
         kept.sort(key=lambda f: (f.location, f.position.line, f.position.column, f.rule))
         return kept
 

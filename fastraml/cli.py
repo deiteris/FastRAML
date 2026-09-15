@@ -5,7 +5,7 @@ fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE...
 fastraml info [-w ROOT] [-r] FILE
 fastraml graph [--format nt|turtle|dot|json] [-o FILE] FILE
 fastraml openapi [--format yaml|json] [-o FILE] FILE
-fastraml lint [--config FILE] [--format text|json|summary] FILE...
+fastraml lint [--config FILE] [--format human|text|json|summary] FILE...
 fastraml list FILE [PATTERN]
 fastraml refs FILE NAME
 fastraml deps FILE NAME
@@ -26,6 +26,7 @@ back.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from typing import TYPE_CHECKING, Any, Final, NamedTuple
 
@@ -175,16 +176,31 @@ def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> 
     )
     lint.add_argument(
         '--format',
-        choices=('text', 'json', 'summary'),
-        default='text',
-        help='finding output format (default: text)',
+        choices=('human', 'text', 'json', 'summary'),
+        default='human',
+        help='finding output format (default: human)',
     )
+    lint.add_argument('--no-color', action='store_true', help='disable color in human output')
     lint.add_argument('--list-rules', action='store_true', help='list available rules and exit')
     lint.add_argument('--explain', metavar='RULE', help='explain one rule and exit')
     lint.add_argument(
         '--metrics',
         action='store_true',
         help='report what each rule and provider cost, on stderr (doc 18 section 7.1)',
+    )
+    lint.add_argument(
+        '--max-findings',
+        type=int,
+        default=1000,
+        metavar='N',
+        help='show at most N findings across the run; 0 disables the limit (default: 1000)',
+    )
+    lint.add_argument(
+        '--max-findings-per-rule',
+        type=int,
+        default=100,
+        metavar='N',
+        help='show at most N findings from one rule; 0 disables the limit (default: 100)',
     )
     _add_output(lint)
     _add_common(lint)
@@ -346,7 +362,7 @@ def _info(args: argparse.Namespace) -> int:
 # -- lint ---------------------------------------------------------------------
 
 
-def _lint(args: argparse.Namespace) -> int:
+def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911 - each early return is a distinct CLI failure
     from pathlib import Path  # noqa: PLC0415 - config files only
 
     from yaml import YAMLError  # noqa: PLC0415 - config parsing only
@@ -359,6 +375,7 @@ def _lint(args: argparse.Namespace) -> int:
         at_least,
         builtin_registry,
         discover_plugins,
+        limit_findings,
         parse_config,
         parse_severity,
         render_findings,
@@ -366,6 +383,9 @@ def _lint(args: argparse.Namespace) -> int:
     )
 
     registry = builtin_registry()
+    if args.max_findings < 0 or args.max_findings_per_rule < 0:
+        print('lint: finding limits must be non-negative', file=sys.stderr)
+        return EXIT_INVALID
     try:
         plugins = discover_plugins(registry)
         config_text = Path(args.config).read_text(encoding='utf-8') if args.config else ''
@@ -419,8 +439,20 @@ def _lint(args: argparse.Namespace) -> int:
         print(f'== {path}', file=sys.stderr)
         print(render_metrics(run.metrics, args.format), end='', file=sys.stderr)
     shown = [finding for finding in findings if finding.severity in at_least(parse_severity(args.severity))]
+    report = limit_findings(
+        shown,
+        max_findings=args.max_findings or None,
+        max_findings_per_rule=args.max_findings_per_rule or None,
+    )
     failed = failed or any(finding.severity is Severity.ERROR for finding in findings)
-    emitted = _emit_document(args, render_findings(shown, args.format))
+    color = (
+        args.format == 'human'
+        and not args.no_color
+        and args.output is None
+        and 'NO_COLOR' not in os.environ
+        and sys.stdout.isatty()
+    )
+    emitted = _emit_document(args, render_findings(report, args.format, color=color))
     return EXIT_INVALID if failed or emitted == EXIT_INVALID else EXIT_OK
 
 

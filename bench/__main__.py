@@ -42,13 +42,13 @@ if TYPE_CHECKING:
 
 BASELINE_PATH = Path(__file__).parent / 'baselines.json'
 
-#: The four configurations docs/12 Part 4 requires of every bench.
+#: The six configurations docs/12 Part 4 requires of every bench.
 #: `unwrap+graph` measures the whole consumer path: parse, unwrap, then project
 #: (docs/16). It is here rather than left to an ad-hoc script because a number
 #: worth publishing is a number the harness produced — two benches sharing one
 #: interpreter inflated the projection's cost by more than 2x, which is exactly
 #: what the fresh subprocess exists to prevent.
-CONFIGS: tuple[str, ...] = ('parse', 'unwrap', 'validate', 'unwrap+validate', 'unwrap+graph')
+CONFIGS: tuple[str, ...] = ('parse', 'unwrap', 'validate', 'unwrap+validate', 'unwrap+graph', 'unwrap+lint')
 
 #: docs/14 section 5. Generous on purpose: the gate is for a change that made
 #: something an order of magnitude slower, not for a noisy machine.
@@ -104,7 +104,12 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     """Measure one configuration. Runs in the subprocess, not the driver."""
     from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - see module docstring
 
-    options = ParseOptions(unwrap='unwrap' in config, validate='validate' in config)
+    options = ParseOptions(unwrap='unwrap' in config, validate='validate' in config, retain_source='lint' in config)
+    if 'lint' in config:
+        from fastraml.views.lint import Config, Linter, builtin_registry  # noqa: PLC0415 - as above
+
+        linter = Linter(builtin_registry(), Config(extends=('all',)))
+        return measure(bench, config, lambda: linter.report(parse_from_path(entry, options)), repeat=repeat)
     if 'graph' in config:
         from fastraml.views.graph import build_graph  # noqa: PLC0415 - as above
 

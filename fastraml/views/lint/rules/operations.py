@@ -62,7 +62,7 @@ class UnsecuredOperation:
     )
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
-        if any(not scheme.is_null for scheme in operation.secured_by):
+        if operation.secured_by and all(not scheme.is_null for scheme in operation.secured_by):
             return ()
         return (
             ctx.at(

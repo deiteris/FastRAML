@@ -185,6 +185,7 @@ def _make_shape(
         value_pos=value_node.full_position,
         anchor=raml.current_ctx().anchor,
     )
+    raml.put_source_info(base.id, key_node, value_node)
 
     type_node, facets = _decode(raml, base, value_node)
     if type_node is None:

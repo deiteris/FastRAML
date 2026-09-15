@@ -23,21 +23,20 @@ documented" is a lint rule. Read for what it means, it does not: **the test is
 the judgement's provenance, not its genre.** § 10.3's own rule, applied to lint
 rules rather than to diff rules, splits them into three:
 
-1. **Derived from the language.** RAML has two orthogonal ways to say a value
-   may be absent — `property?:` on the name and `nil` in the type — so
-   `property?: string?` double-encodes absence and no consumer can distinguish
-   *missing* from *present and null*. Nothing about that is taste. Neither is a
-   `$ref` carrying siblings inside an included JSON Schema, which the draft-07
-   resolver this parser itself runs will silently ignore; nor `schemas:`, which
-   the spec deprecates in favour of `types:`.
+1. **Derived from the language.** A `$ref` carrying siblings inside an included
+   JSON Schema has constraints the draft-07 resolver silently ignores;
+   `schemas:` is explicitly deprecated in favour of `types:`; and a body whose
+   media type cannot carry any value admitted by its shape gives consumers two
+   contradictory decoding instructions. None of those is taste.
 2. **Derived from a published standard.** The OWASP API Security rules. Not one
    organisation's house style, but not RAML's either.
-3. **Taste.** Kebab-case paths, no verbs in a path, declarations sorted,
+3. **Taste.** Kebab-case paths, notation preferences, declarations sorted,
    descriptions required. § 10.3's example lives here.
 
-Group 1 ships in `fastraml/views/lint/` and is the default ruleset. Group 2
-ships beside it as a named ruleset that is **off by default**. Group 3 ships
-nowhere in this repository; § 6 is the mechanism it uses instead.
+Group 1 ships in `fastraml/views/lint/` and is the default ruleset. Groups 2
+and 3 ship beside it as the named `security` and `style` rulesets, both **off
+by default**. The built-in style set covers RAML-wide authoring conventions;
+§ 6 remains the mechanism for organisation-specific policy.
 
 That is an amendment to § 10.3 rather than a reinterpretation of it, and § 10.3
 is amended to say so — the same move § 10.3 itself performed on § 7.
@@ -187,7 +186,7 @@ three things it is genuinely better at, and each has a direct `Graph` primitive:
 
 | § 6.1's win | The query | In code |
 |---|---|---|
-| Negation | `unused-types` | `any(e.predicate != 'declares' for e in graph.into(iri))` |
+| Negation | `unused-types` | forward reachability from the effective API, excluding `declares` |
 | Outer join | `trait-usage` | `dict.fromkeys(traits, 0)` |
 | Closure + aggregation | `type-fan-in` | `graph.walk(iri, USE_EDGES, reverse=True)` |
 
@@ -228,6 +227,16 @@ code version beside it, silently disagreeing. Keeping both and testing that they
 agree was considered and rejected: it pins the weaker form in place forever to
 protect a duplicate nobody needs.
 
+`unused-type` and `unused-trait` run only when the entry point is an API. Their
+negation is a closed-world judgement: an API graph can show that nothing in the
+effective API references a declaration, but a standalone library, data type or
+trait is an export whose consumers are outside that graph. Calling such an
+export unused would be a false positive.
+For types this is reachability, not merely an incoming-edge test: if unused
+`DeadParent` has a property of type `DeadChild`, both are unused. Starting at the
+effective API and following use edges marks a declaration only when an endpoint,
+operation, parameter or payload can actually reach it.
+
 `type-fan-in` and `error-response-types` stay queries despite being close to
 judgements, because neither has a threshold that is not arbitrary. "Ranked by
 blast radius" is a report; "more than ten" would be taste.
@@ -255,8 +264,121 @@ verbatim — a regex over the finding's message suppresses *some* of a rule's
 findings without disabling the rule, which is the difference between a linter
 people tune and one people turn off.
 
-Rulesets: `spec` (group 1), `security` (group 2), `recommended` = `spec`,
-`all` = `spec` + `security` + every enabled plugin.
+Rulesets: `spec` (group 1), `security` (group 2), `style` (group 3),
+`recommended` = `spec`, `all` = every built-in plus every enabled plugin.
+
+### 5.1 Built-in policy
+
+The Speakeasy OpenAPI catalogue is translated by intent, not by field name.
+Rules that duplicate RAML validation are omitted, and rules for OpenAPI-only
+constructs such as `operationId`, global tags and Link objects have no RAML
+version. The translated security set uses the effective model after traits,
+resource types, type inheritance and `securedBy` inheritance have run.
+
+The additional security rules cover HTTPS-only operations; Basic authentication;
+typed `401`, `429`, `500` and `400`/`422` responses; numeric URI parameters;
+rate-limit headers; bounded arrays and integers; restricted strings; and closed
+or size-bounded objects.
+Markdown safety is renderer policy, not a document property: raw HTML may be
+passed through, escaped or sanitised, and code spans containing `<script>` are
+not executable HTML. The built-in set therefore does not guess at script safety;
+that check belongs beside the renderer whose behaviour is known.
+RAML accepts exact status codes rather than OpenAPI response classes, so the
+validation-error rule accepts `400` or `422` and never invents `4XX` support.
+`bounded-additional-properties` uses `maxProperties`, the bound RAML actually
+has, and describes itself as a total object-property bound rather than claiming
+RAML can bound only additional properties.
+
+The opt-in style set covers the four concise type/property spellings,
+`additionalProperties: false`, avoiding `uniqueItems`, anchored and constrained
+pattern properties, descriptions, examples and display names, and three legal
+but review-worthy type designs: multiple inheritance, optional-and-nilable
+properties, and discriminators with no local subtype. Optional plus nil is a
+real three-state contract — omitted, null, or a value — and is not a default
+warning because PATCH-like APIs use it intentionally. An operation has no legal
+top-level `example` facet in RAML; `missing-example` therefore asks whether one
+of its request or response payload shapes carries an example, and says nothing
+when the operation has no payload.
+Type description/example findings apply to named declarations, not every
+anonymous property, item and union-member shape under them; those produced
+duplicate low-information advice rather than actionable findings.
+`unanchored-pattern-property` does not change RAML matching: pattern properties
+continue to use `search`, and the warning exists precisely because authors must
+write anchors when they intend a whole-name match.
+
+Syntax rules read `raml.source_info`, keyed by shape id. They do not search the
+retained YAML tree per finding: on `fixtures/sample`, replacing those searches
+reduced an `all` run from about 59 ms to 9.5 ms, and reduced each of the three
+source-spelling rules from about 18 ms to below 0.2 ms. The index and source text
+exist only under `retain_source=True`; normal parsing allocates neither.
+
+No built-in infers meaning from a declaration's name. RAML has no semantic
+marker for an API key or credential parameter, so those OpenAPI rules are not
+translated by matching words such as `token` or `secret`. `numeric-resource-id`
+needs no name guess: every numeric `uriParameters` shape is reported, including
+one named `year`, while numeric query parameters are not. The endpoint's own URI
+template selects the declarations to inspect, avoiding duplicate findings for
+parameters propagated to descendants.
+
+`meaningless-media-type-schema` uses only the response body model. JSON scalars
+are valid JSON and are accepted; file shapes are rejected for `application/json`
+and every structured `+json` subtype. XML has the corresponding file exclusion.
+Octet-stream, PDF, ZIP, gzip, image, audio and video representations require a
+file shape. URL-encoded and multipart forms require an object shape, and
+`text/plain` requires a scalar or file shape without pretending every `text/*`
+format is plain text. A file's `fileTypes` must include the body's media type,
+including wildcard entries, and every union member must be compatible. `any`
+is left to `untyped-payload` so one omission does not produce two findings.
+Media-type parameters are ignored because they do not change the representation
+family.
+
+Response status classes are numeric comparisons inside rules, after the parser
+has established a concrete 100–599 code. Rate-limit metadata is requested only
+for 2xx and 429 responses, not unrelated 4xx responses. A recognized rate-limit
+header must have a usable integer/date/string shape for its particular spelling;
+`Retry-After` accepts integer delay-seconds or `datetime` explicitly formatted
+as `rfc2616` for an HTTP date. `https-only` also respects an HTTPS `baseUri` when
+no `protocols` facet overrides it.
+The recognized rate-limit names are the current HTTPAPI draft's `RateLimit` and
+`RateLimit-Policy`, plus the established legacy `X-RateLimit-Limit`,
+`X-RateLimit-Remaining` and `X-RateLimit-Reset` family. Speakeasy's source rule
+also lists `X-Rate-Limit-Limit` and obsolete `RateLimit-Limit`/`RateLimit-Reset`
+draft spellings; those are deliberately not copied.
+Shape rules motivated by attacker-controlled allocation or value domains run
+only on shapes reachable from request bodies, request headers, query strings,
+query parameters and URI parameters. Response-only schemas and dead exported
+declarations are not attacker input. The input IRI set is derived once from the
+graph by `Graph.request_shape_iris()` and shared across those rules.
+
+### 5.2 Source suppression
+
+Place a standalone directive immediately above the line a finding points to:
+
+```yaml
+# fastraml: ignore missing-description,missing-example
+User: string
+```
+
+Use `*` to suppress every rule at that site. Inline comments are deliberately
+unsupported: PyYAML does not retain comments, and searching for `#` inside a
+line would confuse comments with quoted or block-scalar content. Suppression is
+applied after a rule runs, so metrics still report the work and findings it
+produced before filtering. The linter scans each retained source once per run
+to index line starts; for each finding it reads only the immediately preceding
+line. A finding without a real source position is not suppressible, and
+directives in included files apply using that file's own URI and line numbers.
+This is intentionally lexical: after leading indentation is removed, a whole
+preceding line with the directive spelling is treated as a comment. PyYAML does
+not retain comment tokens, so the linter does not reconstruct YAML lexical state
+to distinguish that spelling when it appears as block-scalar content.
+
+`fastraml/views/lint/config.raml` is the configuration's data type. It checks
+the closed structure, required fields, field types and accepted severity
+spellings before the decoder reads them. Checks that depend on the running
+process remain semantic validation in `config.py`: rules, rulesets, categories
+and plugins must exist in the active registry, and every `match` expression
+must compile. Keeping those checks out of the type is deliberate because plugin
+discovery changes the valid names at run time.
 
 ## 6. Extension
 
@@ -284,13 +406,39 @@ load `./rules/*.ts`. That solves a problem Go has and Python does not.
 
 ## 7. Output and exit codes
 
-Findings sort by location, position, then by rule id. Three renderers: text (default),
-JSON, and a summary table by rule.
+Findings sort by location, position, then by rule id. Four renderers serve four
+readers: `human` (the default) is a terminal report grouped by source; `text` is
+one compact, stable, uncoloured record per finding; JSON is the integration
+contract; and `summary` is a table of complete counts by rule.
 
 ```
-fastraml lint [--config FILE] [--severity S] [--format text|json|summary]
-              [--list-rules] [--explain RULE] [--metrics] [-o FILE] FILE [FILE ...]
+fastraml lint [--config FILE] [--severity S] [--format human|text|json|summary]
+              [--max-findings N] [--max-findings-per-rule N]
+              [--no-color] [--list-rules] [--explain RULE] [--metrics]
+              [-o FILE] FILE [FILE ...]
 ```
+
+`human` follows the shape of Vale's CLI reporter: one underlined source heading,
+then `line:column`, severity, message and rule columns, followed by complete
+severity counts. Errors are red, warnings yellow and info findings blue, but the
+labels carry the same information without colour. Colour is emitted only to an
+interactive stdout; `NO_COLOR`, `--no-color`, a pipe, and `-o` all disable it.
+The final `OK` means there are no errors or warnings, not that the report is
+empty, matching Vale's treatment of suggestions; `FAIL` means at least one error
+or warning was reported. ASCII status words keep the default usable in Windows
+consoles whose output encoding cannot represent Vale's check and cross marks.
+
+`text` is the representation to put directly in an agent's context or consume a
+line at a time. Each record is self-contained and has no alignment or ANSI state:
+
+```
+WARNING unused-type file:///workspace/api.raml:28:3 declared type is never referenced: type: LegacyUser
+```
+
+JSON is for a program that parses the report before using it, not inherently an
+"AI format". Its envelope carries `schemaVersion: 1`; each finding retains the
+canonical location and formatted `position` and also exposes numeric `line`,
+`column`, `endLine` and `endColumn` fields. Unknown numeric positions are null.
 
 Exit 1 if any finding is at `error`, else 0 — and **every file is linted before
 exiting**, matching `validate` ([13](13-public-api.md) § 8) and for the same
@@ -311,20 +459,35 @@ A document that fails to *parse* produces no findings at all; the error is
 reported and the file exits 1. There is nothing to lint and nothing a rule
 could say that would not be noise beside the parse error.
 
+The CLI shows at most 1,000 findings across the run and 100 from any one rule.
+Either bound accepts `0` to disable it. Rules still run to completion: human
+output states the omitted count, truncated text adds a compact `SUMMARY` record,
+JSON carries `total`, `shown`, `truncated`, complete severity counts and
+`omittedByRule`, and summary output reports complete per-rule totals. Exit status
+also uses the complete findings, so truncation can never hide an error from CI.
+Per-rule limiting runs before the global bound, preventing one broad style rule
+from consuming the entire report.
+
+`Linter.run(raml)` remains complete and unbounded for compatibility. Consumers
+that display findings use `Linter.report(raml) -> LintReport`, whose defaults are
+the same 1,000/100 bounds and whose `total_findings`, `omitted_findings`,
+`severity_counts` and `rule_counts` make truncation explicit. Passing `None` for
+either Python bound disables it.
+
 ### 7.1 What the run cost
 
 `--metrics` writes a second report: the graph, then one row per enabled rule,
 then one per provider when more than one contributed.
 
 ```
-graph           1.161 ms  400 nodes, 645 edges (built)
-rules           0.786 ms  9 enabled, 627 calls, 4 produced
-engine          0.261 ms  dispatch, filters and sort
-total           2.208 ms
+graph           1.130 ms  402 nodes, 647 edges (built)
+rules           0.448 ms  8 enabled, 168 calls, 8 produced
+engine          0.352 ms  dispatch, filters and sort
+total           1.930 ms
 
         ms    calls   found  kind      rule
-     0.607        1       4  document  unused-type
-     0.038      130       0  visitor   json-ref-siblings
+     0.294        1       8  document  unused-type
+     0.059        1       0  document  no-ambiguous-paths
 ```
 
 **§ 6 is why this exists.** Entry-point discovery means a project's lint run can
@@ -340,9 +503,9 @@ file is slow, and a sum cannot answer it.
 Four decisions in it are not obvious:
 
 - **The graph is normally the largest single cost**, and the report puts it
-  first for that reason. On `fixtures/sample` it is 1.16 ms against 0.79 ms for
-  all nine rules together — the same proportion § 4 measured at scale, and a
-  reader who skips the line will blame whichever rule sorts to the top.
+  first for that reason. On `fixtures/sample` it is 1.13 ms against 0.45 ms for
+  all eight default rules together — the same proportion § 4 measured at scale.
+  A reader who skips the line will blame whichever rule sorts to the top.
 - **A supplied graph reports `-`, not `0`.** The CLI can hand `lint` a graph
   another verb already built; this run then genuinely does not know what it
   cost, and a zero would say it was free.
@@ -361,8 +524,9 @@ describe a measured run and are not a benchmark.** The proportions are the
 useful part; `bench/` is what holds this project to an absolute number
 ([12](12-performance.md)).
 
-The Python surface is `Linter.measure(raml) -> LintRun`, beside
-`Linter.run(raml) -> list[Finding]`. Two entry points rather than one with a
+The measured Python surface is `Linter.measure(raml) -> LintRun`, beside
+`Linter.run(raml) -> list[Finding]` and bounded `Linter.report(raml)`. Separate
+entry points rather than one with a
 flag, because the unmeasured path then pays nothing at all: the timing wrappers
 are installed once at fan-out construction, so an ordinary run has no per-node
 branch testing whether to time.

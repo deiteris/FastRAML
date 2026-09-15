@@ -83,8 +83,14 @@ yourself rather than miss it.
 
 ## Grade changes under your own policy
 
-`--json` prints one object per change and includes every fact the built-in
-policy used, so you can reach a different verdict from the same data:
+When the task requires a policy other than the built-in grades, run `diff` with
+`--json` and decide from `kind`, `node_kind`, `directions` and `attribute`:
+
+```bash
+fastraml diff --no-workspace-guard --json old/api.raml new/api.raml
+```
+
+Each line contains one change:
 
 ```json
 {"kind": "removed",
@@ -116,9 +122,8 @@ The fields:
   All three are `null` when the node itself was added or removed.
 - `rule`, `severity`, `because` — the built-in verdict and the reason for it.
 
-To apply your own policy, ignore `severity` and decide from `kind`, `node_kind`,
-`directions` and `attribute`. Narrow the input first with `--severity` if you
-only care about part of the space.
+Ignore `severity` when applying the replacement policy. Add `--severity` only
+when the task excludes part of the change set.
 
 The JSON output is not grouped. Grouping appears only in the human-readable
 output.

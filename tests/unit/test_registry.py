@@ -64,8 +64,14 @@ class TestStores:
         off, on = Raml(), Raml(retain_source=True)
         off.store_source_node('file:///a.raml', 'node')
         on.store_source_node('file:///a.raml', 'node')
+        off.store_source_text('file:///a.raml', 'text')
+        on.store_source_text('file:///a.raml', 'text')
         assert off.source_node('file:///a.raml') is None
         assert on.source_node('file:///a.raml') == 'node'
+        assert not off.source_texts
+        assert on.source_texts == {'file:///a.raml': 'text'}
+        assert off.source_info is None
+        assert on.source_info == {}
 
 
 class TestDefaults:

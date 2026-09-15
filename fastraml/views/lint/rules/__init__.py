@@ -3,16 +3,49 @@
 from __future__ import annotations
 
 from fastraml.views.lint.engine import Registry, Rule
+from fastraml.views.lint.rules.content import NoAmbiguousPaths
 from fastraml.views.lint.rules.document import UnusedTrait, UnusedType
 from fastraml.views.lint.rules.operations import GetWithBody, UnsecuredOperation
 from fastraml.views.lint.rules.schema import (
     DeprecatedSchemas,
     DiscriminatorWithoutSubtypes,
     JsonRefSiblings,
+    MeaninglessMediaTypeSchema,
     MultipleInheritance,
     OptionalAndNil,
     UnboundedString,
     UntypedPayload,
+)
+from fastraml.views.lint.rules.security import (
+    BoundedAdditionalProperties,
+    BoundedArray,
+    BoundedInteger,
+    HttpsOnly,
+    InsecureBasicAuthentication,
+    IntegerFormat,
+    NoAdditionalProperties,
+    NumericResourceId,
+    RateLimitHeaders,
+    Required401Response,
+    Required429Response,
+    Required500Response,
+    RestrictedString,
+    RetryAfter429,
+    ValidationErrorResponse,
+)
+from fastraml.views.lint.rules.style import (
+    AvoidExplicitInferredType,
+    MissingDescription,
+    MissingDisplayName,
+    MissingExample,
+    PreferArrayExpression,
+    PreferInlineAlias,
+    PreferOptionalProperty,
+    PreferOptionalType,
+    RequireClosedObject,
+    UnanchoredPatternProperty,
+    UnconstrainedPatternProperty,
+    UniqueItemsDiscouraged,
 )
 
 __all__ = ['builtin_registry']
@@ -22,18 +55,54 @@ def builtin_registry() -> Registry:
     registry = Registry()
     spec_rules: tuple[Rule, ...] = (
         DeprecatedSchemas(),
-        DiscriminatorWithoutSubtypes(),
         GetWithBody(),
         JsonRefSiblings(),
-        MultipleInheritance(),
-        OptionalAndNil(),
+        MeaninglessMediaTypeSchema(),
+        NoAmbiguousPaths(),
         UntypedPayload(),
         UnusedTrait(),
         UnusedType(),
     )
     for rule in spec_rules:
         registry.add(rule, sets=('spec', 'recommended'))
-    security_rules: tuple[Rule, ...] = (UnboundedString(), UnsecuredOperation())
+    security_rules: tuple[Rule, ...] = (
+        BoundedAdditionalProperties(),
+        BoundedArray(),
+        BoundedInteger(),
+        HttpsOnly(),
+        InsecureBasicAuthentication(),
+        IntegerFormat(),
+        NoAdditionalProperties(),
+        NumericResourceId(),
+        RateLimitHeaders(),
+        Required401Response(),
+        Required429Response(),
+        Required500Response(),
+        RestrictedString(),
+        RetryAfter429(),
+        UnboundedString(),
+        UnsecuredOperation(),
+        ValidationErrorResponse(),
+    )
     for rule in security_rules:
         registry.add(rule, sets=('security',))
+    style_rules: tuple[Rule, ...] = (
+        AvoidExplicitInferredType(),
+        DiscriminatorWithoutSubtypes(),
+        MissingDescription(),
+        MissingDisplayName(),
+        MissingExample(),
+        MultipleInheritance(),
+        OptionalAndNil(),
+        PreferArrayExpression(),
+        PreferInlineAlias(),
+        PreferOptionalProperty(),
+        PreferOptionalType(),
+        RequireClosedObject(),
+        UnanchoredPatternProperty(),
+        UnconstrainedPatternProperty(),
+        UniqueItemsDiscouraged(),
+    )
+    for rule in style_rules:
+        registry.add(rule, sets=('style',))
     return registry

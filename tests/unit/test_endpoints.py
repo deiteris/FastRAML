@@ -102,9 +102,22 @@ class TestOperations:
 
 
 class TestResponses:
-    def test_responses_are_keyed_by_the_code_as_written(self, workspace):
+    def test_numeric_and_quoted_response_codes_are_normalised_to_strings(self, workspace):
         raml = parse(workspace, '/users:\n  get:\n    responses:\n      200:\n      "404":\n')
-        assert list(raml.endpoints['/users'].operations['get'].responses) == ['200', '404']
+        responses = raml.endpoints['/users'].operations['get'].responses
+        assert list(responses) == ['200', '404']
+        assert responses['200'].code == '200'
+
+    def test_numeric_and_quoted_forms_are_duplicate_response_keys(self, workspace):
+        error = fails(workspace, '/users:\n  get:\n    responses:\n      200:\n      "200":\n')
+        assert error is not None
+        assert 'duplicate response' in messages(error)
+
+    @pytest.mark.parametrize('code', ['2xx', 'default', '099', '600'])
+    def test_response_code_must_be_a_concrete_100_to_599_status(self, workspace, code):
+        error = fails(workspace, f'/users:\n  get:\n    responses:\n      {code}:\n')
+        assert error is not None
+        assert 'status code must be a 3-digit number' in messages(error)
 
     def test_a_response_carries_headers_and_a_description(self, workspace):
         raml = parse(

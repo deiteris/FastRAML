@@ -299,6 +299,27 @@ class TestTheEdgesThatAnswerQuestions:
         target = graph.out(parameter, ['range'])[0].object
         assert graph.nodes[target].attributes['maximum'] == 100
 
+    def test_request_shapes_are_a_first_class_derived_index(self, graph):
+        request_shapes = graph.request_shape_iris()
+        query = next(iri for iri in iris(graph, 'Parameter') if graph.label(iri) == 'limit')
+        uri = next(iri for iri in iris(graph, 'Parameter') if graph.label(iri) == 'userId')
+
+        assert graph.out(query, ('range',))[0].object in request_shapes
+        assert graph.out(uri, ('range',))[0].object in request_shapes
+        assert graph.find('User')[0] not in request_shapes, 'response-only type'
+        assert graph.request_shape_iris() is request_shapes, 'derived once per graph'
+
+    def test_base_uri_parameter_shape_is_request_input(self, workspace):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\nbaseUri: https://{tenant}.example.test\n'
+                'types:\n  Tenant: string\nbaseUriParameters:\n  tenant: Tenant\n'
+            }
+        )
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        parameter = next(iri for iri in iris(graph, 'Parameter') if graph.label(iri) == 'tenant')
+        assert graph.out(parameter, ('range',))[0].object in graph.request_shape_iris()
+
     def test_a_scheme_reaches_the_operations_that_apply_it(self, workspace):
         """A `refs` that answers this only for types would be half a tool.
 

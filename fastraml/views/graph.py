@@ -122,6 +122,8 @@ USE_EDGES: Final = (
     'annotation',
 )
 
+_REQUEST_EDGES: Final = (*TYPE_EDGES, 'parameter', 'queryString', 'payload')
+
 _XSD: Final = 'http://www.w3.org/2001/XMLSchema#'
 
 #: Opens the tail of every declaration IRI (§ 3).
@@ -235,7 +237,7 @@ class Graph:
     most of what a navigation question turns out to be.
     """
 
-    __slots__ = ('_incoming', '_outgoing', 'addresses', 'base', 'edges', 'nodes', 'root')
+    __slots__ = ('_incoming', '_outgoing', '_request_shape_iris', 'addresses', 'base', 'edges', 'nodes', 'root')
 
     def __init__(  # noqa: PLR0913 - optional prebuilt indexes avoid a second edge pass
         self,
@@ -263,6 +265,7 @@ class Graph:
         #: recorded it for the rest (docs/16 § 2.7).
         self.nodes = nodes
         self.edges = edges
+        self._request_shape_iris: frozenset[str] | None = None
         if incoming is None or outgoing is None:
             # `build_graph` supplies both, because the sink filled them as it
             # went; this is for a `Graph` assembled from edges by hand, which
@@ -329,6 +332,32 @@ class Graph:
         """
         found = self.entity_at(iri)
         return found if isinstance(found, BaseShape) else None
+
+    def request_shape_iris(self) -> frozenset[str]:
+        """Type nodes reachable from caller-supplied request data."""
+        if self._request_shape_iris is not None:
+            return self._request_shape_iris
+
+        roots = []
+        for iri, node in self.nodes.items():
+            if isinstance(node, RequestNode):
+                roots.append(iri)
+                continue
+            if not isinstance(node, ParameterNode):
+                continue
+            if any(
+                isinstance(self.nodes.get(edge.subject), (ApiNode, EndPointNode))
+                for edge in self.into(iri, ('parameter',))
+            ):
+                roots.append(iri)
+
+        self._request_shape_iris = frozenset(
+            route.target
+            for root in roots
+            for route in self.walk(root, _REQUEST_EDGES)
+            if isinstance(self.nodes.get(route.target), TypeNode)
+        )
+        return self._request_shape_iris
 
     def kind_of(self, iri: str) -> str:
         node = self.nodes.get(iri)

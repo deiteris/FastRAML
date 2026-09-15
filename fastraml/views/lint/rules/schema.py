@@ -11,8 +11,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar
 
 from fastraml.types.complex_ import ObjectShape, UnionShape
-from fastraml.types.jsonschema_ import JsonShape
-from fastraml.types.scalars import AnyShape, NilShape, StringShape
+from fastraml.types.jsonschema_ import JsonShape, projected
+from fastraml.types.scalars import AnyShape, FileShape, NilShape, StringShape
 from fastraml.views.graph import is_declaration
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 from fastraml.yamlnode import NodeKind, pairs
@@ -20,15 +20,16 @@ from fastraml.yamlnode import NodeKind, pairs
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from fastraml.parser.endpoints import Body
+    from fastraml.parser.endpoints import Body, Response
     from fastraml.parser.fragments import Fragment
-    from fastraml.types.base import BaseShape, Parameter, Property
+    from fastraml.types.base import BaseShape, Property
     from fastraml.views.lint.engine import Context
 
 __all__ = [
     'DeprecatedSchemas',
     'DiscriminatorWithoutSubtypes',
     'JsonRefSiblings',
+    'MeaninglessMediaTypeSchema',
     'MultipleInheritance',
     'OptionalAndNil',
     'UnboundedString',
@@ -149,13 +150,11 @@ class OptionalAndNil:
 
     meta: ClassVar = RuleMeta(
         id='optional-and-nil',
-        category=Category.SPEC,
+        category=Category.STYLE,
         summary='a property that is both optional and nilable',
         rationale=(
-            'RAML has two orthogonal ways to say a value may be absent: `?` on the property name, which '
-            'makes the key optional, and `nil` in the type, which makes the value null. Writing both '
-            'leaves a consumer unable to tell "the key was omitted" from "the key was present and null", '
-            'and nothing in the document says which one the server means.'
+            'RAML distinguishes an omitted key from a present null value, so this creates a three-state field. '
+            'That is useful for PATCH-like contracts but is often accidental elsewhere and deserves review.'
         ),
         severity=Severity.WARNING,
         good='#%RAML 1.0\ntitle: t\ntypes:\n  U:\n    properties:\n      a?: string\n',
@@ -182,7 +181,7 @@ class MultipleInheritance:
 
     meta: ClassVar = RuleMeta(
         id='multiple-inheritance',
-        category=Category.SPEC,
+        category=Category.STYLE,
         summary='a type with more than one direct supertype',
         rationale=(
             'Multiple inheritance is legal and its merge is the hardest part of the language to predict: '
@@ -218,12 +217,12 @@ class DiscriminatorWithoutSubtypes:
 
     meta: ClassVar = RuleMeta(
         id='discriminator-without-subtypes',
-        category=Category.SPEC,
+        category=Category.STYLE,
         summary='a discriminated type that nothing inherits from',
         rationale=(
             'A `discriminator:` names the property a consumer reads to decide which subtype a value is. '
-            'With no subtype declared there is nothing to decide, so the facet constrains nothing and '
-            'every consumer generating a dispatch from it generates an empty one.'
+            'With no subtype declared in the document there is nothing local to dispatch to. The facet can '
+            'still describe an external extension point, so this is an opt-in design warning.'
         ),
         severity=Severity.WARNING,
         good=(
@@ -301,44 +300,134 @@ class UntypedPayload:
         )
 
 
+class MeaninglessMediaTypeSchema:
+    """A response shape that contradicts the representation's media type."""
+
+    meta: ClassVar = RuleMeta(
+        id='meaningless-media-type-schema',
+        category=Category.SPEC,
+        summary='a response media type whose schema cannot represent that media',
+        rationale=(
+            'The media type tells clients how to decode bytes before the schema is applied. File values cannot be '
+            'JSON or XML documents, binary media needs a file value, and form encodings need named object fields.'
+        ),
+        severity=Severity.WARNING,
+        good=(
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        body:\n'
+            '          application/json:\n            type: object\n            properties:\n              id: string\n'
+        ),
+        bad=(
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        body:\n'
+            '          application/problem+json: file\n'
+        ),
+    )
+
+    def response(self, ctx: Context, iri: str, response: Response) -> Iterable[Finding]:
+        found = []
+        for body in response.bodies.values():
+            base = body.shape
+            media_type = body.media_type.partition(';')[0].strip().casefold()
+            issue = _media_type_issue(base, media_type)
+            if issue is not None:
+                found.append(
+                    ctx.at(
+                        self.meta,
+                        'response schema is meaningless for its media type',
+                        location=body.location,
+                        position=body.key_pos,
+                        iri=iri,
+                        mediaType=body.media_type,
+                        type=base.type if base is not None else 'none',
+                        reason=issue,
+                    )
+                )
+        return found
+
+
+_BINARY_MEDIA = frozenset(
+    {
+        'application/gzip',
+        'application/octet-stream',
+        'application/pdf',
+        'application/zip',
+    }
+)
+_FORM_MEDIA = frozenset({'application/x-www-form-urlencoded', 'multipart/form-data'})
+
+
+def _matches_media_type(pattern: str, media_type: str) -> bool:
+    pattern = pattern.partition(';')[0].strip().casefold()
+    return pattern == media_type or (pattern.endswith('/*') and media_type.startswith(pattern[:-1]))
+
+
+def _media_type_issue(base: BaseShape | None, media_type: str) -> str | None:  # noqa: PLR0911 - compatibility matrix
+    if base is None or base.shape is None or isinstance(base.shape, AnyShape):
+        return None
+    shape = base.shape
+    if isinstance(shape, UnionShape):
+        for member in shape.any_of or ():
+            if (issue := _media_type_issue(member, media_type)) is not None:
+                return issue
+        return None
+    if isinstance(shape, JsonShape):
+        projection = projected(base)
+        return None if projection is base else _media_type_issue(projection, media_type)
+    if isinstance(shape, FileShape):
+        if shape.file_types and not any(_matches_media_type(facet.value, media_type) for facet in shape.file_types):
+            return 'fileTypes excludes the declared media type'
+        if media_type == 'application/json' or media_type.endswith('+json'):
+            return 'JSON cannot represent a file value'
+        if media_type in {'application/xml', 'text/xml'} or media_type.endswith('+xml'):
+            return 'XML cannot represent a file value'
+        return None
+    if media_type in _BINARY_MEDIA or media_type.startswith(('audio/', 'image/', 'video/')):
+        return 'binary media requires a file shape'
+    if media_type in _FORM_MEDIA and not isinstance(shape, ObjectShape):
+        return 'form media requires an object shape'
+    if media_type == 'text/plain' and not shape.is_scalar():
+        return 'plain text requires a scalar or file shape'
+    return None
+
+
 class UnboundedString:
-    """A string that arrives from a caller with no upper bound on its size."""
+    """A string shape with no upper bound or restricted value domain."""
 
     meta: ClassVar = RuleMeta(
         id='unbounded-string',
         category=Category.SECURITY,
         summary='a string with no maxLength, pattern or enum',
         rationale=(
-            'OWASP API4:2023. A string a caller supplies with no size or value restriction leaves the server '
-            'to accept an unconstrained allocation. `maxLength` supplies a direct bound; `pattern` and `enum` '
-            'record an intentional accepted domain rather than leaving the value unrestricted.'
+            'OWASP API4:2023. A string with no size or value restriction permits an unconstrained allocation '
+            'wherever the shape is used as input. Checking the shape rather than only its current use sites also '
+            'covers named types before they are wired into an endpoint. `maxLength` supplies a direct bound; '
+            '`pattern` and `enum` record an intentional accepted domain.'
         ),
         severity=Severity.WARNING,
-        good='#%RAML 1.0\ntitle: t\ntypes:\n  U:\n    properties:\n      a:\n        type: string\n        maxLength: 64\n',
-        bad='#%RAML 1.0\ntitle: t\ntypes:\n  U:\n    properties:\n      a: string\n',
+        good=(
+            '#%RAML 1.0\ntitle: t\ntypes:\n  Input:\n    type: string\n    maxLength: 64\n'
+            '/a:\n  post:\n    body:\n      text/plain: Input\n'
+        ),
+        bad=('#%RAML 1.0\ntitle: t\ntypes:\n  Input: string\n/a:\n  post:\n    body:\n      text/plain: Input\n'),
     )
 
-    def _check(self, ctx: Context, iri: str, base: BaseShape, what: str, name: str) -> Iterable[Finding]:
+    def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         shape = base.shape
-        if not isinstance(shape, StringShape):
+        if base.alias is not None or iri not in ctx.graph.request_shape_iris() or not isinstance(shape, StringShape):
             return ()
         if shape.max_length is not None or shape.pattern is not None or base.enum is not None:
             return ()
+        name = base.name
+        if not name:
+            parent = next(iter(ctx.graph.into(iri, ('anyOf',))), None)
+            if parent is not None:
+                name = ctx.graph.nodes[parent.subject].name
         return (
             ctx.at(
                 self.meta,
-                f'{what} is an unbounded string',
+                'string type is unbounded',
                 location=base.location,
                 position=base.key_pos,
                 iri=iri,
-                **{what: name},
+                type=name or 'anonymous',
             ),
         )
-
-    def property_(self, ctx: Context, iri: str, prop: Property) -> Iterable[Finding]:
-        return self._check(ctx, iri, prop.base, 'property', prop.name)
-
-    def parameter(self, ctx: Context, iri: str, param: Parameter) -> Iterable[Finding]:
-        # A parameter is the stronger case of the two: a property may be a
-        # server's own output, while every parameter is input a caller wrote.
-        return self._check(ctx, iri, param.base, 'parameter', param.name)

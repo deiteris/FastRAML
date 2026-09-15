@@ -97,7 +97,7 @@ Legend: **v1** = required for the first release · **v1.1** = planned follow-up 
 | Methods `get/put/post/delete/patch/head/options` (+ `trace`/`connect` as an extension) | v1 |
 | `headers`, `queryParameters`, `queryString` (mutually exclusive) | v1 |
 | `body` with explicit and default media types | v1 |
-| `responses`, status-code keys normalised to strings/ints, duplicate rejection | v1 |
+| `responses`, status-code keys normalised to strings, duplicate rejection | v1 |
 | `protocols`, `is`, `securedBy` at method level | v1 |
 
 ### 3.4 Resource types and traits

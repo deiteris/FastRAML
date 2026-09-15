@@ -1,104 +1,134 @@
-"""Strict lint configuration decoding — docs/18-linting.md § 5."""
+"""Lint configuration decoding — docs/18-linting.md § 5.
+
+**Structure is validated by a RAML type, not by hand.** `config.raml` beside
+this module declares the shape — which fields exist, what each holds, which
+severities spell a severity, that no unknown key is tolerated — and
+`LintConfig.validate` enforces it. This module keeps only what a type cannot
+express: whether a rule, ruleset, plugin or category *exists* depends on what is
+registered at run time, and whether a `match:` string compiles depends on the
+regex engine.
+
+That split is the point. The alternative is fifty lines of `isinstance` checks
+re-deriving what a schema states declaratively, and the schema doubles as the
+thing an editor can be handed to check a `lint.yaml` before it is ever run.
+"""
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from functools import lru_cache
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from fastraml.views.lint.engine import Config, Registry, RuleSetting, parse_severity
 
-__all__ = ['parse_config']
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from fastraml.types.base import BaseShape
+
+__all__ = ['config_shape', 'parse_config']
+
+#: The RAML library declaring the configuration's shape. Shipped inside the
+#: package, so the schema an editor is given is the one this build enforces.
+SCHEMA = Path(__file__).parent / 'config.raml'
+
+#: The declaration in it that a `lint.yaml` must conform to.
+ROOT = 'LintConfig'
+
+
+@lru_cache(maxsize=1)
+def config_shape() -> BaseShape:
+    """The unwrapped `LintConfig` declaration.
+
+    Cached so repeated configuration parsing pays for one schema parse per
+    process. The parser imports stay local so importing the lint API remains
+    cheap until a configuration is validated.
+    """
+    from fastraml.parser.entry import ParseOptions, parse_from_path  # noqa: PLC0415 - deferred, see above
+
+    raml = parse_from_path(SCHEMA, ParseOptions(unwrap=True, workspace_root=str(SCHEMA.parent)))
+    types: Mapping[str, BaseShape] = getattr(raml.entry_point, 'types', {})
+    shape = types.get(ROOT)
+    if shape is None:
+        raise ValueError(f'{SCHEMA.name} declares no {ROOT}')
+    return shape
 
 
 def parse_config(text: str, registry: Registry, *, plugins: set[str] | None = None) -> Config:
-    """Decode and validate one YAML configuration document."""
+    """Decode and validate one YAML configuration document.
+
+    Structure first, then names. A document that is the wrong *shape* cannot
+    have its names checked meaningfully — `rules: {}` has no entries to look
+    up — so the type runs first and this returns on its failure.
+    """
     raw = yaml.safe_load(text)
     if raw is None:
         raw = {}
-    if not isinstance(raw, Mapping):
-        raise TypeError('lint config must be a mapping')
-    if not all(isinstance(key, str) for key in raw):
-        raise TypeError('lint config field names must be strings')
-    unknown = set(raw) - {'extends', 'plugins', 'categories', 'rules'}
-    if unknown:
-        raise ValueError(f'unknown lint config field: {min(unknown)}')
+    _check_category_keys(raw)
+    failure = config_shape().validate(raw)
+    if failure is not None:
+        raise ValueError(str(failure).strip())
 
-    extends = _strings(raw.get('extends', ['recommended']), 'extends')
+    extends = _strings(raw.get('extends', ['recommended']))
     for name in extends:
         if name not in registry.sets():
             raise ValueError(f'unknown ruleset: {name}')
-    enabled_plugins = _strings(raw.get('plugins', []), 'plugins')
+
+    enabled_plugins = _strings(raw.get('plugins', []))
     available = plugins or set()
     for name in enabled_plugins:
         if name not in available:
             raise ValueError(f'unknown lint plugin: {name}')
 
-    categories_raw = raw.get('categories', {})
-    if not isinstance(categories_raw, Mapping):
-        raise TypeError('categories must be a mapping')
-    categories: dict[str, RuleSetting] = {}
-    for name, value in categories_raw.items():
-        if not isinstance(name, str) or name not in registry.categories():
+    configured_categories: dict[str, RuleSetting] = {}
+    for name, value in raw.get('categories', {}).items():
+        if name not in registry.categories():
             raise ValueError(f'unknown rule category: {name}')
-        categories[name] = _setting(name, value, category=True)
+        configured_categories[name] = _setting(name, value)
 
-    rules_raw = raw.get('rules', [])
-    if not isinstance(rules_raw, list):
-        raise TypeError('rules must be a list')
-    rules = tuple(_rule_setting(value, registry) for value in rules_raw)
-    return Config(extends=extends, plugins=enabled_plugins, categories=categories, rules=rules)
-
-
-def _strings(value: object, field: str) -> tuple[str, ...]:
-    if isinstance(value, str):
-        return (value,)
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f'{field} must be a string or list of strings')
-    return tuple(value)
+    rules = []
+    for value in raw.get('rules', []):
+        rule_id = value['id']
+        if registry.get(rule_id) is None:
+            raise ValueError(f'unknown rule: {rule_id}')
+        rules.append(_setting(rule_id, value))
+    return Config(extends=extends, plugins=enabled_plugins, categories=configured_categories, rules=tuple(rules))
 
 
-def _rule_setting(value: object, registry: Registry) -> RuleSetting:
-    if not isinstance(value, Mapping):
-        raise TypeError('rule entry must be a mapping')
-    rule_id = value.get('id')
-    if not isinstance(rule_id, str) or not rule_id:
-        raise ValueError('rule entry missing id')
-    if registry.get(rule_id) is None:
-        raise ValueError(f'unknown rule: {rule_id}')
-    return _setting(rule_id, value)
+def _check_category_keys(value: object) -> None:
+    """Keep YAML-only non-string keys away from RAML pattern matching."""
+    if not isinstance(value, dict) or not isinstance(categories := value.get('categories'), dict):
+        return
+    for name in categories:
+        if not isinstance(name, str):
+            raise ValueError(f'unknown rule category: {name}')  # noqa: TRY004 - semantically an unknown name
 
 
-def _setting(name: str, value: object, *, category: bool = False) -> RuleSetting:
-    if not isinstance(value, Mapping):
-        raise TypeError(f'{"category" if category else "rule"} setting must be a mapping')
-    if not all(isinstance(key, str) for key in value):
-        raise TypeError('setting field names must be strings')
-    allowed = {'severity', 'disabled'} if category else {'id', 'severity', 'disabled', 'match', 'options'}
-    unknown = set(value) - allowed
-    if unknown:
-        raise ValueError(f'unknown setting field: {min(unknown)}')
-    severity_raw = value.get('severity')
-    if severity_raw is not None and not isinstance(severity_raw, str):
-        raise ValueError('severity must be a string')
-    disabled = value.get('disabled')
-    if disabled is not None and not isinstance(disabled, bool):
-        raise ValueError('disabled must be a boolean')
+def _strings(value: str | list[str]) -> tuple[str, ...]:
+    """`extends` and `plugins` accept one name or several; the type allows both."""
+    return (value,) if isinstance(value, str) else tuple(value)
+
+
+def _setting(name: str, value: Mapping[str, Any]) -> RuleSetting:
+    """One category or rule entry, with the regex compiled.
+
+    Every field here has already been type-checked by `config.raml`; the only
+    thing left that can fail is the regular expression, which no type can
+    express.
+    """
     match_raw = value.get('match')
-    if match_raw is not None and not isinstance(match_raw, str):
-        raise ValueError('match must be a string')
-    options = value.get('options', {})
-    if not isinstance(options, Mapping):
-        raise TypeError('options must be a mapping')
     try:
         pattern = re.compile(match_raw) if match_raw is not None else None
     except re.error as err:
         raise ValueError(f'invalid match regex: {err}') from err
+    severity = value.get('severity')
     return RuleSetting(
         id=name,
-        severity=parse_severity(severity_raw) if severity_raw is not None else None,
-        disabled=disabled,
+        severity=parse_severity(severity) if severity is not None else None,
+        disabled=value.get('disabled'),
         match=pattern,
-        options=dict(options),
+        options=dict(value.get('options', {})),
     )

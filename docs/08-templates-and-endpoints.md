@@ -106,6 +106,14 @@ facet: a `responses:` key must be a **3-digit** status code (`2xx` is not RAML),
 and `protocols:` may name only `HTTP` or `HTTPS`, compared case-insensitively.
 `VALID_PROTOCOLS` lives on `parser/endpoints.py` so the root and the method share
 one definition rather than two that can drift.
+`Response.code` and the `Operation.responses` keys are strings after that
+validation because spec § Responses settles the apparent YAML-type ambiguity
+directly: keys "SHOULD BE numeric", but processors "MUST treat these numeric
+keys as string keys in all situations". Its example says `200` and `'200'` are
+duplicates. The decoder therefore normalises both spellings to `'200'` rather
+than exposing YAML's inferred integer. Consumers that need status classes
+convert the already-validated value to an integer locally; this does not admit
+OpenAPI's `2XX` response classes.
 
 ## 4. The structural merge
 
@@ -506,6 +514,11 @@ slashes on `baseUri` are stripped only when a consumer joins them.
 Duplicate absolute URIs are rejected (`/users: {/foo:}` plus `/users/foo:`), with
 comparison done on the template text without expanding parameters — so
 `/users/{userId}` and `/users/{username}` and `/users/me` all coexist.
+The linter's overlap check uses `simple_parameter_segment` from the same URI
+template parser. It compares literal segments and segments made entirely from
+Level-1 expansions. Mixed literal/expression segments and Level-2 reserved or
+fragment expansions are skipped: they can produce delimiters, and treating them
+as one wildcard segment would be a guess rather than a fact from the model.
 
 ### 8.2 URI parameters
 

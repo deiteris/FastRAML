@@ -86,7 +86,8 @@ class Response:
     """One status code's declaration."""
 
     id: int
-    #: As written, so `200` and `2xx` both round-trip.
+    #: Normalised to text. Spec § Responses requires processors to treat numeric
+    #: response keys as string keys in all situations.
     code: str
     location: str
     display_name: ScalarFacet[str] | None = None
@@ -112,7 +113,7 @@ class Operation:
     description: ScalarFacet[str] | None = None
     protocols: list[str] = field(default_factory=list)
     request: Request | None = None
-    #: Keyed by the status code as written, in declaration order.
+    #: Keyed by the status code normalised to text, in declaration order.
     responses: dict[str, Response] = field(default_factory=dict)
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
     #: The trait references as written. They have already been applied; they are

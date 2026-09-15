@@ -18,7 +18,7 @@
         "binding": "uri",
         "required": true,
         "type": {
-          "id": null,
+          "id": "fastraml://id#/web-api/parameter/baseUri/tenant/schema",
           "name": "tenant",
           "type": "string",
           "description": "The tenant subdomain",

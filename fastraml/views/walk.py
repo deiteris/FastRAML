@@ -381,6 +381,9 @@ class Walk:
         api = f'{self.base}#/web-api'
         self.sink.api(api, entry)
         self.edge(api, 'unit', self.unit(entry.location))
+        for name, param in entry.base_uri_parameters.items():
+            child = self.parameter(f'{api}/parameter/baseUri/{self.segment(name)}', param)
+            self.edge(api, 'parameter', child)
         seen: set[int] = set()
         for endpoint in self.raml.endpoints.values():
             self.endpoint(api, endpoint, seen)

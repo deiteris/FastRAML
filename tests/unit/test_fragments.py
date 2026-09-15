@@ -472,11 +472,20 @@ class TestParseCtx:
 
 class TestSourceRetention:
     def test_source_nodes_are_kept_only_on_request(self, workspace):
-        root = workspace({'api.raml': API})
+        source = API + 'types:\n  Name: string\n'
+        root = workspace({'api.raml': source})
         uri = path_to_file_uri(root / 'api.raml')
-        assert parse_from_path(root / 'api.raml').source_node(uri) is None
+        ordinary = parse_from_path(root / 'api.raml')
+        assert ordinary.source_node(uri) is None
+        assert not ordinary.source_texts
+        assert ordinary.source_info is None
         retained = parse_from_path(root / 'api.raml', ParseOptions(retain_source=True))
         assert retained.source_node(uri) is not None
+        assert retained.source_texts == {uri: source}
+        shape = retained.types_in(uri)['Name']
+        key, value = retained.source_info[shape.id]
+        assert key.value == 'Name'
+        assert value.value == 'string'
 
 
 def _pairs(node):

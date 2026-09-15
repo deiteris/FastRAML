@@ -2,7 +2,7 @@
   <a href="https://github.com/deiteris/FastRAML"><img src="assets/logo.png" alt="fastRAML" width="300"></a>
 </p>
 <p align="center">
-    <em>A complete RAML 1.0 parser for Python — every construct decoded, linear in input size</em>
+    <em>Parse, validate, inspect, and convert RAML 1.0 in Python</em>
 </p>
 <p align="center">
 <a href="https://github.com/deiteris/FastRAML/actions/workflows/ci.yml?query=branch%3Amaster">
@@ -37,25 +37,27 @@ fastRAML reads [RAML 1.0](https://github.com/raml-org/raml-spec/blob/master/vers
 — the API description language — and gives you the **effective** API rather than
 the text of one file. Types inherit, traits add parameters, resource types add
 methods, and `!include` pulls in other documents; fastRAML resolves all of it and
-hands you a typed model, a command line, and a graph you can query.
+hands you a typed model plus tools for validation, navigation, linting, and
+conversion.
 
 The key features are:
 
-* **Complete**: every pass runs and every RAML construct is decoded. The RAML compliance kit stands at **915 of 915** — every fixture outside the skip list does what its name promises.
-* **Fast for Python**: 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using 98 MB. Measured on the same corpus and machine, go-raml in Go does it in 71 ms — so this is ~6x a compiled implementation, not level with one.
-* **Linear**: time grows with input size, and that property is asserted in CI. Absolute speed is a property of your machine; linearity is a property of the design.
-* **Effective, not literal**: `show` prints a type or endpoint with inheritance, traits, resource types and security already merged in — each line tagged with the file and line it was really written on.
-* **Positioned diagnostics**: every error carries a file, line and column, and a trace chain through the includes that reached it. Errors accumulate rather than stopping at the first.
-* **Typed**: ships `py.typed` and is checked under strict mypy, so your editor and type checker see the real model instead of `Any`.
-* **Queryable**: the model projects to a graph with a small RAML vocabulary, with 17 named analysis queries built in — unused types, unsecured operations, undocumented endpoints.
-* **Compatibility-aware**: `diff` grades what changed between two versions by whether it breaks a caller, and exits non-zero on a breaking change, so it gates CI without parsing output.
-* **OpenAPI export**: `fastraml openapi` turns the effective RAML API into OpenAPI 3.0.3 YAML or JSON, preserving annotations as extensions and reporting anything the target cannot carry.
-* **Agent-ready**: `fastraml skills install` drops an [Agent Skill](https://github.com/agentskills/agentskills) into `.agents/skills/`, so Claude Code, GitHub Copilot and other agents drive the CLI correctly.
+* **Effective model**: resolves `!include`, `uses`, type expressions and inheritance, then applies traits, resource types and security schemes. Declaration order and source locations remain available on the typed Python model.
+* **Type and value validation**: implements RAML's built-in shapes and facets, custom facets, examples, defaults, annotations, recursive types, and JSON Schema external types. A shape can also validate an application value directly.
+* **Tested coverage with explicit boundaries**: all **915 evaluated RAML compliance-kit fixtures** have their expected outcome. Overlay and Extension merging is deferred, and XML Schema external types are not supported; the [coverage matrix](docs/01-scope-and-coverage.md) records the details.
+* **Structured diagnostics**: errors carry source locations and trace chains, including failures reached through includes and merged templates. Independent failures accumulate where the current pass can continue safely.
+* **Model navigation**: `list`, `show`, `refs` and `deps` inspect named entities and the routes between them. `graph` emits RDF, Graphviz or JSON, while `tree` emits an addressed containment view.
+* **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` provides configurable built-in rules, optional security and style rulesets, explanations, and plugin support.
+* **Version comparison**: `diff` reports structural changes and classifies their compatibility impact using whether a value is sent in a request or received in a response. It exits non-zero when the policy identifies a breaking change.
+* **OpenAPI and JSON Schema output**: convert an effective API to a typed OpenAPI 3.0.3 document, or a RAML shape to JSON Schema draft-07. Both conversion APIs report information the target format could not represent.
+* **Typed and measured**: ships `py.typed` and checks the package with strict mypy. The benchmark gate checks linear scaling; on the recorded machine, 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using **98 MB**.
+* **Version-matched agent guides**: `fastraml skills get` serves CLI guidance from the installed package, and `fastraml skills install` installs a discovery skill under `.agents/skills/` or another selected directory.
 
 ## Status
 
-**fastRAML is in beta.** The parser is feature-complete against the compliance
-kit, and the design is settled in [`docs/`](https://github.com/deiteris/FastRAML/blob/master/docs/README.md).
+**fastRAML is in beta.** The parser matches the expected outcome of every
+compliance-kit fixture in its evaluated scope, and the design is settled in
+[`docs/`](https://github.com/deiteris/FastRAML/blob/master/docs/README.md).
 What is *not* settled is the surface you code against:
 
 * **The public API may change before 1.0**, including names, signatures and
@@ -68,8 +70,8 @@ What is *not* settled is the surface you code against:
   JSON Schema external types are supported.
 
 Report anything that looks wrong at
-[Issues](https://github.com/deiteris/FastRAML/issues) — a fixture that fails is
-a bug, not a limitation.
+[Issues](https://github.com/deiteris/FastRAML/issues). A failure within the
+documented supported surface is a bug.
 
 ## Requirements
 
@@ -131,10 +133,11 @@ fastraml validate api.raml           # exit 1 and a positioned trace if invalid
 fastraml validate --json *.raml      # one JSON object per file
 fastraml info api.raml               # YAML backend, timing, model counts
 fastraml openapi api.raml            # OpenAPI 3.0.3 YAML; --format json for JSON
+fastraml lint api.raml               # configurable semantic, security and style checks
 ```
 
-And, because the tedious part of RAML is following resolved links by hand, a
-view of the **effective** model as a graph
+For inspecting the resolved model, the CLI provides both containment and graph
+views
 ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md)):
 
 ```bash
@@ -142,9 +145,10 @@ fastraml list api.raml               # what is in here: every name you can ask a
 fastraml refs api.raml User          # every operation that can carry a User, with the route
 fastraml deps api.raml User          # everything User is built from
 fastraml graph api.raml              # the whole projection as Turtle (or nt, dot, json)
+fastraml tree api.raml               # addressed JSON retaining containment and leaf data
 fastraml show api.raml /users        # the effective view: everything merged in, with origins
-fastraml diff v1.raml v2.raml        # what changed, and what it breaks (exit 1 if breaking)
-fastraml query --list                # 17 named analysis queries
+fastraml diff v1.raml v2.raml        # structural changes and compatibility classification
+fastraml query --list                # 9 named analysis queries
 fastraml query api.raml -n type-fan-in   # or -q '<sparql>' for your own
 ```
 
@@ -167,9 +171,9 @@ fastraml skills get core             # or just print the guide
 
 ## Why it is fast
 
-7000 types across 150 libraries parse, unwrap and validate in **429 ms** using
-**98 MB**, and strictly linear in input size — which is the property gated in CI
-rather than the wall clock.
+The recorded baseline for 7000 types across 150 libraries is **429 ms** and
+**98 MB** for parse, unwrap and validation. The benchmark suite separately checks
+linear scaling in CI; wall-clock timings vary by machine.
 
 Measured against go-raml on the same corpora and the same machine, that is
 **5.1x to 10.3x** a compiled Go implementation, depending on the corpus — inside

@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from fastraml.errors import ErrorKind, RamlError
+from fastraml.positions import UNKNOWN
 
 if TYPE_CHECKING:
     from fastraml.positions import Position
@@ -25,6 +26,7 @@ __all__ = [
     'UriTemplateExpression',
     'extract_uri_template_params',
     'resource_path_name',
+    'simple_parameter_segment',
 ]
 
 # RFC 6570 Level 2 operators this parser recognises. Anything else that opens
@@ -136,6 +138,18 @@ def extract_uri_template_params(uri: str, location: str, uri_pos: Position) -> l
         else:
             i += 1
     return expressions
+
+
+def simple_parameter_segment(segment: str) -> bool:
+    """Whether a validated path segment consists only of simple expansions.
+
+    Reserved and fragment expansion may produce delimiters, so treating either
+    as one wildcard segment would make overlap analysis claim false certainty.
+    """
+    expressions = extract_uri_template_params(segment, '', UNKNOWN)
+    if not expressions or any(expression.operator for expression in expressions):
+        return False
+    return segment == ''.join(f'{{{expression.name}}}' for expression in expressions)
 
 
 def resource_path_name(full_uri: str) -> str:

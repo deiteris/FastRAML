@@ -116,7 +116,6 @@ fastraml validate -w . api.raml               # Prints nothing if valid, exits 0
 fastraml validate -w . -v api.raml            # api.raml: valid (63.4 ms)
 fastraml validate -w . -vv api.raml           # Adds the backend and model counts
 fastraml validate -w . a.raml b.raml c.raml   # Checks all three, then exits 1
-fastraml validate -w . --json api.raml        # One JSON object per file
 ```
 
 A valid document prints nothing. Errors go to stderr, so `-v` output stays
@@ -125,16 +124,6 @@ clean when you pipe it.
 `validate` checks every file you give it and exits 1 at the end, rather than
 stopping at the first bad one. Run it over a whole directory in CI and you get
 every error in one pass.
-
-Use `--json` when you need to report on many files. It writes JSON Lines and
-nothing to stderr:
-
-```json
-{"path": "api.raml", "valid": true, "error": null}
-```
-
-`error` is `null`, or a nested chain of traces that names the file, line and
-column. Read the plain output instead when you only care about one document.
 
 ## See how large a document is
 
@@ -164,7 +153,6 @@ and the two do not accept quite the same documents.
 fastraml list -w . api.raml                            # Everything
 fastraml list -w . api.raml book                       # Names containing "book"
 fastraml list -w . api.raml --kind Type --kind Trait   # Repeat --kind to add kinds
-fastraml list -w . api.raml --json
 ```
 
 ```
@@ -357,8 +345,7 @@ strings with no upper bound, a property that is both optional and nilable. Each
 finding names a rule, carries a severity, and can fail CI:
 
 ```bash
-fastraml lint -w . api.raml                   # the default ruleset
-fastraml lint -w . api.raml --format summary  # counts per rule
+fastraml lint -w . api.raml --format text
 fastraml lint --list-rules                    # what is available
 fastraml lint --explain unused-type           # one rule, with good and bad RAML
 ```
@@ -377,7 +364,7 @@ to fail on — the table of contents, which media types are in use, every enum:
 fastraml query --list                            # See all nine
 fastraml query --show endpoint-tree              # Read one before running it
 fastraml query -w . api.raml -n endpoint-tree    # Run it
-fastraml query -w . api.raml -n type-fan-in --json
+fastraml query -w . api.raml -n type-fan-in
 ```
 
 The ones you will reach for most: `endpoint-tree`, `type-fan-in`,

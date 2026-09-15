@@ -115,7 +115,7 @@ first, as AMF's `@type` arrays are.
 | `request` | `Operation` | `Request` | omitted when the method sends nothing |
 | `returns` | `Operation` | `Response` | |
 | `payload` | `Request`/`Response` | `Payload` | one per media type |
-| `parameter` | `EndPoint`/`Request`/`Response` | `Parameter` | binding on the node |
+| `parameter` | `Api`/`EndPoint`/`Request`/`Response` | `Parameter` | binding on the node; `Api` owns `baseUriParameters` |
 | `queryString` | `Request` | `Type` | mutually exclusive with query parameters |
 | `range` | `Payload`/`Parameter`/`Property`/`PatternProperty` | `Type` | **the uniform "has this type" edge** |
 | `property` | `Type` | `Property` | |
@@ -552,7 +552,7 @@ changing — not a shortfall it has to work around.
   and endpoints, not files. § 2's rule applies — add a term when a question
   wants it. A `Unit` node per file exists (§ 2.9), so the question would have
   somewhere to land if one arrives.
-- **Documentation items, `uses:` prefixes, protocols, `baseUriParameters`.**
+- **Documentation items, `uses:` prefixes and protocols.**
   Nothing has needed them yet. § 2's rule applies: add a term when a question
   wants it.
 - **Diagnostics.** A graph of a document that failed to parse is not built at
@@ -593,6 +593,15 @@ Two edge closures are exported so a caller and a query cannot drift:
   in reverse from a type arrives at the operations and resources that can carry
   it, and from a trait, a security scheme or an annotation type at every site
   that uses it.
+
+`Graph.request_shape_iris()` materialises one common directional closure: every
+type node reachable from a request body, request parameter, query string,
+resource URI parameter or base URI parameter through the graph's direct edges.
+"Input" is not intrinsic to a type
+because one declaration can be used on both sides of the wire; it is a property
+of a route from a request site. The immutable result is cached in a dedicated
+graph slot. Consumers therefore share the derivation without adding redundant
+transitive `input` edges or maintaining private caches.
 
 ### 5.1 SPARQL
 

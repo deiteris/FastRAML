@@ -1,0 +1,89 @@
+#%RAML 1.0 Library
+# The shape of a lint configuration — docs/18-linting.md § 5.
+#
+# Structure only. Whether a rule, ruleset, plugin or category *exists* depends
+# on what is registered at run time, and whether a `match:` string compiles
+# depends on the regex engine; `config.py` checks those against the registry
+# after this type has agreed the document is the right shape.
+#
+types:
+  LintConfig:
+    displayName: Lint configuration
+    type: object
+    additionalProperties: false
+    properties:
+      extends?:
+        displayName: Rulesets to enable
+        description: |
+          A ruleset name, or several. `recommended` is the spec-derived set and the
+          default; `security` is the OWASP set; `style` is opt-in authoring
+          conventions; `all` is every rule registered, including any a plugin
+          contributed.
+        type: LintName | StringList
+      plugins?:
+        displayName: Plugins to activate
+        description: |
+          Entry-point names. Discovery is not activation: a rule from an installed
+          plugin does not run until its provider is named here.
+        type: LintName | StringList
+      categories?:
+        displayName: Per-category settings
+        type: object
+        properties:
+          //:
+            type: LintSetting
+      rules?:
+        displayName: Per-rule settings
+        type: array
+        maxItems: 256
+        items: LintRule
+
+
+  LintName:
+    type: string
+    pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
+    maxLength: 256
+
+  StringList:
+    type: array
+    maxItems: 64
+    items: LintName
+
+  LintSeverity:
+    displayName: Severity
+    description: |
+      `warn` and `hint` are accepted spellings of `warning` and `info`; the
+      decoder normalises them.
+    type: string
+    enum: [error, warning, warn, info, hint]
+
+  LintSetting:
+    displayName: Category setting
+    type: object
+    additionalProperties: false
+    properties:
+      severity?: LintSeverity
+      disabled?: boolean
+
+  LintRule:
+    displayName: Rule setting
+    type: object
+    additionalProperties: false
+    properties:
+      id:
+        description: The rule this entry configures.
+        type: LintName
+        minLength: 1
+      severity?: LintSeverity
+      disabled?: boolean
+      match?:
+        description: |
+          A regular expression over the finding's message. With it the entry
+          filters findings; without it the entry configures the rule itself.
+          Whether the expression compiles is checked by `config.py`.
+        type: string
+        pattern: (?s)^.*$
+        maxLength: 4096
+      options?:
+        description: Rule-specific options, passed through to the rule.
+        type: object

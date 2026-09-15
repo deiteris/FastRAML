@@ -1011,6 +1011,7 @@ def parse_fragment(raml: Raml, uri: str, kind: FragmentKind) -> Fragment:
 
 def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Fragment:
     """Register, decode, then resolve `uses:` — in that order. See the module docstring."""
+    raml.store_source_text(uri, text)
     # The extension is taken past a `#pointer`, as in `check_fragment_kind`:
     # `schema.json#/definitions/User` is a JSON include of an inner element, not
     # a RAML DataType. Testing the raw URI misses the pointer form, and the file

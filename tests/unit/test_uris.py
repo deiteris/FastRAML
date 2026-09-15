@@ -11,6 +11,7 @@ import os
 
 import pytest
 
+from fastraml.parser.uritemplates import simple_parameter_segment
 from fastraml.uris import (
     file_uri_to_path,
     is_file_uri,
@@ -23,6 +24,16 @@ from fastraml.uris import (
 WINDOWS = os.name == 'nt'
 posix_only = pytest.mark.skipif(WINDOWS, reason='POSIX path semantics')
 windows_only = pytest.mark.skipif(not WINDOWS, reason='Windows path semantics')
+
+
+@pytest.mark.parametrize('segment', ['{id}', '{id}{extension}'])
+def test_simple_parameter_segment_uses_parsed_template_expressions(segment):
+    assert simple_parameter_segment(segment)
+
+
+@pytest.mark.parametrize('segment', ['user-{id}', '{+path}', '{#fragment}', 'users'])
+def test_non_simple_parameter_segment_is_not_a_route_wildcard(segment):
+    assert not simple_parameter_segment(segment)
 
 
 class TestPathToFileUri:

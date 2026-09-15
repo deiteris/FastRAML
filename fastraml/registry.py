@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     BaseShape = Any
     EndPoint = Any
     SecurityScheme = Any
-    SourceInfo = Any
+    SourceInfo = dict[int, tuple[Node | None, Node]]
 
 #: The two facets whose *value* names a type. `provenance_scope_for` consults
 #: them before the mapping that holds them, because a caller-substituted `type:`
@@ -126,6 +126,7 @@ class Raml:
         'entry_point',
         'source_info',
         'source_nodes',
+        'source_texts',
         'unwrapped',
     )
 
@@ -185,7 +186,8 @@ class Raml:
         self.entry_point: Fragment | None = None
         self.unwrapped = False
         self.source_nodes: dict[str, Node] = {}
-        self.source_info: SourceInfo | None = None
+        self.source_texts: dict[str, str] = {}
+        self.source_info: SourceInfo | None = {} if retain_source else None
 
     def __repr__(self) -> str:
         return f'Raml({self.location!r}, fragments={len(self.fragments)})'
@@ -333,6 +335,16 @@ class Raml:
         """Keep a fragment's root node when `retain_source` is on; else a no-op."""
         if self.retain_source:
             self.source_nodes[uri] = node
+
+    def store_source_text(self, uri: str, text: str) -> None:
+        """Keep source text for comment-aware tooling when retention is on."""
+        if self.retain_source:
+            self.source_texts[uri] = text
+
+    def put_source_info(self, entity_id: int, key: Node | None, value: Node) -> None:
+        """Index an entity's authored nodes when source retention is on."""
+        if self.source_info is not None:
+            self.source_info[entity_id] = (key, value)
 
     # -- read surface (docs/13-public-api.md section 3) -----------------------
 

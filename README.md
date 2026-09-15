@@ -172,11 +172,9 @@ fastraml skills get core             # or just print the guide
 rather than the wall clock.
 
 Measured against go-raml on the same corpora and the same machine, that is
-**5.1x to 10.3x** a compiled Go implementation, depending on the corpus. The
-goal was to stay within 10x, and the interesting part is that an interpreted
-parser gets there at all; it is not parity, and an earlier version of this
-paragraph implied it was by quoting go-raml's published figure for a different
-corpus. The table is in [docs/12](docs/12-performance.md) Part 4.
+**5.1x to 10.3x** a compiled Go implementation, depending on the corpus — inside
+the 10x goal, and not parity. The table is in
+[docs/12](docs/12-performance.md) Part 4.
 
 That comes from structural decisions, not from Python: a two-stage endpoint build
 that merges traits and resource types on YAML trees before any type resolution,

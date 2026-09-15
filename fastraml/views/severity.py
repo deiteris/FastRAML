@@ -69,10 +69,9 @@ class Ranking[S: str]:
     def at_least(self, severity: S) -> frozenset[S]:
         """`severity` and everything worse — what a `--severity` flag selects.
 
-        A **threshold**, not a membership test. Both CLI verbs that filter by
-        severity now mean this; `diff`'s used to take a repeatable exact set
-        while `lint`'s took a threshold, so the same flag name meant opposite
-        things on two verbs of one tool (docs/13 § 8).
+        A **threshold**, not a membership test — on every verb that filters by
+        severity, so one flag name cannot mean opposite things across two verbs
+        of one tool (docs/13 § 8).
         """
         limit = self._rank[severity]
         return frozenset(value for value, rank in self._rank.items() if rank <= limit)

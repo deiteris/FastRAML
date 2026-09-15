@@ -391,10 +391,8 @@ make the tool useless exactly where navigating is most wanted.
 - Diagnostics go to **stderr**, everything else to stdout, so `-v` stays
   pipeable. A valid file with no `-v` prints nothing at all.
 - **`--severity S` is a threshold on every verb that has it** — *S and
-  everything worse* — and never a membership test. `diff` took a repeatable
-  exact set until the two verbs were compared side by side, so `--severity
-  safe` meant "only the safe ones" on one verb and "everything except cosmetic"
-  on the other. One flag name cannot mean two things in one tool. The scales
+  everything worse* — and never a membership test, because one flag name cannot
+  mean two things in one tool. The scales
   themselves stay separate, because they measure different things: `diff` grades
   `breaking|risky|safe|cosmetic`, what a change does to a caller, and `lint`
   grades `error|warning|info`, how much a finding should block CI

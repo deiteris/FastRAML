@@ -15,8 +15,8 @@
    **Measured, running go-raml on the same corpora and machine: 5.1× to 10.3×**
    ([12](12-performance.md) Part 4). The target is met on `bench_large` and sits
    on the line elsewhere. The ~280 ms above is go-raml's *published* figure for
-   its own corpus and is not the number to compare against; doing so understated
-   the gap fourfold for two revisions.
+   its own corpus on its own machine, and is not the number to compare a local
+   measurement against.
 4. **Position-accurate diagnostics** for every error, so the model can back an
    LSP server, a linter, or a formatter later.
 

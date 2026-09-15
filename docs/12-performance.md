@@ -370,14 +370,15 @@ Measured: traced peak for `build_graph` alone moved from 21.90 MB to 20.67 MB on
 `endpoints` and from 24.93 MB to 24.23 MB on `large`, which is 54 505 singletons
 × 24 bytes and matches the predicted 1.31 MB.
 
-**It is not faster, and the reason it is not is worth recording.** The intuition
-that `setdefault` wastes time building a default it discards is wrong on
-CPython: empty lists come off a freelist and cost almost nothing. An A/B of
-`build_graph` alone is 77.1 ms against 77.2 ms on `endpoints` — inside the noise.
-The first attempt to measure this reported a 2.4× speedup and was an artefact:
-`tracemalloc` was left running across the timed region, and its overhead scales
-with allocation count, so removing allocations sped up the *traced* run and
-nothing else. **Time the untraced run; trace the untimed one.**
+**It is not faster.** The intuition that `setdefault` wastes time building a
+default it discards is wrong on CPython: empty lists come off a freelist and
+cost almost nothing. An A/B of `build_graph` alone is 77.1 ms against 77.2 ms on
+`endpoints` — inside the noise.
+
+**Time the untraced run; trace the untimed one.** `tracemalloc`'s overhead scales
+with allocation count, so leaving it running across a timed region reports any
+allocation reduction as a speedup: it makes this change look 2.4× faster than it
+is.
 
 ### 19e. A cheap name accessor on the graph nodes
 
@@ -415,14 +416,16 @@ node, measured linear on both corpora — 2.08x, 2.10x, 2.10x across four
 doublings — so it is a constant factor, not a complexity defect, and it is left
 alone.
 
-**A name is now stated twice, which is the shape that rots.** The rule that
-holds it together is that `attributes` reads the property; the test is
+**A name is stated twice, which is the shape that rots.** The rule that holds it
+together is that `attributes` reads the property; the test is
 `TestNameIsTheCheapPathToTheSameAnswer`, which asserts the two agree for every
-node in two documents and pins the kinds each exercises. It earned its place
-immediately: the first draft missed six kinds — `EndPointNode`, `OperationNode`,
-`ResponseNode` and `ParameterNode`, whose names arrive through `_named` rather
-than as a literal key, and the `DeclaredNode` and `UnresolvedNode` bases, which
-the graph fixture never builds.
+node in two documents and pins the kinds each exercises.
+
+Six kinds do not spell `name` as a literal key and are the ones an override
+misses: `EndPointNode`, `OperationNode`, `ResponseNode` and `ParameterNode` take
+theirs through `_named`, and `DeclaredNode` and `UnresolvedNode` are bases the
+module's own graph fixture never builds — which is why the test reads a second
+document.
 
 ### 19f. The diff's side-of-the-wire label is carried down, not computed up
 
@@ -446,7 +449,7 @@ sides(n) = union over incoming e of ( side_of(e.predicate) | sides(e.subject) )
 ```
 
 so one worklist over the edges settles every node at once. `_side_map` is
-computed per graph, and `diff` looks up what it used to compute.
+computed per graph and `diff` reads it.
 
 | | per node | one pass | |
 |---|---|---|---|
@@ -454,12 +457,12 @@ computed per graph, and `diff` looks up what it used to compute.
 | `endpoints` | 59.6 ms | 20.1 ms | 3.0x |
 | `large` | 75.0 ms | 11.7 ms | 6.4x |
 
-**The first version was slower than what it replaced** — 62.5 ms against 71.5 ms
-on `endpoints` — because the inner loop did `carried | {side}`, building two
-sets per edge. The lattice has four states, so it is two bits: `carried | bit`
-allocates nothing, and the four possible answers are interned and handed out by
-index rather than rebuilt per node. Asymptotics do not survive contact with a
-per-edge allocation.
+**The mask is not an optimisation detail, it is what makes the pass worth
+doing.** A set-based union — `carried | {side}` — builds two sets per edge and
+costs 71.5 ms against the per-node walk's 62.5 ms, so the better algorithm loses.
+The lattice has four states, so it is two bits: `carried | bit` allocates
+nothing, and the four possible answers are interned and handed out by index.
+Asymptotics do not survive contact with a per-edge allocation.
 
 Cycles need no special case; a fixpoint over a four-state lattice stops
 widening, where the walk needed its own `seen` set to terminate at all.
@@ -621,12 +624,9 @@ libyaml, 7000 types across 150 libraries:
 
 #### The go-raml comparison, measured rather than quoted
 
-This section claimed **1.5×** for two revisions and was wrong by a factor of
-four. The number came from setting `bench_large`'s 429 ms beside go-raml's
-*published* ~280 ms for its own 7124-type corpus — a different document set on a
-different machine. An earlier draft had already corrected *half* of that
-comparison, moving from the parse-only cell to `+unwrap+validate`. It left the
-other half, which was the side that mattered.
+go-raml's *published* ~280 ms is for its own 7124-type corpus on its own
+machine. It is not comparable to a figure from this one and must not be quoted
+beside one: doing so understates the gap roughly fourfold.
 
 go-raml is checked out at `../go-raml-main` and Go is installed, so the figure is
 measured now rather than quoted: the same generated corpora, the same Windows

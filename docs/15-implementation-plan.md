@@ -686,10 +686,9 @@ wrong when written and is amended rather than met: the skip list also holds the
 two fixtures that `!include` a gist, skipped as suite policy since Phase 6.
 
 Measured: linearity **1.040** (+4.0 %) against a half-size corpus; `bench_large`
-**353 ms** and **98 MB** peak RSS against a 400 MB ceiling. The go-raml
-comparison recorded here was a quoted published figure and was wrong by a factor
-of four; run on the same corpora and machine it is **5.1x to 10.3x**. The full
-table is in [12](12-performance.md) Part 4.
+**353 ms** and **98 MB** peak RSS against a 400 MB ceiling. Against go-raml run
+on the same corpora and machine: **5.1x to 10.3x**. The full table is in
+[12](12-performance.md) Part 4.
 
 Four things the phase found that the plan did not anticipate:
 

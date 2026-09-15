@@ -216,9 +216,9 @@ def _altered(iri: str, before: GraphNode, after: GraphNode, directions: frozense
 #: as bits. Nothing else changes the answer, so propagation watches only these.
 #:
 #: A bitmask rather than a set because this is the inner loop of `_side_map`:
-#: `carried | bit` is an integer operation that allocates nothing, where
-#: `carried | {side}` builds two sets per edge and made the one-pass version
-#: *slower* than the per-node walk it replaced (docs/12 § 19f).
+#: `carried | bit` allocates nothing, where `carried | {side}` builds two sets
+#: per edge and costs more than the per-node walk the pass replaces — 71.5 ms
+#: against 62.5 ms on `bench_endpoints` (docs/12 § 19f).
 _REQUEST: Final = 1
 _RESPONSE: Final = 2
 _BIT: Final[dict[str, int]] = {'request': _REQUEST, 'returns': _RESPONSE}
@@ -487,9 +487,8 @@ def worst(rules: Iterable[Rule]) -> Severity | None:
 def at_least(severity: Severity) -> frozenset[Severity]:
     """`severity` and everything worse — what `--severity` selects.
 
-    A **threshold**, matching `lint`. It used to be a repeatable exact-set
-    filter here and a threshold there, so one flag name meant two things across
-    two verbs of one tool (docs/13 § 8).
+    A **threshold**, matching `lint`: one flag name cannot mean a threshold on
+    one verb and an exact-set filter on another (docs/13 § 8).
     """
     return _ORDER.at_least(severity)
 

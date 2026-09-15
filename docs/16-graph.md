@@ -419,6 +419,26 @@ API, and `tree` from 508 ms to 262 ms. Sharing without the identity is a
 corruption of exactly the kind § 3.1 describes; with it, two types pointing at
 one node is the truth.
 
+**One table, keyed by that URI alone.** A document is reached two ways — as the
+RAML type that `!include`d it, and as the target of another schema's `$ref` —
+and it was cached under one key per way. Nothing joined them, so 20 documents on
+that API were projected into two independent shape trees. Both wrote the same
+canonical `location`, so both asked `unit()` for the same address and `claim`
+split them rather than reporting a collision: **287 addresses ended in `/!2`**,
+every one a subschema, and `graph`, `tree` and `diff` each saw one document's
+properties twice. Merging the tables took that to 6, and those 6 are real —
+`"type": ["integer", "null"]` gives a union and its members one JSON Pointer
+between them, which is § 3.1's case and not this one.
+
+A shape's `name` is part of the same identity and comes off the same URI
+(`_subschema_name`): a whole document is called after its file, a `definitions`
+or `$defs` entry after its key, and a position like `#/properties/items/items`
+is called nothing. Naming it from the *reference* that arrived first made the
+same type named or nameless by walk order, since only the `$ref` path carried a
+name — and it took the last segment of any pointer, so `#/properties/foo` was
+`foo` one way and anonymous the other.
+
+
 The identity holds only where **the document is the schema**, which
 `_is_one_schema` decides. A `$ref` target is read by `SchemaRegistry` and is not
 a fragment at all; an `!include`d schema is wrapped into a one-type
@@ -1004,9 +1024,9 @@ JSON Schema clothing: true, and useless. Neither answers the question a reader
 opens this view to ask, which is whether a field reuses a shared schema or
 inlines a copy of it.
 
-The name was never missing. `_project_reference` sets `built.name` for every ref
-whose pointer names a definition, and `as_shape_defs()` has kept the table since
-the projection was written. What is missing is a *marker*: `BaseShape.name` holds
+The name was never missing. `_view_base` sets it from the subschema's canonical
+URI (§ 3.2b), so every form a `$ref` can address carries one however the walk
+arrived. What is missing is a *marker*: `BaseShape.name` holds
 a property key as well — `make_shape` sets it from the key node — and the two are
 indistinguishable on the shape. So reading `base.name` in `_type_name` renders
 `currencyCode: currencyCode`, and retires the member naming of § 9.2 on every

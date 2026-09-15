@@ -26,6 +26,7 @@ __all__ = [
     'resolve_uri_ref',
     'uri_base',
     'uri_scheme',
+    'uri_stem',
 ]
 
 _FILE_PREFIX = 'file://'
@@ -130,6 +131,11 @@ def uri_base(uri: str) -> str:
     """The last path segment of a URI, as `os.path.basename` does for paths."""
     path = urlsplit(uri).path if '://' in uri else uri
     return unquote(posixpath.basename(path))
+
+
+def uri_stem(uri: str) -> str:
+    """The last path segment without its extension, as a document's short name."""
+    return uri_base(uri).rsplit('.', 1)[0]
 
 
 def uri_scheme(uri: str) -> str:

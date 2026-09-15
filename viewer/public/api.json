@@ -1108,7 +1108,7 @@
             },
             "projection": {
               "id": null,
-              "name": null,
+              "name": "invoice",
               "type": "object",
               "display_name": "Invoice",
               "description": "A type declared by JSON Schema rather than by RAML.",
@@ -1291,7 +1291,7 @@
         },
         "projection": {
           "id": null,
-          "name": null,
+          "name": "invoice",
           "type": "object",
           "display_name": "Invoice",
           "description": "A type declared by JSON Schema rather than by RAML.",

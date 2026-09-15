@@ -48,7 +48,7 @@ from fastraml.types.complex_ import ArrayShape, ComplexKind, ObjectShape, Recurs
 from fastraml.types.examples import Example, Examples
 from fastraml.types.inherit import inherit
 from fastraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
-from fastraml.uris import uri_base
+from fastraml.uris import uri_stem
 from fastraml.yamlnode import node_error
 
 if TYPE_CHECKING:
@@ -126,35 +126,28 @@ class SchemaRegistry:
     them, so the memo has to live here.
     """
 
-    __slots__ = ('_documents', '_projections', '_raml', '_resources')
+    __slots__ = ('_projections', '_raml', '_resources')
 
     def __init__(self, raml: Raml) -> None:
         self._raml = raml
         self._resources: dict[str, Resource[Any]] = {}
-        #: Section 6.3 projections by the subschema's canonical URI, so one
-        #: `$ref` target is projected once however many schemas name it. Keyed by
-        #: the local name too: that name is written onto the shape and belongs to
-        #: the *referencing* document, so two schemas naming one target
-        #: differently need a shape each.
-        self._projections: dict[tuple[str, str | None], BaseShape] = {}
-        self._documents: dict[str, tuple[BaseShape, dict[str, BaseShape]]] = {}
+        #: Section 6.3 projections by the subschema's canonical URI, with the
+        #: named definitions a walk of the whole document collected.
+        #:
+        #: One entry per URI, however the walk reached it. A schema file is
+        #: reached twice -- as the RAML type that `!include`d it, and as the
+        #: target of another schema's `$ref` -- and those are one subschema, so
+        #: they are one shape. Two tables made them two: `walk.py` addressed
+        #: both from the same `location` and `claim` split one document's
+        #: properties across two addresses rather than reporting a collision.
+        self._projections: dict[str, tuple[BaseShape, dict[str, BaseShape]]] = {}
 
-    def projected(self, uri: str, name: str | None) -> BaseShape | None:
-        return self._projections.get((uri, name))
+    def projected(self, uri: str) -> tuple[BaseShape, dict[str, BaseShape]] | None:
+        return self._projections.get(uri)
 
-    def projected_document(self, uri: str) -> tuple[BaseShape, dict[str, BaseShape]] | None:
-        """A whole compiled schema's projection and its named definitions.
-
-        Separate from `projected`, which holds subschemas reached by `$ref` and
-        has no definitions of its own to hand back.
-        """
-        return self._documents.get(uri)
-
-    def share_document(self, uri: str, built: BaseShape, defs: dict[str, BaseShape]) -> None:
-        self._documents[uri] = (built, defs)
-
-    def share(self, uri: str, name: str | None, built: BaseShape) -> None:
-        self._projections[(uri, name)] = built
+    def share(self, uri: str, built: BaseShape, defs: dict[str, BaseShape] | None = None) -> None:
+        """Record a projection. `defs` only where a whole document was walked."""
+        self._projections[uri] = (built, defs if defs is not None else {})
 
     @property
     def fetched(self) -> int:
@@ -489,7 +482,7 @@ class JsonShape(ComplexKind):
         if self._cached_shape is None:
             registry = schema_registry(self.base._raml)  # noqa: SLF001 - one registry per parse
             uri = self.canonical_uri
-            shared = registry.projected_document(uri) if uri else None
+            shared = registry.projected(uri) if uri else None
             if shared is None:
                 defs: dict[str, BaseShape] = {}
                 _, _, pointer = (uri or self._compiled.uri).partition('#')
@@ -497,7 +490,7 @@ class JsonShape(ComplexKind):
                     _Projection(self.base, self._compiled.resolver, defs, pointer), self._compiled.contents, {}
                 )
                 if uri:
-                    registry.share_document(uri, built, defs)
+                    registry.share(uri, built, defs)
                 shared = (built, defs)
             self._cached_shape, self._cached_defs = shared
         return self._cached_shape
@@ -692,13 +685,20 @@ def _view_base(context: _Projection, name: str | None = None) -> BaseShape:
     reached it: it is where the type is, and it is the same answer however many
     RAML types reference it. `key_pos` stays unknown, so nothing that pairs the
     two prints a position.
+
+    `name` likewise comes off that URI rather than off whichever reference
+    arrived first. One shape is reached both as the RAML type that `!include`d
+    the document and as another schema's `$ref`, and only the second carries a
+    name -- so naming it from the caller left the same type named or nameless
+    depending on walk order.
     """
     document = _document_of(context.resolver)
+    location = _subschema_uri(context, document)
     base = BaseShape(
         id=context.parent._raml.next_id(),  # noqa: SLF001 - one counter per parse (docs/02 § 3.1)
         raml=context.parent._raml,  # noqa: SLF001 - as above
-        location=_subschema_uri(context, document) or context.parent.location,
-        name=name,
+        location=location or context.parent.location,
+        name=name or (_subschema_name(location) if location else None),
     )
     base._unwrapped = True  # noqa: SLF001 - a view shape has nothing left to flatten
     return base
@@ -755,7 +755,13 @@ def _project_reference(context: _Projection, reference: str, visiting: dict[int,
         base.shape = RecursiveShape(base, head)
         return base
 
-    name = _definition_name(reference)
+    uri = f'{document}#{target}'
+    # By the rule `_view_base` names a shape by, so a target reached through a
+    # `$ref` and the same target reached by descent agree. The pointer's last
+    # segment alone named `#/properties/foo` `foo` one way and left it nameless
+    # the other. A reference with no pointer names the whole document, which
+    # `_view_base` already calls after its file.
+    name = _subschema_name(uri) if target else None
     if name is not None:
         existing = context.defs.get(name)
         if existing is not None:
@@ -763,14 +769,13 @@ def _project_reference(context: _Projection, reference: str, visiting: dict[int,
     # Only a target in a file of its own has a canonical URI to share under. An
     # inline schema compiles under the RAML file's URI, which it shares with
     # every other inline schema in that file.
-    own = _is_one_schema(context.parent._raml, document)  # noqa: SLF001 - the parse's index
-    canonical = f'{document}#{target}' if own else None
+    canonical = uri if _is_one_schema(context.parent._raml, document) else None  # noqa: SLF001 - the parse's index
     registry = schema_registry(context.parent._raml)  # noqa: SLF001 - one registry per parse
-    shared = registry.projected(canonical, name) if canonical else None
+    shared = registry.projected(canonical) if canonical else None
     if shared is not None:
         if name is not None:
-            context.defs[name] = shared
-        return shared
+            context.defs[name] = shared[0]
+        return shared[0]
 
     built = _project(context.at(resolved.resolver, target), resolved.contents, visiting)
     if name is not None:
@@ -779,15 +784,32 @@ def _project_reference(context: _Projection, reference: str, visiting: dict[int,
     if canonical is not None:
         # After the walk, never during it: a shape still being built is one a
         # cycle must reach through `visiting`.
-        registry.share(canonical, name, built)
+        registry.share(canonical, built)
     return built
 
 
-def _definition_name(reference: str) -> str | None:
-    """The last segment of a pointer that names a definition, if it does.
+def _subschema_name(location: str) -> str | None:
+    """What the subschema at `location` is called, from the URI that identifies it.
 
-    `#/definitions/User` names `User`; `#` and `other.json` name nothing, and a
-    shape built for one of those is inlined rather than registered.
+    A whole document is called after its file and a `definitions` or `$defs`
+    entry after its key -- the two forms JSON Schema itself lets a `$ref`
+    address. Anything else, `#/properties/items/items` say, is where a schema
+    sits inside a document rather than a type anyone wrote down, and stays
+    nameless so a consumer prints it where it stands.
+    """
+    document, _, pointer = location.partition('#')
+    if not pointer:
+        return uri_stem(document) or None
+    parent, _, key = pointer.rpartition('/')
+    return key if parent in {'/definitions', '/$defs'} else None
+
+
+def _pointer_tail(reference: str) -> str | None:
+    """The last segment of a reference's JSON Pointer, if it has one.
+
+    A *key*, not a type name: `_bundle_name` wants something short and unique
+    per document. `_subschema_name` is the one that decides what a subschema is
+    called, and it names only the forms a `$ref` can address.
     """
     pointer = reference.partition('#')[2]
     if not pointer.startswith('/'):
@@ -1175,7 +1197,7 @@ def _bundle_name(reference: str, taken: set[str]) -> str:
     The pointer's last segment where it has one, so `money.json#/definitions/
     Amount` stays `Amount`; otherwise the file's own stem.
     """
-    stem = _definition_name(reference) or uri_base(reference.partition('#')[0]).rsplit('.', 1)[0] or 'schema'
+    stem = _pointer_tail(reference) or uri_stem(reference.partition('#')[0]) or 'schema'
     name = stem
     at = 2
     while name in taken:

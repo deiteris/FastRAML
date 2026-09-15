@@ -21,7 +21,7 @@ from fastraml.parser.security import (
     TYPE_PASS_THROUGH,
 )
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
-from fastraml.types.jsonschema_ import JsonShape
+from fastraml.types.jsonschema_ import JsonShape, subschema_document
 from fastraml.types.scalars import (
     AnyShape,
     BooleanShape,
@@ -35,6 +35,7 @@ from fastraml.types.scalars import (
     StringShape,
     TimeOnlyShape,
 )
+from fastraml.uris import uri_stem
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -208,6 +209,29 @@ class OAS3Schema(_OAS3Object):
     xml: OAS3XML | None = None
     extensions: dict[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> dict[str, Any]:
+        """As OAS 3.0, where a decorated `$ref` has to be written as an `allOf`.
+
+        A Reference Object *replaces* whatever sits beside it rather than being
+        refined by it, so `{$ref, description}` silently says only what the
+        target says -- the `oneOf: [null, $ref]` a schema writes for a nullable
+        date loses both the `nullable` and the property's own prose. `allOf` is
+        the one form 3.0 has for "that type, and this as well".
+
+        Here and not at each site that builds one, so the model stays free to
+        set a facet beside a `$ref` and to take it off again: a body's example
+        belongs on the Media Type Object, and is moved there after the schema
+        it was read from is finished.
+        """
+        # Called unbound, not through `super()`: `slots=True` builds a second
+        # class object and the `__class__` cell a zero-argument `super()` reads
+        # still points at the first, which is not what `self` is an instance of.
+        node = _OAS3Object.to_dict(self)
+        ref = node.pop('$ref', None)
+        if ref is None:
+            return node
+        return {'allOf': [{'$ref': ref}], **node} if node else {'$ref': ref}
+
 
 @dataclass(slots=True, eq=False)
 class OAS3Discriminator(_OAS3Object):
@@ -341,30 +365,102 @@ class OAS3Document(_OAS3Object):
 
 
 class _SchemaConversion:
-    """RAML shapes as OAS 3.0 Schema Objects, sharing one component table."""
+    """RAML shapes as OAS 3.0 Schema Objects, sharing one component table.
 
-    __slots__ = ('components', 'dropped', 'named')
+    A component per *named* type, and everything else written where it stands. A
+    type is named when a `types:` block named it -- the API's own and every
+    library's -- or when the projection named it, which it does for the
+    subschemas a `$ref` can address (`types/jsonschema_.py`, `_subschema_name`).
+    """
 
-    def __init__(self, named: Mapping[int, tuple[str, BaseShape]], dropped: list[str]) -> None:
-        self.named = named
+    __slots__ = ('by_id', 'by_uri', 'components', 'dropped', 'taken')
+
+    def __init__(self, raml: Raml, api: APIFragment, dropped: list[str]) -> None:
         self.dropped = dropped
         self.components: dict[str, OAS3Schema] = {}
+        #: Shape id -> component name.
+        self.by_id: dict[int, str] = {}
+        #: Canonical JSON Schema URI -> the same name. A schema document is
+        #: reached as two shapes -- the RAML type that included it, and whatever
+        #: a `$ref` from another schema file resolved to -- and those are one
+        #: component.
+        self.by_uri: dict[str, str] = {}
+        #: The names both tables have handed out, which is what `_free` reads.
+        #: Not `components`, which holds only the ones a use site asked for:
+        #: a declared type nobody references is named here and exported nowhere.
+        self.taken: set[str] = set()
+        # The API's `types:` first, so its names reach OpenAPI as the author
+        # wrote them and a library's give way.
+        for location in (api.location, *raml.fragment_types):
+            stem = uri_stem(location)
+            for name, base in raml.types_in(location).items():
+                if base.id not in self.by_id:
+                    self.register(base, name, stem)
+
+    def register(self, base: BaseShape, name: str, qualifier: str = '') -> str:
+        """Name `base` in `components.schemas`, or join the entry it shares."""
+        uri = _schema_uri(base)
+        found = self.by_uri.get(uri, '') if uri else ''
+        if not found:
+            found = self._free(name, qualifier)
+            self.taken.add(found)
+            if uri:
+                self.by_uri[uri] = found
+        self.by_id[base.id] = found
+        return found
+
+    def _free(self, name: str, qualifier: str) -> str:
+        """The first spelling of `name` nothing else answers to.
+
+        RAML does not promise two libraries name their types differently and
+        OpenAPI's component table is flat, so `paged` declared twice becomes
+        `paged` and `roles_lib.paged` rather than one silently replacing the
+        other.
+        """
+        if name not in self.taken:
+            return name
+        if qualifier and f'{qualifier}.{name}' not in self.taken:
+            return f'{qualifier}.{name}'
+        index = 2
+        while f'{name}_{index}' in self.taken:
+            index += 1
+        return f'{name}_{index}'
 
     def inline(self, base: BaseShape, at: str) -> OAS3Schema:
+        """One type where it is used: a `$ref` if it is named, its body if not."""
         base._assert_unwrapped()  # noqa: SLF001 - the view requires the finished model
+        # Through the alias, because `items` under `User[]` holds the alias and
+        # stopping there names `User`'s supertype instead of `User` (docs/16 § 2.4).
         referent = base.alias or (base.inherits[0] if len(base.inherits) == 1 else None)
-        declared = self.named.get(referent.id) if referent is not None else None
-        if declared is not None:
-            name, shape = declared
-            self._component(name, shape)
-            return OAS3Schema(ref=f'{_COMPONENT_REF}{name}')
-        return self._body(base, at)
+        if referent is not None and (name := self._component(referent)):
+            schema = _subtract(self._common(base), self._common(referent))
+        elif name := self._component(base):
+            # The use site *is* the named type, so it adds nothing to it: a
+            # property whose type is `!include uuid.json` reaches that document.
+            schema = OAS3Schema()
+        else:
+            return self._body(base, at)
+        schema.ref = f'{_COMPONENT_REF}{name}'
+        return schema
 
-    def _component(self, name: str, base: BaseShape) -> None:
-        if name in self.components:
-            return
-        self.components[name] = OAS3Schema()
-        self.components[name] = self._body(base, f'components.schemas.{name}')
+    def _component(self, base: BaseShape, fallback: str = '') -> str:
+        """`base`'s name in `components.schemas`, its body built on first demand.
+
+        Empty when `base` is not a named type, which is the answer that leaves it
+        written where it stands.
+        """
+        name = self.by_id.get(base.id)
+        if name is None:
+            wanted = _schema_name(base) or fallback
+            if not wanted:
+                return ''
+            name = self.register(base, wanted)
+        if name not in self.components:
+            # Reserved before the body is walked, so a type that reaches itself
+            # finds the entry there and closes the loop with a `$ref`.
+            self.components[name] = OAS3Schema()
+            self.components[name] = self._body(base, f'components.schemas.{name}')
+        return name
 
     def _body(self, base: BaseShape, at: str) -> OAS3Schema:
         if isinstance(base.shape, JsonShape):
@@ -383,11 +479,12 @@ class _SchemaConversion:
     def _direct(self, base: BaseShape, at: str) -> OAS3Schema:  # noqa: PLR0911, PLR0912, PLR0915
         shape = base.shape
         if isinstance(shape, RecursiveShape):
-            head = shape.head
-            if head.name and head.name not in self.components:
-                self.components[head.name] = OAS3Schema()
-                self.components[head.name] = self._body(head, at)
-            return OAS3Schema(ref=f'{_COMPONENT_REF}{head.name}') if head.name else OAS3Schema()
+            # The head is an ancestor of this marker, so its component is already
+            # reserved and the `$ref` closes the cycle. Through the same table as
+            # everything else: a head named `uuid` and a declared `uuid` are one
+            # component or two names, never one name over two bodies.
+            name = self._component(shape.head, shape.head.name or '')
+            return OAS3Schema(ref=f'{_COMPONENT_REF}{name}') if name else OAS3Schema()
         schema = self._common(base)
         if isinstance(shape, ObjectShape):
             schema.type = 'object'
@@ -563,8 +660,7 @@ class OpenAPIConversion:
             msg = 'OpenAPI export needs a RAML API fragment'
             raise TypeError(msg)
 
-        named = {base.id: (name, base) for name, base in api.types.items()}
-        self.schema = _SchemaConversion(named, self.dropped)
+        self.schema = _SchemaConversion(raml, api, self.dropped)
         document = OAS3Document(
             info=OAS3Info(
                 title=_facet(api.title),
@@ -664,12 +760,17 @@ class OpenAPIConversion:
         )
 
     def _parameter_from_shape(self, name: str, base: BaseShape, binding: str, *, required: bool) -> OAS3Parameter:
+        schema = self._shape(base, f'parameters.{binding}.{name}')
+        # The Parameter Object carries both already, and `description` is read
+        # off the same facet the schema's copy came from.
+        _take(schema, 'description')
         return OAS3Parameter(
             name=name,
             in_=binding,
             required=required,
-            schema=self._shape(base, f'parameters.{binding}.{name}'),
+            schema=schema,
             description=_facet(base.description),
+            example=_take(schema, 'example'),
         )
 
     def _request_body(self, request: Request) -> OAS3RequestBody | None:
@@ -697,7 +798,7 @@ class OpenAPIConversion:
 
     def _media_type(self, body: Body) -> OAS3MediaType:
         schema = None if body.shape is None else self._shape(body.shape, f'bodies.{body.media_type}')
-        return OAS3MediaType(schema=schema)
+        return OAS3MediaType(schema=schema, example=_take(schema, 'example'))
 
     def _shape(self, base: BaseShape, at: str) -> OAS3Schema:
         if self.schema is None:  # pragma: no cover - construction invariant
@@ -747,6 +848,71 @@ class OpenAPIConversion:
             else:
                 self.dropped.append(f'{at}: OAuth 2.0 grant {grant!r} has no OpenAPI flow equivalent')
         return flows
+
+
+#: What `_common` fills, so a use site can be asked what it adds to its supertype.
+_COMMON: Final = ('title', 'description', 'default', 'example', 'enum')
+
+
+def _subtract(schema: OAS3Schema, inherited: OAS3Schema) -> OAS3Schema:
+    """Clear what `schema` says only because it inherited it.
+
+    After unwrap a use site carries every facet its supertype declared, so
+    without this each `type: user` would repeat `user`'s own description beside
+    the `$ref` that already carries it, and every one of them would have to be
+    written as an `allOf`.
+    """
+    blank = OAS3Schema()
+    for attr in _COMMON:
+        if getattr(schema, attr) == getattr(inherited, attr):
+            setattr(schema, attr, getattr(blank, attr))
+    return schema
+
+
+def _take(schema: OAS3Schema | None, attr: str) -> Any:
+    """Read a facet off `schema` and clear it, so it is written once.
+
+    A body's example and a parameter's description have a place of their own in
+    OpenAPI, and that is where a reader looks for them. Left on the schema as
+    well they say the same thing twice, and beside a `$ref` they force an
+    `allOf` that carries nothing else.
+    """
+    if schema is None:
+        return _MISSING
+    value = getattr(schema, attr)
+    setattr(schema, attr, getattr(OAS3Schema(), attr))
+    return value
+
+
+def _schema_uri(base: BaseShape) -> str | None:
+    """The JSON Schema document `base` *is*, if it is one.
+
+    The join between the two shapes one schema document produces: the RAML type
+    that included it, and whatever a `$ref` from another schema file resolved
+    to. Both answer to the document's canonical URI and share one component.
+
+    A RAML type that says something the schema does not is a subtype rather than
+    another name for it, and keeps its own component: joining it would put one
+    type's description under every `$ref` to the document.
+    """
+    shape = base.shape
+    if isinstance(shape, JsonShape):
+        return None if _decorated(base) else shape.canonical_uri
+    return base.location if subschema_document(base) is not None else None
+
+
+def _decorated(base: BaseShape) -> bool:
+    """Whether a declaration carries anything of its own beyond its type."""
+    return any((base.display_name, base.description, base.default, base.example, base.examples, base.enum))
+
+
+def _schema_name(base: BaseShape) -> str:
+    """What a subschema is called, or '' when it is a position and not a name.
+
+    The projection names a subschema from its canonical URI, so this only has to
+    tell a subschema from a declared shape -- whose `name` is a property key.
+    """
+    return (base.name or '') if subschema_document(base) is not None else ''
 
 
 def _examples(base: BaseShape) -> list[Any]:

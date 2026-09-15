@@ -1782,10 +1782,34 @@ that value as YAML or JSON with `fastraml openapi`.
 
 The mapping follows go-raml's `converter/oas3conv.go`: the input must be
 unwrapped; effective resources become flat `paths`; URI, query and header
-parameters keep their binding; bodies become media-type `content`; RAML types
-referenced by the API surface become lazy `components/schemas`; and recursive
-types occupy a component name before their body is walked. Unused declarations
-are not exported.
+parameters keep their binding; bodies become media-type `content`; and recursive
+types occupy a component name before their body is walked.
+
+**A component per named type, everything else inline.** Named means a `types:`
+block named it — the API's own *and every library's* — or the projection did,
+which it does for the subschemas a `$ref` can address (§ 3.2b). Leaving the
+libraries out is not a small loss: one `lib.errorScheme` on a corpus API was
+written out under 539 responses, and naming them took that document from 907 KB
+to 616 KB with nothing dropped. Names are claimed API-first, so its own
+vocabulary survives intact and a colliding library type becomes `roles_lib.paged`
+rather than replacing what is there. Unused declarations are still not exported.
+
+A schema document is reached both as the RAML type that included it and as
+another schema's `$ref`; `by_uri` joins those onto one component. A RAML type
+that says something the schema does not is a subtype rather than a second name
+for it and keeps its own, because sharing would put one type's description under
+every `$ref` to the document.
+
+**A `$ref` with siblings is written as an `allOf`.** OpenAPI 3.0's Reference
+Object *replaces* what sits beside it rather than refining it, so
+`{$ref, description, nullable}` silently says only what the target says — the
+`oneOf: [null, $ref]` a schema writes for a nullable date loses both. The wrap
+lives in `OAS3Schema.to_dict` and not at each site that builds one, which leaves
+the model free to set a facet beside a `$ref` and to take it off again: a body's
+example belongs on the Media Type Object and a parameter's description on the
+Parameter Object, and both are moved there after the schema is finished. What a
+use site adds is measured against its referent (`_subtract`), because after
+unwrap it carries everything it inherited and would otherwise repeat all of it.
 
 `baseUriParameters` feed `servers.variables`, whose defaults must be strings:
 the parameters are typed, so a scalar default is carried as that type

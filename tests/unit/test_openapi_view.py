@@ -56,11 +56,13 @@ documentation:
     assert [tag.to_dict() for tag in document.tags] == [{'name': 'Guide', 'description': 'How to use it'}]
     path = document.paths['/stores/{storeId}']
     assert path.summary == 'Stores'
+    # The description sits on the Parameter Object alone: OpenAPI has a place
+    # for it there, and a second copy on the schema says the same thing twice.
     assert path.parameters[0].to_dict() == {
         'name': 'storeId',
         'in': 'path',
         'required': True,
-        'schema': {'type': 'string', 'description': 'Store ID'},
+        'schema': {'type': 'string'},
         'description': 'Store ID',
     }
     assert path.get is not None

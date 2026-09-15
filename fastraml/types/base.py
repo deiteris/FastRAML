@@ -638,8 +638,8 @@ def _camel(name: str) -> str:
 class KindBase:
     """What every kind object shares: the back-pointer, and the unwritten half.
 
-    This is go-raml's `scalarShape` / `noScalarShape` embedding, not a facet
-    hierarchy — doc 05 section 1 rules that out, and nothing here is a facet.
+    A shared base for the kind objects, not a facet hierarchy — doc 05 section 1
+    rules that out, and nothing here is a facet.
     Keep it that way: a facet on this class would be a facet no `BaseShape`
     knows about.
 

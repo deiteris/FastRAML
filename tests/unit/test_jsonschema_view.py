@@ -1,6 +1,6 @@
 """`views/jsonschema.py` — a shape as JSON Schema draft-07.
 
-Two halves. The structural tests pin decisions go-raml's `converter/jsonschema.go`
+Two halves. The structural tests pin decisions go-raml's own converter
 makes and a reader would not guess. The differential half is the one that
 matters: for each value, the RAML shape and the emitted schema must return the
 same verdict, checked by `jsonschema` rather than by this project's own reader.

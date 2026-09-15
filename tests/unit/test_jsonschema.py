@@ -146,7 +146,7 @@ class TestReferences:
 
     def test_a_ref_to_a_missing_file_is_reported_at_compile_time(self, workspace):
         # Nothing validates against this type, so a library that resolved lazily
-        # would never report it. The reference implementation compiles eagerly
+        # would never report it. go-raml compiles eagerly
         # and the TCK expects that.
         schema = json.dumps({'type': 'object', 'properties': {'p': {'$ref': 'nowhere.json'}}})
         error = parse(workspace, {'api.raml': API + 'types:\n  Holder: |\n' + indent(schema)})

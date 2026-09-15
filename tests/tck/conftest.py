@@ -14,7 +14,7 @@ referenced at a commit rather than copied into this tree (docs/14 section 1.1).
 `FASTRAML_TCK_DIR` still overrides, for running against a different checkout —
 upstream, or a branch with a fixture fix under review:
 
-    FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck
+    FASTRAML_TCK_DIR=/path/to/raml-tck uv run pytest tests/tck
 
 With neither, the TCK tests skip rather than fail. A missing submodule is a
 checkout that was not initialised, not a regression.

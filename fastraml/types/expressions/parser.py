@@ -6,7 +6,7 @@ here. It is mutually recursive with the resolution driver -- a reference's
 target may itself be unresolved -- so the two live together in
 `types/resolve.py` rather than one importing the other (docs/02 section 2).
 
-Grammar, reproduced from the reference ANTLR grammar (docs/06 section 1):
+Grammar (docs/06 section 1):
 
     entrypoint : expression EOF ;
     expression : union ;

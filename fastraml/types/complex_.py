@@ -23,9 +23,8 @@ it properly:
   belong to the members, which are not settled until P9. Consumed by
   `_distribute_union_facets`.
 
-The reference implementation threads the same list (`shapeFacets`) through every
-shape and stores it in exactly one place, `UnknownShape.facets`; the union case
-is the gap it still has (docs/01 § 3.7).
+go-raml threads the same list through every shape and stores it in exactly one
+place, `UnknownShape.facets`; the union case is the gap it still has (docs/01 § 3.7).
 
 `JsonShape` is the fourth structured kind and lives in `jsonschema_.py`, which
 sits above this module: compiling a schema needs the loader, and the section 6.3

@@ -274,7 +274,7 @@ class TestDiscriminator:
     def test_a_body_that_inherits_a_discriminated_type_is_fine(self, workspace):
         """The false positive the ordering exists to avoid.
 
-        The reference implementation carries this rule as a `FIXME` and enforces
+        go-raml carries this rule as a `FIXME` and enforces
         nothing, for exactly this reason.
         """
         body = (

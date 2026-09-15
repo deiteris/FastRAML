@@ -77,7 +77,7 @@ The kind objects do share one small base class, `KindBase`: the `base`
 back-pointer, the five methods later phases fill, and the default
 `decode_facets` that files an unrecognised key as a custom facet value. Two
 subclasses of it, `ScalarKind` and `ComplexKind`, differ only in `is_scalar`.
-This is go-raml's `scalarShape` / `noScalarShape` embedding, and it is not the
+This is a shared base for the kind objects, and it is not the
 hierarchy rejected above: **no facet may live on it**, because a facet there
 would be one no `BaseShape` knows about.
 

@@ -3,7 +3,7 @@
 Exit codes and output shape, not parsing. Nothing in `cli.py` decides what is
 valid, so the assertions here are about the contract a shell script or a CI job
 depends on: what the exit code means, which stream each thing goes to, and that
-`--json` stays diffable against the reference implementation's output
+`--json` stays diffable against go-raml's output
 (docs/14 section 1.3).
 """
 

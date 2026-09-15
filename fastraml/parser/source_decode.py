@@ -81,7 +81,7 @@ def _body_scope(raml: Raml, source: SourceEndPoint | SourceOperation) -> Iterato
 def _secured_by(raml: Raml, source: SourceEndPoint | SourceOperation) -> list[SecurityScheme]:
     """The unit's own schemes, or the API's global when it declared none.
 
-    The global list is shared rather than copied, as in the reference: the
+    The global list is shared rather than copied, as in go-raml: the
     entries carry no per-application parameters, so nothing can diverge
     (docs/09 section A4).
     """
@@ -114,7 +114,7 @@ def _protocols(node: Node, location: str) -> list[str]:
 def _is_media_type_map(node: Node) -> bool:
     """A `body:` whose keys are media types rather than facets.
 
-    The test is the slash, as in the reference implementation: every RFC 6838
+    The test is the slash, as in go-raml: every RFC 6838
     media type has one and no RAML facet name does.
     """
     if node.kind is not NodeKind.MAPPING:

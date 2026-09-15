@@ -177,7 +177,7 @@ _RFC3339: Final = re.compile(
 
 #: RFC 2616 section 3.3.1's preferred form, which is what `format: rfc2616`
 #: means. The two obsolete forms the RFC also permits are not accepted, matching
-#: the reference implementation.
+#: go-raml.
 _RFC2616: Final = re.compile(
     r'\A(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), '
     r'(\d{2}) (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) '

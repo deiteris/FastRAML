@@ -146,8 +146,8 @@ def scalar_str(node: Node, location: str) -> str:
     """A scalar node as text. An empty (null) node reads as `''`.
 
     The literal text is used whatever the resolved tag: `version: 1` is the
-    string `'1'`, which is what the reference implementation's YAML decoder does
-    for a string destination.
+    string `'1'`, which is what go-raml's YAML decoder does for a string
+    destination.
     """
     if node.kind is not NodeKind.SCALAR:
         raise node_error('expected a scalar value', location, node)

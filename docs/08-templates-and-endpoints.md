@@ -470,15 +470,15 @@ go-raml uses `go-pluralize`, a port of Blake Embrey's JavaScript `pluralize`.
 fastRAML uses `pluralizer`, a port of the *same* library, so the two agree by
 construction. An earlier draft of this section instead paired `inflect` with a
 three-word override table, chosen because three TCK fixtures named those three
-words. Measured against go-raml's own `applyTemplateAction` over go-pluralize's
+words. Measured by running go-raml's own transform over go-pluralize's
 whole irregular and uncountable tables, that pairing was wrong on **298 of 758
 answers** — `index→indexes`, `cactus→cactuses`, `radii→radii`,
 `curriculum→curriculums` — while passing every test that named only the three
 words it had been built around.
 
 Four irregular rules are registered on top. Three are the ones go-raml adds:
-`medium↔media`, `memorandum↔memoranda`, `vortex↔vortices`. The
-fourth, `sms↔sms`, is in go-pluralize's own irregular table and absent from the
+`medium↔media`, `memorandum↔memoranda`, `vortex↔vortices`. The fourth,
+`sms↔sms`, is in go-pluralize's own irregular table and absent from the
 Python port's, which tracks an earlier release of the shared JavaScript source.
 With those four, the two implementations agree on every one of the 618 answers
 in `tests/unit/data/pluralize_parity.tsv` — a table generated from go-raml

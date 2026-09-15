@@ -61,7 +61,7 @@ class TestInvariantI5:
         assert not parse_from_path(root / 'lib.raml').unresolved_shapes
 
 
-#: go-raml's `rdt/examples.txt`, verbatim, paired with the shape each builds.
+#: go-raml's expression corpus, verbatim, paired with the shape each builds.
 #: `test_expressions.py` pins the same thirteen lines at AST level; this is the
 #: other half, and the corpus is kept inline there and here so neither test
 #: needs the sibling checkout.
@@ -95,7 +95,7 @@ CORPUS_LIBRARY = {'ext.raml': LIB + 'types:\n  Ref: file\n'}
 
 
 class TestExamplesCorpus:
-    """docs/15 Phase 3: every line of `rdt/examples.txt` builds its shape."""
+    """docs/15 Phase 3: every line of the expression corpus builds its shape."""
 
     @pytest.mark.parametrize(('expression', 'expected'), EXAMPLES_CORPUS, ids=[line for line, _ in EXAMPLES_CORPUS])
     def test_a_corpus_line_builds_its_shape(self, workspace, expression, expected):

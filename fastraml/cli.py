@@ -12,7 +12,7 @@ fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json] [-o FILE]
 fastraml skills (list | get NAME...) [--full] [--json]
 ```
 
-Mirrors the reference implementation's `raml` tool closely enough that the two
+Mirrors go-raml's `raml` tool closely enough that the two
 can be diffed fixture by fixture (docs/14-testing.md section 1.3), which is why
 `--json` emits the same trace-chain shape `RamlError.to_dict()` produces and why
 `validate` keeps going after a failing file rather than stopping at it.
@@ -367,7 +367,7 @@ def _emit_document(args: argparse.Namespace, text: str) -> int:
 
 
 def _openapi(args: argparse.Namespace) -> int:
-    """Write the effective API in the reference converter's OAS 3.0 form."""
+    """Write the effective API as an OpenAPI 3.0 document."""
     raml = _parsed(args)
     if raml is None:
         return EXIT_INVALID

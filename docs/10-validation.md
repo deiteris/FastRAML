@@ -93,8 +93,8 @@ Walk the inheritance chain collecting `facets:` declarations — **starting at
 `inherits[0]`, not at the shape itself**. A `facets:` block declares what
 *subtypes* must supply, so the declaring type neither has to satisfy its own
 required facets nor may supply a value for one; supplying one is `unknown
-facet`. Both halves were measured against go-raml, whose
-`validateShapeFacets` walks from `base.Inherits[0]`.
+facet`. Both halves were measured against go-raml, which walks the chain from
+the first parent for the same reason.
 
 Then:
 

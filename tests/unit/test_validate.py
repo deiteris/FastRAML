@@ -651,7 +651,7 @@ class TestCustomFacets:
 
     def test_the_declaring_type_need_not_satisfy_its_own_facet(self, workspace):
         # A `facets:` block declares what *subtypes* must supply. Measured
-        # against go-raml, whose `validateShapeFacets` walks from Inherits[0].
+        # against go-raml, which walks the chain from the first parent too.
         assert parse_validating(workspace, '  P:\n    type: string\n    facets:\n      extra: integer\n') is None
 
     def test_the_declaring_type_may_not_supply_its_own_facet(self, workspace):

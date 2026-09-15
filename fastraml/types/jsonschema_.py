@@ -373,7 +373,7 @@ class SchemaRegistry:
 
 
 def _specification_of(contents: Any) -> Any:
-    """The draft a schema declares, or 7 — what the reference implementation assumes."""
+    """The draft a schema declares, or 7 — what go-raml assumes."""
     from referencing.jsonschema import DRAFT7, specification_with  # noqa: PLC0415 - deferred for startup cost
 
     declared = contents.get('$schema') if isinstance(contents, dict) else None

@@ -62,8 +62,8 @@ except ImportError:  # pragma: no cover
 #: the spec's own `lunchtime: 12:30:00` would become a number.
 #:
 #: The patterns are `ruamel.yaml`'s YAML 1.2 resolvers, which track the spec and
-#: agree with `gopkg.in/yaml.v3` — the library the reference implementation uses,
-#: and therefore what the TCK is scored against. `tests/conformance` composes the
+#: agree with `gopkg.in/yaml.v3` — the library go-raml uses, and therefore what
+#: the TCK is scored against. `tests/conformance` composes the
 #: whole corpus through both and fails on any disagreement.
 #:
 #: `null`, `str`, `seq`, `map` and `timestamp` are left as PyYAML has them: the

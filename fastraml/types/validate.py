@@ -49,9 +49,8 @@ def check_declared_discriminators(raml: Raml) -> None:
     Run between P7 and P9, not with the rest of P10, and that ordering is the
     whole difficulty. `discriminator` is inherited: a body written `type: Person`
     against a discriminated `Person` carries one after unwrap, and it is inline —
-    so the flattened model reports every correct document as broken. The
-    reference implementation carries this as a `FIXME` for exactly that reason
-    and enforces nothing.
+    so the flattened model reports every correct document as broken. go-raml
+    carries this as a `FIXME` for exactly that reason and enforces nothing.
 
     On the declared model the question is decidable: a discriminator is present
     only where it was written. "Inline" is then everything that is not a named
@@ -366,7 +365,7 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
     own required facets nor may supply a value for one — go-raml calls that
     `unknown facet`, and both halves are measured behaviour, not inference.
 
-    **Known limitation, inherited from the reference implementation:** the walk
+    **Known limitation, shared with go-raml:** the walk
     follows `inherits[0]` only, so a facet declared on the second parent of a
     multiply-inheriting type is not seen. Fixing it means walking all parents
     with a visited set; it is tracked as a v1.1 item in doc 10 section 4, and a
@@ -467,7 +466,7 @@ def _validate_domain_extensions(raml: Raml, cache: dict[int, BaseShape], acc: Ac
 
 
 def _check_target(extension: DomainExtension, declared: BaseShape, acc: Accumulator) -> None:
-    """`allowedTargets`, which the reference implementation parses and ignores.
+    """`allowedTargets`, which go-raml parses and ignores.
 
     `None` and `[]` mean different things and the difference is load-bearing:
     absent allows every target, empty allows none (docs/09 section B5).

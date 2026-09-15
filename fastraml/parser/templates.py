@@ -96,7 +96,7 @@ _BEFORE_CAP_HYPHEN: Final = re.compile(r'(?<!^)(?<!-)(?=[A-Z])')
 
 # `!singularize` and `!pluralize` are the only two actions that need a
 # dictionary rather than a rule, and English gives no way to derive one. The
-# reference implementation uses `go-pluralize`, a port of Blake Embrey's
+# go-raml uses `go-pluralize`, a port of Blake Embrey's
 # JavaScript `pluralize`; `pluralizer` is a port of that same library, so the
 # two agree by construction. Pairing a *different* pluraliser with a hand-kept
 # override table does not and cannot: doing so diverged on 298 of 758 answers

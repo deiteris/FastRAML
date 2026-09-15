@@ -737,7 +737,7 @@ function ExampleBody({ example }: { example: Example }) {
  *
  * A subtype is told from the declaring type by looking up: after unwrap every
  * subtype carries an inherited `discriminator` and looks like a declaration
- * (the note in CLAUDE.md, and go-raml's `FIXME` for the same reason), so the
+ * (the note in CLAUDE.md, and go-raml carries a `FIXME` for the same reason), so the
  * shape alone cannot say which it is.
  */
 function Discriminator({ shape, index }: { shape: Shape; index: Index }) {

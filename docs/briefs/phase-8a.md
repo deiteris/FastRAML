@@ -182,9 +182,9 @@ facet key became a custom facet *value* during decoding (doc 05 § 4).
 **Start the walk at `inherits[0]`, not at the shape.** A `facets:` block
 declares what *subtypes* must supply: the declaring type neither has to satisfy
 its own required facets nor may supply a value for one, and supplying one is
-`unknown facet`. Both halves are measured — go-raml’s
-`validateShapeFacets` walks from `base.Inherits[0]`. Getting this wrong regresses
-fifteen valid fixtures and every one of them looks like a different bug.
+`unknown facet`. Both halves are measured: go-raml walks the chain from the
+first parent too. Getting this wrong regresses fifteen valid fixtures, and
+every one of them looks like a different bug.
 
 **The chain walk follows `inherits[0]` only.** That is an inherited limitation,
 it is documented in doc 10 § 4 as a v1.1 item, and it must be **pinned by a

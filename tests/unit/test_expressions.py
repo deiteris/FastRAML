@@ -37,7 +37,7 @@ def parse_expression(text: str, cache: ExprCache | None = None):
 
 
 # -- The reference corpus -----------------------------------------------------
-# Adopted verbatim from go-raml's rdt/examples.txt (docs/06 section 1). Kept
+# Adopted verbatim from go-raml's expression corpus (docs/06 section 1). Kept
 # inline rather than read from the sibling checkout so this test runs without
 # it.
 

@@ -533,7 +533,7 @@ class TestQueryCatalogue:
             assert query.question in out
 
     def test_show_prints_a_runnable_query(self, capsys):
-        assert main(['query', '--show', 'unused-types']) == EXIT_OK
+        assert main(['query', '--show', 'endpoint-tree']) == EXIT_OK
         out = capsys.readouterr().out
         assert 'PREFIX raml:' in out
         assert 'SELECT' in out

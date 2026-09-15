@@ -20,7 +20,7 @@ import pathlib
 #: allowed to see both sides, which is what a command line is.
 _MODEL = ('fastraml/parser', 'fastraml/types', 'fastraml/nodes.py', 'fastraml/registry.py', 'fastraml/datanode.py')
 
-_VIEWS = ('walk', 'graph', 'tree', 'render', 'queries', 'diff', 'bindings', 'jsonschema', 'openapi')
+_VIEWS = ('walk', 'graph', 'tree', 'render', 'queries', 'diff', 'bindings', 'jsonschema', 'openapi', 'lint')
 
 
 def _imports(path: pathlib.Path) -> list[tuple[int, str]]:
@@ -80,12 +80,17 @@ class TestThePackageCostsNothingToImport:
         # Every view addresses through one walk (docs/16 § 4). A view importing
         # another view would mean a second traversal or a second vocabulary.
         crossings = {
-            (path.stem, module.rsplit('.', 1)[1])
+            (path, module)
             for path in _sources('fastraml/views')
             for _, module in _imports(path)
             if module.startswith('fastraml.views.')
         }
-        unexpected = {(source, target) for source, target in crossings if target not in {'walk', 'graph'}}
+        unexpected = {
+            (path.as_posix(), module)
+            for path, module in crossings
+            if module.rsplit('.', 1)[1] not in {'walk', 'graph'}
+            and not ('lint' in path.parts and module.startswith('fastraml.views.lint'))
+        }
         assert not unexpected, unexpected
 
 
@@ -131,5 +136,7 @@ class TestTheStubMatchesTheExports:
 
 
 def test_the_view_modules_are_the_ones_the_package_documents():
-    on_disk = {path.stem for path in pathlib.Path('fastraml/views').glob('*.py')} - {'__init__'}
+    root = pathlib.Path('fastraml/views')
+    on_disk = {path.stem for path in root.glob('*.py')} - {'__init__'}
+    on_disk.update(path.name for path in root.iterdir() if path.is_dir() and not path.name.startswith('__'))
     assert on_disk == set(_VIEWS)

@@ -5,6 +5,7 @@ fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE...
 fastraml info [-w ROOT] [-r] FILE
 fastraml graph [--format nt|turtle|dot|json] [-o FILE] FILE
 fastraml openapi [--format yaml|json] [-o FILE] FILE
+fastraml lint [--config FILE] [--format text|json|summary] FILE...
 fastraml list FILE [PATTERN]
 fastraml refs FILE NAME
 fastraml deps FILE NAME
@@ -140,6 +141,8 @@ def _parser() -> argparse.ArgumentParser:
     _add_output(query)
     _add_common(query)
 
+    _add_lint(commands)
+
     _add_skills(commands)
 
     _COMMANDS.update(
@@ -154,13 +157,41 @@ def _parser() -> argparse.ArgumentParser:
         list=_list,
         diff=_diff,
         query=_query,
+        lint=_lint,
         skills=_skills,
     )
     return parser
 
 
+def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    lint = commands.add_parser('lint', help='check the effective document against lint rules (doc 18)')
+    lint.add_argument('files', metavar='FILE', nargs='*')
+    lint.add_argument('--config', metavar='FILE', help='lint configuration in YAML')
+    lint.add_argument(
+        '--severity',
+        choices=('error', 'warning', 'info'),
+        default='info',
+        help='show this severity and worse (default: info)',
+    )
+    lint.add_argument(
+        '--format',
+        choices=('text', 'json', 'summary'),
+        default='text',
+        help='finding output format (default: text)',
+    )
+    lint.add_argument('--list-rules', action='store_true', help='list available rules and exit')
+    lint.add_argument('--explain', metavar='RULE', help='explain one rule and exit')
+    lint.add_argument(
+        '--metrics',
+        action='store_true',
+        help='report what each rule and provider cost, on stderr (doc 18 section 7.1)',
+    )
+    _add_output(lint)
+    _add_common(lint)
+
+
 def _add_output(parser: argparse.ArgumentParser) -> None:
-    """`-o` for a verb whose output is a document rather than a report.
+    """`-o` for a verb whose output is a document, plus lint's CI report.
 
     On every verb that emits one, not just `openapi`. The reason the flag exists
     is that a shell redirect writes CRLF on Windows, which silently makes
@@ -310,6 +341,87 @@ def _info(args: argparse.Namespace) -> int:
         return EXIT_INVALID
     _report(raml, (time.perf_counter() - started) * 1e3, path=path)
     return EXIT_OK
+
+
+# -- lint ---------------------------------------------------------------------
+
+
+def _lint(args: argparse.Namespace) -> int:
+    from pathlib import Path  # noqa: PLC0415 - config files only
+
+    from yaml import YAMLError  # noqa: PLC0415 - config parsing only
+
+    from fastraml.errors import RamlError  # noqa: PLC0415
+    from fastraml.parser.entry import parse_from_path  # noqa: PLC0415
+    from fastraml.views.lint import (  # noqa: PLC0415
+        Linter,
+        Severity,
+        at_least,
+        builtin_registry,
+        discover_plugins,
+        parse_config,
+        parse_severity,
+        render_findings,
+        render_metrics,
+    )
+
+    registry = builtin_registry()
+    try:
+        plugins = discover_plugins(registry)
+        config_text = Path(args.config).read_text(encoding='utf-8') if args.config else ''
+        config = parse_config(config_text, registry, plugins=plugins)
+    except (OSError, TypeError, ValueError, YAMLError) as err:
+        print(f'lint config: {err}', file=sys.stderr)
+        return EXIT_INVALID
+
+    if args.list_rules:
+        rows = [
+            f'{rule.meta.id:<34} {rule.meta.category:<9} {rule.meta.severity:<7} {registry.source_of(rule.meta.id)}'
+            for rule in registry.all()
+        ]
+        return _emit_document(args, '\n'.join(rows) + ('\n' if rows else ''))
+    if args.explain:
+        rule = registry.get(args.explain)
+        if rule is None:
+            print(f'{args.explain}: no such lint rule', file=sys.stderr)
+            return EXIT_INVALID
+        meta = rule.meta
+        text = f'{meta.id} [{meta.category}, {meta.severity}]\n\n{meta.summary}\n\n{meta.rationale}\n'
+        if meta.good:
+            text += f'\nGood:\n\n{meta.good}'
+        if meta.bad:
+            text += f'\nBad:\n\n{meta.bad}'
+        return _emit_document(args, text if text.endswith('\n') else text + '\n')
+    if not args.files:
+        print('lint: at least one FILE is required unless --list-rules or --explain is used', file=sys.stderr)
+        return EXIT_INVALID
+
+    linter = Linter(registry, config)
+    findings = []
+    failed = False
+    for path in args.files:
+        try:
+            raml = parse_from_path(path, _options(args, validate=False, retain_source=True))
+        except RamlError as err:
+            _invalid(path, err)
+            failed = True
+            continue
+        if not args.metrics:
+            findings.extend(linter.run(raml))
+            continue
+        # One block per file rather than a total: "which file is slow" is the
+        # question a directory run raises, and a sum cannot answer it. The
+        # verbosity is opt-in, which is what `--metrics` is.
+        run = linter.measure(raml)
+        findings.extend(run.findings)
+        # stderr, so stdout stays exactly the findings report and a `--format
+        # json` run remains parseable when piped (docs/13 section 8).
+        print(f'== {path}', file=sys.stderr)
+        print(render_metrics(run.metrics, args.format), end='', file=sys.stderr)
+    shown = [finding for finding in findings if finding.severity in at_least(parse_severity(args.severity))]
+    failed = failed or any(finding.severity is Severity.ERROR for finding in findings)
+    emitted = _emit_document(args, render_findings(shown, args.format))
+    return EXIT_INVALID if failed or emitted == EXIT_INVALID else EXIT_OK
 
 
 def _report(raml: Raml, elapsed: float, *, path: str | None = None) -> None:
@@ -1136,7 +1248,7 @@ def _guide_references(guide: _Guide) -> list[tuple[str, str]]:
 # -- options ------------------------------------------------------------------
 
 
-def _options(args: argparse.Namespace, *, validate: bool = True) -> ParseOptions:
+def _options(args: argparse.Namespace, *, validate: bool = True, retain_source: bool = False) -> ParseOptions:
     """`unwrap` is always on; `validate` is on wherever the job is to find faults."""
     from fastraml.loaders import FileLoader  # noqa: PLC0415 - parsing commands only
     from fastraml.parser.entry import ParseOptions  # noqa: PLC0415
@@ -1144,6 +1256,7 @@ def _options(args: argparse.Namespace, *, validate: bool = True) -> ParseOptions
     return ParseOptions(
         unwrap=True,
         validate=validate,
+        retain_source=retain_source,
         workspace_root=args.workspace_root,
         file_loader=FileLoader() if args.no_workspace_guard else None,
         http_client=_http_client() if args.remote else None,

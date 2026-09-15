@@ -164,7 +164,7 @@ def rows(store, name: str) -> list:
 
 class TestTheCatalogueIsWellFormed:
     def test_it_is_not_empty(self):
-        assert len(QUERIES) >= 15, 'docs/16 § 6 is the decisive test; it needs enough queries to decide anything'
+        assert len(QUERIES) == 9, 'judgements belong in lint; the catalogue keeps reports only (docs/18 § 4.1)'
 
     def test_names_are_the_keys(self):
         assert all(name == query.name for name, query in QUERIES.items())
@@ -220,25 +220,6 @@ class TestTheAnswersAreRight:
     def column(store, name: str, variable: str) -> list[str]:
         return [row[variable].value for row in rows(store, name) if row[variable] is not None]
 
-    def test_unused_types_finds_the_orphans_and_nothing_else(self, store):
-        found = set(self.column(store, 'unused-types', 'name'))
-        assert found == {'Admin', 'Orphan', 'neverApplied'}
-        assert 'User' not in found, 'User is reached from a response body'
-
-    def test_multiple_inheritance_reports_the_declaration_not_every_use(self, store):
-        """The un-restricted form reports one row per *use* of the problem and
-        labels most of them `application/json`, which names nothing an author
-        can go and fix.
-        """
-        assert self.column(store, 'multiple-inheritance', 'name') == ['Admin']
-
-    def test_unsecured_operations_respects_secured_by_null(self, store):
-        """`securedBy: [null]` removes inherited security (docs/09 § A3). The
-        API root secures everything, so `/health` is the only answer — and a
-        query that missed the removal would return nothing at all.
-        """
-        assert self.column(store, 'unsecured-operations', 'path') == ['/health']
-
     def test_scheme_usage_carries_the_narrowed_scopes(self, store):
         assert set(self.column(store, 'scheme-usage', 'scopes')) == {'read'}
 
@@ -254,13 +235,6 @@ class TestTheAnswersAreRight:
     def test_recursive_types_names_the_head(self, store):
         assert self.column(store, 'recursive-types', 'name') == ['Node']
 
-    def test_trait_usage_reports_the_dead_trait_as_zero_not_as_absent(self, store):
-        """The `OPTIONAL` is what does this. An inner join would omit the row,
-        and an unused trait is the entire reason to run the query.
-        """
-        uses = {row['name'].value: int(row['uses'].value) for row in rows(store, 'trait-usage')}
-        assert uses == {'paged': 1, 'neverUsed': 0}
-
     def test_error_response_types_finds_the_bodiless_one(self, store):
         """A 500 declaring `text/plain` with no type still has to appear, or the
         query answers "every error response is typed" by omitting the ones that
@@ -270,9 +244,6 @@ class TestTheAnswersAreRight:
         assert set(codes) == {'404', '500'}
         typed = [row for row in rows(store, 'error-response-types') if row['type'] is not None]
         assert [row['type'].value for row in typed] == ['Error']
-
-    def test_get_with_request_body_finds_only_the_deliberate_one(self, store):
-        assert self.column(store, 'get-with-request-body', 'path') == ['/search']
 
     def test_required_query_parameters_ignores_the_optional_one(self, store):
         """`offset?` comes from a trait and is optional; `expand` is required."""

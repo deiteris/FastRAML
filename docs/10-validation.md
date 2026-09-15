@@ -256,8 +256,9 @@ class JsonShape:
 
 `_compiled` is a `CompiledSchema` — the validator, the schema document and the
 `referencing` resolver rooted at it. The validator alone is enough for
-`validate()`, but § 6.3 walks the document and follows its `$ref`s, and the
-library keeps both of those behind private attributes.
+`validate()`, but § 6.3 walks the document and follows its `$ref`s. The compiled
+container stays private; `JsonShape.contents` exposes its already-decoded
+document read-only to syntax-aware views so they never parse `raw` again.
 
 ### 6.1 Compilation
 

@@ -87,6 +87,7 @@ fastraml/
     render.py             one type or endpoint as text, for reading (doc 16 section 9)
     queries.py            the named SPARQL analysis catalogue (doc 16 section 6)
     diff.py               what changed between two versions, and what it breaks (doc 16 section 10)
+    lint/                 generic rule engine, built-in policy and plugins (doc 18)
 
   errors.py               Diagnostic, StackTrace, Accumulator, ErrorKind
   positions.py            Position (1-based, with end), position helpers

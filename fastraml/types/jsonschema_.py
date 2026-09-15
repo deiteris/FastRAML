@@ -517,6 +517,16 @@ class JsonShape(ComplexKind):
         return self._compiled.uri
 
     @property
+    def contents(self) -> Any | None:
+        """The parsed schema selected by this declaration, without copying.
+
+        This is the same object the validator and RAML-shape projection read.
+        Unlike `as_schema()`, it does not bundle or rewrite external references.
+        Syntax-aware views may inspect it but must not mutate it.
+        """
+        return self._compiled.contents if self._compiled is not None else None
+
+    @property
     def document_uri(self) -> str | None:
         """The document this schema compiled from; `None` if it was inline.
 

@@ -612,34 +612,27 @@ produces almost-valid N-Triples is the obvious failure mode.
 
 ## 6. The catalogue, and whether SPARQL earned its keep
 
-`fastraml/views/queries.py`. Seventeen named questions, run with `fastraml query -n NAME`,
+`fastraml/views/queries.py`. Nine named reports, run with `fastraml query -n NAME`,
 listed with `--list` and printed with `--show`. Both of the latter are text
 operations: they need no store and no document, so a reader without
 `pyoxigraph` can still see what the tool would ask.
 
 | Query | Answers |
 |---|---|
-| `unused-types` | declared types nothing references |
-| `trait-usage` | every trait and how many operations apply it; **0 means dead** |
 | `annotation-usage` | every annotation type and how many sites apply it |
 | `type-fan-in` | types ranked by how many operations can carry them |
-| `multiple-inheritance` | types with more than one direct supertype |
 | `recursive-types` | types that close a cycle |
-| `undocumented-operations` | operations with no description |
-| `unsecured-operations` | operations with no scheme, after inheritance and `[null]` |
 | `scheme-usage` | each scheme, what it guards, and any narrowed scopes |
 | `error-response-types` | every 4xx/5xx and the type it returns |
-| `untyped-payloads` | bodies whose type is `any` |
 | `media-types` | which media types are used and how often |
-| `get-with-request-body` | GETs that declare a payload |
 | `required-query-parameters` | required query parameters |
-| `unbounded-strings` | string properties with no `maxLength`, `pattern` or `enum` |
 | `enums` | every closed value set |
 | `endpoint-tree` | every resource and its methods |
 
-All seventeen are **whole-document** questions that take no arguments. That is
+All nine are **whole-document** reports that take no arguments. That is
 the division: parameterised navigation is `refs` and `deps`, which return a
-route (§ 5).
+route (§ 5), while questions that attach a judgement and severity are lint rules
+([18](18-linting.md) § 4.1).
 
 ### 6.1 The verdict
 
@@ -649,14 +642,15 @@ become materially simpler than the equivalent code. Having written them:
 **Yes, for whole-document analysis. No, for navigation.** The split is clean and
 falls exactly where § 5 predicted.
 
-Where SPARQL clearly wins:
+Where SPARQL clearly won during that assessment:
 
-- **Negation.** `unused-types` is `FILTER NOT EXISTS { ?s ?p ?t . FILTER(?p !=
+- **Negation.** The former `unused-types` query is `FILTER NOT EXISTS { ?s ?p ?t . FILTER(?p !=
   raml:declares) }` — *any* incoming edge other than the declaration counts as a
   use, so the query needs no list of the ways a type can be referenced and
-  cannot fall out of date when an edge is added. That property is not available
-  to hand-written code without rebuilding the same generalisation.
-- **Outer joins.** `trait-usage` reports an unused trait as `0` rather than
+  cannot fall out of date when an edge is added. The graph's `into()` primitive
+  gives code the same generalisation; [18](18-linting.md) § 4 records why the
+  lint rule uses it instead of retaining a duplicate query.
+- **Outer joins.** The former `trait-usage` query reports an unused trait as `0` rather than
   omitting it, and the unused trait is the whole reason to run the query. One
   `OPTIONAL` does it; an inner join silently answers the opposite question.
 - **Transitive closure combined with aggregation.** `type-fan-in` is a `*` path
@@ -683,6 +677,11 @@ Each wrong version ran, returned plausible output, and would have been copied.
 That is the argument for a tested catalogue over a section of example queries.
 
 ### 6.3 Cost at scale
+
+These measurements predate [18](18-linting.md)'s extraction of judgement-shaped
+queries and cover the original seventeen-entry catalogue. They remain the
+evidence for not making SPARQL the lint engine; they are not a list of commands
+the current catalogue still exposes.
 
 Read these figures as orders of magnitude, not as measurements of a real API.
 Neither benchmark corpus exercises the whole catalogue: `bench_large` declares
@@ -1192,6 +1191,12 @@ side of the wire consumes a value — unlike "every operation must be
 documented", which is genuinely org-specific. The structure keeps both true:
 the change list is the contract, `--json` carries it whole, and the grading is
 one consumer of it.
+
+[18](18-linting.md) amends the line by making its provenance test explicit:
+policy derived from RAML semantics may ship in a view, policy derived from a
+published security standard may ship off by default, and organisation-specific
+taste remains a plugin concern. The operation-description example remains in
+that last group.
 
 ### 10.4 Edges are diffed, not only nodes
 

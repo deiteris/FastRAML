@@ -57,33 +57,6 @@ def _q(name: str, question: str, sparql: str) -> Query:
 
 
 _CATALOGUE: Final = [
-    # -- dead weight ----------------------------------------------------------
-    _q(
-        'unused-types',
-        'Declared types that nothing references. Dead weight, or a missing wiring.',
-        """
-SELECT ?unit ?name WHERE {
-  ?u raml:declares ?t ; raml:name ?unit .
-  ?t a raml:Type ; raml:name ?name .
-  # Any incoming edge other than the declaration itself counts as a use, so
-  # this needs no list of the ways a type can be referenced.
-  FILTER NOT EXISTS { ?s ?p ?t . FILTER(?p != raml:declares) }
-}
-ORDER BY ?unit ?name
-""",
-    ),
-    _q(
-        'trait-usage',
-        'Every trait and how many operations apply it. Zero means it is dead.',
-        """
-SELECT ?name (COUNT(?op) AS ?uses) WHERE {
-  ?trait a raml:Trait ; raml:name ?name .
-  OPTIONAL { ?op raml:appliesTrait ?trait }
-}
-GROUP BY ?name
-ORDER BY ?uses ?name
-""",
-    ),
     _q(
         'annotation-usage',
         'Every annotation type and how many sites apply it.',
@@ -112,23 +85,6 @@ ORDER BY DESC(?operations) ?unit ?name
 """,
     ),
     _q(
-        'multiple-inheritance',
-        'Types with more than one direct supertype, where the merge rules are hardest to predict.',
-        """
-SELECT ?unit ?name (COUNT(?parent) AS ?parents) WHERE {
-  # Declared types only. Every response body that resolves to a multi-parent
-  # type has the same parents, so the un-restricted form reports one row per
-  # *use* of the problem instead of one row per problem — and labels most of
-  # them `application/json`, which names nothing an author can go and fix.
-  ?u raml:declares ?t ; raml:name ?unit .
-  ?t a raml:Type ; raml:name ?name ; raml:inherits ?parent .
-}
-GROUP BY ?t ?unit ?name
-HAVING (COUNT(?parent) > 1)
-ORDER BY DESC(?parents) ?unit ?name
-""",
-    ),
-    _q(
         'recursive-types',
         'Types that close a cycle. Every consumer generating code from these needs to know.',
         """
@@ -140,30 +96,6 @@ ORDER BY ?name
 """,
     ),
     # -- documentation and security ------------------------------------------
-    _q(
-        'undocumented-operations',
-        'Operations with no description. The commonest governance rule there is.',
-        """
-SELECT ?path ?method WHERE {
-  ?ep a raml:EndPoint ; raml:path ?path ; raml:supportedOperation ?op .
-  ?op raml:method ?method .
-  FILTER NOT EXISTS { ?op raml:description ?any }
-}
-ORDER BY ?path ?method
-""",
-    ),
-    _q(
-        'unsecured-operations',
-        'Operations reachable with no security scheme, after inheritance and after securedBy: [null].',
-        """
-SELECT ?path ?method WHERE {
-  ?ep a raml:EndPoint ; raml:path ?path ; raml:supportedOperation ?op .
-  ?op raml:method ?method .
-  FILTER NOT EXISTS { ?op raml:securedBy ?scheme }
-}
-ORDER BY ?path ?method
-""",
-    ),
     _q(
         'scheme-usage',
         'Every security scheme and the operations it guards, with any narrowed scopes.',
@@ -196,21 +128,6 @@ ORDER BY ?path ?method ?code
 """,
     ),
     _q(
-        'untyped-payloads',
-        'Payloads whose type is `any` — a body that constrains nothing.',
-        """
-SELECT ?path ?method ?media WHERE {
-  ?ep a raml:EndPoint ; raml:path ?path ; raml:supportedOperation ?op .
-  ?op raml:method ?method .
-  ?op (raml:request|raml:returns)/raml:payload ?payload .
-  ?payload raml:range ?shape .
-  ?shape a raml:AnyShape .
-  OPTIONAL { ?payload raml:mediaType ?media }
-}
-ORDER BY ?path ?method
-""",
-    ),
-    _q(
         'media-types',
         'Which media types the document actually uses, and how often. Inconsistency shows up as a long tail.',
         """
@@ -219,18 +136,6 @@ SELECT ?media (COUNT(?payload) AS ?payloads) WHERE {
 }
 GROUP BY ?media
 ORDER BY DESC(?payloads) ?media
-""",
-    ),
-    _q(
-        'get-with-request-body',
-        'GET operations that declare a request payload. Spec-legal, and almost always a mistake.',
-        """
-SELECT ?path ?media WHERE {
-  ?ep a raml:EndPoint ; raml:path ?path ; raml:supportedOperation ?op .
-  ?op raml:method "get" ; raml:request/raml:payload ?payload .
-  OPTIONAL { ?payload raml:mediaType ?media }
-}
-ORDER BY ?path
 """,
     ),
     # -- constraints ----------------------------------------------------------
@@ -244,25 +149,6 @@ SELECT ?path ?method ?name WHERE {
   ?p raml:binding "query" ; raml:required true ; raml:name ?name .
 }
 ORDER BY ?path ?method ?name
-""",
-    ),
-    _q(
-        'unbounded-strings',
-        'String properties with no maxLength, pattern or enum. The usual input-validation gap.',
-        """
-SELECT ?unit ?owner ?property WHERE {
-  # Declared types only, as `multiple-inheritance` explains: fixing the
-  # declaration fixes every body that inherits it, so the declaration is the
-  # actionable row.
-  ?u raml:declares ?t ; raml:name ?unit .
-  ?t a raml:Type ; raml:name ?owner ; raml:property ?p .
-  ?p raml:name ?property ; raml:range ?s .
-  ?s a raml:StringShape .
-  FILTER NOT EXISTS { ?s raml:maxLength ?max }
-  FILTER NOT EXISTS { ?s raml:pattern ?pattern }
-  FILTER NOT EXISTS { ?s raml:enum ?enum }
-}
-ORDER BY ?unit ?owner ?property
 """,
     ),
     _q(

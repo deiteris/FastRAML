@@ -352,12 +352,14 @@ fastraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made
 fastraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
 fastraml diff OLD NEW [--breaking-only] [--severity S] [--json]
 fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json] [-o FILE]
+fastraml lint [--config FILE] [--severity S] [--format text|json|summary]
+              [--list-rules] [--explain RULE] [--metrics] [-o FILE] FILE [FILE ...]
 fastraml skills (list | get NAME... | install [NAME...]) [--full] [--json]
                 [--user | --dir PATH] [--force]          # the served agent guides
 ```
 
 `validate` and `info` parse with `unwrap=True, validate=True`: their job is to
-find faults. The nine view verbs parse with `validate=False` — a document with
+find faults. The ten view verbs parse with `validate=False` — a document with
 a bad example still has a graph worth reading, and refusing to draw one would
 make the tool useless exactly where navigating is most wanted.
 
@@ -374,7 +376,8 @@ make the tool useless exactly where navigating is most wanted.
   widening would reach a filesystem or drive root: that hands over every file
   the process can reach, which is the sandbox the refusal exists to keep.
 - `-o FILE` writes to a file rather than stdout, on every verb whose output is a
-  *document* — `graph`, `openapi`, `tree`, `query`. The file is opened UTF-8 with
+  *document* — `graph`, `openapi`, `tree`, `query` — and on `lint`, whose report
+  is commonly committed as CI output. The file is opened UTF-8 with
   LF newlines whatever the platform, which is the whole reason the flag exists
   rather than a shell redirect: on Windows a redirect writes CRLF, and committed
   output then differs from what CI regenerates. `viewer/public/api.json` is
@@ -561,8 +564,8 @@ result forms work: SELECT as TSV or `--json` JSON Lines, ASK as `true`/`false`,
 CONSTRUCT and DESCRIBE as N-Triples.
 
 ```
-fastraml query --list                  # the catalogue: 17 named questions
-fastraml query --show unused-types     # print one, to read or to edit
+fastraml query --list                  # the catalogue: 9 named reports
+fastraml query --show endpoint-tree    # print one, to read or to edit
 fastraml query api.raml -n type-fan-in # run one
 fastraml query api.raml -q '<sparql>'  # or -Q file.rq
 ```

@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from fastraml.errors import RamlError
     from fastraml.parser.entry import ParseOptions
     from fastraml.registry import Raml
-    from fastraml.views.diff import Change, Rule
+    from fastraml.views.diff import Change
     from fastraml.views.graph import Graph
 
 __all__ = ['main']
@@ -123,9 +123,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     changed.add_argument(
         '--severity',
-        action='append',
         choices=('breaking', 'risky', 'safe', 'cosmetic'),
-        help='report only these severities; repeatable',
+        default='cosmetic',
+        help='show this severity and worse (default: cosmetic, meaning everything)',
     )
     _add_common(changed)
 
@@ -678,7 +678,7 @@ def _diff(args: argparse.Namespace) -> int:
     the whole change list with its grading, for a consumer that disagrees with
     the built-in policy and wants only the facts (docs/16 § 10).
     """
-    from fastraml.views.diff import RULES, classify, diff  # noqa: PLC0415 - graph commands only
+    from fastraml.views.diff import RULES, at_least, classify, diff, record  # noqa: PLC0415 - graph commands only
 
     graphs = []
     for path in args.files:
@@ -687,16 +687,19 @@ def _diff(args: argparse.Namespace) -> int:
             return EXIT_INVALID
         graphs.append(built[0])
 
-    wanted = set(args.severity or ()) | ({'breaking'} if args.breaking_only else set())
+    # A threshold, as `lint --severity` is: `--breaking-only` is the same thing
+    # said shorter, so it narrows to the top of the scale rather than adding a
+    # member to a set (docs/13 section 8).
+    wanted = at_least('breaking' if args.breaking_only else args.severity)
     graded = [(classify(change), change) for change in diff(graphs[0], graphs[1])]
     breaking = sum(rule.severity == 'breaking' for rule, _ in graded)
-    shown = [(rule, change) for rule, change in graded if not wanted or rule.severity in wanted]
+    shown = [(rule, change) for rule, change in graded if rule.severity in wanted]
 
     if args.json:
         import json  # noqa: PLC0415 - only JSON output needs the encoder
 
         for rule, change in shown:
-            print(json.dumps(_record(rule, change)))
+            print(json.dumps(record(rule, change)))
     else:
         # Grouped, because one edit reaches every site that used the type: the
         # declaration and each endpoint carrying it are separate nodes and so
@@ -717,42 +720,17 @@ def _diff(args: argparse.Namespace) -> int:
     return EXIT_INVALID if breaking else EXIT_OK
 
 
-def _plain(value: object) -> object:
-    return list(value) if isinstance(value, tuple) else value
-
-
 def _value(value: object) -> str:
     """One side of a change, for a person. An IRI is shown as its path.
 
     A reference change carries node IRIs, and printing those raw would undo the
     work `_pretty` does everywhere else in this output.
     """
+    from fastraml.views.diff import plain  # noqa: PLC0415 - graph commands only
+
     if isinstance(value, str) and value.startswith(('fastraml://', 'file://', 'http')):
         return _pretty(value)
-    return repr(_plain(value))
-
-
-def _record(rule: Rule, change: Change) -> dict[str, object]:
-    """One change as JSON, carrying everything `classify` used to grade it.
-
-    `directions` is a list, not one side. A type that is a POST body and a GET
-    response is graded on the worse of the two, so a record naming only one of
-    them contradicts its own `rule` — `direction: request` beside
-    `response-property-optional` — and a consumer regrading these facts its own
-    way cannot reach the same answer from them.
-    """
-    return {
-        'kind': change.kind,
-        'iri': change.iri,
-        'node_kind': change.node_kind,
-        'directions': sorted(change.directions),
-        'attribute': change.attribute,
-        'before': _plain(change.before),
-        'after': _plain(change.after),
-        'rule': rule.name,
-        'severity': rule.severity,
-        'because': rule.because,
-    }
+    return repr(plain(value))
 
 
 #: IRI segments that introduce something, and how to show it. The IRI is

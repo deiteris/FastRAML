@@ -1175,6 +1175,28 @@ break.
 
 Direction-independent: a resource, method or status code removed.
 
+### 10.3a Where the reporting is shared with `lint`
+
+`diff` and `lint` both grade, and the temptation is to merge them. They are not
+the same problem: a lint rule is a predicate over **one** document and a diff
+rule a function of **two**, so neither can be written as the other. Nor are the
+scales two spellings of one axis — `safe` is not `info`, and this view reports
+non-problems on purpose because its output is a complete description of what
+changed, where a lint report is a list of defects ([18](18-linting.md) § 1).
+
+What is shared is the arithmetic, in `views/severity.py`: worst-first, and "this
+grade and everything worse". Both had their own copy, a tuple with `.index()`
+here and a dict there. `Ranking` takes the vocabulary as data and knows no
+grade's name — a test asserts that, because the moment it names one the two
+scales have started to look like one.
+
+Two consequences followed, and neither was cosmetic. `--severity` is a
+**threshold** on both verbs now; it was a repeatable exact set here and a
+threshold there, so one flag name meant opposite things on two verbs of one tool
+([13](13-public-api.md) § 8). And `record()` — the `--json` shape — moved into
+this module from `cli.py`, because a shape a consumer regrades from is the
+view's contract to promise, not the presentation layer's to invent.
+
 ### 10.3 The policy is separable, and named
 
 `classify(change) -> Rule` returns the rule, not a bare severity, so a report

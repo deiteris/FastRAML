@@ -25,12 +25,14 @@ from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
+from fastraml.views.severity import Ranking
+
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterable, Iterator, Mapping
 
     from fastraml.views.graph import Graph, GraphNode
 
-__all__ = ['Change', 'Direction', 'Severity', 'classify', 'diff']
+__all__ = ['Change', 'Direction', 'Severity', 'at_least', 'classify', 'diff', 'plain', 'record', 'worst']
 
 Direction = Literal['request', 'response', 'declaration']
 Severity = Literal['breaking', 'risky', 'safe', 'cosmetic']
@@ -341,7 +343,9 @@ _LOWER_BOUNDS: Final = frozenset({'minItems', 'minLength', 'minProperties', 'min
 
 #: Worst first. A change reaching both sides of the wire is reported at the
 #: severity of the worse one; anything else buries a break under a reassurance.
-_ORDER: Final = ('breaking', 'risky', 'safe', 'cosmetic')
+#: The arithmetic is shared with `lint`, which grades on a different axis with
+#: the same operations (`views/severity.py`).
+_ORDER: Final[Ranking[Severity]] = Ranking(('breaking', 'risky', 'safe', 'cosmetic'))
 
 
 def classify(change: Change) -> Rule:
@@ -355,7 +359,7 @@ def classify(change: Change) -> Rule:
     Graded once per side the change reaches, worst reported.
     """
     graded = [_rule_for(change, side) for side in sorted(change.directions)]
-    return min(graded, key=lambda rule: _ORDER.index(rule.severity))
+    return min(graded, key=lambda rule: _ORDER.rank(rule.severity))
 
 
 def _rule_for(change: Change, direction: Direction) -> Rule:
@@ -466,3 +470,62 @@ def _numeric(value: object) -> float | None:
         return float(str(value))
     except ValueError:
         return None
+
+
+# -- reporting -----------------------------------------------------------------
+
+
+def worst(rules: Iterable[Rule]) -> Severity | None:
+    """The most severe grading in `rules`, or `None` for none at all.
+
+    What a CI gate reads. `diff` exits non-zero on `breaking`, and this is the
+    one place that decides which of a list of gradings that is.
+    """
+    return _ORDER.worst(rule.severity for rule in rules)
+
+
+def at_least(severity: Severity) -> frozenset[Severity]:
+    """`severity` and everything worse — what `--severity` selects.
+
+    A **threshold**, matching `lint`. It used to be a repeatable exact-set
+    filter here and a threshold there, so one flag name meant two things across
+    two verbs of one tool (docs/13 § 8).
+    """
+    return _ORDER.at_least(severity)
+
+
+def record(rule: Rule, change: Change) -> dict[str, object]:
+    """One graded change as JSON — the `--json` contract of `fastraml diff`.
+
+    Here rather than in `cli.py` because it *is* the contract: a consumer that
+    disagrees with the grading works from these facts (§ 10), so the shape is
+    the view's to promise and not the presentation layer's to invent. `lint`'s
+    `Finding.to_dict` sits beside its own view for the same reason.
+
+    `directions` is a list, not one side. A type that is a POST body and a GET
+    response is graded on the worse of the two, so a record naming only one of
+    them contradicts its own `rule` — `direction: request` beside
+    `response-property-optional` — and a consumer regrading these facts its own
+    way cannot reach the same answer from them.
+    """
+    return {
+        'kind': change.kind,
+        'iri': change.iri,
+        'node_kind': change.node_kind,
+        'directions': sorted(change.directions),
+        'attribute': change.attribute,
+        'before': plain(change.before),
+        'after': plain(change.after),
+        'rule': rule.name,
+        'severity': rule.severity,
+        'because': rule.because,
+    }
+
+
+def plain(value: object) -> object:
+    """A change's before/after as something `json.dumps` accepts.
+
+    A multi-valued facet is a tuple in the model (`enum`, OAuth scopes) and a
+    list on the wire; everything else already is what it looks like.
+    """
+    return list(value) if isinstance(value, tuple) else value

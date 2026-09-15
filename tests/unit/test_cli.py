@@ -660,6 +660,38 @@ class TestDiff:
         assert 'response-property-removed' in out
         assert 'safe' not in out
 
+    def test_severity_is_a_threshold_not_a_membership_test(self, workspace, capsys):
+        """docs/13 § 8: `--severity S` means S *and everything worse*, on every
+        verb that has it. This took a repeatable exact set until `lint` arrived
+        with a threshold and one flag name meant two things in one tool.
+        """
+        both = V2.replace('      id: string', '      id: string\n      note?: string')
+        root = workspace({'a.raml': V1, 'b.raml': both})
+        args = ['diff', str(root / 'a.raml'), str(root / 'b.raml')]
+
+        assert main([*args, '--severity', 'safe']) == EXIT_INVALID
+        widened = capsys.readouterr().out
+        # `safe` selects safe and worse, so the breaking change is still there.
+        assert 'response-property-removed' in widened
+        assert 'response-property-added' in widened
+
+        assert main([*args, '--severity', 'breaking']) == EXIT_INVALID
+        narrowed = capsys.readouterr().out
+        assert 'response-property-removed' in narrowed
+        assert 'response-property-added' not in narrowed
+
+    def test_breaking_only_is_the_top_of_that_scale(self, workspace, capsys):
+        """It is `--severity breaking` said shorter, and kept because it is what
+        a CI gate reaches for."""
+        both = V2.replace('      id: string', '      id: string\n      note?: string')
+        root = workspace({'a.raml': V1, 'b.raml': both})
+        args = [str(root / 'a.raml'), str(root / 'b.raml')]
+
+        assert main(['diff', *args, '--breaking-only']) == EXIT_INVALID
+        shorthand = capsys.readouterr().out
+        assert main(['diff', *args, '--severity', 'breaking']) == EXIT_INVALID
+        assert capsys.readouterr().out == shorthand
+
     def test_json_carries_the_rule_and_the_reason(self, versions, capsys):
         assert main(['diff', *versions, '--json']) == EXIT_INVALID
         records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]

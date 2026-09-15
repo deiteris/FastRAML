@@ -13,6 +13,7 @@ same side of the line and a package that held only some of it would not be worth
 enforcing.
 
     walk        one traversal, one address per entity; every view below shares it
+    severity    the ranking arithmetic `diff` and `lint` both need (doc 18 § 1)
     graph       the model as a node set — identity and reference (§ 3 to § 5)
     tree        the model as containment — what is here (§ 11)
     render      one type or endpoint as text, for reading (§ 9)
@@ -24,6 +25,14 @@ enforcing.
 `walk` is the shared substrate rather than a view of its own: `graph` and `tree`
 are lossy on orthogonal axes, and both are addressed by the same walk so a node
 in one is joinable with the same entity in the other (§ 4).
+
+`severity` is substrate too, and holds less than it looks. `diff` and `lint`
+grade on **different axes** — what a change does to a caller against how much a
+finding should block CI — and those are deliberately not merged (docs/18 § 1).
+What they share is the arithmetic: worst-first, and "this grade and everything
+worse". A `Ranking` is that, given the vocabulary as data, so neither view can
+drift from the other's idea of an ordering and neither has to adopt the other's
+idea of a grade.
 
 `bindings` is the odd one: it reads no model at all, only the *source* of
 `tree` and of the kind classes, and emits the declarations a consumer outside

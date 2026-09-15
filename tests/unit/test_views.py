@@ -20,7 +20,19 @@ import pathlib
 #: allowed to see both sides, which is what a command line is.
 _MODEL = ('fastraml/parser', 'fastraml/types', 'fastraml/nodes.py', 'fastraml/registry.py', 'fastraml/datanode.py')
 
-_VIEWS = ('walk', 'graph', 'tree', 'render', 'queries', 'diff', 'bindings', 'jsonschema', 'openapi', 'lint')
+_VIEWS = (
+    'walk',
+    'severity',
+    'graph',
+    'tree',
+    'render',
+    'queries',
+    'diff',
+    'bindings',
+    'jsonschema',
+    'openapi',
+    'lint',
+)
 
 
 def _imports(path: pathlib.Path) -> list[tuple[int, str]]:
@@ -76,9 +88,14 @@ class TestThePackageCostsNothingToImport:
 
         assert fastraml.views.__all__ == []
 
-    def test_the_walk_is_the_only_module_the_others_share(self):
-        # Every view addresses through one walk (docs/16 § 4). A view importing
-        # another view would mean a second traversal or a second vocabulary.
+    def test_only_the_substrates_are_shared_between_views(self):
+        """A view importing another *view* would mean a second traversal or a
+        second vocabulary. Three modules are substrate rather than view and may
+        be shared: `walk` (one addressing traversal, docs/16 § 4), `graph`
+        (what the later views read), and `severity` (the ranking arithmetic
+        `diff` and `lint` both need, docs/18 § 1 — they grade on different axes
+        and share only the comparisons).
+        """
         crossings = {
             (path, module)
             for path in _sources('fastraml/views')
@@ -88,10 +105,33 @@ class TestThePackageCostsNothingToImport:
         unexpected = {
             (path.as_posix(), module)
             for path, module in crossings
-            if module.rsplit('.', 1)[1] not in {'walk', 'graph'}
+            if module.rsplit('.', 1)[1] not in {'walk', 'graph', 'severity'}
             and not ('lint' in path.parts and module.startswith('fastraml.views.lint'))
         }
         assert not unexpected, unexpected
+
+    def test_the_shared_ranking_knows_nothing_about_either_vocabulary(self):
+        """`severity` holds the arithmetic and no meaning. If it ever names a
+        grade, the two scales have started to look like one — which is the
+        assumption docs/18 § 1 exists to refuse.
+        """
+        tree = ast.parse(pathlib.Path('fastraml/views/severity.py').read_text(encoding='utf-8'))
+        docstrings = {
+            id(node.body[0].value)
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef))
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
+        }
+        literals = {
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings
+        }
+        named = literals & {'breaking', 'risky', 'safe', 'cosmetic', 'error', 'warning', 'info'}
+        assert not named, named
 
 
 class TestTheStubMatchesTheExports:

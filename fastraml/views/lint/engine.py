@@ -41,6 +41,7 @@ from fastraml.nodes import (
 )
 from fastraml.positions import UNKNOWN, Position
 from fastraml.views.graph import build_graph
+from fastraml.views.severity import Ranking
 
 if TYPE_CHECKING:
     import re
@@ -78,7 +79,9 @@ class Severity(StrEnum):
 
 
 #: Worst first, for sorting and for `--severity` to mean "this and worse".
-_RANK: Final[dict[Severity, int]] = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.INFO: 2}
+#: The arithmetic is shared with `diff`, which grades on a different axis with
+#: the same operations (`views/severity.py`).
+_RANK: Final[Ranking[Severity]] = Ranking((Severity.ERROR, Severity.WARNING, Severity.INFO))
 
 #: Spellings a config file may use. `warn` and `hint` are what people type.
 _ALIASES: Final[dict[str, Severity]] = {
@@ -915,14 +918,12 @@ class Linter:
 
 def worst(findings: Iterable[Finding]) -> Severity | None:
     """The most severe finding's severity, or `None` for none at all."""
-    ranked = [finding.severity for finding in findings]
-    return min(ranked, key=lambda severity: _RANK[severity]) if ranked else None
+    return _RANK.worst(finding.severity for finding in findings)
 
 
 def at_least(severity: Severity) -> frozenset[Severity]:
     """`severity` and everything worse — what `--severity` selects."""
-    limit = _RANK[severity]
-    return frozenset(value for value, rank in _RANK.items() if rank <= limit)
+    return _RANK.at_least(severity)
 
 
 def sorted_by_rule(findings: Iterable[Finding]) -> Iterator[tuple[str, list[Finding]]]:
@@ -932,7 +933,7 @@ def sorted_by_rule(findings: Iterable[Finding]) -> Iterator[tuple[str, list[Find
         grouped.setdefault(finding.rule, []).append(finding)
     order = sorted(
         grouped,
-        key=lambda rule: (min(_RANK[finding.severity] for finding in grouped[rule]), -len(grouped[rule]), rule),
+        key=lambda rule: (min(_RANK.rank(finding.severity) for finding in grouped[rule]), -len(grouped[rule]), rule),
     )
     for rule in order:
         yield rule, grouped[rule]

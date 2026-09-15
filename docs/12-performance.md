@@ -615,16 +615,54 @@ libyaml, 7000 types across 150 libraries:
 | `jsonschema` | 89 ms | 89 ms | 93 ms | 88 ms | 1.3 MB | 30 MB |
 
 - Linearity: **1.040**, +4.0 % against a half-size corpus. Inside 15 %.
-- Absolute: **429 ms against go-raml's published ~280 ms** — 1.5×, where the
-  goal was 10×. The techniques in Parts 1–3 are where that comes from; none of
-  it is CPython being fast.
 - Memory on `bench_large`: **98 MB**, against a 400 MB ceiling.
+- Absolute: **5.1× to 10.3× go-raml** on the same corpora and the same machine.
+  Inside the goal on `large`, on the line elsewhere.
 
-**Compare like with like.** go-raml's ~280 ms is a *full* parse — unwrap and
-validate included — so the cell to read against it is `+unwrap+validate`, 429 ms,
-not `parse`. An earlier draft of this section quoted the 353 ms parse-only figure
-beside it and claimed 1.3×. The real number is still comfortably inside the goal,
-but it was the wrong comparison and it flattered us.
+#### The go-raml comparison, measured rather than quoted
+
+This section claimed **1.5×** for two revisions and was wrong by a factor of
+four. The number came from setting `bench_large`'s 429 ms beside go-raml's
+*published* ~280 ms for its own 7124-type corpus — a different document set on a
+different machine. An earlier draft had already corrected *half* of that
+comparison, moving from the parse-only cell to `+unwrap+validate`. It left the
+other half, which was the side that mattered.
+
+go-raml is checked out at `../go-raml-main` and Go is installed, so the figure is
+measured now rather than quoted: the same generated corpora, the same Windows
+box, **one process per measurement on both sides**. That last part is not
+incidental — running nine configurations in one interpreter inflates the later
+ones by up to 2× through heap pressure alone, which is why the harness spawns a
+subprocess per cell and why a hand-rolled comparison that does not will overstate
+the gap. Both parsers were checked to build the same model: 19 904 / 51 000 /
+12 003 shapes, identical on both sides.
+
+| Corpus / config | go-raml | fastRAML | ratio |
+|---|---|---|---|
+| `large` parse | 67.0 ms | 343.0 ms | 5.1× |
+| `large` +unwrap | 70.0 ms | 366.4 ms | 5.2× |
+| `large` +unwrap+validate | 71.2 ms | 419.9 ms | 5.9× |
+| `validate` parse | 107.8 ms | 1073.6 ms | 10.0× |
+| `validate` +unwrap | 113.9 ms | 1079.3 ms | 9.5× |
+| `validate` +unwrap+validate | 116.3 ms | 1143.1 ms | 9.8× |
+| `endpoints` parse | 37.0 ms | 329.5 ms | 8.9× |
+| `endpoints` +unwrap | 36.6 ms | 376.5 ms | **10.3×** |
+| `endpoints` +unwrap+validate | 38.0 ms | 374.9 ms | 9.9× |
+
+The goal — within 10× on the same corpus — is met on `large` and sits on the line
+elsewhere, with one cell over it. That is a materially different claim from
+"1.5×", and the honest reading is that Parts 1–3 bought an algorithmically
+comparable parser running at CPython's speed, not one competitive with Go.
+
+Two asymmetries there are worth more than the headline. go-raml's `unwrap` and
+`validate` are nearly free — +6 % on `large`, +8 % on `validate` — where
+fastRAML's cost +22 % and +6 %. And the ratio is **worst on `endpoints`**, the
+corpus built around trait application, which says the remaining distance is in
+the two-stage merge rather than in the type system.
+
+**Quoting a published number beside a local one is not a measurement.** Where a
+comparison against go-raml appears in these documents it is run, per the rule
+`AGENTS.md` already states for questions about its behaviour.
 
 Two numbers in that table are worth reading rather than skimming.
 

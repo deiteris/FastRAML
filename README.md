@@ -42,7 +42,7 @@ hands you a typed model, a command line, and a graph you can query.
 The key features are:
 
 * **Complete**: every pass runs and every RAML construct is decoded. The RAML compliance kit stands at **915 of 915** — every fixture outside the skip list does what its name promises.
-* **Fast**: 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using 98 MB, against go-raml's published ~280 ms in Go for the same work.
+* **Fast for Python**: 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using 98 MB. Measured on the same corpus and machine, go-raml in Go does it in 71 ms — so this is ~6x a compiled implementation, not level with one.
 * **Linear**: time grows with input size, and that property is asserted in CI. Absolute speed is a property of your machine; linearity is a property of the design.
 * **Effective, not literal**: `show` prints a type or endpoint with inheritance, traits, resource types and security already merged in — each line tagged with the file and line it was really written on.
 * **Positioned diagnostics**: every error carries a file, line and column, and a trace chain through the includes that reached it. Errors accumulate rather than stopping at the first.
@@ -168,9 +168,15 @@ fastraml skills get core             # or just print the guide
 ## Why it is fast
 
 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using
-**98 MB**, against go-raml's published ~280 ms in Go for the
-same work — and strictly linear in input size, which is the property gated in CI
+**98 MB**, and strictly linear in input size — which is the property gated in CI
 rather than the wall clock.
+
+Measured against go-raml on the same corpora and the same machine, that is
+**5.1x to 10.3x** a compiled Go implementation, depending on the corpus. The
+goal was to stay within 10x, and the interesting part is that an interpreted
+parser gets there at all; it is not parity, and an earlier version of this
+paragraph implied it was by quoting go-raml's published figure for a different
+corpus. The table is in [docs/12](docs/12-performance.md) Part 4.
 
 That comes from structural decisions, not from Python: a two-stage endpoint build
 that merges traits and resource types on YAML trees before any type resolution,

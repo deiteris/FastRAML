@@ -1,0 +1,263 @@
+# fastRAML — project rules
+
+A RAML 1.0 parser for Python 3.12+. **`docs/` is normative.**
+Start at `docs/README.md`; each document owns one area and states the decisions
+that area has already settled.
+
+## Before changing anything
+
+1. Read the document that owns the area. `docs/02-architecture.md` maps areas to
+   documents and to modules.
+2. If the code must differ from a document, **amend the document in the same
+   commit**. A doc that lies is worse than no doc.
+3. Follow `docs/15-implementation-plan.md` phase order. It is dictated by
+   dependencies, not by importance: the type system precedes endpoints, the merge
+   precedes templates, validation comes last.
+
+**Current state: Phases 0 to 9 complete. The plan is done; what remains is the
+After-v1 list in `docs/15`.** Phase 0: positions, errors, uris, loaders, yamlnode. Phase 1:
+registry, fragments, includes, namespaces, datanode, facets, references,
+annotations, the entry points and the pass driver (P0–P3).
+Phase 2: the whole `types/` package — `BaseShape`, the seventeen kinds,
+inference, examples, xml, and `make_shape`, wired into `types:`,
+`annotationTypes:`, `baseUriParameters:` and the typed fragments. Phase 3:
+`types/resolve.py` (P7) — the worklist drain and the type-expression visitor,
+which share a module because they are mutually recursive. Phase 4:
+`types/inherit.py` and `types/unwrap.py` (P9) — the clone operations, the
+per-kind merge rules, and unwrap with recursion marking, behind
+`ParseOptions(unwrap=True)`. Phase 4b: `resolve_domain_extensions` (P8) and
+`DomainLocation`.
+
+Phase 8a: `types/values.py` and `types/validate.py` (P10) — `check` and
+`validate` on all seventeen kinds, examples, defaults, custom facets and
+annotation values, behind `ParseOptions(validate=True)`. Phase 5: `directives`,
+`source_ir`, `endpoints`, `source_decode`, `endpoint_build` (P4, P6) — the
+two-stage endpoint build and URI parameter propagation. Phase 6:
+`structural_merge`, `traits`, `resourcetypes` and the provenance overlay — the
+spec's merging algorithm, the four trait priority classes, optional-method
+filtering and resource-type chaining, with stage 2 decoding each merged body
+under the scope its nodes were authored in. Phase 7: `security` (P5) — the six
+scheme types and their settings, `describedBy` through the operation decoders,
+`securedBy` inheritance and OAuth 2.0 scope narrowing.
+
+Phase 8b: `types/jsonschema_.py` — `JsonShape`, the per-parse `SchemaRegistry`,
+eager `$ref` resolution through `ResourceLoader`, and the projection of a
+compiled schema onto the nearest RAML shape; plus the last eight conformance
+rules the corpus was still measuring.
+
+Phase 8c: facets written beside `type: A | B`, distributed to the members at P9
+— the last conformance gap the corpus measured.
+
+**Every pass P0–P10 runs, every RAML construct is decoded, and the TCK stands at
+915 of 915** — every fixture outside the skip list does what its name promises.
+No `_raw_*` attribute is a deferred seam any more; the two that remain are
+working buffers within a single decode. Phase 9 added the `bench/` suite and its
+baselines, one recursion ceiling in place of three, `re2` over every regex the
+parser compiles, `parse_lenient`, the `fastraml` CLI and the widened export list. A
+brief per phase lives in `docs/briefs/`, each with a section at its top recording
+what it got wrong.
+
+**`fastraml/views/` sits on top and holds no pass** (`docs/16-graph.md`). One
+`views/walk.py` addresses every referenceable entity, and each view is a `Sink`
+over it: `views/graph.py` emits a node set — identity and reference — and
+`views/tree.py` emits containment, the two being lossy on orthogonal axes rather
+than one filtering the other. `views/render.py` is the reading view of a single
+type or endpoint, `views/queries.py` the SPARQL catalogue, `views/diff.py` the
+version comparison and its backward-compatibility policy, `views/jsonschema.py`
+a shape as JSON Schema draft-07 (`docs/16` § 12), and `views/openapi.py` the
+effective API as OpenAPI 3.0.3 (`docs/16` § 13). Nine CLI verbs — `graph`,
+`tree`, `list`, `refs`, `deps`, `show`, `query`, `diff`, `openapi`.
+
+All of it runs after P10 and decides no RAML rule. **Nothing under `parser/` or
+`types/` may import `fastraml.views`**, and outside it only `cli.py` may;
+`tests/unit/test_views.py` asserts both over the import graph. A rule that
+belongs to the language belongs in a pass. SPARQL needs `pyoxigraph`, which the
+package does not depend on; nothing else here needs anything.
+
+**Consumers sit on top and are not part of the parser** (`docs/17-consumers.md`).
+Nothing under `fastraml/` may import one, and none of them may hold a rule the
+RAML language states — if one needs such a rule, that is a gap in a pass or a
+missing view, and `views/jsonschema.py` arrived exactly that way. They are here
+because a format with no consumer is a format whose gaps nothing measures.
+
+- **`viewer/`** — a React SPA over `fastraml tree` output, outside the Python
+  gate. Its `src/tree.d.ts` is generated by `python -m fastraml.views.bindings` —
+  never edit it, and a stale copy fails `tests/unit/test_bindings.py`, as does a
+  stale `public/api.json`. Checks: `npm run check` there; CI runs `npm run ci`,
+  which swaps the screenshots for the production build.
+- **`contrib/`** — five separate `uv` projects, each with its own lock and gate:
+  `raml-document` (a typed authoring model, plus a reader for pydantic models),
+  `fastapi-raml` (routes → RAML), `fastmcp-raml` (RAML → an MCP server),
+  `raml-mock` (RAML → an in-process aiohttp mock, with a `raml-mock` CLI) and
+  `fastraml-viewer` (the built `viewer/` bundle, depending on nothing). The root
+  gate does not see them; CI runs them as a matrix.
+  **A consumer may not hold a rule the language states, and may not invent one
+  it does not** — `raml-mock` carried `4xx` response classes, which are
+  OpenAPI's, until a fixture that P4 rejects gave it away (`docs/17` § 2.1).
+- **`fixtures/`** — one worked document exercising every construct the model
+  carries. **Four consumers read it**, so a change there moves
+  `tests/unit/test_bindings.py`, the viewer's committed JSON, and
+  the `fastmcp-raml` and `raml-mock` suites. `shared/` sits outside `sample/` so
+  the includes ascend and the workspace root is under test.
+
+**Benchmarks are a gate, not a report.** `python -m bench compare` before and
+after anything that touches a hot path; the commit message carries the delta
+(`docs/12` Part 4). Linearity is asserted in CI, absolute time is not — it is a
+property of the machine.
+
+**A TCK `fail` entry means work outstanding and nothing else** (`docs/14` § 1.2).
+Where a fixture is wrong, fix it in the suite — three have been, on branches in
+the go-raml checkout, alongside `KNOWN-ISSUES.md` recording what that
+implementation gets wrong. Never park a disagreement in the ratchet.
+
+## The gate
+
+```bash
+uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && uv run pytest -q
+```
+
+All four must pass before any phase is reported done. `mypy` is strict for
+`fastraml.*` and lenient for tests, by design.
+
+## Invariants — breaking one is a bug, not a diagnostic
+
+- Every `location` is a `file://` or `http(s)://` URI. OS paths exist only inside
+  `loaders.py`.
+- A file is composed at most once, and decoded at most once, per parse.
+- Structural merge never mutates either input, and preserves node identity.
+- After resolution no reachable shape is an `UnknownShape`; after unwrap every
+  reachable shape has `unwrapped is True` and `link is None`.
+- Declaration order is preserved everywhere the model is exposed.
+
+Full list with the pass that establishes each: `docs/02-architecture.md` § 4.
+
+## Rules that look like style but are load-bearing
+
+- **`Node` defines no `__eq__`/`__hash__`.** The provenance overlay is
+  `dict[Node, ParseCtx]` keyed by object identity. Do not add equality, and do
+  not key overlays by `id()` — that neither keeps the node alive nor stays unique.
+- **`__slots__` on every model class**; `@dataclass(slots=True, eq=False)` when a
+  dataclass suits. A generated `__eq__` on a recursive model is a correctness
+  hazard as well as a cost.
+- **Never `copy.deepcopy`.** Use `clone(memo)` or `clone_detached()`
+  (`docs/07-resolution-and-inheritance.md` § 5). A test asserts that no module
+  in `fastraml/` imports the `copy` module at all.
+- **A `facets:` block declares what *subtypes* must supply.** The chain walk in
+  P10 starts at `inherits[0]`, so the declaring type neither has to satisfy its
+  own required facets nor may supply a value for one — the latter is `unknown
+  facet` (`docs/10` § 4). Nobody guesses this; it cost fifteen valid fixtures.
+- **Where an annotation was applied rides `ParseCtx`, not a parameter.** A
+  decoder that establishes a new site wraps itself in `Raml.target_scope(...)`;
+  everything inside reads it, including the annotated-scalar form four dozen
+  facet builders down (`docs/09` § B5). A missing scope is silent — it records
+  the enclosing site — so a new application site needs a test that names it.
+- **A shape's `location` and its `anchor`'s location may differ, and that is
+  not a bug.** `location` is the file a node was authored in; the anchor is the
+  namespace its *names* resolve in. A resource type in a library whose body
+  reads `type: <<item>>` produces a shape located in the library and anchored at
+  the applying document, because `<<item>>`'s value is a name the caller wrote
+  (`docs/08` § 6.3). A corpus test that asserts they agree is the wrong test.
+- **A template's variable index is keyed by node identity, never by position.**
+  Optional-method filtering removes subtrees from the body between the scan and
+  its use, so any numbering is stale by the time it is read. go-raml's is, and
+  it fails the spec's own `corpResource`/`/queues` example both ways
+  (`docs/08` § 7.1).
+- **An alias shares its referent's containers on purpose**
+  (`docs/07-resolution-and-inheritance.md` § 3.6) — one type under two names.
+  An *inheritance* merge sharing the same containers is a corruption (§ 3.3).
+  Do not "fix" the first into the second; the propagation is the feature.
+  It follows that **any traversal reaching a type must follow `aliasOf`**:
+  `items` under `User[]` holds the alias, so a walk that stops there reports
+  `User`'s *supertypes* in place of `User` — a wrong answer, not an error
+  (`docs/16` § 2.4).
+- **Accumulate errors; do not fail fast** — except for an unreadable entry file,
+  a missing or unrecognised RAML header, a non-mapping root, and a fragment whose
+  kind does not match its context.
+- **Numbers never pass through `float`, on either side of a comparison.** A
+  facet's `Fraction` is built from the raw scalar text; a *value* is converted
+  through its decimal text too (`Fraction(repr(v))`), because the YAML decoder
+  already made it a float and `as_integer_ratio()` would recover the binary
+  approximation. `multipleOf: 1.1` must accept `2.2`, and that is the test.
+- **`pattern:` is a `search`, and so is a `/regex/` property name — the author
+  writes the anchors.** The spec never says a pattern is anchored, and writes
+  `^...$` itself wherever it means anchored (`^.+@.+\..+$`, `^\w{16}$`), which
+  would be noise otherwise; go-raml uses Go's unanchored `MatchString`. This
+  read `fullmatch` until it was rechecked, on the strength of one TCK fixture
+  whose own pattern is unanchored where it means anchored — go-raml fails it
+  too. The fixture is fixed in the suite, not worked around here
+  (`docs/10-validation.md` § 5.4).
+- **A discriminator is inherited, so the inline-declaration rule runs before
+  P9.** After unwrap every subtype of a discriminated type carries one and looks
+  inline. go-raml has the same rule as a `FIXME` for this reason. The check on
+  *values* runs in P10 and outside the `strict` gate, because naming a type that
+  does not exist is not a conformance failure an author may waive
+  (`docs/05` § 9).
+- **Read `Examples.entries()`, never `Examples.values`.** With `examples:
+  !include e.raml` the examples live on the fragment and `values` is empty — so
+  reading it directly does not fail, it silently sees nothing.
+- **No per-character Python loops** where a compiled regex or a C-level string
+  method will do. go-raml's byte loops are correct in Go and slow here
+  (`docs/12-performance.md` § 12).
+- Single quotes; `docs/` is excluded from ruff so illustrative code keeps its
+  density.
+
+## Consulting go-raml
+
+go-raml is another RAML 1.0 implementation, and the TCK encodes its reading of
+the spec wherever the spec is silent. That is the only reason to open it.
+
+It lives at `../go-raml-main`. The design documents already capture the
+decisions that matter, so **read targeted line ranges when you need a detail,
+not whole files**. Reading it wholesale is what consumes a session's context.
+
+Go is installed. When the question is what go-raml *does* rather than how it is
+built, **run it** — `go test -run <name> .` against a throwaway `zz_*_test.go`
+in that checkout, deleted afterwards. A trace of the code is a hypothesis, and
+its comments have been wrong about its own behaviour.
+
+## TCK
+
+Fixtures are the submodule `tests/tck/raml-tck`
+([deiteris/raml-tck](https://github.com/deiteris/raml-tck)). `FASTRAML_TCK_DIR`
+overrides it; without either, TCK tests skip.
+
+```bash
+git submodule update --init              # once, if you cloned without --recurse-submodules
+uv run pytest tests/tck -q
+```
+
+A submodule and not a copy: upstream is archived and states no licence, so the
+sdist excludes the directory (`docs/14` § 1). Fixtures live at
+`tests/tck/raml-tck/tests/raml-1.0/` — upstream's layout, which the fork keeps;
+the submodule root holds its own README and KNOWN-ISSUES.
+
+`tests/tck/ratchet.json` records the expected outcome per fixture. CI fails on
+drift in either direction — a regression, or unrecorded progress. Regenerate with
+`--update-ratchet` and read the diff before committing it.
+
+## Testing
+
+Pin decisions, not incidental behaviour. Assert on a diagnostic's message key and
+`info` dict, never on assembled message text. Every documented corner case in
+`docs/14-testing.md` § 2–3 gets a test that names the rule it protects.
+
+Note that symlink-escape tests skip on Windows without Developer Mode, and
+`test_refuses_a_non_regular_file` skips there outright — there is no
+`os.mkfifo`. They are the security-critical ones; **trust CI's Linux job, not a
+local green run**, and when CI is not running either, reach for Docker:
+
+```bash
+docker run --rm -v "$PWD:/src:ro" -w /w python:3.12-slim bash -lc \
+  'cp -r /src/. /w/ && rm -rf /w/.venv && pip -q install uv && uv run pytest -q'
+```
+
+A whole Ubuntu job reading as "slow" is worth one run of that before it is read
+as slow: the FIFO test hung the parse outright for want of `O_NONBLOCK`, and
+every Linux job sat on it for the runner's full timeout while Windows finished
+in a minute.
+
+## Commits
+
+One logical change per commit, present-tense subject with a `type:` prefix
+(`feat:`, `fix:`, `docs:`, `chore:`, `test:`, `refactor:`). Work on a branch per
+phase (`phase-1-fragments`); `master` holds completed phases.

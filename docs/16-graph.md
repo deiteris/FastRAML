@@ -438,7 +438,6 @@ same type named or nameless by walk order, since only the `$ref` path carried a
 name — and it took the last segment of any pointer, so `#/properties/foo` was
 `foo` one way and anonymous the other.
 
-
 The identity holds only where **the document is the schema**, which
 `_is_one_schema` decides. A `$ref` target is read by `SchemaRegistry` and is not
 a fragment at all; an `!include`d schema is wrapped into a one-type
@@ -1075,9 +1074,11 @@ the `inherits:` line with it. That parent's file comes from
 `JsonShape.document_uri`, the one lookup this needs.
 
 Notes go on `type:` lines, where a RAML type carries its own `file:line`. On a
-190-line render of a nine-definition type that is 14 notes naming 9 distinct
-files, and +11.3% of the output. The repetition that remains is `uuid` and
-`dateTime` used twice each, which is a fact about the type rather than noise.
+189-line render of a nine-definition type that is 48 notes naming 10 distinct
+files, and +36% of the output — most of it a line repeating the document its
+enclosing `type:` line already named. Suppressing those is outstanding work: the
+note earns its place where a type comes from *elsewhere*, and a schema's own
+properties are not elsewhere.
 
 ### 9.8 What each security scheme adds, and why it is not merged
 

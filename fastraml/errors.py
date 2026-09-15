@@ -142,13 +142,16 @@ class RamlError(Exception):
         """Push a frame onto `cause`, preserving its chain and its siblings.
 
         A non-`RamlError` cause becomes the innermost frame, carrying the same
-        location so that a stray `OSError` still reports a file.
+        location so that a stray `OSError` still reports a file. Its own `info`
+        comes with it where it has one -- `WorkspaceEscapeError` computes the
+        root that would have worked, and a value nothing carries forward is a
+        value the caller has to recover from prose.
         """
         if isinstance(cause, RamlError):
             inner = cause.head
             siblings = cause.siblings
         else:
-            inner = Trace(str(cause), location, position, kind)
+            inner = Trace(str(cause), location, position, kind, getattr(cause, 'info', None))
             siblings = ()
         return cls(Trace(message, location, position, kind, info, cause=inner), siblings)
 

@@ -54,6 +54,29 @@ def test_openapi_export_writes_a_file_with_o(files, tmp_path, capsys):
     assert b'\r' not in target.read_bytes()
 
 
+@pytest.mark.parametrize('verb', ['tree', 'graph', 'openapi'])
+def test_every_document_verb_writes_a_file_with_o(verb, files, tmp_path, capsys, monkeypatch):
+    """`-o` on every verb whose output is a document, not just `openapi`.
+
+    A shell redirect writes CRLF on Windows, which is how committed output comes
+    to differ from what CI regenerates -- and `tree` is the verb whose output
+    this repository commits.
+    """
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / f'{verb}.out'
+    assert main([verb, '-o', str(target), files('good.raml')]) == EXIT_OK
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    assert target.read_bytes()
+    assert b'\r' not in target.read_bytes()
+
+
+@pytest.mark.parametrize('verb', ['tree', 'graph'])
+def test_a_document_verb_without_o_still_prints(verb, files, capsys):
+    assert main([verb, files('good.raml')]) == EXIT_OK
+    assert capsys.readouterr().out.strip()
+
+
 def test_openapi_export_o_reports_an_unwritable_file(files, tmp_path, capsys):
     assert main(['openapi', '-o', str(tmp_path / 'absent' / 'api.yaml'), files('good.raml')]) == EXIT_INVALID
     captured = capsys.readouterr()
@@ -159,6 +182,22 @@ class TestOptions:
         code = main(['validate', '-w', str(root / 'ws'), str(root / 'ws' / 'api.raml')])
         assert code == EXIT_INVALID
         assert 'workspace' in capsys.readouterr().err.lower()
+
+    def test_the_refusal_names_the_flag_and_the_root_that_would_work(self, workspace, capsys):
+        """The root defaults to the entry file's directory, so this is the first
+        thing anyone hits on an API whose libraries sit beside it rather than
+        beneath it -- and the refusal alone does not say which flag widens it.
+        """
+        root = workspace({'secret.raml': API, 'ws/api.raml': API + 'uses:\n  up: ../secret.raml\n'})
+        assert main(['validate', str(root / 'ws' / 'api.raml')]) == EXIT_INVALID
+        err = capsys.readouterr().err
+        assert 'pass -w ' in err
+        assert str(root) in err.split('pass -w ', 1)[1]
+
+    def test_no_hint_where_widening_would_not_have_helped(self, files, capsys):
+        """A document that parses has nothing to suggest, and says nothing."""
+        assert main(['validate', files('bad.raml')]) == EXIT_INVALID
+        assert 'pass -w ' not in capsys.readouterr().err
 
     def test_no_workspace_guard_allows_the_same_include(self, workspace):
         root = workspace({'lib.raml': '#%RAML 1.0 Library\n', 'ws/api.raml': API + 'uses:\n  up: ../lib.raml\n'})

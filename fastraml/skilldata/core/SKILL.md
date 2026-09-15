@@ -71,15 +71,22 @@ folder fails:
 api.raml: invalid
 [0]
   file:///.../shared/machine.raml load resource
-    path '...\shared\machine.raml' is outside workspace root '...\sample'
+    path is outside the workspace root: path: .../shared/machine.raml: root: .../sample: suggested_root: ...
+hint: the workspace root defaults to the entry file's directory; pass -w ... to widen it
 ```
 
 This is the most common error you will see, and the document is usually fine.
-Set `-w` to a folder that contains every file the document reaches:
+The root defaults to the entry file's own directory, so any document that
+reaches a sibling folder hits it. **The `hint:` line gives you the root to
+use** — it is the nearest folder holding both the current root and the file
+that was refused. Pass it:
 
 ```bash
 fastraml validate -w . api/api.raml      # Root is the repo, not api/
 ```
+
+There is no hint when widening would reach a filesystem or drive root, because
+that would hand over every file on the machine.
 
 `-w` works on every command. Set it once and reuse it.
 
@@ -326,10 +333,15 @@ contents, because it inlines examples, defaults and every container. Choose
 Both assign the same addresses to the same nodes, so an address from one names
 the same thing in the other.
 
-`openapi` is the RAML 1.0 to OpenAPI 3.0.3 conversion. Write the result with
-`-o FILE` rather than a shell redirect: the file is UTF-8 with LF newlines
-whatever shell or platform ran the command, and stdout stays clean for the
-diagnostics. Things the target format cannot carry are reported as `warning:`
+**Write these to a file with `-o FILE`, never a shell redirect.** `graph`,
+`openapi`, `tree` and `query` all take it, and the file is UTF-8 with LF
+newlines whatever shell or platform ran the command. A redirect on Windows
+writes CRLF, so output you commit stops matching what regenerates it.
+
+`openapi` is the RAML 1.0 to OpenAPI 3.0.3 conversion. A type declared once is
+exported once, under `components/schemas`, and referenced with `$ref` wherever
+it is used — including types from libraries and from `!include`d JSON Schema
+files. Things the target format cannot carry are reported as `warning:`
 lines on stderr and the exit code stays 0, so read the warnings and fix the
 spots they name.
 

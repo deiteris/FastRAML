@@ -68,6 +68,41 @@ class TestSafeFileLoader:
         with pytest.raises(WorkspaceEscapeError):
             loader.load(escaping)
 
+    def test_the_refusal_carries_the_root_that_would_have_worked(self, workspace):
+        """The nearest directory holding both, so a caller can name it.
+
+        The message cannot: which flag widens the root is the CLI's vocabulary.
+        """
+        loader = SafeFileLoader(workspace)
+        with pytest.raises(WorkspaceEscapeError) as caught:
+            loader.load(path_to_file_uri(workspace / '..' / 'secret.txt'))
+        assert caught.value.info['suggested_root'] == str(workspace.parent)
+        assert caught.value.info['root'] == str(workspace)
+
+    def test_no_root_is_suggested_when_widening_would_reach_the_filesystem_root(self, workspace, monkeypatch):
+        """Widening to `/` hands over every file the process can reach.
+
+        That is the sandbox this refusal exists to keep, so there is no
+        suggestion to make and the caller prints no hint.
+        """
+        monkeypatch.setattr(os.path, 'commonpath', lambda _paths: os.path.abspath(os.sep))
+        loader = SafeFileLoader(workspace)
+        with pytest.raises(WorkspaceEscapeError) as caught:
+            loader.load(path_to_file_uri(workspace / '..' / 'secret.txt'))
+        assert caught.value.info['suggested_root'] == ''
+
+    def test_the_refusal_does_not_repr_its_paths(self, workspace):
+        """`!r` on a Windows path doubles every separator.
+
+        The one thing a reader wants to copy came out unusable, so the paths are
+        `info` values and the message is the invariant sentence (docs/11 § 6).
+        """
+        loader = SafeFileLoader(workspace)
+        with pytest.raises(WorkspaceEscapeError) as caught:
+            loader.load(path_to_file_uri(workspace / '..' / 'secret.txt'))
+        assert str(caught.value) == 'path is outside the workspace root'
+        assert '\\\\' not in caught.value.info['path']
+
     def test_refuses_a_symlink_at_the_final_component(self, workspace, tmp_path):
         link = workspace / 'leak.raml'
         if not _symlink(tmp_path / 'secret.txt', link):

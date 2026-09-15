@@ -40,7 +40,23 @@ class LoaderError(OSError):
 
 
 class WorkspaceEscapeError(LoaderError):
-    """A path resolved outside the workspace root."""
+    """A path resolved outside the workspace root.
+
+    `info` carries what a caller may want to *act* on rather than print, and in
+    particular `suggested_root`: the nearest directory holding both the root and
+    the path that was refused. Widening to it is the smallest change that would
+    let the parse through.
+
+    Computed here because this is the only layer holding both paths, and left as
+    a value because which flag widens the root is the CLI's vocabulary and not
+    this one's.
+    """
+
+    #: Replaced per instance by `_escaped`. A class attribute and not a
+    #: constructor argument: `OSError` keeps every argument it is given in
+    #: `args` and renders all of them in `str()`, so a second one appends the
+    #: whole mapping to the message.
+    info: Mapping[str, Any] = {}
 
 
 class UnsupportedSchemeError(LoaderError):
@@ -179,11 +195,40 @@ class SafeFileLoader:
             relative = os.path.relpath(candidate, root)
         except ValueError as err:
             # Windows raises when the two are on different drives.
-            msg = f'path {reported!r} is outside workspace root {root!r}'
-            raise WorkspaceEscapeError(msg) from err
+            raise _escaped(reported, root) from err
         if relative == os.pardir or relative.startswith(os.pardir + os.sep):
-            msg = f'path {reported!r} is outside workspace root {root!r}'
-            raise WorkspaceEscapeError(msg)
+            raise _escaped(reported, root)
+
+
+def _escaped(reported: str, root: str) -> WorkspaceEscapeError:
+    """The refusal, with the root that would have worked carried beside it.
+
+    Paths go in `info` and not into the message, which is the house style
+    (docs/11 § 6) and here also the fix for an unusable one: the message
+    interpolated them with `!r`, and `!r` on a Windows path doubles every
+    separator, so the one thing a reader wants to copy came out broken.
+
+    `suggested_root` rides along rather than joining the sentence. Which flag
+    widens the root is the CLI's vocabulary, so the CLI writes that sentence.
+    """
+    error = WorkspaceEscapeError('path is outside the workspace root')
+    error.info = {'path': reported, 'root': root, 'suggested_root': _common_root(root, reported)}
+    return error
+
+
+def _common_root(root: str, path: str) -> str:
+    """The nearest directory holding both, or `''` when suggesting one is no help.
+
+    A filesystem or drive root is not a suggestion -- widening to it hands the
+    parse every file the process can reach, which is the sandbox this refusal
+    exists to keep. Two Windows drives have no common directory at all, and
+    `commonpath` says so by raising.
+    """
+    try:
+        shared = os.path.commonpath((root, os.path.dirname(path)))
+    except ValueError:
+        return ''
+    return '' if shared == os.path.dirname(shared) else shared
 
 
 #: What a caller is told when they hand over an `httpx.AsyncClient`.

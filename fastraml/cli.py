@@ -3,12 +3,12 @@
 ```
 fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE...
 fastraml info [-w ROOT] [-r] FILE
-fastraml graph [--format nt|turtle|dot|json] FILE
+fastraml graph [--format nt|turtle|dot|json] [-o FILE] FILE
 fastraml openapi [--format yaml|json] [-o FILE] FILE
 fastraml list FILE [PATTERN]
 fastraml refs FILE NAME
 fastraml deps FILE NAME
-fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
+fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json] [-o FILE]
 fastraml skills (list | get NAME...) [--full] [--json]
 ```
 
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
+    from fastraml.errors import RamlError
     from fastraml.parser.entry import ParseOptions
     from fastraml.registry import Raml
     from fastraml.views.diff import Change, Rule
@@ -91,6 +92,7 @@ def _parser() -> argparse.ArgumentParser:
         default='turtle',
         help='N-Triples, Turtle, Graphviz, or plain JSON (default: turtle)',
     )
+    _add_output(graph)
     _add_common(graph)
 
     openapi = commands.add_parser('openapi', help='export the effective API as OpenAPI 3.0.3')
@@ -101,17 +103,13 @@ def _parser() -> argparse.ArgumentParser:
         default='yaml',
         help='YAML or JSON output (default: yaml)',
     )
-    openapi.add_argument(
-        '-o',
-        '--output',
-        metavar='FILE',
-        help='write the document to FILE instead of stdout; UTF-8 with LF newlines',
-    )
+    _add_output(openapi)
     _add_common(openapi)
 
     tree = commands.add_parser('tree', help='the effective document as an addressed JSON tree (doc 16 section 11)')
     tree.add_argument('files', metavar='FILE', nargs=1)
     tree.add_argument('--positions', action='store_true', help='the span of every declaration instead of the document')
+    _add_output(tree)
     _add_common(tree)
 
     _add_navigation(commands)
@@ -139,6 +137,7 @@ def _parser() -> argparse.ArgumentParser:
     query.add_argument('--list', dest='catalogue', action='store_true', help='list the catalogue and exit')
     query.add_argument('--show', metavar='NAME', help='print one catalogue query rather than running it')
     query.add_argument('--json', action='store_true', help='JSON rather than a table')
+    _add_output(query)
     _add_common(query)
 
     _add_skills(commands)
@@ -158,6 +157,22 @@ def _parser() -> argparse.ArgumentParser:
         skills=_skills,
     )
     return parser
+
+
+def _add_output(parser: argparse.ArgumentParser) -> None:
+    """`-o` for a verb whose output is a document rather than a report.
+
+    On every verb that emits one, not just `openapi`. The reason the flag exists
+    is that a shell redirect writes CRLF on Windows, which silently makes
+    committed output differ from what CI regenerates -- and `tree` is the verb
+    whose output this repository actually commits.
+    """
+    parser.add_argument(
+        '-o',
+        '--output',
+        metavar='FILE',
+        help='write to FILE instead of stdout; UTF-8 with LF newlines',
+    )
 
 
 def _add_skills(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -268,8 +283,7 @@ def _validate(args: argparse.Namespace) -> int:
             # by file once either is redirected, and a multi-file run reports
             # the failures before the successes that preceded them.
             sys.stdout.flush()
-            print(f'{path}: invalid', file=sys.stderr)
-            print(error, file=sys.stderr)
+            _invalid(path, error)
             sys.stderr.flush()
         elif args.verbose:
             print(f'{path}: valid ({elapsed:.1f} ms)')
@@ -292,8 +306,7 @@ def _info(args: argparse.Namespace) -> int:
     try:
         raml = parse_from_path(path, _options(args))
     except RamlError as err:
-        print(f'{path}: invalid', file=sys.stderr)
-        print(err, file=sys.stderr)
+        _invalid(path, err)
         return EXIT_INVALID
     _report(raml, (time.perf_counter() - started) * 1e3, path=path)
     return EXIT_OK
@@ -330,12 +343,9 @@ def _graph(args: argparse.Namespace) -> int:
     if args.format == 'json':
         import json  # noqa: PLC0415 - only JSON output needs the encoder
 
-        print(json.dumps(graph.to_json(), indent=2))
-        return EXIT_OK
+        return _emit_document(args, json.dumps(graph.to_json(), indent=2) + '\n')
     emit = {'nt': graph.to_ntriples, 'turtle': graph.to_turtle, 'dot': graph.to_dot}[args.format]
-    for line in emit():
-        print(line)
-    return EXIT_OK
+    return _emit_document(args, ''.join(f'{line}\n' for line in emit()))
 
 
 def _emit_document(args: argparse.Namespace, text: str) -> int:
@@ -406,8 +416,7 @@ def _tree(args: argparse.Namespace) -> int:
     # example's own data all came out alphabetical, so a reader was shown an
     # order no author wrote. Stable output is what the *sink* wanted; the
     # golden suite sorts for itself.
-    print(json.dumps(payload, indent=2))
-    return EXIT_OK
+    return _emit_document(args, json.dumps(payload, indent=2) + '\n')
 
 
 def _show_type(args: argparse.Namespace) -> int:
@@ -695,10 +704,10 @@ def _query(args: argparse.Namespace) -> int:
         print('query needs a FILE', file=sys.stderr)
         return EXIT_INVALID
     built = _built(args)
-    return EXIT_INVALID if built is None else _run_sparql(built[0], text, json_lines=args.json)
+    return EXIT_INVALID if built is None else _run_sparql(args, built[0], text)
 
 
-def _run_sparql(graph: Graph, text: str, *, json_lines: bool) -> int:
+def _run_sparql(args: argparse.Namespace, graph: Graph, text: str) -> int:
     """Load the graph into a store and print whatever the query returns.
 
     `pyoxigraph` is optional the way `google-re2` and the HTTP client are: the
@@ -726,22 +735,48 @@ def _run_sparql(graph: Graph, text: str, *, json_lines: bool) -> int:
     # traceback. The ASK result is *not* a `bool` — it is a wrapper that converts
     # to one — which is why this dispatches on the class rather than on
     # `isinstance` of `bool`.
+    json_lines = args.json
     if isinstance(result, pyoxigraph.QueryBoolean):
         answer = bool(result)
-        print(json.dumps({'ask': answer}) if json_lines else str(answer).lower())
-        return EXIT_OK
-    if isinstance(result, pyoxigraph.QueryTriples):
-        for triple in result:
-            print(f'{triple.subject} {triple.predicate} {triple.object} .')
-        return EXIT_OK
+        rows = [json.dumps({'ask': answer}) if json_lines else str(answer).lower()]
+    elif isinstance(result, pyoxigraph.QueryTriples):
+        rows = [f'{triple.subject} {triple.predicate} {triple.object} .' for triple in result]
+    else:
+        names = [str(name).lstrip('?') for name in result.variables]
+        rows = [
+            json.dumps({name: _term(row[name]) for name in names})
+            if json_lines
+            else '\t'.join(_term(row[name]) or '' for name in names)
+            for row in result
+        ]
+    return _emit_document(args, ''.join(f'{row}\n' for row in rows))
 
-    names = [str(name).lstrip('?') for name in result.variables]
-    for row in result:
-        if json_lines:
-            print(json.dumps({name: _term(row[name]) for name in names}))
-        else:
-            print('\t'.join(_term(row[name]) or '' for name in names))
-    return EXIT_OK
+
+def _invalid(path: str, error: RamlError) -> None:
+    """Report a parse failure, and what to do about it where that is knowable."""
+    print(f'{path}: invalid', file=sys.stderr)
+    print(error, file=sys.stderr)
+    hint = _workspace_hint(error)
+    if hint:
+        print(hint, file=sys.stderr)
+
+
+def _workspace_hint(error: RamlError) -> str:
+    """The `-w` a refused read would have needed, if widening would have helped.
+
+    The root defaults to the *entry file's directory*, so an API whose libraries
+    sit beside it rather than beneath it fails on its first `!include` -- and the
+    refusal cannot say which flag widens the root, because that is this layer's
+    vocabulary and not `loaders.py`'s. It computes the value; this names the flag.
+    """
+    for chain in error.chains():
+        for frame in chain:
+            suggested = frame.info.get('suggested_root') if frame.info else None
+            if suggested:
+                return (
+                    f"hint: the workspace root defaults to the entry file's directory; pass -w {suggested} to widen it"
+                )
+    return ''
 
 
 def _parsed(args: argparse.Namespace, path: str | None = None) -> Raml | None:
@@ -753,8 +788,7 @@ def _parsed(args: argparse.Namespace, path: str | None = None) -> Raml | None:
     try:
         return parse_from_path(path, _options(args, validate=False))
     except RamlError as err:
-        print(f'{path}: invalid', file=sys.stderr)
-        print(err, file=sys.stderr)
+        _invalid(path, err)
         return None
 
 
@@ -777,8 +811,7 @@ def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Ra
     try:
         raml = parse_from_path(path, _options(args, validate=False))
     except RamlError as err:
-        print(f'{path}: invalid', file=sys.stderr)
-        print(err, file=sys.stderr)
+        _invalid(path, err)
         return None
     return build_graph(raml), raml
 

@@ -343,15 +343,15 @@ parsing rule lives in `fastraml/cli.py`.
 ```
 fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
 fastraml info [-w ROOT] [-r] FILE       # backend, timings, counts
-fastraml graph [--format nt|turtle|dot|json] FILE
+fastraml graph [--format nt|turtle|dot|json] [-o FILE] FILE
 fastraml openapi [--format yaml|json] [-o FILE] FILE       # export OpenAPI 3.0.3
-fastraml tree [--positions] FILE                # the whole document, addressed
+fastraml tree [--positions] [-o FILE] FILE       # the whole document, addressed
 fastraml list FILE [PATTERN] [--kind K] [--json]             # what is in here
 fastraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
 fastraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made of
 fastraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
 fastraml diff OLD NEW [--breaking-only] [--severity S] [--json]
-fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json]
+fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json] [-o FILE]
 fastraml skills (list | get NAME... | install [NAME...]) [--full] [--json]
                 [--user | --dir PATH] [--force]          # the served agent guides
 ```
@@ -362,7 +362,23 @@ a bad example still has a graph worth reading, and refusing to draw one would
 make the tool useless exactly where navigating is most wanted.
 
 - `-w ROOT` sets the workspace root; `--no-workspace-guard` disables the sandbox
-  entirely, as go-raml's flag of the same name does.
+  entirely, as go-raml's flag of the same name does. The root **defaults to the
+  entry file's directory**, so an API whose libraries sit beside it rather than
+  beneath it is refused on its first `!include` — the commonest first encounter
+  anyone has with this tool. The refusal therefore names the flag *and* the
+  smallest root that would have worked, which is the nearest directory holding
+  both the current root and the path that was refused. `loaders.py` computes it
+  into `WorkspaceEscapeError.info['suggested_root']`, because it is the only
+  layer holding both paths; `cli.py` writes the sentence, because the flag is
+  its vocabulary and a library consumer has no `-w`. No suggestion is made where
+  widening would reach a filesystem or drive root: that hands over every file
+  the process can reach, which is the sandbox the refusal exists to keep.
+- `-o FILE` writes to a file rather than stdout, on every verb whose output is a
+  *document* — `graph`, `openapi`, `tree`, `query`. The file is opened UTF-8 with
+  LF newlines whatever the platform, which is the whole reason the flag exists
+  rather than a shell redirect: on Windows a redirect writes CRLF, and committed
+  output then differs from what CI regenerates. `viewer/public/api.json` is
+  `tree` output this repository commits, so that hazard is not hypothetical.
 - `-r` enables remote includes. It builds a client from `httpx` or `requests`,
   whichever is installed — fastRAML depends on neither ([03](03-yaml-and-io.md)
   § 5.1), so the CLI is where one has to be produced, and where a user who asks
@@ -404,9 +420,7 @@ deliberately does not carry. `--positions` writes the span of every declaration
 instead.
 
 `openapi` writes the effective API as OpenAPI 3.0.3, YAML by default or JSON
-with `--format json`, and to a file with `-o FILE` instead of stdout — the
-file is opened UTF-8 with LF newlines regardless of platform or shell, which
-is why the flag exists rather than a redirect. Information with no exact
+with `--format json`. Information with no exact
 OpenAPI representation is kept
 under an `x-raml-*` extension where a useful representation exists and reported
 as a warning on stderr; stdout therefore remains a parseable document. The

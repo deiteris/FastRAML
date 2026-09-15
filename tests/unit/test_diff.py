@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from fastraml import ParseOptions, parse_from_path
-from fastraml.views.diff import RULES, classify, diff
+from fastraml.views.diff import RULES, _side_map, classify, diff
 from fastraml.views.graph import build_graph
 
 BASE = """#%RAML 1.0
@@ -214,6 +214,59 @@ class TestDirectionIsComputed:
         """
         change = self.both_ways(workspace, ('      a: string', '      a?: string'))
         assert classify(change).severity == 'breaking'
+
+
+class TestTheSideMapIsAForwardPropagation:
+    """docs/12 § 19f: the side of the wire is carried down, not computed up.
+
+    This replaced a reverse walk *per node* — 36 510 independent traversals on
+    `bench_endpoints`, re-deriving the same ancestor chains — with one worklist
+    over the edges. The fixpoint has to mean exactly what the walk meant, so
+    the walk is kept here as the specification and the two are compared.
+    """
+
+    @staticmethod
+    def by_walking(graph, iri: str) -> frozenset[str]:
+        """The original: every side reachable by walking back towards the API."""
+        found: set[str] = set()
+        seen: set[str] = set()
+        frontier = [iri]
+        while frontier:
+            current = frontier.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            for edge in graph.into(current):
+                if edge.predicate == 'request':
+                    found.add('request')
+                elif edge.predicate == 'returns':
+                    found.add('response')
+                frontier.append(edge.subject)
+        return frozenset(found) or frozenset({'declaration'})
+
+    def test_it_agrees_with_the_walk_it_replaced(self, workspace):
+        root = workspace({'v1.raml': BOTH_WAYS})
+        graph = build_graph(parse_from_path(root / 'v1.raml', ParseOptions(unwrap=True)))
+        computed = _side_map(graph)
+        assert {iri: computed[iri] for iri in graph.nodes} == {iri: self.by_walking(graph, iri) for iri in graph.nodes}
+
+    def test_a_cycle_settles_rather_than_running_away(self, workspace):
+        """A recursive type closes a cycle in the graph. A fixpoint over a
+        four-state lattice stops widening; a walk needed its own `seen` set."""
+        source = BOTH_WAYS.replace('      a: string', '      a: string\n      self?: Thing')
+        root = workspace({'v1.raml': source})
+        graph = build_graph(parse_from_path(root / 'v1.raml', ParseOptions(unwrap=True)))
+        computed = _side_map(graph)
+        assert {iri: computed[iri] for iri in graph.nodes} == {iri: self.by_walking(graph, iri) for iri in graph.nodes}
+
+    def test_every_node_is_labelled_including_unreachable_ones(self, workspace):
+        """Seeded with every node, so a declaration nothing references still
+        gets an answer rather than a `KeyError` in `diff`."""
+        root = workspace({'v1.raml': BOTH_WAYS})
+        graph = build_graph(parse_from_path(root / 'v1.raml', ParseOptions(unwrap=True)))
+        computed = _side_map(graph)
+        assert set(computed) >= set(graph.nodes)
+        assert all(value for value in computed.values())
 
 
 SECURED = """#%RAML 1.0

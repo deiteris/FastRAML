@@ -21,11 +21,12 @@ case and pays here for nothing.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from fastraml.views.graph import Graph, GraphNode
 
@@ -99,41 +100,54 @@ def diff(old: Graph, new: Graph) -> list[Change]:
     declared them, then additions follow the new one's. A diff whose order
     varied could not be committed or compared.
     """
+    # Once per graph, not once per node (`_side_map`). A removed node's side has
+    # to come from the graph that still has it, which is why both are built.
+    was, now = _side_map(old), _side_map(new)
     changes: list[Change] = []
     for iri, before in old.nodes.items():
         after = new.nodes.get(iri)
         if after is None:
-            changes.append(Change(kind='removed', iri=iri, node_kind=before.kinds[0], directions=_sides(old, iri)))
+            changes.append(Change(kind='removed', iri=iri, node_kind=before.kinds[0], directions=was[iri]))
         else:
-            changes.extend(_altered(iri, before, after, _sides(new, iri)))
+            changes.extend(_altered(iri, before, after, now[iri]))
     changes.extend(
-        Change(kind='added', iri=iri, node_kind=node.kinds[0], directions=_sides(new, iri))
+        Change(kind='added', iri=iri, node_kind=node.kinds[0], directions=now[iri])
         for iri, node in new.nodes.items()
         if iri not in old.nodes
     )
-    changes.extend(_relinked(old, new))
+    changes.extend(_relinked(old, new, was, now))
     return _without_subsumed(changes)
 
 
-def _relinked(old: Graph, new: Graph) -> Iterator[Change]:
+def _relinked(
+    old: Graph,
+    new: Graph,
+    old_sides: Mapping[str, frozenset[Direction]],
+    new_sides: Mapping[str, frozenset[Direction]],
+) -> Iterator[Change]:
     """References that now point somewhere else, or nowhere.
 
     Compared per (subject, predicate) so a swap arrives as one `unlinked` and
     one `linked` rather than as an opaque "changed": which target went and which
     arrived is exactly what decides whether the swap is breaking.
+
+    The side maps are passed in rather than rebuilt: these are the same two
+    graphs `diff` has already labelled, and a subject here is a node there.
     """
     before, after = _references(old), _references(new)
     for key in sorted(before.keys() | after.keys()):
         iri, predicate = key
         was, now = before.get(key, frozenset()), after.get(key, frozenset())
         node = new.nodes.get(iri) or old.nodes.get(iri)
-        graph = new if iri in new.nodes else old
+        # The graph that still holds the subject decides its side, and a subject
+        # present in neither is graded as a declaration rather than dropped.
+        sides = new_sides.get(iri) or old_sides.get(iri) or _DECLARATION
         for gone in sorted(was - now):
             yield Change(
                 kind='unlinked',
                 iri=iri,
                 node_kind=node.kinds[0] if node else 'Unknown',
-                directions=_sides(graph, iri),
+                directions=sides,
                 attribute=predicate,
                 before=gone,
             )
@@ -142,7 +156,7 @@ def _relinked(old: Graph, new: Graph) -> Iterator[Change]:
                 kind='linked',
                 iri=iri,
                 node_kind=node.kinds[0] if node else 'Unknown',
-                directions=_sides(graph, iri),
+                directions=sides,
                 attribute=predicate,
                 after=arrived,
             )
@@ -196,31 +210,80 @@ def _altered(iri: str, before: GraphNode, after: GraphNode, directions: frozense
             )
 
 
-def _sides(graph: Graph, iri: str) -> frozenset[Direction]:
-    """Every side of the wire this node reaches, walking back towards the API.
+#: The two edges that say which side of the wire everything beneath them is on,
+#: as bits. Nothing else changes the answer, so propagation watches only these.
+#:
+#: A bitmask rather than a set because this is the inner loop of `_side_map`:
+#: `carried | bit` is an integer operation that allocates nothing, where
+#: `carried | {side}` builds two sets per edge and made the one-pass version
+#: *slower* than the per-node walk it replaced (docs/12 § 19f).
+_REQUEST: Final = 1
+_RESPONSE: Final = 2
+_BIT: Final[dict[str, int]] = {'request': _REQUEST, 'returns': _RESPONSE}
 
-    Walked over edges rather than read off the IRI: the IRI happens to encode
-    the same thing today, and an edge is what the projection actually promises.
+#: What a node reached by no side edge is. Shared rather than rebuilt per node:
+#: on a type-only document this is the answer for every node in the graph.
+_DECLARATION: Final[frozenset[Direction]] = frozenset({'declaration'})
 
-    The walk does **not** stop at the first side it finds. A declared type is
-    commonly a request body and a response body at once, and stopping early
-    grades it by whichever edge came off the stack first.
+#: The four states the lattice has, interned and indexed by mask. Labelling a
+#: graph then costs no allocation at all — every node is handed one of these
+#: four objects.
+_SIDES: Final[tuple[frozenset[Direction], ...]] = (
+    _DECLARATION,
+    frozenset({'request'}),
+    frozenset({'response'}),
+    frozenset({'request', 'response'}),
+)
+
+
+def _side_map(graph: Graph) -> dict[str, frozenset[Direction]]:
+    """Every node's side of the wire, for the whole graph, in one pass.
+
+    **The side is carried down, not computed up.** Which side a node sits on is
+    a fact about its ancestors — containment points downwards, from an operation
+    through its request or its responses to a payload, a schema and a property —
+    so the obvious implementation asks each node to walk back towards the API.
+    That is what this did, once per node, and it was 41% of a diff: 36 510
+    independent reverse traversals, each allocating its own frontier and seen
+    set, re-walking the same ancestor chains endlessly. Every property of `User`
+    re-derived `User`'s entire ancestry from scratch.
+
+    It is a union over parents, which makes it a forward propagation:
+
+        sides(n) = union over incoming e of ( side_of(e.predicate) | sides(e.subject) )
+
+    so one worklist over the edges settles every node at once. The lattice is
+    four states — neither, request, response, both — so a node is re-enqueued at
+    most twice and the fixpoint is reached in O(E). Cycles need no special case;
+    they simply stop widening.
+
+    A node keeps **every** side that reaches it. A declared type is routinely a
+    request body and a response body in the same document, and grading it by
+    whichever path arrived first is not even deterministic, let alone right.
     """
-    found: set[Direction] = set()
-    seen: set[str] = set()
-    frontier = [iri]
-    while frontier:
-        current = frontier.pop()
-        if current in seen:
-            continue
-        seen.add(current)
-        for edge in graph.into(current):
-            if edge.predicate == 'request':
-                found.add('request')
-            elif edge.predicate == 'returns':
-                found.add('response')
-            frontier.append(edge.subject)
-    return frozenset(found) or frozenset({'declaration'})
+    # Seeded with every node, so one that no edge reaches still gets an answer.
+    mask: dict[str, int] = dict.fromkeys(graph.nodes, 0)
+    queue: deque[str] = deque(graph.nodes)
+    bits = _BIT
+    out = graph.out
+
+    while queue:
+        iri = queue.popleft()
+        carried = mask.get(iri, 0)
+        for edge in out(iri):
+            reaching = carried | bits.get(edge.predicate, 0)
+            if not reaching:
+                # Nothing to hand down. Most edges on most documents take this
+                # branch, which is why the seed can be every node rather than
+                # only the roots — a node with nothing to give costs one lookup.
+                continue
+            target = edge.object
+            current = mask.get(target, 0)
+            if reaching & ~current:
+                mask[target] = current | reaching
+                queue.append(target)
+
+    return {iri: _SIDES[found] for iri, found in mask.items()}
 
 
 # -- the policy ---------------------------------------------------------------

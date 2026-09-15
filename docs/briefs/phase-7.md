@@ -9,7 +9,7 @@ declaration is easy, and knowing which declarations are malformed is the phase.
 
 ---
 
-## 0. What this brief got wrong
+## 1. What this brief got wrong
 
 Kept rather than rewritten; the corrections have been the most useful part of
 every brief since Phase 5.
@@ -38,7 +38,7 @@ every brief since Phase 5.
 
 ---
 
-## 1. Where the project stands
+## 2. Where the project stands
 
 Master is at the Phase 6 merge. The gate passes:
 
@@ -84,7 +84,7 @@ After this phase `grep -rn '_raw_' fastraml/` should return only Phase 8b's.
 
 ---
 
-## 2. Read these, in this order
+## 3. Read these, in this order
 
 1. **`CLAUDE.md`** — binding rules.
 2. **`docs/09-security-and-annotations.md` Part A** — your whole specification.
@@ -97,7 +97,7 @@ After this phase `grep -rn '_raw_' fastraml/` should return only Phase 8b's.
 
 ---
 
-## 3. What to build
+## 4. What to build
 
 Doc 15's order.
 
@@ -168,7 +168,7 @@ records the enclosing site — so each needs a test that names it
 
 ---
 
-## 4. Decisions already settled — do not re-litigate
+## 5. Decisions already settled — do not re-litigate
 
 1. **The reference form stays in `directives.py`** (`docs/02` § 3). Stage 1
    already decodes every `securedBy:`, two phases before this module existed.
@@ -179,21 +179,6 @@ records the enclosing site — so each needs a test that names it
    stage 2.** Phase 5 built it for this.
 5. **The `!include` of a definition is followed in `fragments.py`.** Phase 6
    settled the layering; `_one_definition` is already generic.
-
----
-
-## 5. Reference source
-
-go-raml is at `../go-raml-main`; `securityscheme.go` is the whole declaration
-side and `unwrap.go`'s `applySecuritySchemes` / `applySecurityScheme` the
-application side. **Read it, and run it when the question is what it does** — the
-last two phases each turned up a place where its comments describe behaviour it
-does not have.
-
-`KNOWN-ISSUES.md` in that checkout records six divergences. Add to it if this
-phase turns up more; where a *fixture* is wrong, fix it there (`docs/14` § 1.2).
-
----
 
 ## 6. Definition of done
 

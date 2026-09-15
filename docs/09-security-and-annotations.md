@@ -249,7 +249,7 @@ after that shape has been unwrapped. Because unwrap replaces shape objects, P9
 re-binds `defined_by` to the unwrapped instance; skipping that step silently
 validates against the un-flattened declaration and misses inherited constraints.
 
-### B5. `allowedTargets` — implemented here, unlike the reference
+### B5. `allowedTargets` — implemented here, unlike go-raml
 
 go-raml parses `allowedTargets` and then ignores it. fastRAML enforces it, because
 "processors MAY ignore annotations" is not licence to accept an annotation the

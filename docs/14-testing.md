@@ -92,7 +92,7 @@ def test_tck_invalid(fixture: Path) -> None:
 `DEFAULT_OPTS` is `ParseOptions(unwrap=True, validate=True)` — an invalid fixture
 frequently only fails at validation.
 
-Two facilities the reference harness needs and so will fastRAML:
+Two facilities go-raml's harness needs and so will fastRAML:
 
 - **Offline network fixtures.** `Root/include-02/valid-https.raml` includes a
   resource-type fragment over HTTPS. It is run with a stub HTTP client that
@@ -148,7 +148,7 @@ and a deviation is a decision.
 ### 1.3 Cross-checking against go-raml
 
 **Not built, and not required.** The design was: a developer-only script runs
-`raml validate --json` from the reference implementation and `fastraml validate
+`raml validate --json` from go-raml and `fastraml validate
 --json` over the same fixture, then diffs the trace chains, and each
 disagreement is triaged as a fastRAML bug, a go-raml bug, or a documented
 deviation ([01](01-scope-and-coverage.md) § 4). It needs a Go toolchain, so it
@@ -279,7 +279,7 @@ because they encode decisions rather than behaviour:
 | `includes` | node cache hit count == 1 for N references; size limit off-by-one; scalar include for non-YAML extensions; circular scalar include |
 | `references` | last-dot split; no namespace chaining; annotation→type fallback |
 | `inference` | every rule and every conflict in § 4.2 of doc 05 |
-| `expressions` | the full `rdt/examples.txt` corpus; cache identity; alias-vs-inherit discrimination |
+| `expressions` | the full adopted expression corpus; cache identity; alias-vs-inherit discrimination |
 | `structural_merge` | inputs unmutated; node identity preserved; opaque data facets not recursed; sequence dedup |
 | `security` | one test per rejection rule of doc 09 § A2; the three inheritance levels; `securedBy: [null]` removing an inherited scheme; scope narrowing without touching the shared definition |
 | `traits` / `resourcetypes` | the four priority classes; deduplication by name; optional-method filtering in both directions; which namespace a merged node resolves in |
@@ -293,7 +293,7 @@ because they encode decisions rather than behaviour:
 | `cli` | exit codes; diagnostics on stderr and nothing else there under `--json`; every file reported, not only the first; the reference trace shape survives |
 | `deviations` | one class per D in doc 01 § 4 that has no more natural home — the `.xsd` message, the two numeric-format tables being disjoint, the 64 KiB default, declaration order |
 | `public_api` | every name in `__all__` resolves; no concrete kind is missing from it; the docstring claims no phase |
-| `errors` | wrap/append composition; `to_dict()` shape matches the reference's |
+| `errors` | wrap/append composition; `to_dict()` shape matches go-raml's |
 
 ## 4. Property-based tests
 

@@ -93,7 +93,7 @@ Walk the inheritance chain collecting `facets:` declarations — **starting at
 `inherits[0]`, not at the shape itself**. A `facets:` block declares what
 *subtypes* must supply, so the declaring type neither has to satisfy its own
 required facets nor may supply a value for one; supplying one is `unknown
-facet`. Both halves were measured against the reference implementation, whose
+facet`. Both halves were measured against go-raml, whose
 `validateShapeFacets` walks from `base.Inherits[0]`.
 
 Then:
@@ -211,7 +211,7 @@ YAML decoder made one, and its exact binary ratio is
 `2476979795053773/1125899906842624`. Those never divide evenly, so `2.2` would be
 rejected — the precise failure the no-`float` rule exists to prevent. `repr`
 recovers the shortest decimal that round-trips, which is the author's text in
-every case that matters; the reference implementation converts through
+every case that matters; go-raml converts through
 `big.Rat.SetString(fmt.Sprintf("%v", v))` for the same reason.
 
 ### 5.4 `pattern` is a search; the author writes the anchors
@@ -222,7 +222,7 @@ about anchoring. What settles it is that the spec **writes the anchors itself**
 wherever it means anchored: `^.+@.+\..+$`, `^\d+\-\w+$`, `^\w{16}$`. Under a
 full match every one of those is noise, written three separate times.
 
-The reference implementation agrees: `regexp.Compile` on the raw pattern and
+go-raml agrees: `regexp.Compile` on the raw pattern and
 `MatchString`, which is Go's unanchored search.
 
 This section said the opposite until it was rechecked, resting on one TCK
@@ -305,7 +305,7 @@ default parse. `check()` therefore has nothing left to do.
   safe. A `$ref` target is decoded through the same path, so a shallow schema
   cannot reach the stack by pointing at a deep one.
 - Draft is taken from `$schema`; absent, the default draft is 7 (matching the
-  reference implementation's meta-schema validation). Unlike go-raml, which
+  go-raml's meta-schema validation). Unlike go-raml, which
   validates every schema against the draft-07 meta-schema whatever it declares,
   the schema is checked against **its own** draft's meta-schema — so a draft-04
   document may write `exclusiveMinimum: true` and a draft-07 one may not.

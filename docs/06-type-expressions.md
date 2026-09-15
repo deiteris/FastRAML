@@ -3,14 +3,13 @@
 RDT — "RAML Data Type expression" — is the tiny language in a `type:` scalar:
 `Person`, `string[]`, `(Manager | Admin)[]`, `lib.Thing?`.
 
-go-raml generates a lexer/parser for it with ANTLR
-(`go-raml-main/rdt/rdtLexer.g4`, `rdtParser.g4`). fastRAML does not
-(deviation **D8**): the ANTLR Python runtime is a heavy dependency with poor
+fastRAML parses it by hand (deviation **D8**). go-raml generates a lexer and
+parser with ANTLR; the ANTLR Python runtime is a heavy dependency with poor
 constant factors, and this grammar is nine productions with no ambiguity.
 
 ## 1. Grammar
 
-Reproduced from the reference implementation, unchanged:
+go-raml's grammar, which fastRAML implements unchanged:
 
 ```
 entrypoint : expression EOF ;
@@ -40,8 +39,8 @@ Observations that drive the implementation:
   Grouping is required to say otherwise.
 - `?` is postfix on a `type`, after any `[]`s: `string[]?` is an optional array.
 
-Test corpus (`rdt/examples.txt` in the reference) is adopted verbatim as the
-first parser fixture set.
+The first parser fixture set is go-raml's expression corpus, adopted verbatim
+and vendored into `tests/unit/test_expressions.py`.
 
 ## 2. Implementation
 

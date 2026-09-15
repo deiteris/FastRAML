@@ -209,26 +209,7 @@ worse than one that is unbound, because the second fails loudly.
 6. **The flat `domain_extensions` list is why this is a loop and not a
    traversal** (doc 09 § B3). Do not add a model walk.
 
----
-
-## 5. Reference source
-
-go-raml is at `../go-raml-main`, but it is a weak oracle for this phase: it
-parses `allowedTargets` and ignores it, so §§ 3.1–3.3 have no reference
-behaviour. Where it is worth reading:
-
-| Need | Where |
-|---|---|
-| Its P8 equivalent, the binding loop | grep `domainExtension` in `parse.go` |
-| What it does with an unresolvable annotation name | same loop |
-
-Go is installed: when the question is what it *does*, run it (`go test -run
-<name> .` against a throwaway `zz_*_test.go`, deleted afterwards). Its comments
-have been wrong about its own behaviour.
-
----
-
-## 6. Definition of done
+## 5. Definition of done
 
 - Every one of the six reachable `DomainLocation`s has a test that an extension
   created at that site records it.
@@ -263,7 +244,7 @@ Unit tests: `tests/unit/test_domain_extensions.py`.
 
 ---
 
-## 7. Scope boundary
+## 6. Scope boundary
 
 This phase binds and records. It does not:
 
@@ -276,7 +257,7 @@ This phase binds and records. It does not:
 
 ---
 
-## 8. Working method
+## 7. Working method
 
 Branch: `git checkout -b phase-4b-domain-extensions`. One logical change per
 commit. If the code must diverge from a document, **amend the document in the

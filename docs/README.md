@@ -1,9 +1,7 @@
 # fastRAML — parser design documents
 
-A RAML 1.0 parser for Python, modelled on [go-raml](https://github.com/acronis/go-raml)
-(reference source: `C:\Sources\go-raml-main`) and the
-[RAML 1.0 specification](https://github.com/raml-org/raml-spec/blob/master/versions/raml-10/raml-10.md)
-(local copy: `C:\Sources\raml-spec\versions\raml-10\raml-10.md`).
+A RAML 1.0 parser for Python, written against the
+[RAML 1.0 specification](https://github.com/raml-org/raml-spec/blob/master/versions/raml-10/raml-10.md).
 
 These documents describe **what to build and why**, before any code is written.
 They are normative for the implementation: where a document states a rule, the code
@@ -24,7 +22,7 @@ follows it or the document is amended first.
 | 09 | [Security schemes and annotations](09-security-and-annotations.md) | `securitySchemes`, `securedBy`, annotation types, domain extensions |
 | 10 | [Validation](10-validation.md) | `check` vs `validate`, examples/defaults/enums, facet validation, JSON Schema |
 | 11 | [Diagnostics](11-diagnostics.md) | Error model, accumulation, partial-result tolerance, positions |
-| 12 | [Performance](12-performance.md) | Every performance technique go-raml uses, and its Python translation |
+| 12 | [Performance](12-performance.md) | Where the time and memory go, and the techniques that keep both linear |
 | 13 | [Public API](13-public-api.md) | Entry points, options, the model surface consumers see |
 | 14 | [Testing strategy](14-testing.md) | TCK integration, unit/golden/property/benchmark layers |
 | 15 | [Implementation plan](15-implementation-plan.md) | Milestones, ordering, definition of done per phase |
@@ -46,6 +44,7 @@ numbered documents above and leaves a pointer behind.
 
 - **MUST / SHOULD / MAY** carry RFC 2119 meaning, as in the RAML spec itself.
 - Citations of the form *spec § Section Name* refer to `raml-10.md`.
-- Citations of the form `go-raml:file.go` refer to the reference implementation.
-- Python identifiers are `snake_case`; the Go names are given where a reader may
-  want to diff against the reference.
+- [go-raml](https://github.com/acronis/go-raml) is named where its behaviour
+  explains a decision here, most often because the spec is silent and the TCK
+  encodes that reading. Naming it records why a rule is what it is; it does not
+  make it authoritative.

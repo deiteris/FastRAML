@@ -17,7 +17,7 @@ of them and leave the tree green. **Done when** is the checkable definition of
 done.
 
 A working brief per phase lives in `docs/briefs/`. The brief carries a phase's
-settled decisions and the reference line ranges worth opening; this document
+settled decisions; this document
 stays the map.
 
 ---
@@ -162,7 +162,7 @@ the critical path; this phase consumes them rather than writing them. Normative:
 5. Cyclic-reference detection, so a self-referential expression is a diagnostic
    rather than a hang.
 
-**Done when:** every line of `rdt/examples.txt` builds the expected shape;
+**Done when:** every line of the adopted expression corpus builds the expected shape;
 `Types/` fixtures that use expressions parse; no reachable `UnknownShape` remains
 after a parse (invariant I5 asserted by a test helper).
 
@@ -514,7 +514,7 @@ the whole-corpus form of that criterion needs Phase 7 and is Phase 8b's.
 move in the project and the first phase that could have gone backwards. 117 unit
 tests across `test_check.py` and `test_validate.py`, plus law 7 under hypothesis.
 
-Three things were established by *running* the reference implementation after a
+Three things were established by *running* go-raml after a
 regression, not by reading the spec, and each is now written down where the rule
 lives:
 
@@ -537,7 +537,7 @@ extension, so `schema.json#/definitions/User` decoded as RAML with `$schema` as 
 custom facet. `check_fragment_kind` twenty lines above already stripped the
 pointer. Invisible until something read `custom_facets`.
 
-The three divergences found in the reference implementation are written up in
+The three divergences found in go-raml are written up in
 `KNOWN-ISSUES.md` in that checkout, each with a reproduction.
 
 ---
@@ -733,7 +733,7 @@ In rough priority order:
 2. **Multi-parent custom facet chain walk** — the known limitation in
    [10](10-validation.md) § 4.
 3. **Union `enum` semantics** — spec § Union Type's enum rules, which the
-   reference implementation also defers.
+   go-raml also defers.
 4. **Finer provenance granularity** — [08](08-templates-and-endpoints.md) § 6.4.
 5. **Downstream packages** — LSP server, JSON Schema / OpenAPI converters,
    middleware. All are consumers of the model, not changes to it; `retain_source`
@@ -793,4 +793,4 @@ In rough priority order:
 | Parent-shape mutation during multiple inheritance | Phase 4 | Explicit test: two children inherit one parent, assert the parent is byte-identical after |
 | `RecursionError` on deep user input | Phases 4, 6, 8 | Depth guard + hypothesis property 10 |
 | Performance regressions creep in unnoticed | all | Benchmarks in CI from Phase 9, baselines committed |
-| Divergence from the reference on an ambiguous spec point | all | **Closed by the TCK, not by the script that was planned for it.** Every divergence was isolated by a single fixture and settled by running go-raml against a throwaway Go test; the ratchet is 916 of 916 and each resolution is a documented deviation ([01](01-scope-and-coverage.md) § 4) or a bug fixed. The cross-check script ([14](14-testing.md) § 1.3) is deliberately unbuilt |
+| Divergence from go-raml on an ambiguous spec point | all | **Closed by the TCK, not by the script that was planned for it.** Every divergence was isolated by a single fixture and settled by running go-raml against a throwaway Go test; the ratchet is 916 of 916 and each resolution is a documented deviation ([01](01-scope-and-coverage.md) § 4) or a bug fixed. The cross-check script ([14](14-testing.md) § 1.3) is deliberately unbuilt |

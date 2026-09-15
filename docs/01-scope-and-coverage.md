@@ -29,13 +29,11 @@
   because it is the same kind of thing `views/` already holds — a projection of
   the model that decides no RAML rule — and because the reverse direction is
   already here: `types/jsonschema_.py` reads JSON Schema, so a parser that only
-  read one and never wrote one was the odd shape. go-raml keeps its equivalent
-  in the same repository, at `converter/jsonschema.go`, which this follows.
-  `views/openapi.py` converts an effective API to OpenAPI 3.0.3, following that
-  implementation's `converter/oas3conv.go` ([16](16-graph.md) § 13).
-- Thread safety. A parser instance is single-threaded, exactly as in go-raml
-  (`// WARNING: Not thread-safe`). Parallelism, if ever needed, is across
-  independent parser instances.
+  read one and never wrote one was the odd shape. go-raml ships both conversions
+  in its own repository for the same reason. `views/openapi.py` converts an
+  effective API to OpenAPI 3.0.3 ([16](16-graph.md) § 13).
+- Thread safety. A parser instance is single-threaded, as go-raml is.
+  Parallelism, if ever needed, is across independent parser instances.
 
 ## 3. Spec coverage matrix
 
@@ -157,7 +155,7 @@ objects by reference, so writing to one would narrow the parent type for every
 other subtype of it; and only a subtype makes the member's own `facets:`
 declarations visible to P10, which walks from `inherits[0]`.
 
-The reference implementation still has the gap, and a worse one: its
+go-raml still has the gap, and a worse one: its
 `UnionShape.unmarshalYAMLNodes` discards every facet but `discriminator`
 outright, so the constraint is not merely unenforced but unrecoverable. Written
 up as entry 1 of `KNOWN-ISSUES.md` in that checkout, with a reproduction.
@@ -288,7 +286,7 @@ or install libyaml.
 ### D10 — Two YAML 1.2 characters and one construct are not accepted
 
 All three are PyYAML scanner limitations, shared with `gopkg.in/yaml.v3`, so
-fastRAML is no stricter than the reference implementation:
+fastRAML is no stricter than go-raml:
 
 - **U+2028 and U+2029.** YAML 1.1 reads them as line breaks; YAML 1.2 says they
   are ordinary characters. In an unquoted scalar PyYAML splits the line and then

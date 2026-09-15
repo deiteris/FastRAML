@@ -133,7 +133,7 @@ real and the spec reads both ways: a sequence in a `type:` position *is*
 multiple inheritance (§ Multiple Inheritance), and `items:` holds a type
 declaration — so `[Foo, Bar]` looks like a composite. But the `items` facet is
 defined as "a reference to an existing type or an inline type declaration", and
-a sequence is neither. The reference implementation reads it the same way and
+a sequence is neither. go-raml reads it the same way and
 the TCK fixture is named `invalid`. The multiply-inheriting form remains
 available one level in, as `items: {type: [Foo, Bar]}`, which is unambiguous.
 
@@ -232,7 +232,7 @@ into a `DataNode` discards the source node, and both of these need it later:
 | `UnknownShape` | the kind is unknown, so *which* of these are facets at all is unknown | P7's `attach_kind` |
 | `UnionShape` | the kind is known and recognises none of them — they belong to the members, and the members are not settled until the merge | P9's `_distribute_union_facets` ([07](07-resolution-and-inheritance.md) § 3.4) |
 
-The reference implementation threads the same list through every shape and
+go-raml threads the same list through every shape and
 stores it in exactly one place, its `UnknownShape`; the union case is the gap it
 still has ([01](01-scope-and-coverage.md) § 3.7).
 
@@ -361,7 +361,7 @@ property. Rules:
   rather than describing one, and `/^x/` is how they are written.
 
   That is not the reading `additionalProperties: true` suggests, and the
-  reference implementation does not do it. The spec's own examples decide it, in
+  go-raml does not do it. The spec's own examples decide it, in
   their own comments: `types-pattern-properties.raml` says pattern properties
   are "restricting the property names of any additional properties", and
   `additional-properties.raml` uses the empty pattern `//` to "force all
@@ -467,11 +467,10 @@ unwrap, and it is inline — so on the flattened model every correct document
 reports as broken. On the declared model a discriminator is present only where it
 was written. Decoding records only shapes that wrote either facet, and
 `check_declared_discriminators` in `types/validate.py` checks that narrow list;
-its cost is proportional to discriminator declarations, not to all types. The
-reference implementation cannot supply this check: `complex.go` carries the rule
-as a `FIXME` ("need to validate on which level the discriminator is applied to
-avoid potential false positives"), its TCK case is commented out, and it
-enforces nothing.
+its cost is proportional to discriminator declarations, not to all types.
+go-raml does not supply this check: it carries the rule as a `FIXME` ("need to
+validate on which level the discriminator is applied to avoid potential false
+positives"), its TCK case is commented out, and it enforces nothing.
 
 `discriminatorValue` defaults to the type's name; the default is computed on read,
 not materialised at parse time.

@@ -330,8 +330,7 @@ a declared type one node rather than one node per use site, and what closes a
 type cycle. It also makes **walk order part of the contract**: declarations are
 registered before endpoints are walked, so `User` lands at
 `#/declarations/types/User` and not at whichever response body happened to reach
-it first. go-raml's converter pre-registers for exactly this reason
-(`converter/jsonld.go`, `preRegisterTypes`).
+it first. go-raml's converter pre-registers for exactly this reason.
 
 Every segment is percent-escaped with an empty safe set, so a media type, a
 `/{userId}` template and a `/^x-/` pattern-property name each survive as one
@@ -720,10 +719,9 @@ quoted on its own.
 
 ## 7. AMF was assessed and not adopted
 
-The reference implementation ships a full AMF-compatible JSON-LD converter
-(`go-raml:converter/jsonld.go`, 1787 lines over a model whose class names match
-this one's almost exactly). It is the concrete cost estimate for the alternative,
-and it was read before this design was settled.
+go-raml ships a full AMF-compatible JSON-LD converter: 1787 lines over a model
+whose class names match this one's almost exactly. It is the concrete cost
+estimate for the alternative, and it was read before this design was settled.
 
 Three different proposals hide behind "use AMF":
 
@@ -1721,8 +1719,8 @@ Three things this found on its first two runs, none of which any test could see:
 ## 12. A shape as JSON Schema
 
 `views/jsonschema.py`. `to_json_schema(shape)` returns a draft-07 document and a
-list of what it could not carry. It follows go-raml's `converter/jsonschema.go`
-visitor, which is the reference for every decision below.
+list of what it could not carry. Its shape dispatch follows go-raml's, which is
+where the decisions below were checked against a second implementation.
 
 It is a view in the same sense `render` is: a projection of one entity, deciding
 no RAML rule, importing nothing from `views/walk.py` because it addresses
@@ -1776,15 +1774,15 @@ subtly different; agreeing on instances is the claim worth making.
 
 `views/openapi.py`. `to_openapi(raml)` returns a typed `OAS3Document` and a list
 of information the target format could not carry. Every OpenAPI object is a
-slotted, non-equality dataclass mirroring `converter/oas3doc.go`; nested values
-therefore remain discoverable and statically typed instead of collapsing into
-`dict[str, Any]`. `to_dict()` is the separate wire projection, and the CLI writes
-that value as YAML or JSON with `fastraml openapi`.
+slotted, non-equality dataclass, so nested values stay discoverable and
+statically typed instead of collapsing into `dict[str, Any]`. `to_dict()` is the
+separate wire projection, and the CLI writes that value as YAML or JSON with
+`fastraml openapi`.
 
-The mapping follows go-raml's `converter/oas3conv.go`: the input must be
-unwrapped; effective resources become flat `paths`; URI, query and header
-parameters keep their binding; bodies become media-type `content`; and recursive
-types occupy a component name before their body is walked.
+The mapping: the input must be unwrapped; effective resources become flat
+`paths`; URI, query and header parameters keep their binding; bodies become
+media-type `content`; and recursive types occupy a component name before their
+body is walked.
 
 **A component per named type, everything else inline.** Named means a `types:`
 block named it — the API's own *and every library's* — or the projection did,

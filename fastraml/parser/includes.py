@@ -95,8 +95,8 @@ def resolve_ref_uri(raml: Raml, ref: str, location: str, position: Position | No
     loader as a literal name: on Windows an illegal one, on POSIX a legal one
     that is merely absent. Both report a missing file, which names the wrong
     mistake — and where such a file does exist, the include resolves and the
-    document is accepted. go-raml has the same gap, recorded as the error chain
-    its own `tck_invalid_test.go` expects for this fixture.
+    document is accepted. go-raml has the same gap, and its own conformance run
+    records the same failure for this fixture.
     """
     if _PARAMETER_OPENS in ref:
         raise RamlError.new(

@@ -159,7 +159,7 @@ str(err)  # human: indented chains, "file:line:col message"
 err.to_dict()  # machine: nested dicts, mirrors go-raml's JSON output
 ```
 
-The `to_dict()` shape follows the reference implementation so that go-raml's CLI
+The `to_dict()` shape follows go-raml so that go-raml's CLI
 output and fastRAML's are comparable during TCK work:
 
 ```json

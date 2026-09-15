@@ -1,7 +1,6 @@
 """A fastRAML shape -> JSON Schema draft-07.
 
-Follows go-raml's `converter/jsonschema.go` visitor, which is the reference this
-project is modelled on. The decisions worth naming, because none is obvious:
+The decisions worth naming, because none is obvious:
 
 - **The entry point must be unwrapped.** go-raml refuses otherwise
   (`entrypoint shape must be unwrapped`), and for the same reason fastRAML's
@@ -52,7 +51,7 @@ __all__ = ['SCHEMA_VERSION', 'Conversion', 'to_json_schema']
 
 SCHEMA_VERSION: Final = 'http://json-schema.org/draft-07/schema'
 
-#: RFC 2616 date-time, as go-raml spells it. JSON Schema has no format for it.
+#: RFC 2616 date-time. JSON Schema has no format for it.
 RFC2616: Final = (
     r'^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), ([0-3][0-9]) '
     r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([0-9]{4})'

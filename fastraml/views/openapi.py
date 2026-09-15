@@ -1,8 +1,7 @@
 """A finished RAML API model as a typed OpenAPI 3.0.3 document.
 
-The model and mapping follow go-raml's ``converter/oas3doc.go`` and
-``converter/oas3conv.go``. This is a projection, not a parser pass: RAML has
-already resolved traits, resource types, security, and inheritance.
+A projection, not a parser pass: RAML has already resolved traits, resource
+types, security, and inheritance by the time anything here runs.
 """
 
 from __future__ import annotations

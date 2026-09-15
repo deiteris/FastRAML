@@ -172,35 +172,7 @@ Each of these is load-bearing and each is easy to "simplify" into a bug.
 10. **Enforce `max_include_size` by reading `limit + 1` bytes**, so an oversized
     file is detected without being read.
 
----
-
-## 5. Reference source — read ranges, not files
-
-go-raml is at `../go-raml-main`. The documents already capture its decisions;
-open it only for a mechanical detail. Reading it wholesale is what exhausts a
-session's context.
-
-| Need | File and lines |
-|---|---|
-| The registry's fields and caches | `raml.go` 1–200 |
-| `resolveUses` | `parse.go` 24–48 |
-| Fragment head table | `parse.go` 65–93 |
-| Kind check, cache lookup | `parse.go` 188–292 |
-| Per-kind decode/parse pairs | `parse.go` 446–528 |
-| Entry points and the pass driver | `parse.go` 577–752 |
-| Include resolution and caching | `node.go` 332–465 |
-| `DataNode` / `ValueNode` | `node.go` 467–603 |
-| Annotated scalar, `MakeNode` | `node.go` 228–330 |
-| `uses:`, `types:` unmarshalling | `fragment.go` 96–182 |
-| `Library` | `fragment.go` 184–260 |
-| `APIFragment` and its pre-pass | `fragment.go` 812–1100 |
-| Reference resolution | `fragment_utils.go` (all 93 lines) |
-| Domain extensions | `extension.go` (all 52 lines) |
-| Documentation items | `documentationitem.go` 1–130 |
-
----
-
-## 6. Definition of done
+## 5. Definition of done
 
 From `docs/15-implementation-plan.md` Phase 1, made concrete:
 
@@ -219,7 +191,7 @@ From `docs/15-implementation-plan.md` Phase 1, made concrete:
   kinds named.
 - `Fragments/` and `Libraries/` TCK categories are attempted. Many will still
   fail on types — that is expected. Record the new baseline:
-  `FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck --update-ratchet`
+  `uv run pytest tests/tck --update-ratchet`
   and read the diff before committing it.
 - The full gate passes.
 
@@ -228,7 +200,7 @@ Unit tests belong in `tests/unit/test_registry.py`, `test_fragments.py`,
 
 ---
 
-## 7. Scope boundary
+## 6. Scope boundary
 
 Phase 1 builds **no shapes**. If you find yourself needing `BaseShape`,
 `make_shape`, or a type expression, you have crossed into Phase 2 — stop and
@@ -239,7 +211,7 @@ Likewise: no endpoints (Phase 5), no trait or resource-type compilation
 
 ---
 
-## 8. Working method
+## 7. Working method
 
 Branch first: `git checkout -b phase-1-fragments`. Commit in logical units with
 `type:` prefixes. If the code must diverge from a document, **amend the document

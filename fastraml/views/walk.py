@@ -185,7 +185,7 @@ class Walk:
     order is part of the contract: declarations before endpoints, which is what
     makes `User` land at `#/declarations/types/User` and not at whichever
     response body happened to reach it first. go-raml's converter pre-registers
-    for exactly this reason (`converter/jsonld.go`, `preRegisterTypes`).
+    for exactly this reason.
 
     Because order decides assignment, two emitters that walked separately would
     address the same entity differently and their outputs could not be joined.

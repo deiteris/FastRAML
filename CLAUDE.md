@@ -1,6 +1,6 @@
 # fastRAML — project rules
 
-A RAML 1.0 parser for Python 3.12+, modelled on go-raml. **`docs/` is normative.**
+A RAML 1.0 parser for Python 3.12+. **`docs/` is normative.**
 Start at `docs/README.md`; each document owns one area and states the decisions
 that area has already settled.
 
@@ -201,11 +201,14 @@ Full list with the pass that establishes each: `docs/02-architecture.md` § 4.
 - Single quotes; `docs/` is excluded from ruff so illustrative code keeps its
   density.
 
-## Working with the reference implementation
+## Consulting go-raml
 
-go-raml lives at `../go-raml-main`. The design documents already capture its
-decisions, so **read targeted line ranges when you need a detail, not whole
-files**. Reading it wholesale is what consumes a session's context.
+go-raml is another RAML 1.0 implementation, and the TCK encodes its reading of
+the spec wherever the spec is silent. That is the only reason to open it.
+
+It lives at `../go-raml-main`. The design documents already capture the
+decisions that matter, so **read targeted line ranges when you need a detail,
+not whole files**. Reading it wholesale is what consumes a session's context.
 
 Go is installed. When the question is what go-raml *does* rather than how it is
 built, **run it** — `go test -run <name> .` against a throwaway `zz_*_test.go`

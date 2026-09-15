@@ -10,7 +10,7 @@ property tests are not the finishing touch, they are how you find out.
 
 ---
 
-## 0. What this brief got wrong
+## 1. What this brief got wrong
 
 Kept rather than rewritten; the corrections have been the most useful part of
 every brief since Phase 5.
@@ -51,7 +51,7 @@ every brief since Phase 5.
 
 ---
 
-## 1. Where the project stands
+## 2. Where the project stands
 
 Master is at the Phase 5 merge. The gate passes:
 
@@ -100,7 +100,7 @@ trait; Phase 7 needs this phase, not the other way round.
 
 ---
 
-## 2. Read these, in this order
+## 3. Read these, in this order
 
 1. **`CLAUDE.md`** — binding rules. Two are this phase's specifically:
    **`Node` defines no `__eq__`/`__hash__`** (the overlay is keyed by object
@@ -117,7 +117,7 @@ trait; Phase 7 needs this phase, not the other way round.
 
 ---
 
-## 3. What to build
+## 4. What to build
 
 Doc 15's order. Steps 1 and 2 are not separable in practice: the merge is
 unusable without provenance, because a grafted trait body resolves its type
@@ -173,7 +173,7 @@ Then `resourcePathName` (§§ 5.3, 7.4) and the forbidden-parameter positions.
 
 ---
 
-## 4. Decisions already settled — do not re-litigate
+## 5. Decisions already settled — do not re-litigate
 
 1. **The merge is on the YAML tree, not the model** (doc 08 § 2). Phase 5 built
    the IR for this.
@@ -186,27 +186,6 @@ Then `resourcePathName` (§§ 5.3, 7.4) and the forbidden-parameter positions.
 6. **Directive resolution runs between P4's two stage loops**, so every subtree
    a template contributes exists before the single decode pass and joins the P7
    worklist.
-
----
-
-## 5. Reference source
-
-go-raml is at `../go-raml-main`. **Read its implementation, not only its
-behaviour** — Phase 8a's worst regression came from probing what thirty seconds
-in `validate.go` would have answered.
-
-| Need | Where |
-|---|---|
-| The merge | grep `mergeStructural` |
-| Provenance | grep `provenance`, `markGraft` |
-| Resource type compilation | grep `compileResourceType` |
-| Trait priority | grep `rtTraits` |
-
-`KNOWN-ISSUES.md` in that checkout records five divergences found so far, three
-in the implementation and two in the TCK. Add to it if this phase turns up more;
-where a *fixture* is wrong, fix it there (`docs/14` § 1.2).
-
----
 
 ## 6. Definition of done
 

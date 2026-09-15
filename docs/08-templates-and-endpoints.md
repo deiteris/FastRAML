@@ -401,10 +401,10 @@ A template body is scanned **once, at declaration time**, producing:
 Scanning once is the point: a resource type applied to 200 endpoints scans its
 body once, and every application looks the results up.
 
-**The key is the node itself, and this is a deliberate divergence from the
-reference.** go-raml keys by a *positional index* computed as "a node has index
-`idx`, its i-th child has `idx + i`" (`template.go`, `collectVariablesIndex`).
-That has two faults, and fastRAML's earlier design fixed only the first:
+**The key is the node itself, and go-raml does this differently.** It keys by a
+*positional index* computed as "a node has index `idx`, its i-th child has
+`idx + i`". That has two faults, and fastRAML's earlier design fixed only the
+first:
 
 1. **The numbering is not injective.** A node and its own first child both
    receive `idx`; a trait body of 17 nodes collapses onto 7 indices. Substitution
@@ -463,7 +463,7 @@ Scan for `<<`, find `>>`, split the content on `|`, strip spaces:
 
 Eight of the ten are rules. The other two need a **dictionary**, because English
 supplies no rule that turns `criterion` into `criteria` — so the only way to
-agree with the reference implementation is to share its dictionary, not to patch
+agree with go-raml is to share its dictionary, not to patch
 a different one.
 
 go-raml uses `go-pluralize`, a port of Blake Embrey's JavaScript `pluralize`.
@@ -476,8 +476,8 @@ answers** — `index→indexes`, `cactus→cactuses`, `radii→radii`,
 `curriculum→curriculums` — while passing every test that named only the three
 words it had been built around.
 
-Four irregular rules are registered on top. Three are what go-raml adds
-(`trait.go`): `medium↔media`, `memorandum↔memoranda`, `vortex↔vortices`. The
+Four irregular rules are registered on top. Three are the ones go-raml adds:
+`medium↔media`, `memorandum↔memoranda`, `vortex↔vortices`. The
 fourth, `sms↔sms`, is in go-pluralize's own irregular table and absent from the
 Python port's, which tracks an earlier release of the shared JavaScript source.
 With those four, the two implementations agree on every one of the 618 answers

@@ -80,7 +80,7 @@ including a mapping that carries nothing else. Phase 2 recorded neither: it left
 subtype.
 
 go-raml distinguishes them by nil-versus-empty on that same slice
-(`BaseShape.decode`, `shape.go` 1121), which is free in Go. Here it is
+(`BaseShape.decode`), which is free in Go. Here it is
 `UnknownShape.from_mapping`, set by `_attach_kind`. Doc 06 § 3.1 now says why,
 and `TestAliasVersusInheritance` in `tests/unit/test_shape_decode.py` pins all
 four forms.
@@ -174,31 +174,11 @@ same in-place `base.shape` swap, same `_split_declarations` and
     under `TYPE_CHECKING`. Reference lookup goes through the `anchor`, which is
     already a `ReferenceResolver` object, so no runtime import is required.
 
----
-
-## 5. Reference source — read ranges, not files
-
-go-raml is at `../go-raml-main`. Open it for a mechanical detail, not for
-orientation.
-
-| Need | File and lines |
-|---|---|
-| The worklist drain and `resolveShape` | `resolve.go` 24–38, 127–199 |
-| Multiple inheritance and link resolution | `resolve.go` 74–101 |
-| The whole AST → shape visitor | `rdt_visitor.go` (all 268 lines) |
-| `VisitReference` — alias vs inherits, the two refs | `rdt_visitor.go` 192–268 |
-| `MakeConcreteShapeYAML` — what `_attach_kind` already is | `shape.go` 617–669 |
-| `decode` — where nil-vs-empty facets is set | `shape.go` 1121–1157 |
-| `UnknownShape` | `complex.go` 1571–1620 |
-| The RDT corpus | `rdt/examples.txt` (13 lines) |
-
----
-
-## 6. Definition of done
+## 5. Definition of done
 
 From `docs/15-implementation-plan.md` Phase 3, made concrete:
 
-- Every line of `rdt/examples.txt` builds the expected shape — thirteen
+- Every line of the adopted expression corpus builds the expected shape — thirteen
   expressions covering primitives, references, dotted references, arrays,
   optionals, unions and grouping. They are already a parser fixture in
   `tests/unit/test_expressions.py`; extend them to assert the built shape.
@@ -212,7 +192,7 @@ From `docs/15-implementation-plan.md` Phase 3, made concrete:
   parse, no reachable shape is an `UnknownShape`.
 - The TCK ratchet moves. Record the new baseline and **read the diff before
   committing it**:
-  `FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck --update-ratchet`
+  `uv run pytest tests/tck --update-ratchet`
   It went 558 → 584, all twenty-six fail→pass and no regression. Every one is an
   *invalid* fixture the parser now rejects, because resolution can only add
   diagnostics; that no valid fixture moved in either direction is the useful
@@ -224,7 +204,7 @@ and a new `tests/unit/test_resolve.py` (the visitor and the driver).
 
 ---
 
-## 7. Scope boundary
+## 6. Scope boundary
 
 Phase 3 answers **what kind is this, and which declaration does this name refer
 to**. It does not flatten anything.
@@ -241,7 +221,7 @@ security schemes (Phase 7), no validation (Phase 8). `JsonShape.validator` stays
 
 ---
 
-## 8. Working method
+## 7. Working method
 
 Branch first: `git checkout -b phase-3-resolution`. Commit in logical units with
 `type:` prefixes. If the code must diverge from a document, **amend the document

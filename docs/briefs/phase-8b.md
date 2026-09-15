@@ -5,7 +5,7 @@ exists so you do not have to re-derive what earlier sessions already settled.
 
 ---
 
-## 0. What this brief got wrong
+## 1. What this brief got wrong
 
 Kept for the next brief's author. The phase is complete;
 [15](../15-implementation-plan.md) § Phase 8b holds the outcome.
@@ -42,7 +42,7 @@ and enforcing `allowedTargets`. Only the first is large.
 
 ---
 
-## 1. Where the project stands
+## 2. Where the project stands
 
 Master is at the Phase 7 merge. The gate passes:
 
@@ -80,7 +80,7 @@ may not belong to this phase at all — classify each by tracing it, the way Pha
 
 ---
 
-## 2. Read these, in this order
+## 3. Read these, in this order
 
 1. **`CLAUDE.md`** — binding rules.
 2. **`docs/10-validation.md` § 6** — your whole specification for the large job.
@@ -91,7 +91,7 @@ may not belong to this phase at all — classify each by tracing it, the way Pha
 
 ---
 
-## 3. What to build
+## 4. What to build
 
 Doc 15's order.
 
@@ -112,8 +112,8 @@ Two rules that are easy to miss and both security-relevant:
   rather than reach the network — `referencing` will happily do the latter if
   handed a default retriever.
 
-Draft comes from `$schema`; absent, default to 7, which is what the reference
-implementation's meta-schema validation assumes.
+Draft comes from `$schema`; absent, default to 7, which is what go-raml's
+meta-schema validation assumes.
 
 ### 3.2 The restrictions (§ 6.2)
 
@@ -149,7 +149,7 @@ different thing — Phase 4b made that distinction deliberately.
 
 ---
 
-## 4. Decisions already settled — do not re-litigate
+## 5. Decisions already settled — do not re-litigate
 
 1. **`JsonShape.check()`/`validate()` accepting everything is deliberate**, not
    an oversight. They become real here; until they do, a JSON-schema-typed
@@ -158,19 +158,6 @@ different thing — Phase 4b made that distinction deliberately.
    `{type: "<raw>"}` (`docs/04` § 5.2). Do not add a second path.
 3. **The projection is one-way.** § 6.3's shapes are for consumers.
 4. **`allowedTargets` enforcement is P10's**, not P8's (`docs/15`, Phase 7).
-
----
-
-## 5. Reference source
-
-go-raml is at `../go-raml-main`; grep `jsonSchemaCompiler` for the registry and
-`JSONShape` for the rest. **Read it, and run it when the question is what it
-does** — every phase since 5 has turned up a place where its comments describe
-behaviour it does not have, and three of those became `KNOWN-ISSUES.md` entries.
-
-Where a *fixture* is wrong, fix it in the suite (`docs/14` § 1.2).
-
----
 
 ## 6. Definition of done
 

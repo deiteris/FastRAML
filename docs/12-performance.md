@@ -1,14 +1,13 @@
 # 12 — Performance
 
-go-raml parses **7124 types across 148 libraries in ~280 ms using ~48 MB**, and a
-small project in ~4 ms using ~12 MB. AMF (TypeScript) takes ~17 s and ~870 MB on
-the same input. Most of that gap comes from a small number of structural
-decisions rather than from the language. Those decisions are language-independent,
-and fastRAML adopts all of them.
+A RAML parser's speed is decided by a small number of structural choices, not by
+its language. The evidence: on one corpus of 7124 types across 148 libraries,
+go-raml takes ~280 ms and ~48 MB while AMF (TypeScript) takes ~17 s and ~870 MB.
+Three orders of magnitude do not come from Go being faster than TypeScript.
 
-This document lists every technique the reference implementation uses, states
-whether it transfers to Python, and gives its Python form. It also identifies the
-places where Go advice must be **inverted** for CPython.
+This document names each of those choices, gives its Python form, and marks the
+places where advice that holds for a compiled language must be **inverted** for
+CPython.
 
 ## Part 1 — Techniques that transfer directly
 
@@ -77,9 +76,9 @@ The same idea appears three more times:
 ### 6. Lazy/optional side indices
 
 `retain_source` (raw node trees + entity→node index) is **off by default**. A
-validator or code generator never allocates them; an LSP turns them on. In
-go-raml this is `OptWithRawSource`; the `store_entity_node` helper is a no-op when
-the index is absent, so the call sites are unconditional and free.
+validator or code generator never allocates them; an LSP turns them on. The
+`store_entity_node` helper is a no-op when the index is absent, so the call sites
+are unconditional and free.
 
 ### 7. Copy discipline
 
@@ -120,7 +119,7 @@ go-raml uses `big.Int`/`big.Rat` everywhere for numeric facets, because
 
 `uniqueItems` uses pairwise comparison for ≤ 20 items (no allocation) and a
 hash-bucket approach above, with full comparison on collision. Both branches are
-kept; the threshold is the reference's and is not worth re-tuning without data.
+kept; the threshold is go-raml's and is not worth re-tuning without data.
 
 ### 11. Shared JSON Schema registry
 
@@ -135,9 +134,9 @@ These are the places where copying go-raml literally would make the Python slowe
 
 ### 12. Do not write per-character loops
 
-go-raml's `toUpperCamelCase`, `toUnderscoreCase`, `resourcePathName` and the
-template-variable scanner all loop over bytes. In Go that compiles to tight code;
-in CPython every iteration is bytecode.
+Case conversion, resource-path naming and the template-variable scanner all
+invite a loop over characters, and go-raml writes them that way. In Go that
+compiles to tight code; in CPython every iteration is bytecode.
 
 **Rule:** prefer operations that run in C — `str.replace`, `str.split`,
 `str.rpartition`, slicing, and **compiled regexes** — over Python-level character
@@ -151,7 +150,7 @@ Concretely:
 - `resource_path_name` uses `rstrip("/")` + `rpartition("/")` in a small loop over
   *segments*, not characters;
 - `<<var>>` scanning uses `str.find` on `"<<"`/`">>"` — this one **is** already
-  index-based in the reference and stays that way, because a regex that handles
+  index-based in go-raml and stays that way, because a regex that handles
   the `| !action` grammar is less readable for no measurable gain.
 
 ### 13. Ordered maps are free

@@ -5,7 +5,7 @@ exists so you do not have to re-derive what earlier sessions already settled.
 
 ---
 
-## 0. What this brief got wrong
+## 1. What this brief got wrong
 
 Kept rather than rewritten, because the corrections are the useful part.
 
@@ -38,7 +38,7 @@ Kept rather than rewritten, because the corrections are the useful part.
 
 ---
 
-## 1. Where the project stands
+## 2. Where the project stands
 
 Master is at the Phase 8a merge plus two follow-up fixes. The gate passes:
 
@@ -50,7 +50,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && 
 TCK: 740 of 930, ratchet clean.
 
 **Every pass P0–P10 runs.** The type system is complete but for JSON Schema
-(Phase 8b) and one tracked union item ([01](01-scope-and-coverage.md) § 3.7).
+(Phase 8b) and one tracked union item ([01](../01-scope-and-coverage.md) § 3.7).
 What is missing is not machinery but *reach*: 106 fixtures still failing need
 endpoints and nothing else, and another 84 need endpoints plus templates.
 
@@ -94,7 +94,7 @@ already knows how to reject them.
 
 ---
 
-## 2. Read these, in this order
+## 3. Read these, in this order
 
 1. **`CLAUDE.md`** — binding rules. The two that bite here: **declaration order
    is preserved everywhere the model is exposed**, and **structural merge never
@@ -110,7 +110,7 @@ Skim only: § 6 (provenance — Phase 6 fills it, but stage 1 must carry the
 
 ---
 
-## 3. What to build
+## 4. What to build
 
 Doc 15's Phase 5 build list, in dependency order.
 
@@ -196,7 +196,7 @@ resource or a method.
 
 ---
 
-## 4. Decisions already settled — do not re-litigate
+## 5. Decisions already settled — do not re-litigate
 
 1. **Two stages, not one** (doc 08 § 2). Eager decoding costs more *and* is
    wrong: a trait grafted after decode would need its subtree re-decoded, and
@@ -213,28 +213,6 @@ resource or a method.
    headers and query parameters — asserted over the corpus by
    `tests/tck/test_invariants.py::TestDeclarationOrder`, which will start seeing
    endpoints the moment this lands.
-
----
-
-## 5. Reference source — read ranges, not files
-
-go-raml is at `../go-raml-main`. Go is installed: when the question is what it
-*does*, run it (`go test -run <name> .` against a throwaway `zz_*_test.go`,
-deleted afterwards). **Read its implementation as well as measuring it** — Phase
-8a's worst regression came from probing behaviour that thirty seconds in
-`validate.go` would have answered outright.
-
-| Need | Where |
-|---|---|
-| Stage 1 | `endpoint.go`, grep `makeSourceEndPoint` |
-| Stage 2 | grep `decodeSourceEndPoint` |
-| Media types and bodies | grep `decodeMediaTypeNode` |
-| URI parameters and propagation | grep `resolveURIParameters` |
-
-`KNOWN-ISSUES.md` in that checkout records three places it diverges from the
-spec; add to it if this phase turns up more.
-
----
 
 ## 6. Definition of done
 

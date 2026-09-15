@@ -193,37 +193,7 @@ register it in `fragment_types` (or `fragment_annotations`) **and** append it to
     module** — `types/examples.py`, `types/xml.py`, `types/shape.py`. Doc 02 § 2
     was silent on all three until this phase was planned; it is not silent now.
 
----
-
-## 5. Reference source — read ranges, not files
-
-go-raml is at `../go-raml-main`. The documents already capture its decisions;
-open it for a mechanical detail, not for orientation. Reading it wholesale is
-what exhausts a session's context.
-
-| Need | File and lines |
-|---|---|
-| `BaseShape` fields | `shape.go` 71–122 |
-| The `Shape` interface and its sub-interfaces | `shape.go` 455–505 |
-| Default-type inference | `shape.go` 506–558 |
-| `MakeConcreteShapeYAML` — kind → constructor | `shape.go` 617–669 |
-| `makeShapeType` — § 4.1's table in code | `shape.go` 699–783 |
-| `makeNewShapeYAMLWithDefault` | `shape.go` 814–870 |
-| `decodeExamples` / `decodeFacets` / `decodeExample` | `shape.go` 871–949, 1013–1026 |
-| `XMLSerialization.Decode` | `shape.go` 950–1012 |
-| `decodeValueNode` and `decode` — the § 4 walk | `shape.go` 1027–1157 |
-| Array shape | `complex.go` 24–218 |
-| Object shape, properties, pattern properties | `complex.go` 219–338, 727–796 |
-| Union shape | `complex.go` 797–830 |
-| `UnknownShape` | `complex.go` 1571–1676 |
-| Integer and Number, incl. the format tables | `scalars.go` 86–380, 381–617 |
-| String and File | `scalars.go` 618–780, 781–940 |
-| Boolean, the four date kinds, Any, Nil | `scalars.go` 942–1440 |
-| `Example` and its two forms | `example.go` (all 133 lines) |
-
----
-
-## 6. Definition of done
+## 5. Definition of done
 
 From `docs/15-implementation-plan.md` Phase 2, made concrete:
 
@@ -238,7 +208,7 @@ From `docs/15-implementation-plan.md` Phase 2, made concrete:
   is either a known kind or present in `unresolved_shapes`.
 - `Types/` TCK fixtures parse except where they need expressions or inheritance.
   Record the new baseline and **read the diff before committing it**:
-  `FASTRAML_TCK_DIR=../go-raml-main/raml-tck uv run pytest tests/tck --update-ratchet`
+  `uv run pytest tests/tck --update-ratchet`
   Today `Types/` sits at 165 pass / 137 fail, `Examples/` at 5 / 5, `Annotations/`
   at 48 / 45.
 - The full gate passes.
@@ -248,7 +218,7 @@ Unit tests belong in `tests/unit/test_shapes.py`, `test_inference.py`,
 
 ---
 
-## 7. Scope boundary
+## 6. Scope boundary
 
 Phase 2 **resolves nothing**. No type expression is parsed, no reference is
 bound, no inheritance is applied, no example is validated. If you reach for
@@ -260,7 +230,7 @@ security schemes (Phase 7), no validation (Phase 8).
 
 ---
 
-## 8. Working method
+## 7. Working method
 
 Branch first: `git checkout -b phase-2-types`. Commit in logical units with
 `type:` prefixes. If the code must diverge from a document, **amend the document

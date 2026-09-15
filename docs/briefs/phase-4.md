@@ -94,7 +94,7 @@ Note what `BaseShape.inherit` does *before* dispatching to the kind:
 one with a real rule — the target's must be a subset of the source's.
 
 go-raml guards re-entry with `sourceBase.ShapeVisited` and returns **the
-source** when it fires (`shape.go` 140–146). That is not the same as the
+source** when it fires. That is not the same as the
 resolution guard, which errors; get it right.
 
 ### 3.3 Multiple inheritance (doc 07 § 3.3)
@@ -125,7 +125,7 @@ shape. No graph traversal at the top level.
 return value. Doc 07 § 3.1 says so and it is the easiest line to skim past.
 
 One thing doc 07 does not mention: go-raml's `UnwrapShapes` **clears
-`r.shapes` and re-populates it** during the walk (`unwrap.go` 304–307), because
+`r.shapes` and re-populates it** during the walk, because
 the old entries no longer describe the model. Decide deliberately whether to
 copy that, and say so in the doc — `tests/tck/test_invariants.py` iterates
 `raml.shapes` for I1, I4 and I5, so the choice is visible to those tests.
@@ -169,30 +169,7 @@ already exists.
 7. **`__slots__` everywhere still applies** to `RecursiveShape` and to anything
    new.
 
----
-
-## 5. Reference source — read ranges, not files
-
-go-raml is at `../go-raml-main`. Go is installed: when the question is what it
-*does*, run it (`go test -run <name> .` against a throwaway `zz_*_test.go`,
-deleted afterwards). Its comments have been wrong about its own behaviour.
-
-| Need | File and lines |
-|---|---|
-| `BaseShape.Inherit`, the union cases | `shape.go` 140–260 |
-| `AliasTo` | `shape.go` 290–310 |
-| The three clone operations | `shape.go` 313–400 |
-| `MakeRecursiveShape` | `shape.go` 560–573 |
-| `UnwrapShapes`, the driver | `unwrap.go` 304–320 |
-| `FindAndMarkRecursion` and its four substitution sites | `unwrap.go` 352–455 |
-| `unwrapObjShape` / `unwrapArrayShape` / `unwrapUnionShape` | `unwrap.go` 456–580 |
-| `unwrapParents`, `unwrapLink`, `UnwrapShape` | `unwrap.go` 580–709 |
-| `makeMultipleInheritanceShape` | `unwrap.go` (grep the name) |
-| Per-kind `inherit` | `complex.go`, `scalars.go` (grep `) inherit(`) |
-
----
-
-## 6. Definition of done
+## 5. Definition of done
 
 From `docs/15-implementation-plan.md` Phase 4, made concrete:
 
@@ -222,7 +199,7 @@ Unit tests: `tests/unit/test_inherit.py` (the rule sets) and
 
 ---
 
-## 7. Scope boundary
+## 6. Scope boundary
 
 Phase 4 flattens. It does not check or validate: `check()` and `validate()` stay
 raising `NotImplementedError` naming Phase 8, and no example, default or enum
@@ -237,7 +214,7 @@ nothing to do yet. Leave it, with a comment naming the phase.
 
 ---
 
-## 8. Working method
+## 7. Working method
 
 Branch: `git checkout -b phase-4-inheritance`. One logical change per commit. If
 the code must diverge from a document, **amend the document in the same

@@ -261,7 +261,7 @@ err = user.validate({"name": "Bob", "age": 35})  # None on success
 use is a boolean-ish check in a request handler. A `validate_or_raise` variant is
 provided for the other case.
 
-Matching the reference implementation's example:
+Matching go-raml's example:
 
 ```python
 raml = parse_from_string(
@@ -301,7 +301,7 @@ usable as `case ObjectShape():` patterns).
 ## 7. Contracts the consumer must honour
 
 These four contracts appear in the module docstring and in `Raml`'s docstring.
-Each has caused problems for users of the reference implementation.
+Each has caused problems for users of go-raml.
 
 1. **The model may be cyclic.** Recursive types and mutually importing libraries
    both produce cycles. With `unwrap=True`, recursion inside a type is marked
@@ -337,8 +337,8 @@ Each has caused problems for users of the reference implementation.
 
 ## 8. CLI
 
-A thin console script, mirroring the reference tool. Presentation only: no
-parsing rule lives in `fastraml/cli.py`.
+A thin console script. Presentation only: no parsing rule lives in
+`fastraml/cli.py`.
 
 ```
 fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE [FILE ...]
@@ -402,7 +402,7 @@ exactly that.
 
 `error` is `RamlError.to_dict()` or `null`. The wrapper is what `to_dict()` alone
 cannot express — which file, and whether it was valid at all — and the `traces`
-value inside it keeps the reference implementation's shape, so the two tools can
+value inside it keeps go-raml's shape, so the two tools can
 be diffed fixture by fixture without an adapter ([14](14-testing.md) § 1.3).
 Nothing is written to stderr in this mode.
 

@@ -218,8 +218,8 @@ The registry is a parameter because the workspace root lives on it.
 A `uses:` value is a path but not an `!include`, and the same three forms apply
 to it, so it resolves through `resolve_ref_uri` as well. go-raml instead resolves
 a `uses:` value with plain RFC 3986, which sends `/libs/a.raml` to the filesystem
-root. Sharing one rule is a deliberate divergence from the reference
-implementation, and a small one: a `uses:` path that starts with `/` is rare.
+root. Sharing one rule is a deliberate divergence from go-raml, and a small
+one: a `uses:` path that starts with `/` is rare.
 
 **A path may not contain a template parameter.** Spec § Resource Type and Trait
 Parameters: "Parameters cannot be used within any file location that is used in
@@ -237,8 +237,8 @@ and where such a file *does* exist the include resolves and the document is
 accepted. The TCK's fixture for this,
 `Libraries/include-01/invalid-dynamic-inclusion.raml`, then passes for the same
 reason `invalid-include-inexisting.raml` beside it does, which is no reason at
-all. go-raml has the same gap; the error chain its own `tck_invalid_test.go`
-records for that fixture ends in `load resource: open …<<version>>.raml`.
+all. go-raml has the same gap, and its own conformance run records the same
+failure for that fixture: `load resource: open …<<version>>.raml`.
 
 ### 4.2 What an include produces
 
@@ -462,7 +462,7 @@ uri_base(uri)              -> str    # last path segment
 uri_scheme(uri)            -> str    # "file" | "http" | "https" | ""
 ```
 
-Windows specifics, all learned from go-raml's `uri.go`:
+Windows specifics:
 
 - `C:\a\b` → `file:///C:/a/b` (note the third slash).
 - Backslashes in a *reference* are normalised to `/` before RFC 3986 resolution,

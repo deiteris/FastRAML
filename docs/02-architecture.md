@@ -65,7 +65,7 @@ Two orderings are required for correctness:
 
 - **P4 before P7.** Templates contribute new type-bearing subtrees; those must be
   turned into shapes *before* the shape worklist is drained, or they never get
-  resolved. (`go-raml:parse.go` calls `buildEndPoints` then `resolveShapes`.)
+  resolved. go-raml orders the two passes the same way.
 - **P7 before P9.** Unwrapping merges a shape with its parents; a shape whose
   concrete kind is still `UnknownShape` cannot be merged.
 

@@ -182,7 +182,7 @@ facet key became a custom facet *value* during decoding (doc 05 § 4).
 **Start the walk at `inherits[0]`, not at the shape.** A `facets:` block
 declares what *subtypes* must supply: the declaring type neither has to satisfy
 its own required facets nor may supply a value for one, and supplying one is
-`unknown facet`. Both halves are measured — `validate.go`'s
+`unknown facet`. Both halves are measured — go-raml’s
 `validateShapeFacets` walks from `base.Inherits[0]`. Getting this wrong regresses
 fifteen valid fixtures and every one of them looks like a different bug.
 
@@ -232,25 +232,7 @@ Wire it at `entry.py`'s P10 comment, under `if options.validate:`.
 6. **The `inherits[0]`-only facet chain walk stays**, pinned by a test (§ 3.4).
 7. **`allowedTargets` absent ≠ empty** (doc 09 § B5).
 
----
-
-## 5. Reference source — read ranges, not files
-
-go-raml is at `../go-raml-main`. Go is installed: when the question is what it
-*does*, run it (`go test -run <name> .` against a throwaway `zz_*_test.go`,
-deleted afterwards). Its comments have been wrong about its own behaviour.
-
-| Need | Where |
-|---|---|
-| Per-kind `check` | grep `) check(` in `complex.go`, `scalars.go` |
-| Per-kind `validate` | grep `) validate(` in the same two |
-| `uniqueItems`, both strategies | grep `uniqueItems` / `hashValue` |
-| The validation pass and `_ensure_unwrapped`'s equivalent | grep `validateShapes` in `raml.go` |
-| Numeric format tables (deviation D2) | grep `int8` |
-
----
-
-## 6. Definition of done
+## 5. Definition of done
 
 - Every row of doc 10 § 2's table has a `check()` test that names the rule.
 - Every row of doc 10 § 5's table has a `validate()` test, plus the three
@@ -285,7 +267,7 @@ annotations).
 
 ---
 
-## 7. Scope boundary
+## 6. Scope boundary
 
 Phase 8a is doc 10 §§ 1–5. It does **not** include:
 
@@ -307,7 +289,7 @@ Phase 8a is doc 10 §§ 1–5. It does **not** include:
 
 ---
 
-## 8. Working method
+## 7. Working method
 
 Branch: `git checkout -b phase-8a-validation`. One logical change per commit,
 and this phase has natural ones: `check()`, then `validate()`, then examples,

@@ -103,7 +103,7 @@ _BEFORE_CAP_HYPHEN: Final = re.compile(r'(?<!^)(?<!-)(?=[A-Z])')
 # over go-pluralize's own irregular and uncountable tables.
 #
 # These four restore exact parity. The first three are what go-raml adds on top
-# of the library (`trait.go`); `sms` is in go-pluralize's own irregular table
+# of the library; `sms` is in go-pluralize's own irregular table
 # and absent from the Python port's, which tracks an earlier release of the
 # shared JavaScript source. See docs/08 section 7.3.
 _IRREGULAR: Final[tuple[tuple[str, str], ...]] = (
@@ -200,8 +200,8 @@ KNOWN_ACTIONS: Final = frozenset(TEMPLATE_ACTIONS)
 def apply_template_action(value: str, action: str) -> str:
     """Apply one of the ten RAML transform functions to `value`.
 
-    An unrecognised `action` returns `value` unchanged, mirroring go-raml's
-    `applyTemplateAction` default case. Every action returns the empty string
+    An unrecognised `action` returns `value` unchanged, as go-raml does. Every
+    action returns the empty string
     unchanged on empty input (explicit for `!singularize`/`!pluralize`;
     incidental but true for the other eight).
     """

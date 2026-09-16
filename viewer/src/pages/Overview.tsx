@@ -79,7 +79,7 @@ export function Overview({ document, index }: Props) {
         </Section>
       )}
 
-      {document.annotations.length > 0 && (
+      {/* {document.annotations.length > 0 && (
         <Section title="Annotations applied in this document">
           <table className="properties">
             <thead>
@@ -109,7 +109,7 @@ export function Overview({ document, index }: Props) {
             </tbody>
           </table>
         </Section>
-      )}
+      )} */}
     </article>
   );
 }

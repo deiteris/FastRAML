@@ -507,7 +507,8 @@ types:
   },
   "definitions": {
     "line": { "type": "string" },
-    "Amount": { "type": "string", "description": "The invoice's own, unrelated." }
+    "Amount": { "type": "string", "description": "The invoice's own, unrelated." },
+    "Currency": { "$ref": "money.json#/definitions/Currency" }
   }
 }""",
     'money.json': """{
@@ -515,7 +516,8 @@ types:
     "Amount": {
       "type": "object",
       "properties": { "minor": { "type": "integer" }, "of": { "$ref": "#/definitions/Amount" } }
-    }
+    },
+    "Currency": { "type": "string", "enum": ["GBP", "USD"] }
   }
 }""",
 }
@@ -552,7 +554,11 @@ class TestASchemaArrivesSelfContained:
 
     def test_one_target_named_twice_is_pulled_in_once(self, schema):
         assert schema['properties']['also'] == schema['properties']['paid']
-        assert sorted(schema['definitions']) == ['Amount', 'Amount2', 'line']
+        assert sorted(schema['definitions']) == ['Amount', 'Amount2', 'Currency', 'line']
+
+    def test_an_external_definition_alias_is_expanded_in_its_existing_slot(self, schema):
+        assert schema['definitions']['Currency'] == {'type': 'string', 'enum': ['GBP', 'USD']}
+        assert 'Currency2' not in schema['definitions']
 
     def test_a_name_the_document_already_uses_is_not_taken(self, schema):
         # The invoice has an `Amount` of its own, and it is not the one being

@@ -1146,12 +1146,62 @@ def _bundle(compiled: CompiledSchema) -> Any:
         else set()
     )
     context = _Bundling(compiled.resolver, {}, {}, taken, root=True)
-    bundled = _bundle_node(context, document)
+    aliases = _definition_aliases(context, document)
+    bundled = _bundle_root(context, document, aliases)
     if not context.pulled or not isinstance(bundled, dict):
         return bundled
     existing = bundled.get(_BUNDLE_KEY)
     merged = {**existing, **context.pulled} if isinstance(existing, dict) else context.pulled
     return {**bundled, _BUNDLE_KEY: merged}
+
+
+def _definition_aliases(context: _Bundling, document: Any) -> dict[str, Any]:
+    """Claim exact external aliases under the names the document already gave them.
+
+    Without this first pass, `definitions: {uuid: {$ref: "uuid.json"}}`
+    reserves `uuid`, then the ordinary pull has to call the target `uuid2`. The
+    original slot is already the right place for that target. Claim aliases
+    before walking the rest of the document so an earlier direct reference to
+    the same target uses the author's name too.
+    """
+    from referencing.exceptions import Unresolvable  # noqa: PLC0415 - deferred for startup cost
+
+    if not isinstance(document, dict) or not isinstance(document.get(_BUNDLE_KEY), dict):
+        return {}
+    aliases: dict[str, Any] = {}
+    for name, node in document[_BUNDLE_KEY].items():
+        if not isinstance(node, dict) or set(node) != {'$ref'}:
+            continue
+        reference = node.get('$ref')
+        if not isinstance(reference, str) or reference.startswith('#'):
+            continue
+        try:
+            resolved = context.resolver.lookup(reference)
+        except Unresolvable:
+            continue
+        if id(resolved.contents) in context.named:
+            continue
+        context.named[id(resolved.contents)] = name
+        aliases[name] = resolved
+    return aliases
+
+
+def _bundle_root(context: _Bundling, document: Any, aliases: dict[str, Any]) -> Any:
+    """Bundle the root, expanding its claimed definition aliases in place."""
+    if not isinstance(document, dict):
+        return _bundle_node(context, document)
+    bundled: dict[str, Any] = {}
+    for key, value in document.items():
+        if key == _BUNDLE_KEY and isinstance(value, dict):
+            bundled[key] = {
+                name: _bundle_node(context.at(aliases[name].resolver), aliases[name].contents)
+                if name in aliases
+                else _bundle_node(context, node)
+                for name, node in value.items()
+            }
+        else:
+            bundled[key] = _bundle_node(context, value)
+    return bundled
 
 
 def _bundle_node(context: _Bundling, node: Any) -> Any:

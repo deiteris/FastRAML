@@ -1656,6 +1656,11 @@ whatever the bundle happens to have at the same path, and a schema that
 validates something other than what its author wrote is worse than one a reader
 cannot follow.
 
+Where a top-level `definitions` entry is exactly an external `$ref`, its target
+is expanded in that existing slot. The entry already names the imported schema;
+adding a suffixed definition and making the original entry redirect to it would
+duplicate the name without resolving an actual collision.
+
 Nested rather than merged onto the shape. A schema carries its own
 `description` and `example`, and so does the RAML declaration wrapping it;
 merging would pick a winner between two things the author wrote separately.

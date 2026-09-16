@@ -366,7 +366,11 @@ result is not that file: left alone it names whatever the bundle has at the
 same path.
 
 Names come from the pointer's last segment, and a collision with a name the
-document already uses takes a suffix rather than the existing entry.
+document already uses takes a suffix rather than the existing entry. An exact
+external `$ref` already occupying a top-level `definitions` entry is not a
+collision: that entry is an alias for the target, so the target is expanded in
+that slot. This keeps `definitions: {uuid: {$ref: "uuid.json"}}` as one `uuid`
+definition instead of manufacturing a `uuid -> uuid2` redirect.
 
 ### 6.3 Projection to a RAML shape
 

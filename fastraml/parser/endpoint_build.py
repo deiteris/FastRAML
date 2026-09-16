@@ -195,6 +195,7 @@ def _synthesise(raml: Raml, name: str, endpoint: EndPoint) -> Parameter:
         declaration=Property(name=name, base=base, required=True),
         key_pos=endpoint.key_pos,
         value_pos=endpoint.key_pos,
+        synthesized=True,
     )
 
 

@@ -41,6 +41,8 @@ if TYPE_CHECKING:
     from fastraml.registry import Raml
     from fastraml.views.diff import Change
     from fastraml.views.graph import Graph
+    from fastraml.views.lint import Config as LintConfig
+    from fastraml.views.lint import Registry as LintRegistry
 
 __all__ = ['main']
 
@@ -173,6 +175,13 @@ def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> 
         choices=('error', 'warning', 'info'),
         default='info',
         help='show this severity and worse (default: info)',
+    )
+    lint.add_argument(
+        '--rule',
+        action='append',
+        default=[],
+        metavar='ID[=SEVERITY|off]',
+        help='enable, regrade, or disable one rule; repeat for more',
     )
     lint.add_argument(
         '--format',
@@ -362,7 +371,7 @@ def _info(args: argparse.Namespace) -> int:
 # -- lint ---------------------------------------------------------------------
 
 
-def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911 - each early return is a distinct CLI failure
+def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0915 - command failures return at their source
     from pathlib import Path  # noqa: PLC0415 - config files only
 
     from yaml import YAMLError  # noqa: PLC0415 - config parsing only
@@ -392,6 +401,11 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911 - each early return
         config = parse_config(config_text, registry, plugins=plugins)
     except (OSError, TypeError, ValueError, YAMLError) as err:
         print(f'lint config: {err}', file=sys.stderr)
+        return EXIT_INVALID
+    try:
+        config = _lint_rule_overrides(config, args.rule, registry)
+    except ValueError as err:
+        print(f'lint: {err}', file=sys.stderr)
         return EXIT_INVALID
 
     if args.list_rules:
@@ -454,6 +468,46 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911 - each early return
     )
     emitted = _emit_document(args, render_findings(report, args.format, color=color))
     return EXIT_INVALID if failed or emitted == EXIT_INVALID else EXIT_OK
+
+
+def _lint_rule_overrides(config: LintConfig, values: Sequence[str], registry: LintRegistry) -> LintConfig:
+    """Apply repeatable `--rule ID[=SEVERITY|off]` entries after file config."""
+    from fastraml.views.lint import Config, RuleSetting, parse_severity  # noqa: PLC0415
+
+    seen: set[str] = set()
+    rules = list(config.rules)
+    for raw in values:
+        rule_id, separator, action = raw.strip().partition('=')
+        rule_id, action = rule_id.strip(), action.strip().lower()
+        if not rule_id or (separator and not action):
+            raise ValueError(f'invalid rule override: {raw!r}')
+        if rule_id in seen:
+            raise ValueError(f'duplicate rule override: {rule_id}')
+        seen.add(rule_id)
+        if registry.get(rule_id) is None:
+            raise ValueError(f'unknown rule: {rule_id}')
+        plugin = registry.plugin_of(rule_id)
+        if plugin and plugin not in config.plugins:
+            raise ValueError(f'rule {rule_id!r} requires lint plugin {plugin!r} in the config')
+
+        severity = None if not separator or action == 'off' else parse_severity(action)
+        disabled = action == 'off'
+        existing_index = next(
+            (index for index, setting in enumerate(rules) if setting.id == rule_id and setting.match is None),
+            None,
+        )
+        existing = rules[existing_index] if existing_index is not None else None
+        setting = RuleSetting(
+            id=rule_id,
+            severity=severity if separator and action != 'off' else (existing.severity if existing else None),
+            disabled=disabled,
+            options=existing.options if existing else {},
+        )
+        if existing_index is None:
+            rules.append(setting)
+        else:
+            rules[existing_index] = setting
+    return Config(extends=config.extends, plugins=config.plugins, categories=config.categories, rules=tuple(rules))
 
 
 def _report(raml: Raml, elapsed: float, *, path: str | None = None) -> None:

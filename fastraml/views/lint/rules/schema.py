@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from fastraml.nodes import TypeNode
+from fastraml.positions import UNKNOWN
 from fastraml.types.complex_ import ObjectShape, UnionShape
-from fastraml.types.jsonschema_ import JsonShape, projected
+from fastraml.types.jsonschema_ import JsonShape, escape_json_pointer_segment, projected
 from fastraml.types.scalars import AnyShape, FileShape, NilShape, StringShape
 from fastraml.views.graph import is_declaration
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
@@ -99,32 +101,45 @@ class JsonRefSiblings:
         ),
     )
 
-    def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
-        shape = base.shape
-        if not isinstance(shape, JsonShape) or shape.base is not base:
-            return ()
-        if shape.contents is None:
-            raise RuntimeError(f'JSON schema shape has no compiled contents: {base.location}')
-        stack = [shape.contents]
-        while stack:
-            value = stack.pop()
-            if isinstance(value, dict):
-                siblings = [str(key) for key in value if key != '$ref'] if '$ref' in value else []
-                if siblings:
-                    return (
-                        ctx.at(
-                            self.meta,
-                            'JSON Schema ref has ignored siblings',
-                            location=base.location,
-                            position=base.key_pos,
-                            iri=iri,
-                            siblings=', '.join(siblings),
-                        ),
+    def run(self, ctx: Context) -> Iterable[Finding]:
+        found = []
+        seen: set[tuple[str, str]] = set()
+        for iri, node in ctx.graph.nodes.items():
+            if not isinstance(node, TypeNode) or not isinstance(shape := node.entity.shape, JsonShape):
+                continue
+            base = node.entity
+            if shape.contents is None:
+                raise RuntimeError(f'JSON schema shape has no compiled contents: {base.location}')
+            canonical = shape.canonical_uri or ''
+            document, _, root_pointer = canonical.partition('#')
+            schema = document or shape.document_uri or base.location
+            external = shape.document_uri is not None
+            identity = schema if external else f'{base.location}:{base.id}'
+            stack = [(shape.contents, root_pointer)]
+            while stack:
+                value, pointer = stack.pop()
+                if isinstance(value, dict):
+                    siblings = [str(key) for key in value if key != '$ref'] if '$ref' in value else []
+                    schema_path = f'#{pointer}/$ref'
+                    if siblings and (identity, schema_path) not in seen:
+                        seen.add((identity, schema_path))
+                        found.append(
+                            ctx.at(
+                                self.meta,
+                                'JSON Schema $ref has ignored sibling keywords',
+                                location=schema if external else base.location,
+                                position=UNKNOWN if external else base.key_pos,
+                                iri=iri,
+                                schemaPath=schema_path,
+                                siblings=', '.join(siblings),
+                            )
+                        )
+                    stack.extend(
+                        (child, f'{pointer}/{escape_json_pointer_segment(str(key))}') for key, child in value.items()
                     )
-                stack.extend(value.values())
-            elif isinstance(value, list):
-                stack.extend(value)
-        return ()
+                elif isinstance(value, list):
+                    stack.extend((child, f'{pointer}/{index}') for index, child in enumerate(value))
+        return found
 
 
 def _nil_member(base: BaseShape) -> BaseShape | None:

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from fastraml.parser.uritemplates import extract_uri_template_params
 from fastraml.positions import UNKNOWN
 from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
 from fastraml.types.expressions.parser import Optional_, Primitive, Union, parse_expression
 from fastraml.types.inference import FACET_TYPE_HINT
+from fastraml.types.jsonschema_ import JsonShape
 from fastraml.views.graph import is_declaration
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 from fastraml.views.lint.source import declaration_nodes, mapping_value
@@ -25,6 +27,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     'AvoidExplicitInferredType',
+    'ExplicitUriParameter',
     'MissingDescription',
     'MissingDisplayName',
     'MissingExample',
@@ -40,8 +43,41 @@ __all__ = [
 
 
 def _source_mapping(ctx: Context, base: BaseShape) -> Node | None:
+    if isinstance(base.shape, JsonShape):
+        return None
     found = declaration_nodes(ctx.raml, base.id)
     return found[1] if found is not None and found[1].kind is NodeKind.MAPPING else None
+
+
+class ExplicitUriParameter:
+    meta: ClassVar = RuleMeta(
+        'explicit-uri-parameter',
+        Category.STYLE,
+        'declare every URI template parameter',
+        'An explicit declaration documents the parameter type and leaves room for constraints, examples and annotations.',
+        Severity.WARNING,
+        good=('#%RAML 1.0\ntitle: t\n/users/{userId}:\n  uriParameters:\n    userId: string\n'),
+        bad='#%RAML 1.0\ntitle: t\n/users/{userId}:\n  get:\n',
+    )
+
+    def endpoint(self, ctx: Context, iri: str, endpoint: EndPoint) -> Iterable[Finding]:
+        names = dict.fromkeys(
+            expression.name
+            for expression in extract_uri_template_params(endpoint.uri, endpoint.location, endpoint.key_pos)
+        )
+        return (
+            ctx.at(
+                self.meta,
+                'URI template parameter has no explicit declaration',
+                location=endpoint.location,
+                position=endpoint.key_pos,
+                iri=iri,
+                parameter=name,
+                path=endpoint.full_uri,
+            )
+            for name in names
+            if endpoint.uri_parameters[name].synthesized
+        )
 
 
 class PreferArrayExpression:
@@ -207,7 +243,7 @@ class PreferInlineAlias:
                 location=base.location,
                 position=entry[0].position,
                 iri=iri,
-                type=base.name or 'anonymous',
+                type=entry[1].value,
             ),
         )
 

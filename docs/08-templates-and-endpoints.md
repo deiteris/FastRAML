@@ -526,7 +526,9 @@ For each endpoint, the URI template is parsed (RFC 6570 Level 1 and 2: `{var}`,
 `{+var}`, `{#var}`) and:
 
 - every variable without an explicit `uriParameters` entry gets a synthesised
-  required `string` shape;
+  required `string` shape, retained as `Parameter.synthesized = True` so an
+  opt-in style rule can require authored declarations without changing RAML's
+  valid shorthand;
 - every declared parameter not present in the template is an error
   (`uri parameter is not used`);
 - constraint values (`default`, `enum`, `example`, `examples`) may not contain

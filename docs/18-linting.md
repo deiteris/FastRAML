@@ -264,6 +264,12 @@ verbatim — a regex over the finding's message suppresses *some* of a rule's
 findings without disabling the rule, which is the difference between a linter
 people tune and one people turn off.
 
+Persistent rule selection, options and message filters belong in the
+configuration file. For one run, repeat `--rule ID` to enable a rule,
+`--rule ID=SEVERITY` to enable and regrade it, or `--rule ID=off` to disable it.
+These overrides run after the file configuration and duplicate IDs are rejected.
+`--severity` remains only a display threshold and does not reconfigure a rule.
+
 Rulesets: `spec` (group 1), `security` (group 2), `style` (group 3),
 `recommended` = `spec`, `all` = every built-in plus every enabled plugin.
 
@@ -279,6 +285,12 @@ The additional security rules cover HTTPS-only operations; Basic authentication;
 typed `401`, `429`, `500` and `400`/`422` responses; numeric URI parameters;
 rate-limit headers; bounded arrays and integers; restricted strings; and closed
 or size-bounded objects.
+`json-ref-siblings` inspects parsed JSON Schema, which retains structure but not
+token positions. Each finding therefore names the schema document and an RFC
+6901 `schemaPath` ending at the offending `$ref`. External schemas are reported
+at their own URI without a fabricated line; inline schemas retain their RAML
+position. One document-level pass deduplicates schema URI plus pointer, so each
+offending `$ref` is reported once however many payloads use its type.
 Markdown safety is renderer policy, not a document property: raw HTML may be
 passed through, escaped or sanitised, and code spans containing `<script>` are
 not executable HTML. The built-in set therefore does not guess at script safety;
@@ -291,9 +303,10 @@ RAML can bound only additional properties.
 
 The opt-in style set covers the four concise type/property spellings,
 `additionalProperties: false`, avoiding `uniqueItems`, anchored and constrained
-pattern properties, descriptions, examples and display names, and three legal
-but review-worthy type designs: multiple inheritance, optional-and-nilable
-properties, and discriminators with no local subtype. Optional plus nil is a
+pattern properties, descriptions, examples, display names, explicit URI
+parameter declarations, and three legal but review-worthy type designs:
+multiple inheritance, optional-and-nilable properties, and discriminators with
+no local subtype. Optional plus nil is a
 real three-state contract — omitted, null, or a value — and is not a default
 warning because PATCH-like APIs use it intentionally. An operation has no legal
 top-level `example` facet in RAML; `missing-example` therefore asks whether one
@@ -311,6 +324,9 @@ retained YAML tree per finding: on `fixtures/sample`, replacing those searches
 reduced an `all` run from about 59 ms to 9.5 ms, and reduced each of the three
 source-spelling rules from about 18 ms to below 0.2 ms. The index and source text
 exist only under `retain_source=True`; normal parsing allocates neither.
+Source-spelling rules apply only to RAML notation. In particular,
+`prefer-inline-alias` does not reinterpret an included JSON Schema object such
+as `{"type":"string"}` as RAML's mapping form of `type: string`.
 
 No built-in infers meaning from a declaration's name. RAML has no semantic
 marker for an API key or credential parameter, so those OpenAPI rules are not
@@ -339,6 +355,13 @@ header must have a usable integer/date/string shape for its particular spelling;
 `Retry-After` accepts integer delay-seconds or `datetime` explicitly formatted
 as `rfc2616` for an HTTP date. `https-only` also respects an HTTPS `baseUri` when
 no `protocols` facet overrides it.
+`required-401-response` applies only where authentication is mandatory. An
+operation with no effective scheme, or with `null` as an alternative, does not
+receive a cascading 401 warning in addition to `unsecured-operation`.
+`validation-error-response` likewise applies only when the operation has a
+request body, header, query input, query string or URI parameter that can fail
+validation; an input-free status operation has no validation failure contract to
+document.
 The recognized rate-limit names are the current HTTPAPI draft's `RateLimit` and
 `RateLimit-Policy`, plus the established legacy `X-RateLimit-Limit`,
 `X-RateLimit-Remaining` and `X-RateLimit-Reset` family. Speakeasy's source rule
@@ -412,7 +435,8 @@ one compact, stable, uncoloured record per finding; JSON is the integration
 contract; and `summary` is a table of complete counts by rule.
 
 ```
-fastraml lint [--config FILE] [--severity S] [--format human|text|json|summary]
+fastraml lint [--config FILE] [--severity S] [--rule ID[=SEVERITY|off]]
+              [--format human|text|json|summary]
               [--max-findings N] [--max-findings-per-rule N]
               [--no-color] [--list-rules] [--explain RULE] [--metrics]
               [-o FILE] FILE [FILE ...]

@@ -172,9 +172,21 @@ class Required401Response(_RequiredResponse):
         'operations should document a 401 body',
         'Authentication failures need a typed response contract.',
         Severity.WARNING,
-        good='#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      401:\n        body:\n          application/json: string\n',
-        bad='#%RAML 1.0\ntitle: t\n/a:\n  get:\n',
+        good=(
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  basic:\n    type: Basic Authentication\n'
+            '/a:\n  get:\n    securedBy: [basic]\n    responses:\n      401:\n'
+            '        body:\n          application/json: string\n'
+        ),
+        bad=(
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  basic:\n    type: Basic Authentication\n'
+            '/a:\n  get:\n    securedBy: [basic]\n'
+        ),
     )
+
+    def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
+        if not operation.secured_by or any(scheme.is_null for scheme in operation.secured_by):
+            return ()
+        return super().operation(ctx, iri, operation)
 
 
 class Required429Response(_RequiredResponse):
@@ -210,11 +222,24 @@ class ValidationErrorResponse:
         'operations should document a 400 or 422 body',
         'A typed validation failure prevents clients from guessing how rejected input is represented.',
         Severity.WARNING,
-        good='#%RAML 1.0\ntitle: t\n/a:\n  post:\n    responses:\n      400:\n        body:\n          application/json: string\n',
-        bad='#%RAML 1.0\ntitle: t\n/a:\n  post:\n',
+        good=(
+            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    queryParameters:\n      q: string\n'
+            '    responses:\n      400:\n        body:\n          application/json: string\n'
+        ),
+        bad='#%RAML 1.0\ntitle: t\n/a:\n  post:\n    queryParameters:\n      q: string\n',
     )
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
+        request = operation.request
+        direct_input = request is not None and bool(
+            request.headers or request.query_parameters or request.query_string is not None or request.bodies
+        )
+        endpoint_input = any(
+            (endpoint := ctx.graph.endpoint_at(edge.subject)) is not None and endpoint.uri_parameters
+            for edge in ctx.graph.into(iri, ('supportedOperation',))
+        )
+        if not direct_input and not endpoint_input:
+            return ()
         if any(
             _has_typed_body(response) for response in (operation.responses.get('400'), operation.responses.get('422'))
         ):

@@ -346,6 +346,7 @@ finding names a rule, carries a severity, and can fail CI:
 
 ```bash
 fastraml lint -w . api.raml --format text
+fastraml lint -w . api.raml --format text --rule explicit-uri-parameter
 fastraml lint --list-rules                    # what is available
 fastraml lint --explain unused-type           # one rule, with good and bad RAML
 ```

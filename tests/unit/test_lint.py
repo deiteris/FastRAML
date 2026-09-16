@@ -194,6 +194,19 @@ class TestRuleExamples:
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
         assert findings[0].info['parameter'] == 'cursor'
 
+    def test_explicit_uri_parameter_reports_only_synthesized_parameters(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/implicit/{id}:\n  get:\n/explicit/{id}:\n  uriParameters:\n    id: string\n  get:\n'
+        )
+        config = Config(extends=(), rules=(RuleSetting(id='explicit-uri-parameter'),))
+        findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+        assert [finding.info for finding in findings] == [{'parameter': 'id', 'path': '/implicit/{id}'}]
+
+    def test_explicit_ancestor_uri_parameter_is_not_reported_on_a_child(self, tmp_path):
+        source = '#%RAML 1.0\ntitle: t\n/users/{id}:\n  uriParameters:\n    id: string\n  /photos:\n    get:\n'
+        config = Config(extends=(), rules=(RuleSetting(id='explicit-uri-parameter'),))
+        assert not Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+
     def test_unused_type_follows_reachability_from_the_effective_api(self, tmp_path):
         source = (
             '#%RAML 1.0\ntitle: t\ntypes:\n  DeadChild: string\n  DeadParent:\n'
@@ -246,6 +259,23 @@ class TestRuleExamples:
         config = Config(extends=(), rules=(RuleSetting(id='unsecured-operation'),))
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
         assert [finding.rule for finding in findings] == ['unsecured-operation']
+
+    @pytest.mark.parametrize('secured_by', ['', '    securedBy: [null]\n'])
+    def test_public_operation_does_not_require_a_401_response(self, secured_by, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  get:\n{secured_by}'
+        config = Config(extends=(), rules=(RuleSetting(id='required-401-response'),))
+        assert not Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+
+    def test_operation_without_request_inputs_does_not_require_a_validation_response(self, tmp_path):
+        source = '#%RAML 1.0\ntitle: t\n/status:\n  get:\n'
+        config = Config(extends=(), rules=(RuleSetting(id='validation-error-response'),))
+        assert not Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+
+    def test_uri_parameter_requires_a_validation_response(self, tmp_path):
+        source = '#%RAML 1.0\ntitle: t\n/users/{id}:\n  get:\n'
+        config = Config(extends=(), rules=(RuleSetting(id='validation-error-response'),))
+        findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+        assert [finding.rule for finding in findings] == ['validation-error-response']
 
     def test_retry_after_requires_delay_seconds_or_http_date(self, tmp_path):
         source = (
@@ -312,7 +342,7 @@ class TestRuleExamples:
     )
     def test_required_response_must_be_typed(self, rule, status, tmp_path):
         source = (
-            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    responses:\n'
+            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    queryParameters:\n      q: string\n    responses:\n'
             f'      {status}:\n        body:\n          application/json:\n'
         )
         config = Config(extends=(), rules=(RuleSetting(id=rule),))
@@ -326,6 +356,53 @@ class TestRuleExamples:
         config = Config(extends=(), rules=(RuleSetting(id='meaningless-media-type-schema'),))
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
         assert findings[0].info['reason'] == 'binary media requires a file shape'
+
+    def test_json_ref_siblings_name_the_schema_and_every_exact_path(self, workspace):
+        schema = json.dumps(
+            {
+                'definitions': {'Name': {'type': 'string'}},
+                'properties': {
+                    'a/b': {'$ref': '#/definitions/Name', 'description': 'name'},
+                    't~x': {'allOf': [{'$ref': '#/definitions/Name', 'maxLength': 8}]},
+                },
+            }
+        )
+        api = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n  T: !include schema.json\n'
+            '/a:\n  get:\n    responses:\n      200:\n        body:\n          application/json: T\n'
+            '/b:\n  get:\n    responses:\n      200:\n        body:\n          application/json: T\n'
+        )
+        root = workspace({'api.raml': api, 'schema.json': schema})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        config = Config(extends=(), rules=(RuleSetting(id='json-ref-siblings'),))
+        findings = Linter(builtin_registry(), config).run(raml)
+        assert {finding.info['schemaPath'] for finding in findings} == {
+            '#/properties/a~1b/$ref',
+            '#/properties/t~0x/allOf/0/$ref',
+        }
+        assert {finding.info['siblings'] for finding in findings} == {'description', 'maxLength'}
+        assert all(finding.location.endswith('/schema.json') for finding in findings)
+        assert all(not finding.position.is_known for finding in findings)
+
+    def test_raml_source_spelling_rules_ignore_external_json_schema_syntax(self, workspace):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  External: !include schema.json\n',
+                'schema.json': '{"type": "string"}',
+            }
+        )
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        config = Config(extends=(), rules=(RuleSetting(id='prefer-inline-alias'),))
+        assert not Linter(builtin_registry(), config).run(raml)
+
+    def test_prefer_inline_alias_names_the_referenced_type(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n  T: string\n/a:\n  post:\n    body:\n'
+            '      application/json:\n        type: T\n'
+        )
+        config = Config(extends=(), rules=(RuleSetting(id='prefer-inline-alias'),))
+        findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+        assert [finding.info['type'] for finding in findings] == ['T']
 
     def test_preceding_comment_suppresses_one_rule_at_one_site(self, tmp_path):
         source = (
@@ -692,6 +769,70 @@ class TestLintCli:
     def test_negative_finding_limit_is_invalid(self, capsys):
         assert main(['lint', '--max-findings', '-1', 'api.raml']) == EXIT_INVALID
         assert 'must be non-negative' in capsys.readouterr().err
+
+    def test_cli_rule_enables_an_opt_in_rule(self, workspace, capsys):
+        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\n/users/{id}:\n  get:\n'})
+        assert (
+            main(
+                [
+                    'lint',
+                    '--format',
+                    'text',
+                    '--rule',
+                    'explicit-uri-parameter',
+                    str(root / 'api.raml'),
+                ]
+            )
+            == EXIT_OK
+        )
+        assert 'WARNING explicit-uri-parameter' in capsys.readouterr().out
+
+    def test_cli_rule_can_regrade_and_override_file_config(self, workspace, tmp_path, capsys):
+        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\n/users/{id}:\n  get:\n'})
+        config = tmp_path / 'lint.yaml'
+        config.write_text(
+            'extends: []\nrules:\n  - id: explicit-uri-parameter\n    severity: error\n',
+            encoding='utf-8',
+        )
+        assert (
+            main(
+                [
+                    'lint',
+                    '--config',
+                    str(config),
+                    '--format',
+                    'text',
+                    '--rule',
+                    'explicit-uri-parameter=warning',
+                    str(root / 'api.raml'),
+                ]
+            )
+            == EXIT_OK
+        )
+        assert 'WARNING explicit-uri-parameter' in capsys.readouterr().out
+
+    def test_cli_rule_can_disable_a_default_rule(self, workspace, capsys):
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n  User: |\n'
+            '    {"definitions":{"Name":{"type":"string"}},'
+            '"allOf":[{"$ref":"#/definitions/Name","maxLength":8}]}\n'
+        )
+        root = workspace({'api.raml': source})
+        assert main(['lint', '--format', 'text', '--rule', 'json-ref-siblings=off', str(root / 'api.raml')]) == EXIT_OK
+        assert 'json-ref-siblings' not in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        ('arguments', 'message'),
+        [
+            (['--rule', 'not-a-rule'], 'unknown rule'),
+            (['--rule', 'unused-type=loud'], 'unknown severity'),
+            (['--rule', '=warning'], 'invalid rule override'),
+            (['--rule', 'unused-type', '--rule', 'unused-type=off'], 'duplicate rule override'),
+        ],
+    )
+    def test_invalid_cli_rule_override_is_rejected_before_parsing(self, arguments, message, capsys):
+        assert main(['lint', *arguments, 'missing.raml']) == EXIT_INVALID
+        assert message in capsys.readouterr().err
 
 
 class TestMetrics:

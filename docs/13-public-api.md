@@ -353,7 +353,8 @@ fastraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made
 fastraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
 fastraml diff OLD NEW [--breaking-only] [--severity S] [--json]
 fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json] [-o FILE]
-fastraml lint [--config FILE] [--severity S] [--format human|text|json|summary]
+fastraml lint [--config FILE] [--severity S] [--rule ID[=SEVERITY|off]]
+              [--format human|text|json|summary]
               [--max-findings N] [--max-findings-per-rule N]
               [--no-color] [--list-rules] [--explain RULE] [--metrics]
               [-o FILE] FILE [FILE ...]
@@ -406,6 +407,9 @@ make the tool useless exactly where navigating is most wanted.
   grades `error|warning|info`, how much a finding should block CI
   ([18](18-linting.md) § 1). `--breaking-only` is now `--severity breaking`
   said shorter, and is kept because it is what a CI gate reaches for.
+- `lint --rule ID[=SEVERITY|off]` is a repeatable one-run override applied after
+  its configuration file. A bare ID enables the rule, a severity enables and
+  regrades it, and `off` disables it. Duplicate or unknown IDs are errors.
 
 **It validates every file and exits 1 at the end**, rather than stopping at the
 first failure — matching `raml validate`, and because the case the tool exists

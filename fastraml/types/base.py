@@ -521,6 +521,8 @@ class Parameter:
     declaration: Property
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
+    #: True only for an undeclared resource URI variable supplied by P6.
+    synthesized: bool = False
 
     @property
     def name(self) -> str:

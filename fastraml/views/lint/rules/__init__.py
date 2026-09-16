@@ -35,6 +35,7 @@ from fastraml.views.lint.rules.security import (
 )
 from fastraml.views.lint.rules.style import (
     AvoidExplicitInferredType,
+    ExplicitUriParameter,
     MissingDescription,
     MissingDisplayName,
     MissingExample,
@@ -89,6 +90,7 @@ def builtin_registry() -> Registry:
     style_rules: tuple[Rule, ...] = (
         AvoidExplicitInferredType(),
         DiscriminatorWithoutSubtypes(),
+        ExplicitUriParameter(),
         MissingDescription(),
         MissingDisplayName(),
         MissingExample(),

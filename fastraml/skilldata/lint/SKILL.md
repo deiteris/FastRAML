@@ -65,9 +65,23 @@ a plugin contributed.
 
 ## Configure it
 
+Use `--rule` for a temporary override:
+
+```bash
+fastraml lint -w . api.raml --format text --rule explicit-uri-parameter
+fastraml lint -w . api.raml --format text --rule unused-type=error
+fastraml lint -w . api.raml --format text --rule unused-type=off
+```
+
+Use a configuration file for persistent project policy, categories, plugins,
+rule options, or message filters:
+
 ```bash
 fastraml lint --config lint.yaml -w . api.raml --format text
 ```
+
+Do not use CLI `--severity` for configuration; it only filters displayed
+findings. CLI `--rule` overrides the file for that run.
 
 ```yaml
 extends: [recommended, security]
@@ -77,6 +91,8 @@ categories:
     severity: error        # fail CI on anything OWASP flags
 
 rules:
+  - id: explicit-uri-parameter  # enable this opt-in style rule
+
   - id: multiple-inheritance
     disabled: true         # we use it deliberately
 

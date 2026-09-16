@@ -37,6 +37,9 @@ Check the effective document against named rules. Exits 1 when any finding is at
 - `--severity S` — show this severity **and everything worse**. Values: `error`,
   `warning`, `info`. Default `info`, which shows everything. Filters the report;
   does not change the exit code.
+- `--rule ID[=SEVERITY|off]` — enable one rule, enable and regrade it, or disable
+  it for this run. Repeat for different rules. Overrides the configuration file;
+  duplicate IDs are errors.
 - `--format human|text|json|summary` — a grouped terminal report, compact
   uncoloured records, a versioned integration document, or counts per rule.
   Default `human`. Pass `--format text` unless the task explicitly requires

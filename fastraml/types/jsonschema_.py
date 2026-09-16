@@ -69,6 +69,7 @@ __all__ = [
     'CompiledSchema',
     'JsonShape',
     'SchemaRegistry',
+    'escape_json_pointer_segment',
     'schema_registry',
 ]
 
@@ -617,11 +618,11 @@ class _Projection:
 
     def into(self, *segments: str) -> _Projection:
         """One step deeper in the current document."""
-        suffix = ''.join(f'/{_escape_pointer(segment)}' for segment in segments)
+        suffix = ''.join(f'/{escape_json_pointer_segment(segment)}' for segment in segments)
         return _Projection(self.parent, self.resolver, self.defs, self.pointer + suffix)
 
 
-def _escape_pointer(segment: str) -> str:
+def escape_json_pointer_segment(segment: str) -> str:
     """One JSON Pointer segment, escaped per RFC 6901.
 
     `~` before `/`, or the second substitution rewrites the first. Written here

@@ -147,7 +147,7 @@ class PatternProperty:  # always optional by definition
 
 
 class Parameter:  # a *bound* property: a header, a query/URI parameter
-    __slots__ = ("id", "binding", "declaration", "key_pos", "value_pos")
+    __slots__ = ("id", "binding", "declaration", "key_pos", "value_pos", "synthesized")
 ```
 
 `Property` has no `id` and no position, and that is what makes it a record

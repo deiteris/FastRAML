@@ -190,10 +190,13 @@ class TestUriParameters:
         prop = raml.endpoints['/users/{id}'].uri_parameters['id']
         assert prop.required
         assert prop.base.type == 'string'
+        assert prop.synthesized
 
     def test_a_declared_parameter_wins(self, workspace):
         raml = parse(workspace, '/users/{id}:\n  uriParameters:\n    id: integer\n')
-        assert raml.endpoints['/users/{id}'].uri_parameters['id'].base.type == 'integer'
+        parameter = raml.endpoints['/users/{id}'].uri_parameters['id']
+        assert parameter.base.type == 'integer'
+        assert not parameter.synthesized
 
     def test_a_parameter_absent_from_the_template_is_an_error(self, workspace):
         error = fails(workspace, '/users:\n  uriParameters:\n    id: string\n')

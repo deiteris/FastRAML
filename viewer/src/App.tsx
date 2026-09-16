@@ -11,9 +11,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { HashRouter, Route, Routes, useLocation } from 'react-router';
-import { FilePicker } from './components/FilePicker';
 import { Sidebar } from './components/Sidebar';
-import { DEFAULT_SOURCE, loadDocument, readFile } from './load';
+import { DEFAULT_SOURCE, loadDocument } from './load';
 import { type Document, Index } from './model';
 import {
   AnnotationTypeList,
@@ -53,15 +52,6 @@ function Shell() {
 
   const index = useMemo(() => (document ? new Index(document) : null), [document]);
 
-  const open = (file: File) => {
-    readFile(file)
-      .then((loaded) => {
-        setDocument(loaded);
-        setError(null);
-      })
-      .catch((cause: Error) => setError(cause.message));
-  };
-
   if (!document || !index) {
     return (
       <main className="loading">
@@ -69,21 +59,17 @@ function Shell() {
         {error ? (
           <>
             <p className="error">{error}</p>
-            <p>
-              Generate one with <code>fastraml tree FILE &gt; api.json</code>, then open it below.
-            </p>
           </>
         ) : (
           <p>Loading…</p>
         )}
-        <FilePicker onOpen={open} />
       </main>
     );
   }
 
   return (
     <div className="app">
-      <Sidebar document={document} index={index} onOpen={open} />
+      <Sidebar document={document} index={index} />
       <main>
         <Pages document={document} index={index} />
       </main>

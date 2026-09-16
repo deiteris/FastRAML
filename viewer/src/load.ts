@@ -28,10 +28,6 @@ export async function loadDocument(source: string): Promise<Document> {
   return validate(parse(await response.text()));
 }
 
-export async function readFile(file: File): Promise<Document> {
-  return validate(parse(await file.text()));
-}
-
 /**
  * Enough of a check to give a useful message.
  *

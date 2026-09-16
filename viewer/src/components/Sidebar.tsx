@@ -9,17 +9,14 @@
 import { useMemo, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { type Document, type Index, type PathNode, declarations, methodsOf, pathTree } from '../model';
-import { FilePicker } from './FilePicker';
 import { Chevron, ThemeToggle, Verb } from './ui';
 
 export function Sidebar({
   document,
   index,
-  onOpen,
 }: {
   document: Document;
   index: Index;
-  onOpen: (file: File) => void;
 }) {
   const [filter, setFilter] = useState('');
   const roots = useMemo(() => pathTree(document.endpoints), [document]);
@@ -102,7 +99,6 @@ export function Sidebar({
 
       <div className="sidebar-foot">
         <ThemeToggle />
-        <FilePicker onOpen={onOpen} />
       </div>
     </nav>
   );

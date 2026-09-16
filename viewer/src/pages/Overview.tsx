@@ -5,7 +5,7 @@ import { Annotations } from '../components/Extra';
 import { ParameterTable } from '../components/Parameters';
 import { Prose } from '../components/markdown';
 import { SecuredByList } from '../components/Security';
-import { oneLine } from '../components/json';
+// import { oneLine } from '../components/json';
 import { Chip, Empty, KeyValues, Section } from '../components/ui';
 import { baseUriOf, declarations } from '../model';
 import type { Props } from './props';

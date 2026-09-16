@@ -1163,12 +1163,28 @@ the data:
 | Edit | In a request (server consumes) | In a response (client consumes) |
 |---|---|---|
 | property added, required | **breaking** | safe |
+| property added, optional | safe | safe |
 | property removed | risky | **breaking** |
 | property becomes optional | safe | **breaking** |
 | enum value removed | **breaking** | safe |
 | enum value added | safe | **risky** |
-| bound tightened (`maxLength` down) | **breaking** | safe |
-| bound loosened (`maxLength` up) | safe | **breaking** |
+| constraint tightened (`maxLength` down, `pattern` added) | **breaking** | safe |
+| constraint loosened (`maxLength` up, `pattern` removed) | safe | **breaking** |
+
+A **constraint** is anything that admits more or less: the numeric bounds
+(`min`/`max` of length, items, properties, value) and the non-numeric ones —
+`pattern`, `format`, `multipleOf`, `uniqueItems`, `additionalProperties`. All of
+them grade by the same two questions — which way did it move, and who consumes
+the result — which is why one rule set serves all seven. A value *appearing*
+where there was none tightens and one *vanishing* loosens, whatever it is.
+Otherwise a swap is ordered where it can be: a `multipleOf` by divisibility
+(`2 -> 4` tightens, `4 -> 2` loosens) and a `format` by the width it names —
+`format` lives on `integer` and `number`, not `string`, and `int8` accepts fewer
+values than `int64` as every `float` is a `double`. What genuinely cannot be
+ordered — two different patterns, a `2` against a `3` — is `other` rather than a
+guess. A `datetime`'s two formats are a third case: different wire spellings of
+the same instant, so moving between them (the default being RFC 3339) changes the
+representation and is **breaking**, on both sides of the wire.
 
 The same edit is breaking on one side and harmless on the other. Nothing in the
 model says which side a node is on — the **graph** does, from its containment
@@ -1247,8 +1263,12 @@ already said.
 A swap arrives as an `unlinked` and a `linked`, not as an opaque "changed":
 which target went and which arrived is exactly what decides whether the swap
 breaks anyone. `securedBy` is graded outright — requiring a credential where
-none was required refuses every existing caller. The rest are `risky`: an
-inheritance or annotation now naming something else is a real change whose
+none was required refuses every existing caller, and dropping one refuses
+nobody. `securedBy: [null]` is recorded on the method as an `unsecured`
+attribute as well as the lost reference, and both halves grade as the same
+security change: left unclassified, the attribute would over-grade an unsecured
+method as `risky` when nothing that worked stops working. The rest are `risky`:
+an inheritance or annotation now naming something else is a real change whose
 effect this cannot compute.
 
 ### 10.5 What it does not do

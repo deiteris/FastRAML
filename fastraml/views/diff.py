@@ -23,8 +23,10 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import TYPE_CHECKING, Final, Literal
 
+from fastraml.types.scalars import DATETIME_FORMATS, INTEGER_FORMATS
 from fastraml.views.severity import Ranking
 
 if TYPE_CHECKING:
@@ -86,6 +88,14 @@ class Change:
     attribute: str | None = None
     before: object = None
     after: object = None
+    #: A node property, not a difference: whether an added or removed Property or
+    #: Parameter was required. It has no `before`/`after`, because the node itself
+    #: is the change — this is the `required` facet of that node, distinct from the
+    #: `required` that appears as an `attribute` *value* on a `changed` node. It is
+    #: carried here (and is `None` elsewhere) because `classify` grades from the
+    #: `Change` alone and `record` must let a consumer regrade from `--json` without
+    #: the model; for an added node there is no delta to carry it in.
+    required: bool | None = None
 
     def __repr__(self) -> str:
         detail = f' {self.attribute}' if self.attribute else ''
@@ -109,16 +119,36 @@ def diff(old: Graph, new: Graph) -> list[Change]:
     for iri, before in old.nodes.items():
         after = new.nodes.get(iri)
         if after is None:
-            changes.append(Change(kind='removed', iri=iri, node_kind=before.kinds[0], directions=was[iri]))
+            changes.append(
+                Change(
+                    kind='removed',
+                    iri=iri,
+                    node_kind=before.kinds[0],
+                    directions=was[iri],
+                    required=_required_of(before),
+                )
+            )
         else:
             changes.extend(_altered(iri, before, after, now[iri]))
     changes.extend(
-        Change(kind='added', iri=iri, node_kind=node.kinds[0], directions=now[iri])
+        Change(kind='added', iri=iri, node_kind=node.kinds[0], directions=now[iri], required=_required_of(node))
         for iri, node in new.nodes.items()
         if iri not in old.nodes
     )
     changes.extend(_relinked(old, new, was, now))
     return _without_subsumed(changes)
+
+
+def _required_of(node: GraphNode) -> bool | None:
+    """Whether an added or removed node was a required property or parameter.
+
+    Those are the only two kinds whose `required` changes a grade, and it is read
+    off the entity, which is one attribute: building the node's whole `attributes`
+    dictionary to ask one question is the cost docs/12 § 19e warns against.
+    """
+    if node.kinds[0] in ('Property', 'Parameter'):
+        return bool(node.entity.required)
+    return None
 
 
 def _relinked(
@@ -311,7 +341,8 @@ RULES: Final[dict[str, Rule]] = {
         Rule('entity-added', 'safe', 'new surface; nothing that worked stops working'),
         Rule('request-property-required', 'breaking', 'a request that omitted it is now rejected'),
         Rule('request-property-optional', 'safe', 'a request that supplied it still works'),
-        Rule('request-property-added', 'safe', 'optional by construction until it is required'),
+        Rule('request-property-added-required', 'breaking', 'a request that omits the new field is now rejected'),
+        Rule('request-property-added', 'safe', 'a new optional field; a request that omits it still works'),
         Rule('request-property-removed', 'risky', 'the server stops reading a value callers still send'),
         Rule('request-constraint-tightened', 'breaking', 'a value that was accepted is now rejected'),
         Rule('request-constraint-loosened', 'safe', 'strictly more input is accepted'),
@@ -319,6 +350,9 @@ RULES: Final[dict[str, Rule]] = {
         Rule('request-enum-value-added', 'safe', 'the server accepts more than it did'),
         Rule('response-property-removed', 'breaking', 'callers read a field that has gone'),
         Rule('response-property-optional', 'breaking', 'callers relied on it always being present'),
+        Rule(
+            'response-property-required', 'safe', 'a field callers already accept as absent is now guaranteed present'
+        ),
         Rule('response-property-added', 'safe', 'a caller that ignores unknown fields is unaffected'),
         Rule('response-constraint-loosened', 'breaking', 'a value arrives that callers cannot handle'),
         Rule('response-constraint-tightened', 'safe', 'strictly less variety arrives'),
@@ -327,6 +361,7 @@ RULES: Final[dict[str, Rule]] = {
         Rule('security-added', 'breaking', 'an unauthenticated caller is now refused'),
         Rule('security-removed', 'safe', 'a credential that was required is merely ignored'),
         Rule('type-changed', 'breaking', 'the wire format is not the one either side agreed'),
+        Rule('format-changed', 'breaking', 'the value is now spelled in a representation callers do not parse'),
         Rule('documentation-changed', 'cosmetic', 'nothing on the wire changed'),
         Rule('reference-retargeted', 'risky', 'it now names something else; the two may not agree'),
         Rule('reference-dropped', 'risky', 'it no longer names what it did'),
@@ -339,6 +374,13 @@ RULES: Final[dict[str, Rule]] = {
 #: caller then depends on the direction, which is the whole point of § 10.2.
 _UPPER_BOUNDS: Final = frozenset({'maxItems', 'maxLength', 'maxProperties', 'maximum'})
 _LOWER_BOUNDS: Final = frozenset({'minItems', 'minLength', 'minProperties', 'minimum'})
+
+#: Constraints that tighten or loosen without being an ordered bound. A `pattern`,
+#: `format` or `multipleOf` appearing is a tightening and one vanishing a
+#: loosening; `uniqueItems` and `additionalProperties` are decided by their value;
+#: and a swap of two incomparable values is `other`, because nothing here can
+#: order two different patterns or formats.
+_RESTRICTING: Final = frozenset({'pattern', 'format', 'multipleOf', 'uniqueItems', 'additionalProperties'})
 
 
 #: Worst first. A change reaching both sides of the wire is reported at the
@@ -393,6 +435,11 @@ def _removed_rule(change: Change, direction: Direction) -> str:
 
 def _added_rule(change: Change, direction: Direction) -> str:
     if change.node_kind in ('Property', 'Parameter') and direction != 'declaration':
+        # A new request field is breaking only when it is required: omitting it is
+        # then rejected. A new response field is safe whether or not it is required,
+        # so only the request side splits.
+        if direction == 'request' and change.required:
+            return 'request-property-added-required'
         return f'{direction}-property-added'
     return 'entity-added'
 
@@ -408,9 +455,21 @@ def _changed_rule(change: Change, direction: Direction) -> str:  # noqa: PLR0911
         return _enum_rule(change, direction)
     if attribute in ('type', 'kind', 'mediaType', 'statusCode'):
         return 'type-changed'
+    # A `datetime`'s two formats are different wire spellings of the same instant,
+    # not a set one contains, so moving between them — absent being the RFC 3339
+    # default — breaks a caller reading either. That is a change of representation,
+    # not a loosening, so it is graded as such rather than run through the bounds.
+    if attribute == 'format' and (was in DATETIME_FORMATS or now in DATETIME_FORMATS):
+        return 'format-changed' if _datetime_format_changed(was, now) else 'documentation-changed'
     if attribute == 'scopes' or change.node_kind == 'SecurityScheme':
         return 'security-added' if not was and now else 'security-removed'
-    if attribute in _UPPER_BOUNDS or attribute in _LOWER_BOUNDS:
+    # `unsecured` is `securedBy: [null]` seen from the method's own side: it appears
+    # when security is dropped (safe) and vanishes when it is required (breaking), so
+    # it is graded as a security change. Left to `other`, unsecuring a method would
+    # over-grade as risky instead of the safe mirror of `security-removed`.
+    if attribute == 'unsecured':
+        return 'security-added' if not now else 'security-removed'
+    if attribute in _UPPER_BOUNDS or attribute in _LOWER_BOUNDS or attribute in _RESTRICTING:
         return _bound_rule(change, direction)
     return 'other'
 
@@ -428,7 +487,7 @@ def _enum_rule(change: Change, direction: Direction) -> str:
 
 
 def _bound_rule(change: Change, direction: Direction) -> str:
-    """Whether a numeric bound was loosened or tightened, and for whom."""
+    """Whether a bound or constraint was loosened or tightened, and for whom."""
     loosened = _loosened(change.attribute or '', change.before, change.after)
     if loosened is None or direction == 'declaration':
         return 'other'
@@ -436,11 +495,13 @@ def _bound_rule(change: Change, direction: Direction) -> str:
 
 
 def _loosened(attribute: str, before: object, after: object) -> bool | None:
-    """`True` if the bound now permits more, `None` if it cannot be compared.
+    """`True` if it now permits more, `False` if less, `None` if it cannot be compared.
 
-    A bound appearing or disappearing counts: removing `maxLength` permits
-    everything, and adding one permits less than before.
+    A bound or constraint appearing or disappearing counts: removing `maxLength`
+    permits everything, and adding one permits less than before.
     """
+    if attribute in _RESTRICTING:
+        return _restricting_loosened(attribute, before, after)
     was, now = _numeric(before), _numeric(after)
     if was is None and now is None:
         return None
@@ -451,6 +512,105 @@ def _loosened(attribute: str, before: object, after: object) -> bool | None:
     if attribute in _UPPER_BOUNDS:
         return now > was
     return now < was
+
+
+def _restricting_loosened(attribute: str, before: object, after: object) -> bool | None:
+    """Loosen or tighten for a constraint that is not an ordered numeric bound."""
+    if attribute in ('uniqueItems', 'additionalProperties'):
+        return _flag_loosened(before, after, restrictive=attribute == 'uniqueItems')
+    if before is None:
+        return None if after is None else False  # a constraint where there was none
+    if after is None:
+        return True  # a constraint lifted
+    if attribute == 'multipleOf':
+        return _multiple_of_loosened(before, after)
+    if attribute == 'format':
+        return _format_loosened(before, after)
+    return None  # two patterns: nothing here can order them
+
+
+def _flag_loosened(before: object, after: object, *, restrictive: bool) -> bool | None:
+    """`uniqueItems` and `additionalProperties` as flags.
+
+    `restrictive` names the value that tightens: `uniqueItems: true` rejects
+    duplicates, `additionalProperties: false` rejects extras. `None` is the
+    permissive default for both, so it reads as the non-restrictive side, and a
+    move that leaves the effective answer unchanged is not a change at all.
+    """
+    was, now = before is restrictive, after is restrictive
+    if was == now:
+        return None
+    return not now
+
+
+def _multiple_of_loosened(before: object, after: object) -> bool | None:
+    """`multipleOf` as an exact ratio, so no float touches the comparison.
+
+    A multiple of the old value accepts only its own points of the old set, so
+    `2 -> 4` tightens; a divisor, `4 -> 2`, loosens. Values that are neither a
+    multiple nor a divisor, like `2` and `3`, accept incommensurate sets and
+    cannot be ordered here, so they are `other`.
+    """
+    try:
+        was, now = Fraction(str(before)), Fraction(str(after))
+    except (TypeError, ValueError):
+        return None
+    if was <= 0 or now <= 0:
+        return None
+    if (now / was).denominator == 1:
+        return False
+    if (was / now).denominator == 1:
+        return True
+    return None
+
+
+#: A number's `format` ordered by the width it names. Every `float` is exactly a
+#: `double` and not conversely, so the move to `double` accepts strictly more.
+_NUMBER_FORMAT_WIDTH: Final[dict[str, int]] = {'float': 0, 'double': 1}
+
+
+def _format_width(name: str) -> tuple[str, int] | None:
+    """A `format` as its width, tagged by the table it comes from.
+
+    Integer widths are ordered by `INTEGER_FORMATS` (an `int8` holds fewer values
+    than an `int64`); number widths by `_NUMBER_FORMAT_WIDTH`. A `datetime`'s
+    formats are graded before the bounds are reached, so this only ever sees the
+    numeric ones; anything else answers `None` and grades as `other`.
+    """
+    if name in INTEGER_FORMATS:
+        return 'integer', INTEGER_FORMATS[name]
+    if name in _NUMBER_FORMAT_WIDTH:
+        return 'number', _NUMBER_FORMAT_WIDTH[name]
+    return None
+
+
+def _format_loosened(before: object, after: object) -> bool | None:
+    """`format` on an integer or number, by the width it names.
+
+    A move to a wider width loosens (it accepts a superset) and one to a narrower
+    tightens. A `datetime`'s formats are handled earlier, and widths from different
+    tables would be a *type* change, not a format change, so both are `other`.
+    """
+    was = _format_width(str(before))
+    now = _format_width(str(after))
+    if was is None or now is None or was[0] != now[0]:
+        return None
+    if now[1] == was[1]:
+        return None
+    return now[1] > was[1]
+
+
+def _datetime_format_changed(before: object, after: object) -> bool:
+    """Whether a `datetime`'s wire representation changed, defaulting to RFC 3339.
+
+    Its two formats are different spellings of the same instant, not a set one
+    contains, so a move between them breaks a caller reading either; writing the
+    default explicitly (or dropping it) is not a move, so it is not a change.
+    """
+    default = 'rfc3339'
+    was = before if before in DATETIME_FORMATS else default
+    now = after if after in DATETIME_FORMATS else default
+    return was != now
 
 
 def _numeric(value: object) -> float | None:
@@ -506,6 +666,11 @@ def record(rule: Rule, change: Change) -> dict[str, object]:
     them contradicts its own `rule` — `direction: request` beside
     `response-property-optional` — and a consumer regrading these facts its own
     way cannot reach the same answer from them.
+
+    `required` is the node's own `required` facet, present only for an added or
+    removed property or parameter (a node is a property, not a delta), and `null`
+    everywhere else — never to be confused with `required` as the *value* of
+    `attribute` on a `changed` node.
     """
     return {
         'kind': change.kind,
@@ -515,6 +680,7 @@ def record(rule: Rule, change: Change) -> dict[str, object]:
         'attribute': change.attribute,
         'before': plain(change.before),
         'after': plain(change.after),
+        'required': change.required,
         'rule': rule.name,
         'severity': rule.severity,
         'because': rule.because,

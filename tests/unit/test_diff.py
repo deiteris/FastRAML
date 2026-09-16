@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from fastraml import ParseOptions, parse_from_path
-from fastraml.views.diff import RULES, _side_map, classify, diff
+from fastraml.views.diff import RULES, _side_map, classify, diff, record
 from fastraml.views.graph import build_graph
 
 BASE = """#%RAML 1.0
@@ -102,6 +102,50 @@ class TestDirectionDecidesSeverity:
         assert RULES['request-property-required'].severity == 'breaking'
         assert RULES['request-property-optional'].severity == 'safe'
 
+    def test_a_new_required_request_property_is_breaking(self, changes):
+        """Adding a field a client must now send rejects every request that
+        omits it. The rule that once called all additions safe read this as
+        safe and let the break through."""
+        found = changes(('      note?: string', '      note?: string\n      coupon: string'))
+        assert 'request-property-added-required' in found
+        assert RULES['request-property-added-required'].severity == 'breaking'
+
+    def test_a_new_optional_request_property_is_safe(self, changes):
+        found = changes(('      note?: string', '      note?: string\n      coupon?: string'))
+        assert 'request-property-added' in found
+        assert RULES['request-property-added'].severity == 'safe'
+        assert 'request-property-added-required' not in found
+
+    def test_a_response_property_becoming_required_is_safe(self, workspace):
+        """Mirror of the request case: a field callers already accept as absent
+        is now guaranteed present, so nothing that worked stops working. This
+        cell used to have no rule, and `classify` raised `KeyError` on it.
+        """
+        base = """#%RAML 1.0
+title: T
+types:
+  Report:
+    type: object
+    properties:
+      code: string
+      summary?: string
+/reports:
+  get:
+    responses:
+      200:
+        body:
+          application/json: Report
+"""
+        root = workspace({'v1.raml': base, 'v2.raml': base.replace('summary?: string', 'summary: string')})
+        options = ParseOptions(unwrap=True)
+        old = build_graph(parse_from_path(root / 'v1.raml', options))
+        new = build_graph(parse_from_path(root / 'v2.raml', options))
+        changed = [c for c in diff(old, new) if c.attribute == 'required']
+        assert changed
+        assert all(c.directions == frozenset({'response'}) for c in changed)
+        assert all(classify(c).name == 'response-property-required' for c in changed)
+        assert RULES['response-property-required'].severity == 'safe'
+
     def test_the_same_edit_reads_the_other_way_in_a_response(self):
         """A property becoming *optional* is safe for a request and breaking for
         a response, where callers relied on it always being present.
@@ -128,6 +172,138 @@ class TestDirectionDecidesSeverity:
     def test_a_removed_endpoint_is_breaking_whichever_side_you_are_on(self, changes):
         found = changes(drop=('/legacy:\n  get:\n    responses:\n      200:\n',))
         assert 'entity-removed' in found
+
+
+#: Four named types, each carrying one constraint the numeric bounds do not cover,
+#: all used as a request body so a tightening is breaking and a loosening is safe.
+CONSTRAINTS = """#%RAML 1.0
+title: T
+types:
+  Code:
+    type: string
+    pattern: '^[A-Z]+$'
+  Count:
+    type: number
+    multipleOf: 2
+  Tags:
+    type: array
+    items: string
+    uniqueItems: true
+  Filter:
+    type: object
+    additionalProperties: false
+  Body:
+    type: object
+    properties:
+      code: Code
+      count: Count
+      tags: Tags
+      filter: Filter
+/b:
+  post:
+    body:
+      application/json: Body
+"""
+
+
+class TestNonNumericConstraints:
+    """A pattern, `multipleOf`, `uniqueItems` and `additionalProperties` tighten or
+    loosen exactly like a bound, so the direction that makes a bound breaking makes
+    them so too. A swap neither can be ordered through is `other`, not a guess."""
+
+    @staticmethod
+    def graded(workspace, old: str, new: str) -> dict:
+        root = workspace({'v1.raml': old, 'v2.raml': new})
+        options = ParseOptions(unwrap=True)
+        first = build_graph(parse_from_path(root / 'v1.raml', options))
+        second = build_graph(parse_from_path(root / 'v2.raml', options))
+        return {classify(c).name: c for c in diff(first, second)}
+
+    @staticmethod
+    def _scalar(kind: str, fmt: str | None) -> str:
+        """A scalar type carrying a `format`, used as a request body."""
+        facet = f'\n    format: {fmt}' if fmt else ''
+        return f'#%RAML 1.0\ntitle: T\ntypes:\n  T:\n    type: {kind}{facet}\n/x:\n  post:\n    body:\n      application/json: T\n'
+
+    def test_a_pattern_tightening_a_request_is_breaking(self, workspace):
+        without = CONSTRAINTS.replace("    pattern: '^[A-Z]+$'\n", '')
+        assert 'request-constraint-tightened' in self.graded(workspace, without, CONSTRAINTS)
+
+    def test_a_pattern_loosening_a_request_is_safe(self, workspace):
+        found = self.graded(workspace, CONSTRAINTS, CONSTRAINTS.replace("    pattern: '^[A-Z]+$'\n", ''))
+        assert 'request-constraint-loosened' in found
+        assert 'other' not in found
+
+    def test_a_pattern_swap_is_not_orderable(self, workspace):
+        swapped = CONSTRAINTS.replace("pattern: '^[A-Z]+$'", "pattern: '^[A-Z]0$'")
+        assert 'other' in self.graded(workspace, CONSTRAINTS, swapped)
+
+    def test_a_pattern_loosening_a_response_is_breaking(self, workspace):
+        """The direction, not the constraint kind, is what decides it: the same
+        loosening that is safe on a request breaks a client on a response."""
+        base = (
+            "#%RAML 1.0\ntitle: T\ntypes:\n  Code:\n    type: string\n    pattern: '^[A-Z]+$'\n"
+            '  Body:\n    type: object\n    properties:\n      code: Code\n'
+            '/b:\n  get:\n    responses:\n      200:\n        body:\n          application/json: Body\n'
+        )
+        found = self.graded(workspace, base, base.replace("    pattern: '^[A-Z]+$'\n", ''))
+        assert 'response-constraint-loosened' in found
+        assert RULES['response-constraint-loosened'].severity == 'breaking'
+
+    def test_multiple_of_is_ordered_by_divisibility(self, workspace):
+        two = CONSTRAINTS
+        four = CONSTRAINTS.replace('multipleOf: 2', 'multipleOf: 4')
+        three = CONSTRAINTS.replace('multipleOf: 2', 'multipleOf: 3')
+        assert 'request-constraint-tightened' in self.graded(workspace, two, four)
+        assert 'request-constraint-loosened' in self.graded(workspace, four, two)
+        # `2` and `3` accept incommensurate sets, so neither loosens nor tightens.
+        assert 'other' in self.graded(workspace, two, three)
+
+    def test_unique_items_tightening_breaks_and_loosening_does_not(self, workspace):
+        without = CONSTRAINTS.replace('    uniqueItems: true\n', '')
+        assert 'request-constraint-tightened' in self.graded(workspace, without, CONSTRAINTS)
+        assert 'request-constraint-loosened' in self.graded(workspace, CONSTRAINTS, without)
+
+    def test_additional_properties_tightening_breaks_and_loosening_does_not(self, workspace):
+        without = CONSTRAINTS.replace('    additionalProperties: false\n', '')
+        assert 'request-constraint-tightened' in self.graded(workspace, without, CONSTRAINTS)
+        assert 'request-constraint-loosened' in self.graded(workspace, CONSTRAINTS, without)
+
+    def test_an_integer_format_is_ordered_by_width(self, workspace):
+        """Widening an integer admits a superset of values, narrowing rejects some."""
+        assert 'request-constraint-loosened' in self.graded(
+            workspace, self._scalar('integer', 'int8'), self._scalar('integer', 'int64')
+        )
+        assert 'request-constraint-tightened' in self.graded(
+            workspace, self._scalar('integer', 'int64'), self._scalar('integer', 'int8')
+        )
+
+    def test_a_number_format_is_ordered_by_width(self, workspace):
+        assert 'request-constraint-loosened' in self.graded(
+            workspace, self._scalar('number', 'float'), self._scalar('number', 'double')
+        )
+        assert 'request-constraint-tightened' in self.graded(
+            workspace, self._scalar('number', 'double'), self._scalar('number', 'float')
+        )
+
+    def test_a_datetime_format_swap_is_breaking(self, workspace):
+        """Its two formats are different wire spellings of the same instant, not a
+        set one contains, so a move between them breaks a caller reading either —
+        it is a representation change, not an unorderable swap."""
+        found = self.graded(workspace, self._scalar('datetime', 'rfc3339'), self._scalar('datetime', 'rfc2616'))
+        assert 'format-changed' in found
+        assert RULES['format-changed'].severity == 'breaking'
+
+    def test_a_datetime_escaping_its_default_is_breaking(self, workspace):
+        """Absent is the RFC 3339 default, so choosing RFC 2616 changes the wire."""
+        assert 'format-changed' in self.graded(
+            workspace, self._scalar('datetime', None), self._scalar('datetime', 'rfc2616')
+        )
+
+    def test_writing_the_datetime_default_is_not_a_change(self, workspace):
+        """`format: rfc3339` is what a `datetime` already is, so the wire is unchanged."""
+        found = self.graded(workspace, self._scalar('datetime', None), self._scalar('datetime', 'rfc3339'))
+        assert 'format-changed' not in found
 
 
 class TestTheChangeList:
@@ -307,12 +483,12 @@ class TestReferencesAreDiffedToo:
     """
 
     @staticmethod
-    def graded(workspace, replacements: list[tuple[str, str]]):
-        after = SECURED
+    def graded(workspace, replacements: list[tuple[str, str]], base: str = SECURED) -> dict:
+        after = base
         for old, new in replacements:
             assert old in after, old
             after = after.replace(old, new)
-        root = workspace({'v1.raml': SECURED, 'v2.raml': after})
+        root = workspace({'v1.raml': base, 'v2.raml': after})
         options = ParseOptions(unwrap=True)
         old_graph = build_graph(parse_from_path(root / 'v1.raml', options))
         new_graph = build_graph(parse_from_path(root / 'v2.raml', options))
@@ -328,6 +504,24 @@ class TestReferencesAreDiffedToo:
         assert 'security-removed' in found
         assert RULES['security-removed'].severity == 'safe'
         assert 'security-added' not in found
+
+    def test_unsecuring_a_method_reads_safe_not_risky(self, workspace):
+        """`securedBy: [null]` also flips the method's `unsecured` attribute. Graded
+        as a security change it reads safe, the mirror of `security-removed`; left to
+        `other` it over-graded an unsecured method as risky."""
+        found = self.graded(workspace, [('securedBy: [oauth]', 'securedBy: [null]')])
+        assert 'security-removed' in found
+        assert 'other' not in found
+        assert RULES['security-removed'].severity == 'safe'
+
+    def test_resecuring_a_method_is_breaking(self, workspace):
+        """The mirror: the `unsecured` attribute vanishes the moment a credential is
+        required, and refusing an unauthenticated caller is breaking."""
+        unsecured = SECURED.replace('securedBy: [oauth]', 'securedBy: [null]')
+        found = self.graded(workspace, [('securedBy: [null]', 'securedBy: [oauth]')], base=unsecured)
+        assert 'security-added' in found
+        assert 'other' not in found
+        assert RULES['security-added'].severity == 'breaking'
 
     def test_a_retargeted_reference_is_reported(self, workspace):
         """`Ref` and `Other` are both `string`, so no node and no attribute
@@ -351,3 +545,51 @@ class TestReferencesAreDiffedToo:
         """
         found = self.graded(workspace, [('  Other: string\n', '')])
         assert not any(change.attribute in ('property', 'payload', 'returns') for change in found.values())
+
+
+class TestRecordSeparatesThePropertyFromTheDelta:
+    """`--json` is the regrading contract, so every fact a rule uses must be in the
+    record. `required` appears twice — as an `attribute` *value* (a delta on a
+    changed node) and as the node's own facet (a property of an added/removed
+    node) — and the two must not be conflated."""
+
+    BASE = (
+        '#%RAML 1.0\ntitle: T\ntypes:\n  N:\n    type: object\n    properties:\n'
+        '      a?: string\n/b:\n  post:\n    body:\n      application/json: N\n'
+    )
+
+    @staticmethod
+    def _record(workspace, v1: str, v2: str, pick) -> dict:
+        root = workspace({'a.raml': v1, 'b.raml': v2})
+        options = ParseOptions(unwrap=True)
+        old = build_graph(parse_from_path(root / 'a.raml', options))
+        new = build_graph(parse_from_path(root / 'b.raml', options))
+        change = next(c for c in diff(old, new) if pick(c))
+        return record(classify(change), change)
+
+    def test_an_added_required_property_is_a_property_not_a_delta(self, workspace):
+        rec = self._record(
+            workspace,
+            self.BASE,
+            self.BASE.replace('      a?: string', '      a?: string\n      b: string'),
+            lambda c: c.kind == 'added',
+        )
+        assert rec['attribute'] is None
+        assert rec['required'] is True
+
+    def test_a_required_flip_is_a_delta_not_the_property(self, workspace):
+        rec = self._record(
+            workspace,
+            self.BASE,
+            self.BASE.replace('      a?: string', '      a: string'),
+            lambda c: c.kind == 'changed',
+        )
+        assert rec['attribute'] == 'required'
+        assert (rec['before'], rec['after']) == (False, True)
+        assert rec['required'] is None
+
+    def test_the_property_is_null_where_it_does_not_apply(self, workspace):
+        base = '#%RAML 1.0\ntitle: T\n/b:\n  post:\n    responses:\n      200:\n'
+        rec = self._record(workspace, base, base + '      404:\n', lambda c: c.kind == 'added')
+        assert rec['node_kind'] == 'Response'
+        assert rec['required'] is None

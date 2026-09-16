@@ -58,7 +58,9 @@ import {
   type Parameter,
   type PatternProperty,
   type Property,
+  type ObjectShape,
   type Ref,
+  type Recursion,
   type Shape,
   contentOf,
   detailed,
@@ -79,7 +81,7 @@ import { Prose, ProseInline } from './markdown';
 import { Chip, Tabs } from './ui';
 
 interface Props {
-  shape: Shape | Ref | null | undefined;
+  shape: Shape | Ref | Recursion | null | undefined;
   index: Index;
   /**
    * What the surrounding context already displays, so this does not repeat it.
@@ -146,7 +148,7 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
  * inside, so an expander here is the loop by another name. The name still
  * links, because navigating to a declaration is finite.
  */
-function RecursionView({ node, index }: { node: Shape & { head: Ref }; index: Index }) {
+function RecursionView({ node, index }: { node: Recursion; index: Index }) {
   return (
     <span className="reference">
       <TypeName shape={node} index={index} />
@@ -180,9 +182,9 @@ function Expandable({ what, children }: { what: string; children: ReactNode }) {
 /** What is behind a name, in the words of the kind it names. */
 function behind(shape: Shape): string {
   const content = contentOf(shape);
-  if (content.properties || content.pattern_properties) return 'child attributes';
-  if (content.any_of) return 'members';
-  if (content.items !== undefined) return 'item type';
+  if (content.type === 'object' && (content.properties || content.pattern_properties)) return 'child attributes';
+  if (content.type === 'union' && content.any_of) return 'members';
+  if (content.type === 'array' && content.items !== undefined) return 'item type';
   return 'constraints';
 }
 
@@ -209,7 +211,7 @@ export function TypeName({
   borrowed,
   suffix = '',
 }: {
-  shape: Shape | Ref | null | undefined;
+  shape: Shape | Ref | Recursion | null | undefined;
   index: Index;
   borrowed?: boolean;
   suffix?: string;
@@ -280,9 +282,8 @@ export function TypeName({
   if (shape.type === 'array' && namedByItems(shape, borrowed ?? false)) {
     return <TypeName shape={shape.items} index={index} suffix={`[]${suffix}`} borrowed />;
   }
-  const members = shape.any_of ?? [];
-  if (shape.type === 'union' && members.length > 0 && namedByMembers(shape, borrowed ?? false)) {
-    return <UnionName members={members} index={index} suffix={suffix} />;
+  if (shape.type === 'union' && shape.any_of && shape.any_of.length > 0 && namedByMembers(shape, borrowed ?? false)) {
+    return <UnionName members={shape.any_of} index={index} suffix={suffix} />;
   }
   return (
     <span className="attr-type" title={spellingOf(shape, index, borrowed) === shape.type ? undefined : `a ${shape.type}`}>
@@ -300,7 +301,7 @@ export function TypeName({
  * choose, and it names nothing a reader can follow. The `anyOf` selector below
  * carries the whole list; this is the name.
  */
-function UnionName({ members, index, suffix }: { members: (Shape | Ref)[]; index: Index; suffix: string }) {
+function UnionName({ members, index, suffix }: { members: (Shape | Ref | Recursion)[]; index: Index; suffix: string }) {
   const shown = members.slice(0, MEMBERS_SPELLED);
   const rest = members.length - shown.length;
   return (
@@ -348,10 +349,10 @@ function Body({
   const content = contentOf(shape);
   const facets = facetsOf(content);
   const inherits = shape.inherits ?? [];
-  const properties = Object.entries(content.properties ?? {});
-  const patterns = Object.entries(content.pattern_properties ?? {});
+  const properties = Object.entries(content.type === 'object' ? (content.properties ?? {}) : {});
+  const patterns = Object.entries(content.type === 'object' ? (content.pattern_properties ?? {}) : {});
   const declared = Object.entries(shape.declared_facets ?? {});
-  const members = content.any_of ?? [];
+  const members = content.type === 'union' ? (content.any_of ?? []) : [];
   // `hideType` means the container names this shape, so its `displayName`
   // belongs up there too. Rendered here it was a bare word between the
   // description and the facets, with nothing saying what it was.
@@ -360,7 +361,7 @@ function Body({
   const typed = !hideType && !restates(shape, index);
   const headed = Boolean(typed || named);
   const attributes = properties.length > 0 || patterns.length > 0;
-  const schema = shape.json_schema;
+  const schema = shape.type === 'json' ? shape.json_schema : undefined;
   const attributeList = (
     <div className="attributes">
       {properties.map(([name, property]) => (
@@ -430,7 +431,7 @@ function Body({
 
       {shape.allowed_targets && <Tagged label="allowedTargets" values={shape.allowed_targets} />}
 
-      {content.discriminator && <Discriminator shape={content} index={index} />}
+      {content.type === 'object' && content.discriminator && <Discriminator shape={content} index={index} />}
 
       {/* Everything the author added, in one region and outside the facet band
           above: the annotations, the values supplied for a custom facet, and
@@ -478,7 +479,7 @@ function Body({
           Only where the items say something the head line did not. `string[]`
           named its item on the head and then drew a label and a rule around
           the word `string`. */}
-      {leadsSomewhere(content.items, index) && (
+      {content.type === 'array' && leadsSomewhere(content.items, index) && (
         <Group label="each item">
           {/* The array's head already names its items (`object[]`, `Book[]`).
               Repeating that name here added a line and another indentation
@@ -607,7 +608,7 @@ export function restates(shape: Shape, index: Index): boolean {
  * object members rendered in sequence produce two attribute lists with nothing
  * between them saying where the first ended.
  */
-function Union({ members, index }: { members: (Shape | Ref)[]; index: Index }) {
+function Union({ members, index }: { members: (Shape | Ref | Recursion)[]; index: Index }) {
   return (
     <Tabs
       label="anyOf"
@@ -638,7 +639,7 @@ function Union({ members, index }: { members: (Shape | Ref)[]; index: Index }) {
  * `type: integer | number` after P9 distributes a facet exists nowhere else --
  * so it is rendered where it sits.
  */
-function RefLink({ parent, index }: { parent: Shape | Ref; index: Index }) {
+function RefLink({ parent, index }: { parent: Shape | Ref | Recursion; index: Index }) {
   if (!isRef(parent)) return <ShapeView shape={parent} index={index} borrowed />;
   const entry = index.get(parent.$ref);
   if (!entry) {
@@ -742,8 +743,11 @@ function ExampleBody({ example }: { example: Example }) {
  * (the note in CLAUDE.md, and go-raml carries a `FIXME` for the same reason), so the
  * shape alone cannot say which it is.
  */
-function Discriminator({ shape, index }: { shape: Shape; index: Index }) {
-  const inherited = (shape.inherits ?? []).some((parent) => isRef(parent) && index.shape(parent.$ref)?.discriminator);
+function Discriminator({ shape, index }: { shape: ObjectShape; index: Index }) {
+  const inherited = (shape.inherits ?? []).some((parent) => {
+    const target = isRef(parent) ? index.shape(parent.$ref) : undefined;
+    return target?.type === 'object' && Boolean(target.discriminator);
+  });
   const value = shape.discriminator_value ?? (inherited ? shape.name : null);
   return (
     <div className="shape-line">

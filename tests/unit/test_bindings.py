@@ -21,20 +21,30 @@ import sys
 import pytest
 
 from fastraml import ParseOptions, parse_from_path
-from fastraml.views.bindings import DESTINATION, typescript
+from fastraml.views.bindings import typescript
+from fastraml.views.bindings.schema import contract_schema
 from fastraml.views.tree import build_tree
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+TYPESCRIPT_DESTINATION = 'viewer/src/tree.d.ts'
 
 
 def declared_members() -> dict[str, set[str]]:
     """Every member of every interface in the generated file, by interface."""
-    text = (ROOT / DESTINATION).read_text(encoding='utf-8')
+    text = (ROOT / TYPESCRIPT_DESTINATION).read_text(encoding='utf-8')
     out: dict[str, set[str]] = {}
-    for block in re.finditer(r'export interface (\w+) \{(.*?)\n\}', text, re.DOTALL):
+    for block in re.finditer(r'export interface (\w+)(?: extends \w+)? \{(.*?)\n\}', text, re.DOTALL):
         name, body = block.group(1), block.group(2)
         out[name] = set(re.findall(r'^\s{2}(\$?\w+)\??:', body, re.MULTILINE))
     return out
+
+
+def declared_shape_members() -> set[str]:
+    """Every field accepted by at least one generated shape variant."""
+    interfaces = declared_members()
+    return set().union(
+        *(members for name, members in interfaces.items() if name == 'ShapeBase' or name.endswith('Shape'))
+    )
 
 
 class TestTheCheckedInFileIsGenerated:
@@ -42,20 +52,63 @@ class TestTheCheckedInFileIsGenerated:
         # The golden idiom, for the same reason the goldens use it: the file is
         # read by a build this suite does not run, so nothing else would notice
         # it drifting from its source.
-        current = (ROOT / DESTINATION).read_text(encoding='utf-8')
-        assert current == typescript(), f'run `python -m fastraml.views.bindings` -- {DESTINATION} is stale'
+        current = (ROOT / TYPESCRIPT_DESTINATION).read_text(encoding='utf-8')
+        assert current == typescript(), (
+            'run `python -m fastraml.views.bindings typescript '
+            f'-o {TYPESCRIPT_DESTINATION}` -- {TYPESCRIPT_DESTINATION} is stale'
+        )
 
-    def test_the_module_writes_the_file_it_names(self):
+    def test_the_module_writes_the_destination_its_caller_names(self, tmp_path):
         # `python -m` is the documented way to regenerate, so it is worth one
         # test: an entry point that raises on import is a broken instruction.
-        result = subprocess.run(
-            [sys.executable, '-m', 'fastraml.views.bindings'],
+        destination = tmp_path / 'tree.d.ts'
+        result = subprocess.run(  # noqa: S603 - executable and arguments are test-owned
+            [sys.executable, '-m', 'fastraml.views.bindings', 'typescript', '-o', str(destination)],
             check=True,
             capture_output=True,
             text=True,
             cwd=ROOT,
         )
-        assert DESTINATION.rsplit('/', 1)[-1] in result.stdout
+        assert str(destination.resolve()) in result.stdout
+        assert destination.read_text(encoding='utf-8') == typescript()
+
+    def test_the_module_can_write_stdout(self):
+        result = subprocess.run(
+            [sys.executable, '-m', 'fastraml.views.bindings', 'typescript', '-o', '-'],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+        )
+        assert result.stdout == typescript()
+
+    def test_nested_fixed_records_are_named(self):
+        generated = typescript()
+        assert 'documentation?: DocumentationItem[];' in generated
+        assert 'export interface DocumentationItem {' in generated
+        assert not re.search(r'^\s+\w+\??: \{', generated, re.MULTILINE)
+
+    def test_closed_wire_vocabularies_are_not_bare_strings(self):
+        generated = typescript()
+        assert "export type ShapeType = 'any' | 'nil' | 'null'" in generated
+        assert "export type ParameterBinding = 'uri' | 'query' | 'header';" in generated
+        assert "export interface ObjectShape extends ShapeBase {\n  type: 'object';" in generated
+        assert 'export type Shape = AnyShape | NilShape | BooleanShape' in generated
+        assert 'binding: ParameterBinding;' in generated
+        assert 'type: ShapeNode | null;' in generated
+
+
+class TestTheSchemaIsLanguageNeutral:
+    def test_it_contains_every_fact_a_backend_needs_to_enumerate_the_contract(self):
+        schema = contract_schema()
+        assert {'format', 'format_version', 'view', 'types', 'endpoints'} <= set(schema.projector['model'].required)
+        assert {kind.name for kind in schema.shape_kinds} >= {'string', 'object', 'array', 'union', 'json'}
+        object_facets = {facet.name: facet for facet in schema.shape_facets['ObjectShape']}
+        assert object_facets['properties'].annotation == 'dict[str, Property] | None'
+        assert object_facets['properties'].wire_form == 'annotation'
+        number_facets = {facet.name: facet for facet in schema.shape_facets['NumberShape']}
+        assert all(number_facets[name].wire_form == 'exact_decimal' for name in schema.exact_decimal_slots)
+        assert {'minimum', 'maximum', 'multiple_of'} == schema.exact_decimal_slots
 
 
 DOCUMENT = """#%RAML 1.0
@@ -122,7 +175,7 @@ class TestEveryKindLandsInTheContract:
         return seen
 
     def test_every_key_that_arrives_is_declared(self, keys):
-        declared = declared_members()['Shape'] | {'head'}
+        declared = declared_shape_members() | {'head'}
         assert not keys - declared, f'emitted but not in the contract: {sorted(keys - declared)}'
 
     def test_the_document_reaches_the_facets_it_was_written_for(self, keys):

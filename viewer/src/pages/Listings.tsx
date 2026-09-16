@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { TypeName } from '../components/Shape';
 import { ProseInline } from '../components/markdown';
 import { Chip, Empty } from '../components/ui';
-import { declarations } from '../model';
+import { declarations, isRef } from '../model';
 import type { Props } from './props';
 
 export function TypeList({ document, index }: Props) {
@@ -31,7 +31,8 @@ function DeclarationList({ document, index, of, title }: Props & { of: 'types' |
         </thead>
         <tbody>
           {all.map(({ file, name, value }) => {
-            const entry = index.get(value.id);
+            const entry = index.declaration(value);
+            const description = isRef(value) ? index.shape(value.$ref)?.description : value.description;
             return (
               <tr key={`${file}/${name}`}>
                 <td className="property-name">{entry ? <Link to={entry.href}>{name}</Link> : name}</td>
@@ -39,7 +40,7 @@ function DeclarationList({ document, index, of, title }: Props & { of: 'types' |
                   <TypeName shape={value} index={index} />
                 </td>
                 <td className="property-description">
-                  <ProseInline>{value.description}</ProseInline>
+                  <ProseInline>{description}</ProseInline>
                 </td>
               </tr>
             );

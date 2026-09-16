@@ -7,7 +7,7 @@
  */
 
 import { Link } from 'react-router';
-import { type Index, type Ref, type Shape, isRef } from '../model';
+import { type Index, type ShapeNode, isRef } from '../model';
 import type { Borrowed } from './Borrowed';
 import { Attribute, ShapeView } from './Shape';
 import type { Parameter } from '../model';
@@ -55,7 +55,7 @@ export function ParameterTable({
  *
  * The link to the declaration stays, because the type has a page of its own.
  */
-export function QueryString({ shape, index }: { shape: Shape | Ref | null | undefined; index: Index }) {
+export function QueryString({ shape, index }: { shape: ShapeNode | null | undefined; index: Index }) {
   if (shape === null || shape === undefined) return null;
   const entry = isRef(shape) ? index.get(shape.$ref) : undefined;
   const target = isRef(shape) ? index.shape(shape.$ref) : shape;

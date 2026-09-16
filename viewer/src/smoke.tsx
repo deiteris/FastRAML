@@ -122,7 +122,7 @@ walk(document, (shape) => {
   // parent read `Search`, the members read `string | number`, the two differed,
   // and both members were still wrong. Comparing against a re-derivation of
   // `labelOf` is worse, because it can only agree with itself.
-  for (const member of shape.any_of ?? []) {
+  for (const member of shape.type === 'union' ? (shape.any_of ?? []) : []) {
     members += 1;
     const label = labelOf(member, index);
     if (label.includes('|')) {
@@ -134,7 +134,11 @@ walk(document, (shape) => {
   // The JavaScript form of law 15. A `$ref` to something the index does not
   // hold renders as "unresolved", which a reader cannot tell from a document
   // that genuinely pointed nowhere.
-  for (const node of [shape.items, ...(shape.inherits ?? []), ...(shape.any_of ?? [])]) {
+  const contained = [
+    ...(shape.type === 'array' ? [shape.items] : []),
+    ...(shape.type === 'union' ? (shape.any_of ?? []) : []),
+  ];
+  for (const node of [...contained, ...(shape.inherits ?? [])]) {
     if (isRef(node) && !index.get(node.$ref)) {
       process.stderr.write(`DANGLE ${shape.name ?? shape.id}: ${node.$ref}\n`);
       failed += 1;
@@ -192,6 +196,14 @@ let expected = 0;
 let literal = 0;
 let borrowed = 0;
 for (const { file, name, value } of declarations(document.types)) {
+  if (isRef(value)) {
+    const target = index.declaration(value);
+    if (!target) {
+      process.stderr.write(`ALIAS  ${name}: ${value.$ref} has no type page\n`);
+      failed += 1;
+    }
+    continue;
+  }
   const want = controls(value);
   const open = declares(value);
   const twice = doubled(value);
@@ -238,6 +250,7 @@ process.stdout.write(
 
 /** How many of a type's own attributes keep what they say behind a control. */
 function controls(shape: Shape): number {
+  if (shape.type !== 'object') return 0;
   const rows = [...Object.values(shape.properties ?? {}), ...Object.values(shape.pattern_properties ?? {})];
   return rows.filter(({ type }) => {
     if (type === null || type === undefined) return false;
@@ -259,12 +272,14 @@ function controls(shape: Shape): number {
  * facet chips render verbatim.
  */
 function declares(shape: Shape): string[] {
+  if (shape.type !== 'object') return [];
   const rows = [...Object.values(shape.properties ?? {}), ...Object.values(shape.pattern_properties ?? {})];
   const said: string[] = [];
   for (const { type } of rows) {
     if (type === null || type === undefined || isRef(type) || isRecursive(type)) continue;
+    if (type.type !== 'array') continue;
     const items = type.items;
-    if (type.type !== 'array' || items === null || items === undefined) continue;
+    if (items === null || items === undefined) continue;
     if (isRef(items) || isRecursive(items)) continue;
     for (const [key, value] of Object.entries(items)) {
       if (ALREADY_ON_THE_ROW.has(key)) continue;
@@ -308,8 +323,9 @@ function doubled(shape: Shape): string[] {
   const found: string[] = [];
   walk(shape, (one) => {
     const written = one.type_expr;
+    if (one.type !== 'array' || written === undefined) return;
     const items = one.items;
-    if (one.type !== 'array' || written === undefined || items == null) return;
+    if (items == null) return;
     if (isRef(items) || isRecursive(items)) return;
     if (items.type_expr === written) found.push(`${written}[]`);
   });
@@ -504,18 +520,19 @@ process.stdout.write(`${bounds} bounds exact, ${LITERALS.length} literals kept\n
  *
  * That is the wrong default and cannot be changed here -- the view has no way
  * to know which of a shape's keys are a kind's facets. The generated contract
- * does: `tree.d.ts` groups them under one comment, written by the generator
- * from the kind classes. Reading it back is what makes the deny-list a claim
- * that can be false rather than a list that quietly rots.
+ * does: `tree.d.ts` puts them on the kind interfaces, written by the generator
+ * from the kind classes. Reading those interfaces back is what makes the
+ * deny-list a claim that can be false rather than a list that quietly rots.
  *
  * `projection` and `json_schema` arrived as chips holding a whole JSON Schema
  * before this existed.
  */
 const contract = readFileSync('src/tree.d.ts', 'utf-8');
-const facetSection = contract.slice(contract.indexOf('/* Facets, by the kind that declares each. */'));
+const kindInterfaces = [...contract.matchAll(/export interface \w+Shape extends ShapeBase \{(.*?)\n\}/gs)];
 const declaredFacets = new Set(
-  [...facetSection.slice(0, facetSection.indexOf('\n}')).matchAll(/^\s{2}(\w+)\??:/gm)].map((m) => camel(m[1]!)),
+  kindInterfaces.flatMap((block) => [...block[1]!.matchAll(/^\s{2}(\w+)\??:/gm)].map((field) => camel(field[1]!))),
 );
+declaredFacets.delete('type');
 if (declaredFacets.size < 10) {
   process.stderr.write(`only ${declaredFacets.size} facets read from tree.d.ts; the check below is vacuous\n`);
   failed += 1;

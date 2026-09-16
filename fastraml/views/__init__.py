@@ -19,7 +19,7 @@ enforcing.
     render      one type or endpoint as text, for reading (§ 9)
     queries     the SPARQL catalogue over `graph` (§ 6)
     diff        two versions compared, and what breaks (§ 10)
-    bindings    the tree's contract as TypeScript declarations (§ 11.11)
+    bindings    language bindings for the tree's contract (§ 11.11)
     openapi     the effective API as OpenAPI 3.0.3 (§ 13)
 
 `walk` is the shared substrate rather than a view of its own: `graph` and `tree`
@@ -34,8 +34,8 @@ worse". A `Ranking` is that, given the vocabulary as data, so neither view can
 drift from the other's idea of an ordering and neither has to adopt the other's
 idea of a grade.
 
-`bindings` is the odd one: it reads no model at all, only the *source* of
-`tree` and of the kind classes, and emits the declarations a consumer outside
+`bindings` is the odd one: its backends read no model at all, only the *source*
+of `tree` and of the kind classes, and emit the declarations a consumer outside
 Python needs in order to read what `tree` writes. It is here because it
 describes this layer's output and belongs on this side of the line.
 

@@ -78,6 +78,25 @@ def both(workspace):
     return build_tree(raml), build_graph(raml)
 
 
+class TestWireContract:
+    def test_the_effective_view_identifies_its_format(self, both):
+        projection, _ = both
+        assert projection['format'] == 'fastraml-tree'
+        assert projection['format_version'] == 1
+        assert projection['view'] == 'effective'
+        assert projection['entry_point']['kind'] == 'API'
+
+    def test_protocols_have_one_wire_spelling(self, workspace):
+        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nprotocols: [hTtPs]\n'})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        assert build_tree(raml)['entry_point']['protocols'] == ['HTTPS']
+
+    def test_fragment_kind_is_not_guessed_from_the_shared_model_class(self, workspace):
+        root = workspace({'annotation.raml': '#%RAML 1.0 AnnotationTypeDeclaration\ntype: string\n'})
+        raml = parse_from_path(root / 'annotation.raml', ParseOptions(unwrap=True))
+        assert build_tree(raml)['entry_point']['kind'] == 'AnnotationTypeDeclaration'
+
+
 class TestEveryReferenceResolves:
     def test_the_projection_emits_references_at_all(self, both):
         """Guards the guard: a walker that found nothing would pass everything."""

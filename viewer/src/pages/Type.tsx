@@ -4,12 +4,15 @@ import { useParams } from 'react-router';
 import { ShapeView, TypeName, restates } from '../components/Shape';
 import { Usages } from '../components/Usages';
 import { Empty } from '../components/ui';
+import { isRef } from '../model';
 import type { Props } from './props';
 
 export function TypePage({ document, index }: Props) {
   const { file, name } = useParams();
-  const shape = document.types[decodeURIComponent(file ?? '')]?.[decodeURIComponent(name ?? '')];
-  if (!shape) return <Empty>No type named {name}.</Empty>;
+  const declared = document.types[decodeURIComponent(file ?? '')]?.[decodeURIComponent(name ?? '')];
+  if (!declared) return <Empty>No type named {name}.</Empty>;
+  const shape = isRef(declared) ? index.shape(declared.$ref) : declared;
+  if (!shape) return <Empty>The type alias {name} is unresolved.</Empty>;
   // The kind, then the expression only where it says something neither the kind
   // nor the `extends` line below does. `Publication` is an `object` and read
   // `object · object`; `Book` is written `type: Entity` and read `Entity ·
@@ -39,8 +42,10 @@ export function TypePage({ document, index }: Props) {
 
 export function AnnotationTypePage({ document, index }: Props) {
   const { file, name } = useParams();
-  const shape = document.annotation_types[decodeURIComponent(file ?? '')]?.[decodeURIComponent(name ?? '')];
-  if (!shape) return <Empty>No annotation type named {name}.</Empty>;
+  const declared = document.annotation_types[decodeURIComponent(file ?? '')]?.[decodeURIComponent(name ?? '')];
+  if (!declared) return <Empty>No annotation type named {name}.</Empty>;
+  const shape = isRef(declared) ? index.shape(declared.$ref) : declared;
+  if (!shape) return <Empty>The annotation type alias {name} is unresolved.</Empty>;
   // No count of where it was applied. It said how many nodes carried the
   // annotation and what *kind* each was -- never which one -- so a reader who
   // wanted to go and look had nothing to follow, and a reader who did not was

@@ -71,11 +71,14 @@
   },
   "entry_point": {
     "base_uri": "https://example.test",
-    "kind": "APIFragment",
+    "kind": "API",
     "media_types": [],
     "protocols": [],
     "title": "Golden"
   },
+  "format": "fastraml-tree",
+  "format_version": 1,
   "security_schemes": {},
-  "types": {}
+  "types": {},
+  "view": "effective"
 }

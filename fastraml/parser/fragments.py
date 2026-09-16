@@ -176,6 +176,7 @@ class Fragment(Protocol):
     """Anything a RAML file can decode to. Capability is checked, not inherited."""
 
     location: str
+    kind: FragmentKind | None
 
 
 @runtime_checkable
@@ -298,10 +299,11 @@ def resolve_uses(raml: Raml, uses: Mapping[str, LibraryLink], location: str) -> 
 class _BaseFragment:
     """State every fragment has: an id, its location, and its `uses:` map."""
 
-    __slots__ = ('_raml', 'id', 'location', 'uses')
+    __slots__ = ('_raml', 'id', 'kind', 'location', 'uses')
 
     def __init__(self, raml: Raml, location: str) -> None:
         self.id = raml.next_id()
+        self.kind: FragmentKind | None = None
         self.location = location
         self.uses: dict[str, LibraryLink] = {}
         self._raml = raml
@@ -951,7 +953,9 @@ def make_fragment(raml: Raml, kind: FragmentKind, uri: str) -> _BaseFragment:
     factory = _FRAGMENT_CLASSES.get(kind)
     if factory is None:
         raise RamlError.new('fragment kind not supported', uri, info={'kind': str(kind)}, kind=ErrorKind.PARSING)
-    return factory(raml, uri)
+    fragment = factory(raml, uri)
+    fragment.kind = kind
+    return fragment
 
 
 def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> None:
@@ -1045,6 +1049,7 @@ def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Frag
 def _decode_json_data_type(raml: Raml, uri: str, text: str) -> DataTypeFragment:
     """An external JSON Schema: no RAML header, no `uses:`, no YAML compose."""
     fragment = DataTypeFragment(raml, uri)
+    fragment.kind = FragmentKind.DATA_TYPE
     raml.put_fragment(uri, fragment)
     fragment.decode_json_schema(text)
     return fragment

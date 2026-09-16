@@ -11,7 +11,7 @@ import { SecurityChoice } from '../components/Security';
 import { Url } from '../components/Url';
 import { Prose } from '../components/markdown';
 import { Chip, Empty, Lock, Verb } from '../components/ui';
-import { declarations } from '../model';
+import { declarations, isHttpMethod } from '../model';
 import type { Props } from './props';
 
 export function OperationPage({ document, index }: Props) {
@@ -19,7 +19,7 @@ export function OperationPage({ document, index }: Props) {
   const [chosen, setChosen] = useState(0);
   const full = decodeURIComponent(path ?? '');
   const endpoint = document.endpoints[full];
-  const operation = endpoint?.operations[method ?? ''];
+  const operation = endpoint && method && isHttpMethod(method) ? endpoint.operations[method] : undefined;
   if (!endpoint || !operation) {
     return (
       <Empty>

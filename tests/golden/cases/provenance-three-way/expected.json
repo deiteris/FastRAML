@@ -68,11 +68,13 @@
     }
   },
   "entry_point": {
-    "kind": "APIFragment",
+    "kind": "API",
     "media_types": [],
     "protocols": [],
     "title": "Golden"
   },
+  "format": "fastraml-tree",
+  "format_version": 1,
   "security_schemes": {},
   "types": {
     "caller.raml": {
@@ -113,5 +115,6 @@
         "type_expr": "object"
       }
     }
-  }
+  },
+  "view": "effective"
 }

@@ -107,13 +107,22 @@ Three ways, one parsed value:
 
 ## The contract is generated
 
-`src/tree.d.ts` is written by `python -m fastraml.views.bindings`, from the
-emitter's own source — **do not edit it**. The key sets come from `tree.py`'s
-AST and the facets from the kind classes' annotations, so a facet added to a
-kind arrives here without anything being touched by hand.
+`src/tree.d.ts` is written by the TypeScript backend in
+`fastraml/views/bindings/`, run from the repository root with `python -m
+fastraml.views.bindings typescript -o viewer/src/tree.d.ts`, from the emitter's
+own source — **do not edit it**. The key sets come from
+`tree.py`'s AST and the facets from the kind classes' annotations, so a facet
+added to a kind arrives here without anything being touched by hand.
 `tests/unit/test_bindings.py` fails when the checked-in file is stale, and law
 19 in `tests/tck/test_properties.py` fails when the corpus emits a key it does
 not declare.
+
+The contract names semantic maps and closed vocabularies, and `Shape` is a
+discriminated union generated from `KIND_TO_CLASS`: a consumer that narrows to
+an object sees object facets rather than every facet of every RAML kind.
+Python source inspection lives in the language-neutral `bindings/schema.py`;
+the TypeScript backend only renders that schema and supplies TypeScript
+spellings for structural values.
 
 `src/model.ts` restates none of it. What lives there is what the JSON does not
 carry and a reader needs: which addresses have a page, what to call one, and the

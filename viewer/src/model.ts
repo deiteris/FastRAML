@@ -18,7 +18,7 @@
  * recurses without a depth budget.
  */
 
-import type { Address, Document, Endpoint, EntryPoint, Json, Operation, Ref, Shape } from './tree';
+import type { Address, Document, Endpoint, EntryPoint, HttpMethod, Json, Operation, Recursion, Ref, Shape, ShapeNode } from './tree';
 
 export type {
   Address,
@@ -30,6 +30,7 @@ export type {
   EntryPoint,
   Example,
   Json,
+  ObjectShape,
   Operation,
   Parameter,
   PatternProperty,
@@ -40,6 +41,7 @@ export type {
   SecuredBy,
   SecurityScheme,
   Shape,
+  ShapeNode,
 } from './tree';
 
 /* -- telling the three constructs apart --------------------------------------- */
@@ -53,8 +55,8 @@ export function isRef(node: unknown): node is Ref {
  * A recursion marker. Distinct from a link on purpose: merging the two would
  * force every consumer to carry an ancestor set (docs/16 § 11.7).
  */
-export function isRecursive(node: unknown): node is Shape & { head: Ref } {
-  return typeof node === 'object' && node !== null && (node as Shape).type === 'recursive';
+export function isRecursive(node: unknown): node is Recursion {
+  return typeof node === 'object' && node !== null && (node as Recursion).type === 'recursive';
 }
 
 /* -- the index ---------------------------------------------------------------- */
@@ -87,10 +89,12 @@ export class Index {
 
   constructor(document: Document) {
     for (const { file, name, value } of declarations(document.types)) {
+      if (isRef(value)) continue;
       this.add(value.id, name, 'type', file);
       if (value.id !== null) this.shapes.set(value.id, value);
     }
     for (const { file, name, value } of declarations(document.annotation_types)) {
+      if (isRef(value)) continue;
       this.add(value.id, name, 'annotationType', file);
       if (value.id !== null) this.shapes.set(value.id, value);
     }
@@ -102,9 +106,8 @@ export class Index {
       // An operation has a page of its own. A resource with six methods is six
       // pages of detail on one screen otherwise, and only one of them is ever
       // the one being read.
-      for (const method of Object.keys(endpoint.operations)) {
-        const operation = endpoint.operations[method];
-        if (operation) this.add(operation.id, `${method} ${path}`, 'operation');
+      for (const [method, operation] of methodsOf(endpoint)) {
+        this.add(operation.id, `${method} ${path}`, 'operation');
       }
     }
   }
@@ -116,6 +119,11 @@ export class Index {
 
   get(address: Address | null | undefined): Entry | undefined {
     return address == null ? undefined : this.byAddress.get(address);
+  }
+
+  /** The page for a declaration, following a transparent alias to its target. */
+  declaration(node: Shape | Ref): Entry | undefined {
+    return this.get(isRef(node) ? node.$ref : node.id);
   }
 
   shape(address: Address | null | undefined): Shape | undefined {
@@ -314,8 +322,8 @@ export function spellingOf(shape: Shape, index: Index, borrowed = false): string
   // schema -- a file path, not a type name -- and `json` is the mechanism the
   // type arrived by, which is not what it is.
   if (shape.type === TYPE_JSON) return shape.projection ? spellingOf(shape.projection, index, true) : shape.type;
-  const members = shape.any_of ?? [];
-  if (shape.type === 'union' && members.length > 0 && namedByMembers(shape, borrowed)) {
+  if (shape.type === 'union' && shape.any_of && shape.any_of.length > 0 && namedByMembers(shape, borrowed)) {
+    const members = shape.any_of;
     const names = members.map((member) => labelOf(member, index));
     const shown = names.slice(0, MEMBERS_SPELLED).join(' | ');
     return names.length > MEMBERS_SPELLED ? `${shown} | +${names.length - MEMBERS_SPELLED} more` : shown;
@@ -357,18 +365,18 @@ export function contentOf(shape: Shape): Shape {
  */
 export function detailed(shape: Shape | null | undefined): shape is Shape {
   if (shape === null || shape === undefined) return false;
+  const structural =
+    (shape.type === 'object' && Boolean(shape.properties || shape.pattern_properties || shape.discriminator)) ||
+    (shape.type === 'union' && Boolean(shape.any_of)) ||
+    (shape.type === 'array' && shape.items !== undefined) ||
+    (shape.type === 'json' && shape.json_schema !== undefined);
   return Boolean(
-    shape.properties ||
-      shape.pattern_properties ||
-      shape.any_of ||
-      shape.items !== undefined ||
+    structural ||
       shape.enum ||
-      shape.discriminator ||
       shape.custom_facets ||
       shape.example !== undefined ||
       shape.examples ||
       shape.default !== undefined ||
-      shape.json_schema ||
       shape.xml !== undefined ||
       shape.declared_facets ||
       shape.allowed_targets ||
@@ -383,7 +391,7 @@ export function detailed(shape: Shape | null | undefined): shape is Shape {
  * structure repeats, and from where -- fits on the line that names it. Opening
  * one is the loop.
  */
-export function leadsSomewhere(node: Shape | Ref | null | undefined, index: Index): boolean {
+export function leadsSomewhere(node: Shape | Ref | Recursion | null | undefined, index: Index): boolean {
   if (node === null || node === undefined) return false;
   if (isRef(node)) return detailed(index.shape(node.$ref));
   if (isRecursive(node)) return false;
@@ -397,7 +405,7 @@ export function leadsSomewhere(node: Shape | Ref | null | undefined, index: Inde
  * by its target, a recursion marker by what repeats, and anything else by its
  * own `type` -- never by `type_expr`, for the reason `spelling` gives.
  */
-export function labelOf(member: Shape | Ref, index: Index): string {
+export function labelOf(member: Shape | Ref | Recursion, index: Index): string {
   if (isRef(member)) return index.label(member.$ref);
   if (isRecursive(member)) return member.name ?? 'recursive';
   return spellingOf(member, index, true);
@@ -405,7 +413,7 @@ export function labelOf(member: Shape | Ref, index: Index): string {
 
 /** A `facets:` entry, and the type that declared it. */
 export interface FacetDeclaration {
-  declared: Shape | Ref;
+  declared: ShapeNode;
   by: Shape;
   required: boolean;
 }
@@ -520,6 +528,13 @@ export function pathTree(endpoints: Record<string, Endpoint>): PathNode[] {
     if (node) node.endpoint = endpoint;
   }
   return roots;
+}
+
+const METHODS: readonly HttpMethod[] = ['connect', 'delete', 'get', 'head', 'options', 'patch', 'post', 'put', 'trace'];
+
+/** The `:method` URL segment is a bare string; this is what makes it a key of `operations`. */
+export function isHttpMethod(value: string): value is HttpMethod {
+  return (METHODS as readonly string[]).includes(value);
 }
 
 const METHOD_ORDER = ['get', 'head', 'post', 'put', 'patch', 'delete', 'options', 'trace'];

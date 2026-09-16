@@ -426,7 +426,7 @@ class TestEveryTypeRenders:
 class TestNothingArrivesUndeclared:
     """Law 19 — the generated contract covers what the projection emits.
 
-    `fastraml/views/bindings.py` reads source: `tree.py`'s AST for the key sets
+    `fastraml/views/bindings/` reads source: `tree.py`'s AST for the key sets
     and the kind classes' annotations for the facets. Reading source is a
     hypothesis about what running it does, and the corpus is the only thing that
     settles it. A facet reachable only through a construct no unit fixture
@@ -446,11 +446,11 @@ class TestNothingArrivesUndeclared:
     def test_every_shape_key_over_the_corpus_is_in_the_contract(self):
         from fastraml import ParseOptions, RamlError, parse_from_path
         from fastraml.views.tree import build_tree
-        from tests.unit.test_bindings import declared_members
+        from tests.unit.test_bindings import declared_shape_members
 
         _root_or_skip()
         options = ParseOptions(unwrap=True)
-        declared = declared_members()['Shape'] | {'head'}
+        declared = declared_shape_members() | {'head'}
         seen: set[str] = set()
         shapes = 0
         for path in collect_fixtures('valid'):

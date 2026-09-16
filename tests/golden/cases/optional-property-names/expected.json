@@ -6,6 +6,8 @@
   "entry_point": {
     "kind": "Library"
   },
+  "format": "fastraml-tree",
+  "format_version": 1,
   "security_schemes": {},
   "types": {
     "lib.raml": {
@@ -44,5 +46,6 @@
         "type": "object"
       }
     }
-  }
+  },
+  "view": "effective"
 }

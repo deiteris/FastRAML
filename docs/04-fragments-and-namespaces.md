@@ -293,6 +293,11 @@ def parse_fragment(raml, uri: str, kind: FragmentKind) -> Fragment:
     return frag
 ```
 
+`make_fragment` records the requested `FragmentKind` on the fragment. The class
+alone cannot preserve it because `DataType` and `AnnotationTypeDeclaration`
+share `DataTypeFragment`; compiled views therefore read `fragment.kind`, never
+derive the source kind from the Python class name.
+
 Two ordering details in this sequence control correctness:
 
 - The fragment is registered **before** its body is decoded. `a.raml` →

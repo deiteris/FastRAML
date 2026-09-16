@@ -363,6 +363,10 @@ fastraml skills (list | get NAME... | install [NAME...]) [--full] [--json]
                 [--user | --dir PATH] [--force]          # the served agent guides
 ```
 
+`tree` emits the compiled effective view. Its top-level envelope identifies
+`format: "fastraml-tree"`, `format_version: 1`, and `view: "effective"`; the
+entry point's own `version` remains the API version declared by the RAML author.
+
 `validate` and `info` parse with `unwrap=True, validate=True`: their job is to
 find faults. The eleven view verbs parse with `validate=False` — a document
 with a bad example still has a graph worth reading, and refusing to draw one

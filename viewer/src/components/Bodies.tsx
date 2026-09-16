@@ -14,7 +14,7 @@
  * reason that has nothing to do with either operation.
  */
 
-import type { Index, Ref, Shape } from '../model';
+import type { Index, ShapeNode } from '../model';
 import { ShapeView } from './Shape';
 import { Tabs } from './ui';
 
@@ -24,7 +24,7 @@ export function Bodies({
   index,
 }: {
   title: string;
-  bodies?: Record<string, Shape | Ref | null>;
+  bodies?: Record<string, ShapeNode | null>;
   index: Index;
 }) {
   const entries = Object.entries(bodies ?? {});

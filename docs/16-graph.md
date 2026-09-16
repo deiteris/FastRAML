@@ -1611,9 +1611,11 @@ than an implementation's field list. Narrowed to RAML it is ten node types,
 against AMF's fifty-odd across five vocabularies.
 
 ```
-Document          title, version, base_uri, base_uri_parameters, protocols,
-                  media_types, documentation, types, annotation_types,
-                  security_schemes, endpoints, annotations
+Document          format, format_version, view, base, entry_point, types,
+                  annotation_types, security_schemes, endpoints, annotations
+EntryPoint        kind, title, version, base_uri, base_uri_parameters,
+                  protocols, media_types, documentation, secured_by,
+                  annotations
 Resource          display_name, description, uri_parameters, operations,
                   secured_by, annotations
 Operation         display_name, description, protocols, query_parameters,
@@ -1691,10 +1693,13 @@ out.
 `min_length`, not `minLength`. The projection is the model serialised, so there
 is no translation layer and no table to drift.
 
-The consequence is deliberate: **the wire format versions with the model.**
-Renaming a field is a published change. What makes that tractable rather than
-reckless is that the golden layer holds the same names, so no rename can happen
-without a golden diff showing exactly what a consumer will see.
+The consequence is deliberate: **the wire format versions with the model.** Its
+envelope identifies `format: "fastraml-tree"`, `format_version: 1` and `view:
+"effective"`, so a consumer can reject a representation it does not understand
+instead of guessing from its fields. Renaming or reinterpreting a field raises
+`format_version`; adding an optional field does not. The golden layer holds the
+same names, so no change can happen without a diff showing exactly what a
+consumer will see.
 
 The graph keeps RAML's spelling — `raml:minLength` — because those are RDF
 predicate IRIs in a published vocabulary, a different naming system for a
@@ -1702,25 +1707,55 @@ different purpose (§ 2). The two disagreeing is by design, not drift.
 
 ### 11.11 The contract is generated
 
-`fastraml/views/bindings.py` writes `viewer/src/tree.d.ts` — the same key list as
-TypeScript declarations, for a consumer outside Python. Hand-written it would go
-stale the first time a kind grew a facet, and stale *quietly*: a key the
+`fastraml/views/bindings/` holds language backends for the tree contract. Its
+TypeScript backend writes `viewer/src/tree.d.ts` — the same key list as
+TypeScript declarations, for a consumer outside Python. The repository invokes
+it as `python -m fastraml.views.bindings typescript -o viewer/src/tree.d.ts`.
+The caller always names the destination (`-o -` writes stdout); no backend owns
+a repository path. Hand-written declarations would
+go stale the first time a kind grew a facet, and stale *quietly*: a key the
 declarations omit still arrives, and a consumer that does not read it looks like
 a document that did not say it. That is law 14's argument, applied across a
 boundary no type checker spans.
 
-Two things are derived, and both by reading source rather than importing it:
+Each fixed record gets a named declaration of its own. Dynamic maps remain map
+types: a media type, declaration name, facet name or JSON object key is data,
+not a field the generator can enumerate. Thus a documentation entry is a
+`DocumentationItem`, while `bodies` remains a map named `BodiesByMediaType`.
+Semantic key domains are named too (`HttpMethod`, `StatusCode`, `MediaType`,
+`ParameterBinding`), and closed parser vocabularies are literal unions read from
+their source enums and maps. `ExactDecimal` names the deliberate string wire
+form of numeric bounds. A recursion marker is part of `ShapeNode`; omitting it
+from shape-bearing fields would make the finite traversal law unrepresentable in
+the binding.
+
+`Shape` is a discriminated union. `ShapeBase` carries the common fields and one
+interface per model kind carries only that kind's facets: narrowing `type` to
+`object` exposes `properties`, narrowing it to `array` exposes `items`, and
+neither field exists on a string. The discriminator-to-model mapping comes from
+`KIND_TO_CLASS`, not a backend table; `nil` and `null` therefore share the one
+`NilShape` interface exactly as they share their implementation.
+
+`bindings/schema.py` owns all Python source inspection and returns one cached,
+language-neutral `ContractSchema`. A backend sees emitted fields, delegation,
+shape kinds, facet annotations and wire forms, and closed vocabularies; it never
+walks Python syntax itself. This is the boundary that lets another language
+backend reuse the contract rather than reimplement its discovery.
+
+Three things are derived, all by reading source rather than importing it:
 
 | | from | how |
 |---|---|---|
 | which keys arrive, and which are optional | `tree.py`'s own AST | every `_Projector` method's opening display, its `out[...] =` stores, and its `for field in (...)` tuples; a key written under an `if` is `?` |
 | a kind's facets and their types | the `self.x: T` annotations in each kind's `__init__` | Python keeps no runtime record of these, so nothing but the AST has them |
+| closed vocabularies | `KIND_TO_CLASS`, `METHODS`, `FragmentKind`, `DomainLocation` | the language-neutral schema under `bindings/` reads their literals; each backend renders them in its own type system |
 
 The value type of a *structural* key is not derivable — `out['operations']` is
-an expression — so those are declared in `_STRUCTURAL`. Only their types: the
-key sets come from the AST, so **a key added to the projection and not declared
-there fails generation, by name**. The hand-written half cannot fall behind,
-because it is not the half that says which keys exist.
+an expression — so each backend declares those target-language spellings
+(`_STRUCTURAL` in the TypeScript backend). Only their types: the key sets come
+from `ContractSchema`, so **a key added to the projection and not declared there
+fails generation, by name**. The hand-written half cannot fall behind, because
+it is not the half that says which keys exist.
 
 **The data beside the contract is held to the same standard.**
 `viewer/public/api.json` is what `npm run sample` writes and what the viewer's

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 from fractions import Fraction
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from fastraml.datanode import DataNode, ValueNode
 from fastraml.parser.fragments import DataTypeFragment
@@ -52,6 +52,10 @@ if TYPE_CHECKING:
     from fastraml.registry import Raml
 
 __all__ = ['Json', 'build_tree', 'positions_of']
+
+TREE_FORMAT: Final = 'fastraml-tree'
+TREE_FORMAT_VERSION: Final = 1
+TREE_VIEW: Final = 'effective'
 
 #: What this module emits. Everything is a JSON value, so the result goes
 #: through `json.dumps` without an encoder and through any consumer without one.
@@ -295,6 +299,9 @@ class _Projector:
 
     def model(self, raml: Raml) -> Json:
         return {
+            'format': TREE_FORMAT,
+            'format_version': TREE_FORMAT_VERSION,
+            'view': TREE_VIEW,
             'base': self.addresses.base,
             'entry_point': self.fragment(raml.entry_point, raml.global_secured_by),
             'types': self.types(raml),
@@ -629,11 +636,12 @@ class _Projector:
         """
         if fragment is None:
             return None
-        out: dict[str, Json] = {'kind': type(fragment).__name__}
+        out: dict[str, Json] = {'kind': str(fragment.kind) if fragment.kind is not None else type(fragment).__name__}
         for field in ('title', 'version', 'base_uri', 'media_types', 'protocols', 'usage', 'description'):
             value = getattr(fragment, field, None)
             if value is not None:
-                out[field] = self.value(value, frozenset())
+                spelled = self.value(value, frozenset())
+                out[field] = _protocols(spelled) if field == 'protocols' else spelled
         declared = getattr(fragment, 'base_uri_parameters', None)
         if declared:
             # `{tenant}` in the base URI is a value every caller has to supply,
@@ -694,7 +702,7 @@ class _Projector:
             # A method may narrow the API's protocols, and the narrowing is the
             # scheme of the URL a caller has to build -- an `HTTPS`-only method
             # under an `HTTP, HTTPS` API is not a detail of presentation.
-            out['protocols'] = self.value(operation.protocols, frozenset())
+            out['protocols'] = [protocol.upper() for protocol in operation.protocols]
         if operation.secured_by:
             out['secured_by'] = self.schemes(operation.secured_by)
         if operation.annotations:
@@ -799,6 +807,18 @@ class _Projector:
             'type': self.at(extension.defined_by.id) if extension.defined_by is not None else None,
             'value': self.value(extension.value, frozenset()) if extension.value is not None else None,
         }
+
+
+def _protocols(value: Json) -> list[Json]:
+    """Protocols in one canonical wire spelling."""
+    if not isinstance(value, list):
+        raise TypeError('protocols did not project as a list')
+    out: list[Json] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise TypeError('protocol did not project as a string')
+        out.append(item.upper())
+    return out
 
 
 def _node(node: Node) -> Json:

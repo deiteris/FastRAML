@@ -1,7 +1,10 @@
 {
+  "format": "fastraml-tree",
+  "format_version": 1,
+  "view": "effective",
   "base": "fastraml://id",
   "entry_point": {
-    "kind": "APIFragment",
+    "kind": "API",
     "title": "Bookstore API",
     "version": "v2",
     "base_uri": "https://{tenant}.books.example.com/{version}",
@@ -680,6 +683,9 @@
             "$ref": "fastraml://id#/declarations/types/Delivery"
           }
         ]
+      },
+      "AnythingAlias": {
+        "$ref": "fastraml://id#/declarations/types/Anything"
       },
       "Paged": {
         "id": "fastraml://id#/declarations/types/Paged",

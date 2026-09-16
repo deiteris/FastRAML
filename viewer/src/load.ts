@@ -41,6 +41,12 @@ function validate(value: unknown): Document {
   if (document.nodes !== undefined && document.endpoints === undefined) {
     throw new Error('this looks like `fastraml graph --format json`; this app reads `fastraml tree` output');
   }
+  if (document.format !== 'fastraml-tree' || document.view !== 'effective') {
+    throw new Error('expected the effective `fastraml tree` format');
+  }
+  if (document.format_version !== 1) {
+    throw new Error(`unsupported fastraml tree format version: ${String(document.format_version)}`);
+  }
   for (const key of ['types', 'endpoints', 'annotation_types', 'security_schemes'] as const) {
     if (typeof document[key] !== 'object' || document[key] === null) {
       throw new Error(`missing "${key}": expected the output of \`fastraml tree FILE\``);

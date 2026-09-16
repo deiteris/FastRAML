@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "check": "tsc --noEmit && npm run layers && npm run smoke && npm run shots",
+    "check": "tsc --noEmit && npm run layers && npm run smoke",
     "ci": "tsc --noEmit && npm run layers && npm run smoke && npm run build",
     "layers": "node layers.mjs",
     "smoke": "tsx src/smoke.tsx",

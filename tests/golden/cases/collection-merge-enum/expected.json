@@ -32,11 +32,14 @@
     }
   },
   "entry_point": {
-    "kind": "APIFragment",
+    "kind": "API",
     "media_types": [],
     "protocols": [],
     "title": "Golden"
   },
+  "format": "fastraml-tree",
+  "format_version": 1,
   "security_schemes": {},
-  "types": {}
+  "types": {},
+  "view": "effective"
 }

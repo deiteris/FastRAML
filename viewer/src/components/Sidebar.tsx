@@ -77,14 +77,18 @@ export function Sidebar({
 
       <NavGroup title="Types" href="/types">
         {types.map(({ file, name, value }) => (
-          <NavItem key={`${file}/${name}`} to={index.get(value.id)?.href ?? '/types'} label={name} />
+          <NavItem key={`${file}/${name}`} to={index.declaration(value)?.href ?? '/types'} label={name} />
         ))}
       </NavGroup>
 
       {annotationTypes.length > 0 && (
         <NavGroup title="Annotation types" href="/annotation-types">
           {annotationTypes.map(({ file, name, value }) => (
-            <NavItem key={`${file}/${name}`} to={index.get(value.id)?.href ?? '/annotation-types'} label={`(${name})`} />
+            <NavItem
+              key={`${file}/${name}`}
+              to={index.declaration(value)?.href ?? '/annotation-types'}
+              label={`(${name})`}
+            />
           ))}
         </NavGroup>
       )}

@@ -18,7 +18,7 @@
  * recurses without a depth budget.
  */
 
-import type { Address, Document, Endpoint, EntryPoint, HttpMethod, Json, Operation, Recursion, Ref, Shape, ShapeNode } from './tree';
+import type { Address, Document, Endpoint, EntryPoint, HttpMethod, Json, Operation, Recursion, Ref, SecurityScheme, Shape, ShapeNode } from './tree';
 
 export type {
   Address,
@@ -86,6 +86,8 @@ export class Index {
   readonly byAddress = new Map<Address, Entry>();
   /** The declared shapes, so a link can also be expanded where it sits. */
   readonly shapes = new Map<Address, Shape>();
+  /** The declared schemes, so a `securedBy` entry can be read where it sits. */
+  readonly schemes = new Map<Address, SecurityScheme>();
 
   constructor(document: Document) {
     for (const { file, name, value } of declarations(document.types)) {
@@ -100,6 +102,7 @@ export class Index {
     }
     for (const { file, name, value } of declarations(document.security_schemes)) {
       this.add(value.id, name, 'securityScheme', file);
+      if (value.id !== null) this.schemes.set(value.id, value);
     }
     for (const [path, endpoint] of Object.entries(document.endpoints)) {
       this.add(endpoint.id, path, 'endpoint');
@@ -128,6 +131,10 @@ export class Index {
 
   shape(address: Address | null | undefined): Shape | undefined {
     return address == null ? undefined : this.shapes.get(address);
+  }
+
+  scheme(address: Address | null | undefined): SecurityScheme | undefined {
+    return address == null ? undefined : this.schemes.get(address);
   }
 
   /** What to call a reference, falling back to the address's last segment. */

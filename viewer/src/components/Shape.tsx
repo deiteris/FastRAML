@@ -285,9 +285,10 @@ export function TypeName({
   if (shape.type === 'union' && shape.any_of && shape.any_of.length > 0 && namedByMembers(shape, borrowed ?? false)) {
     return <UnionName members={shape.any_of} index={index} suffix={suffix} />;
   }
+  const spelled = spellingOf(shape, index, borrowed);
   return (
-    <span className="attr-type" title={spellingOf(shape, index, borrowed) === shape.type ? undefined : `a ${shape.type}`}>
-      {spellingOf(shape, index, borrowed)}
+    <span className="attr-type" title={spelled === shape.type ? undefined : `a ${shape.type}`}>
+      {spelled}
       {suffix}
     </span>
   );

@@ -11,7 +11,7 @@ import { SecurityChoice } from '../components/Security';
 import { Url } from '../components/Url';
 import { Prose } from '../components/markdown';
 import { Chip, Empty, Lock, Verb } from '../components/ui';
-import { declarations, isHttpMethod } from '../model';
+import { isHttpMethod } from '../model';
 import type { Props } from './props';
 
 export function OperationPage({ document, index }: Props) {
@@ -34,8 +34,7 @@ export function OperationPage({ document, index }: Props) {
   const schemes = operation.secured_by ?? [];
   const at = Math.min(chosen, Math.max(schemes.length - 1, 0));
   const scheme = schemes[at];
-  const byId = Object.fromEntries(declarations(document.security_schemes).map(({ value }) => [value.id, value]));
-  const active = scheme && !scheme.is_null ? byId[scheme.declaration ?? ''] : undefined;
+  const active = scheme && !scheme.is_null ? index.scheme(scheme.declaration) : undefined;
   const adds = active?.described_by;
   const optional = schemes.some((one) => one.is_null);
 

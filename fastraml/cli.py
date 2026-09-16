@@ -6,6 +6,7 @@ fastraml info [-w ROOT] [-r] FILE
 fastraml graph [--format nt|turtle|dot|json] [-o FILE] FILE
 fastraml openapi [--format yaml|json] [-o FILE] FILE
 fastraml lint [--config FILE] [--format human|text|json|summary] FILE...
+fastraml serve [--host H] [--port P] FILE
 fastraml list FILE [PATTERN]
 fastraml refs FILE NAME
 fastraml deps FILE NAME
@@ -116,6 +117,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_output(tree)
     _add_common(tree)
 
+    _add_serve(commands)
     _add_navigation(commands)
 
     changed = commands.add_parser('diff', help='what changed between two versions, and what it breaks')
@@ -154,6 +156,7 @@ def _parser() -> argparse.ArgumentParser:
         graph=_graph,
         openapi=_openapi,
         tree=_tree,
+        serve=_serve,
         refs=_walk,
         deps=_walk,
         show=_show_type,
@@ -243,6 +246,22 @@ def _add_skills(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     skills.add_argument('--user', action='store_true', help=f'install: write to ~/{_SKILL_DIR} rather than the CWD')
     skills.add_argument('--dir', metavar='PATH', help='install: a skills directory of your own, overriding --user')
     skills.add_argument('--force', action='store_true', help='install: replace a skill that is already there')
+
+
+def _add_serve(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The one verb that runs the document rather than printing it.
+
+    Split out of `_parser` for its statement count alone, the way
+    `_add_navigation` is: `PLR0915` objects the moment the budget is spent, and
+    this verb is the one that may grow, because it is the only one with a socket.
+    """
+    serve = commands.add_parser(
+        'serve', help='the document in a browser, over the viewer bundle (needs fastraml-viewer)'
+    )
+    serve.add_argument('files', metavar='FILE', nargs=1)
+    serve.add_argument('--host', default='127.0.0.1', help='interface to bind (default: 127.0.0.1, loopback only)')
+    serve.add_argument('--port', type=int, default=8000, help='port to bind (default: 8000)')
+    _add_common(serve)
 
 
 def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -615,6 +634,47 @@ def _tree(args: argparse.Namespace) -> int:
     # order no author wrote. Stable output is what the *sink* wanted; the
     # golden suite sorts for itself.
     return _emit_document(args, json.dumps(payload, indent=2) + '\n')
+
+
+def _serve(args: argparse.Namespace) -> int:
+    """The document in a browser: the `tree` projection, served as `api.json`.
+
+    The parse is the one `tree` uses — `validate` off, so a document with a bad
+    example still has a reading worth serving — and the only new work is handing
+    the projection to the `fastraml-viewer` bundle. The bundle reads `api.json`
+    beside itself and ships one (the worked sample), so `fastraml_viewer.serve`
+    routes that name to this document in front of the static files; without the
+    shadow it would answer with the sample instead, which is a convincing wrong
+    answer rather than a visible failure.
+
+    `fastraml_viewer` is imported inside the verb, the way `query` imports
+    `pyoxigraph`: a user who never serves a document never installs it.
+    """
+    raml = _parsed(args)
+    if raml is None:
+        return EXIT_INVALID
+
+    from fastraml.views.tree import build_tree  # noqa: PLC0415 - serve verb only
+
+    try:
+        from fastraml_viewer import serve as serve_viewer  # noqa: PLC0415 - optional: fastraml[serve]
+    except ImportError:
+        print('serve needs the viewer: install fastraml-viewer (fastraml[serve])', file=sys.stderr)
+        return EXIT_INVALID
+
+    try:
+        server = serve_viewer(build_tree(raml), host=args.host, port=args.port)
+    except OSError as err:
+        print(f'serve: {err}', file=sys.stderr)
+        return EXIT_INVALID
+    print(f'viewer: http://{args.host}:{server.server_address[1]}/  (Ctrl-C to stop)', file=sys.stderr)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return EXIT_OK
 
 
 def _show_type(args: argparse.Namespace) -> int:

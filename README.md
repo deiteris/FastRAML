@@ -188,6 +188,7 @@ Where fastRAML reads the spec differently from
 | Extra | For |
 |-------|-----|
 | `fastraml[graph]` (`pyoxigraph`) | `fastraml query` — SPARQL over the graph projection; the graph itself needs nothing |
+| `fastraml[serve]` (`fastraml-viewer`) | `fastraml serve` — the document in a browser; the built viewer bundle, a static package with no dependencies of its own ([why it is its own distribution](https://github.com/deiteris/FastRAML/blob/master/docs/17-consumers.md#72-why-fastraml-viewer-is-its-own-distribution)) |
 | `fastraml[http]` (`httpx`) or `requests` | remote `!include`; supply the client yourself, or use `fastraml validate -r`. Synchronous clients only — from async code run the parse in `asyncio.to_thread` ([why](https://github.com/deiteris/FastRAML/blob/master/docs/03-yaml-and-io.md#51-the-http-client-is-synchronous-and-refused-if-it-is-not)) |
 | `fastraml[re2]` (`google-re2`) | `ParseOptions(regex_engine="re2")` — linear-time patterns for untrusted input |
 | libyaml | selected automatically when PyYAML was built with it; roughly an order of magnitude faster, and **not only** a speed choice ([D9](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md#d9--a-tab-after-a-keys-colon-depends-on-the-yaml-backend)) |

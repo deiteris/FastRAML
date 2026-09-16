@@ -47,6 +47,24 @@ one.
 mounts this package at `/raml-viewer`, serving that app's own tree as the
 `api.json` the bundle reads.
 
+## Run it without a web framework
+
+`serve` takes the document as a Python value and runs the bundle around it on
+the standard library's HTTP server:
+
+```python
+from fastraml_viewer import serve
+
+server = serve(document, host='127.0.0.1', port=8000)
+server.serve_forever()
+```
+
+`document` is whatever `json.dumps` accepts; this package never inspects its
+shape. It is served at `api.json` in front of the one the bundle ships, so the
+page reads what you passed rather than the worked sample it demos with.
+`port=0` binds an ephemeral port; `server.server_address[1]` then names it.
+This is what `fastraml serve` calls after `build_tree`.
+
 ## Building
 
 The assets are generated, so they are not in git. `hatch_build.py` copies

@@ -50,6 +50,10 @@ re2 = ["google-re2"]
 # An RDF store for `fastraml query`. The graph itself needs nothing; only SPARQL
 # does. See docs/16 section 5.1.
 graph = ["pyoxigraph>=0.4"]
+# The built viewer SPA, served by `fastraml serve`. Static assets and the code
+# that serves them -- no dependencies of its own, and imported only inside the
+# verb, the way `query` imports `pyoxigraph`. See docs/17 section 2.
+serve = ["fastraml-viewer>=0.1,<0.2"]
 
 [project.scripts]
 fastraml = "fastraml.cli:main"
@@ -69,6 +73,19 @@ dev = [
     "types-pyyaml",
     "ruamel-yaml>=0.18,<0.20",
 ]
+# Not in `dev`: the editable install's build hook copies `viewer/dist`, which a
+# fresh checkout does not have until `npm run build` has run in viewer/. A plain
+# `uv sync` must therefore not need it. `uv sync --group viewer` after the
+# bundle is built (or `uv run --group viewer pytest -q`) is what exercises
+# `fastraml serve` locally.
+viewer = ["fastraml-viewer"]
+
+# The parent checkout, in place: developed against the working tree rather than
+# a release, so a change to the bundle shows up here without a publish. The
+# source never reaches the wheel -- a built `fastraml` declares
+# `fastraml-viewer` in its `serve` extra and resolves it from PyPI.
+[tool.uv.sources]
+fastraml-viewer = { path = "contrib/fastraml-viewer", editable = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -21,6 +21,19 @@ jobs:
       - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
+      # `--all-extras` pulls the `serve` extra, which resolves to
+      # `contrib/fastraml-viewer` as an editable path; its build hook vendors
+      # `viewer/dist`, so the bundle has to exist before the sync.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - name: Build the viewer bundle
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: npm ci && npm run build
+        working-directory: viewer
       - run: uv sync --all-extras --dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -85,8 +98,21 @@ jobs:
       - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
+      # As in `lint`: the `serve` extra installs `contrib/fastraml-viewer` as
+      # an editable path, and its build hook fails without the bundle. This job
+      # also runs the `serve` tests, so the bundle is what they test against.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - name: Build the viewer bundle
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: npm ci && npm run build
+        working-directory: viewer
       - run: uv sync --all-extras --dev
-      - run: uv run python -c "import re2, pyoxigraph"
+      - run: uv run python -c "import re2, pyoxigraph, fastraml_viewer"
       - run: uv run pytest -q -rs
 
   # Linearity is a property of the parser, not of the runner, so it is a gate.

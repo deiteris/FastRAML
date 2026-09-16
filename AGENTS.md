@@ -65,14 +65,16 @@ than one filtering the other. `views/render.py` is the reading view of a single
 type or endpoint, `views/queries.py` the SPARQL catalogue, `views/diff.py` the
 version comparison and its backward-compatibility policy, `views/jsonschema.py`
 a shape as JSON Schema draft-07 (`docs/16` § 12), and `views/openapi.py` the
-effective API as OpenAPI 3.0.3 (`docs/16` § 13). Nine CLI verbs — `graph`,
-`tree`, `list`, `refs`, `deps`, `show`, `query`, `diff`, `openapi`.
+effective API as OpenAPI 3.0.3 (`docs/16` § 13). Ten CLI verbs — `graph`,
+`tree`, `serve`, `list`, `refs`, `deps`, `show`, `query`, `diff`, `openapi`.
 
 All of it runs after P10 and decides no RAML rule. **Nothing under `parser/` or
 `types/` may import `fastraml.views`**, and outside it only `cli.py` may;
 `tests/unit/test_views.py` asserts both over the import graph. A rule that
-belongs to the language belongs in a pass. SPARQL needs `pyoxigraph`, which the
-package does not depend on; nothing else here needs anything.
+belongs to the language belongs in a pass. SPARQL needs `pyoxigraph`, and
+`serve` needs `fastraml-viewer`; both are optional extras imported inside their
+verb, and the package depends on neither (`docs/17` § 2 is the one exception it
+carves for the viewer's packaging).
 
 **Consumers sit on top and are not part of the parser** (`docs/17-consumers.md`).
 Nothing under `fastraml/` may import one, and none of them may hold a rule the

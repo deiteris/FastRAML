@@ -384,6 +384,79 @@ class TestGraphVerbs:
         assert '@prefix raml:' in capsys.readouterr().out
 
 
+class TestServe:
+    """docs/13 section 8. `serve` hands the `tree` projection to the viewer.
+
+    The HTTP side is `contrib/fastraml-viewer`'s subject, with its own gate;
+    what is pinned here is the wiring — the right document on the right socket —
+    and that both failures are reported before any socket exists.
+    """
+
+    def test_an_unparseable_file_exits_one_before_anything_is_bound(self, files, capsys):
+        """An occupied port is the detector: if the verb reached the bind, the
+        error would name the socket rather than the file."""
+        import socket
+
+        blocker = socket.socket()
+        blocker.bind(('127.0.0.1', 0))
+        try:
+            assert main(['serve', '--port', str(blocker.getsockname()[1]), files('absent.raml')]) == EXIT_INVALID
+        finally:
+            blocker.close()
+        err = capsys.readouterr().err
+        assert 'load resource' in err
+        assert 'viewer:' not in err
+
+    def test_it_passes_the_tree_projection_to_the_viewer(self, files, capsys, monkeypatch):
+        pytest.importorskip('fastraml_viewer', reason='serve is an optional extra (docs/17 section 2)')
+        import fastraml_viewer
+
+        captured: dict[str, object] = {}
+
+        class _FakeServer:
+            server_address = ('127.0.0.1', 8123)
+
+            def serve_forever(self) -> None:
+                raise KeyboardInterrupt
+
+            def server_close(self) -> None:
+                pass
+
+        def _fake_serve(document, *, host, port):
+            captured.update(document=document, host=host, port=port)
+            return _FakeServer()
+
+        monkeypatch.setattr(fastraml_viewer, 'serve', _fake_serve)
+        assert main(['serve', '--port', '8123', files('good.raml')]) == EXIT_OK
+
+        # The same projection the `tree` verb prints, not a re-parse under
+        # different options: `validate` is off, as on every view verb.
+        from fastraml import ParseOptions, parse_from_path
+        from fastraml.views.tree import build_tree
+
+        expected = build_tree(parse_from_path(files('good.raml'), ParseOptions(unwrap=True, validate=False)))
+        assert captured['document'] == expected
+        assert (captured['host'], captured['port']) == ('127.0.0.1', 8123)
+        assert 'viewer: http://127.0.0.1:8123/' in capsys.readouterr().err
+
+    def test_a_missing_package_is_named_not_traced(self, files, capsys, monkeypatch):
+        monkeypatch.setitem(sys.modules, 'fastraml_viewer', None)
+        assert main(['serve', files('good.raml')]) == EXIT_INVALID
+        err = capsys.readouterr().err
+        assert 'fastraml-viewer' in err
+        assert 'Traceback' not in err
+
+    def test_importing_the_cli_does_not_need_the_viewer(self):
+        """The verb is the only importer, and it imports inside itself — the
+        same shape as the `pyoxigraph` check in `tests/unit/test_queries.py`."""
+        done = subprocess.run(
+            [sys.executable, '-c', 'import fastraml.cli, sys; assert "fastraml_viewer" not in sys.modules'],
+            capture_output=True,
+            check=False,
+        )
+        assert done.returncode == 0, done.stderr.decode()
+
+
 class TestListVerb:
     """docs/13 § 8.1. The inventory — what `refs`, `deps` and `show` accept.
 

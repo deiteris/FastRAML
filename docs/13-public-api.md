@@ -347,6 +347,7 @@ fastraml info [-w ROOT] [-r] FILE       # backend, timings, counts
 fastraml graph [--format nt|turtle|dot|json] [-o FILE] FILE
 fastraml openapi [--format yaml|json] [-o FILE] FILE       # export OpenAPI 3.0.3
 fastraml tree [--positions] [-o FILE] FILE       # the whole document, addressed
+fastraml serve [--host H] [--port P] FILE       # the document in a browser (needs fastraml-viewer)
 fastraml list FILE [PATTERN] [--kind K] [--json]             # what is in here
 fastraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
 fastraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made of
@@ -363,9 +364,19 @@ fastraml skills (list | get NAME... | install [NAME...]) [--full] [--json]
 ```
 
 `validate` and `info` parse with `unwrap=True, validate=True`: their job is to
-find faults. The ten view verbs parse with `validate=False` — a document with
-a bad example still has a graph worth reading, and refusing to draw one would
-make the tool useless exactly where navigating is most wanted.
+find faults. The eleven view verbs parse with `validate=False` — a document
+with a bad example still has a graph worth reading, and refusing to draw one
+would make the tool useless exactly where navigating is most wanted.
+
+- `serve` is the only view verb that needs a package: `fastraml-viewer`, as the
+  `serve` extra, imported inside the verb the way `query` imports
+  `pyoxigraph` ([17](17-consumers.md) § 2). It hands the `tree` projection to
+  the bundle's own server, which routes it at `api.json` in front of the sample
+  the bundle ships, so the page reads this document rather than the one it
+  demoed with. It binds `127.0.0.1` by default — a local API description is not
+  something to advertise on a network interface by default — and prints the
+  chosen URL on stderr, where diagnostics go. `--host` and `--port` name the
+  socket; the exit code is still the parse's.
 
 - `-w ROOT` sets the workspace root; `--no-workspace-guard` disables the sandbox
   entirely, as go-raml's flag of the same name does. The root **defaults to the

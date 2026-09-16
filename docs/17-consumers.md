@@ -34,6 +34,18 @@ fastraml/  ←  viewer/          (through `fastraml tree` output, not through Py
          ←  contrib/*        (through the public API in docs/13)
 ```
 
+**One exception, and it is the exception that proves the rule: `fastraml-viewer`.**
+It holds no rule — a directory of static assets, a function that locates them,
+and a server that runs them — and it depends on nothing, so nothing can drift
+under either end of an edge to it. `fastraml serve` imports it *optionally*,
+inside the verb, the way `query` imports `pyoxigraph` ([13](13-public-api.md)
+§ 8): a missing package is a message naming it rather than a crash, and
+`import fastraml` never loads it. What the import asks for is where the files
+are and how to run them — a `Path` and a socket — not a reading of the
+language. The SPA in `viewer/` is still consumed through `fastraml tree`
+output, not through Python: what `serve` imports is the *packaging* of the
+bundle, not the bundle's reading of a document.
+
 A consumer that needs a rule the parser does not have has found a gap in the
 parser. The fix is a pass, or a view under `fastraml/views/` (docs/16), never a
 reimplementation on this side. `views/jsonschema.py` is here because of exactly
@@ -136,7 +148,7 @@ project's `pyproject.toml` and nothing in the root gate sees them.
 | `fastapi-raml` | code → RAML | Renders a FastAPI app's routes as RAML, and serves it. |
 | `fastmcp-raml` | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
 | `raml-mock` | RAML → HTTP | Runs an in-process aiohttp mock, validates common HTTP representations, and returns examples or generated values. |
-| `fastraml-viewer` | — | The built `viewer/` bundle as static assets, plus one function that says where they are. Depends on nothing, including `fastraml`. |
+| `fastraml-viewer` | — | The built `viewer/` bundle as static assets, a function that says where they are, and `serve(document)`, which runs them over stdlib HTTP for `fastraml serve` (§ 2). Depends on nothing, including `fastraml`. |
 
 `fastapi-raml` and `fastmcp-raml` both need an authoring model, and one
 duplicated across two integrations is one that disagrees with itself — so
@@ -176,6 +188,13 @@ which is the whole reason these are in the repository. `fastraml-viewer` gets a
 Node step first: its build hook vendors `viewer/dist`, so without a bundle
 `uv sync` fails at the install rather than later.
 
+The root's `serve` tests need the bundle the same way. The root carries
+`fastraml-viewer` as the `viewer` dependency group rather than in `dev`: a
+fresh checkout has no `viewer/dist` until `npm run build` has run, and a plain
+`uv sync` must not fail for want of Node. CI installs the group after its Node
+step; locally it is `uv sync --group viewer`, and the gate for `serve` is
+`uv run --group viewer pytest -q`.
+
 ## 7. Publishing
 
 Six distributions, versioned independently, each published by a tag whose form
@@ -213,7 +232,9 @@ is cheap; the question was only where.
 Not inside `fastapi-raml`, because then anything else wanting the viewer —
 `raml-mock`, a plain file server — has to take FastAPI to get it. So it is a
 distribution that depends on nothing at all, and `fastapi-raml[viewer]` mounts
-it when present and says so when absent.
+it when present and says so when absent. `fastraml serve` takes the same route:
+its extra is `fastraml[serve]`, and in a checkout the editable source in the
+root `pyproject.toml` keeps the wheel and the working tree from disagreeing.
 
 `viewer/dist` is generated and gitignored, so `hatch_build.py` copies it in at
 build time and refuses to build without it. Building from an *sdist* finds no

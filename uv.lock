@@ -134,6 +134,9 @@ http = [
 re2 = [
     { name = "google-re2" },
 ]
+serve = [
+    { name = "fastraml-viewer" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -144,9 +147,13 @@ dev = [
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
+viewer = [
+    { name = "fastraml-viewer" },
+]
 
 [package.metadata]
 requires-dist = [
+    { name = "fastraml-viewer", marker = "extra == 'serve'", editable = "contrib/fastraml-viewer" },
     { name = "google-re2", marker = "extra == 're2'" },
     { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27" },
     { name = "jsonschema", specifier = ">=4.21" },
@@ -155,7 +162,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "referencing", specifier = ">=0.35" },
 ]
-provides-extras = ["graph", "http", "re2"]
+provides-extras = ["graph", "http", "re2", "serve"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -165,6 +172,21 @@ dev = [
     { name = "ruamel-yaml", specifier = ">=0.18,<0.20" },
     { name = "ruff" },
     { name = "types-pyyaml" },
+]
+viewer = [{ name = "fastraml-viewer", editable = "contrib/fastraml-viewer" }]
+
+[[package]]
+name = "fastraml-viewer"
+version = "0.1.0"
+source = { editable = "contrib/fastraml-viewer" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.10" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.6" },
 ]
 
 [[package]]

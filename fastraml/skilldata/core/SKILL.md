@@ -314,9 +314,13 @@ fastraml graph -w . api.raml --format nt     # N-Triples
 fastraml openapi -w . api.raml               # OpenAPI 3.0.3 YAML
 fastraml openapi -w . api.raml --format json # OpenAPI 3.0.3 JSON
 fastraml openapi -w . api.raml -o api.yaml   # To a file, UTF-8 with LF newlines
+fastraml serve -w . api.raml                 # In a browser (needs fastraml-viewer)
 ```
 
-Use these to feed another tool, not to read. Choose `tree` when you need the
+Use these to feed another tool, not to read — `serve` is the reading one: it
+runs the same projection in a browser, on loopback by default. It needs
+`fastraml-viewer` (the `fastraml[serve]` extra); without it the command says so
+and exits 1. Choose `tree` when you need the
 contents, because it inlines examples, defaults and every container. Choose
 `graph` when you need identity and references, which is what it carries instead.
 

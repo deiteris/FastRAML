@@ -5,7 +5,8 @@ covers what each flag does.
 
 ## Flags shared by every command
 
-These work on all ten commands:
+These work on every command that takes a FILE (`skills` parses no RAML, so it
+ignores them):
 
 - `-w ROOT`, `--workspace-root ROOT` — confine file reads to this directory.
   Defaults to the folder holding the file you named, which is why an `!include`
@@ -120,6 +121,17 @@ Print the whole effective document as addressed JSON.
 
 - `--positions` — print the source span of every declaration instead of the
   document.
+
+## `fastraml serve FILE`
+
+Serve the document in a browser over the viewer bundle. Needs `fastraml-viewer`
+(`fastraml[serve]`); without it the command names the package and exits 1.
+
+- `--host H` — the interface to bind. Default `127.0.0.1`, loopback only.
+- `--port P` — the port. Default 8000.
+
+Parses the way the view verbs do, so a bad example does not stop it. The chosen
+URL is printed on stderr; Ctrl-C stops the server.
 
 ## `fastraml graph FILE`
 

@@ -8,12 +8,6 @@
 <a href="https://github.com/deiteris/FastRAML/actions/workflows/ci.yml?query=branch%3Amaster">
     <img src="https://github.com/deiteris/FastRAML/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI">
 </a>
-<a href="https://pypi.org/project/fastraml">
-    <img src="https://img.shields.io/pypi/v/fastraml?color=%230A84FF&label=pypi%20package" alt="Package version">
-</a>
-<a href="https://pypi.org/project/fastraml">
-    <img src="https://img.shields.io/pypi/pyversions/fastraml.svg?color=%230A84FF" alt="Supported Python versions">
-</a>
 <a href="https://github.com/deiteris/FastRAML/blob/master/docs/14-testing.md">
     <img src="https://img.shields.io/badge/RAML%20TCK-915%2F915-brightgreen" alt="RAML TCK">
 </a>
@@ -27,36 +21,36 @@
 
 ---
 
-**Documentation**: [https://github.com/deiteris/FastRAML/blob/master/docs/README.md](https://github.com/deiteris/FastRAML/blob/master/docs/README.md)
+**Documentation**: [docs/README.md](https://github.com/deiteris/FastRAML/blob/master/docs/README.md)
 
-**Source Code**: [https://github.com/deiteris/FastRAML](https://github.com/deiteris/FastRAML)
+**Source Code**: [deiteris/FastRAML](https://github.com/deiteris/FastRAML)
 
 ---
 
 fastRAML reads [RAML 1.0](https://github.com/raml-org/raml-spec/blob/master/versions/raml-10/raml-10.md)
-— the API description language — and gives you the **effective** API rather than
-the text of one file. Types inherit, traits add parameters, resource types add
-methods, and `!include` pulls in other documents; fastRAML resolves all of it and
-hands you a typed model plus tools for validation, navigation, linting, and
-conversion.
+— the API description language — and gives you the **effective** API, everything
+resolved and merged, rather than the text of one file. Types inherit, traits add
+parameters, resource types add methods, and `!include` pulls in other documents;
+fastRAML resolves all of it and hands you a typed model plus tools for
+validation, navigation, linting, and conversion.
 
 The key features are:
 
 * **Effective model**: resolves `!include`, `uses`, type expressions and inheritance, then applies traits, resource types and security schemes. Declaration order and source locations remain available on the typed Python model.
 * **Type and value validation**: implements RAML's built-in shapes and facets, custom facets, examples, defaults, annotations, recursive types, and JSON Schema external types. A shape can also validate an application value directly.
-* **Tested coverage with explicit boundaries**: all **915 evaluated RAML compliance-kit fixtures** have their expected outcome. Overlay and Extension merging is deferred, and XML Schema external types are not supported; the [coverage matrix](docs/01-scope-and-coverage.md) records the details.
-* **Structured diagnostics**: errors carry source locations and trace chains, including failures reached through includes and merged templates. Independent failures accumulate where the current pass can continue safely.
+* **Tested coverage with explicit boundaries**: all **915 evaluated fixtures in the RAML Test Compliance Kit (TCK)** produce their expected outcome. Overlay and Extension merging is deferred, and XML Schema external types are not supported; the [coverage matrix](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md) records the details.
+* **Structured diagnostics**: errors carry source locations and trace chains, including failures reached through includes and merged templates. Independent failures accumulate rather than stop the parse, wherever the parser can continue safely.
 * **Model navigation**: `list`, `show`, `refs` and `deps` inspect named entities and the routes between them. `graph` emits RDF, Graphviz or JSON, while `tree` emits an addressed containment view.
 * **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` provides configurable built-in rules, optional security and style rulesets, explanations, and plugin support.
-* **Version comparison**: `diff` reports structural changes and classifies their compatibility impact using whether a value is sent in a request or received in a response. It exits non-zero when the policy identifies a breaking change.
+* **Version comparison**: `diff` reports structural changes and classifies their compatibility impact — by whether a value is sent in a request or received in a response — under a backward-compatibility policy ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md#103-the-policy-is-separable-and-named)). It exits non-zero when the policy identifies a breaking change.
 * **OpenAPI and JSON Schema output**: convert an effective API to a typed OpenAPI 3.0.3 document, or a RAML shape to JSON Schema draft-07. Both conversion APIs report information the target format could not represent.
-* **Typed and measured**: ships `py.typed` and checks the package with strict mypy. The benchmark gate checks linear scaling; on the recorded machine, 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using **98 MB**.
-* **Version-matched agent guides**: `fastraml skills get` serves CLI guidance from the installed package, and `fastraml skills install` installs a discovery skill under `.agents/skills/` or another selected directory.
+* **Typed and measured**: ships `py.typed` and checks the package with strict mypy. The benchmark gate checks linear scaling; on the recorded machine, 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using **98 MB**. The method, the per-configuration numbers, and the comparison against [go-raml](https://github.com/acronis/go-raml) — measured rather than quoted — are in [docs/12](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md).
+* **Version-matched agent guides**: `fastraml skills get` serves CLI guidance from the installed package, and `fastraml skills install` installs a discovery stub under `.agents/skills/` or another selected directory: a small skill whose only job is to point an agent at `fastraml skills get`, so the guide it reads matches the installed version.
 
 ## Status
 
 **fastRAML is in beta.** The parser matches the expected outcome of every
-compliance-kit fixture in its evaluated scope, and the design is settled in
+TCK fixture in its evaluated scope, and the design is settled in
 [`docs/`](https://github.com/deiteris/FastRAML/blob/master/docs/README.md).
 What is *not* settled is the surface you code against:
 
@@ -79,11 +73,7 @@ Python 3.12 or newer. Tested on Linux and Windows against 3.12 and 3.13.
 
 ## Installation
 
-```bash
-pip install fastraml
-```
-
-Or, while it is unreleased:
+fastraml is not yet on PyPI. Until it is:
 
 ```bash
 uv tool install git+https://github.com/deiteris/FastRAML
@@ -157,7 +147,7 @@ Operation  get -returns-> 200 -payload-> application/json -range-> ... -items-> 
 ```
 
 Each result is a **route**, not just a hit — which is the one thing a SPARQL
-property path cannot give you, and the reason these are not a canned query.
+property path cannot give you, and the reason these are not canned queries.
 
 ## Using it from an agent
 
@@ -168,25 +158,6 @@ instructions an agent reads always match the version that answers them:
 fastraml skills install              # into ./.agents/skills/, read by most agents
 fastraml skills get core             # or just print the guide
 ```
-
-## Why it is fast
-
-The recorded baseline for 7000 types across 150 libraries is **429 ms** and
-**98 MB** for parse, unwrap and validation. The benchmark suite separately checks
-linear scaling in CI; wall-clock timings vary by machine.
-
-Measured against go-raml on the same corpora and the same machine, that is
-**5.1x to 10.3x** a compiled Go implementation, depending on the corpus — inside
-the 10x goal, and not parity. The table is in
-[docs/12](docs/12-performance.md) Part 4.
-
-That comes from structural decisions, not from Python: a two-stage endpoint build
-that merges traits and resource types on YAML trees before any type resolution,
-one compose and one decode per file, node identity as a dict key instead of deep
-copies, and a worklist instead of a traversal to find work.
-[docs/12-performance.md](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md)
-records each technique, whether it transfers from Go, and the places where Go
-advice has to be inverted for CPython.
 
 ## The rest of the family
 
@@ -219,7 +190,7 @@ Where fastRAML reads the spec differently from
 | `fastraml[graph]` (`pyoxigraph`) | `fastraml query` — SPARQL over the graph projection; the graph itself needs nothing |
 | `fastraml[http]` (`httpx`) or `requests` | remote `!include`; supply the client yourself, or use `fastraml validate -r`. Synchronous clients only — from async code run the parse in `asyncio.to_thread` ([why](https://github.com/deiteris/FastRAML/blob/master/docs/03-yaml-and-io.md#51-the-http-client-is-synchronous-and-refused-if-it-is-not)) |
 | `fastraml[re2]` (`google-re2`) | `ParseOptions(regex_engine="re2")` — linear-time patterns for untrusted input |
-| libyaml | selected automatically when PyYAML was built with it; roughly an order of magnitude faster, and **not only** a speed choice ([D9](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md)) |
+| libyaml | selected automatically when PyYAML was built with it; roughly an order of magnitude faster, and **not only** a speed choice ([D9](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md#d9--a-tab-after-a-keys-colon-depends-on-the-yaml-backend)) |
 
 ## Development
 

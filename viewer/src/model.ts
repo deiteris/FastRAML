@@ -107,14 +107,14 @@ export class Index {
       // pages of detail on one screen otherwise, and only one of them is ever
       // the one being read.
       for (const [method, operation] of methodsOf(endpoint)) {
-        this.add(operation.id, `${method} ${path}`, 'operation');
+        this.add(operation.id, `${method} ${path}`, 'operation', undefined, `/endpoints/${encodeURIComponent(path)}/${method}`);
       }
     }
   }
 
-  private add(address: Address | null, name: string, section: Section, file?: string): void {
+  private add(address: Address | null, name: string, section: Section, file?: string, href?: string): void {
     if (address === null || this.byAddress.has(address)) return;
-    this.byAddress.set(address, { address, name, section, file, href: hrefOf(section, name, file) });
+    this.byAddress.set(address, { address, name, section, file, href: href ?? hrefOf(section, name, file) });
   }
 
   get(address: Address | null | undefined): Entry | undefined {
@@ -148,11 +148,6 @@ export function hrefOf(section: Section, name: string, file?: string): string {
       return at('annotation-types');
     case 'securityScheme':
       return at('security');
-    case 'operation': {
-      // `name` is "get /books/{isbn}" -- the method, a space, then the path.
-      const cut = name.indexOf(' ');
-      return `/endpoints/${encodeURIComponent(name.slice(cut + 1))}/${name.slice(0, cut)}`;
-    }
     default:
       return `/endpoints/${encodeURIComponent(name)}`;
   }
@@ -538,12 +533,10 @@ export function isHttpMethod(value: string): value is HttpMethod {
 }
 
 const METHOD_ORDER = ['get', 'head', 'post', 'put', 'patch', 'delete', 'options', 'trace'];
+const METHOD_RANK = new Map(METHOD_ORDER.map((method, at) => [method, at]));
 
 export function methodsOf(endpoint: Endpoint): [string, Operation][] {
-  const rank = (method: string) => {
-    const at = METHOD_ORDER.indexOf(method);
-    return at === -1 ? METHOD_ORDER.length : at;
-  };
+  const rank = (method: string) => METHOD_RANK.get(method) ?? METHOD_ORDER.length;
   return Object.entries(endpoint.operations).sort(([a], [b]) => rank(a) - rank(b));
 }
 

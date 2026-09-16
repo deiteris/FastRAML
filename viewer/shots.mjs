@@ -81,7 +81,8 @@ const VIEWPORTS = [
 ];
 
 /**
- * The regions that open a level, each of which must look the same everywhere.
+ * The regions involved in indentation, each of which must look the same
+ * everywhere.
  *
  * An item type, an expanded declaration and a union member are all *a separate
  * type inside another one*, and a reader learns one boundary per construct --
@@ -91,13 +92,18 @@ const VIEWPORTS = [
  * `each item` was flush on an attribute row and indented everywhere else, which
  * put an array's `maxItems` and its item's `maxLength` in one column under one
  * heading. A tab strip draws its own boundary and needs no rule; what matters
- * is that it needs none consistently.
+ * is that it needs none consistently. Attribute lists are content rather than
+ * boundaries and must stay flush; including them catches a descendant selector
+ * that quietly gives only some lists a second rail.
  */
 const NESTINGS = [
+  ['inline attribute detail', '.attr > .shape'],
   ['each item', '.group > .nested'],
   ['an expanded type', '.expand > .nested'],
   ['a union member', '.tabs-panel'],
+  ['attribute-list content', '.attributes'],
 ];
+const RULED_NESTINGS = new Set(['inline attribute detail', 'each item', 'an expanded type']);
 
 const only = process.argv.includes('--dark') ? ['dark'] : process.argv.includes('--light') ? ['light'] : ['light', 'dark'];
 
@@ -195,6 +201,17 @@ try {
       const where = [...seen].map(([step, at]) => `\n         ${step} at ${at}`).join('');
       failures.push(`${kind} is drawn at ${seen.size} different indents:${where}`);
     }
+  }
+  const ruled = new Map();
+  for (const kind of RULED_NESTINGS) {
+    for (const step of (levels[kind] ?? new Map()).keys()) ruled.set(step, kind);
+  }
+  if (ruled.size > 1) {
+    failures.push(`structural boundaries use different indents: ${[...ruled].map(([step, kind]) => `${kind} ${step}`).join(', ')}`);
+  }
+  const attributeSteps = [...(levels['attribute-list content'] ?? new Map()).keys()];
+  if (attributeSteps.some((step) => step !== '0px + 0px rule')) {
+    failures.push(`attribute-list content owns an indent: ${attributeSteps.join(', ')}`);
   }
   process.stdout.write(
     `${NESTINGS.map(([kind]) => `${kind} ${[...(levels[kind] ?? new Map()).keys()][0]}`).join(', ')}\n`,

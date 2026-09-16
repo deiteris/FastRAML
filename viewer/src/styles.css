@@ -25,6 +25,11 @@
   --warn: #8a5a00;
   --recursive: #6b3fb5;
   --enum: #5a4b9c;
+  --syntax-keyword: #8b31a8;
+  --syntax-name: #075985;
+  --syntax-literal: #a23a20;
+  --syntax-string: #187153;
+  --syntax-comment: #718096;
   --shadow: none;
   --mono: 'Source Code Pro', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Ubuntu, sans-serif;
@@ -46,6 +51,11 @@
   --warn: #d8ab5e;
   --recursive: #b394f0;
   --enum: #a396e8;
+  --syntax-keyword: #d2a8ff;
+  --syntax-name: #79c0ff;
+  --syntax-literal: #ffa657;
+  --syntax-string: #7ee787;
+  --syntax-comment: #8b949e;
   --shadow: none;
   }
 }
@@ -67,6 +77,11 @@
   --warn: #8a5a00;
   --recursive: #6b3fb5;
   --enum: #5a4b9c;
+  --syntax-keyword: #8b31a8;
+  --syntax-name: #075985;
+  --syntax-literal: #a23a20;
+  --syntax-string: #187153;
+  --syntax-comment: #718096;
   --shadow: none;
   --mono: 'Source Code Pro', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Ubuntu, sans-serif;
@@ -88,6 +103,11 @@
   --warn: #d8ab5e;
   --recursive: #b394f0;
   --enum: #a396e8;
+  --syntax-keyword: #d2a8ff;
+  --syntax-name: #79c0ff;
+  --syntax-literal: #ffa657;
+  --syntax-string: #7ee787;
+  --syntax-comment: #8b949e;
   --shadow: none;
 }
 
@@ -127,12 +147,12 @@ button {
 
 .app {
   display: grid;
-  grid-template-columns: 272px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
   min-height: 100vh;
   /* Paints the nav column for the page's whole height. The sidebar itself is
      sticky and one viewport tall, so on a long page the column below it would
      otherwise fall back to the body background. */
-  background: linear-gradient(to right, var(--panel) 0 272px, var(--bg) 272px);
+  background: linear-gradient(to right, var(--panel) 0 320px, var(--bg) 320px);
 }
 
 main {
@@ -760,42 +780,23 @@ h4 + .tabs > .tabs-bar,
 }
 
 /*
- * Everything an attribute owns -- its facets, its members, its own example --
- * sits inside a rule, so the boundary between "this belongs to `title`" and
- * "this belongs to the type `title` is a property of" is drawn rather than
- * inferred from spacing. Without it a type's own `example` read as the last
- * attribute's.
+ * One indentation owner per structural level.
+ *
+ * `.nested` is an explicit region: an expanded reference, an item type, or the
+ * properties below a visible type heading. `.attr > .shape` is the implicit
+ * region holding facets or inline structure declared by an attribute. Both use
+ * one identical step. The content inside them -- notably `.attributes` -- never
+ * adds another rail of its own.
  */
-.attr > .shape {
+.attr > .shape,
+.nested {
   margin-top: 8px;
-  padding-left: 16px;
-  border-left: 2px solid var(--line-soft);
-}
-
-.nested,
-.attr .attributes {
-  margin: 8px 0 0;
   padding-left: 16px;
   border-left: 2px solid var(--line);
 }
 
 .attr .attributes {
   border-top: 0;
-}
-
-/* One rule per level. An attribute already draws the rule for everything it
-   owns, so a region starting immediately inside that rule would draw a second
-   one beside the first -- two lines for one step of nesting.
-
-   *Immediately*: with nothing between them saying a new level has begun. A
-   `each item` label, an expander, a tab strip all say it, and what follows one
-   is a separate type that keeps its own rule -- which is why `.expand >
-   .nested` was never listed here. Flattening `each item` put an array's
-   `maxItems` and its item's `maxLength` in one column under one heading. */
-.attr > .shape > .nested,
-.attr > .shape > .attributes {
-  border-left: 0;
-  padding-left: 0;
 }
 
 .group {
@@ -1404,6 +1405,57 @@ h4 {
   white-space: pre-wrap;
   color: var(--ink);
   max-width: 100%;
+}
+
+.code code {
+  color: inherit;
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+  color: var(--syntax-comment);
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-built_in,
+.hljs-type {
+  color: var(--syntax-keyword);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-title,
+.hljs-section,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--syntax-name);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: var(--syntax-string);
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-variable,
+.hljs-link {
+  color: var(--syntax-literal);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
 }
 
 .labelled {

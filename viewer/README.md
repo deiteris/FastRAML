@@ -52,6 +52,11 @@ a table can only grow one way: nesting went into the Type column, so a nested
 object pushed its children into a narrowing strip while the page's right half
 stayed blank.
 
+Each level has exactly one indentation owner. An explicit nested region (an
+expanded reference, an item type, or properties below a visible type heading)
+draws it; otherwise an attribute's inline shape does. Attribute lists themselves
+never add another rail, which prevents one level from being indented twice.
+
 Alternatives are **tabs** — a union's members, an operation's responses. Each is
 a whole thing to read, so stacked they run together and collapsed they have to
 be opened one at a time. They are text on a shared baseline with the active one
@@ -60,6 +65,10 @@ underlined; a row of filled pills above a rule reads as buttons.
 An **example goes above** the attributes it belongs to. It is the fastest way to
 understand a type, and last it read as belonging to whichever attribute happened
 to come final.
+
+Code blocks are syntax highlighted. Structured values and JSON Schemas are known
+to be JSON; string examples and unlabelled Markdown fences use conservative
+language detection, while a fence's language label takes precedence.
 
 **Security is a selector, because `securedBy` is a disjunction** — a caller
 satisfies any one entry, not all of them. One line of chips read as a single

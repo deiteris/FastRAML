@@ -32,6 +32,7 @@
  */
 
 import MarkdownIt from 'markdown-it';
+import { highlightCode } from './highlighting';
 
 const md = new MarkdownIt({
   html: false,
@@ -41,6 +42,9 @@ const md = new MarkdownIt({
   // what the `<pre>` this replaced was doing.
   breaks: false,
   typographer: false,
+  highlight(source, language) {
+    return highlightCode(source, language)?.html ?? '';
+  },
 });
 
 /*

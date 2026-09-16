@@ -361,6 +361,16 @@ function Body({
   const headed = Boolean(typed || named);
   const attributes = properties.length > 0 || patterns.length > 0;
   const schema = shape.json_schema;
+  const attributeList = (
+    <div className="attributes">
+      {properties.map(([name, property]) => (
+        <Attribute key={name} name={name} property={property} index={index} />
+      ))}
+      {patterns.map(([pattern, property]) => (
+        <Attribute key={pattern} name={`/${property.pattern}/`} property={property} index={index} pattern />
+      ))}
+    </div>
+  );
 
   return (
     <div className="shape">
@@ -453,7 +463,7 @@ function Body({
           author edits, and `$ref` is unresolved in it. */}
       {schema !== undefined && schema !== null && (
         <Expandable what="JSON Schema">
-          <Code>{schema}</Code>
+          <Code language="json">{schema}</Code>
         </Expandable>
       )}
 
@@ -470,26 +480,18 @@ function Body({
           the word `string`. */}
       {leadsSomewhere(content.items, index) && (
         <Group label="each item">
-          <ShapeView shape={content.items} index={index} />
+          {/* The array's head already names its items (`object[]`, `Book[]`).
+              Repeating that name here added a line and another indentation
+              level before any item constraint or property appeared. */}
+          <ShapeView shape={content.items} index={index} hideType />
         </Group>
       )}
 
       {/* Indented under the head where there is one, because they belong to the
-          thing it names. `Shelf slot object` sat beside its own `position` and
-          `book` rather than above them, with one rule around the pair saying
-          only that both were inside the array. */}
-      {attributes && (
-        <div className={headed ? 'nested' : undefined}>
-          <div className="attributes">
-            {properties.map(([name, property]) => (
-              <Attribute key={name} name={name} property={property} index={index} />
-            ))}
-            {patterns.map(([pattern, property]) => (
-              <Attribute key={pattern} name={`/${property.pattern}/`} property={property} index={index} pattern />
-            ))}
-          </div>
-        </div>
-      )}
+          thing it names. With no head, keep the list directly under `.shape`:
+          the one-rule-per-level CSS relies on that adjacency to avoid drawing
+          another border inside the one the owning attribute already draws. */}
+      {attributes && (headed ? <div className="nested">{attributeList}</div> : attributeList)}
 
       {content.xml !== undefined && <Labelled label="xml" value={content.xml} />}
     </div>

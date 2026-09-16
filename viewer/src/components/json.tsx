@@ -10,10 +10,17 @@
 
 import type { Json } from '../model';
 import { stringify } from '../numbers';
+import { highlightCode } from './highlighting';
 
-export function Code({ children }: { children: Json }) {
+export function Code({ children, language }: { children: Json; language?: string }) {
   const text = typeof children === 'string' ? children : stringify(children, 2);
-  return <pre className="code">{text}</pre>;
+  const highlighted = highlightCode(text, language ?? (typeof children === 'string' ? undefined : 'json'));
+  if (!highlighted) return <pre className="code">{text}</pre>;
+  return (
+    <pre className="code" data-language={highlighted.language}>
+      <code className={`hljs language-${highlighted.language}`} dangerouslySetInnerHTML={{ __html: highlighted.html }} />
+    </pre>
+  );
 }
 
 export function Labelled({ label, value }: { label: string; value: Json }) {

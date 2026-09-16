@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { Pages } from './App';
+import { highlightCode } from './components/highlighting';
 import { renderMarkdown } from './components/markdown';
 import {
   Index,
@@ -386,6 +387,29 @@ if (!renderMarkdown('a *list*:\n\n- one\n').includes('<li>')) {
   process.stderr.write('the Markdown renderer produced no list; the checks above are vacuous\n');
   failed += 1;
 }
+const highlightedJson = highlightCode('{"answer": 42}', 'json');
+if (!highlightedJson?.html.includes('hljs-attr') || !highlightedJson.html.includes('hljs-number')) {
+  process.stderr.write('JSON syntax highlighting produced no coloured tokens\n');
+  failed += 1;
+}
+if (highlightCode('Dune') !== null) {
+  process.stderr.write('a plain string example was mistaken for source code\n');
+  failed += 1;
+}
+const detectedCode = highlightCode('<book>\n  <title>Dune</title>\n</book>');
+if (!detectedCode?.html.includes('hljs-tag')) {
+  process.stderr.write('an unlabelled source example was not language-detected\n');
+  failed += 1;
+}
+if (highlightCode('<script>alert(1)</script>')?.html.includes('<script>')) {
+  process.stderr.write('syntax highlighting emitted an author-controlled tag\n');
+  failed += 1;
+}
+const highlightedFence = renderMarkdown('```json\n{"answer": 42}\n```');
+if (!highlightedFence.includes('hljs-attr') || !highlightedFence.includes('language-json')) {
+  process.stderr.write('a labelled Markdown fence was not syntax highlighted\n');
+  failed += 1;
+}
 process.stdout.write(`${HOSTILE.length} hostile descriptions checked\n`);
 
 /*
@@ -522,4 +546,3 @@ function walk(node: unknown, visit: (shape: Shape) => void): void {
     for (const value of Object.values(record)) walk(value, visit);
   }
 }
-

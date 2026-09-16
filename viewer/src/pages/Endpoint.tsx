@@ -35,7 +35,7 @@ export function EndpointPage({ document, index }: Props) {
       <h1>
         <Url api={document.entry_point} path={full} />
       </h1>
-      {endpoint.display_name && <p className="subtitle">{endpoint.display_name}</p>}
+      {endpoint.display_name && <h2 className="display-name">{endpoint.display_name}</h2>}
       <Prose>{endpoint.description}</Prose>
       <SecuredByList schemes={endpoint.secured_by} index={index} />
       <Annotations applied={endpoint.annotations} index={index} />

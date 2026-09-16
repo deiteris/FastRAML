@@ -48,7 +48,7 @@ export function OperationPage({ document, index }: Props) {
           <Lock open={optional} title={optional ? 'may be called unauthenticated' : 'requires authentication'} />
         )}
       </h1>
-      {operation.display_name && <p className="subtitle">{operation.display_name}</p>}
+      {operation.display_name && <h2 className="display-name">{operation.display_name}</h2>}
       {/* A method may narrow the API's protocols. The URL above already shows
           the scheme; this says it was this method's own decision. */}
       {operation.protocols && operation.protocols.length > 0 && (

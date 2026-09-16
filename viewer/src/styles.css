@@ -213,6 +213,16 @@ h4 {
   flex-wrap: wrap;
 }
 
+/*
+ * The `displayName` of an endpoint or operation, which the spec gives for this
+ * exact slot: the name a reader is shown. It was a dim line of the body's own
+ * size, and read as the first line of the description below it. A heading, but
+ * not a section: the top margin is the h1's, and the bottom is the subtitle's.
+ */
+.display-name {
+  margin: 4px 0 20px;
+}
+
 .aside {
   font-weight: normal;
   color: var(--dim);

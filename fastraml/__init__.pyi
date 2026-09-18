@@ -74,11 +74,13 @@ from fastraml.uris import file_uri_to_path as file_uri_to_path
 from fastraml.uris import path_to_file_uri as path_to_file_uri
 from fastraml.uris import resolve_uri_ref as resolve_uri_ref
 from fastraml.views.backward import ApiChanged as ApiChanged
+from fastraml.views.backward import ApiSchemaChanged as ApiSchemaChanged
 from fastraml.views.backward import ItemsSegment as ItemsSegment
 from fastraml.views.backward import OperationAdded as OperationAdded
 from fastraml.views.backward import OperationChanged as OperationChanged
 from fastraml.views.backward import OperationId as OperationId
 from fastraml.views.backward import OperationRemoved as OperationRemoved
+from fastraml.views.backward import PatternPropertySegment as PatternPropertySegment
 from fastraml.views.backward import PropertySegment as PropertySegment
 from fastraml.views.backward import SchemaChanged as SchemaChanged
 from fastraml.views.backward import UnionMemberSegment as UnionMemberSegment
@@ -108,6 +110,7 @@ __all__ = (
     'Addresses',
     'AnyShape',
     'ApiChanged',
+    'ApiSchemaChanged',
     'ArrayShape',
     'BaseShape',
     'Body',
@@ -160,6 +163,7 @@ __all__ = (
     'ParseOptions',
     'ParserConfig',
     'PatternProperty',
+    'PatternPropertySegment',
     'Position',
     'Property',
     'PropertySegment',

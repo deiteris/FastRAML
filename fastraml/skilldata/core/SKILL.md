@@ -45,7 +45,7 @@ This guide covers the everyday work. Load another when the task calls for it:
 fastraml skills get core --full   # This guide plus the complete flag reference
 fastraml skills get raml          # RAML 1.0 itself, for writing or reviewing a file
 fastraml skills get lint          # Check style and security; configure or write rules
-fastraml skills get diff          # Gate CI on API compatibility; the severity policy
+fastraml skills get backward      # Check backward compatibility; configure the gate
 fastraml skills get sparql        # Write your own fastraml query
 fastraml skills list              # Everything this version ships
 ```
@@ -270,36 +270,35 @@ fastraml diff --no-workspace-guard old/api.raml new/api.raml
 ```
 
 ```
-breaking  response-property-removed
-    types/Book .title
-    /books get -> 200 application/json .title
-risky     request-property-removed
-    types/Payload |0 .title
-safe      request-property-added
-    types/Book .titleX
-3 breaking changes
+# API compatibility
+
+## `GET /books`
+
+### Response
+
+| Where | Path | Change | Before | After | Compatibility |
+|---|---|---|---|---|---|
+| `200` body `application/json` | `$.title` | Property removed | optional string |  | Breaking |
 ```
 
 `diff` exits 1 when any change is breaking, so it gates CI without you parsing
-the output. Results are grouped by rule, because one edit reaches the
-declaration and every endpoint that carries it.
+the output. Results are grouped by operation, then by side of the wire: Request
+for what a caller sends, Response for what it receives. Added and removed
+operations, and anything the API root declares for every operation, appear once
+at the top.
 
-**Do not pass one `-w` that covers both versions.** fastraml addresses included
-files relative to the workspace root, so a single root spanning `old/` and
-`new/` gives the same include two different addresses. Every included file then
-looks removed and re-added, and the breaking count goes up. On one measured
-pair, a shared root reported 4 breaking changes where the correct answer was 3.
-
-Use `--no-workspace-guard` instead. You can also omit `-w` entirely, which roots
-each version in its own folder, but that only works when each document is
-self-contained there.
+Omit `-w` when each version is self-contained below its own folder. Use one
+common `-w` when both versions intentionally share a trusted workspace, or
+`--no-workspace-guard` for trusted documents whose includes need unrestricted
+access. Workspace roots control file access; compatibility does not compare
+source-file addresses.
 
 Narrow the output with `--breaking-only`, or with `--severity` repeated once per
 severity you care about. Use `--json` to regrade the changes under your own
-policy. For the CI recipe, the full severity table and the JSON fields, run:
+policy. For CI, impact policy, JSON fields and project overrides, run:
 
 ```bash
-fastraml skills get diff
+fastraml skills get backward
 ```
 
 ## Export the whole model

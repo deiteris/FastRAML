@@ -1146,14 +1146,18 @@ record: external API compatibility has no graph IRI or graph node kind.
 
 ### 10.1 The change list is the contract
 
-`backward(old, new) -> list[ApiChanged | OperationAdded | OperationRemoved | OperationChanged | SchemaChanged]`
+`backward(old, new) -> list[ApiChanged | ApiSchemaChanged | OperationAdded | OperationRemoved | OperationChanged | SchemaChanged]`
 compares two unwrapped `Raml` models at the operations an API caller reaches.
 `diff(old_graph, new_graph) -> list[Change]` remains the unrelated, opinion-free
 structural operation over graph nodes.
 
 `baseUri` is represented by `ApiChanged`, outside that operation-local union:
 RAML has one server URI for the API and no endpoint-level override, so repeating
-the same server move under every operation would misstate the model.
+the same server move under every operation would misstate the model. It carries
+`TransportLocation` rather than a root facet of its own, because with
+`protocols` it is how a caller reaches the API and the two read as one fact. Its
+`baseUriParameters` are likewise walked once and emitted as `ApiSchemaChanged`,
+because their shapes belong to the API rather than to any one method.
 
 Two things are dropped before anyone sees them, and both were reported as API
 changes by the first version:
@@ -1200,6 +1204,11 @@ guess. A `datetime`'s two formats are a third case: different wire spellings of
 the same instant, so moving between them (the default being RFC 3339) changes the
 representation and is **breaking**, on both sides of the wire.
 
+Enum additions and removals are separate changes. A replacement such as
+`[a, b] -> [b, c]` therefore reports both facts instead of letting the safe side
+hide the risky one. Members retain their YAML scalar types: integer `1` and
+string `"1"` are different values in both comparison and JSON output.
+
 The same edit is breaking on one side and harmless on the other. The paired
 model walk knows the side from the edge it is currently comparing: request
 headers, query parameters and bodies carry `request`; response headers and
@@ -1215,13 +1224,76 @@ The result types preserve the same boundary as the parsed model. An
 `OperationChanged` describes the operation and the entities it owns: transport,
 security, responses, bodies and bound parameters. It has no `path` field. A
 `SchemaChanged` is emitted only by the `BaseShape` walk; its `location` identifies
-the request body, response body or parameter whose shape is being compared, and
-its required `path` contains only `PropertySegment`, `ItemsSegment` and
-`UnionMemberSegment`. An empty tuple is the shape root and segments identify a
-nested position. A union segment carries the member's RAML name and type rather
-than exposing its list index; repeated identical members add an occurrence
-number only for disambiguation. JSON preserves the root as `[]` and nested paths
-as a segment array.
+the request body, response body or parameter whose shape is being compared.
+`ApiSchemaChanged` is the same shape result without a synthetic operation owner,
+used for `baseUriParameters` and for an API-level scheme's `describedBy`.
+`ApiChanged` stands in the same relation to `OperationChanged`: it carries a
+`location` from `ApiLocation`, which is `OperationLocation` minus the
+operation's own contract, which the root does not have. Their required paths contain `PropertySegment`,
+`PatternPropertySegment`, `ItemsSegment` and `UnionMemberSegment`. An empty tuple
+is the shape root and segments identify a nested position. Pattern-property
+order is compared independently because first match wins. A union segment
+carries the member's RAML name and type rather than exposing its list index;
+same-key candidates are paired by structural fingerprint before occurrence is
+used for disambiguation. JSON preserves the root as `[]` and nested paths as a
+segment array.
+
+#### Subject and attribute are two axes, not one
+
+`subject` is a closed vocabulary — the `Subject` alias, mirrored at runtime as
+`SUBJECTS` — naming *what* changed: `constraint`, `property`, `parameter`,
+`enum-value`, `documentation`, `required`, `security-setting` and so on.
+`attribute` names the field within it and may be absent. Both are match fields
+for a project override, and `configure` refuses an unknown `subject:` for the
+same reason it refuses an unknown rule id: a value nobody emits matches nothing,
+which reads as a policy that ran and decided against you.
+
+They were one axis until a report read `additionalProperties: true -> false` as
+"Required -> Optional". The record was correct; `before` and `after` are
+`object`, so the renderer inferred meaning from the Python type, found a `bool`,
+and applied the only reading a bare boolean had ever needed. **A value's meaning
+comes from its subject, not from how Python stores it** — `True` is `Required`
+under `required` and `true` under `constraint` — and a scalar is spelled the way
+RAML spells it, so a `null` inside an enum is `null` and not `None`.
+
+`kind` decides whether an empty side means anything. On `added` and `removed`
+exactly one side is populated by construction and the label already says which,
+so the other renders blank: "Absent" opposite a removed property repeats the
+label, and opposite a removed enum member it contradicts it, since an empty
+`after` there means no member arrived rather than that the enum is gone. On
+`changed` an absent value is a real state — a facet that went from declared to
+undeclared — and reads `Absent`. For that reason an enum delta carries no
+`attribute`: the members that left and arrived are the change, and `enum` would
+name only the container they left.
+
+**No change invents a value to stand for existence, and none restates its own
+coordinate.** An added or removed entity puts a descriptor on the populated side
+and `None` on the other, carrying only what `location` and `path` do not already
+say. A property and a parameter carry their type and requiredness, because the
+coordinate holds a name and nothing else. A `security-alternative` carries its
+scheme name, because `SecurityLocation` is empty. A **response**, a **body** and
+a **union member** carry nothing at all: the status is the `ResponseStatus`, the
+media type is the `RequestBody` or `ResponseBody`, and the member's type is
+already in its `UnionMemberSegment`, so repeating them put one fact in a row
+twice and gave a reader two places to check it. An added or removed *operation*
+carries neither side, and is addressed by `operation` and `rule`.
+
+The `'present'`/`'absent'` sentinels and the `availability` attribute that used
+to fill those slots were a second spelling of `kind`, matchable only by someone
+who had read the function that produced them.
+
+#### Ordering
+
+The change list is in walk order, which is the order the documents declare their
+operations, properties and members in. Several tests pin that: an added
+operation, a new response status and a new security alternative each appear in
+declaration order, not in whatever order a set difference happened to yield.
+
+Markdown sorts rows *within* each table by impact, stably, so a break never sits
+below a documentation edit and same-impact rows keep declaration order. The sort
+is in the reading view and not in `backward` on purpose: `impact` is the one
+field `configure` rewrites, and a list ordered by a grading a project may
+override is stale the moment one does.
 
 The path formatter does not assume RAML property names are programming-language
 identifiers. Identifier-like names use `.name`; names containing dots, brackets,
@@ -1229,10 +1301,76 @@ pipes, backticks or other punctuation use JSON bracket notation. Markdown then
 places the complete path in a code span whose fence is longer than any backtick
 run in the value and escapes table delimiters separately.
 
-Markdown reflects the same split with separate **Method contract** and
-**Schemas** sections. Nested examples in `examples/compatibility/` exercise
-object properties and array items rather than pretending JSON bodies are
-normally bare strings.
+#### An API-level default is one change, at its source
+
+`baseUri` has no method-level override, so § 10.1 above emits it once. The same
+argument reaches every root declaration a method *may* override, conditionally:
+where both versions inherit, the edit is one change at the root; where a method
+states its own, that method is making its own claim and is compared on its own.
+
+`protocols:` and `securedBy:` are both such declarations. Reported per method,
+`examples/compatibility/`'s single `protocols:` edit filled 33 of 34 operation
+tables with an identical row and accounted for 33 of 54 breaking changes — a
+reader counting the damage saw two and a half times what happened. `securedBy:`
+had the same flaw with no fixture to reveal it.
+
+The *whole* security comparison moves up, not only the alternative list: a
+scheme's settings and its `describedBy` headers, query parameters and responses
+are equally the root's when the root is what named the scheme. That is why the
+walkers take `OperationId | None` and `operation_change` dispatches on it,
+rather than an API-level comparison reimplementing them against a separate
+result type. `Operation.explicit_secured_by` is what records the distinction;
+for `protocols:`, an empty declared list is it.
+
+#### One edit reaching many operations is one row
+
+A shared authored type produces one effective change per operation that carries
+it ([§ 10.1](#101-the-change-list-is-the-contract)), and the change list is right
+to hold them apart: those are separate contracts, and a project override matches
+each on its own `operation`. The *report* is not, because the reader's question
+is how many decisions there are. A `maxLength` edited once on a type four
+operations carry filled four tables with an identical row and announced "4
+breaking changes".
+
+Markdown therefore rolls rows up on everything except the owner -- location,
+path, kind, subject, attribute, both values, impact and rule -- so only rows
+stating the same fact collapse. Those become a **Several operations** section
+naming the operations each one reaches; a change reaching one operation stays
+under it, and the impact counts at the top count rolled-up entries. Two different
+properties moving to the same bound are still two rows, because the coordinate is
+part of the key. Nothing in `backward`, `configure` or `record` changes, and the
+exit code still counts every contract.
+
+#### Markdown groups by side of the wire
+
+`side_of(location)` answers which side a coordinate sits on. The walk already
+decided it when it graded — a header under a response status is compared as
+`response` — but decided it from the *traversal* and discarded it; recovering it
+from the coordinate makes it a property of the change. Transport and security
+are the caller's side, since a protocol it cannot speak and a credential it must
+now present both stop the request before a response exists. The two contract
+locations are neither: a `description` changed on no side of the wire.
+
+Each operation is then rendered as **Request**, **Response** and
+**Documentation**, which are a consumer's questions. Grouping by result type
+instead — the earlier **Method contract** and **Schemas** — put a parameter's
+requiredness and its type in different tables under different headings, so "what
+happened to `limit`?" took two lookups and an understanding of which Python
+class produced which row. All four located results share one row shape, so the
+reading view needs no per-type renderer.
+
+A table states nothing its heading or its `Where` column has already said. The
+heading names the side, so a cell under **Response** opens at its status rather
+than repeating the word. `Path` holds a shape path only where one reaches
+*inside* a shape: a contract row and a shape root both address the coordinate in
+`Where`, so rendering one blank and the other `$` was two spellings of one fact
+in one column. A table whose rows all address their coordinate drops the column
+entirely -- sixteen of the worked catalogue's thirty-seven tables. The change
+record is untouched by any of this: `path` is still `[]` at a shape root, and
+`match.path` still targets it as `$`.
+
+Nested examples in `examples/compatibility/` exercise object properties and
+array items rather than pretending JSON bodies are normally bare strings.
 
 The worked pair covers more than the rule vocabulary, because several model
 branches share one rule. Its operation changes reach the operation itself,
@@ -1247,6 +1385,8 @@ uses the first non-empty description line and caps it at 160 characters, while
 JSON retains the complete text. Tests use pipes, backticks, Markdown markers,
 HTML-like text, mixed line breaks and punctuation-bearing property names; normal
 catalogue prose alone would not exercise the renderer's syntax boundaries.
+Matched `displayName` and `description` facets are both reported as cosmetic at
+operation, response and shape level.
 
 XML serialization metadata is not compared by this value-shape walk. A schema
 path addresses RAML properties, array items and union members; it does not
@@ -1278,10 +1418,11 @@ not presentation invented in `cli.py`.
 
 ### 10.3 The policy is separable, and named
 
-Every `OperationChanged` and `SchemaChanged` carries a named `rule` and its
-`impact`; operation additions/removals do too. `other` is `review` rather than
-`compatible` on purpose: an unrecognised change is the one case where silence
-misleads. The structural graph diff retains its separate `classify(Change)` API.
+Every `ApiSchemaChanged`, `OperationChanged` and `SchemaChanged` carries a named
+`rule` and its `impact`; operation additions/removals do too. `other` is `review`
+rather than `compatible` on purpose: an unrecognised change is the one case where
+silence misleads. The structural graph diff retains its separate
+`classify(Change)` API.
 
 This is a policy, and [§ 7](#7-amf-was-assessed-and-not-adopted) says policy
 above RAML conformance belongs to a consumer. That line stands: backward
@@ -1307,7 +1448,8 @@ from a changed graph edge.
 The structural `diff(old_graph, new_graph)` still compares the reference edges
 `securedBy`, `inherits`, `aliasOf`, `appliesTrait`, `appliesResourceType`,
 `annotation` and `recursionHead`. That is useful projection data, but it is not
-the compatibility decision.
+the compatibility decision. Its linked and unlinked `securedBy` edges are graded
+as risky reference arrivals and drops, not as security additions or removals.
 
 Effective `securedBy` is an OR-list. Adding an alternative preserves every
 existing caller; removing one breaks callers that used it. Removing `null`

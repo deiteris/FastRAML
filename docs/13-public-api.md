@@ -623,54 +623,90 @@ a CI gate without parsing its output.
 ```markdown
 ## `GET /orders`
 
-### Method contract
+### Request
 
-| Contract | Change | Before | After | Compatibility |
-|---|---|---|---|---|
-| Security | Requiredness | Optional | Required | Breaking |
-
-### Schemas
-
-| Schema | Path | Change | Before | After | Compatibility |
+| Where | Path | Change | Before | After | Compatibility |
 |---|---|---|---|---|---|
-| Response `200` body `application/json` | `$.discount` | Property removed | optional number | Absent | Breaking |
+| Security |  | Authentication | Optional | Required | Breaking |
+| query parameter `limit` |  | Requiredness | Optional | Required | Breaking |
+| query parameter `limit` | `$` | `type` | string | integer | Breaking |
+
+### Response
+
+| Where | Path | Change | Before | After | Compatibility |
+|---|---|---|---|---|---|
+| Response `200` body `application/json` | `$.discount` | Property removed | optional number |  | Breaking |
 ```
 
-Results are grouped by operation and split along the model boundary. Changes to
-the operation, transport, security, responses, bodies and bound parameters are
-`OperationChanged` values and appear under **Method contract** without a path.
-Only changes found while walking a `BaseShape` are `SchemaChanged` values and
-appear under **Schemas**. Their path starts at `$`; properties append `.name`,
+Results are grouped by operation, then by which side of the wire the change sits
+on: **Request**, **Response** and **Documentation**, the last for prose that
+changed on neither. A caller fixes what it sends before it can see what it
+receives, and a parameter's contract and its shape are one question, so they sit
+adjacent rather than in tables split by which class produced them. Transport and
+security count as the request side: a protocol the caller cannot speak and a
+credential it must now present both stop the call before a response exists.
+
+A row states nothing its heading or its `Where` column already said: under
+**Response** a cell opens at its status, and `Path` appears only where the change
+reaches inside a shape, so a table of contract changes has no `Path` column at
+all. JSON is unaffected -- `path` is still `[]` at a shape root. A rendered shape
+path starts at `$`; properties append `.name`,
 array items append `[]`, and union members append their RAML name or type in
 angle brackets, such as `<Error>` or `<integer>`. Identical members use `#2`,
 `#3` and so on only where an occurrence is needed to disambiguate them. Dot
 notation is used only for identifier-like property names; every other name uses
 JSON bracket notation, for example `$["user.name"]`, so punctuation in a RAML
-name cannot be mistaken for path structure.
+name cannot be mistaken for path structure. Pattern properties retain the
+slashes that distinguish them, for example `$[/^x-/]`.
 
 A shared authored type used by five operations produces five effective schema
 changes, because those are the contracts an external caller uses. Authored
-declarations and graph IRIs do not appear.
+declarations and graph IRIs do not appear. Markdown rolls identical rows up into
+a **Several operations** section naming the operations each reaches, and counts
+those rolled-up entries in its impact summary, so the headline states how many
+decisions there are rather than how far one reached. The records, the overrides
+and the exit code are unaffected.
 
-`baseUri` is the one API-scoped compatibility change: RAML has no per-resource
-or per-operation server definition, so it is emitted once as `ApiChanged`, not
-repeated for every operation.
+A declaration the API root makes and an operation may override is compared once
+at the root when both versions inherit it, and per operation only where one
+states its own. `baseUri` (which has no override), `baseUriParameters`,
+`protocols:` and `securedBy:` all work this way, and Markdown gathers them under
+**Every operation**. Reported per operation instead, one `protocols:` edit in
+`examples/compatibility/` produced 33 identical rows and 33 of 54 breaking
+changes.
 
 An added or removed resource with no operation produces no change. An operation
 appearing or disappearing is an `OperationAdded` or `OperationRemoved`; its
 nested request and responses are subsumed. Markdown renders those availability
-changes as separate added/removed lists in the API-surface section, not as
-one-row operation tables. Each list item includes the present operation's
+changes as separate added/removed lists under **Operations added and removed**,
+not as one-row operation tables. Each list item includes the present operation's
 `displayName` and `description` when supplied; the same fields are present in
 its JSON record. Matched operations produce `OperationChanged` and
-`SchemaChanged` values.
+`SchemaChanged` values; global parameter shapes produce `ApiSchemaChanged`.
 
-`--json` emits one typed record per line. API changes have `scope: api`;
+`--json` emits one typed record per line. API changes have `scope: api`, and API
+parameter shapes have `scope: api-schema`;
 matched-operation changes have `scope: operation` or `scope: schema` plus a
 typed `location`, `subject`, `attribute`, `before`, `after`, `impact` and `rule`.
 Only a schema record has `path`: `[]` for its root or a segment array for a
 nested shape. Operation records do not carry a placeholder path. There is no
 `iri`, `node_kind` or reconstructed `directions` field.
+
+`subject` names what changed and comes from a closed vocabulary; `attribute`
+names the field within it and may be `null`. Reading them together is what tells
+a consumer whether a `true` is a requiredness or a facet value
+([docs/16](16-graph.md#101-the-change-list-is-the-contract) § 10.2). `kind` says
+which side of an `added` or `removed` record is populated; the other is `null`
+rather than a sentinel. The populated side carries only what `location` and
+`path` do not already state — a property's or parameter's type and requiredness,
+a security alternative's scheme name. A response, a body and a union member
+carry `null` on both sides, because their status, media type and member type are
+in the coordinate. An added or removed operation carries neither and is addressed
+by `operation` and `rule`.
+
+Records come out in walk order, which is declaration order. Markdown sorts rows
+within each table by impact and leaves the records alone, because `impact` is
+what a project override rewrites.
 
 Markdown is a bounded reading view, not the lossless record. Pipes and line
 breaks are escaped inside tables, arbitrary names use safe variable-length code
@@ -689,7 +725,7 @@ than a file in the repository.
 fastraml skills list                 # the guides, and what each covers
 fastraml skills get core             # print one
 fastraml skills get core --full      # and its references/ files
-fastraml skills get diff sparql      # several, separated by `---`
+fastraml skills get backward sparql  # several, separated by `---`
 ```
 
 **An agent skill installed elsewhere is a copy, and a copy goes stale against
@@ -741,7 +777,7 @@ root, a guard and a remote client would all be noise.
 fastraml skills install                    # the stub, into ./.agents/skills/
 fastraml skills install --user             # into ~/.agents/skills/
 fastraml skills install --dir ~/.claude/skills   # anywhere else
-fastraml skills install core diff --force  # a guide, replacing what is there
+fastraml skills install core backward --force  # a guide, replacing what is there
 ```
 
 **`.agents/skills` and not a client's own directory.** The Agent Skills

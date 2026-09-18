@@ -40,7 +40,7 @@ Load one of these when the task calls for it:
 
 ```bash
 fastraml skills get lint      # Check style and security; configure or write rules
-fastraml skills get diff      # Gate CI on API compatibility; the severity policy
+fastraml skills get backward  # Check backward compatibility; configure the gate
 fastraml skills get sparql    # Write your own fastraml query
 ```
 

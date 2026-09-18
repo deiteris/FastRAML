@@ -1,8 +1,12 @@
 #%RAML 1.0
 title: Compatibility rule catalogue
 description: Old documentation
-baseUri: https://old.example.test
+baseUri: https://{tenant}.old.example.test
 protocols: [HTTP, HTTPS]
+baseUriParameters:
+  tenant:
+    type: string
+    maxLength: 20
 securitySchemes:
   oauth:
     type: OAuth 2.0

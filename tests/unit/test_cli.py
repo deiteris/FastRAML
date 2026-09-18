@@ -814,7 +814,7 @@ types:
         main(['diff', *versions])
         out = capsys.readouterr().out
         assert '## `GET /orders`' in out
-        assert '| Response `200` body `application/json` | `$.discount` |' in out
+        assert '| `200` body `application/json` | `$.discount` |' in out
         assert 'fastraml://id' not in out
 
 
@@ -943,7 +943,7 @@ class TestSkillsVerb:
     def test_list_names_every_guide(self, capsys):
         assert main(['skills', 'list']) == EXIT_OK
         out = capsys.readouterr().out
-        for name in ('core', 'raml', 'diff', 'sparql'):
+        for name in ('core', 'raml', 'backward', 'sparql'):
             assert name in out
 
     def test_the_hint_goes_to_stderr_so_a_pipe_is_clean(self, capsys):
@@ -1031,8 +1031,31 @@ class TestSkillsVerb:
         assert 'references/nodes.md' in out
 
     def test_several_guides_are_separated(self, capsys):
-        assert main(['skills', 'get', 'diff', 'sparql']) == EXIT_OK
+        assert main(['skills', 'get', 'backward', 'sparql']) == EXIT_OK
         assert '\n---\n' in capsys.readouterr().out
+
+    def test_backward_is_routed_by_task_not_the_internal_module_name(self, capsys):
+        root = Path('fastraml/skilldata')
+        source = (root / 'backward' / 'SKILL.md').read_text(encoding='utf-8')
+        front = yaml.safe_load(source.split('---')[1])
+        assert 'backward compatibility' in front['description']
+        assert 'structural graph-diff' in front['description']
+        assert not (root / 'diff' / 'SKILL.md').exists()
+
+        assert main(['skills', 'get', 'backward']) == EXIT_OK
+        rendered = capsys.readouterr().out
+        assert yaml.safe_load(rendered.split('---')[1])['name'] == 'backward'
+        assert 'scope: "api-schema"' in rendered
+        assert 'PatternPropertySegment' in rendered
+        assert {'breaking', 'review', 'compatible', 'cosmetic'} <= set(re.findall(r'`([a-z]+)`', rendered))
+
+    def test_core_does_not_teach_the_retired_graph_diff_report(self):
+        core = Path('fastraml/skilldata/core/SKILL.md').read_text(encoding='utf-8')
+        commands = Path('fastraml/skilldata/core/references/commands.md').read_text(encoding='utf-8')
+        assert 'grouped by rule' not in core
+        assert 'source-file addresses' in core
+        assert '`risky`, `safe`' not in commands
+        assert '`breaking`, `review`, `compatible`, `cosmetic`' in commands
 
     def test_an_unknown_guide_is_named_not_guessed(self, capsys):
         """As `_resolve` refuses to pick between ambiguous nodes: printing the
@@ -1057,11 +1080,16 @@ class TestSkillsVerb:
         """Name, description and the directory name agree, per the Agent Skills
         specification, so a guide can also be installed directly rather than
         served.
+
+        Every directory is required to hold one, with no skip: a folder under
+        `skilldata/` without a `SKILL.md` is the broken install `_guides` walks
+        straight past, and this is the only thing that would notice.
         """
         from fastraml.cli import _skill_root
 
         for folder in sorted(_skill_root().iterdir()):
             skill = folder / 'SKILL.md'
+            assert skill.is_file(), f'{folder.name} ships no SKILL.md'
             front = yaml.safe_load(skill.read_text(encoding='utf-8').split('---')[1])
             assert front['name'] == folder.name
             assert 0 < len(front['description']) <= 1024
@@ -1106,9 +1134,9 @@ class TestSkillsInstall:
         assert (tmp_path / 'own' / 'fastraml' / 'SKILL.md').is_file()
 
     def test_a_named_guide_installs_too(self, tmp_path, capsys):
-        assert main(['skills', 'install', 'core', 'diff', '--dir', str(tmp_path)]) == EXIT_OK
+        assert main(['skills', 'install', 'core', 'backward', '--dir', str(tmp_path)]) == EXIT_OK
         assert (tmp_path / 'core' / 'SKILL.md').is_file()
-        assert (tmp_path / 'diff' / 'SKILL.md').is_file()
+        assert (tmp_path / 'backward' / 'SKILL.md').is_file()
 
     def test_it_refuses_to_replace_without_force(self, tmp_path, capsys):
         """An installed skill is a file the user may have edited."""
@@ -1128,9 +1156,9 @@ class TestSkillsInstall:
         """Every collision is checked before the first write, or a failed install
         leaves the user to work out which names landed.
         """
-        (tmp_path / 'diff').mkdir()
-        (tmp_path / 'diff' / 'SKILL.md').write_text('mine', encoding='utf-8')
-        assert main(['skills', 'install', 'core', 'diff', '--dir', str(tmp_path)]) == EXIT_INVALID
+        (tmp_path / 'backward').mkdir()
+        (tmp_path / 'backward' / 'SKILL.md').write_text('mine', encoding='utf-8')
+        assert main(['skills', 'install', 'core', 'backward', '--dir', str(tmp_path)]) == EXIT_INVALID
         assert not (tmp_path / 'core').exists(), 'a refused install must write nothing at all'
 
     def test_an_unknown_guide_is_refused(self, tmp_path, capsys):
@@ -1147,7 +1175,7 @@ class TestSkillsInstall:
         # fails for reasons that have nothing to do with hiding.
         listed = [line.split()[0] for line in capsys.readouterr().out.splitlines() if line.strip()]
         assert 'fastraml' not in listed
-        assert listed == ['core', 'diff', 'lint', 'raml', 'sparql']
+        assert listed == ['backward', 'core', 'lint', 'raml', 'sparql']
         assert main(['skills', 'get', 'fastraml']) == EXIT_OK
         assert capsys.readouterr().out.strip()
 

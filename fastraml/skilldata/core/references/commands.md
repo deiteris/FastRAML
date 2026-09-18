@@ -109,11 +109,14 @@ Compare two versions and grade each change. Exits 1 when any change is breaking.
 
 - `--breaking-only` — report only breaking changes. Still exits 1 if any.
 - `--severity S` — report this severity **and everything worse**. Values:
-  `breaking`, `risky`, `safe`, `cosmetic`. Default `cosmetic`, which shows
+  `breaking`, `review`, `compatible`, `cosmetic`. Default `cosmetic`, which shows
   everything. `--breaking-only` is `--severity breaking` said shorter.
 - `--json` — one JSON object per change, carrying the grading inputs.
+- `--rule ID=IMPACT|off` — temporarily regrade or hide a compatibility rule;
+  repeat for more. File configuration runs first.
 
-Do not pass one `-w` covering both versions. See `fastraml skills get diff`.
+Workspace roots control which files each version may read; they do not identify
+changes. See `fastraml skills get backward`.
 
 ## `fastraml tree FILE`
 

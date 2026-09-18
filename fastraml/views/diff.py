@@ -1,22 +1,12 @@
-"""What changed between two versions, and whether it breaks anyone —
-docs/16-graph.md § 10.
+"""Structural differences between two graph projections.
 
-Two things, kept apart on purpose.
+`diff` matches graph nodes by IRI and reports node additions/removals, attribute
+changes, and reference-edge changes as `Change` records. `classify` grades those
+records from their stored request/response directions. `record` converts a
+graded change to JSON-compatible data.
 
-`diff` produces a **change list**: added, removed and altered nodes, each with
-the IRI that identifies it in both versions. It holds no opinion. This is the
-contract, and a consumer that disagrees with everything below can work from it
-alone through `--json`.
-
-`classify` applies the one opinion worth shipping: **backward compatibility**.
-That is not org-specific policy in the way "every operation must be documented"
-is (docs/16 § 7's line, which still stands) — it follows from the spec's own
-semantics, from `required` and from which side of the wire a node sits on.
-
-The diff is cheap because the IRIs are structural (§ 3): the same entity has the
-same name in both versions, so matching is a dict lookup rather than a
-similarity search. That property was designed for the declared-versus-effective
-case and pays here for nothing.
+Effective-model compatibility is implemented separately in `views.backward`.
+See docs/16-graph.md section 10.
 """
 
 from __future__ import annotations
@@ -422,13 +412,11 @@ def _rule_for(change: Change, direction: Direction) -> Rule:
 def _link_rule(change: Change) -> str:
     """A reference gained or lost.
 
-    `securedBy` is graded outright: requiring a credential where none was
-    required refuses every existing caller, and dropping one refuses nobody.
-    Everything else is `risky` — an inheritance or annotation now naming
-    something different is a real change whose effect this cannot compute.
+    Every structural reference change is `risky`: an inheritance, annotation,
+    or `securedBy` edge now names something different, whose effect this view
+    cannot compute. In particular, `securedBy` is an OR-list; only the effective
+    compatibility comparator can tell whether an alternative was added or lost.
     """
-    if change.attribute == 'securedBy':
-        return 'security-added' if change.kind == 'linked' else 'security-removed'
     return 'reference-retargeted' if change.kind == 'linked' else 'reference-dropped'
 
 
@@ -486,6 +474,11 @@ def _changed_rule(change: Change, direction: Direction) -> str:  # noqa: PLR0911
     # when security is dropped (safe) and vanishes when it is required (breaking), so
     # it is graded as a security change. Left to `other`, unsecuring a method would
     # over-grade as risky instead of the safe mirror of `security-removed`.
+    #
+    # Graded here and not in `_link_rule` for the reason that docstring gives: one
+    # attribute states the whole fact, while an edge is one entry in an OR-list whose
+    # effect only the `views.backward` comparator can compute. `scopes` above is the
+    # same case -- P5 stores them on the reference, but their value is self-contained.
     if attribute == 'unsecured':
         return 'security-added' if not now else 'security-removed'
     if attribute in _UPPER_BOUNDS or attribute in _LOWER_BOUNDS or attribute in _RESTRICTING:
@@ -498,9 +491,10 @@ def _enum_rule(change: Change, direction: Direction) -> str:
     now = set(change.after if isinstance(change.after, tuple) else ())
     if direction == 'declaration':
         return 'other'
-    if was - now:
+    removed, added = bool(was - now), bool(now - was)
+    if removed and (direction == 'request' or not added):
         return f'{direction}-enum-value-removed'
-    if now - was:
+    if added:
         return f'{direction}-enum-value-added'
     return 'other'
 

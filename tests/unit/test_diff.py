@@ -169,6 +169,11 @@ types:
         assert 'response-enum-value-added' in found
         assert RULES['response-enum-value-added'].severity == 'risky'
 
+    def test_a_mixed_response_enum_delta_uses_the_riskier_addition(self, changes):
+        found = changes(('enum: [web, phone]', 'enum: [phone, app]'))
+        assert 'response-enum-value-added' in found
+        assert 'response-enum-value-removed' not in found
+
     def test_a_removed_endpoint_is_breaking_whichever_side_you_are_on(self, changes):
         found = changes(drop=('/legacy:\n  get:\n    responses:\n      200:\n',))
         assert 'entity-removed' in found
@@ -494,34 +499,67 @@ class TestReferencesAreDiffedToo:
         new_graph = build_graph(parse_from_path(root / 'v2.raml', options))
         return {classify(change).name: change for change in diff(old_graph, new_graph)}
 
-    def test_a_swapped_security_scheme_is_breaking(self, workspace):
+    def test_a_swapped_security_scheme_is_risky_reference_changes(self, workspace):
         found = self.graded(workspace, [('securedBy: [oauth]', 'securedBy: [apiKey]')])
-        assert 'security-added' in found
-        assert RULES['security-added'].severity == 'breaking'
+        assert {'reference-dropped', 'reference-retargeted'} <= found.keys()
+        assert RULES['reference-dropped'].severity == 'risky'
+        assert RULES['reference-retargeted'].severity == 'risky'
 
-    def test_requiring_no_credential_where_one_was_required_is_safe(self, workspace):
-        found = self.graded(workspace, [('    securedBy: [oauth]\n', '')])
-        assert 'security-removed' in found
-        assert RULES['security-removed'].severity == 'safe'
-        assert 'security-added' not in found
+    def test_adding_a_security_alternative_is_a_reference_arrival(self, workspace):
+        found = self.graded(workspace, [('securedBy: [oauth]', 'securedBy: [oauth, apiKey]')])
+        arrival = found['reference-retargeted']
+        assert arrival.kind == 'linked'
+        assert arrival.attribute == 'securedBy'
+        assert RULES['reference-retargeted'].severity == 'risky'
+
+    def test_removing_a_security_alternative_is_a_reference_drop(self, workspace):
+        base = SECURED.replace('securedBy: [oauth]', 'securedBy: [oauth, apiKey]')
+        found = self.graded(workspace, [('securedBy: [oauth, apiKey]', 'securedBy: [oauth]')], base=base)
+        drop = found['reference-dropped']
+        assert drop.kind == 'unlinked'
+        assert drop.attribute == 'securedBy'
+        assert RULES['reference-dropped'].severity == 'risky'
 
     def test_unsecuring_a_method_reads_safe_not_risky(self, workspace):
-        """`securedBy: [null]` also flips the method's `unsecured` attribute. Graded
-        as a security change it reads safe, the mirror of `security-removed`; left to
-        `other` it over-graded an unsecured method as risky."""
+        """`securedBy: [null]` flips the method's own `unsecured` attribute, and one
+        attribute decides the whole question the way an OR-list of edges cannot:
+        accepting an unauthenticated caller refuses nobody. Left to `other` it
+        over-graded as risky, which is why `_changed_rule` names it.
+        """
         found = self.graded(workspace, [('securedBy: [oauth]', 'securedBy: [null]')])
-        assert 'security-removed' in found
+        assert found['security-removed'].attribute == 'unsecured'
         assert 'other' not in found
         assert RULES['security-removed'].severity == 'safe'
 
     def test_resecuring_a_method_is_breaking(self, workspace):
-        """The mirror: the `unsecured` attribute vanishes the moment a credential is
-        required, and refusing an unauthenticated caller is breaking."""
+        """The mirror: `unsecured` vanishes the moment a credential is required, and
+        refusing an unauthenticated caller breaks every one of them.
+        """
         unsecured = SECURED.replace('securedBy: [oauth]', 'securedBy: [null]')
         found = self.graded(workspace, [('securedBy: [null]', 'securedBy: [oauth]')], base=unsecured)
-        assert 'security-added' in found
+        assert found['security-added'].attribute == 'unsecured'
         assert 'other' not in found
         assert RULES['security-added'].severity == 'breaking'
+
+    def test_oauth_scopes_are_graded_on_the_reference_that_stores_them(self, workspace):
+        """P5 stores application scopes on the `securedBy` reference, so widening and
+        narrowing them are attribute changes rather than edge changes — and unlike the
+        alternatives themselves, each one decides its own direction.
+        """
+        scoped = SECURED.replace(
+            '      authorizationGrants: [authorization_code]',
+            '      authorizationGrants: [authorization_code]\n      scopes: [read, write]',
+        ).replace('securedBy: [oauth]', 'securedBy: [{oauth: {scopes: [read]}}]')
+        widened = self.graded(workspace, [('scopes: [read]}}]', 'scopes: [read, write]}}]')], base=scoped)
+        narrowed = self.graded(
+            workspace,
+            [('scopes: [read, write]}}]', 'scopes: [read]}}]')],
+            base=scoped.replace('scopes: [read]}}]', 'scopes: [read, write]}}]'),
+        )
+        assert widened['security-added'].attribute == 'scopes'
+        assert narrowed['security-removed'].attribute == 'scopes'
+        assert RULES['security-added'].severity == 'breaking'
+        assert RULES['security-removed'].severity == 'safe'
 
     def test_a_retargeted_reference_is_reported(self, workspace):
         """`Ref` and `Other` are both `string`, so no node and no attribute
@@ -532,12 +570,12 @@ class TestReferencesAreDiffedToo:
         assert found['reference-retargeted'].attribute == 'aliasOf'
 
     def test_a_swap_arrives_as_a_drop_and_an_arrival(self, workspace):
-        """Not as an opaque "changed": which target went and which came is what
-        decides whether the swap breaks anyone.
+        """Not as an opaque "changed": the structural facts cannot decide the
+        compatibility of `securedBy`'s effective OR-list.
         """
         found = self.graded(workspace, [('securedBy: [oauth]', 'securedBy: [apiKey]')])
-        assert found['security-removed'].kind == 'unlinked'
-        assert found['security-added'].kind == 'linked'
+        assert found['reference-dropped'].kind == 'unlinked'
+        assert found['reference-retargeted'].kind == 'linked'
 
     def test_containment_edges_are_not_diffed(self, workspace):
         """They cannot change without the node at the end being added or

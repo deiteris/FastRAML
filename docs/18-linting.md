@@ -244,18 +244,19 @@ blast radius" is a report; "more than ten" would be taste.
 ## 5. Configuration
 
 ```yaml
-extends: [recommended]            # or: all, spec, security
-plugins: [house-style]            # nothing from a plugin runs until named
+lint:
+  extends: [recommended]            # or: all, spec, security
+  plugins: [house-style]            # nothing from a plugin runs until named
 
-categories:
-  security: { severity: error }
+  categories:
+    security: { severity: error }
 
-rules:
-  - id: unbounded-string
-    severity: error
-  - id: unused-type
-    match: '.*internal.*'         # suppress a subset, keep the rule
-    disabled: true
+  rules:
+    - id: unbounded-string
+      severity: error
+    - id: unused-type
+      match: '.*internal.*'         # suppress a subset, keep the rule
+      disabled: true
 ```
 
 Three tiers, most specific winning: ruleset → category → rule. Taken from
@@ -395,13 +396,13 @@ preceding line with the directive spelling is treated as a comment. PyYAML does
 not retain comment tokens, so the linter does not reconstruct YAML lexical state
 to distinguish that spelling when it appears as block-scalar content.
 
-`fastraml/views/lint/config.raml` is the configuration's data type. It checks
-the closed structure, required fields, field types and accepted severity
-spellings before the decoder reads them. Checks that depend on the running
-process remain semantic validation in `config.py`: rules, rulesets, categories
-and plugins must exist in the active registry, and every `match` expression
-must compile. Keeping those checks out of the type is deliberate because plugin
-discovery changes the valid names at run time.
+`fastraml/config.raml` is the common configuration's root data type. Lint policy
+lives under its `lint:` property, whose shape is still declared by
+`views/lint/config.raml`; parser settings and compatibility overrides are sibling
+sections. The schemas check closed structure, fields and accepted severity or
+impact spellings before a decoder reads them. Checks that depend on the running
+process remain semantic validation: lint rules, rulesets, categories and plugins
+must exist in the active registry, and every regular expression must compile.
 
 ## 6. Extension
 

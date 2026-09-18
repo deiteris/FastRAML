@@ -1,0 +1,67 @@
+#%RAML 1.0 Library
+uses:
+  lint: views/lint/config.raml
+types:
+  FastRamlConfig:
+    type: object
+    additionalProperties: false
+    properties:
+      version?:
+        type: integer
+        enum: [1]
+      parser?: ParserConfig
+      lint?: lint.LintConfig
+      compatibility?: CompatibilityConfig
+
+  ParserConfig:
+    type: object
+    additionalProperties: false
+    properties:
+      workspaceRoot?: string
+      maxIncludeSize?:
+        type: integer
+        minimum: 1
+      maxDepth?:
+        type: integer
+        minimum: 1
+      regexEngine?:
+        type: string
+        enum: [re, re2]
+      remote?: boolean
+
+  CompatibilityConfig:
+    type: object
+    additionalProperties: false
+    properties:
+      rules?:
+        type: array
+        maxItems: 256
+        items: CompatibilityRule
+
+  CompatibilityRule:
+    type: object
+    additionalProperties: false
+    properties:
+      id:
+        type: string
+        minLength: 1
+        maxLength: 256
+      impact?:
+        type: string
+        enum: [breaking, review, compatible, cosmetic]
+      disabled?: boolean
+      match?: CompatibilityMatch
+
+  CompatibilityMatch:
+    type: object
+    additionalProperties: false
+    properties:
+      operation?:
+        type: string
+        maxLength: 4096
+      location?: string
+      path?: string
+      subject?: string
+      attribute?: string
+      before?: any
+      after?: any

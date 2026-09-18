@@ -1,6 +1,6 @@
 ---
 name: diff
-description: Gate CI on RAML API compatibility with fastraml diff, and regrade changes under your own policy. Covers the exit-code gate, comparing two git revisions, the workspace-root mistake that fabricates breaking changes, the full severity table for all 24 rules, and every field in the --json change record. Use when checking whether an API change is backwards compatible, wiring a compatibility check into CI, or disagreeing with how fastraml graded a change.
+description: Gate CI on RAML API compatibility with fastraml diff, and regrade changes under your own policy. Covers the exit-code gate, comparing two git revisions, the workspace-root mistake that fabricates breaking changes, the full severity table, and every field in the --json change record. Use when checking whether an API change is backwards compatible, wiring a compatibility check into CI, or disagreeing with how fastraml graded a change.
 license: MIT
 allowed-tools: Bash(fastraml:*) Bash(git:*) Read
 ---
@@ -63,28 +63,48 @@ requests and responses from the caller's point of view:
   callers relied on it always being there.
 - Loosening a response constraint is **breaking**. A value now arrives that
   callers cannot handle. Loosening is only safe on the request side.
-- Removing a request property is **risky**, not breaking. The server stops
+- Removing a request property needs **review**, not an automatic break. The server stops
   reading a value that callers still send.
-- Adding a value to a response enum is **risky**. A caller that switches
+- Adding a value to a response enum needs **review**. A caller that switches
   exhaustively has no branch for it.
-- Adding security is **breaking**; removing it is **safe**.
+- Adding security is **breaking**; removing it is **compatible**.
 
 The full list:
 
 | Severity | Rules |
 | --- | --- |
-| breaking | `entity-removed`, `request-property-required`, `request-constraint-tightened`, `request-enum-value-removed`, `response-property-removed`, `response-property-optional`, `response-constraint-loosened`, `security-added`, `type-changed` |
-| risky | `request-property-removed`, `response-enum-value-added`, `reference-retargeted`, `reference-dropped`, `other` |
-| safe | `entity-added`, `request-property-optional`, `request-property-added`, `request-constraint-loosened`, `request-enum-value-added`, `response-property-added`, `response-constraint-tightened`, `response-enum-value-removed`, `security-removed` |
+| breaking | `entity-removed`, `request-property-required`, `request-property-added-required`, `request-constraint-tightened`, `request-enum-value-removed`, `response-property-removed`, `response-property-optional`, `response-constraint-loosened`, `security-added`, `security-alternative-removed`, `base-uri-changed`, `protocol-removed`, `type-changed`, `format-changed` |
+| review | `request-property-removed`, `response-enum-value-added`, `reference-retargeted`, `other` |
+| compatible | `entity-added`, `request-property-optional`, `request-property-added`, `request-constraint-loosened`, `request-enum-value-added`, `response-property-required`, `response-property-added`, `response-constraint-tightened`, `response-enum-value-removed`, `security-removed`, `security-alternative-added`, `protocol-added` |
 | cosmetic | `documentation-changed` |
 
-`other` covers changes no rule matched. fastraml grades it `risky` so you read it
+`other` covers changes no rule matched. fastraml grades it `review` so you read it
 yourself rather than miss it.
+
+## Override project policy
+
+All parsing commands read the same configuration. Regrade a known deployment
+transition without hiding it:
+
+```yaml
+compatibility:
+  rules:
+    - id: protocol-removed
+      impact: compatible
+      match:
+        attribute: protocols
+        before: [HTTP, HTTPS]
+        after: [HTTPS]
+```
+
+Use `disabled: true` only when the change should disappear from both output and
+the exit decision. A temporary CLI override is
+`--rule protocol-removed=compatible`; file policy runs first, CLI policy last.
 
 ## Grade changes under your own policy
 
 When the task requires a policy other than the built-in grades, run `diff` with
-`--json` and decide from `kind`, `node_kind`, `directions` and `attribute`:
+`--json` and decide from the operation, typed location, payload path and attribute:
 
 ```bash
 fastraml diff --no-workspace-guard --json old/api.raml new/api.raml
@@ -94,36 +114,38 @@ Each line contains one change:
 
 ```json
 {"kind": "removed",
- "iri": "fastraml://id#/declarations/types/Book/property/title",
- "node_kind": "Property",
- "directions": ["request", "response"],
+ "scope": "schema",
+ "operation": {"path": "/books", "method": "get"},
+ "location": {"kind": "ResponseBody", "status": "200", "media_type": "application/json"},
+ "path": [{"kind": "PropertySegment", "name": "title"}],
+ "subject": "property",
  "attribute": null,
- "before": null,
+ "before": {"type": "string", "required": true},
  "after": null,
  "rule": "response-property-removed",
- "severity": "breaking",
- "because": "callers read a field that has gone"}
+ "impact": "breaking"}
 ```
 
 The fields:
 
-- `kind` — `added`, `removed` or `changed` for a node. `linked` or `unlinked`
-  for a reference that now points somewhere else. Switching a `securedBy` from
-  OAuth 2 to an API key moves no node and changes no attribute, so fastraml
-  reports it as `linked`.
-- `iri` — the node's address. `fastraml graph` and `fastraml tree` assign the same
-  address to the same node, so you can look it up in either.
-- `node_kind` — `Property`, `Payload`, `Operation`, `EndPoint`, `Parameter` and
-  so on.
-- `directions` — a list, not a single value. One type can be a request body and
-  a response body at once, and fastraml grades it on the worse side. A record
-  naming only one side would contradict its own `rule`.
+- `operation` — the effective method and resource path whose caller is affected.
+- `scope` — `operation` for changes to the method contract and its owned
+  entities, or `schema` for changes found while walking a body or parameter
+  shape.
+- `location` — request body, response body/status, parameter, security, transport
+  or the operation itself, with media type/status/binding carried as fields.
+- `path` — present only for `scope: schema`; `[]` is the schema root and property,
+  array-item and union-member segments identify a nested shape.
+- `subject` — property, constraint, enum, type, security setting and so on.
 - `attribute`, `before`, `after` — which facet changed and its two values.
-  All three are `null` when the node itself was added or removed.
-- `rule`, `severity`, `because` — the built-in verdict and the reason for it.
+  Operation additions/removals use their own record kinds and subsume children.
+- `rule` and `impact` — the built-in policy result.
 
-Ignore `severity` when applying the replacement policy. Add `--severity` only
+Ignore `impact` when applying the replacement policy. Add `--severity` only
 when the task excludes part of the change set.
 
 The JSON output is not grouped. Grouping appears only in the human-readable
-output.
+output. Markdown descriptions are first-line summaries; use JSON whenever the
+complete display name, description or before/after value is required. In
+Markdown paths, identifier-like properties use `.name` and names containing
+punctuation use JSON bracket notation such as `$["user.name"]`.

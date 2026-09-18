@@ -657,7 +657,10 @@ class TestLintCli:
     def test_configured_errors_fail_and_json_is_structured(self, workspace, tmp_path, capsys):
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  U:\n    properties:\n      a?: string?\n'})
         config = tmp_path / 'lint.yaml'
-        config.write_text('extends: []\nrules:\n  - id: optional-and-nil\n    severity: error\n', encoding='utf-8')
+        config.write_text(
+            'lint:\n  extends: []\n  rules:\n    - id: optional-and-nil\n      severity: error\n',
+            encoding='utf-8',
+        )
         assert main(['lint', '--config', str(config), '--format', 'json', str(root / 'api.raml')]) == EXIT_INVALID
         output = json.loads(capsys.readouterr().out)
         assert output['schemaVersion'] == 1
@@ -791,7 +794,7 @@ class TestLintCli:
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\n/users/{id}:\n  get:\n'})
         config = tmp_path / 'lint.yaml'
         config.write_text(
-            'extends: []\nrules:\n  - id: explicit-uri-parameter\n    severity: error\n',
+            'lint:\n  extends: []\n  rules:\n    - id: explicit-uri-parameter\n      severity: error\n',
             encoding='utf-8',
         )
         assert (

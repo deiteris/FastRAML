@@ -76,6 +76,8 @@ fastraml/
   __init__.py             lazy public API exports (see doc 13)
   __init__.pyi            eager declarations of that surface for type checkers
   cli.py                  the `fastraml` console script (doc 13 section 8)
+  config.py               common parser/lint/compatibility configuration decoder
+  config.raml             the closed shape of that common YAML configuration
   py.typed
 
   views/                  everything that reads the finished model (doc 16).
@@ -86,7 +88,8 @@ fastraml/
     tree.py               the model as containment — what is here (doc 16 section 11)
     render.py             one type or endpoint as text, for reading (doc 16 section 9)
     queries.py            the named SPARQL analysis catalogue (doc 16 section 6)
-    diff.py               what changed between two versions, and what it breaks (doc 16 section 10)
+    diff.py               structural graph changes and their legacy grading (doc 16 section 10)
+    backward.py           model-native backward compatibility (doc 16 section 10)
     lint/                 generic rule engine, built-in policy and plugins (doc 18)
 
   errors.py               Diagnostic, StackTrace, Accumulator, ErrorKind

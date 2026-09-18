@@ -1,3 +1,9 @@
+from fastraml.config import CompatibilityConfig as CompatibilityConfig
+from fastraml.config import CompatibilityMatch as CompatibilityMatch
+from fastraml.config import CompatibilityRuleSetting as CompatibilityRuleSetting
+from fastraml.config import FastRamlConfig as FastRamlConfig
+from fastraml.config import ParserConfig as ParserConfig
+from fastraml.config import load_config as load_config
 from fastraml.datanode import DataNode as DataNode
 from fastraml.datanode import ValueNode as ValueNode
 from fastraml.errors import Accumulator as Accumulator
@@ -67,6 +73,18 @@ from fastraml.types.values import same_value as same_value
 from fastraml.uris import file_uri_to_path as file_uri_to_path
 from fastraml.uris import path_to_file_uri as path_to_file_uri
 from fastraml.uris import resolve_uri_ref as resolve_uri_ref
+from fastraml.views.backward import ApiChanged as ApiChanged
+from fastraml.views.backward import ItemsSegment as ItemsSegment
+from fastraml.views.backward import OperationAdded as OperationAdded
+from fastraml.views.backward import OperationChanged as OperationChanged
+from fastraml.views.backward import OperationId as OperationId
+from fastraml.views.backward import OperationRemoved as OperationRemoved
+from fastraml.views.backward import PropertySegment as PropertySegment
+from fastraml.views.backward import SchemaChanged as SchemaChanged
+from fastraml.views.backward import UnionMemberSegment as UnionMemberSegment
+from fastraml.views.backward import backward as backward
+from fastraml.views.backward import backward_markdown as backward_markdown
+from fastraml.views.backward import render_markdown as render_compatibility_markdown
 from fastraml.views.graph import Edge as Edge
 from fastraml.views.graph import Graph as Graph
 from fastraml.views.graph import Route as Route
@@ -89,10 +107,14 @@ __all__ = (
     'Accumulator',
     'Addresses',
     'AnyShape',
+    'ApiChanged',
     'ArrayShape',
     'BaseShape',
     'Body',
     'BooleanShape',
+    'CompatibilityConfig',
+    'CompatibilityMatch',
+    'CompatibilityRuleSetting',
     'Conversion',
     'DataNode',
     'DataTypeFragment',
@@ -106,6 +128,7 @@ __all__ = (
     'EndPoint',
     'Entity',
     'ErrorKind',
+    'FastRamlConfig',
     'FileLoader',
     'FileShape',
     'Fragment',
@@ -116,6 +139,7 @@ __all__ = (
     'IncludeInfo',
     'IncludeRef',
     'IntegerShape',
+    'ItemsSegment',
     'JsonShape',
     'Library',
     'LoaderError',
@@ -127,12 +151,18 @@ __all__ = (
     'OAS3Document',
     'ObjectShape',
     'Operation',
+    'OperationAdded',
+    'OperationChanged',
+    'OperationId',
+    'OperationRemoved',
     'Parameter',
     'ParseCtx',
     'ParseOptions',
+    'ParserConfig',
     'PatternProperty',
     'Position',
     'Property',
+    'PropertySegment',
     'Raml',
     'RamlError',
     'RecursiveShape',
@@ -143,12 +173,14 @@ __all__ = (
     'Route',
     'SafeFileLoader',
     'ScalarFacet',
+    'SchemaChanged',
     'SchemeLoader',
     'SecuritySchemeFragment',
     'StringShape',
     'TimeOnlyShape',
     'Trace',
     'TraitFragment',
+    'UnionMemberSegment',
     'UnionShape',
     'UnknownShape',
     'UnsupportedSchemeError',
@@ -157,15 +189,19 @@ __all__ = (
     '__version__',
     'address',
     'backend_name',
+    'backward',
+    'backward_markdown',
     'build_graph',
     'build_loader',
     'build_tree',
     'compose',
     'file_uri_to_path',
+    'load_config',
     'parse_from_path',
     'parse_from_string',
     'parse_lenient',
     'path_to_file_uri',
+    'render_compatibility_markdown',
     'resolve_uri_ref',
     'same_value',
     'to_json_schema',

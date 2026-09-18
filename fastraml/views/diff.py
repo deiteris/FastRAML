@@ -360,6 +360,11 @@ RULES: Final[dict[str, Rule]] = {
         Rule('response-enum-value-removed', 'safe', 'one fewer case to handle'),
         Rule('security-added', 'breaking', 'an unauthenticated caller is now refused'),
         Rule('security-removed', 'safe', 'a credential that was required is merely ignored'),
+        Rule('security-alternative-added', 'safe', 'existing authentication alternatives remain accepted'),
+        Rule('security-alternative-removed', 'breaking', 'callers using that authentication alternative are refused'),
+        Rule('base-uri-changed', 'breaking', 'callers send requests to the old API address'),
+        Rule('protocol-removed', 'breaking', 'callers using that transport can no longer connect'),
+        Rule('protocol-added', 'safe', 'existing transports remain available'),
         Rule('type-changed', 'breaking', 'the wire format is not the one either side agreed'),
         Rule('format-changed', 'breaking', 'the value is now spelled in a representation callers do not parse'),
         Rule('documentation-changed', 'cosmetic', 'nothing on the wire changed'),
@@ -444,7 +449,7 @@ def _added_rule(change: Change, direction: Direction) -> str:
     return 'entity-added'
 
 
-def _changed_rule(change: Change, direction: Direction) -> str:  # noqa: PLR0911 - one arm per attribute family
+def _changed_rule(change: Change, direction: Direction) -> str:  # noqa: PLR0911, PLR0912 - one arm per attribute family
     attribute, was, now = change.attribute, change.before, change.after
     if attribute in _PROSE:
         return 'documentation-changed'
@@ -461,8 +466,22 @@ def _changed_rule(change: Change, direction: Direction) -> str:  # noqa: PLR0911
     # not a loosening, so it is graded as such rather than run through the bounds.
     if attribute == 'format' and (was in DATETIME_FORMATS or now in DATETIME_FORMATS):
         return 'format-changed' if _datetime_format_changed(was, now) else 'documentation-changed'
-    if attribute == 'scopes' or change.node_kind == 'SecurityScheme':
-        return 'security-added' if not was and now else 'security-removed'
+    if attribute == 'baseUri':
+        return 'base-uri-changed'
+    if attribute == 'protocols':
+        before_protocols = set(was if isinstance(was, tuple) else ())
+        after_protocols = set(now if isinstance(now, tuple) else ())
+        return 'protocol-removed' if before_protocols - after_protocols else 'protocol-added'
+    if attribute == 'securityAlternativeAdded':
+        return 'security-alternative-added'
+    if attribute == 'securityAlternativeRemoved':
+        return 'security-alternative-removed'
+    if attribute == 'scopes':
+        before_scopes = set(was if isinstance(was, tuple) else ())
+        after_scopes = set(now if isinstance(now, tuple) else ())
+        return 'security-added' if after_scopes - before_scopes else 'security-removed'
+    if change.node_kind == 'SecurityScheme':
+        return 'reference-retargeted'
     # `unsecured` is `securedBy: [null]` seen from the method's own side: it appears
     # when security is dropped (safe) and vanishes when it is required (breaking), so
     # it is graded as a security change. Left to `other`, unsecuring a method would
@@ -613,22 +632,13 @@ def _datetime_format_changed(before: object, after: object) -> bool:
     return was != now
 
 
-def _numeric(value: object) -> float | None:
-    """A bound as a number, or `None`.
-
-    The one place a `float` is acceptable in this project: nothing here is
-    compared against a *value*, only two bounds against each other to decide
-    which way they moved (docs/10 § 5.2 is about validation, not about this).
-    Exactness would change no answer, and a bound too large for a float is
-    already not a bound anyone is enforcing.
-    """
+def _numeric(value: object) -> Fraction | None:
+    """A bound as an exact number, or `None`."""
     if isinstance(value, bool) or value is None:
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
     try:
-        return float(str(value))
-    except ValueError:
+        return Fraction(str(value))
+    except (ValueError, ZeroDivisionError):
         return None
 
 

@@ -1,0 +1,332 @@
+#%RAML 1.0
+title: Compatibility rule catalogue
+description: Old documentation
+baseUri: https://old.example.test
+protocols: [HTTP, HTTPS]
+securitySchemes:
+  oauth:
+    type: OAuth 2.0
+    settings:
+      accessTokenUri: https://auth.example.test/token
+      authorizationGrants: [client_credentials]
+      scopes: [read, write]
+  settingsOauth:
+    type: OAuth 2.0
+    settings:
+      accessTokenUri: https://auth.example.test/token
+      authorizationGrants: [client_credentials]
+  apiKey:
+    type: Pass Through
+types:
+  RequestRequired:
+    type: object
+    properties:
+      email?: string
+  RequestOptional:
+    type: object
+    properties:
+      note: string
+  RequestAddRequired:
+    type: object
+    properties:
+      customerId?: string
+  RequestAddOptional:
+    type: object
+    properties:
+      customerId?: string
+  RequestRemove:
+    type: object
+    properties:
+      legacyCode?: string
+  RequestTight:
+    type: object
+    properties:
+      profile:
+        type: object
+        properties:
+          nickname:
+            type: string
+            maxLength: 10
+  RequestLoose:
+    type: object
+    properties:
+      search:
+        type: object
+        properties:
+          query:
+            type: string
+            maxLength: 5
+  RequestEnumRemove:
+    type: object
+    properties:
+      filters:
+        type: object
+        properties:
+          state:
+            type: string
+            enum: [active, archived]
+  RequestEnumAdd:
+    type: object
+    properties:
+      filters:
+        type: object
+        properties:
+          state:
+            type: string
+            enum: [active]
+  ResponseRemove:
+    type: object
+    properties:
+      legacyLabel?: string
+  ResponseOptional:
+    type: object
+    properties:
+      displayName: string
+  ResponseRequired:
+    type: object
+    properties:
+      identifier?: string
+  ResponseAdd:
+    type: object
+    properties:
+      identifier?: string
+  ResponseLoose:
+    type: object
+    properties:
+      result:
+        type: object
+        properties:
+          summary:
+            type: string
+            maxLength: 5
+  ResponseTight:
+    type: object
+    properties:
+      result:
+        type: object
+        properties:
+          summary:
+            type: string
+            maxLength: 10
+  ResponseEnumAdd:
+    type: object
+    properties:
+      records:
+        type: array
+        items:
+          type: object
+          properties:
+            state:
+              type: string
+              enum: [active]
+  ResponseEnumRemove:
+    type: object
+    properties:
+      records:
+        type: array
+        items:
+          type: object
+          properties:
+            state:
+              type: string
+              enum: [active, archived]
+  ChangedType:
+    type: object
+    properties:
+      identifier: string
+  ChangedFormat:
+    type: object
+    properties:
+      generatedAt:
+        type: datetime
+        format: rfc3339
+  OtherChange:
+    type: object
+    properties:
+      productCode:
+        type: string
+        pattern: ^[A-Z]+$
+  UnionResponse:
+    type: object
+    properties:
+      result: string | integer
+  MediaEnvelope:
+    type: object
+    properties:
+      message: string
+  ProblemEnvelope:
+    type: object
+    properties:
+      type: string
+      title: string
+      status: integer
+/removed:
+  get:
+    displayName: Read legacy record
+    description: Returns a record through the legacy API.
+    responses:
+      200:
+/request-required:
+  post:
+    body:
+      application/json: RequestRequired
+/request-optional:
+  post:
+    body:
+      application/json: RequestOptional
+/request-add-required:
+  post:
+    body:
+      application/json: RequestAddRequired
+/request-add-optional:
+  post:
+    body:
+      application/json: RequestAddOptional
+/request-remove:
+  post:
+    body:
+      application/json: RequestRemove
+/request-tight:
+  post:
+    body:
+      application/json: RequestTight
+/request-loose:
+  post:
+    body:
+      application/json: RequestLoose
+/request-enum-remove:
+  post:
+    body:
+      application/json: RequestEnumRemove
+/request-enum-add:
+  post:
+    body:
+      application/json: RequestEnumAdd
+/response-remove:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseRemove
+/response-optional:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseOptional
+/response-required:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseRequired
+/response-add:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseAdd
+/response-loose:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseLoose
+/response-tight:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseTight
+/response-enum-add:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseEnumAdd
+/response-enum-remove:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseEnumRemove
+/security-added:
+  get:
+    securedBy: [null]
+/security-removed:
+  get:
+    securedBy: [oauth]
+/alternative-added:
+  get:
+    securedBy: [oauth]
+/alternative-removed:
+  get:
+    securedBy: [oauth, apiKey]
+/settings:
+  get:
+    securedBy: [settingsOauth]
+/protocol-added:
+  get:
+    protocols: [HTTP]
+/type-change:
+  post:
+    body:
+      application/json: ChangedType
+/format-change:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ChangedFormat
+/other-change:
+  get:
+    responses:
+      200:
+        body:
+          application/json: OtherChange
+/documentation:
+  get:
+    description: Old operation documentation
+/status-removed:
+  get:
+    responses:
+      200:
+      410:
+        description: The record is permanently gone.
+/status-added:
+  get:
+    responses:
+      200:
+/media-types:
+  post:
+    body:
+      application/json: MediaEnvelope
+      application/vnd.legacy+json: MediaEnvelope
+    responses:
+      200:
+        body:
+          application/json: MediaEnvelope
+          application/problem+json: ProblemEnvelope
+/parameters:
+  get:
+    queryParameters:
+      limit?: string
+      legacy?: string
+    responses:
+      200:
+        headers:
+          X-Legacy?: string
+/response-documentation:
+  get:
+    responses:
+      200:
+        description: Old response documentation
+/union-members:
+  get:
+    responses:
+      200:
+        body:
+          application/json: UnionResponse
+/scopes:
+  get:
+    securedBy: [{oauth: {scopes: [read]}}]

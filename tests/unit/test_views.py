@@ -28,6 +28,7 @@ _VIEWS = (
     'render',
     'queries',
     'diff',
+    'backward',
     'bindings',
     'jsonschema',
     'openapi',

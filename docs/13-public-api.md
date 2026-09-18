@@ -206,7 +206,7 @@ consumer that needs it has only two options, and the other one is to write its
 own — which is what [17](17-consumers.md) § 2 exists to prevent. `raml-mock`
 generating a `uniqueItems: true` array is the case that asked.
 
-**Views** — `build_graph`, `build_tree`, `to_json_schema`, `to_openapi`, `address`,
+**Views** — `backward`, `backward_markdown`, `build_graph`, `build_tree`, `to_json_schema`, `to_openapi`, `address`,
 `Addresses`, `Graph`, `Edge`, `Route`, `OAS3Document`, and `Conversion`. The last is there
 because `to_json_schema` builds a *fresh* `Conversion` per call, so converting
 many shapes that way repeats every definition instead of sharing one table.
@@ -418,13 +418,16 @@ would make the tool useless exactly where navigating is most wanted.
   everything worse* — and never a membership test, because one flag name cannot
   mean two things in one tool. The scales
   themselves stay separate, because they measure different things: `diff` grades
-  `breaking|risky|safe|cosmetic`, what a change does to a caller, and `lint`
+  `breaking|review|compatible|cosmetic`, what a change does to a caller, and `lint`
   grades `error|warning|info`, how much a finding should block CI
   ([18](18-linting.md) § 1). `--breaking-only` is now `--severity breaking`
   said shorter, and is kept because it is what a CI gate reaches for.
 - `lint --rule ID[=SEVERITY|off]` is a repeatable one-run override applied after
   its configuration file. A bare ID enables the rule, a severity enables and
   regrades it, and `off` disables it. Duplicate or unknown IDs are errors.
+- Every parsing verb accepts `--config FILE`. The common YAML root has `parser:`,
+  `lint:` and `compatibility:` sections. CLI flags override parser settings;
+  verb-required options such as unwrap and validation are not configurable.
 
 **It validates every file and exits 1 at the end**, rather than stopping at the
 first failure — matching `raml validate`, and because the case the tool exists
@@ -617,31 +620,64 @@ What changed between two versions, graded by whether it breaks a caller
 ([16](16-graph.md) § 10). **Exits 1 when anything is breaking**, so it works as
 a CI gate without parsing its output.
 
+```markdown
+## `GET /orders`
+
+### Method contract
+
+| Contract | Change | Before | After | Compatibility |
+|---|---|---|---|---|
+| Security | Requiredness | Optional | Required | Breaking |
+
+### Schemas
+
+| Schema | Path | Change | Before | After | Compatibility |
+|---|---|---|---|---|---|
+| Response `200` body `application/json` | `$.discount` | Property removed | optional number | Absent | Breaking |
 ```
-breaking  response-property-removed
-    types/Order .discount
-    /orders get -> 200 application/json .discount
-```
 
-Results are grouped by rule: one edit reaches the declaration and every endpoint
-carrying it, and all of those are worth seeing while three copies of the same
-sentence are not.
+Results are grouped by operation and split along the model boundary. Changes to
+the operation, transport, security, responses, bodies and bound parameters are
+`OperationChanged` values and appear under **Method contract** without a path.
+Only changes found while walking a `BaseShape` are `SchemaChanged` values and
+appear under **Schemas**. Their path starts at `$`; properties append `.name`,
+array items append `[]`, and union members append their RAML name or type in
+angle brackets, such as `<Error>` or `<integer>`. Identical members use `#2`,
+`#3` and so on only where an occurrence is needed to disambiguate them. Dot
+notation is used only for identifier-like property names; every other name uses
+JSON bracket notation, for example `$["user.name"]`, so punctuation in a RAML
+name cannot be mistaken for path structure.
 
-`kind` is `added`, `removed` or `changed` for a node, and `linked` or `unlinked`
-for a reference that now points somewhere else — a `securedBy` swapped from
-OAuth 2.0 to an API key moves no node and alters no attribute
-([16](16-graph.md) § 10.4).
+A shared authored type used by five operations produces five effective schema
+changes, because those are the contracts an external caller uses. Authored
+declarations and graph IRIs do not appear.
 
-`--json` emits the whole change list — `kind`, `iri`, `node_kind`, `directions`,
-the attribute and its values, plus the `rule`, `severity` and `because`. That is
-the programmatic surface: a team that disagrees with the built-in policy can
-grade the same facts its own way.
+`baseUri` is the one API-scoped compatibility change: RAML has no per-resource
+or per-operation server definition, so it is emitted once as `ApiChanged`, not
+repeated for every operation.
 
-`directions` is a **list**, because a type can be a request body and a response
-body at once and is graded on the worse side. An earlier version wrote one side,
-which put `"direction": "request"` beside `"rule": "response-property-optional"`
-in the same record — a consumer regrading these facts could not have reached the
-published answer from them.
+An added or removed resource with no operation produces no change. An operation
+appearing or disappearing is an `OperationAdded` or `OperationRemoved`; its
+nested request and responses are subsumed. Markdown renders those availability
+changes as separate added/removed lists in the API-surface section, not as
+one-row operation tables. Each list item includes the present operation's
+`displayName` and `description` when supplied; the same fields are present in
+its JSON record. Matched operations produce `OperationChanged` and
+`SchemaChanged` values.
+
+`--json` emits one typed record per line. API changes have `scope: api`;
+matched-operation changes have `scope: operation` or `scope: schema` plus a
+typed `location`, `subject`, `attribute`, `before`, `after`, `impact` and `rule`.
+Only a schema record has `path`: `[]` for its root or a segment array for a
+nested shape. Operation records do not carry a placeholder path. There is no
+`iri`, `node_kind` or reconstructed `directions` field.
+
+Markdown is a bounded reading view, not the lossless record. Pipes and line
+breaks are escaped inside tables, arbitrary names use safe variable-length code
+spans, and added/removed operation metadata is rendered as plain text rather
+than executable Markdown. Descriptions show the first non-empty line, capped at
+160 characters with `...` when content was omitted. JSON retains the complete
+original display names, descriptions and before/after values.
 
 ### 8.3 `skills`
 

@@ -1128,18 +1128,32 @@ note, never inside the flow sequence where `#` is a syntax error.
 
 ## 10. What changed, and what it breaks
 
-`fastraml diff OLD NEW`, and `fastraml/views/diff.py` behind it.
+`fastraml diff OLD NEW`, with `fastraml/views/backward.py` deciding backward
+compatibility directly from the two effective models. `fastraml/views/diff.py`
+retains the lower-level structural graph diff.
 
-The whole feature exists because § 3's IRIs are **structural**. The same entity
-has the same name in both versions, so matching two documents is a dict lookup
-rather than a similarity search. That property was designed for the
-declared-versus-effective case; it pays for this one at no cost.
+The compatibility walk starts at the effective endpoint maps produced by P4 to
+P6 and pairs their existing semantic keys: full URI, method, status code, media
+type and parameter or property name. Request/response direction is therefore a
+fact carried by the call stack, not reconstructed from a graph path. Shapes are
+already unwrapped by P9; the walk follows aliases and treats a `RecursiveShape`
+as the explicit leaf marker it is, never following its `head` back into a cycle.
+
+The graph diff remains useful when the question really is what changed in the
+projection. Its structural IRIs make matching a dictionary lookup rather than a
+similarity search. Its `Change` record is deliberately not the compatibility
+record: external API compatibility has no graph IRI or graph node kind.
 
 ### 10.1 The change list is the contract
 
-`diff(old, new) -> list[Change]` holds no opinion: added, removed and altered
-nodes, in the old document's declaration order so the result can be committed
-and compared.
+`backward(old, new) -> list[ApiChanged | OperationAdded | OperationRemoved | OperationChanged | SchemaChanged]`
+compares two unwrapped `Raml` models at the operations an API caller reaches.
+`diff(old_graph, new_graph) -> list[Change]` remains the unrelated, opinion-free
+structural operation over graph nodes.
+
+`baseUri` is represented by `ApiChanged`, outside that operation-local union:
+RAML has one server URI for the API and no endpoint-level override, so repeating
+the same server move under every operation would misstate the model.
 
 Two things are dropped before anyone sees them, and both were reported as API
 changes by the first version:
@@ -1186,50 +1200,88 @@ guess. A `datetime`'s two formats are a third case: different wire spellings of
 the same instant, so moving between them (the default being RFC 3339) changes the
 representation and is **breaking**, on both sides of the wire.
 
-The same edit is breaking on one side and harmless on the other. Nothing in the
-model says which side a node is on — the **graph** does, from its containment
-path, and that is this projection earning its keep on a question the model
-alone cannot answer.
+The same edit is breaking on one side and harmless on the other. The paired
+model walk knows the side from the edge it is currently comparing: request
+headers, query parameters and bodies carry `request`; response headers and
+bodies carry `response`. A shared type reached from both sites produces one
+finding at each effective use, with no synthetic declaration occurrence.
 
-`Change.directions` is a **set**, and that is not fussiness. One declared type
-is routinely a POST body and a GET response in the same document; the first
-version stopped at the first side it reached, so the canonical CRUD shape was
-graded by whichever edge came off the stack first — unstable as well as wrong.
-Every side is graded and **the worst is reported**, or a reassurance buries a
-break.
+Direction is part of each typed contract location. A shared type used by a POST
+request and a GET response is compared twice, once at `RequestBody` and once at
+`ResponseBody`; each operation receives the answer its caller needs. There is no
+declaration-level change whose directions have to be accumulated.
 
-Direction-independent: a resource, method or status code removed.
+The result types preserve the same boundary as the parsed model. An
+`OperationChanged` describes the operation and the entities it owns: transport,
+security, responses, bodies and bound parameters. It has no `path` field. A
+`SchemaChanged` is emitted only by the `BaseShape` walk; its `location` identifies
+the request body, response body or parameter whose shape is being compared, and
+its required `path` contains only `PropertySegment`, `ItemsSegment` and
+`UnionMemberSegment`. An empty tuple is the shape root and segments identify a
+nested position. A union segment carries the member's RAML name and type rather
+than exposing its list index; repeated identical members add an occurrence
+number only for disambiguation. JSON preserves the root as `[]` and nested paths
+as a segment array.
+
+The path formatter does not assume RAML property names are programming-language
+identifiers. Identifier-like names use `.name`; names containing dots, brackets,
+pipes, backticks or other punctuation use JSON bracket notation. Markdown then
+places the complete path in a code span whose fence is longer than any backtick
+run in the value and escapes table delimiters separately.
+
+Markdown reflects the same split with separate **Method contract** and
+**Schemas** sections. Nested examples in `examples/compatibility/` exercise
+object properties and array items rather than pretending JSON bodies are
+normally bare strings.
+
+The worked pair covers more than the rule vocabulary, because several model
+branches share one rule. Its operation changes reach the operation itself,
+transport, security, status codes, request and response bodies, and request and
+response parameters. Its schema changes are owned by request bodies, response
+bodies and parameters, and exercise root, property, array-item and union-member
+paths. The test asserts those sets directly so rule coverage cannot conceal an
+unexercised model coordinate.
+
+Reader-authored prose is also kept separate from the machine record. Markdown
+uses the first non-empty description line and caps it at 160 characters, while
+JSON retains the complete text. Tests use pipes, backticks, Markdown markers,
+HTML-like text, mixed line breaks and punctuation-bearing property names; normal
+catalogue prose alone would not exercise the renderer's syntax boundaries.
+
+XML serialization metadata is not compared by this value-shape walk. A schema
+path addresses RAML properties, array items and union members; it does not
+address XML elements or attributes, and an `xml.name` change may give the old
+and new wire values different XML addresses. Supporting that requires a
+dedicated serialization change record carrying both wire coordinates, not an
+XML facet forced into `SchemaChanged.path`.
+
+Direction-independent: an operation removed. A resource with no operation is
+not caller surface and produces no compatibility change. Added and removed
+operation records retain the present operation's `displayName` and `description`
+so API-surface reports describe an entry without requiring the reader to open
+the corresponding RAML document.
 
 ### 10.3a Where the reporting is shared with `lint`
 
-`diff` and `lint` both grade, and the temptation is to merge them. They are not
+Compatibility and `lint` both grade, and the temptation is to merge them. They are not
 the same problem: a lint rule is a predicate over **one** document and a diff
 rule a function of **two**, so neither can be written as the other. Nor are the
-scales two spellings of one axis — `safe` is not `info`, and this view reports
+scales two spellings of one axis — `compatible` is not `info`, and this view reports
 non-problems on purpose because its output is a complete description of what
 changed, where a lint report is a list of defects ([18](18-linting.md) § 1).
 
-What is shared is the arithmetic, in `views/severity.py`: worst-first, and "this
-grade and everything worse". Both had their own copy, a tuple with `.index()`
-here and a dict there. `Ranking` takes the vocabulary as data and knows no
-grade's name — a test asserts that, because the moment it names one the two
-scales have started to look like one.
-
-Two consequences followed, and neither was cosmetic. `--severity` is a
-**threshold** on both verbs now; it was a repeatable exact set here and a
-threshold there, so one flag name meant opposite things on two verbs of one tool
-([13](13-public-api.md) § 8). And `record()` — the `--json` shape — moved into
-this module from `cli.py`, because a shape a consumer regrades from is the
-view's contract to promise, not the presentation layer's to invent.
+Both use a worst-first threshold, but their vocabularies remain separate.
+`--severity` is a **threshold** on both verbs, so one flag name does not mean two
+things in one tool ([13](13-public-api.md) § 8). `backward.record()` owns the
+operation-local JSON shape because that is the compatibility view's contract,
+not presentation invented in `cli.py`.
 
 ### 10.3 The policy is separable, and named
 
-`classify(change) -> Rule` returns the rule, not a bare severity, so a report
-can say *why* and a team can suppress one by name without forking anything.
-`RULES` is the whole table.
-
-`other` is `risky` rather than `safe` on purpose. An unrecognised change is the
-one case where silence misleads.
+Every `OperationChanged` and `SchemaChanged` carries a named `rule` and its
+`impact`; operation additions/removals do too. `other` is `review` rather than
+`compatible` on purpose: an unrecognised change is the one case where silence
+misleads. The structural graph diff retains its separate `classify(Change)` API.
 
 This is a policy, and [§ 7](#7-amf-was-assessed-and-not-adopted) says policy
 above RAML conformance belongs to a consumer. That line stands: backward
@@ -1245,31 +1297,26 @@ published security standard may ship off by default, and organisation-specific
 taste remains a plugin concern. The operation-description example remains in
 that last group.
 
-### 10.4 Edges are diffed, not only nodes
+### 10.4 References and security are compared from the model
 
-A **reference** can change while every node stays exactly where it was.
-Swapping an operation's `securedBy` from OAuth 2.0 to an API key alters no node
-and no attribute; so does replacing a body's type with a structurally identical
-one. The first version compared nodes and their attributes only, reported *no
-changes at all* for both edits, and exited 0 — for a tool whose contract is
-"exit 1 if breaking", the worst answer available.
+A **reference** can change while every declaration stays exactly where it was.
+The compatibility walk follows the effective model references and compares the
+shapes or security applications they resolve to; it does not infer their effect
+from a changed graph edge.
 
-Only reference edges are compared: `securedBy`, `inherits`, `aliasOf`,
-`appliesTrait`, `appliesResourceType`, `annotation`, `recursionHead`. A
-containment edge — `property`, `payload`, `returns` — cannot change without the
-node at its end being added or removed, so diffing it would repeat what the node
-already said.
+The structural `diff(old_graph, new_graph)` still compares the reference edges
+`securedBy`, `inherits`, `aliasOf`, `appliesTrait`, `appliesResourceType`,
+`annotation` and `recursionHead`. That is useful projection data, but it is not
+the compatibility decision.
 
-A swap arrives as an `unlinked` and a `linked`, not as an opaque "changed":
-which target went and which arrived is exactly what decides whether the swap
-breaks anyone. `securedBy` is graded outright — requiring a credential where
-none was required refuses every existing caller, and dropping one refuses
-nobody. `securedBy: [null]` is recorded on the method as an `unsecured`
-attribute as well as the lost reference, and both halves grade as the same
-security change: left unclassified, the attribute would over-grade an unsecured
-method as `risky` when nothing that worked stops working. The rest are `risky`:
-an inheritance or annotation now naming something else is a real change whose
-effect this cannot compute.
+Effective `securedBy` is an OR-list. Adding an alternative preserves every
+existing caller; removing one breaks callers that used it. Removing `null`
+starts requiring a credential and is breaking, while adding it is safe. OAuth
+application scopes are compared on the reference, where P5 stores them, and the
+scheme's settings and `describedBy` request/response structures are compared on
+the resolved definition. The structural graph diff continues to represent a
+swap as `unlinked` plus `linked`, because those are the facts that projection
+changed.
 
 ### 10.5 What it does not do
 

@@ -710,7 +710,7 @@ class TestDiff:
     def test_a_breaking_change_exits_one(self, versions, capsys):
         assert main(['diff', *versions]) == EXIT_INVALID
         out = capsys.readouterr()
-        assert 'response-property-removed' in out.out
+        assert '| `$.discount` | Property removed |' in out.out
         assert 'breaking change' in out.err
 
     def test_an_unchanged_document_exits_zero_and_says_nothing(self, versions, capsys):
@@ -723,15 +723,15 @@ class TestDiff:
         widened = V1.replace('      id: string', '      id: string\n      note?: string')
         root = workspace({'a.raml': V1, 'b.raml': widened})
         assert main(['diff', str(root / 'a.raml'), str(root / 'b.raml')]) == EXIT_OK
-        assert 'response-property-added' in capsys.readouterr().out
+        assert '| `$.note` | Property added |' in capsys.readouterr().out
 
     def test_breaking_only_still_exits_one_but_prints_less(self, workspace, capsys):
         both = V2.replace('      id: string', '      id: string\n      note?: string')
         root = workspace({'a.raml': V1, 'b.raml': both})
         assert main(['diff', str(root / 'a.raml'), str(root / 'b.raml'), '--breaking-only']) == EXIT_INVALID
         out = capsys.readouterr().out
-        assert 'response-property-removed' in out
-        assert 'safe' not in out
+        assert '| `$.discount` | Property removed |' in out
+        assert '| `$.note` | Property added |' not in out
 
     def test_severity_is_a_threshold_not_a_membership_test(self, workspace, capsys):
         """docs/13 § 8: `--severity S` means S *and everything worse*, on every
@@ -742,16 +742,16 @@ class TestDiff:
         root = workspace({'a.raml': V1, 'b.raml': both})
         args = ['diff', str(root / 'a.raml'), str(root / 'b.raml')]
 
-        assert main([*args, '--severity', 'safe']) == EXIT_INVALID
+        assert main([*args, '--severity', 'compatible']) == EXIT_INVALID
         widened = capsys.readouterr().out
-        # `safe` selects safe and worse, so the breaking change is still there.
-        assert 'response-property-removed' in widened
-        assert 'response-property-added' in widened
+        # `compatible` selects compatible and worse, so the breaking change remains.
+        assert '| `$.discount` | Property removed |' in widened
+        assert '| `$.note` | Property added |' in widened
 
         assert main([*args, '--severity', 'breaking']) == EXIT_INVALID
         narrowed = capsys.readouterr().out
-        assert 'response-property-removed' in narrowed
-        assert 'response-property-added' not in narrowed
+        assert '| `$.discount` | Property removed |' in narrowed
+        assert '| `$.note` | Property added |' not in narrowed
 
     def test_breaking_only_is_the_top_of_that_scale(self, workspace, capsys):
         """It is `--severity breaking` said shorter, and kept because it is what
@@ -769,18 +769,14 @@ class TestDiff:
         assert main(['diff', *versions, '--json']) == EXIT_INVALID
         records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
         removal = next(r for r in records if r['rule'] == 'response-property-removed')
-        assert removal['severity'] == 'breaking'
-        assert removal['because']
-        assert removal['directions'] == ['response']
+        assert removal['impact'] == 'breaking'
+        assert removal['operation'] == {'path': '/orders', 'method': 'get'}
+        assert removal['location'] == {'kind': 'ResponseBody', 'status': '200', 'media_type': 'application/json'}
+        assert removal['path'] == [{'kind': 'PropertySegment', 'name': 'discount'}]
 
-    def test_json_carries_every_side_the_rule_was_graded_on(self, workspace, capsys):
-        """Or the record contradicts itself.
-
-        A type that is a POST body and a GET response is graded on the worse
-        side. Writing one side put `direction: request` beside
-        `rule: response-property-optional` in the same object, and a consumer
-        regrading these facts its own way could not have reached the published
-        answer from them.
+    def test_json_carries_the_side_of_each_effective_use(self, workspace, capsys):
+        """The model walk reports request and response sites, not a synthetic
+        declaration record whose direction had to be reconstructed from a graph.
         """
         both_ways = """#%RAML 1.0
 title: T
@@ -801,9 +797,9 @@ types:
         root = workspace({'a.raml': both_ways, 'b.raml': both_ways.replace('      a: string', '      a?: string')})
         main(['diff', str(root / 'a.raml'), str(root / 'b.raml'), '--json'])
         records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-        declared = next(r for r in records if '#/declarations/' in r['iri'])
-        assert declared['directions'] == ['request', 'response']
-        assert declared['severity'] == 'breaking'
+        required = [record for record in records if record['attribute'] == 'required']
+        assert {record['location']['kind'] for record in required} == {'RequestBody', 'ResponseBody'}
+        assert {record['impact'] for record in required} == {'compatible', 'breaking'}
 
     def test_json_writes_nothing_to_stderr(self, versions, capsys):
         """A consumer parses stdout; the summary must not corrupt it."""
@@ -814,10 +810,12 @@ types:
         assert main(['diff', versions[0], 'no-such-file.raml']) == EXIT_INVALID
         assert 'invalid' in capsys.readouterr().err
 
-    def test_a_location_reads_as_a_path_not_an_iri(self, versions, capsys):
-        """The IRI is structural so a findable path can be recovered from it."""
+    def test_a_location_is_emitted_directly_from_the_model_walk(self, versions, capsys):
         main(['diff', *versions])
-        assert '/orders get -> 200 application/json .discount' in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert '## `GET /orders`' in out
+        assert '| Response `200` body `application/json` | `$.discount` |' in out
+        assert 'fastraml://id' not in out
 
 
 class TestEveryListedNameIsUsable:

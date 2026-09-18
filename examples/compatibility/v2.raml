@@ -1,0 +1,333 @@
+#%RAML 1.0
+title: Compatibility rule catalogue
+description: New documentation
+baseUri: https://new.example.test
+protocols: [HTTPS]
+securitySchemes:
+  oauth:
+    type: OAuth 2.0
+    settings:
+      accessTokenUri: https://auth.example.test/token
+      authorizationGrants: [client_credentials]
+      scopes: [read, write]
+  settingsOauth:
+    type: OAuth 2.0
+    settings:
+      accessTokenUri: https://auth.example.test/v2/token
+      authorizationGrants: [client_credentials]
+  apiKey:
+    type: Pass Through
+types:
+  RequestRequired:
+    type: object
+    properties:
+      email: string
+  RequestOptional:
+    type: object
+    properties:
+      note?: string
+  RequestAddRequired:
+    type: object
+    properties:
+      customerId?: string
+      email: string
+  RequestAddOptional:
+    type: object
+    properties:
+      customerId?: string
+      marketingCode?: string
+  RequestRemove:
+    type: object
+    properties: {}
+  RequestTight:
+    type: object
+    properties:
+      profile:
+        type: object
+        properties:
+          nickname:
+            type: string
+            maxLength: 5
+  RequestLoose:
+    type: object
+    properties:
+      search:
+        type: object
+        properties:
+          query:
+            type: string
+            maxLength: 10
+  RequestEnumRemove:
+    type: object
+    properties:
+      filters:
+        type: object
+        properties:
+          state:
+            type: string
+            enum: [active]
+  RequestEnumAdd:
+    type: object
+    properties:
+      filters:
+        type: object
+        properties:
+          state:
+            type: string
+            enum: [active, archived]
+  ResponseRemove:
+    type: object
+    properties: {}
+  ResponseOptional:
+    type: object
+    properties:
+      displayName?: string
+  ResponseRequired:
+    type: object
+    properties:
+      identifier: string
+  ResponseAdd:
+    type: object
+    properties:
+      identifier?: string
+      traceId?: string
+  ResponseLoose:
+    type: object
+    properties:
+      result:
+        type: object
+        properties:
+          summary:
+            type: string
+            maxLength: 10
+  ResponseTight:
+    type: object
+    properties:
+      result:
+        type: object
+        properties:
+          summary:
+            type: string
+            maxLength: 5
+  ResponseEnumAdd:
+    type: object
+    properties:
+      records:
+        type: array
+        items:
+          type: object
+          properties:
+            state:
+              type: string
+              enum: [active, archived]
+  ResponseEnumRemove:
+    type: object
+    properties:
+      records:
+        type: array
+        items:
+          type: object
+          properties:
+            state:
+              type: string
+              enum: [active]
+  ChangedType:
+    type: object
+    properties:
+      identifier: integer
+  ChangedFormat:
+    type: object
+    properties:
+      generatedAt:
+        type: datetime
+        format: rfc2616
+  OtherChange:
+    type: object
+    properties:
+      productCode:
+        type: string
+        pattern: ^[a-z]+$
+  UnionResponse:
+    type: object
+    properties:
+      result: string | boolean
+  MediaEnvelope:
+    type: object
+    properties:
+      message: string
+  ProblemEnvelope:
+    type: object
+    properties:
+      type: string
+      title: string
+      status: integer
+/added:
+  get:
+    displayName: Read current record
+    description: Returns a record through the current API.
+    responses:
+      200:
+/request-required:
+  post:
+    body:
+      application/json: RequestRequired
+/request-optional:
+  post:
+    body:
+      application/json: RequestOptional
+/request-add-required:
+  post:
+    body:
+      application/json: RequestAddRequired
+/request-add-optional:
+  post:
+    body:
+      application/json: RequestAddOptional
+/request-remove:
+  post:
+    body:
+      application/json: RequestRemove
+/request-tight:
+  post:
+    body:
+      application/json: RequestTight
+/request-loose:
+  post:
+    body:
+      application/json: RequestLoose
+/request-enum-remove:
+  post:
+    body:
+      application/json: RequestEnumRemove
+/request-enum-add:
+  post:
+    body:
+      application/json: RequestEnumAdd
+/response-remove:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseRemove
+/response-optional:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseOptional
+/response-required:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseRequired
+/response-add:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseAdd
+/response-loose:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseLoose
+/response-tight:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseTight
+/response-enum-add:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseEnumAdd
+/response-enum-remove:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ResponseEnumRemove
+/security-added:
+  get:
+    securedBy: [oauth]
+/security-removed:
+  get:
+    securedBy: [null]
+/alternative-added:
+  get:
+    securedBy: [oauth, apiKey]
+/alternative-removed:
+  get:
+    securedBy: [oauth]
+/settings:
+  get:
+    securedBy: [settingsOauth]
+/protocol-added:
+  get:
+    protocols: [HTTP, HTTPS]
+/type-change:
+  post:
+    body:
+      application/json: ChangedType
+/format-change:
+  get:
+    responses:
+      200:
+        body:
+          application/json: ChangedFormat
+/other-change:
+  get:
+    responses:
+      200:
+        body:
+          application/json: OtherChange
+/documentation:
+  get:
+    description: New operation documentation
+/status-removed:
+  get:
+    responses:
+      200:
+/status-added:
+  get:
+    responses:
+      200:
+      202:
+        description: The request was accepted for processing.
+/media-types:
+  post:
+    body:
+      application/json: MediaEnvelope
+      application/vnd.example+json: MediaEnvelope
+    responses:
+      200:
+        body:
+          application/json: MediaEnvelope
+          application/vnd.example+json: MediaEnvelope
+/parameters:
+  get:
+    queryParameters:
+      limit: integer
+      cursor?: string
+    responses:
+      200:
+        headers:
+          X-Trace?: string
+/response-documentation:
+  get:
+    responses:
+      200:
+        description: New response documentation
+/union-members:
+  get:
+    responses:
+      200:
+        body:
+          application/json: UnionResponse
+/scopes:
+  get:
+    securedBy: [{oauth: {scopes: [read, write]}}]

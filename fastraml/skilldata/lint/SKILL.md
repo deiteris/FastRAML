@@ -51,13 +51,15 @@ states, useful in PATCH-like contracts but worth reviewing elsewhere.
 Turn the security set on with a config file:
 
 ```yaml
-extends: [recommended, security]
+lint:
+  extends: [recommended, security]
 ```
 
 Add `style` when you also want notation and documentation conventions:
 
 ```yaml
-extends: [recommended, security, style]
+lint:
+  extends: [recommended, security, style]
 ```
 
 `recommended` is the `spec` set. `all` is every rule registered, including any
@@ -84,24 +86,25 @@ Do not use CLI `--severity` for configuration; it only filters displayed
 findings. CLI `--rule` overrides the file for that run.
 
 ```yaml
-extends: [recommended, security]
+lint:
+  extends: [recommended, security]
 
-categories:
-  security:
-    severity: error        # fail CI on anything OWASP flags
+  categories:
+    security:
+      severity: error        # fail CI on anything OWASP flags
 
-rules:
-  - id: explicit-uri-parameter  # enable this opt-in style rule
+  rules:
+    - id: explicit-uri-parameter  # enable this opt-in style rule
 
-  - id: multiple-inheritance
-    disabled: true         # we use it deliberately
+    - id: multiple-inheritance
+      disabled: true         # we use it deliberately
 
-  - id: unbounded-string
-    severity: error
+    - id: unbounded-string
+      severity: error
 
-  - id: unused-type
-    match: '.*Legacy.*'    # silence only these findings
-    disabled: true
+    - id: unused-type
+      match: '.*Legacy.*'    # silence only these findings
+      disabled: true
 ```
 
 Three tiers, most specific winning: ruleset, then category, then rule.
@@ -249,8 +252,9 @@ your config names the plugin**, so an unrelated dependency cannot change what
 your CI reports:
 
 ```yaml
-plugins: [house-style]
-extends: [recommended, house-style]
+lint:
+  plugins: [house-style]
+  extends: [recommended, house-style]
 ```
 
 `fastraml lint --list-rules` prints the providing distribution for every rule,

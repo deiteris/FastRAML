@@ -40,7 +40,6 @@ if TYPE_CHECKING:
     from fastraml.errors import RamlError
     from fastraml.parser.entry import ParseOptions
     from fastraml.registry import Raml
-    from fastraml.views.diff import Change
     from fastraml.views.graph import Graph
     from fastraml.views.lint import Config as LintConfig
     from fastraml.views.lint import Registry as LintRegistry
@@ -65,6 +64,14 @@ _COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {}
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if hasattr(args, 'config'):
+        from fastraml.config import load_config  # noqa: PLC0415 - only parsing commands carry configuration
+
+        try:
+            args.fastraml_config = load_config(args.config)
+        except (OSError, TypeError, ValueError) as err:
+            print(f'config: {err}', file=sys.stderr)
+            return EXIT_INVALID
     return _COMMANDS[args.command](args)
 
 
@@ -128,9 +135,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     changed.add_argument(
         '--severity',
-        choices=('breaking', 'risky', 'safe', 'cosmetic'),
+        choices=('breaking', 'review', 'compatible', 'cosmetic'),
         default='cosmetic',
         help='show this severity and worse (default: cosmetic, meaning everything)',
+    )
+    changed.add_argument(
+        '--rule',
+        action='append',
+        default=[],
+        metavar='ID=IMPACT|off',
+        help='regrade or disable one compatibility rule; repeat for more',
     )
     _add_common(changed)
 
@@ -172,7 +186,6 @@ def _parser() -> argparse.ArgumentParser:
 def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     lint = commands.add_parser('lint', help='check the effective document against lint rules (doc 18)')
     lint.add_argument('files', metavar='FILE', nargs='*')
-    lint.add_argument('--config', metavar='FILE', help='lint configuration in YAML')
     lint.add_argument(
         '--severity',
         choices=('error', 'warning', 'info'),
@@ -316,6 +329,7 @@ def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument('--config', metavar='FILE', help='common FastRAML configuration in YAML')
     parser.add_argument('-w', '--workspace-root', metavar='ROOT', help='confine file reads to this directory')
     parser.add_argument(
         '--no-workspace-guard',
@@ -391,9 +405,7 @@ def _info(args: argparse.Namespace) -> int:
 
 
 def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0915 - command failures return at their source
-    from pathlib import Path  # noqa: PLC0415 - config files only
-
-    from yaml import YAMLError  # noqa: PLC0415 - config parsing only
+    import yaml  # noqa: PLC0415 - lint section handoff only
 
     from fastraml.errors import RamlError  # noqa: PLC0415
     from fastraml.parser.entry import parse_from_path  # noqa: PLC0415
@@ -416,9 +428,9 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0915 - command 
         return EXIT_INVALID
     try:
         plugins = discover_plugins(registry)
-        config_text = Path(args.config).read_text(encoding='utf-8') if args.config else ''
+        config_text = yaml.safe_dump(dict(args.fastraml_config.lint))
         config = parse_config(config_text, registry, plugins=plugins)
-    except (OSError, TypeError, ValueError, YAMLError) as err:
+    except (OSError, TypeError, ValueError, yaml.YAMLError) as err:
         print(f'lint config: {err}', file=sys.stderr)
         return EXIT_INVALID
     try:
@@ -824,59 +836,58 @@ def _diff(args: argparse.Namespace) -> int:
     the whole change list with its grading, for a consumer that disagrees with
     the built-in policy and wants only the facts (docs/16 § 10).
     """
-    from fastraml.views.diff import RULES, at_least, classify, diff, record  # noqa: PLC0415 - graph commands only
+    from fastraml.views.backward import backward, configure, record, render_markdown  # noqa: PLC0415 - diff only
 
-    graphs = []
+    models = []
     for path in args.files:
-        built = _built(args, path)
-        if built is None:
+        parsed = _parsed(args, path)
+        if parsed is None:
             return EXIT_INVALID
-        graphs.append(built[0])
+        models.append(parsed)
 
-    # A threshold, as `lint --severity` is: `--breaking-only` is the same thing
-    # said shorter, so it narrows to the top of the scale rather than adding a
-    # member to a set (docs/13 section 8).
-    wanted = at_least('breaking' if args.breaking_only else args.severity)
-    graded = [(classify(change), change) for change in diff(graphs[0], graphs[1])]
-    breaking = sum(rule.severity == 'breaking' for rule, _ in graded)
-    shown = [(rule, change) for rule, change in graded if rule.severity in wanted]
+    order = ('breaking', 'review', 'compatible', 'cosmetic')
+    threshold = order.index('breaking' if args.breaking_only else args.severity)
+    try:
+        compatibility = _compatibility_rule_overrides(args.fastraml_config.compatibility, args.rule)
+        changes = configure(backward(models[0], models[1]), compatibility)
+    except ValueError as err:
+        print(f'diff: {err}', file=sys.stderr)
+        return EXIT_INVALID
+    breaking = sum(change.impact == 'breaking' for change in changes)
+    shown = [change for change in changes if order.index(change.impact) <= threshold]
 
     if args.json:
         import json  # noqa: PLC0415 - only JSON output needs the encoder
 
-        for rule, change in shown:
-            print(json.dumps(record(rule, change)))
-    else:
-        # Grouped, because one edit reaches every site that used the type: the
-        # declaration and each endpoint carrying it are separate nodes and so
-        # separate changes. All of them are worth seeing; three copies of the
-        # same sentence are not.
-        groups: dict[tuple[str, str, str], list[Change]] = {}
-        for rule, change in shown:
-            key = (rule.name, str(change.attribute or ''), f'{_value(change.before)} -> {_value(change.after)}')
-            groups.setdefault(key, []).append(change)
-        for (name, attribute, values), members in groups.items():
-            detail = f'  {attribute}: {values}' if attribute else ''
-            print(f'{RULES[name].severity:<9} {name}{detail}')
-            for change in members:
-                print(f'    {_pretty(change.iri)}')
+        for change in shown:
+            print(json.dumps(record(change)))
+    elif shown:
+        print(render_markdown(shown), end='')
     if breaking and not args.json:
         sys.stdout.flush()
         print(f'{breaking} breaking change{"s" if breaking > 1 else ""}', file=sys.stderr)
     return EXIT_INVALID if breaking else EXIT_OK
 
 
-def _value(value: object) -> str:
-    """One side of a change, for a person. An IRI is shown as its path.
+def _compatibility_rule_overrides(config: Any, values: Sequence[str]) -> Any:
+    from typing import cast  # noqa: PLC0415 - compatibility CLI only
 
-    A reference change carries node IRIs, and printing those raw would undo the
-    work `_pretty` does everywhere else in this output.
-    """
-    from fastraml.views.diff import plain  # noqa: PLC0415 - graph commands only
+    from fastraml.config import CompatibilityConfig, CompatibilityRuleSetting  # noqa: PLC0415 - diff only
 
-    if isinstance(value, str) and value.startswith(('fastraml://', 'file://', 'http')):
-        return _pretty(value)
-    return repr(plain(value))
+    rules = list(config.rules)
+    for raw in values:
+        rule_id, separator, action = raw.strip().partition('=')
+        action = action.strip().lower()
+        if not rule_id or not separator or action not in ('breaking', 'review', 'compatible', 'cosmetic', 'off'):
+            raise ValueError(f'invalid compatibility rule override: {raw!r}')
+        rules.append(
+            CompatibilityRuleSetting(
+                id=rule_id.strip(),
+                impact=None if action == 'off' else cast('Any', action),
+                disabled=action == 'off',
+            )
+        )
+    return CompatibilityConfig(rules=tuple(rules))
 
 
 #: IRI segments that introduce something, and how to show it. The IRI is
@@ -1377,13 +1388,17 @@ def _options(args: argparse.Namespace, *, validate: bool = True, retain_source: 
     from fastraml.loaders import FileLoader  # noqa: PLC0415 - parsing commands only
     from fastraml.parser.entry import ParseOptions  # noqa: PLC0415
 
+    configured = args.fastraml_config.parser
     return ParseOptions(
         unwrap=True,
         validate=validate,
         retain_source=retain_source,
-        workspace_root=args.workspace_root,
+        workspace_root=args.workspace_root or configured.workspace_root,
+        max_include_size=configured.max_include_size,
         file_loader=FileLoader() if args.no_workspace_guard else None,
-        http_client=_http_client() if args.remote else None,
+        http_client=_http_client() if args.remote or configured.remote else None,
+        regex_engine=configured.regex_engine,
+        max_depth=configured.max_depth,
     )
 
 

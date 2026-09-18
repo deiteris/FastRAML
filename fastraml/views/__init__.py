@@ -18,7 +18,8 @@ enforcing.
     tree        the model as containment — what is here (§ 11)
     render      one type or endpoint as text, for reading (§ 9)
     queries     the SPARQL catalogue over `graph` (§ 6)
-    diff        two versions compared, and what breaks (§ 10)
+    diff        the structural difference between two graph projections (§ 10)
+    backward    two effective API models compared for caller compatibility (§ 10)
     bindings    language bindings for the tree's contract (§ 11.11)
     openapi     the effective API as OpenAPI 3.0.3 (§ 13)
 

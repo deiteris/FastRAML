@@ -38,6 +38,18 @@ Exit status:
 The exit decision uses the complete configured change list. `--breaking-only`
 and `--severity` filter output only; they do not alter pass or fail.
 
+Write the report to a file with `-o`, not with a shell redirect:
+
+```bash
+fastraml diff -o report.md old/api.raml new/api.raml
+```
+
+`diff` exits 1 whenever anything is breaking, so a redirect leaves a failed
+command and no way to distinguish a report that was written from one that was
+not. `-o` writes UTF-8 with LF newlines on every platform, reports an unwritable
+path on stderr instead of the verdict, and leaves the exit code and the breaking
+count as they are. It carries `--json` output too.
+
 ## Choose the workspace boundary
 
 Each document defaults to its own directory as workspace root. That is enough

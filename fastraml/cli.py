@@ -146,6 +146,7 @@ def _parser() -> argparse.ArgumentParser:
         metavar='ID=IMPACT|off',
         help='regrade or disable one compatibility rule; repeat for more',
     )
+    _add_output(changed)
     _add_common(changed)
 
     query = commands.add_parser('query', help='run SPARQL over the graph (needs pyoxigraph)')
@@ -238,6 +239,10 @@ def _add_output(parser: argparse.ArgumentParser) -> None:
     is that a shell redirect writes CRLF on Windows, which silently makes
     committed output differ from what CI regenerates -- and `tree` is the verb
     whose output this repository actually commits.
+
+    `diff` needs it for a second reason: it exits 1 by design when anything is
+    breaking, so `diff ... > report.md` leaves a shell with a failed command and
+    no way to tell a report it wrote from one it did not.
     """
     parser.add_argument(
         '-o',
@@ -859,10 +864,15 @@ def _diff(args: argparse.Namespace) -> int:
     if args.json:
         import json  # noqa: PLC0415 - only JSON output needs the encoder
 
-        for change in shown:
-            print(json.dumps(record(change)))
-    elif shown:
-        print(render_markdown(shown), end='')
+        text = ''.join(json.dumps(record(change)) + '\n' for change in shown)
+    else:
+        text = render_markdown(shown) if shown else ''
+
+    # `-o` before the verdict: a report nobody could write is a failure of the
+    # command, and saying "22 breaking changes" over it would bury that.
+    written = _emit_document(args, text)
+    if written != EXIT_OK:
+        return written
     if breaking and not args.json:
         sys.stdout.flush()
         print(f'{breaking} breaking change{"s" if breaking > 1 else ""}', file=sys.stderr)

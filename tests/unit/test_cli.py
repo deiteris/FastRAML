@@ -713,6 +713,42 @@ class TestDiff:
         assert '| `$.discount` | required number |' in out.out
         assert 'breaking change' in out.err
 
+    def test_o_writes_the_report_and_still_exits_one(self, versions, tmp_path, capsys):
+        """`diff` exits 1 by design, so a shell redirect leaves a failed command
+        and no way to tell a report it wrote from one it did not. `-o` separates
+        the two: the file is written, the verdict still reaches the exit code,
+        and the count still reaches stderr.
+        """
+        target = tmp_path / 'report.md'
+
+        assert main(['diff', '-o', str(target), *versions]) == EXIT_INVALID
+
+        captured = capsys.readouterr()
+        assert captured.out == ''
+        assert 'breaking change' in captured.err
+        assert '# API compatibility' in target.read_text(encoding='utf-8')
+        assert b'\r' not in target.read_bytes(), 'LF on every platform, unlike a shell redirect'
+
+    def test_o_reports_an_unwritable_file_rather_than_the_verdict(self, versions, tmp_path, capsys):
+        """A report nobody could write is a failure of the command. Saying
+        "N breaking changes" over it would bury that.
+        """
+        assert main(['diff', '-o', str(tmp_path / 'absent' / 'report.md'), *versions]) == EXIT_INVALID
+
+        captured = capsys.readouterr()
+        assert 'absent' in captured.err
+        assert 'breaking change' not in captured.err
+
+    def test_o_carries_json_too(self, versions, tmp_path, capsys):
+        target = tmp_path / 'report.jsonl'
+
+        assert main(['diff', '--json', '-o', str(target), *versions]) == EXIT_INVALID
+
+        assert capsys.readouterr().out == ''
+        records = [json.loads(line) for line in target.read_text(encoding='utf-8').splitlines()]
+        assert records
+        assert all('impact' in record for record in records)
+
     def test_an_unchanged_document_exits_zero_and_says_nothing(self, versions, capsys):
         assert main(['diff', versions[0], versions[0]]) == EXIT_OK
         captured = capsys.readouterr()

@@ -352,7 +352,7 @@ fastraml list FILE [PATTERN] [--kind K] [--json]             # what is in here
 fastraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
 fastraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made of
 fastraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
-fastraml diff OLD NEW [--breaking-only] [--severity S] [--json]
+fastraml diff OLD NEW [--breaking-only] [--severity S] [--json] [-o FILE]
 fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json] [-o FILE]
 fastraml lint [--config FILE] [--severity S] [--rule ID[=SEVERITY|off]]
               [--format human|text|json|summary]
@@ -619,6 +619,14 @@ whether it earns its keep are [16](16-graph.md) § 6.
 What changed between two versions, graded by whether it breaks a caller
 ([16](16-graph.md) § 10). **Exits 1 when anything is breaking**, so it works as
 a CI gate without parsing its output.
+
+That exit code is also why `-o` matters more here than on the export verbs: a
+shell redirect leaves a failed command and no way to tell a report that was
+written from one that was not, on top of the CRLF problem `-o` exists for
+(§ 8 above). An unwritable path is reported on stderr *instead of* the verdict,
+because a report nobody could write is a failure of the command rather than a
+finding about the API. The exit code and the breaking count are unchanged, and
+`--json` goes through the same flag.
 
 ```markdown
 ## `GET /orders`

@@ -1803,30 +1803,36 @@ def _change_label(change: LocatedChange) -> str:
 
 
 def _value(subject: Subject, value: object) -> str:
-    """One value of `subject`, spelled the way the RAML document spells it.
+    r"""One value of `subject`, spelled the way the RAML document spells it.
 
     Dispatching on `subject` and not on the Python type is the point. `True` is
     "Required" under `required` and `true` under `constraint`, and a renderer that
     reads the runtime type alone cannot tell those apart -- it reported
     `additionalProperties: true -> false` as "Required -> Optional".
+
+    What the document states is fenced as code; a word this report chose for a
+    state -- Absent, Required, None -- is not, so the fence is the reader's answer
+    to "did the author write that?". `pattern` is why it matters: escaped as text,
+    `^[A-Z]+$` renders `^\\[A-Z\\]+$`, which is a different regex and leaves no way
+    to tell the author's backslashes from Markdown's.
     """
     if value is None:
         return 'Absent'
     if isinstance(value, bool):
         if subject in ('required', 'security'):
             return 'Required' if value else 'Optional'
-        return 'true' if value else 'false'
+        return _inline_code('true' if value else 'false')
     if isinstance(value, dict):
         # A descriptor carries any subset of name, requiredness and type, and its
         # `description` belongs to its own column. Missing keys are not defaults:
         # a removed body states no requiredness because a body has none.
-        parts = [str(value['name'])] if 'name' in value else []
+        parts = [_inline_code(str(value['name']))] if 'name' in value else []
         parts.extend(['required' if value['required'] else 'optional'] if 'required' in value else [])
-        parts.extend([str(value['type'])] if 'type' in value else [])
+        parts.extend([_inline_code(str(value['type']))] if 'type' in value else [])
         return ' '.join(parts)
     if isinstance(value, tuple):
-        return ', '.join(_scalar(item) for item in value) or 'None'
-    return _scalar(value)
+        return ', '.join(_inline_code(_scalar(item)) for item in value) or 'None'
+    return _inline_code(_scalar(value))
 
 
 def _scalar(value: object) -> str:
@@ -1845,9 +1851,13 @@ def _markdown_value(change: LocatedChange, value: object) -> str:
     # side means "no members arrived" rather than "the enum is gone".
     if value is None and change.kind != 'changed':
         return ''
-    rendered = _value(change.subject, value)
-    rendered = _summary(rendered) if change.attribute == 'description' else rendered
-    return _plain_inline(rendered)
+    if change.subject == 'documentation' and value is not None:
+        # The one subject whose value is prose rather than something to copy: an
+        # author's sentence is escaped as text, and a description is summarised
+        # first, because the column holds a line and the record holds the rest.
+        text = str(value)
+        return _plain_inline(_summary(text) if change.attribute == 'description' else text)
+    return _value(change.subject, value)
 
 
 def _cell(value: str) -> str:

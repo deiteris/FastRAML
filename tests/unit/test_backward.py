@@ -437,7 +437,7 @@ types:
     after = parse_from_string(new, file_name='new.raml', base_dir=tmp_path, options=options)
 
     report = backward_markdown(before, after)
-    assert '| Body `application/json` | `$.code` | `maxLength` | 10 -> 5 | Breaking |' in report
+    assert '| Body `application/json` | `$.code` | `maxLength` | `10` -> `5` | Breaking |' in report
 
 
 def test_base_uri_change_is_breaking(tmp_path):
@@ -559,8 +559,8 @@ types:
     report = render_markdown(changes)
 
     assert {change.subject for change in changes} == {'constraint'}
-    assert '| `additionalProperties` | true -> false |' in report
-    assert '| `uniqueItems` | true -> false |' in report
+    assert '| `additionalProperties` | `true` -> `false` |' in report
+    assert '| `uniqueItems` | `true` -> `false` |' in report
     assert 'Required' not in report
     assert 'Optional' not in report
 
@@ -621,12 +621,12 @@ types:
     # The Added table holds only enum members, so one noun covers it: an enum
     # cell holds a value, not the type its `Path` points at.
     assert '| Where | Path | Value | Compatibility |' in report
-    assert '| Body `application/json` | `$.state` | c | Compatible |' in report
+    assert '| Body `application/json` | `$.state` | `c` | Compatible |' in report
     # The Removed table holds a member and a property, which disagree, so it
     # names the subject per row rather than heading one noun over both.
     assert '| Where | Path | What | Detail | Compatibility |' in report
-    assert '| Body `application/json` | `$.state` | Enum value | a | Breaking |' in report
-    assert '| Body `application/json` | `$.note` | Property | optional string | Review |' in report
+    assert '| Body `application/json` | `$.state` | Enum value | `a` | Breaking |' in report
+    assert '| Body `application/json` | `$.note` | Property | optional `string` | Review |' in report
     assert 'Enum value removed' not in report, 'the heading is the verb'
     assert 'Absent' not in report
 
@@ -654,7 +654,7 @@ types:
     change = next(change for change in graded(tmp_path, old, new) if isinstance(change, SchemaChanged))
 
     assert (change.kind, change.subject) == ('changed', 'constraint')
-    assert '| `maxLength` | 10 -> Absent |' in render_markdown([change])
+    assert '| `maxLength` | `10` -> Absent |' in render_markdown([change])
 
 
 def test_every_emitted_subject_is_one_a_project_may_match_on():
@@ -870,10 +870,11 @@ securitySchemes:
     report = render_markdown(graded(tmp_path, old, new))
 
     assert (
-        '| query parameter `cursor` | Parameter | optional string | Opaque position from the previous page. |' in report
+        '| query parameter `cursor` | Parameter | optional `string` | Opaque position from the previous page. |'
+        in report
     )
     assert '| Status `202` | Queued; poll the Location header. | Compatible |' in report
-    assert '| Security | Security alternative | token | Bearer token from the device pairing flow. |' in report
+    assert '| Security | Security alternative | `token` | Bearer token from the device pairing flow. |' in report
     # A scheme and a parameter disagree on what their value cell holds, so the
     # table names the subject per row instead of heading one noun over both.
     assert '| Where | What | Detail | Description | Compatibility |' in report
@@ -971,7 +972,7 @@ def test_one_edit_reaching_several_operations_is_one_row(tmp_path):
 
     assert len(changes) == 3, 'the record keeps one change per contract'
     assert [change.operation.path for change in changes] == ['/orders', '/invoices', '/refunds']
-    assert report.count('`maxLength` | 3 -> 8') == 1, 'the report states the edit once'
+    assert report.count('`maxLength` | `3` -> `8`') == 1, 'the report states the edit once'
     assert '> **Breaking.** 1 breaking change require' in report
     assert '| `GET /orders`, `GET /invoices`, `GET /refunds` |' in report
     assert '## `GET /orders`' not in report, 'nothing is left over to head a section with'
@@ -1122,7 +1123,49 @@ def test_markdown_quotes_hostile_schema_paths_and_table_values():
     assert 'application/vnd.test\\|json' in report
     assert '$.user.name' not in report
     assert '``$["user.name\\|`raw`"]``' in report
-    assert '| old\\|pattern -> new pattern | Review |' in report
+    # Fenced, and the pipe still escaped inside the fence: GFM ends the cell at a
+    # bare `|` wherever it stands, and a reader must see the author's regex and
+    # not this renderer's escaping of it.
+    assert '| `old\\|pattern` -> `new pattern` | Review |' in report
+
+
+def test_a_value_the_document_states_is_fenced_and_a_word_this_report_chose_is_not():
+    """The fence answers "did the author write this?", and a regex is why it has to.
+
+    Escaped as text, `^[A-Z]+$` renders `^\\[A-Z\\]+$` -- a different regex, with
+    no way to tell the author's backslashes from Markdown's. Absent, Required and
+    Optional are this report's words for a state and no document states them, so
+    they stay outside a fence and the distinction stays readable.
+    """
+    pattern = SchemaChanged(
+        operation=OperationId('/things', 'get'),
+        location=RequestBody('application/json'),
+        path=(PropertySegment('code'),),
+        kind='changed',
+        subject='constraint',
+        attribute='pattern',
+        before='^[A-Z]+$',
+        after=None,
+        impact='review',
+        rule='other',
+    )
+    required = OperationChanged(
+        operation=OperationId('/things', 'get'),
+        location=ParameterLocation('query', 'limit'),
+        kind='changed',
+        subject='required',
+        attribute='required',
+        before=False,
+        after=True,
+        impact='breaking',
+        rule='other',
+    )
+
+    report = render_markdown([pattern, required])
+
+    assert '| `^[A-Z]+$` -> Absent |' in report
+    assert '\\[A-Z\\]' not in report
+    assert '| Requiredness | Optional -> Required |' in report
 
 
 def test_markdown_summarizes_description_changes_but_json_does_not():
@@ -1181,15 +1224,14 @@ def test_the_worked_example_is_a_readable_end_to_end_report():
     assert emitted == RULE_IDS
     assert '# API compatibility' in report
     assert '## Every operation' in report
-    assert '| baseUri parameter `tenant` | `maxLength` | 20 -> 10 | Breaking |' in report
+    assert '| baseUri parameter `tenant` | `maxLength` | `20` -> `10` | Breaking |' in report
     assert '## `POST /request-required`' in report
     assert '## `GET /response-enum-add`' in report
     assert '| Body `application/json` | `$.profile.nickname` | `maxLength` |' in report
-    assert '| `200` body `application/json` | `$.records[].state` | archived | Review |' in report
+    assert '| `200` body `application/json` | `$.records[].state` | `archived` | Review |' in report
     assert '| Security | `accessTokenUri` |' in report
     assert (
-        '| `200` body `application/json` | `$.productCode` | `pattern` | '
-        '^\\[A-Z\\]+$ -> ^\\[a-z\\]+$ | Review |' in report
+        '| `200` body `application/json` | `$.productCode` | `pattern` | `^[A-Z]+$` -> `^[a-z]+$` | Review |' in report
     )
     assert 'accessTokenUri' in report
     # Sides of the wire, not result classes: a caller reads what it sends apart
@@ -1207,11 +1249,11 @@ def test_the_worked_example_is_a_readable_end_to_end_report():
     # coordinate and the one thing an addition can say that its position cannot.
     assert '| Status `410` | The record is permanently gone. | Breaking |' in report
     assert '| Status `202` | The request was accepted for processing. | Compatible |' in report
-    assert '| query parameter `cursor` | optional string | Opaque position' in report
+    assert '| query parameter `cursor` | optional `string` | Opaque position' in report
     # One parameter, two facts, adjacent: the contract row then the shape row.
     assert (
         '| query parameter `limit` | Requiredness | Optional -> Required | Breaking |\n'
-        '| query parameter `limit` | `type` | string -> integer | Breaking |' in report
+        '| query parameter `limit` | `type` | `string` -> `integer` | Breaking |' in report
     )
     # A body names no type: `Where` already did, and it has no prose here either.
     assert '| Body `application/vnd.legacy+json` | Breaking |' in report

@@ -1388,6 +1388,18 @@ bodies, union members and security schemes. That keeps it inside the rule above
 rather than breaking it: prose is nobody's coordinate, so carrying it restates
 nothing. A removed body still names no type, because `Where` already did.
 
+#### A fence means the document said it
+
+What the document states renders as inline code; a word the report chose for a
+state — `Absent`, `Required`, `Optional`, `None` — does not, so the fence answers
+"did the author write that?" without a column spent on the question. `pattern` is
+what forced it: escaped as Markdown text, `^[A-Z]+$` renders `^\[A-Z\]+$`, a
+different regex, with no way to tell the author's backslashes from the renderer's.
+The decision runs on the same axis `_value` already dispatches on — `subject` —
+and the one subject carrying prose rather than a value is `documentation`, whose
+sentences stay text and are summarised to a line. A pipe is still escaped inside
+a fence: GFM ends a table cell at a bare `|` wherever it stands.
+
 What each kind means for a caller is a definition rather than a finding, so the
 report states it once in a **How to read this** legend. Under every table it
 would be eighty lines saying the same six things.

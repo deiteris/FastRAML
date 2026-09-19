@@ -105,7 +105,12 @@ parameter, `Value` for an enum member, `Scheme` for a security alternative, and
 `Detail` where a table mixes them -- in which case a `What` column names each
 row's subject. An enum row is the one place `Where` and `Path` address the
 property rather than the thing that moved, so its `Value` cell is the member
-that left or arrived. `Path` appears where some row reaches inside a shape
+that left or arrived. A code-fenced cell value is what the document states; an unfenced word --
+`Absent`, `Required`, `Optional`, `None` -- is this report's name for a state and
+appears in no document. Read a pattern, a format or a type from inside the fence
+verbatim, including backslashes; a `\|` inside one is a table escape for `|`.
+
+`Path` appears where some row reaches inside a shape
 (`$.customer.email`, `$.items[].sku`, `$[/^x-/]`, `$.result<Error>`); a row with
 no path addresses the coordinate in `Where` itself. `Description` appears where
 the author described the entity that arrived or left. Under **Response**,

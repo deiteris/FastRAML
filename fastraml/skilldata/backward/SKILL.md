@@ -80,12 +80,18 @@ the wire:
   response bodies, and the schemas below them.
 - **Documentation**: prose that changed on neither side.
 
-Every row is `Where | Change | Before | After | Compatibility`, with a `Path`
-column inserted only where some row in that table reaches inside a shape --
-`$.customer.email`, `$.items[].sku`, `$[/^x-/]`, `$.result<Error>`. A row with no
-path addresses the coordinate in `Where` itself. Under **Response**, `Where`
-opens at the status code, because the heading has already said Response. Rows
-are ordered by impact, most severe first.
+Each side is split again into **Removed**, **Changed** and **Added**, worst kind
+first, and a report opens with a **How to read this** legend defining them.
+
+Columns vary by table. Always present are `Where` and `Compatibility`. A
+`Changed` table adds `Change` and states its transition in one `Detail` cell as
+`old -> new`; `Removed` and `Added` have no `Change` column, because the heading
+is the verb. `Path` appears where some row reaches inside a shape
+(`$.customer.email`, `$.items[].sku`, `$[/^x-/]`, `$.result<Error>`); a row with
+no path addresses the coordinate in `Where` itself. `Description` appears where
+the author described the entity that arrived or left. Under **Response**,
+`Where` opens at the status code, because the heading has already said Response.
+Rows are ordered by impact, most severe first.
 
 Do not infer the column count; read the header row of the table you are in. Use
 `--json` when a program consumes the result -- its `path` is always present on a
@@ -136,11 +142,13 @@ side is `null` by construction; that `null` records which side is populated, not
 that anything else vanished. An `enum-value` record lists only the members that
 left or arrived, so its `null` side means no member moved that way.
 
-A populated side carries only what the coordinate omits. Read a `response`,
-`body` or `union-member` addition or removal from its `location` and `path`;
-both value sides are `null` because the status, media type and member type are
-already there. An added or removed operation carries no values at all; address
-it by `operation` and `rule`.
+A populated side carries only what the coordinate omits, as an object. A
+property and a parameter carry `type` and `required`; a security alternative
+carries `name`. A `response`, `body` or `union-member` carries none of those --
+its status, media type or member type is already in `location` or `path`. Any of
+them may also carry `description`, the author's own prose, which no coordinate
+states. An added or removed operation carries no values at all; address it by
+`operation` and `rule`.
 
 Records arrive in the order the documents declare things in. Sort them yourself
 if your consumer wants them by severity; the Markdown report already does.

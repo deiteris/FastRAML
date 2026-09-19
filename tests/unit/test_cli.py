@@ -710,7 +710,7 @@ class TestDiff:
     def test_a_breaking_change_exits_one(self, versions, capsys):
         assert main(['diff', *versions]) == EXIT_INVALID
         out = capsys.readouterr()
-        assert '| `$.discount` | Property removed |' in out.out
+        assert '| `$.discount` | required number |' in out.out
         assert 'breaking change' in out.err
 
     def test_an_unchanged_document_exits_zero_and_says_nothing(self, versions, capsys):
@@ -723,15 +723,15 @@ class TestDiff:
         widened = V1.replace('      id: string', '      id: string\n      note?: string')
         root = workspace({'a.raml': V1, 'b.raml': widened})
         assert main(['diff', str(root / 'a.raml'), str(root / 'b.raml')]) == EXIT_OK
-        assert '| `$.note` | Property added |' in capsys.readouterr().out
+        assert '| `$.note` | optional string |' in capsys.readouterr().out
 
     def test_breaking_only_still_exits_one_but_prints_less(self, workspace, capsys):
         both = V2.replace('      id: string', '      id: string\n      note?: string')
         root = workspace({'a.raml': V1, 'b.raml': both})
         assert main(['diff', str(root / 'a.raml'), str(root / 'b.raml'), '--breaking-only']) == EXIT_INVALID
         out = capsys.readouterr().out
-        assert '| `$.discount` | Property removed |' in out
-        assert '| `$.note` | Property added |' not in out
+        assert '| `$.discount` | required number |' in out
+        assert '| `$.note` | optional string |' not in out
 
     def test_severity_is_a_threshold_not_a_membership_test(self, workspace, capsys):
         """docs/13 § 8: `--severity S` means S *and everything worse*, on every
@@ -745,13 +745,13 @@ class TestDiff:
         assert main([*args, '--severity', 'compatible']) == EXIT_INVALID
         widened = capsys.readouterr().out
         # `compatible` selects compatible and worse, so the breaking change remains.
-        assert '| `$.discount` | Property removed |' in widened
-        assert '| `$.note` | Property added |' in widened
+        assert '| `$.discount` | required number |' in widened
+        assert '| `$.note` | optional string |' in widened
 
         assert main([*args, '--severity', 'breaking']) == EXIT_INVALID
         narrowed = capsys.readouterr().out
-        assert '| `$.discount` | Property removed |' in narrowed
-        assert '| `$.note` | Property added |' not in narrowed
+        assert '| `$.discount` | required number |' in narrowed
+        assert '| `$.note` | optional string |' not in narrowed
 
     def test_breaking_only_is_the_top_of_that_scale(self, workspace, capsys):
         """It is `--severity breaking` said shorter, and kept because it is what

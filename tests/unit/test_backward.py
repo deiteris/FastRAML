@@ -13,6 +13,7 @@ from fastraml.views.backward import (
     SUBJECTS,
     ApiChanged,
     ApiSchemaChanged,
+    Change,
     ItemsSegment,
     OperationAdded,
     OperationChanged,
@@ -93,7 +94,7 @@ def test_added_security_alternatives_preserve_declaration_order(tmp_path):
     found = graded(tmp_path, old, new)
 
     added = [change for change in found if change.subject == 'security-alternative' and change.kind == 'added']
-    assert [change.after for change in added] == ['basic', 'key']
+    assert [change.after['name'] for change in added] == ['basic', 'key']
 
 
 def test_security_settings_are_not_lost_in_the_graph_projection(tmp_path):
@@ -436,7 +437,7 @@ types:
     after = parse_from_string(new, file_name='new.raml', base_dir=tmp_path, options=options)
 
     report = backward_markdown(before, after)
-    assert '| Body `application/json` | `$.code` | `maxLength` | 10 | 5 | Breaking |' in report
+    assert '| Body `application/json` | `$.code` | `maxLength` | 10 -> 5 | Breaking |' in report
 
 
 def test_base_uri_change_is_breaking(tmp_path):
@@ -558,8 +559,8 @@ types:
     report = render_markdown(changes)
 
     assert {change.subject for change in changes} == {'constraint'}
-    assert '| `additionalProperties` | true | false |' in report
-    assert '| `uniqueItems` | true | false |' in report
+    assert '| `additionalProperties` | true -> false |' in report
+    assert '| `uniqueItems` | true -> false |' in report
     assert 'Required' not in report
     assert 'Optional' not in report
 
@@ -585,13 +586,16 @@ types:
     change = next(change for change in graded(tmp_path, old, new) if isinstance(change, SchemaChanged))
 
     assert change.subject == 'required'
-    assert '| Requiredness | Optional | Required |' in render_markdown([change])
+    assert '| Requiredness | Optional -> Required |' in render_markdown([change])
 
 
-def test_an_added_or_removed_subject_leaves_the_empty_side_blank(tmp_path):
-    """`kind` already says which side is empty, so "Absent" opposite it either
-    repeats the label or, for an enum member, contradicts it: an empty `after`
-    there means no value arrived, not that the enum is gone.
+def test_an_added_or_removed_subject_carries_one_value_in_one_column(tmp_path):
+    """`Before` and `After` fitted a `changed` row and misfitted the other two.
+
+    One side of an addition or a removal is empty by construction and the heading
+    already says which, so a two-column pair spent itself carrying one value --
+    on half the worked catalogue's rows. `Detail` holds it instead, and the
+    kind-split heading supplies the verb.
     """
     old = """#%RAML 1.0
 title: T
@@ -612,9 +616,12 @@ types:
 
     report = render_markdown(graded(tmp_path, old, new))
 
-    assert '| `$.state` | Enum value removed | a |  |' in report
-    assert '| `$.state` | Enum value added |  | c |' in report
-    assert '| `$.note` | Property removed | optional string |  |' in report
+    assert '**Removed**' in report
+    assert '**Added**' in report
+    assert '| Body `application/json` | `$.state` | a | Breaking |' in report
+    assert '| Body `application/json` | `$.state` | c | Compatible |' in report
+    assert '| Body `application/json` | `$.note` | optional string | Review |' in report
+    assert 'Enum value removed' not in report, 'the heading is the verb'
     assert 'Absent' not in report
 
 
@@ -641,7 +648,7 @@ types:
     change = next(change for change in graded(tmp_path, old, new) if isinstance(change, SchemaChanged))
 
     assert (change.kind, change.subject) == ('changed', 'constraint')
-    assert '| `maxLength` | 10 | Absent |' in render_markdown([change])
+    assert '| `maxLength` | 10 -> Absent |' in render_markdown([change])
 
 
 def test_every_emitted_subject_is_one_a_project_may_match_on():
@@ -710,7 +717,9 @@ def test_an_inherited_security_change_is_reported_once_at_the_api(tmp_path):
     found = graded(tmp_path, API_SECURED, new)
 
     api = [change for change in found if isinstance(change, ApiChanged)]
-    assert [(change.subject, change.kind, change.after) for change in api] == [('security-alternative', 'added', 'key')]
+    assert [(change.subject, change.kind, change.after) for change in api] == [
+        ('security-alternative', 'added', {'name': 'key'})
+    ]
     assert isinstance(api[0].location, SecurityLocation)
     assert not [change for change in found if isinstance(change, OperationChanged)], '/a and /b inherit'
 
@@ -813,12 +822,71 @@ def test_a_method_that_starts_overriding_an_inherited_default_is_compared(tmp_pa
     assert operation.impact == 'breaking'
 
 
+def test_an_addition_says_what_the_new_thing_is_for(tmp_path):
+    """The author's `description` is what a reader wants about a field they have
+    never seen, and no coordinate can supply it.
+
+    It reaches every entity RAML lets an author describe, not only properties: a
+    query parameter, a response status and a security scheme each carry theirs.
+    """
+    old = """#%RAML 1.0
+title: T
+securitySchemes:
+  key:
+    type: Pass Through
+/things:
+  get:
+    securedBy: [key]
+    responses:
+      200:
+"""
+    new = """#%RAML 1.0
+title: T
+securitySchemes:
+  key:
+    type: Pass Through
+  token:
+    type: Pass Through
+    description: Bearer token from the device pairing flow.
+/things:
+  get:
+    securedBy: [key, token]
+    queryParameters:
+      cursor?:
+        type: string
+        description: Opaque position from the previous page.
+    responses:
+      200:
+      202:
+        description: Queued; poll the Location header.
+"""
+
+    report = render_markdown(graded(tmp_path, old, new))
+
+    assert '| query parameter `cursor` | optional string | Opaque position from the previous page. |' in report
+    assert '| Status `202` | Queued; poll the Location header. |' in report
+    assert '| Security | token | Bearer token from the device pairing flow. |' in report
+    assert '| Where | Detail | Description | Compatibility |' in report
+
+
+def test_a_table_of_undescribed_additions_has_no_description_column(tmp_path):
+    """The same adaptive rule as `Path`: a column nobody fills is not a column."""
+    old = '#%RAML 1.0\ntitle: T\n/things:\n  get:\n    responses:\n      200:\n'
+    new = old + '      202:\n'
+
+    report = render_markdown(graded(tmp_path, old, new))
+
+    assert '| Where | Compatibility |' in report
+    assert 'Description' not in report.split('## How to read this')[-1].split('##', 1)[-1]
+
+
 def test_an_added_or_removed_entity_never_restates_its_own_coordinate():
     """A descriptor carries what `location` and `path` do not already say.
 
     A status, a media type and a union member's type are all in the coordinate
-    that addresses the change, so repeating them in `before`/`after` put one fact
-    in a row twice. A property's type and requiredness are not, and stay.
+    that addresses the change, so a `type` key on those would put one fact in a
+    row twice. A property's and a parameter's are not, and stay. Prose is nobody's
+    coordinate, so `description` is free to appear on any of them.
     """
     root = Path(__file__).parents[2] / 'examples' / 'compatibility'
     options = ParseOptions(unwrap=True)
@@ -829,15 +897,19 @@ def test_an_added_or_removed_entity_never_restates_its_own_coordinate():
         for change in changes
         if isinstance(change, (OperationChanged, SchemaChanged)) and change.kind in ('added', 'removed')
     ]
-    carried = {change.subject for change in entities if change.before is not None or change.after is not None}
-    assert carried == {'property', 'parameter', 'security-alternative', 'enum-value'}
     assert {'response', 'body', 'union-member'} <= {change.subject for change in entities}, 'all three are exercised'
 
     for change in entities:
+        descriptor = change.before if change.before is not None else change.after
+        if not isinstance(descriptor, dict):
+            continue
+        identifying = descriptor.keys() - {'description'}
+        if change.subject not in ('property', 'parameter', 'security-alternative'):
+            assert not identifying, f'{change.subject} carries {identifying}, which its coordinate already states'
         addressed = _location_label(change.location)
         addressed += _path_label(change.path) if isinstance(change, SchemaChanged) else ''
-        value = change.before if change.before is not None else change.after
-        assert not isinstance(value, str) or value not in addressed, f'{change.subject} restates its coordinate'
+        for key in identifying:
+            assert str(descriptor[key]) not in addressed, f'{change.subject}.{key} restates its coordinate'
 
 
 SHARED_TYPE = """#%RAML 1.0
@@ -887,7 +959,7 @@ def test_one_edit_reaching_several_operations_is_one_row(tmp_path):
 
     assert len(changes) == 3, 'the record keeps one change per contract'
     assert [change.operation.path for change in changes] == ['/orders', '/invoices', '/refunds']
-    assert report.count('`maxLength` | 3 | 8') == 1, 'the report states the edit once'
+    assert report.count('`maxLength` | 3 -> 8') == 1, 'the report states the edit once'
     assert '> **Breaking.** 1 breaking change require' in report
     assert '| `GET /orders`, `GET /invoices`, `GET /refunds` |' in report
     assert '## `GET /orders`' not in report, 'nothing is left over to head a section with'
@@ -901,7 +973,7 @@ def test_a_change_reaching_one_operation_stays_under_it(tmp_path):
 
     assert '## Several operations' in report
     assert '## `GET /refunds`' in report
-    assert '| query parameter `cursor` | Requiredness | Optional | Required | Breaking |' in report
+    assert '| query parameter `cursor` | Requiredness | Optional -> Required | Breaking |' in report
     assert '> **Breaking.** 2 breaking changes require' in report
 
 
@@ -968,7 +1040,7 @@ title: T
 
     report = render_markdown(graded(tmp_path, old, new))
 
-    assert '### Response\n\n| Where | Change |' in report, 'no Path column where no row has one'
+    assert '### Response\n\n**Changed**\n\n| Where | Change |' in report, 'no Path column where no row has one'
     assert '| `200` header `X-Trace` |' in report, 'the heading already said Response'
     assert 'Response `200` header' not in report
     assert '| Body `application/json` | `$.title` |' in report, 'a path that reaches inside is kept'
@@ -1038,7 +1110,7 @@ def test_markdown_quotes_hostile_schema_paths_and_table_values():
     assert 'application/vnd.test\\|json' in report
     assert '$.user.name' not in report
     assert '``$["user.name\\|`raw`"]``' in report
-    assert '| old\\|pattern | new pattern | Review |' in report
+    assert '| old\\|pattern -> new pattern | Review |' in report
 
 
 def test_markdown_summarizes_description_changes_but_json_does_not():
@@ -1058,7 +1130,7 @@ def test_markdown_summarizes_description_changes_but_json_does_not():
 
     report = render_markdown([change])
 
-    assert '| `description` | Old summary... | New summary... | Cosmetic |' in report
+    assert '| `description` | Old summary... -> New summary... | Cosmetic |' in report
     assert 'Old detail' not in report
     assert record(change)['before'] == before
     assert record(change)['after'] == after
@@ -1075,14 +1147,16 @@ def test_markdown_bounds_a_single_long_description_line():
     assert record(change)['description'] == description
 
 
-def test_the_worked_example_is_a_readable_end_to_end_report():
+def _worked_example() -> tuple[list[Change], str]:
     root = Path(__file__).parents[2] / 'examples' / 'compatibility'
     options = ParseOptions(unwrap=True)
     old = parse_from_path(root / 'v1.raml', options)
     new = parse_from_path(root / 'v2.raml', options)
+    return backward(old, new), backward_markdown(old, new)
 
-    changes = backward(old, new)
-    report = backward_markdown(old, new)
+
+def test_the_worked_example_is_a_readable_end_to_end_report():
+    changes, report = _worked_example()
 
     # `reference-dropped` describes a raw graph edge and has no effective-model
     # counterpart. Every compatibility rule is exercised by this one report.
@@ -1095,15 +1169,15 @@ def test_the_worked_example_is_a_readable_end_to_end_report():
     assert emitted == RULE_IDS
     assert '# API compatibility' in report
     assert '## Every operation' in report
-    assert '| baseUri parameter `tenant` | `maxLength` | 20 | 10 | Breaking |' in report
+    assert '| baseUri parameter `tenant` | `maxLength` | 20 -> 10 | Breaking |' in report
     assert '## `POST /request-required`' in report
     assert '## `GET /response-enum-add`' in report
     assert '| Body `application/json` | `$.profile.nickname` | `maxLength` |' in report
-    assert '| `200` body `application/json` | `$.records[].state` | Enum value added |  | archived |' in report
+    assert '| `200` body `application/json` | `$.records[].state` | archived | Review |' in report
     assert '| Security | `accessTokenUri` |' in report
     assert (
         '| `200` body `application/json` | `$.productCode` | `pattern` | '
-        '^\\[A-Z\\]+$ | ^\\[a-z\\]+$ | Review |' in report
+        '^\\[A-Z\\]+$ -> ^\\[a-z\\]+$ | Review |' in report
     )
     assert 'accessTokenUri' in report
     # Sides of the wire, not result classes: a caller reads what it sends apart
@@ -1112,26 +1186,37 @@ def test_the_worked_example_is_a_readable_end_to_end_report():
     assert '### Response' in report
     assert '### Documentation' in report
     assert '### Method contract' not in report
-    # The status, the media type and the member type are stated once, by the
-    # coordinate that addresses them -- see the note above `OperationId`.
-    assert '| Status `410` | Response removed |  |  | Breaking |' in report
-    assert '| Status `202` | Response added |  |  | Compatible |' in report
+    # Then by kind, because Before and After fitted only one of the three.
+    assert '**Removed**' in report
+    assert '**Changed**' in report
+    assert '**Added**' in report
+    # A status, a media type and a member type are stated once, by the coordinate
+    # that addresses them. What is left is the author's prose, which is nobody's
+    # coordinate and the one thing an addition can say that its position cannot.
+    assert '| Status `410` | The record is permanently gone. | Breaking |' in report
+    assert '| Status `202` | The request was accepted for processing. | Compatible |' in report
+    assert '| query parameter `cursor` | optional string | Opaque position' in report
     # One parameter, two facts, adjacent: the contract row then the shape row.
     assert (
-        '| query parameter `limit` | Requiredness | Optional | Required | Breaking |\n'
-        '| query parameter `limit` | `type` | string | integer | Breaking |' in report
+        '| query parameter `limit` | Requiredness | Optional -> Required | Breaking |\n'
+        '| query parameter `limit` | `type` | string -> integer | Breaking |' in report
     )
-    # The request pair and the response pair land in their own tables.
-    assert (
-        '| Body `application/vnd.legacy+json` | Body removed |  |  | Breaking |\n'
-        '| Body `application/vnd.example+json` | Body added |  |  | Compatible |' in report
-    )
-    assert (
-        '| `200` body `application/problem+json` | Body removed |  |  | Breaking |\n'
-        '| `200` body `application/vnd.example+json` | Body added |  |  | Compatible |' in report
-    )
-    assert '| `200` body `application/json` | `$.result<integer>` | Union member removed |  |  |' in report
-    assert '| `200` body `application/json` | `$.result<boolean>` | Union member added |  |  |' in report
+    # A body names no type: `Where` already did, and it has no prose here either.
+    assert '| Body `application/vnd.legacy+json` | Breaking |' in report
+    assert '| Body `application/vnd.example+json` | Compatible |' in report
+    assert '| `200` body `application/problem+json` | Breaking |' in report
+    assert '| `200` body `application/vnd.example+json` | Compatible |' in report
+    assert '| `200` body `application/json` | `$.result<integer>` | Compatible |' in report
+    assert '| `200` body `application/json` | `$.result<boolean>` | Review |' in report
+    # Rule prose belongs to the policy documentation, not to a change row.
+    assert 'Callers read a field that has gone' not in report
+
+
+def test_the_worked_example_reaches_every_model_coordinate():
+    """Rule coverage alone would conceal an unexercised location or segment kind,
+    because several model branches share one rule.
+    """
+    changes, _ = _worked_example()
 
     operation_locations = {type(change.location) for change in changes if isinstance(change, OperationChanged)}
     assert operation_locations == {
@@ -1180,4 +1265,3 @@ def test_the_worked_example_is_a_readable_end_to_end_report():
         {'kind': 'ItemsSegment'},
         {'kind': 'PropertySegment', 'name': 'state'},
     ]
-    assert 'Callers read a field that has gone' not in report

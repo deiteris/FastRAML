@@ -1359,6 +1359,30 @@ happened to `limit`?" took two lookups and an understanding of which Python
 class produced which row. All four located results share one row shape, so the
 reading view needs no per-type renderer.
 
+#### The kinds are three tables, not one with two value columns
+
+`Before` and `After` fit a `changed` row and misfit the other two: an addition
+has no before and a removal has no after, so half the worked catalogue's rows
+spent a two-column pair to carry one value, and eight carried none at all. Each
+side is therefore split into **Removed**, **Changed** and **Added**, ordered by
+the worst impact each holds so that reading worst-first survives the split. A
+`Changed` table states its transition in one `Detail` cell as `old -> new`; an
+`Added` or `Removed` one needs no `Change` column, because its heading is the
+verb.
+
+A `Description` column carries the author's own prose about the entity that
+arrived or left. It is the one thing an addition can say that its coordinate
+cannot -- a reader meeting a new query parameter wants to know what it is for,
+not only that it is an optional string -- and it applies to everything RAML lets
+an author describe: properties, parameters and headers, response statuses,
+bodies, union members and security schemes. That keeps it inside the rule above
+rather than breaking it: prose is nobody's coordinate, so carrying it restates
+nothing. A removed body still names no type, because `Where` already did.
+
+What each kind means for a caller is a definition rather than a finding, so the
+report states it once in a **How to read this** legend. Under every table it
+would be eighty lines saying the same six things.
+
 A table states nothing its heading or its `Where` column has already said. The
 heading names the side, so a cell under **Response** opens at its status rather
 than repeating the word. `Path` holds a shape path only where one reaches

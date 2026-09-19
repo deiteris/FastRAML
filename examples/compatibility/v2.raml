@@ -21,6 +21,7 @@ securitySchemes:
       authorizationGrants: [client_credentials]
   apiKey:
     type: Pass Through
+    description: Per-tenant key, issued from the console.
 types:
   RequestRequired:
     type: object
@@ -39,7 +40,9 @@ types:
     type: object
     properties:
       customerId?: string
-      marketingCode?: string
+      marketingCode?:
+        type: string
+        description: Campaign this order came from. Ignored when absent.
   RequestRemove:
     type: object
     properties: {}
@@ -94,7 +97,9 @@ types:
     type: object
     properties:
       identifier?: string
-      traceId?: string
+      traceId?:
+        type: string
+        description: Correlates this response with a server-side request log.
   ResponseLoose:
     type: object
     properties:
@@ -316,7 +321,9 @@ types:
   get:
     queryParameters:
       limit: integer
-      cursor?: string
+      cursor?:
+        type: string
+        description: Opaque position from the previous page's Link header.
     responses:
       200:
         headers:

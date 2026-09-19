@@ -60,7 +60,7 @@ def test_precise_protocol_override_changes_the_exit_code(workspace, tmp_path, ca
     args = ['diff', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]
     assert main(args) == EXIT_OK
     output = capsys.readouterr().out
-    assert '| `protocols` | HTTP, HTTPS | HTTPS | Compatible |' in output
+    assert '| `protocols` | HTTP, HTTPS -> HTTPS | Compatible |' in output
 
 
 def test_nonmatching_protocol_override_does_not_hide_a_break(workspace, tmp_path, capsys):
@@ -78,7 +78,7 @@ def test_nonmatching_protocol_override_does_not_hide_a_break(workspace, tmp_path
         encoding='utf-8',
     )
     assert main(['diff', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
-    assert '| `protocols` | HTTP, HTTPS | HTTPS | Breaking |' in capsys.readouterr().out
+    assert '| `protocols` | HTTP, HTTPS -> HTTPS | Breaking |' in capsys.readouterr().out
 
 
 def test_disabled_compatibility_rule_is_absent_and_nonblocking(workspace, tmp_path, capsys):
@@ -119,7 +119,7 @@ def test_cli_rule_override_applies_after_the_file(workspace, tmp_path, capsys):
         str(root / 'new.raml'),
     ]
     assert main(args) == EXIT_OK
-    assert '| `protocols` | HTTP, HTTPS | HTTPS | Compatible |' in capsys.readouterr().out
+    assert '| `protocols` | HTTP, HTTPS -> HTTPS | Compatible |' in capsys.readouterr().out
 
 
 def test_parser_workspace_root_applies_to_validate(tmp_path, capsys):

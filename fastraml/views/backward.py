@@ -410,6 +410,7 @@ def render_markdown(changes: Sequence[Change]) -> str:
         f'| Review required | {counts["review"]} |',
         f'| Compatible | {counts["compatible"]} |',
         f'| Documentation | {counts["cosmetic"]} |',
+        *_LEGEND,
     ]
     if api:
         lines.extend(('', '## Every operation', '', 'Declared once at the API root, so these reach every operation.'))
@@ -481,6 +482,27 @@ def _shared_key(change: OperationChanged | SchemaChanged) -> object:
     )
 
 
+#: What a section heading means, stated once. These are definitions rather than
+#: findings, so they belong where a reader meets them first and nowhere else --
+#: under every table they would be eighty lines saying the same six things.
+_LEGEND: Final[tuple[str, ...]] = (
+    '',
+    '## How to read this',
+    '',
+    'Each operation is split into what a caller **sends** and what it **receives**,',
+    'then into what was removed, changed and added on that side. Worst first.',
+    '',
+    '| Section | Request | Response |',
+    '|---|---|---|',
+    '| **Removed** | the API no longer reads it | the API no longer returns it |',
+    '| **Changed** | the old form may now be rejected | a value you did not expect may arrive |',
+    '| **Added** | new, and breaking only if required | returned as well; ignore it and nothing breaks |',
+    '',
+    'A row names **Where** the change is, a **Path** when it reaches inside a shape,',
+    'and **Detail**: `old -> new` for a change, the entity itself for an addition or',
+    'a removal. Columns a table has no use for are left out of it.',
+)
+
 #: Request before response, because a caller fixes what it sends before it can
 #: see what it receives. `None` is the documentation bucket: prose that changed
 #: on no side of the wire, kept out of both so neither reads as actionable.
@@ -491,29 +513,64 @@ _SIDES: Final[tuple[tuple[Direction | None, str], ...]] = (
 )
 
 
-def _sided_tables(entries: Sequence[_Entry]) -> list[str]:
-    """One table per side, and no column that every row leaves blank.
+#: Worst first within a side, so "read the breaking things first" survives the
+#: split into kinds. `Removed` before `Changed` before `Added` only breaks ties.
+_KINDS: Final[tuple[ChangeKind, ...]] = ('removed', 'changed', 'added')
 
-    Most tables describe a contract rather than a position inside a shape, so a
-    `Path` header on them announced a column of nothing -- in the worked
-    catalogue, on sixteen tables out of thirty-seven. `Operations` appears only
-    in the rolled-up section, where naming them is the row's point.
+
+def _sided_tables(entries: Sequence[_Entry]) -> list[str]:
+    """One table per side and kind, and no column that every row leaves blank.
+
+    Split by kind because `Before` and `After` fitted only one of the three. An
+    addition has no before and a removal has no after, so half the worked
+    catalogue's rows spent a two-column pair to carry one value -- and eight of
+    them carried none, their coordinate having said it all. A `Changed` table
+    states its transition in one `Detail` cell; an `Added` or `Removed` one needs
+    no `Change` column at all, because its heading is the verb.
+
+    What each kind means for a caller is a definition, not a fact about this
+    comparison, so it is stated once in the legend rather than under forty
+    tables.
     """
     lines: list[str] = []
     for side, heading in _SIDES:
         rows = [entry for entry in entries if side_of(entry.change.location) == side]
         if not rows:
             continue
-        paths = any(isinstance(row.change, (ApiSchemaChanged, SchemaChanged)) and row.change.path for row in rows)
-        operations = any(row.operations for row in rows)
-        columns = ['Where', *(['Path'] if paths else []), 'Change', 'Before', 'After', 'Compatibility']
-        columns.extend(['Operations'] if operations else [])
-        lines.extend(('', f'### {heading}', '', f'| {" | ".join(columns)} |', f'|{"---|" * len(columns)}'))
-        lines.extend(
-            _change_row(entry, side_stated=side is not None, paths=paths, operations=operations)
-            for entry in _by_impact(rows)
-        )
+        lines.extend(('', f'### {heading}'))
+        groups = [(kind, [row for row in rows if row.change.kind == kind]) for kind in _KINDS]
+        for kind, group in sorted(
+            (pair for pair in groups if pair[1]), key=lambda pair: min(_RANK[row.change.impact] for row in pair[1])
+        ):
+            lines.extend(('', f'**{kind.title()}**', ''))
+            lines.extend(_kind_table(group, side_stated=side is not None, transition=kind == 'changed'))
     return lines
+
+
+def _kind_table(rows: Sequence[_Entry], *, side_stated: bool, transition: bool) -> list[str]:
+    paths = any(isinstance(row.change, (ApiSchemaChanged, SchemaChanged)) and row.change.path for row in rows)
+    details = any(_detail(row.change) for row in rows)
+    described = any(_description(row.change) for row in rows)
+    operations = any(row.operations for row in rows)
+    columns = ['Where', *(['Path'] if paths else []), *(['Change'] if transition else [])]
+    columns.extend([*(['Detail'] if details else []), *(['Description'] if described else [])])
+    columns.extend(['Compatibility', *(['Operations'] if operations else [])])
+    return [
+        f'| {" | ".join(columns)} |',
+        f'|{"---|" * len(columns)}',
+        *(
+            _change_row(
+                entry,
+                side_stated=side_stated,
+                paths=paths,
+                change=transition,
+                details=details,
+                described=described,
+                operations=operations,
+            )
+            for entry in _by_impact(rows)
+        ),
+    ]
 
 
 def _by_impact(entries: Sequence[_Entry]) -> list[_Entry]:
@@ -792,7 +849,7 @@ class _Backward:
                     'removed',
                     'response',
                     None,
-                    None,
+                    _descriptor(before.description),
                     None,
                     'entity-removed',
                     'breaking',
@@ -830,7 +887,7 @@ class _Backward:
                 'response',
                 None,
                 None,
-                None,
+                _descriptor(new[status].description),
                 'entity-added',
                 'compatible',
             )
@@ -888,7 +945,7 @@ class _Backward:
                     'removed',
                     'body',
                     None,
-                    None,
+                    _shape_described(before.shape),
                     None,
                     'entity-removed',
                     'breaking',
@@ -906,7 +963,7 @@ class _Backward:
                 'body',
                 None,
                 None,
-                None,
+                _shape_described(new[media_type].shape),
                 'entity-added',
                 'compatible',
             )
@@ -934,7 +991,7 @@ class _Backward:
                     'removed',
                     'security-alternative',
                     'name',
-                    name,
+                    _scheme(before),
                     None,
                     'security-alternative-removed',
                     'breaking',
@@ -968,7 +1025,7 @@ class _Backward:
             old_description = None if before.definition is None else before.definition.described_by
             new_description = None if after.definition is None else after.definition.described_by
             self.security_description(operation, old_description, new_description)
-        for name in new_by_name:
+        for name, arrival in new_by_name.items():
             if name in old_by_name:
                 continue
             self.operation_change(
@@ -978,7 +1035,7 @@ class _Backward:
                 'security-alternative',
                 'name',
                 None,
-                name,
+                _scheme(arrival),
                 'security-alternative-added',
                 'compatible',
             )
@@ -1370,7 +1427,7 @@ class _Backward:
                     'removed',
                     'union-member',
                     None,
-                    None,
+                    _shape_described(before),
                     None,
                     f'{direction}-enum-value-removed',
                     'breaking' if direction == 'request' else 'compatible',
@@ -1399,7 +1456,7 @@ class _Backward:
                 'union-member',
                 None,
                 None,
-                None,
+                _shape_described(after),
                 f'{direction}-enum-value-added',
                 'compatible' if direction == 'request' else 'review',
             )
@@ -1569,32 +1626,66 @@ def _numeric(value: object) -> Fraction | None:
         return None
 
 
-def _change_row(entry: _Entry, *, side_stated: bool, paths: bool, operations: bool) -> str:
+def _change_row(  # noqa: PLR0913 - one flag per column the table decided to carry
+    entry: _Entry, *, side_stated: bool, paths: bool, change: bool, details: bool, described: bool, operations: bool
+) -> str:
     """One row shape for all four results: they differ in owner, not in reading.
 
-    `Path` is empty whenever the change is to the coordinate itself -- both for a
+    Every column is optional except `Where` and `Compatibility`, and the table
+    decides which it carries by asking whether any of its rows fills one. `Path`
+    is empty whenever the change is to the coordinate itself -- both for a
     contract change, which has no path, and for a shape change at the root, whose
-    `$` says "the thing in Where". Rendering one of those blank and the other `$`
-    put two spellings of one fact in one column, on adjacent rows about the same
-    parameter. A path appears when it reaches *inside*, and then it is anchored at
-    `$` because `$.title` needs somewhere to hang.
+    `$` says "the thing in Where". A path appears when it reaches *inside*, and
+    then it is anchored at `$` because `$.title` needs somewhere to hang.
     """
-    change = entry.change
-    cells = [_cell(_location_label(change.location, side_stated=side_stated))]
+    result = entry.change
+    cells = [_cell(_location_label(result.location, side_stated=side_stated))]
     if paths:
         inside = ''
-        if isinstance(change, (ApiSchemaChanged, SchemaChanged)) and change.path:
-            inside = _cell(_inline_code(_path_label(change.path)))
+        if isinstance(result, (ApiSchemaChanged, SchemaChanged)) and result.path:
+            inside = _cell(_inline_code(_path_label(result.path)))
         cells.append(inside)
-    cells.append(_cell(_change_label(change)))
-    cells.append(_cell(_markdown_value(change, change.before)))
-    cells.append(_cell(_markdown_value(change, change.after)))
-    cells.append(change.impact.title())
+    if change:
+        cells.append(_cell(_change_label(result)))
+    if details:
+        cells.append(_cell(_detail(result)))
+    if described:
+        cells.append(_cell(_plain_inline(_summary(_description(result)))))
+    cells.append(result.impact.title())
     if operations:
         cells.append(
             ', '.join(_inline_code(f'{operation.method.upper()} {operation.path}') for operation in entry.operations)
         )
     return f'| {" | ".join(cells)} |'
+
+
+def _description(change: LocatedChange) -> str:
+    """What the author said the added or removed thing is for, if anything.
+
+    Its own column rather than folded into `Detail`, because a type and a
+    requiredness are what to send and this is what it means -- a reader scanning
+    a list of new fields wants the second without re-reading the first. It is the
+    one thing an addition can say that its coordinate cannot, and it reaches every
+    entity RAML lets an author describe: properties, query parameters, headers,
+    response statuses, bodies, union members and security schemes.
+    """
+    value = change.after if change.after is not None else change.before
+    return str(value['description']) if isinstance(value, dict) and 'description' in value else ''
+
+
+def _detail(change: LocatedChange) -> str:
+    """The values, in one cell: a transition for a change, a descriptor otherwise.
+
+    `Before` and `After` fitted a `changed` row and misfitted the other two,
+    where one side is empty by construction and the heading already says which.
+    A removed body, response or union member fills neither, because its
+    coordinate is the whole fact -- and a table of those drops this column too.
+    """
+    before = _markdown_value(change, change.before) if change.before is not None else ''
+    after = _markdown_value(change, change.after) if change.after is not None else ''
+    if change.kind != 'changed':
+        return before or after
+    return f'{before or "Absent"} -> {after or "Absent"}'
 
 
 def _operation_markdown(change: OperationAdded | OperationRemoved) -> str:
@@ -1691,8 +1782,13 @@ def _value(subject: Subject, value: object) -> str:
             return 'Required' if value else 'Optional'
         return 'true' if value else 'false'
     if isinstance(value, dict):
-        required = 'required' if value.get('required') else 'optional'
-        return f'{required} {value.get("type", "type")}'
+        # A descriptor carries any subset of name, requiredness and type, and its
+        # `description` belongs to its own column. Missing keys are not defaults:
+        # a removed body states no requiredness because a body has none.
+        parts = [str(value['name'])] if 'name' in value else []
+        parts.extend(['required' if value['required'] else 'optional'] if 'required' in value else [])
+        parts.extend([str(value['type'])] if 'type' in value else [])
+        return ' '.join(parts)
     if isinstance(value, tuple):
         return ', '.join(_scalar(item) for item in value) or 'None'
     return _scalar(value)
@@ -1835,15 +1931,58 @@ def _facet_list(values: Iterable[object] | None) -> tuple[object, ...] | None:
     return None if values is None else tuple(getattr(value, 'value', value) for value in values)
 
 
-def _property(prop: object) -> dict[str, object]:
-    return {
-        'type': getattr(getattr(prop, 'base', None), 'type', ''),
-        'required': bool(getattr(prop, 'required', False)),
-    }
+def _property(prop: object) -> dict[str, object] | None:
+    base = getattr(prop, 'base', None)
+    return _descriptor(
+        getattr(base, 'description', None),
+        type_name=getattr(base, 'type', ''),
+        required=bool(getattr(prop, 'required', False)),
+    )
 
 
-def _parameter(param: Parameter) -> dict[str, object]:
-    return {'type': param.base.type, 'required': param.required}
+def _parameter(param: Parameter) -> dict[str, object] | None:
+    return _descriptor(param.base.description, type_name=param.base.type, required=param.required)
+
+
+def _scheme(scheme: SecurityScheme) -> dict[str, object] | None:
+    """An alternative names itself -- `SecurityLocation` is empty -- and says what
+    the credential is, which is what a caller needs to go and obtain one.
+    """
+    definition = scheme.definition
+    return _descriptor(None if definition is None else definition.description, name=scheme.name)
+
+
+def _shape_described(shape: BaseShape | None) -> dict[str, object] | None:
+    """A body or union member: its coordinate names it, so only the prose is new."""
+    return None if shape is None else _descriptor(shape.description)
+
+
+def _descriptor(
+    description: object, *, type_name: object = None, required: bool | None = None, name: str | None = None
+) -> dict[str, object] | None:
+    """What an added or removed entity *is*, beyond what its coordinate says.
+
+    A type and a requiredness say what to send or expect. The author's own
+    `description` says what the thing is *for*, which is the question a reader
+    has about anything they have not seen before -- a new query parameter and a
+    new response status as much as a new property.
+
+    Every key is optional, so this stays inside the rule that nothing restates
+    its coordinate: a removed body names no type, because `Where` already did,
+    and carries only whatever prose the author wrote about it. All-empty returns
+    `None`, and the table drops the column nobody filled.
+    """
+    text = _text_facet(description)
+    descriptor: dict[str, object] = {}
+    if name is not None:
+        descriptor['name'] = name
+    if type_name is not None:
+        descriptor['type'] = type_name
+    if required is not None:
+        descriptor['required'] = required
+    if text:
+        descriptor['description'] = text
+    return descriptor or None
 
 
 def _member_key(base: BaseShape) -> tuple[str, str]:

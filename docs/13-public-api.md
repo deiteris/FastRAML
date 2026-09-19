@@ -646,6 +646,13 @@ adjacent rather than in tables split by which class produced them. Transport and
 security count as the request side: a protocol the caller cannot speak and a
 credential it must now present both stop the call before a response exists.
 
+Each side is then split into **Removed**, **Changed** and **Added**, worst kind
+first. `Before` and `After` fit only the middle one, so a `Changed` table states
+its transition in a single `Detail` cell as `old -> new`, and the other two need
+no `Change` column because their heading is the verb. A `Description` column
+appears where the author described the entity that arrived or left -- the one
+thing an addition can say that its position cannot.
+
 A row states nothing its heading or its `Where` column already said: under
 **Response** a cell opens at its status, and `Path` appears only where the change
 reaches inside a shape, so a table of contract changes has no `Path` column at

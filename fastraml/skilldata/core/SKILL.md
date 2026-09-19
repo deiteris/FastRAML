@@ -276,16 +276,18 @@ fastraml diff --no-workspace-guard old/api.raml new/api.raml
 
 ### Response
 
-| Where | Path | Change | Before | After | Compatibility |
-|---|---|---|---|---|---|
-| `200` body `application/json` | `$.title` | Property removed | optional string |  | Breaking |
+**Removed**
+
+| Where | Path | Detail | Compatibility |
+|---|---|---|---|
+| `200` body `application/json` | `$.title` | optional string | Breaking |
 ```
 
 `diff` exits 1 when any change is breaking, so it gates CI without you parsing
-the output. Results are grouped by operation, then by side of the wire: Request
-for what a caller sends, Response for what it receives. Added and removed
-operations, and anything the API root declares for every operation, appear once
-at the top.
+the output. Results are grouped by operation, then by side of the wire (Request
+for what a caller sends, Response for what it receives), then by kind. Added and
+removed operations, and anything the API root declares for every operation,
+appear once at the top. Each report opens with a legend for its sections.
 
 Omit `-w` when each version is self-contained below its own folder. Use one
 common `-w` when both versions intentionally share a trusted workspace, or

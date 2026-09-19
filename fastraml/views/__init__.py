@@ -7,19 +7,17 @@ package**, and `tests/unit/test_views.py` asserts it: a rule that belongs to the
 language belongs in a pass, and an import in that direction is how it would
 quietly stop being one.
 
-The package boundary is the layer boundary, which is why `queries` and `diff`
-live here too. They consume a `Graph` rather than the model, but they are on the
-same side of the line and a package that held only some of it would not be worth
-enforcing.
+The package boundary is the layer boundary, which is why `queries` lives here
+too. It consumes a `Graph` rather than the model, but it is on the same side of
+the line and a package that held only some of it would not be worth enforcing.
 
     walk        one traversal, one address per entity; every view below shares it
-    severity    the ranking arithmetic `diff` and `lint` both need (doc 18 § 1)
+    severity    the ranking arithmetic `backward` and `lint` both need (doc 18 § 1)
     graph       the model as a node set — identity and reference (§ 3 to § 5)
     tree        the model as containment — what is here (§ 11)
     render      one type or endpoint as text, for reading (§ 9)
     queries     the SPARQL catalogue over `graph` (§ 6)
-    diff        the structural difference between two graph projections (§ 10)
-    backward    two effective API models compared for caller compatibility (§ 10)
+    backward/   two effective API models compared for caller compatibility (§ 10)
     bindings    language bindings for the tree's contract (§ 11.11)
     openapi     the effective API as OpenAPI 3.0.3 (§ 13)
 
@@ -27,7 +25,7 @@ enforcing.
 are lossy on orthogonal axes, and both are addressed by the same walk so a node
 in one is joinable with the same entity in the other (§ 4).
 
-`severity` is substrate too, and holds less than it looks. `diff` and `lint`
+`severity` is substrate too, and holds less than it looks. `backward` and `lint`
 grade on **different axes** — what a change does to a caller against how much a
 finding should block CI — and those are deliberately not merged (docs/18 § 1).
 What they share is the arithmetic: worst-first, and "this grade and everything

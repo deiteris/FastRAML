@@ -27,7 +27,6 @@ _VIEWS = (
     'tree',
     'render',
     'queries',
-    'diff',
     'backward',
     'bindings',
     'jsonschema',
@@ -94,9 +93,14 @@ class TestThePackageCostsNothingToImport:
         second vocabulary. Three modules are substrate rather than view and may
         be shared: `walk` (one addressing traversal, docs/16 § 4), `graph`
         (what the later views read), and `severity` (the ranking arithmetic
-        `diff` and `lint` both need, docs/18 § 1 — they grade on different axes
-        and share only the comparisons).
+        `backward` and `lint` both need, docs/18 § 1 — they grade on different
+        axes and share only the comparisons).
+
+        A view that is a package may import *itself*: splitting one view across
+        five files is not five views, and `backward` says so thirteen times over
+        where the concerns used to interleave.
         """
+        substrates = {'walk', 'graph', 'severity'}
         crossings = {
             (path, module)
             for path in _sources('fastraml/views')
@@ -106,8 +110,8 @@ class TestThePackageCostsNothingToImport:
         unexpected = {
             (path.as_posix(), module)
             for path, module in crossings
-            if module.rsplit('.', 1)[1] not in {'walk', 'graph', 'severity'}
-            and not ('lint' in path.parts and module.startswith('fastraml.views.lint'))
+            if module.rsplit('.', 1)[1] not in substrates
+            and not any(part in path.parts and module.startswith(f'fastraml.views.{part}') for part in _VIEWS)
         }
         assert not unexpected, unexpected
 
@@ -131,7 +135,7 @@ class TestThePackageCostsNothingToImport:
             for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings
         }
-        named = literals & {'breaking', 'risky', 'safe', 'cosmetic', 'error', 'warning', 'info'}
+        named = literals & {'breaking', 'review', 'compatible', 'cosmetic', 'error', 'warning', 'info'}
         assert not named, named
 
 

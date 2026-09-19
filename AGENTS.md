@@ -62,11 +62,11 @@ what it got wrong.
 over it: `views/graph.py` emits a node set — identity and reference — and
 `views/tree.py` emits containment, the two being lossy on orthogonal axes rather
 than one filtering the other. `views/render.py` is the reading view of a single
-type or endpoint, `views/queries.py` the SPARQL catalogue, `views/diff.py` the
+type or endpoint, `views/queries.py` the SPARQL catalogue, `views/backward/` the
 version comparison and its backward-compatibility policy, `views/jsonschema.py`
 a shape as JSON Schema draft-07 (`docs/16` § 12), and `views/openapi.py` the
 effective API as OpenAPI 3.0.3 (`docs/16` § 13). Ten CLI verbs — `graph`,
-`tree`, `serve`, `list`, `refs`, `deps`, `show`, `query`, `diff`, `openapi`.
+`tree`, `serve`, `list`, `refs`, `deps`, `show`, `query`, `compat`, `openapi`.
 
 All of it runs after P10 and decides no RAML rule. **Nothing under `parser/` or
 `types/` may import `fastraml.views`**, and outside it only `cli.py` may;

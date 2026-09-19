@@ -1,6 +1,6 @@
 ---
 name: backward
-description: Compare RAML API versions for backward compatibility and breaking changes with `fastraml diff`. Use when explaining a compatibility report, gating CI on API breaks, or configuring compatibility policy. Covers model-native method and schema changes, exit behavior, JSON records, project overrides, and git-revision workflows. Do not use for textual diffs or the internal structural graph-diff API.
+description: Compare RAML API versions for backward compatibility and breaking changes with `fastraml compat`. Use when explaining a compatibility report, gating CI on API breaks, or configuring compatibility policy. Covers model-native method and schema changes, exit behavior, JSON records, project overrides, and git-revision workflows. Do not use for textual diffs.
 license: MIT
 allowed-tools: Bash(fastraml:*) Bash(git:*) Read
 ---
@@ -8,7 +8,7 @@ allowed-tools: Bash(fastraml:*) Bash(git:*) Read
 # Check backward compatibility
 
 Use this guide when the question is whether a new RAML API remains compatible
-with callers of an old version. Run `fastraml diff`; it compares the two
+with callers of an old version. Run `fastraml compat`; it compares the two
 effective API models after resolving includes, libraries, traits, resource
 types, security inheritance, and type inheritance.
 
@@ -20,7 +20,7 @@ represent authored structure, not the callable contracts this command grades.
 Pass the old document first and the new document second:
 
 ```bash
-fastraml diff old/api.raml new/api.raml
+fastraml compat old/api.raml new/api.raml
 ```
 
 1. Put the caller's existing contract first.
@@ -41,10 +41,10 @@ and `--severity` filter output only; they do not alter pass or fail.
 Write the report to a file with `-o`, not with a shell redirect:
 
 ```bash
-fastraml diff -o report.md old/api.raml new/api.raml
+fastraml compat -o report.md old/api.raml new/api.raml
 ```
 
-`diff` exits 1 whenever anything is breaking, so a redirect leaves a failed
+`compat` exits 1 whenever anything is breaking, so a redirect leaves a failed
 command and no way to distinguish a report that was written from one that was
 not. `-o` writes UTF-8 with LF newlines on every platform, reports an unwritable
 path on stderr instead of the verdict, and leaves the exit code and the breaking
@@ -58,8 +58,8 @@ when all of its includes stay below that directory.
 If either version includes a parent or sibling path, choose one of these:
 
 ```bash
-fastraml diff -w /repo old/api.raml new/api.raml
-fastraml diff --no-workspace-guard old/api.raml new/api.raml
+fastraml compat -w /repo old/api.raml new/api.raml
+fastraml compat --no-workspace-guard old/api.raml new/api.raml
 ```
 
 Use a common `-w` only when it is the intended file-access boundary for both
@@ -136,7 +136,7 @@ never hides the riskier half.
 ## Use JSON for automation or full values
 
 ```bash
-fastraml diff --json old/api.raml new/api.raml
+fastraml compat --json old/api.raml new/api.raml
 ```
 
 The command emits one JSON object per change. Markdown is grouped and truncates
@@ -217,7 +217,7 @@ override to the method that declared it.
 Pass that file to the comparison:
 
 ```bash
-fastraml diff --config fastraml.yaml old/api.raml new/api.raml
+fastraml compat --config fastraml.yaml old/api.raml new/api.raml
 ```
 
 Apply rules in file order. A setting applies only when its `id` and every supplied
@@ -233,8 +233,8 @@ exit decision. Prefer regrading when the transition remains useful evidence.
 Temporary CLI overrides run after file policy:
 
 ```bash
-fastraml diff --rule protocol-removed=compatible old/api.raml new/api.raml
-fastraml diff --rule documentation-changed=off old/api.raml new/api.raml
+fastraml compat --rule protocol-removed=compatible old/api.raml new/api.raml
+fastraml compat --rule documentation-changed=off old/api.raml new/api.raml
 ```
 
 Use `--json` to obtain the exact rule ID and match fields before writing a
@@ -253,7 +253,7 @@ git worktree add --detach ../fastraml-base "$BASE_SHA"
 Run the comparison and record its exit status:
 
 ```bash
-fastraml diff --no-workspace-guard ../fastraml-base/api/api.raml api/api.raml
+fastraml compat --no-workspace-guard ../fastraml-base/api/api.raml api/api.raml
 ```
 
 Then clean up, whether the comparison passed or failed:

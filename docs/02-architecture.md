@@ -88,8 +88,12 @@ fastraml/
     tree.py               the model as containment — what is here (doc 16 section 11)
     render.py             one type or endpoint as text, for reading (doc 16 section 9)
     queries.py            the named SPARQL analysis catalogue (doc 16 section 6)
-    diff.py               structural graph changes and their legacy grading (doc 16 section 10)
-    backward.py           model-native backward compatibility (doc 16 section 10)
+    backward/             model-native backward compatibility (doc 16 section 10)
+      model.py              coordinates, results and grades — what it can say
+      rules.py              every named judgement and what it does to a caller
+      compare.py            the walk over two effective models
+      markdown.py           the reading view of a finished comparison
+      records.py            the JSON record, and the policy that matches it
     lint/                 generic rule engine, built-in policy and plugins (doc 18)
 
   errors.py               Diagnostic, StackTrace, Accumulator, ErrorKind
@@ -152,10 +156,10 @@ That is a package rather than six modules beside the parser so the direction is
 checkable: `tests/unit/test_views.py` asserts that nothing under `parser/` or
 `types/` imports `fastraml.views`, and that `cli.py` is the only module outside it
 that does. A rule that belongs to the language belongs in a pass, and an import
-the other way is how one quietly stops being one. `queries.py` and `diff.py` are
-inside because the package boundary *is* the layer boundary; they consume a
-`Graph` rather than the model, but a package holding only part of the layer
-would not be worth enforcing.
+the other way is how one quietly stops being one. `queries.py` is inside because
+the package boundary *is* the layer boundary; it consumes a `Graph` rather than
+the model, but a package holding only part of the layer would not be worth
+enforcing.
 
 `walk.py` sits under the rest rather than beside them. It owns the one traversal
 that assigns an address to every referenceable entity, and each view is a `Sink`

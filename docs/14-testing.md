@@ -367,8 +367,9 @@ The laws. Section 4.1 records where each is checked and over what input —
     can see. Two copies of the walk existed, and one carried an exception table
     every entry of which was already what plain camel case produced — dead code
     kept alive by nothing being able to see the other copy. Writing the law
-    found a live gap as well: a `pattern:` on a type reached no node attribute,
-    so `diff` reported no change when one was tightened.
+    found a live gap as well: a `pattern:` on a type reached no node attribute
+    at all, so every consumer of the projection was blind to one being
+    tightened.
 
 15. **Every reference the effective projection emits resolves** — and resolves
     to the node the graph put at the same address ([16](16-graph.md) § 11.2), in

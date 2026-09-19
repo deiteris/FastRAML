@@ -2,7 +2,7 @@
 
 Three things are worth pinning here and nothing else is:
 
-- **the IRI scheme**, because every consumer, diff and cached query result
+- **the IRI scheme**, because every consumer and every cached query result
   depends on an IRI meaning the same thing twice (§ 3);
 - **the edges that answer the questions the projection exists for**, walked in
   both directions, because a projection that builds without error and links
@@ -574,9 +574,8 @@ class TestSchemaTypesAreNotLeaves:
 
     A `JsonShape` holds no `ScalarFacet` slots and no properties, so a schema
     type had no children and no attributes: `deps` reported it was made of
-    nothing, SPARQL queries over `raml:property` skipped it, and `diff` -- which
-    compares nodes, attributes and reference edges -- saw no change when a whole
-    schema was replaced.
+    nothing, SPARQL queries over `raml:property` skipped it, and nothing reading
+    the projection saw any change when a whole schema was replaced.
     """
 
     @pytest.fixture

@@ -704,24 +704,24 @@ def versions(workspace):
     return str(root / 'v1.raml'), str(root / 'v2.raml')
 
 
-class TestDiff:
+class TestCompat:
     """docs/13 § 8.2. The exit code is the contract a CI job depends on."""
 
     def test_a_breaking_change_exits_one(self, versions, capsys):
-        assert main(['diff', *versions]) == EXIT_INVALID
+        assert main(['compat', *versions]) == EXIT_INVALID
         out = capsys.readouterr()
         assert '| `$.discount` | required `number` |' in out.out
         assert 'breaking change' in out.err
 
     def test_o_writes_the_report_and_still_exits_one(self, versions, tmp_path, capsys):
-        """`diff` exits 1 by design, so a shell redirect leaves a failed command
+        """`compat` exits 1 by design, so a shell redirect leaves a failed command
         and no way to tell a report it wrote from one it did not. `-o` separates
         the two: the file is written, the verdict still reaches the exit code,
         and the count still reaches stderr.
         """
         target = tmp_path / 'report.md'
 
-        assert main(['diff', '-o', str(target), *versions]) == EXIT_INVALID
+        assert main(['compat', '-o', str(target), *versions]) == EXIT_INVALID
 
         captured = capsys.readouterr()
         assert captured.out == ''
@@ -733,7 +733,7 @@ class TestDiff:
         """A report nobody could write is a failure of the command. Saying
         "N breaking changes" over it would bury that.
         """
-        assert main(['diff', '-o', str(tmp_path / 'absent' / 'report.md'), *versions]) == EXIT_INVALID
+        assert main(['compat', '-o', str(tmp_path / 'absent' / 'report.md'), *versions]) == EXIT_INVALID
 
         captured = capsys.readouterr()
         assert 'absent' in captured.err
@@ -742,7 +742,7 @@ class TestDiff:
     def test_o_carries_json_too(self, versions, tmp_path, capsys):
         target = tmp_path / 'report.jsonl'
 
-        assert main(['diff', '--json', '-o', str(target), *versions]) == EXIT_INVALID
+        assert main(['compat', '--json', '-o', str(target), *versions]) == EXIT_INVALID
 
         assert capsys.readouterr().out == ''
         records = [json.loads(line) for line in target.read_text(encoding='utf-8').splitlines()]
@@ -750,7 +750,7 @@ class TestDiff:
         assert all('impact' in record for record in records)
 
     def test_an_unchanged_document_exits_zero_and_says_nothing(self, versions, capsys):
-        assert main(['diff', versions[0], versions[0]]) == EXIT_OK
+        assert main(['compat', versions[0], versions[0]]) == EXIT_OK
         captured = capsys.readouterr()
         assert captured.out == ''
         assert captured.err == ''
@@ -758,13 +758,13 @@ class TestDiff:
     def test_a_safe_change_exits_zero(self, workspace, capsys):
         widened = V1.replace('      id: string', '      id: string\n      note?: string')
         root = workspace({'a.raml': V1, 'b.raml': widened})
-        assert main(['diff', str(root / 'a.raml'), str(root / 'b.raml')]) == EXIT_OK
+        assert main(['compat', str(root / 'a.raml'), str(root / 'b.raml')]) == EXIT_OK
         assert '| `$.note` | optional `string` |' in capsys.readouterr().out
 
     def test_breaking_only_still_exits_one_but_prints_less(self, workspace, capsys):
         both = V2.replace('      id: string', '      id: string\n      note?: string')
         root = workspace({'a.raml': V1, 'b.raml': both})
-        assert main(['diff', str(root / 'a.raml'), str(root / 'b.raml'), '--breaking-only']) == EXIT_INVALID
+        assert main(['compat', str(root / 'a.raml'), str(root / 'b.raml'), '--breaking-only']) == EXIT_INVALID
         out = capsys.readouterr().out
         assert '| `$.discount` | required `number` |' in out
         assert '| `$.note` | optional `string` |' not in out
@@ -776,7 +776,7 @@ class TestDiff:
         """
         both = V2.replace('      id: string', '      id: string\n      note?: string')
         root = workspace({'a.raml': V1, 'b.raml': both})
-        args = ['diff', str(root / 'a.raml'), str(root / 'b.raml')]
+        args = ['compat', str(root / 'a.raml'), str(root / 'b.raml')]
 
         assert main([*args, '--severity', 'compatible']) == EXIT_INVALID
         widened = capsys.readouterr().out
@@ -796,13 +796,13 @@ class TestDiff:
         root = workspace({'a.raml': V1, 'b.raml': both})
         args = [str(root / 'a.raml'), str(root / 'b.raml')]
 
-        assert main(['diff', *args, '--breaking-only']) == EXIT_INVALID
+        assert main(['compat', *args, '--breaking-only']) == EXIT_INVALID
         shorthand = capsys.readouterr().out
-        assert main(['diff', *args, '--severity', 'breaking']) == EXIT_INVALID
+        assert main(['compat', *args, '--severity', 'breaking']) == EXIT_INVALID
         assert capsys.readouterr().out == shorthand
 
     def test_json_carries_the_rule_and_the_reason(self, versions, capsys):
-        assert main(['diff', *versions, '--json']) == EXIT_INVALID
+        assert main(['compat', *versions, '--json']) == EXIT_INVALID
         records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
         removal = next(r for r in records if r['rule'] == 'response-property-removed')
         assert removal['impact'] == 'breaking'
@@ -831,7 +831,7 @@ types:
           application/json: Thing
 """
         root = workspace({'a.raml': both_ways, 'b.raml': both_ways.replace('      a: string', '      a?: string')})
-        main(['diff', str(root / 'a.raml'), str(root / 'b.raml'), '--json'])
+        main(['compat', str(root / 'a.raml'), str(root / 'b.raml'), '--json'])
         records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
         required = [record for record in records if record['attribute'] == 'required']
         assert {record['location']['kind'] for record in required} == {'RequestBody', 'ResponseBody'}
@@ -839,15 +839,15 @@ types:
 
     def test_json_writes_nothing_to_stderr(self, versions, capsys):
         """A consumer parses stdout; the summary must not corrupt it."""
-        main(['diff', *versions, '--json'])
+        main(['compat', *versions, '--json'])
         assert capsys.readouterr().err == ''
 
     def test_an_unreadable_file_exits_one(self, versions, capsys):
-        assert main(['diff', versions[0], 'no-such-file.raml']) == EXIT_INVALID
+        assert main(['compat', versions[0], 'no-such-file.raml']) == EXIT_INVALID
         assert 'invalid' in capsys.readouterr().err
 
     def test_a_location_is_emitted_directly_from_the_model_walk(self, versions, capsys):
-        main(['diff', *versions])
+        main(['compat', *versions])
         out = capsys.readouterr().out
         assert '## `GET /orders`' in out
         assert '| `200` body `application/json` | `$.discount` |' in out
@@ -1070,13 +1070,19 @@ class TestSkillsVerb:
         assert main(['skills', 'get', 'backward', 'sparql']) == EXIT_OK
         assert '\n---\n' in capsys.readouterr().out
 
-    def test_backward_is_routed_by_task_not_the_internal_module_name(self, capsys):
+    def test_backward_is_routed_by_task_not_by_the_verb_or_the_module(self, capsys):
+        """The guide is named for the question an agent is asking -- "is this
+        backward compatible?" -- and not for `compat`, the verb that answers it,
+        nor for `views/backward/`, the package behind it. It still has to *name*
+        the verb, or an agent that finds the guide cannot run anything.
+        """
         root = Path('fastraml/skilldata')
         source = (root / 'backward' / 'SKILL.md').read_text(encoding='utf-8')
         front = yaml.safe_load(source.split('---')[1])
         assert 'backward compatibility' in front['description']
-        assert 'structural graph-diff' in front['description']
-        assert not (root / 'diff' / 'SKILL.md').exists()
+        assert 'fastraml compat' in front['description']
+        assert not (root / 'compat' / 'SKILL.md').exists()
+        assert 'fastraml diff' not in source
 
         assert main(['skills', 'get', 'backward']) == EXIT_OK
         rendered = capsys.readouterr().out

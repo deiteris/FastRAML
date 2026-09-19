@@ -84,7 +84,7 @@ class Severity(StrEnum):
 
 
 #: Worst first, for sorting and for `--severity` to mean "this and worse".
-#: The arithmetic is shared with `diff`, which grades on a different axis with
+#: The arithmetic is shared with `backward`, which grades on a different axis with
 #: the same operations (`views/severity.py`).
 _RANK: Final[Ranking[Severity]] = Ranking((Severity.ERROR, Severity.WARNING, Severity.INFO))
 DEFAULT_MAX_FINDINGS: Final = 1000

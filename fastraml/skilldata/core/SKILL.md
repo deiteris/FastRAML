@@ -105,7 +105,7 @@ entirely and lets fastraml read any path the process can reach.
 | What does this type or endpoint actually look like? | `show` |
 | What breaks if I change this type? | `refs` |
 | What is this type built from? | `deps` |
-| Did this change break a caller? | `diff` |
+| Did this change break a caller? | `compat` |
 | Can I have the whole model as data? | `tree` or `graph` |
 | What is in here, as a report? | `query` |
 
@@ -266,7 +266,7 @@ in place of the bare name.
 ## Compare two versions
 
 ```bash
-fastraml diff --no-workspace-guard old/api.raml new/api.raml
+fastraml compat --no-workspace-guard old/api.raml new/api.raml
 ```
 
 ```
@@ -283,7 +283,7 @@ fastraml diff --no-workspace-guard old/api.raml new/api.raml
 | `200` body `application/json` | `$.title` | optional string | Breaking |
 ```
 
-`diff` exits 1 when any change is breaking, so it gates CI without you parsing
+`compat` exits 1 when any change is breaking, so it gates CI without you parsing
 the output. Results are grouped by operation, then by side of the wire (Request
 for what a caller sends, Response for what it receives), then by kind. Added and
 removed operations, and anything the API root declares for every operation,
@@ -295,8 +295,9 @@ common `-w` when both versions intentionally share a trusted workspace, or
 access. Workspace roots control file access; compatibility does not compare
 source-file addresses.
 
-Narrow the output with `--breaking-only`, or with `--severity` repeated once per
-severity you care about. Use `--json` to regrade the changes under your own
+Narrow the output with `--breaking-only`, or with `--severity`, which is a
+threshold: it shows that impact and everything worse, so `--severity review`
+hides compatible and cosmetic rows. Neither flag changes the exit code. Use `--json` to regrade the changes under your own
 policy. For CI, impact policy, JSON fields and project overrides, run:
 
 ```bash
@@ -329,9 +330,11 @@ Both assign the same addresses to the same nodes, so an address from one names
 the same thing in the other.
 
 **Write these to a file with `-o FILE`, never a shell redirect.** `graph`,
-`openapi`, `tree` and `query` all take it, and the file is UTF-8 with LF
-newlines whatever shell or platform ran the command. A redirect on Windows
-writes CRLF, so output you commit stops matching what regenerates it.
+`openapi`, `tree`, `query` and `compat` all take it, and the file is UTF-8 with
+LF newlines whatever shell or platform ran the command. A redirect on Windows
+writes CRLF, so output you commit stops matching what regenerates it. On
+`compat` it matters twice over: that command exits 1 whenever something is
+breaking, so a redirect cannot tell you whether the report was written.
 
 `openapi` is the RAML 1.0 to OpenAPI 3.0.3 conversion. A type declared once is
 exported once, under `components/schemas`, and referenced with `$ref` wherever
@@ -391,7 +394,7 @@ fastraml skills get sparql
 
 - `0` — the document is valid, or the command produced its answer.
 - `1` — the document is invalid, the name did not resolve, the name was
-  ambiguous, nothing matched, `diff` found a breaking change, `lint` found a
+  ambiguous, nothing matched, `compat` found a breaking change, `lint` found a
   finding at `error` severity, or an optional package is missing.
 - `2` — the command line itself was wrong, such as an unknown command or a
   missing argument.

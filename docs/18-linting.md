@@ -11,8 +11,8 @@ Normative for `fastraml/views/lint/`. It sits on top of
 
 ## 1. The line, and why it is not "lint versus parse"
 
-[16](16-graph.md) § 10.3 drew a line for `diff`: policy above RAML conformance
-belongs to a consumer, and `diff`'s backward-compatibility grading is admitted
+[16](16-graph.md) § 10.3 drew a line for `compat`: policy above RAML conformance
+belongs to a consumer, and its backward-compatibility grading is admitted
 because it *follows from the spec's own semantics* — from `required`, and from
 which side of the wire consumes a value. It named the counter-example in the
 same sentence: "every operation must be documented", which is genuinely
@@ -21,7 +21,7 @@ org-specific.
 Read literally that sentence excludes a linter, because "every operation must be
 documented" is a lint rule. Read for what it means, it does not: **the test is
 the judgement's provenance, not its genre.** § 10.3's own rule, applied to lint
-rules rather than to diff rules, splits them into three:
+rules rather than to compatibility rules, splits them into three:
 
 1. **Derived from the language.** A `$ref` carrying siblings inside an included
    JSON Schema has constraints the draft-07 resolver silently ignores;

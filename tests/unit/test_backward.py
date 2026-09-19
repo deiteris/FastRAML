@@ -30,15 +30,17 @@ from fastraml.views.backward import (
     SecurityLocation,
     TransportLocation,
     UnionMemberSegment,
-    _location_label,
-    _path_label,
     backward,
     backward_markdown,
     configure,
+    impact_of,
     record,
     render_markdown,
 )
-from fastraml.views.diff import RULES
+from fastraml.views.backward.compare import _loosened
+from fastraml.views.backward.markdown import _location_label
+from fastraml.views.backward.model import _path_label
+from fastraml.views.backward.rules import RULES
 
 
 def graded(tmp_path, old: str, new: str):
@@ -157,6 +159,25 @@ baseUriParameters:
     assert change.impact == 'breaking'
     assert record(change)['scope'] == 'api-schema'
     assert 'operation' not in record(change)
+
+
+def test_a_base_uri_parameter_is_graded_by_the_rule_every_other_parameter_gets(tmp_path):
+    """An API-scoped parameter differs from an operation's in who owns it and in
+    nothing else, so it is walked by the same methods: `_Site` carries the owner
+    and `schema_change` is the only place that reads it. A second copy of the
+    requiredness rule for this scope is the kind of thing that drifts.
+    """
+    old = '#%RAML 1.0\ntitle: T\nbaseUri: https://{tenant}.example.test\nbaseUriParameters:\n  tenant?: string\n'
+    new = old.replace('tenant?: string', 'tenant: string')
+
+    found = graded(tmp_path, old, new)
+
+    assert len(found) == 1
+    change = found[0]
+    assert isinstance(change, ApiSchemaChanged)
+    assert (change.subject, change.attribute) == ('required', 'required')
+    assert change.rule == 'request-property-required'
+    assert change.impact == 'breaking'
 
 
 def test_pattern_properties_are_compared_at_their_own_schema_path(tmp_path):
@@ -414,6 +435,23 @@ def test_large_numeric_bounds_are_compared_exactly(tmp_path):
     bound = next(change for change in found if isinstance(change, SchemaChanged) and change.attribute == 'maximum')
     assert bound.rule == 'response-constraint-loosened'
     assert bound.impact == 'breaking'
+
+
+def test_a_facet_that_is_not_an_ordered_bound_is_not_guessed_at():
+    """Only the eight `max*`/`min*` facets can be ordered, and a ninth must not
+    inherit whichever branch it lands in. RAML's vocabulary is exactly those
+    eight, so no corpus can catch a fallback that assumes one end or the other.
+    `None` means "cannot order this", which grades `other`.
+    """
+    assert _loosened('maxLength', 10, 5) is False
+    assert _loosened('minLength', 2, 4) is False
+    assert _loosened('maxLength', 4, 8) is True
+    assert _loosened('minLength', 4, 2) is True
+    # Appearing tightens and vanishing loosens at either end, so neither needs
+    # to know which set it is in -- but both still need it to be one of them.
+    assert _loosened('maximum', None, 5) is False
+    assert _loosened('minimum', 5, None) is True
+    assert _loosened('someNumericFacet', 1, 9) is None
 
 
 def test_markdown_names_the_property_a_facet_constrains(tmp_path):
@@ -1210,17 +1248,33 @@ def _worked_example() -> tuple[list[Change], str]:
     return backward(old, new), backward_markdown(old, new)
 
 
+def test_the_walk_grades_nothing_and_the_table_grades_everything():
+    """One question with one answer: what does this rule do to a caller.
+
+    `rules.py` answers it and the walk never does, so a grade cannot be written
+    down twice and drift. The walk picks a rule id; the table turns that into an
+    impact, and this asserts nothing else does.
+    """
+    assert set(RULE_IDS) == set(RULES)
+    for name, rule in RULES.items():
+        assert impact_of(name) == rule.impact
+    # And the walk never writes one down: the only impacts spelled out in the
+    # comparison are the vocabulary itself -- no grade is chosen there.
+    source = (Path(__file__).parents[2] / 'fastraml' / 'views' / 'backward' / 'compare.py').read_text(encoding='utf-8')
+    assert "'compatible'" not in source
+    assert "'cosmetic'" not in source
+
+
 def test_the_worked_example_is_a_readable_end_to_end_report():
     changes, report = _worked_example()
 
-    # `reference-dropped` describes a raw graph edge and has no effective-model
-    # counterpart. Every compatibility rule is exercised by this one report.
+    # Every rule the table names is exercised by this one report.
     emitted = {change.rule for change in changes}
-    assert emitted == set(RULES) - {'reference-dropped'}
+    assert emitted == set(RULES)
     # And `RULE_IDS` -- what `configure` validates an override against -- is exactly
     # that set. An id listed there but never emitted would be an override the CLI
     # accepts and no change ever matches, which is the failure an override must not
-    # have. The set is hand-kept because the walk builds ids by interpolation.
+    # have. Derived from the table now, so this asserts the walk reaches all of it.
     assert emitted == RULE_IDS
     assert '# API compatibility' in report
     assert '## Every operation' in report

@@ -352,7 +352,7 @@ fastraml list FILE [PATTERN] [--kind K] [--json]             # what is in here
 fastraml refs FILE NAME [--kind K] [--depth N] [--limit N]   # what uses this
 fastraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made of
 fastraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
-fastraml diff OLD NEW [--breaking-only] [--severity S] [--json] [-o FILE]
+fastraml compat OLD NEW [--breaking-only] [--severity S] [--json] [-o FILE]
 fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json] [-o FILE]
 fastraml lint [--config FILE] [--severity S] [--rule ID[=SEVERITY|off]]
               [--format human|text|json|summary]
@@ -417,8 +417,8 @@ would make the tool useless exactly where navigating is most wanted.
 - **`--severity S` is a threshold on every verb that has it** — *S and
   everything worse* — and never a membership test, because one flag name cannot
   mean two things in one tool. The scales
-  themselves stay separate, because they measure different things: `diff` grades
-  `breaking|review|compatible|cosmetic`, what a change does to a caller, and `lint`
+  themselves stay separate, because they measure different things: `compat`
+  grades `breaking|review|compatible|cosmetic`, what a change does to a caller, and `lint`
   grades `error|warning|info`, how much a finding should block CI
   ([18](18-linting.md) § 1). `--breaking-only` is now `--severity breaking`
   said shorter, and is kept because it is what a CI gate reaches for.
@@ -614,7 +614,7 @@ the catalogue **before** the file is opened, so a mistyped name reports the
 mistyped name rather than a parse error. The catalogue and the verdict on
 whether it earns its keep are [16](16-graph.md) § 6.
 
-### 8.2 `diff`
+### 8.2 `compat`
 
 What changed between two versions, graded by whether it breaks a caller
 ([16](16-graph.md) § 10). **Exits 1 when anything is breaking**, so it works as
@@ -759,7 +759,7 @@ under its directory name, because a guide that cannot be read is worse than one
 that is mislabelled.
 
 **Four of the five guides are about this CLI; `raml` is about the language.**
-`core`, `lint`, `diff` and `sparql` document verbs, so they go stale with the
+`core`, `lint`, `backward` and `sparql` document verbs, so they go stale with the
 build that serves them — which is the whole reason for serving rather than
 shipping a copy. `raml` condenses the RAML 1.0 specification for an agent writing
 or reviewing a document, and is served from the same place for a narrower reason:

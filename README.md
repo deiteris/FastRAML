@@ -42,7 +42,7 @@ The key features are:
 * **Structured diagnostics**: errors carry source locations and trace chains, including failures reached through includes and merged templates. Independent failures accumulate rather than stop the parse, wherever the parser can continue safely.
 * **Model navigation**: `list`, `show`, `refs` and `deps` inspect named entities and the routes between them. `graph` emits RDF, Graphviz or JSON, while `tree` emits an addressed containment view.
 * **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` provides configurable built-in rules, optional security and style rulesets, explanations, and plugin support.
-* **Version comparison**: `diff` walks two effective API models in parallel and classifies compatibility impact by whether a value is sent in a request or received in a response ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md#103-the-policy-is-separable-and-named)). It exits non-zero when the policy identifies a breaking change; the lower-level graph diff remains available in Python.
+* **Version comparison**: `compat` walks two effective API models in parallel and classifies compatibility impact by whether a value is sent in a request or received in a response ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md#103-the-policy-is-separable-and-named)). It exits non-zero when the policy identifies a breaking change.
 * **OpenAPI and JSON Schema output**: convert an effective API to a typed OpenAPI 3.0.3 document, or a RAML shape to JSON Schema draft-07. Both conversion APIs report information the target format could not represent.
 * **Typed and measured**: ships `py.typed` and checks the package with strict mypy. The benchmark gate checks linear scaling; on the recorded machine, 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using **98 MB**. The method, the per-configuration numbers, and the comparison against [go-raml](https://github.com/acronis/go-raml) — measured rather than quoted — are in [docs/12](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md).
 * **Version-matched agent guides**: `fastraml skills get` serves CLI guidance from the installed package, and `fastraml skills install` installs a discovery stub under `.agents/skills/` or another selected directory: a small skill whose only job is to point an agent at `fastraml skills get`, so the guide it reads matches the installed version.
@@ -137,7 +137,7 @@ fastraml deps api.raml User          # everything User is built from
 fastraml graph api.raml              # the whole projection as Turtle (or nt, dot, json)
 fastraml tree api.raml               # addressed JSON retaining containment and leaf data
 fastraml show api.raml /users        # the effective view: everything merged in, with origins
-fastraml diff v1.raml v2.raml        # effective-model compatibility report
+fastraml compat v1.raml v2.raml        # effective-model compatibility report
 fastraml query --list                # 9 named analysis queries
 fastraml query api.raml -n type-fan-in   # or -q '<sparql>' for your own
 ```

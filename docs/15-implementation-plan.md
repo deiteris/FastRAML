@@ -742,7 +742,7 @@ In rough priority order:
 
    **The first two converters are built and live in-tree**: `fastraml/views/`
    ([16](16-graph.md)) — one addressing walk under `graph`, `tree`, `render`,
-   `queries` and `diff`, plus the JSON Schema and OpenAPI projections. It is in the package rather
+   `queries` and `backward`, plus the JSON Schema and OpenAPI projections. It is in the package rather
    than beside it only because the CLI needs it; it is still a consumer, it
    decides no RAML rule, and nothing in the model imports it — which is now a
    package boundary rather than a convention ([14](14-testing.md) § 4, law 18).

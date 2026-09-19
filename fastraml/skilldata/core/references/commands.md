@@ -103,7 +103,7 @@ name; `deps` finds everything the name is built from. Each result is a route.
   remainder is reported on stderr.
 - `--json` — one JSON object per result, with `kind`, `iri`, `at` and `route`.
 
-## `fastraml diff OLD NEW`
+## `fastraml compat OLD NEW`
 
 Compare two versions and grade each change. Exits 1 when any change is breaking.
 
@@ -114,6 +114,12 @@ Compare two versions and grade each change. Exits 1 when any change is breaking.
 - `--json` — one JSON object per change, carrying the grading inputs.
 - `--rule ID=IMPACT|off` — temporarily regrade or hide a compatibility rule;
   repeat for more. File configuration runs first.
+- `-o FILE`, `--output FILE` — write the report to a file instead of stdout, as
+  UTF-8 with LF newlines. Prefer it to a redirect here for a second reason: the
+  command exits 1 by design when anything is breaking, so `> report.md` leaves a
+  failed command and no way to tell a report that was written from one that was
+  not. An unwritable path is reported instead of the verdict. Carries `--json`
+  output too.
 
 Workspace roots control which files each version may read; they do not identify
 changes. See `fastraml skills get backward`.
@@ -194,7 +200,7 @@ Print the version and exit.
 
 - `0` — valid, or the command produced its answer.
 - `1` — invalid document, unresolved name, ambiguous name, nothing matched, a
-  breaking change in `diff`, an `error` finding in `lint`, or a missing optional
+  breaking change in `compat`, an `error` finding in `lint`, or a missing optional
   package.
 - `2` — the command line was wrong, such as an unknown command or a missing
   argument.

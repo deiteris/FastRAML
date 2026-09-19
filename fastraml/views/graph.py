@@ -269,7 +269,7 @@ class Graph:
         if incoming is None or outgoing is None:
             # `build_graph` supplies both, because the sink filled them as it
             # went; this is for a `Graph` assembled from edges by hand, which
-            # the diff tests and any consumer building one do. Same `get`
+            # any consumer building one does. Same `get`
             # branch as `_GraphSink.edge`, to right-size the same singletons.
             self._outgoing: dict[str, list[Edge]] = {}
             self._incoming: dict[str, list[Edge]] = {}

@@ -1,7 +1,7 @@
 # 16. The graph projection
 
 **Status: built.** `fastraml/views/`, behind the `graph`, `tree`, `list`, `refs`, `deps`, `show`, `query`,
-`diff` and `openapi` verbs of the CLI ([13](13-public-api.md) § 8).
+`compat` and `openapi` verbs of the CLI ([13](13-public-api.md) § 8).
 
 This document owns one area: turning the parsed model into something you can
 *ask questions of*. It settles the vocabulary, the IRI scheme, what is projected
@@ -163,10 +163,9 @@ the graph like any other.
 Without it a `JsonShape` held no `ScalarFacet` slots and no children, so it
 projected as a leaf — and three verbs then answered wrongly rather than saying
 they could not: `deps errorScheme` reported it is made of nothing, every
-catalogue query walking `raml:property` skipped those types, and `diff`, which
-compares nodes, attributes and reference edges, saw **no change at all** when a
-whole response schema was replaced. On a schema-heavy document that is every
-type in it.
+catalogue query walking `raml:property` skipped those types, and nothing reading
+the projection saw **any change at all** when a whole response schema was
+replaced. On a schema-heavy document that is every type in it.
 
 The cost is proportional to the structure gained: on the benchmark's schema
 corpus the graph goes from 401 nodes to 6001, and `unwrap+graph` from about
@@ -244,7 +243,7 @@ Holding them costs 6.0 MB on a real 149-endpoint document — 82,287 values in
 or not anything reads them. Deriving all of them costs 33 ms, and the verbs
 that navigate never ask for more than a handful: `entries` labels 525 rows, not
 32,090. A caller reading one node's attributes more than once binds them to a
-local, because each read builds a fresh dictionary; `diff` and `label` do.
+local, because each read builds a fresh dictionary; `label` does.
 
 **What the view is for.** The keys are `additionalProperties`, `statusCode`,
 `isAnnotationType` — this vocabulary's names, which the model spells
@@ -424,7 +423,7 @@ and it was cached under one key per way. Nothing joined them, so 20 documents on
 that API were projected into two independent shape trees. Both wrote the same
 canonical `location`, so both asked `unit()` for the same address and `claim`
 split them rather than reporting a collision: **287 addresses ended in `/!2`**,
-every one a subschema, and `graph`, `tree` and `diff` each saw one document's
+every one a subschema, and `graph` and `tree` each saw one document's
 properties twice. Merging the tables took that to 6, and those 6 are real —
 `"type": ["integer", "null"]` gives a union and its members one JSON Pointer
 between them, which is § 3.1's case and not this one.
@@ -1128,9 +1127,25 @@ note, never inside the flow sequence where `#` is a syntax error.
 
 ## 10. What changed, and what it breaks
 
-`fastraml diff OLD NEW`, with `fastraml/views/backward.py` deciding backward
-compatibility directly from the two effective models. `fastraml/views/diff.py`
-retains the lower-level structural graph diff.
+`fastraml compat OLD NEW`, with `fastraml/views/backward/` deciding backward
+compatibility directly from the two effective models.
+
+The verb is `compat` and not `diff` because it does not produce a diff: it
+produces a graded report, headed **API compatibility**, that exits 1 on a
+break.
+
+`backward/` is four modules because four things happen and only the first two
+share anything: `model` is what a comparison can say — coordinates, results and
+grades — `compare` is the walk that fills them in, `markdown` is the reading view
+and `records` is the JSON record together with the project policy that matches
+it.
+
+**The walk grades nothing.** `backward/rules.py` is one `Rule` per id, naming
+its impact and the reason for it; `compare` chooses an id from what moved and
+`impact_of` reads the table. A grade is a policy, and a policy written out at
+each use is a policy that drifts — so `RULE_IDS` is the table's keys rather than
+a hand-kept list, and `Impact` has one `Ranking` rather than a private
+tuple-and-dict copy of one.
 
 The compatibility walk starts at the effective endpoint maps produced by P4 to
 P6 and pairs their existing semantic keys: full URI, method, status code, media
@@ -1139,17 +1154,10 @@ fact carried by the call stack, not reconstructed from a graph path. Shapes are
 already unwrapped by P9; the walk follows aliases and treats a `RecursiveShape`
 as the explicit leaf marker it is, never following its `head` back into a cycle.
 
-The graph diff remains useful when the question really is what changed in the
-projection. Its structural IRIs make matching a dictionary lookup rather than a
-similarity search. Its `Change` record is deliberately not the compatibility
-record: external API compatibility has no graph IRI or graph node kind.
-
 ### 10.1 The change list is the contract
 
 `backward(old, new) -> list[ApiChanged | ApiSchemaChanged | OperationAdded | OperationRemoved | OperationChanged | SchemaChanged]`
 compares two unwrapped `Raml` models at the operations an API caller reaches.
-`diff(old_graph, new_graph) -> list[Change]` remains the unrelated, opinion-free
-structural operation over graph nodes.
 
 `baseUri` is represented by `ApiChanged`, outside that operation-local union:
 RAML has one server URI for the API and no endpoint-level override, so repeating
@@ -1449,8 +1457,8 @@ the corresponding RAML document.
 ### 10.3a Where the reporting is shared with `lint`
 
 Compatibility and `lint` both grade, and the temptation is to merge them. They are not
-the same problem: a lint rule is a predicate over **one** document and a diff
-rule a function of **two**, so neither can be written as the other. Nor are the
+the same problem: a lint rule is a predicate over **one** document and a
+compatibility rule a function of **two**, so neither can be written as the other. Nor are the
 scales two spellings of one axis — `compatible` is not `info`, and this view reports
 non-problems on purpose because its output is a complete description of what
 changed, where a lint report is a list of defects ([18](18-linting.md) § 1).
@@ -1466,8 +1474,9 @@ not presentation invented in `cli.py`.
 Every `ApiSchemaChanged`, `OperationChanged` and `SchemaChanged` carries a named
 `rule` and its `impact`; operation additions/removals do too. `other` is `review`
 rather than `compatible` on purpose: an unrecognised change is the one case where
-silence misleads. The structural graph diff retains its separate
-`classify(Change)` API.
+silence misleads. `backward/rules.py` is the table: one `Rule` per id, naming
+its impact and the reason for it, and `RULE_IDS` is its keys. The walk chooses a
+rule and grades nothing.
 
 This is a policy, and [§ 7](#7-amf-was-assessed-and-not-adopted) says policy
 above RAML conformance belongs to a consumer. That line stands: backward
@@ -1490,20 +1499,12 @@ The compatibility walk follows the effective model references and compares the
 shapes or security applications they resolve to; it does not infer their effect
 from a changed graph edge.
 
-The structural `diff(old_graph, new_graph)` still compares the reference edges
-`securedBy`, `inherits`, `aliasOf`, `appliesTrait`, `appliesResourceType`,
-`annotation` and `recursionHead`. That is useful projection data, but it is not
-the compatibility decision. Its linked and unlinked `securedBy` edges are graded
-as risky reference arrivals and drops, not as security additions or removals.
-
 Effective `securedBy` is an OR-list. Adding an alternative preserves every
 existing caller; removing one breaks callers that used it. Removing `null`
 starts requiring a credential and is breaking, while adding it is safe. OAuth
 application scopes are compared on the reference, where P5 stores them, and the
 scheme's settings and `describedBy` request/response structures are compared on
-the resolved definition. The structural graph diff continues to represent a
-swap as `unlinked` plus `linked`, because those are the facts that projection
-changed.
+the resolved definition.
 
 ### 10.5 What it does not do
 

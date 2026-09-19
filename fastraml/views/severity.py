@@ -1,12 +1,12 @@
 """One severity ordering, for every view that grades something.
 
 Two views grade, and they grade on **different axes**. `lint` asks how much a
-finding should block CI — `error`, `warning`, `info`. `diff` asks what a change
-does to a caller — `breaking`, `risky`, `safe`, `cosmetic`. Those are not two
-spellings of one scale and are deliberately not merged: `safe` is not `info`,
-and `diff` reports non-problems on purpose because its output is a complete
-description of what changed, where a lint report is a list of defects
-(docs/18 § 1).
+finding should block CI — `error`, `warning`, `info`. `backward` asks what a
+change does to a caller — `breaking`, `review`, `compatible`, `cosmetic`. Those
+are not two spellings of one scale and are deliberately not merged: `compatible`
+is not `info`, and `backward` reports non-problems on purpose because its output
+is a complete description of what changed, where a lint report is a list of
+defects (docs/18 § 1).
 
 What they do share is the arithmetic. Both need *worst first*, both need "this
 one and everything worse", and both had their own copy — a tuple with `.index()`
@@ -31,7 +31,7 @@ __all__ = ['Ranking']
 class Ranking[S: str]:
     """A severity vocabulary, worst first, and the comparisons it supports.
 
-    Generic over the severity type so `lint`'s `StrEnum` and `diff`'s `Literal`
+    Generic over the severity type so `lint`'s `StrEnum` and `backward`'s `Literal`
     both keep their own static type through it. Nothing is validated at
     construction beyond order: a value this ranking has never heard of is a
     programming error at the call site, and `rank` raises rather than guessing
@@ -78,6 +78,6 @@ class Ranking[S: str]:
 
 
 #: Each vocabulary is declared by the view that grades on it — `lint`'s three
-#: and `diff`'s four — because the *meaning* is that view's and only the
+#: and `backward`'s four — because the *meaning* is that view's and only the
 #: arithmetic is shared. Listing them here would put two unrelated scales in one
 #: place and invite the assumption that they line up.

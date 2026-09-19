@@ -59,7 +59,7 @@ __all__ = [
 #: What a node attribute may be. A tuple is a genuinely multi-valued facet —
 #: `enum`, OAuth scopes — and is not joined into a string: an enum value may
 #: itself contain a space, so `["new york", "london"]` and three separate values
-#: would be indistinguishable, and a diff could not say which member was removed.
+#: would be indistinguishable, and a comparison could not say which member left.
 type Literal_ = str | int | bool | tuple[str, ...]
 
 #: Everything a node can stand for. Every node holds one; a node standing for
@@ -117,8 +117,8 @@ class GraphNode[E: Entity]:
         """The node's authored name, or `''` where it has none.
 
         Separate from `attributes` because looking a name up is the commonest
-        single-key read there is — `Graph.find` does it once per node, `label`
-        and `diff` per node pair — and `attributes` is far too expensive to
+        single-key read there is — `Graph.find` does it once per node and
+        `label` once per node pair — and `attributes` is far too expensive to
         serve it. Building a `TypeNode`'s dictionary projects the shape, walks
         every facet its kind declares and relativises its path, all of which is
         discarded when the caller wanted one string: **12x slower than reading
@@ -505,8 +505,9 @@ def _facet_value(value: object) -> str | int | bool | None:
         return _number_text(value)
     if isinstance(value, re.Pattern):
         # The facet holds a *compiled* pattern. Without this a `pattern:` on a
-        # type reached no node attribute at all, so `diff` reported no change
-        # when one was tightened — the § 2.6 failure in a different place.
+        # type reaches no node attribute at all, so every consumer of the
+        # projection is blind to one being tightened -- the § 2.6 failure in a
+        # different place.
         return str(value.pattern)
     if isinstance(value, (int, str)):
         return value

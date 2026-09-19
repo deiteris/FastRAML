@@ -414,13 +414,6 @@ it returns early and never builds the dictionary. The structural test has to run
 first — a `Type` whose name merely repeats its own IRI segment is precisely the
 case the chain exists to fall through.
 
-**`diff` does not benefit and was not expected to** (168 ms before, 168 ms
-after): `_altered` genuinely compares whole attribute dictionaries, and diff's
-own hot spot is `_sides` at 41% of its time. That one is a reverse walk per
-node, measured linear on both corpora — 2.08x, 2.10x, 2.10x across four
-doublings — so it is a constant factor, not a complexity defect, and it is left
-alone.
-
 **A name is stated twice, which is the shape that rots.** The rule that holds it
 together is that `attributes` reads the property; the test is
 `TestNameIsTheCheapPathToTheSameAnswer`, which asserts the two agree for every
@@ -431,51 +424,6 @@ misses: `EndPointNode`, `OperationNode`, `ResponseNode` and `ParameterNode` take
 theirs through `_named`, and `DeclaredNode` and `UnresolvedNode` are bases the
 module's own graph fixture never builds — which is why the test reads a second
 document.
-
-### 19f. The diff's side-of-the-wire label is carried down, not computed up
-
-Grading a change needs to know which side of the wire the node sits on:
-`note?: string` becoming `note: string` is breaking in a request and harmless in
-a response, and the same edit therefore gets opposite verdicts
-([16](16-graph.md) § 10.2). Containment points *downwards* — operation, request
-or response, payload, schema, property — so the side is a fact about a node's
-**ancestors**, and the obvious implementation asks each node to walk back
-towards the API.
-
-That is what `_sides` did, once per node, and it was **41% of a diff**: 36 510
-independent reverse traversals on `bench_endpoints`, each allocating its own
-frontier and `seen` set, all of them re-deriving the same ancestor chains. Every
-property of a type re-walked that type's whole ancestry from scratch.
-
-It is a union over parents, which makes it a forward propagation:
-
-```
-sides(n) = union over incoming e of ( side_of(e.predicate) | sides(e.subject) )
-```
-
-so one worklist over the edges settles every node at once. `_side_map` is
-computed per graph and `diff` reads it.
-
-| | per node | one pass | |
-|---|---|---|---|
-| `small` | 1.1 ms | 0.1 ms | 8.1x |
-| `endpoints` | 59.6 ms | 20.1 ms | 3.0x |
-| `large` | 75.0 ms | 11.7 ms | 6.4x |
-
-**The mask is not an optimisation detail, it is what makes the pass worth
-doing.** A set-based union — `carried | {side}` — builds two sets per edge and
-costs 71.5 ms against the per-node walk's 62.5 ms, so the better algorithm loses.
-The lattice has four states, so it is two bits: `carried | bit` allocates
-nothing, and the four possible answers are interned and handed out by index.
-Asymptotics do not survive contact with a per-edge allocation.
-
-Cycles need no special case; a fixpoint over a four-state lattice stops
-widening, where the walk needed its own `seen` set to terminate at all.
-
-**The walk is kept, in the test suite, as the specification.**
-`TestTheSideMapIsAForwardPropagation` asserts the two agree for every node,
-including across a recursive type. A fixpoint that is merely plausible is
-exactly the failure [16](16-graph.md) § 6.2 describes.
 
 ### 20. Expression AST cache
 

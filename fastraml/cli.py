@@ -127,27 +127,27 @@ def _parser() -> argparse.ArgumentParser:
     _add_serve(commands)
     _add_navigation(commands)
 
-    changed = commands.add_parser('diff', help='what changed between two versions, and what it breaks')
-    changed.add_argument('files', metavar='FILE', nargs=2, help='the old document, then the new one')
-    changed.add_argument('--json', action='store_true', help='one JSON object per change')
-    changed.add_argument(
+    compat = commands.add_parser('compat', help='compare two versions for backward compatibility, and what breaks')
+    compat.add_argument('files', metavar='FILE', nargs=2, help='the old document, then the new one')
+    compat.add_argument('--json', action='store_true', help='one JSON object per change')
+    compat.add_argument(
         '--breaking-only', action='store_true', help='report only breaking changes (still exits 1 if any)'
     )
-    changed.add_argument(
+    compat.add_argument(
         '--severity',
         choices=('breaking', 'review', 'compatible', 'cosmetic'),
         default='cosmetic',
         help='show this severity and worse (default: cosmetic, meaning everything)',
     )
-    changed.add_argument(
+    compat.add_argument(
         '--rule',
         action='append',
         default=[],
         metavar='ID=IMPACT|off',
         help='regrade or disable one compatibility rule; repeat for more',
     )
-    _add_output(changed)
-    _add_common(changed)
+    _add_output(compat)
+    _add_common(compat)
 
     query = commands.add_parser('query', help='run SPARQL over the graph (needs pyoxigraph)')
     query.add_argument('files', metavar='FILE', nargs='*')
@@ -176,7 +176,7 @@ def _parser() -> argparse.ArgumentParser:
         deps=_walk,
         show=_show_type,
         list=_list,
-        diff=_diff,
+        compat=_compat,
         query=_query,
         lint=_lint,
         skills=_skills,
@@ -240,8 +240,8 @@ def _add_output(parser: argparse.ArgumentParser) -> None:
     committed output differ from what CI regenerates -- and `tree` is the verb
     whose output this repository actually commits.
 
-    `diff` needs it for a second reason: it exits 1 by design when anything is
-    breaking, so `diff ... > report.md` leaves a shell with a failed command and
+    `compat` needs it for a second reason: it exits 1 by design when anything is
+    breaking, so `compat ... > report.md` leaves a shell with a failed command and
     no way to tell a report it wrote from one it did not.
     """
     parser.add_argument(
@@ -834,14 +834,20 @@ def _walk(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _diff(args: argparse.Namespace) -> int:
+def _compat(args: argparse.Namespace) -> int:
     """What changed, graded by whether it breaks a caller.
 
     Exits 1 when anything is breaking, so it works as a CI gate. `--json` is
     the whole change list with its grading, for a consumer that disagrees with
     the built-in policy and wants only the facts (docs/16 § 10).
     """
-    from fastraml.views.backward import backward, configure, record, render_markdown  # noqa: PLC0415 - diff only
+    from fastraml.views.backward import (  # noqa: PLC0415 - compat verb only
+        IMPACTS,
+        backward,
+        configure,
+        record,
+        render_markdown,
+    )
 
     models = []
     for path in args.files:
@@ -850,16 +856,15 @@ def _diff(args: argparse.Namespace) -> int:
             return EXIT_INVALID
         models.append(parsed)
 
-    order = ('breaking', 'review', 'compatible', 'cosmetic')
-    threshold = order.index('breaking' if args.breaking_only else args.severity)
+    threshold = IMPACTS.rank('breaking' if args.breaking_only else args.severity)
     try:
         compatibility = _compatibility_rule_overrides(args.fastraml_config.compatibility, args.rule)
         changes = configure(backward(models[0], models[1]), compatibility)
     except ValueError as err:
-        print(f'diff: {err}', file=sys.stderr)
+        print(f'compat: {err}', file=sys.stderr)
         return EXIT_INVALID
     breaking = sum(change.impact == 'breaking' for change in changes)
-    shown = [change for change in changes if order.index(change.impact) <= threshold]
+    shown = [change for change in changes if IMPACTS.rank(change.impact) <= threshold]
 
     if args.json:
         import json  # noqa: PLC0415 - only JSON output needs the encoder
@@ -882,7 +887,7 @@ def _diff(args: argparse.Namespace) -> int:
 def _compatibility_rule_overrides(config: Any, values: Sequence[str]) -> Any:
     from typing import cast  # noqa: PLC0415 - compatibility CLI only
 
-    from fastraml.config import CompatibilityConfig, CompatibilityRuleSetting  # noqa: PLC0415 - diff only
+    from fastraml.config import CompatibilityConfig, CompatibilityRuleSetting  # noqa: PLC0415 - compat only
 
     rules = list(config.rules)
     for raw in values:

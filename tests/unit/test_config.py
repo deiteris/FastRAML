@@ -57,7 +57,7 @@ def test_precise_protocol_override_changes_the_exit_code(workspace, tmp_path, ca
 """,
         encoding='utf-8',
     )
-    args = ['diff', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]
+    args = ['compat', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]
     assert main(args) == EXIT_OK
     output = capsys.readouterr().out
     assert '| `protocols` | `HTTP`, `HTTPS` -> `HTTPS` | Compatible |' in output
@@ -77,8 +77,62 @@ def test_nonmatching_protocol_override_does_not_hide_a_break(workspace, tmp_path
 """,
         encoding='utf-8',
     )
-    assert main(['diff', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
+    assert main(['compat', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
     assert '| `protocols` | `HTTP`, `HTTPS` -> `HTTPS` | Breaking |' in capsys.readouterr().out
+
+
+SHAPE_OLD = """#%RAML 1.0
+title: T
+/things:
+  post:
+    body:
+      application/json:
+        properties:
+          code: {type: string, maxLength: 10}
+          note: {type: string, maxLength: 10}
+"""
+
+SHAPE_NEW = SHAPE_OLD.replace('code: {type: string, maxLength: 10}', 'code: {type: string, maxLength: 5}')
+
+
+def test_an_override_can_name_the_schema_path_it_applies_to(workspace, tmp_path, capsys):
+    """`match.path` selects one coordinate inside a shape, spelled as the report
+    spells it. Every other match field had a test and this one had none, which
+    left the rendered path doing two jobs -- a table cell and a config key -- with
+    only the first of them proven.
+    """
+    root = workspace({'old.raml': SHAPE_OLD, 'new.raml': SHAPE_NEW})
+    config = tmp_path / 'fastraml.yaml'
+    config.write_text(
+        """compatibility:
+  rules:
+    - id: request-constraint-tightened
+      impact: compatible
+      match:
+        path: $.code
+""",
+        encoding='utf-8',
+    )
+
+    assert main(['compat', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_OK
+    assert '`$.code`' in capsys.readouterr().out
+
+
+def test_an_override_naming_a_different_path_leaves_the_break_alone(workspace, tmp_path, capsys):
+    root = workspace({'old.raml': SHAPE_OLD, 'new.raml': SHAPE_NEW})
+    config = tmp_path / 'fastraml.yaml'
+    config.write_text(
+        """compatibility:
+  rules:
+    - id: request-constraint-tightened
+      impact: compatible
+      match:
+        path: $.note
+""",
+        encoding='utf-8',
+    )
+
+    assert main(['compat', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
 
 
 def test_disabled_compatibility_rule_is_absent_and_nonblocking(workspace, tmp_path, capsys):
@@ -92,7 +146,7 @@ def test_disabled_compatibility_rule_is_absent_and_nonblocking(workspace, tmp_pa
 """,
         encoding='utf-8',
     )
-    assert main(['diff', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_OK
+    assert main(['compat', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_OK
     captured = capsys.readouterr()
     assert captured.out == ''
     assert captured.err == ''
@@ -110,7 +164,7 @@ def test_cli_rule_override_applies_after_the_file(workspace, tmp_path, capsys):
         encoding='utf-8',
     )
     args = [
-        'diff',
+        'compat',
         '--config',
         str(config),
         '--rule',
@@ -147,5 +201,5 @@ def test_unknown_compatibility_rule_is_rejected(workspace, tmp_path, capsys):
         'compatibility:\n  rules:\n    - id: imaginary-rule\n      disabled: true\n',
         encoding='utf-8',
     )
-    assert main(['diff', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
+    assert main(['compat', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
     assert 'unknown compatibility rule: imaginary-rule' in capsys.readouterr().err

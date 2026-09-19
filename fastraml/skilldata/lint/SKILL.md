@@ -145,7 +145,7 @@ the config.
 the full report in one run rather than fixing one file at a time.
 
 `--severity S` is a **threshold** — S and everything worse — and means the same
-on `fastraml diff`. It filters the report; it does not change the exit code.
+on `fastraml compat`. It filters the report; it does not change the exit code.
 
 ## Find out what a run cost
 

@@ -594,9 +594,9 @@ class Walk:
         # Structure and facets come from the *projected* shape, so a type defined
         # by a JSON schema has members here rather than being a leaf. Without it
         # `deps errorScheme` reported that it is made of nothing, every SPARQL
-        # query walking `raml:property` skipped those types, and `diff` — which
-        # compares nodes, attributes and reference edges — saw no change when a
-        # whole schema was replaced (docs/16 § 2.6).
+        # query walking `raml:property` skipped those types, and nothing reading
+        # the projection saw any change when a whole schema was replaced
+        # (docs/16 § 2.6).
         view = projected(base)
 
         for parent in base.inherits:

@@ -86,7 +86,14 @@ first, and a report opens with a **How to read this** legend defining them.
 Columns vary by table. Always present are `Where` and `Compatibility`. A
 `Changed` table adds `Change` and states its transition in one `Detail` cell as
 `old -> new`; `Removed` and `Added` have no `Change` column, because the heading
-is the verb. `Path` appears where some row reaches inside a shape
+is the verb.
+
+Read the value column's header before its cells: it is `Type` for a property or
+parameter, `Value` for an enum member, `Scheme` for a security alternative, and
+`Detail` where a table mixes them -- in which case a `What` column names each
+row's subject. An enum row is the one place `Where` and `Path` address the
+property rather than the thing that moved, so its `Value` cell is the member
+that left or arrived. `Path` appears where some row reaches inside a shape
 (`$.customer.email`, `$.items[].sku`, `$[/^x-/]`, `$.result<Error>`); a row with
 no path addresses the coordinate in `Where` itself. `Description` appears where
 the author described the entity that arrived or left. Under **Response**,

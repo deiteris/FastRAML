@@ -618,9 +618,15 @@ types:
 
     assert '**Removed**' in report
     assert '**Added**' in report
-    assert '| Body `application/json` | `$.state` | a | Breaking |' in report
+    # The Added table holds only enum members, so one noun covers it: an enum
+    # cell holds a value, not the type its `Path` points at.
+    assert '| Where | Path | Value | Compatibility |' in report
     assert '| Body `application/json` | `$.state` | c | Compatible |' in report
-    assert '| Body `application/json` | `$.note` | optional string | Review |' in report
+    # The Removed table holds a member and a property, which disagree, so it
+    # names the subject per row rather than heading one noun over both.
+    assert '| Where | Path | What | Detail | Compatibility |' in report
+    assert '| Body `application/json` | `$.state` | Enum value | a | Breaking |' in report
+    assert '| Body `application/json` | `$.note` | Property | optional string | Review |' in report
     assert 'Enum value removed' not in report, 'the heading is the verb'
     assert 'Absent' not in report
 
@@ -863,10 +869,16 @@ securitySchemes:
 
     report = render_markdown(graded(tmp_path, old, new))
 
-    assert '| query parameter `cursor` | optional string | Opaque position from the previous page. |' in report
-    assert '| Status `202` | Queued; poll the Location header. |' in report
-    assert '| Security | token | Bearer token from the device pairing flow. |' in report
-    assert '| Where | Detail | Description | Compatibility |' in report
+    assert (
+        '| query parameter `cursor` | Parameter | optional string | Opaque position from the previous page. |' in report
+    )
+    assert '| Status `202` | Queued; poll the Location header. | Compatible |' in report
+    assert '| Security | Security alternative | token | Bearer token from the device pairing flow. |' in report
+    # A scheme and a parameter disagree on what their value cell holds, so the
+    # table names the subject per row instead of heading one noun over both.
+    assert '| Where | What | Detail | Description | Compatibility |' in report
+    # Nothing to say about a status beyond the author's prose.
+    assert '| Where | Description | Compatibility |' in report
 
 
 def test_a_table_of_undescribed_additions_has_no_description_column(tmp_path):

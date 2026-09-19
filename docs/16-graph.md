@@ -1370,6 +1370,15 @@ the worst impact each holds so that reading worst-first survives the split. A
 `Added` or `Removed` one needs no `Change` column, because its heading is the
 verb.
 
+The value column is headed by what it holds rather than by a word that covers
+everything: **Type** for a property or parameter, **Value** for an enum member,
+**Scheme** for a security alternative. `Detail` over all three made a reader work
+out which, and it misled most on an enum, the one row in the report whose `Where`
+and `Path` address the *property* rather than the thing that moved -- so
+`$.filters.state | archived` read as a removed property. Where a table mixes
+them, the header falls back to `Detail` and the table earns a `What` column
+naming each row's subject.
+
 A `Description` column carries the author's own prose about the entity that
 arrived or left. It is the one thing an addition can say that its coordinate
 cannot -- a reader meeting a new query parameter wants to know what it is for,

@@ -498,9 +498,11 @@ _LEGEND: Final[tuple[str, ...]] = (
     '| **Changed** | the old form may now be rejected | a value you did not expect may arrive |',
     '| **Added** | new, and breaking only if required | returned as well; ignore it and nothing breaks |',
     '',
-    'A row names **Where** the change is, a **Path** when it reaches inside a shape,',
-    'and **Detail**: `old -> new` for a change, the entity itself for an addition or',
-    'a removal. Columns a table has no use for are left out of it.',
+    'A row names **Where** the change is, and a **Path** when it reaches inside a',
+    'shape. The value column is headed by what it holds -- **Type**, **Value**,',
+    '**Scheme** -- or **Detail** where a table mixes them, in which case a **What**',
+    'column says which each row is. A change states `old -> new`. Columns a table',
+    'has no use for are left out of it.',
 )
 
 #: Request before response, because a caller fixes what it sends before it can
@@ -547,13 +549,35 @@ def _sided_tables(entries: Sequence[_Entry]) -> list[str]:
     return lines
 
 
+#: What the value cell holds, per subject. It is not one thing: a property's is a
+#: type, an enum member's is a value and a scheme's is a name, so heading all
+#: three `Detail` made the reader work out which. It matters most for an enum,
+#: whose `Where` and `Path` address the *property* rather than the thing that
+#: moved -- the one row in the report where the coordinate is not the subject.
+_VALUE_NOUN: Final[dict[Subject, str]] = {
+    'parameter': 'Type',
+    'pattern-property': 'Type',
+    'property': 'Type',
+    'enum-value': 'Value',
+    'security-alternative': 'Scheme',
+}
+
+
 def _kind_table(rows: Sequence[_Entry], *, side_stated: bool, transition: bool) -> list[str]:
     paths = any(isinstance(row.change, (ApiSchemaChanged, SchemaChanged)) and row.change.path for row in rows)
     details = any(_detail(row.change) for row in rows)
     described = any(_description(row.change) for row in rows)
     operations = any(row.operations for row in rows)
+    # A `changed` row holds a transition whatever its subject, and its `Change`
+    # column has already named the facet. Only the other two kinds get the noun,
+    # and only where every row that fills the cell agrees on one; a mixed table
+    # falls back to `Detail` and earns a `What` column to say which is which.
+    nouns = {_VALUE_NOUN.get(row.change.subject, 'Detail') for row in rows if _detail(row.change)}
+    subjects = not transition and len(nouns) > 1
+    value = 'Detail' if transition or len(nouns) != 1 else nouns.pop()
     columns = ['Where', *(['Path'] if paths else []), *(['Change'] if transition else [])]
-    columns.extend([*(['Detail'] if details else []), *(['Description'] if described else [])])
+    columns.extend([*(['What'] if subjects else []), *([value] if details else [])])
+    columns.extend([*(['Description'] if described else [])])
     columns.extend(['Compatibility', *(['Operations'] if operations else [])])
     return [
         f'| {" | ".join(columns)} |',
@@ -564,6 +588,7 @@ def _kind_table(rows: Sequence[_Entry], *, side_stated: bool, transition: bool) 
                 side_stated=side_stated,
                 paths=paths,
                 change=transition,
+                subjects=subjects,
                 details=details,
                 described=described,
                 operations=operations,
@@ -1627,7 +1652,15 @@ def _numeric(value: object) -> Fraction | None:
 
 
 def _change_row(  # noqa: PLR0913 - one flag per column the table decided to carry
-    entry: _Entry, *, side_stated: bool, paths: bool, change: bool, details: bool, described: bool, operations: bool
+    entry: _Entry,
+    *,
+    side_stated: bool,
+    paths: bool,
+    change: bool,
+    subjects: bool,
+    details: bool,
+    described: bool,
+    operations: bool,
 ) -> str:
     """One row shape for all four results: they differ in owner, not in reading.
 
@@ -1647,6 +1680,8 @@ def _change_row(  # noqa: PLR0913 - one flag per column the table decided to car
         cells.append(inside)
     if change:
         cells.append(_cell(_change_label(result)))
+    if subjects:
+        cells.append(result.subject.replace('-', ' ').capitalize())
     if details:
         cells.append(_cell(_detail(result)))
     if described:

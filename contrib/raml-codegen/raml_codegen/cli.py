@@ -76,14 +76,15 @@ def _run(
 
     written = generated.write(output, force=force)
     typer.echo(f'wrote {len(written.paths)} files to {output.resolve()}')
-    for path in written.kept:
+    if written.kept:
         # Said rather than left to be discovered: the alternative to saying it
         # is the developer assuming the new stub arrived and wondering why the
         # method they were told about is not in the file.
+        names = ', '.join(sorted(path.name for path in written.kept))
         typer.secho(
-            f'kept {path.name}, which already exists and is yours to edit'
-            ' -- generate into an empty directory to see the current stub,'
-            ' or pass --force to overwrite it',
+            f'kept {names} -- already there, and yours to edit.'
+            ' Generate into an empty directory to see what the current ones'
+            ' would say, or pass --force to overwrite them.',
             fg='yellow',
         )
 

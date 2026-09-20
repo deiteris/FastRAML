@@ -11,8 +11,9 @@ Every method raises `NotImplementedError` until you replace it.
 
 ## When the document changes
 
-Regenerate the package. You do not have to work out what moved -- three things
-tell you, and both name it:
+Regenerate in place. **No new method appears here** -- nothing writes to this
+file again, so adding one is yours. What you do not have to do is go looking
+for which one: three things report it, and each names the method.
 
 * an operation the document gained is an abstract method nobody implements, so
   `Implementation()` raises `TypeError` naming it, at startup rather than on

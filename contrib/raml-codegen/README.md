@@ -194,14 +194,32 @@ subclass with a method missing, so an operation the document describes and the
 code does not is an error at startup rather than a 500 later. The generated
 package depends on `fastapi` and `pydantic`.
 
+### The output directory is the service
+
+Nothing is copied anywhere. Generate once, commit the lot, and regenerate in
+place from then on:
+
+```
+my-service/
+  bookstore_server/   generated — rewritten whole, every time
+  impl.py             yours — the implementation
+  pyproject.toml      yours after the first run — add what it needs
+  README.md           yours after the first run
+```
+
+**Inside the package is generated; outside it is yours.** A second run rewrites
+the package around the other three and names the ones it kept. `--force`
+overwrites them.
+
 ### When the document changes
 
-`<package>/` is regenerated whole; **`impl.py` is written once and then left
-alone**, because it is the one file that holds work no generator can produce
-again. `--force` overwrites it.
+```bash
+raml-codegen python-fastapi api.json -o my-service/ --package bookstore-server
+```
 
-Nobody has to work out what moved. The interface is the thing that changed, so
-it is the thing that reports:
+**No new method appears in `impl.py`** — nothing writes to it again, so adding
+one is manual. What is not manual is finding out which one. The interface is
+what changed, so the interface reports:
 
 | the document | reported by |
 |---|---|

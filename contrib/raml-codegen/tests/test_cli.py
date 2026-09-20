@@ -37,12 +37,27 @@ def test_it_says_when_it_kept_a_file_rather_than_writing_one(tmp_path):
 
     result = runner.invoke(app, arguments)
     assert result.exit_code == 0, result.stdout
-    assert 'kept impl.py' in result.output
+    assert 'kept README.md, impl.py, pyproject.toml' in result.output
     assert (tmp_path / 'impl.py').read_text(encoding='utf-8') == '# mine\n'
 
     forced = runner.invoke(app, [*arguments, '--force'])
     assert forced.exit_code == 0, forced.stdout
     assert (tmp_path / 'impl.py').read_text(encoding='utf-8') != '# mine\n'
+
+
+def test_generating_into_a_project_leaves_the_project_alone(tmp_path):
+    # The output directory is meant to *be* the service, so it has to survive
+    # being one: a second run may not eat the dependencies the implementation
+    # needs, and it did until this was pinned.
+    arguments = ['python-fastapi', str(TREE), '-o', str(tmp_path), '--package', 'bookstore-server']
+    runner.invoke(app, arguments)
+    mine = '[project]\nname = "my-service"\ndependencies = ["fastapi", "asyncpg"]\n'
+    (tmp_path / 'pyproject.toml').write_text(mine, encoding='utf-8')
+    (tmp_path / 'README.md').write_text('# My service\n', encoding='utf-8')
+
+    assert runner.invoke(app, arguments).exit_code == 0
+    assert (tmp_path / 'pyproject.toml').read_text(encoding='utf-8') == mine
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == '# My service\n'
 
 
 def test_it_generates_from_a_tree_document(tmp_path):

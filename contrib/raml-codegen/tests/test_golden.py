@@ -115,18 +115,22 @@ class TestTheStubIsGeneratedButNotOwned:
         result = _run(['-m', 'mypy', 'impl.py'], cwd=tmp_path)
         assert result.returncode == 0, result.stdout + result.stderr
 
-    def test_regenerating_does_not_overwrite_it(self, served, tmp_path):
-        # The whole point of the file. It said it was safe from regeneration
-        # before anything made it so, and an implementation is exactly the work
-        # that cannot be generated back.
+    def test_regenerating_overwrites_none_of_the_scaffolding(self, served, tmp_path):
+        # The whole point of the output directory being usable as the service.
+        # `impl.py` is the implementation, `pyproject.toml` grows the
+        # dependencies that implementation needs, and the README stops
+        # describing a generator. None of it can be produced again.
         served.write(tmp_path)
-        mine = (tmp_path / 'impl.py').read_text(encoding='utf-8') + '\nMINE = 1\n'
-        (tmp_path / 'impl.py').write_text(mine, encoding='utf-8')
+        mine = {}
+        for name in ('impl.py', 'pyproject.toml', 'README.md'):
+            mine[name] = (tmp_path / name).read_text(encoding='utf-8') + '\n# MINE\n'
+            (tmp_path / name).write_text(mine[name], encoding='utf-8')
 
         again = served.write(tmp_path)
-        assert (tmp_path / 'impl.py').read_text(encoding='utf-8') == mine
-        assert [path.name for path in again.kept] == ['impl.py']
-        assert (tmp_path / 'impl.py') not in again.paths
+        for name, text in mine.items():
+            assert (tmp_path / name).read_text(encoding='utf-8') == text, name
+            assert (tmp_path / name) not in again.paths
+        assert sorted(path.name for path in again.kept) == ['README.md', 'impl.py', 'pyproject.toml']
 
     def test_the_package_around_it_is_rewritten(self, served, tmp_path):
         # Keeping one file is not the same as keeping the directory. Everything

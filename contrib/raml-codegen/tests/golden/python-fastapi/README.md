@@ -28,13 +28,33 @@ uvicorn impl:app --reload
 `abc` refuses to construct a subclass with a method missing, so an operation the
 document describes and the implementation does not is an error at startup.
 
+## This directory is the service
+
+Nothing here needs copying anywhere. Commit it as it stands, and regenerate in
+place when the document changes:
+
+```
+bookstore-server/
+  bookstore_server/    generated — rewritten whole, every time. Do not edit.
+  impl.py          yours — the implementation
+  pyproject.toml   yours after the first run — add what the implementation needs
+  README.md        yours after the first run — this file
+```
+
+**Inside the package is generated; outside it is yours.** That is the whole
+rule. A second run rewrites `bookstore_server/` around the other three and
+says which ones it kept; `--force` overwrites them.
+
 ## When the document changes
 
-Regenerate. `bookstore_server/` is rewritten whole and **`impl.py` is left
-alone** — it is the one file here that is yours, and `--force` is what it takes
-to overwrite it.
+```bash
+fastraml tree api.raml > api.json
+raml-codegen python-fastapi api.json -o . --package bookstore-server
+```
 
-You do not have to work out what moved:
+**No new method appears in `impl.py`.** Nothing writes to that file again —
+adding the method is yours. What you do not have to do is go looking for which
+one:
 
 | the document | you find out from |
 |---|---|

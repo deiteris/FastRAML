@@ -265,6 +265,30 @@ A union is tagged with `Field(discriminator=...)` only where every member states
 a `discriminatorValue:`; pydantic tells the rest apart itself. Where a type
 states one, the property carrying it is a `Literal` of that value.
 
+### Answering with an error
+
+The request side is enforced before a handler runs. A response comes out of the
+handler, so nothing enforces it the same way; what the target gives instead is
+somewhere to raise *from*. Each operation carries the statuses it documents,
+under the names the RFC gives them and with the document's own descriptions:
+
+```python
+raise POST_BOOKS.fail(400)  # detail from the document
+raise POST_BOOKS.fail(400, 'isbn already here')  # your own
+raise POST_BOOKS.fail(418)  # LookupError, at the raise site
+```
+
+An undocumented status is a `LookupError` rather than an `HTTPException`: it is
+a mistake in the implementation, not an answer to a caller, and making it one
+would answer the request with a 500 and hide what was wrong. Plain
+`HTTPException` still works and is not checked against anything.
+
+**Response headers** the document declares reach `/openapi.json`, and the method
+is handed a `Response` to set them on — but only where the document says a
+response carries one. That is the same reading that drops a URI parameter the
+path never mentions: an argument that goes nowhere is worse than a missing one.
+Setting it is still yours; nothing checks that a required header was set.
+
 ### Security
 
 A secured operation depends on the schemes its `securedBy:` names, and the

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import abc
+from http import HTTPStatus
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -11,7 +12,20 @@ from .. import security
 from ..models.book import Book
 from ..models.review import Review
 from ..models.shelf_slot import ShelfSlot
-from ..runtime import Credential, requires
+from ..runtime import Credential, Responses, requires
+
+POST_SHELVES = Responses({
+    HTTPStatus.CREATED: 'Created',
+    HTTPStatus.UNPROCESSABLE_ENTITY: 'The payload matched neither member of the union.',
+    HTTPStatus.INTERNAL_SERVER_ERROR: 'Something went wrong on our side.',
+})
+"""What `POST /shelves` documents, and what the document calls each.
+
+    raise POST_SHELVES.fail(422)
+
+A status this does not name raises `LookupError` where you wrote it, rather
+than answering a caller with something the document never described.
+"""
 
 
 class ShelvesApi(abc.ABC):

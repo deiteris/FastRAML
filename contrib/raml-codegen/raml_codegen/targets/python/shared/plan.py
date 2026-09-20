@@ -128,6 +128,10 @@ class Case:
     status: str
     annotation: Annotation | None
     description: str
+    #: The headers the document says this response carries. Dropping them was a
+    #: consumer silently ignoring something the document states -- the fixture
+    #: declares a required `Location` on `POST /books` 201, and nothing read it.
+    headers: tuple[Argument, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -443,7 +447,14 @@ class _Builder:
             for node in response.get('bodies', {}).values():
                 annotation = self.annotator.of(node, f'{method}-{_slug(path)}-{status}-response')
                 break
-            out.append(Case(status=status, annotation=annotation, description=response.get('description', '')))
+            out.append(
+                Case(
+                    status=status,
+                    annotation=annotation,
+                    description=response.get('description', ''),
+                    headers=self._arguments(response.get('headers', {})),
+                )
+            )
         return tuple(out)
 
 

@@ -12,14 +12,61 @@ from __future__ import annotations
 import base64
 import binascii
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, Request, status
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
-__all__ = ['Credential', 'SchemeSpec', 'accepts', 'requires', 'unique_items']
+__all__ = ['Credential', 'Responses', 'SchemeSpec', 'accepts', 'requires', 'unique_items']
+
+
+class Responses:
+    """The statuses one operation documents, and what the document calls each.
+
+    The request side of the contract is enforced before a handler runs: a body
+    the document forbids is a 422 and nothing of yours is called. The response
+    side cannot work that way, because a response comes out of your own code.
+    This is the nearest thing -- somewhere to raise *from*, so that the status
+    and the words both come from the document rather than being retyped.
+
+        raise POST_SHELVES.fail(422)
+        raise POST_SHELVES.fail(422, 'shelf 7 is full')
+
+    A status the document does not name raises `LookupError` at the point you
+    wrote it. That is a mistake in this code rather than an answer to a caller,
+    so it is not an `HTTPException`: turning it into one would answer a request
+    with a 500 and hide what was actually wrong.
+
+    Nothing obliges you to use it. `HTTPException` still works, and a status
+    raised that way is not checked against anything.
+    """
+
+    __slots__ = ('documented',)
+
+    def __init__(self, documented: Mapping[HTTPStatus, str]) -> None:
+        self.documented = dict(documented)
+
+    def __contains__(self, status: int) -> bool:
+        return status in self.documented
+
+    def fail(self, status: int, detail: str | None = None, **extra: Any) -> HTTPException:
+        """The exception for one documented status. `raise` it.
+
+        Returns rather than raises, so that `raise ....fail(...)` reads as a
+        raise and a reader can see where control leaves.
+        """
+        described = self.documented.get(HTTPStatus(status))
+        if described is None:
+            raise LookupError(
+                f'{status} is not one of the statuses this operation documents '
+                f'({", ".join(str(int(one)) for one in sorted(self.documented))}). '
+                'Raise HTTPException directly if that is deliberate, or add it '
+                'to the RAML and regenerate.'
+            )
+        return HTTPException(status_code=int(status), detail=detail if detail is not None else described, **extra)
 
 
 @dataclass(frozen=True, slots=True)

@@ -198,6 +198,43 @@ class TestEndpointsBecomeMethods:
                 assert len(case.status) == 3
 
 
+class TestAResponseKeepsItsHeaders:
+    """The document states them, so something has to read them.
+
+    Nothing did: `_cases` read `bodies` and stopped, and the fixture's required
+    `Location` on `POST /books` 201 reached neither the route nor the schema.
+    A consumer ignoring what the document says is the same failure as one
+    inventing what it does not.
+    """
+
+    def test_a_documented_header_reaches_the_plan(self, package):
+        created = next(one for one in endpoint(package, 'post', '/books').cases if one.status == '201')
+        assert [one.wire for one in created.headers] == ['Location']
+        assert created.headers[0].required
+
+    def test_a_response_with_none_carries_none(self, package):
+        refused = next(one for one in endpoint(package, 'post', '/books').cases if one.status == '400')
+        assert refused.headers == ()
+
+    def test_the_success_response_is_published_only_when_it_has_headers(self, package):
+        # FastAPI documents the answered status from the return type already,
+        # so repeating it says nothing -- except for headers, which the return
+        # type cannot carry.
+        from raml_codegen.targets.python.fastapi.emit import _other_responses
+
+        with_headers = endpoint(package, 'post', '/books')
+        assert '201:' in _other_responses(with_headers)
+        without = endpoint(package, 'get', '/books')
+        assert '200:' not in _other_responses(without)
+
+    def test_a_header_is_typed_as_the_document_types_it(self, package):
+        from raml_codegen.targets.python.fastapi.emit import _other_responses
+
+        assert "'Location': {'required': True, 'schema': {'type': 'string'}}" in _other_responses(
+            endpoint(package, 'post', '/books')
+        )
+
+
 class TestParametersKeepWhatTheDocumentGaveThem:
     def test_a_parameter_with_a_default_is_never_none(self, package):
         # The document gives `offset` a default, so a handler always has a

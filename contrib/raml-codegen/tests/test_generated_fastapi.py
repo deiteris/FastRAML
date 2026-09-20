@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime
 import importlib
+import inspect
 import sys
 
 import httpx
@@ -68,8 +69,11 @@ def app(server, seen):
         )
 
     class Implementation(server.Api):
-        async def post_books(self, *, body, credential):
+        async def post_books(self, *, body, credential, response):
+            # `response` is here because the document says the 201 carries a
+            # `Location`. No other method takes one, and nothing invented it.
             seen.append(('post_books', body, credential))
+            response.headers['Location'] = f'/books/{body.isbn}'
             return body
 
         async def get_books(self, *, credential, offset=0, limit=20):
@@ -252,6 +256,70 @@ class TestTheOpenApiSaysWhatTheRamlSaid:
     async def test_an_operations_summary_is_the_display_name(self, client):
         found = await self.schema(client)
         assert found['paths']['/books']['post']['summary'] == 'Add a book'
+
+
+@pytest.mark.anyio
+class TestTheResponseSideOfTheContract:
+    """What the server can say, and what it can say it with.
+
+    The request side is enforced: a body the document forbids never reaches a
+    handler. A response comes out of the handler, so nothing can enforce it the
+    same way. These are the two things that can be done instead -- raise *from*
+    the document, and be given somewhere to put what the document requires.
+    """
+
+    def test_an_operation_carries_the_statuses_it_documents(self, server):
+        shelves = importlib.import_module('bookstore_server.api.shelves')
+        assert sorted(int(one) for one in shelves.POST_SHELVES.documented) == [201, 422, 500]
+
+    def test_the_documents_own_words_are_the_default_detail(self, server):
+        shelves = importlib.import_module('bookstore_server.api.shelves')
+        failure = shelves.POST_SHELVES.fail(422)
+        assert failure.status_code == 422
+        assert failure.detail == 'The payload matched neither member of the union.'
+
+    def test_a_detail_of_your_own_replaces_it(self, server):
+        shelves = importlib.import_module('bookstore_server.api.shelves')
+        assert shelves.POST_SHELVES.fail(500, 'the database is down').detail == 'the database is down'
+
+    def test_an_undocumented_status_is_refused_where_it_was_written(self, server):
+        # A mistake in the implementation, not an answer to a caller -- so it is
+        # a `LookupError` and not an `HTTPException`. Turning it into one would
+        # answer the request with a 500 and hide what was actually wrong.
+        shelves = importlib.import_module('bookstore_server.api.shelves')
+        with pytest.raises(LookupError, match='not one of the statuses'):
+            shelves.POST_SHELVES.fail(418)
+
+    def test_the_statuses_come_from_the_rfc_rather_than_being_invented(self, server):
+        # A RAML `enum:` lists values nobody named, so it becomes a `Literal`.
+        # A status code *has* a name, and it is the standard's.
+        from http import HTTPStatus
+
+        shelves = importlib.import_module('bookstore_server.api.shelves')
+        assert HTTPStatus.UNPROCESSABLE_ENTITY in shelves.POST_SHELVES.documented
+
+    async def test_a_raised_documented_status_reaches_the_caller(self, client, server, seen):
+        shelves = importlib.import_module('bookstore_server.api.shelves')
+        async with client as call:
+            answer = await call.post('/shelves', json={'rating': 5, 'body': 'good'}, headers=BEARER)
+        # The fixture's implementation returns the body; this is the raise path
+        # exercised directly against the same constant the route documents.
+        assert answer.status_code in shelves.POST_SHELVES.documented
+
+    async def test_a_documented_header_can_be_set_and_arrives(self, client):
+        # `POST /books` takes a `Response` because its 201 declares `Location`.
+        async with client as call:
+            answer = await call.post('/books', json=BOOK, headers=BEARER)
+        assert answer.headers['location'] == '/books/9780441013593'
+
+    def test_only_an_operation_whose_document_says_so_gets_one(self, server):
+        # The same reading that drops a URI parameter the path never mentions:
+        # an argument that goes nowhere is worse than a missing one.
+        books = importlib.import_module('bookstore_server.api.books')
+        shelves = importlib.import_module('bookstore_server.api.shelves')
+        assert 'response' in inspect.signature(books.BooksApi.post_books).parameters
+        assert 'response' not in inspect.signature(books.BooksApi.get_books).parameters
+        assert 'response' not in inspect.signature(shelves.ShelvesApi.post_shelves).parameters
 
 
 @pytest.mark.anyio

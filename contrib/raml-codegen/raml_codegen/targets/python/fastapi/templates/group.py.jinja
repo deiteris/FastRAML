@@ -25,6 +25,19 @@
 {%- endmacro %}
 {{ header }}
 {{ imports.block }}
+{% for route in routes %}
+
+{{ route.constant }} = Responses({
+{{ route.documented }}
+})
+"""What `{{ route.endpoint.method | upper }} {{ route.endpoint.path }}` documents, and what the document calls each.
+
+    raise {{ route.constant }}.fail({{ (route.endpoint.cases | rejectattr('status', 'equalto', route.endpoint.success.status if route.endpoint.success else '') | map(attribute='status') | first) or route.endpoint.cases[0].status }})
+
+A status this does not name raises `LookupError` where you wrote it, rather
+than answering a caller with something the document never described.
+"""
+{% endfor %}
 
 
 class {{ interface }}(abc.ABC):

@@ -3,13 +3,25 @@ from __future__ import annotations
 
 import abc
 import datetime
+from http import HTTPStatus
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 
 from .. import security
 from ..models.delivery import Delivery
-from ..runtime import Credential, requires
+from ..runtime import Credential, Responses, requires
+
+GET_DELIVERIES = Responses({
+    HTTPStatus.OK: 'OK',
+})
+"""What `GET /deliveries` documents, and what the document calls each.
+
+    raise GET_DELIVERIES.fail(200)
+
+A status this does not name raises `LookupError` where you wrote it, rather
+than answering a caller with something the document never described.
+"""
 
 
 class DeliveriesApi(abc.ABC):

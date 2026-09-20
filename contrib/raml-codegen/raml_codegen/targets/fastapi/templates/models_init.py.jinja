@@ -1,0 +1,28 @@
+{{ header }}
+"""Every type the document declares, and every one its operations reach.
+
+**The models are flat.** RAML inheritance has no pydantic subclass form -- `type:
+[A, B]` has no MRO and a narrowed property has no override -- so `Magazine` is
+not a subclass of `Publication`: it carries its supertype's properties and is a
+class of its own. Where the document states a `discriminatorValue:`, the module
+holds it as `DISCRIMINATOR`, and the property that carries it is a `Literal` of
+that value.
+
+Every facet the document states is enforced. A `minLength:`, a `pattern:` or a
+`maximum:` is a pydantic constraint, so a request that does not match is a 422
+before any handler runs. Two are not: `multipleOf:`, which pydantic compares in
+binary floating point, and the document's `default:` for a *property*, which is
+carried as the attribute's default only where the type states one.
+"""
+
+from __future__ import annotations
+
+{% for model in package.models | sort(attribute='module') %}
+from .{{ model.module }} import {{ model.name }}
+{% endfor %}
+
+__all__ = [
+{% for model in package.models | map(attribute='name') | sort %}
+    {{ model | repr }},
+{% endfor %}
+]

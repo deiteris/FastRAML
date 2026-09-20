@@ -60,7 +60,15 @@ def _python_target(tree: Tree, settings: Settings) -> Generated:
     return generate_python(tree, settings)
 
 
-TARGETS: dict[str, Target] = {'python': _python_target}
+def _fastapi_target(tree: Tree, settings: Settings) -> Generated:
+    from .fastapi import generate_fastapi  # noqa: PLC0415 - as above
+
+    return generate_fastapi(tree, settings)
+
+
+#: The two directions a document can be read in. `python` calls an API that
+#: exists; `fastapi` states the one to write.
+TARGETS: dict[str, Target] = {'fastapi': _fastapi_target, 'python': _python_target}
 
 
 def generate(document: object, target: str, settings: Settings | None = None) -> Generated:

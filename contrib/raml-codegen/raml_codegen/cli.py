@@ -42,6 +42,16 @@ def python_target(
     _run('python', source, output, package)
 
 
+@app.command('fastapi')
+def fastapi_target(
+    source: Annotated[pathlib.Path, SOURCE],
+    output: Annotated[pathlib.Path, OUTPUT],
+    package: Annotated[str | None, PACKAGE] = None,
+) -> None:
+    """Generate a FastAPI server interface to implement."""
+    _run('fastapi', source, output, package)
+
+
 def _run(target: str, source: pathlib.Path, output: pathlib.Path, package: str | None) -> None:
     try:
         generated = generate(_read(source), target, Settings(package=package))

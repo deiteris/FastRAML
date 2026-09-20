@@ -64,6 +64,19 @@ class Annotation:
     models: frozenset[str] = frozenset()
     #: Names it needs from the generated package's own runtime module.
     runtime: frozenset[str] = frozenset()
+    #: The spelling with nothing wrapped round it, where a target wraps one in a
+    #: constraint. Empty when there is no difference, which is every annotation
+    #: a target that only documents its facets produces.
+    bare: str = ''
+
+    @property
+    def plain(self) -> str:
+        r"""The type as a reader would write it, for a docstring or an `Args:`.
+
+        `Annotated[str, Field(pattern=r'^\d{13}$')]` is what the route needs
+        and `str` is what the line documenting it should say.
+        """
+        return self.bare or self.spelling
 
     @property
     def transparent(self) -> bool:
@@ -106,8 +119,13 @@ class Annotator:
 
     # -- the spellings, which are each target's own ----------------------------
 
-    def scalar(self, kind: str) -> Annotation:
-        """Spell one of the scalar kinds, or `any` for one this does not know."""
+    def scalar(self, kind: str, shape: Shape | None = None) -> Annotation:
+        """Spell one of the scalar kinds, or `any` for one this does not know.
+
+        `shape` is absent only where there is no shape to read: a node that was
+        `None`, or a link to an address the tree does not hold. A target that
+        turns a facet into a constraint reads it from here.
+        """
         raise NotImplementedError
 
     def enum(self, shape: Shape) -> Annotation:
@@ -122,8 +140,8 @@ class Annotator:
         """Spell a reference to a generated model class, by the name it claimed."""
         raise NotImplementedError
 
-    def array(self, item: Annotation) -> Annotation:
-        """Spell a list of `item`."""
+    def array(self, shape: Shape, item: Annotation) -> Annotation:
+        """Spell a list of `item`. `shape` carries `minItems` and its siblings."""
         raise NotImplementedError
 
     def union(self, shape: Shape) -> Annotation:
@@ -178,10 +196,10 @@ class Annotator:
         if kind == 'object':
             return self._object(content, address or content.get('id'), prefer)
         if kind == 'array':
-            return self.array(self.of(items_of(content), _item_name(content, prefer)))
+            return self.array(content, self.of(items_of(content), _item_name(content, prefer)))
         if kind == 'union':
             return self.union(content)
-        return self.scalar(kind)
+        return self.scalar(kind, content)
 
     def _object(self, shape: Shape, address: str | None, prefer: str | None = None) -> Annotation:
         inherited = self._is_its_supertype(shape)

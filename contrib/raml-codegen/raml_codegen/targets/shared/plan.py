@@ -61,6 +61,14 @@ class Field:
     annotation: Annotation
     required: bool
     docs: str
+    #: What the author wrote, without the recap of facets `docs` adds. For a
+    #: target that puts the facets in the schema and the prose in the schema's
+    #: `description`, which is not the same place.
+    description: str = ''
+    #: The document's `default:`, as the source literal that states it, or
+    #: `None` where it states none. A literal rather than the value, so that
+    #: `default: null` and "no default" stay different things.
+    default: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +109,10 @@ class Argument:
     annotation: Annotation
     required: bool
     docs: str
+    #: As `Field.description`.
+    description: str = ''
+    #: As `Field.default`.
+    default: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +173,10 @@ class Endpoint:
     optional_auth: bool
     #: The named schemes this operation accepts, in declaration order.
     scheme_names: tuple[str, ...]
+    #: Every scope the operation narrowed its schemes to, in declaration order.
+    #: RAML attaches scopes per scheme; a caller has to hold all of them either
+    #: way, so they are one list here.
+    scopes: tuple[str, ...] = ()
 
     @property
     def arguments(self) -> tuple[Argument, ...]:
@@ -311,6 +327,8 @@ class _Builder:
                 annotation=self.annotator.of(prop['type']),
                 required=prop['required'],
                 docs=_docs(self.tree, prop['type']),
+                description=_described(self.tree, prop['type']),
+                default=_default(self.tree, prop['type']),
             )
             (required if one.required else optional).append(one)
         return Model(
@@ -364,6 +382,7 @@ class _Builder:
             requires_auth=bool(secured) and not any(one['is_null'] for one in secured),
             optional_auth=any(one['is_null'] for one in secured) and len(secured) > 1,
             scheme_names=tuple(one['name'] for one in secured if not one['is_null']),
+            scopes=tuple(dict.fromkeys(scope for one in secured for scope in (one['scopes'] or ()))),
         )
 
     def _query(self, operation: Operation) -> tuple[Argument, ...]:
@@ -386,6 +405,8 @@ class _Builder:
                 annotation=self.annotator.of(prop['type']),
                 required=prop['required'],
                 docs=_docs(self.tree, prop['type']),
+                description=_described(self.tree, prop['type']),
+                default=_default(self.tree, prop['type']),
             )
             for wire, prop in properties_of(content).items()
         )
@@ -399,6 +420,8 @@ class _Builder:
                 annotation=self.annotator.of(parameter['type']),
                 required=parameter['required'],
                 docs=_docs(self.tree, parameter['type']),
+                description=_described(self.tree, parameter['type']),
+                default=_default(self.tree, parameter['type']),
             )
             for wire, parameter in parameters.items()
         )
@@ -463,6 +486,33 @@ def _discriminator(shape: Shape) -> tuple[str, object] | None:
     return (marker, value) if marker and value is not None else None
 
 
+def _described(tree: Tree, node: ShapeNode | None) -> str:
+    """What the author wrote about a type, as one line."""
+    content = _content(tree, node)
+    return ' '.join((content.get('description', '') if content else '').split())
+
+
+def _default(tree: Tree, node: ShapeNode | None) -> str | None:
+    """The document's `default:` for a type, as the literal that states it.
+
+    A target that applies it needs the value; one that only documents it reads
+    `_docs`, which already says so in words.
+    """
+    content = _content(tree, node)
+    if content is None:
+        return None
+    value = content.get('default')
+    return None if value is None else repr(value)
+
+
+def _content(tree: Tree, node: ShapeNode | None) -> Shape | None:
+    """The shape a node names, read as what it is rather than how it arrived."""
+    if node is None or is_recursion(node):
+        return None
+    shape = tree.at(node['$ref']) if is_ref(node) else cast('Shape', node)
+    return None if shape is None else tree.content_of(shape)
+
+
 def _description(shape: Shape) -> str:
     return shape.get('description', '') or shape.get('display_name', '') or ''
 
@@ -473,12 +523,9 @@ def _docs(tree: Tree, node: ShapeNode | None) -> str:
     A target that enforces a constraint still wants it written down, because the
     generated docstring is what a reader has in front of them.
     """
-    if node is None or is_recursion(node):
+    content = _content(tree, node)
+    if content is None:
         return ''
-    shape = tree.at(node['$ref']) if is_ref(node) else cast('Shape', node)
-    if shape is None:
-        return ''
-    content = tree.content_of(shape)
     parts = []
     described = content.get('description', '')
     if described:

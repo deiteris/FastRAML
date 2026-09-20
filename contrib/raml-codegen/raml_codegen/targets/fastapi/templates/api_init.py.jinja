@@ -1,0 +1,40 @@
+{{ header }}
+"""Every operation this API documents, as one interface.
+
+    from {{ package.module }} import Api, create_app
+
+    class Implementation(Api):
+        ...
+
+    app = create_app(Implementation())
+
+`Api` inherits one abstract class per path group. `abc` refuses to construct a
+subclass that has left a method out, so an operation the document describes and
+the implementation does not is an error at startup rather than a 500 later.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+from . import {{ groups | map(attribute=0) | sort | join(', ') }}
+
+__all__ = ['Api', 'create_router']
+
+
+class Api({% for module, interface in groups %}{{ module }}.{{ interface }}{{ ', ' if not loop.last else '' }}{% endfor %}):
+    """The whole document, as the methods to implement.
+
+    One class per path group, joined here so that one object answers all of
+    them. Implement each group separately by subclassing its own class under
+    `api/` instead.
+    """
+
+
+def create_router(implementation: Api) -> APIRouter:
+    """One router over every group, in the order the document declares them."""
+    api = APIRouter()
+{% for module, interface in groups %}
+    api.include_router({{ module }}.router(implementation))
+{% endfor %}
+    return api

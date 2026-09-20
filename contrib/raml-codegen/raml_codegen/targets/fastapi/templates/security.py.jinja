@@ -1,0 +1,47 @@
+{{ header }}
+"""The `securitySchemes:` this API declares, as credential mechanics.
+
+Each `SchemeSpec` says which header carries the credential and what precedes it,
+so a scheme that names its own header through `describedBy:` is read where the
+caller is writing. Each route under `api/` depends on the ones its operation
+accepts, and hands the implementation a `Credential`.
+
+Verifying one is yours: the document says an operation is secured and which
+scopes it narrows to, not what a valid token looks like.
+"""
+
+from __future__ import annotations
+
+from .runtime import SchemeSpec
+{% for scheme in package.schemes %}
+
+{{ scheme.constant }} = SchemeSpec(
+    name={{ scheme.name | repr }},
+    type={{ scheme.type | repr }},
+    header_name={{ scheme.header_name | repr }},
+    prefix={{ scheme.prefix | repr }},
+{% if scheme.scopes %}
+    scopes=(
+{% for scope in scheme.scopes %}
+        {{ scope | repr }},
+{% endfor %}
+    ),
+{% endif %}
+)
+{% if scheme.description %}
+"""{{ scheme.description | one_line }}"""
+{% endif %}
+{% endfor %}
+
+SCHEMES: dict[str, SchemeSpec] = {
+{% for scheme in package.schemes %}
+    {{ scheme.name | repr }}: {{ scheme.constant }},
+{% endfor %}
+}
+"""Every scheme, by the name the document gave it."""
+
+__all__ = [
+{% for name in (package.schemes | map(attribute='constant') | list + ['SCHEMES']) | sort %}
+    {{ name | repr }},
+{% endfor %}
+]

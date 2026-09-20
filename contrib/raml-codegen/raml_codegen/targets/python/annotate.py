@@ -68,7 +68,10 @@ class PythonAnnotator(Annotator):
 
     __slots__ = ()
 
-    def scalar(self, kind: str) -> Annotation:
+    def scalar(self, kind: str, shape: Shape | None = None) -> Annotation:
+        # A bound, a pattern or a `multipleOf` is documentation here, so nothing
+        # this target writes reads the shape.
+        del shape
         return _SCALARS.get(kind, _ANY)
 
     def mapping(self) -> Annotation:
@@ -92,7 +95,8 @@ class PythonAnnotator(Annotator):
             models=frozenset({name}),
         )
 
-    def array(self, item: Annotation) -> Annotation:
+    def array(self, shape: Shape, item: Annotation) -> Annotation:
+        del shape
         # `fill`, not `format`: a discriminated decode names its subject more
         # than once, and `str.format` counts those as separate placeholders.
         encode = IDENTITY if item.transparent else f'[{fill(item.encode, "_item")} for _item in {{}}]'

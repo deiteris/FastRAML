@@ -1,0 +1,35 @@
+"""A starting point for implementing {{ package.title }}.
+
+**This file is yours.** It has no generated header because nothing regenerates
+it: `raml-codegen` rewrites `{{ package.module }}/` and leaves this alone. Copy
+it into your own project, fill in the methods, and delete this paragraph.
+
+    uvicorn impl:app --reload
+
+Every method raises `NotImplementedError` until you replace it. `abc` will not
+let `Implementation()` be constructed while one is missing, so the document and
+the implementation cannot drift apart without the server refusing to start.
+"""
+
+{{ imports.block }}
+
+
+class Implementation(Api):
+    """{{ package.title }}."""
+
+{% for route in routes %}
+    async def {{ route.name }}(
+        self,
+{% if route.signature %}
+        *,
+{% endif %}
+{% for one in route.signature %}
+        {{ one.source }},
+{% endfor %}
+    ) -> {{ route.returns }}:
+        """{{ route.endpoint.summary | one_line }}"""
+        raise NotImplementedError
+
+{% endfor %}
+
+app = create_app(Implementation())

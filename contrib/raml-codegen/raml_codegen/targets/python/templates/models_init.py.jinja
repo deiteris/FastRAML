@@ -1,0 +1,36 @@
+{{ header }}
+"""Every type the document declares, and the anonymous ones they contain.
+
+Each is a flat dataclass with `to_dict` and `from_dict`. **RAML inheritance is
+not Python inheritance**: the effective tree merged the hierarchy before this
+package saw it, and `type: [A, B]` has no MRO while a subtype that narrows a
+property's type has no legal override. So a subtype carries its supertype's
+properties and is a class of its own. Where the document states a
+`discriminatorValue:`, the module holds it as `DISCRIMINATOR` -- the part of a
+hierarchy a caller switches on in place of `isinstance`.
+
+**`from_dict` is lenient, and that is the whole of what it means:**
+
+* a property the document does not describe is ignored, so a server that grows
+  a field does not break a client generated before it;
+* a property the document *requires* and the payload does not carry leaves the
+  attribute `UNSET` -- which is falsy -- and reaches `Response.mismatches`,
+  rather than taking the whole response with it;
+* `Client(strict=True)` turns the second one back into `errors.UnexpectedPayload`.
+
+A value's *type* is not checked. Enforcing one here would restate a rule of the
+RAML language on this side of the boundary, and the client could not say whether
+the server or the document is the one that is wrong.
+"""
+
+from __future__ import annotations
+
+{% for model in package.models | sort(attribute='module') %}
+from .{{ model.module }} import {{ model.name }}
+{% endfor %}
+
+__all__ = [
+{% for model in package.models | sort(attribute='name') %}
+    {{ model.name | repr }},
+{% endfor %}
+]

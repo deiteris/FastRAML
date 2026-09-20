@@ -1,0 +1,24 @@
+{{ header }}
+"""{{ package.title }}{{ (' ' + package.version) if package.version else '' }}.
+
+{{ package.description | summary or 'A client generated from a RAML 1.0 definition.' }}
+{% if package.description | details(0) %}
+
+{{ package.description | details(0) }}
+{% endif %}
+"""
+
+from __future__ import annotations
+
+from .client import AuthenticatedClient, Client
+
+__all__ = ['AuthenticatedClient', 'Client']
+
+{% if package.base_uri %}
+BASE_URL = {{ package.base_uri | repr }}
+"""The `baseUri:` the document declares.
+
+A templated base URI still carries its `{...}` tokens. Supply what they stand
+for yourself; the document does not say.
+"""
+{% endif %}

@@ -198,6 +198,79 @@ would have invented a rule, and what is done instead:
   lowest documented `2xx` — not a reading of RAML. Named as a convention in the
   README, with every code reachable through the detailed variants.
 
+### 5.3 What generating found that rendering had not
+
+Three, and all three are places where reading the tree *literally* produces a
+wrong answer rather than a missing one — which is why only a generator finds
+them.
+
+**An inlined supertype reads as a new type.** The effective view inlines a
+supertype wherever it is not referenced by name (docs/16 § 11.3), so
+`body: Book` arrives as an anonymous object carrying every one of Book's
+properties and inheriting `{"$ref": Book}`. Generated literally, that is
+`PostBooksBody` — a duplicate of `Book` under a name the author never wrote, in
+every operation that mentions the type. A shape that inherits exactly one
+declaration and names exactly its properties is that declaration; narrowing a
+facet does not break it, because a tighter `maxLength` is still a `str`.
+
+**A body is named after its media type.** `name` on a body shape is
+`application/json`, which says how the value was sent and nothing about what it
+is. The viewer displays that string and it reads fine; a generator turns it into
+`ApplicationJson3`.
+
+**A union is the one thing that does not know its own type.** Every other field
+carries its conversion; a union carries one per member and no way to pick until
+it has a value. The viewer never has to pick. `raml-codegen` picks by what the
+document says — a `discriminator:` and its `discriminatorValue:` first, then a
+required property no sibling requires, then list-or-object — and where the
+document distinguishes nothing, hands the value back as it arrived.
+
+That last case is where the first draft went wrong, and it is worth recording.
+It widened the *annotation* to `Any`, on the argument that `Book | Review` over
+an undecoded `dict` is a wrong answer rather than a missing one. But the
+annotation is not a promise about what this generator can reconstruct; it is
+what the author wrote, and `Book | Review | …` is true of the value either way.
+Narrowing it described a limitation of the generator by discarding a statement
+of the document.
+
+None of the three is a gap in a pass. All three are the difference between a
+projection that can be *displayed* and one that can be *compiled*.
+
+### 5.4 A generated client meets a server, not a document
+
+The other question only a generator raises: what happens when the API stops
+matching the document it was generated from. Nothing in the parser, the views or
+any other consumer has to answer it, because nothing else is still running
+months after the document was read.
+
+**A payload never takes the caller down.** The first draft raised on a missing
+required property, on the argument that the value a client would have to invent
+is the one thing it does not have. That argument is sound about the *property*
+and wrong about the *call*: it fails the whole body rather than the one thing
+that changed, discarding every property that did arrive — usually all of them,
+and usually all the caller wanted. A client that does that stops working the
+first time the API moves, which is the thing a generated client exists to
+survive.
+
+So the discrepancy is reported rather than raised. The attribute holds `UNSET`,
+which is falsy; `Response.mismatches` says what did not match and
+`Response.content` still holds the bytes; `Client(strict=True)` restores the
+exception for a caller that would rather stop. The same backstop covers a value
+that cannot be read and a body of the wrong shape entirely — those cost the
+parsed body and not the call.
+
+This is the mirror of § 2.1 and worth naming as such. A consumer may not hold a
+rule the language states, and it may not invent one; but what to do when the
+*server* disagrees with the document is neither. RAML says nothing about it,
+because RAML describes documents and this is about a socket.
+
+The direction still lines up with `compat` (docs/16 § 10): a property added is
+ignored and a property removed is reported, so a change `fastraml compat` calls
+compatible is one a generated client does not even notice. The two reached that
+from opposite ends — `compat` from reading two documents, the client from
+reading a payload — which is some evidence that the direction in § 10.2 is a
+property of the format rather than of the comparison.
+
 ## 6. The gate
 
 Each consumer carries its own, and CI runs all of them.

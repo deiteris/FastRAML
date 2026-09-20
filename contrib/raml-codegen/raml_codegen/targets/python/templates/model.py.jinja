@@ -1,0 +1,84 @@
+{{ header }}
+{{ imports.block }}
+
+{% if model.is_alias %}
+{{ model.name }} = {{ model.alias.spelling }}
+{% if model.description | details(0) %}
+"""{{ model.description | summary or model.name }}
+
+{{ model.description | details(0) }}
+"""
+{% else %}
+"""{{ model.description | summary or model.name }}"""
+{% endif %}
+{% else %}
+{% if model.discriminator %}
+DISCRIMINATOR = ({{ model.discriminator[0] | repr }}, {{ model.discriminator[1] | repr }})
+"""The property this type is told apart by, and the value that means this type.
+
+Models are flat, so switch on this where you would otherwise use `isinstance`.
+"""
+
+{% endif %}
+
+@dataclass(slots=True)
+class {{ model.name }}:
+    r"""{{ model.description | summary or model.name }}
+{% if model.description | details %}
+
+{{ model.description | details }}
+{% endif %}
+{% if model.fields %}
+
+    Attributes:
+{% for one in model.fields %}
+{{ one | attribute }}
+{% endfor %}
+{% endif %}
+    """
+
+{% for one in model.fields if one.required %}
+    {{ one.name }}: {{ one.annotation.spelling }}
+{% endfor %}
+{% for one in model.fields if not one.required %}
+    {{ one.name }}: {{ one.annotation.spelling }} | Unset = UNSET
+{% endfor %}
+
+    def to_dict(self) -> dict[str, Any]:
+        """This value, as the JSON the document describes."""
+        out: dict[str, Any] = {}
+{% for one in model.fields if one.required %}
+        out[{{ one.wire | repr }}] = {{ one.annotation.encode | format_with('self.' + one.name) }}
+{% endfor %}
+{% for one in model.fields if not one.required %}
+        if not isinstance(self.{{ one.name }}, Unset):
+            out[{{ one.wire | repr }}] = {{ one.annotation.encode | format_with('self.' + one.name) }}
+{% endfor %}
+        return out
+
+    @classmethod
+    def from_dict(cls, source: Mapping[str, Any]) -> {{ model.name }}:
+        """Read one of these out of a decoded JSON body. Lenient; see `models`."""
+{% if not model.fields %}
+        del source
+        return cls()
+{% else %}
+        values = source if isinstance(source, Mapping) else {}
+{% for one in model.fields %}
+        {{ one.name }} = values.get({{ one.wire | repr }}, UNSET)
+{% endfor %}
+        return cls(
+{% for one in model.fields %}
+{% if one.annotation.transparent %}
+            {{ one.name }}={{ one.name }} if not isinstance({{ one.name }}, Unset) else {{ 'absent(' + (model.name | repr) + ', ' + (one.wire | repr) + ')' if one.required else 'UNSET' }},
+{% else %}
+            {{ one.name }}=(
+                {{ one.annotation.decode | format_with(one.name) }}
+                if not isinstance({{ one.name }}, Unset)
+                else {{ 'absent(' + (model.name | repr) + ', ' + (one.wire | repr) + ')' if one.required else 'UNSET' }}
+            ),
+{% endif %}
+{% endfor %}
+        )
+{% endif %}
+{% endif %}

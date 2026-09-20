@@ -1,0 +1,223 @@
+{% set returned = endpoint.success.annotation.spelling if endpoint.success and endpoint.success.annotation else 'None' %}
+{% set optional = returned if returned == 'None' else returned + ' | None' %}
+{% set extra = endpoint.query_arguments + endpoint.header_arguments %}
+{% set has_arguments = endpoint.uri_arguments or extra or endpoint.body %}
+{% set parsed_status = endpoint.success.status if endpoint.success and endpoint.success.annotation else '' %}
+{% set other_statuses = endpoint.cases | map(attribute='status') | reject('equalto', parsed_status) | list %}
+{% macro parameters(with_client) -%}
+{% if with_client or has_arguments %}
+    *,
+{% endif %}
+{% if with_client %}
+    client: {{ client_type }},
+{% endif %}
+{% for one in endpoint.uri_arguments %}
+    {{ one.name }}: {{ one.annotation.spelling }},
+{% endfor %}
+{% if endpoint.body %}
+    body: {{ endpoint.body.annotation.spelling }},
+{% endif %}
+{% for one in extra if one.required %}
+    {{ one.name }}: {{ one.annotation.spelling }},
+{% endfor %}
+{% for one in extra if not one.required %}
+    {{ one.name }}: {{ one.annotation.spelling }} | Unset = UNSET,
+{% endfor %}
+{%- endmacro %}
+{% macro forward(with_client) -%}
+{% if with_client %}
+        client=client,
+{% endif %}
+{% for one in endpoint.uri_arguments %}
+        {{ one.name }}={{ one.name }},
+{% endfor %}
+{% if endpoint.body %}
+        body=body,
+{% endif %}
+{% for one in extra %}
+        {{ one.name }}={{ one.name }},
+{% endfor %}
+{%- endmacro %}
+{% macro docs(result) %}
+    r"""{{ endpoint.summary | one_line }}
+{% if endpoint.description %}
+
+{{ endpoint.description | details(4) or ('    ' + (endpoint.description | summary)) }}
+{% endif %}
+{% if endpoint.uri_arguments or extra or endpoint.body %}
+
+    Args:
+{% for one in endpoint.uri_arguments %}
+{{ one | attribute }}
+{% endfor %}
+{% if endpoint.body %}
+        body ({{ endpoint.body.annotation.spelling }}): sent as {{ endpoint.body.media_type }}.
+{% endif %}
+{% for one in extra %}
+{{ one | attribute }}
+{% endfor %}
+{% endif %}
+{% if endpoint.cases %}
+
+    Responses:
+{% for case in endpoint.cases %}
+        {{ case.status }}{{ (': ' + (case.description | one_line)) if case.description else '' }}
+{% endfor %}
+{% endif %}
+
+    Raises:
+        errors.UnexpectedStatus: the server answered with an undocumented status
+            and the client was built with raise_on_unexpected_status.
+        httpx.TimeoutException: the request took longer than client.timeout.
+
+    Returns:
+        {{ result }}
+    """
+{% endmacro %}
+{{ header }}
+{{ imports.block }}
+
+PATH = {{ endpoint.path | repr }}
+"""The path this module calls, before its `{...}` tokens are filled in."""
+
+METHOD = {{ endpoint.method | repr }}
+"""The HTTP method this module uses."""
+{% if endpoint.scheme_names %}
+
+SCHEMES = ({{ endpoint.scheme_names | map('repr') | join(', ') }}{{ ',' if endpoint.scheme_names | length == 1 else '' }})
+"""The `securedBy:` schemes this operation accepts.
+
+`security.py` holds the mechanics of each: which header carries the credential,
+and what precedes it.
+"""
+{% endif %}
+
+
+def _kwargs(
+{{ parameters(False) }}) -> dict[str, Any]:
+    path = PATH
+{% for one in endpoint.uri_arguments %}
+    path = path.replace({{ ('{' + one.wire + '}') | repr }}, str({{ one.name }}))
+{% endfor %}
+
+    params: dict[str, Any] = {}
+{% for one in endpoint.query_arguments %}
+{% if one.required %}
+    params[{{ one.wire | repr }}] = {{ one.annotation.encode | format_with(one.name) }}
+{% else %}
+    if not isinstance({{ one.name }}, Unset):
+        params[{{ one.wire | repr }}] = {{ one.annotation.encode | format_with(one.name) }}
+{% endif %}
+{% endfor %}
+
+    headers: dict[str, str] = {}
+{% for one in endpoint.header_arguments %}
+{% if one.required %}
+    headers[{{ one.wire | repr }}] = str({{ one.name }})
+{% else %}
+    if not isinstance({{ one.name }}, Unset):
+        headers[{{ one.wire | repr }}] = str({{ one.name }})
+{% endif %}
+{% endfor %}
+{% if endpoint.body %}
+    headers['Content-Type'] = {{ endpoint.body.media_type | repr }}
+{% endif %}
+
+    out: dict[str, Any] = {'method': METHOD, 'url': path}
+    if params:
+        out['params'] = params
+    if headers:
+        out['headers'] = headers
+{% if endpoint.body %}
+    out['json'] = {{ endpoint.body.annotation.encode | format_with('body') }}
+{% endif %}
+    return out
+
+
+def _parse(*, client: {{ client_type }}, response: httpx.Response) -> {{ optional }}:
+{% if returned == 'None' %}
+    # Nothing documented here carries a body, so there is nothing to parse and
+    # the only question left is whether the status was described at all.
+{% if other_statuses %}
+    if response.status_code not in {{ '{' }}{{ other_statuses | join(', ') }}{{ '}' }} and client.raise_on_unexpected_status:
+        raise errors.UnexpectedStatus(response.status_code, response.content)
+{% else %}
+    if client.raise_on_unexpected_status:
+        raise errors.UnexpectedStatus(response.status_code, response.content)
+{% endif %}
+{% else %}
+    if response.status_code == {{ parsed_status }}:
+        payload = response.json()
+        return {{ endpoint.success.annotation.decode | format_with('payload') }}
+{% if other_statuses %}
+    if response.status_code in {{ '{' }}{{ other_statuses | join(', ') }}{{ '}' }}:
+        # Documented, and either carries no body or is not the one `sync`
+        # answers with. The raw response is on the detailed variants.
+        return None
+{% endif %}
+    if client.raise_on_unexpected_status:
+        raise errors.UnexpectedStatus(response.status_code, response.content)
+    return None
+{% endif %}
+
+
+def _build(*, client: {{ client_type }}, response: httpx.Response) -> Response[{{ returned }}]:
+    """The response, and whatever could be made of its body.
+
+    Nothing a *payload* does gets out of here. A body that is not what the
+    document describes -- a missing property, an unreadable date, HTML where
+    JSON was promised -- lands in `mismatches`, and `content` still holds the
+    bytes. Only `errors.UnexpectedStatus`, which the caller asked for, and a
+    transport error, which is not about the payload, travel further.
+    """
+    parsed: {{ optional }} = None
+    with reading(strict=client.strict) as mismatches:
+        try:
+{% if returned == 'None' %}
+            _parse(client=client, response=response)
+{% else %}
+            parsed = _parse(client=client, response=response)
+{% endif %}
+        except errors.ClientError:
+            raise
+        except Exception as unreadable:  # noqa: BLE001 - a payload may be anything at all
+            mismatches.append(Mismatch({{ returned | repr }}, '', f'{type(unreadable).__name__}: {unreadable}'))
+    return Response(
+        status_code=HTTPStatus(response.status_code),
+        content=response.content,
+        headers=response.headers,
+        parsed=parsed,
+        mismatches=tuple(mismatches),
+    )
+
+
+def sync_detailed(
+{{ parameters(True) }}) -> Response[{{ returned }}]:
+{{ docs('Response[' + returned + '] -- the status, the raw content and the parsed body.') }}
+    response = client.get_httpx_client().request(**_kwargs(
+{{ forward(False) }}    ))
+    return _build(client=client, response=response)
+
+
+def sync(
+{{ parameters(True) }}) -> {{ optional }}:
+{{ docs(returned + ' -- the parsed body of the ' + (endpoint.success.status if endpoint.success else 'documented') + ' response, or None.') }}
+    return sync_detailed(
+{{ forward(True) }}    ).parsed
+
+
+async def asyncio_detailed(
+{{ parameters(True) }}) -> Response[{{ returned }}]:
+{{ docs('Response[' + returned + '] -- the status, the raw content and the parsed body.') }}
+    response = await client.get_async_httpx_client().request(**_kwargs(
+{{ forward(False) }}    ))
+    return _build(client=client, response=response)
+
+
+async def asyncio(
+{{ parameters(True) }}) -> {{ optional }}:
+{{ docs(returned + ' -- the parsed body of the ' + (endpoint.success.status if endpoint.success else 'documented') + ' response, or None.') }}
+    return (
+        await asyncio_detailed(
+{{ forward(True) }}        )
+    ).parsed

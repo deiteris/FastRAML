@@ -1,0 +1,7 @@
+{{ header }}
+"""{{ group }} — {{ endpoints | length }} operation{{ '' if endpoints | length == 1 else 's' }}.
+
+{% for endpoint in endpoints %}
+* `{{ endpoint.module }}` — `{{ endpoint.method | upper }} {{ endpoint.path }}`
+{% endfor %}
+"""

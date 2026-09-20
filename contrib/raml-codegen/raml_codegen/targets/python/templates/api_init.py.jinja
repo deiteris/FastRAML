@@ -1,0 +1,11 @@
+{{ header }}
+"""The operations the document describes, grouped by the first path segment.
+
+Each module holds four entry points. `sync_detailed` and `asyncio_detailed`
+return a `Response[T]` carrying the status, the raw content and the parsed body;
+`sync` and `asyncio` return the parsed body alone.
+
+{% for group in package.groups %}
+* `{{ group }}` — {{ package.in_group(group) | map(attribute='path') | unique | join(', ') }}
+{% endfor %}
+"""

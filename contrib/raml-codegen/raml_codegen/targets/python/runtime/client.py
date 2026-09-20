@@ -1,0 +1,163 @@
+"""The HTTP clients a generated package exposes.
+
+Copied verbatim into the generated package; nothing here is templated. `httpx`
+is the only dependency a generated client has.
+"""
+
+from __future__ import annotations
+
+import base64
+import ssl
+from dataclasses import dataclass, field, replace
+from types import TracebackType
+from typing import Any, Self
+
+import httpx
+
+__all__ = ['AuthenticatedClient', 'Client', 'SchemeSpec', 'basic_token']
+
+
+@dataclass(slots=True)
+class Client:
+    """Everything a request needs, and the `httpx` clients built from it.
+
+    One instance carries both a sync and an async client, each built on first
+    use. Sharing one instance across both is deliberate: the configuration is
+    the same and building the unused half costs a socket nobody opens.
+    """
+
+    base_url: str
+    cookies: dict[str, str] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
+    timeout: httpx.Timeout | None = None
+    verify_ssl: str | bool | ssl.SSLContext = True
+    follow_redirects: bool = False
+    httpx_args: dict[str, Any] = field(default_factory=dict)
+    #: Raise `errors.UnexpectedStatus` when the server answers with a status the
+    #: document does not describe, instead of returning `None`.
+    raise_on_unexpected_status: bool = False
+    #: Raise `errors.UnexpectedPayload` when a response leaves out a property the
+    #: document requires, instead of recording it on `Response.mismatches` and
+    #: carrying on. Off by default: a client that fails hard on a response
+    #: mismatch is a client that stops working the first time the API moves, and
+    #: it fails on the whole payload rather than the one property that changed.
+    strict: bool = False
+
+    _client: httpx.Client | None = field(default=None, init=False, repr=False)
+    _async_client: httpx.AsyncClient | None = field(default=None, init=False, repr=False)
+
+    def with_headers(self, headers: dict[str, str]) -> Self:
+        """A client like this one, with more headers."""
+        return replace(self, headers={**self.headers, **headers})
+
+    def with_cookies(self, cookies: dict[str, str]) -> Self:
+        return replace(self, cookies={**self.cookies, **cookies})
+
+    def _arguments(self) -> dict[str, Any]:
+        return {
+            'base_url': self.base_url,
+            'cookies': self.cookies,
+            'headers': self._request_headers(),
+            'timeout': self.timeout,
+            'verify': self.verify_ssl,
+            'follow_redirects': self.follow_redirects,
+            **self.httpx_args,
+        }
+
+    def _request_headers(self) -> dict[str, str]:
+        return dict(self.headers)
+
+    def get_httpx_client(self) -> httpx.Client:
+        if self._client is None:
+            self._client = httpx.Client(**self._arguments())
+        return self._client
+
+    def get_async_httpx_client(self) -> httpx.AsyncClient:
+        if self._async_client is None:
+            self._async_client = httpx.AsyncClient(**self._arguments())
+        return self._async_client
+
+    def set_httpx_client(self, client: httpx.Client) -> None:
+        """Use a client built elsewhere -- a transport under test, for instance."""
+        self._client = client
+
+    def set_async_httpx_client(self, client: httpx.AsyncClient) -> None:
+        self._async_client = client
+
+    def __enter__(self) -> Self:
+        self.get_httpx_client().__enter__()
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.get_httpx_client().__exit__(exception_type, exception, traceback)
+
+    async def __aenter__(self) -> Self:
+        await self.get_async_httpx_client().__aenter__()
+        return self
+
+    async def __aexit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        await self.get_async_httpx_client().__aexit__(exception_type, exception, traceback)
+
+
+@dataclass(slots=True)
+class AuthenticatedClient(Client):
+    """A client that sends credentials.
+
+    `prefix` is what goes before the token -- `Bearer` for OAuth 2.0 and for a
+    pass-through bearer scheme, empty for a scheme whose header is the token
+    itself. `header_name` is which header carries it, because a RAML
+    `Pass Through` or `x-` scheme names its own.
+    """
+
+    token: str = ''
+    prefix: str = 'Bearer'
+    header_name: str = 'Authorization'
+
+    def _request_headers(self) -> dict[str, str]:
+        headers = dict(self.headers)
+        if self.token:
+            headers[self.header_name] = f'{self.prefix} {self.token}' if self.prefix else self.token
+        return headers
+
+
+def basic_token(username: str, password: str) -> str:
+    """The credential a `Basic Authentication` scheme wants."""
+    return base64.b64encode(f'{username}:{password}'.encode()).decode('ascii')
+
+
+@dataclass(frozen=True, slots=True)
+class SchemeSpec:
+    """One `securitySchemes:` entry, as the credential mechanics a caller needs.
+
+    The document says which header carries the credential and what precedes it.
+    A `Pass Through` or `x-` scheme names its own header, so a client that
+    always sent `Authorization: Bearer` would be sending it to the wrong place.
+    """
+
+    name: str
+    type: str
+    header_name: str = 'Authorization'
+    prefix: str = 'Bearer'
+    #: OAuth 2.0 scopes the document declares. Narrowed per operation, so an
+    #: operation may accept fewer than the scheme declares.
+    scopes: tuple[str, ...] = ()
+
+    def client(self, base_url: str, token: str, **arguments: Any) -> AuthenticatedClient:
+        """A client that sends `token` the way this scheme says to."""
+        return AuthenticatedClient(
+            base_url=base_url,
+            token=token,
+            header_name=self.header_name,
+            prefix=self.prefix,
+            **arguments,
+        )

@@ -25,6 +25,7 @@ on:
       - 'fastmcp-raml-v*'
       - 'fastraml-viewer-v*'
       - 'raml-mock-v*'
+      - 'raml-codegen-v*'
 
 # Action versions: `actions/*` publish a moving major tag, so `@v7` follows
 # patches. `astral-sh/setup-uv` stopped doing that after v7 -- from v8 on it

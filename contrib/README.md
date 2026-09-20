@@ -10,10 +10,15 @@ root gate does not see them. `docs/17-consumers.md` settles the boundary.
 | [`fastapi-raml`](fastapi-raml/) | code → RAML | Renders a FastAPI app's routes as RAML, and serves it. |
 | [`fastmcp-raml`](fastmcp-raml/) | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
 | [`raml-mock`](raml-mock/) | RAML → HTTP | Runs an in-process aiohttp mock with request validation and generated responses. |
-| [`raml-codegen`](raml-codegen/) | tree → code | Generates source from a `fastraml tree` document. One target so far: `python`, a typed `httpx` client. |
+| [`raml-codegen`](raml-codegen/) | tree → code | Generates source from a `fastraml tree` document. Two targets: `python`, a typed `httpx` client, and `fastapi`, a server interface to implement. |
 
 `raml-document` is the part the other two share, so that two integrations cannot
 disagree about what a RAML document is.
+
+`fastapi-raml` and `raml-codegen fastapi` are the two workflows over one
+fixture. **Code-first**: the app is the source and the RAML falls out of it.
+**Design-first**: the document is the source, and the interface to implement
+falls out of that.
 
 `raml-codegen` reads the *tree* rather than `fastraml.Raml`, and so depends on
 no parser: `fastraml` appears nowhere in its `pyproject.toml` (`docs/17` § 5.2).

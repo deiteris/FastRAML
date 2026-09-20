@@ -1,10 +1,13 @@
 # raml-codegen
 
-Generate source code from a fastRAML effective-tree document.
+Generate source code from a fastRAML effective-tree document, in either
+direction.
 
 ```bash
 fastraml tree api.raml > api.json
-raml-codegen python api.json -o out/
+
+raml-codegen python api.json -o client/     # call the API the document describes
+raml-codegen fastapi api.json -o server/    # write the API the document describes
 ```
 
 The two commands pipe, so nothing needs to touch the disk in between:
@@ -12,6 +15,15 @@ The two commands pipe, so nothing needs to touch the disk in between:
 ```bash
 fastraml tree api.raml | raml-codegen python - -o out/
 ```
+
+| target | direction | what it generates |
+|---|---|---|
+| `python` | document → caller | a typed `httpx` client, with stdlib dataclasses |
+| `fastapi` | document → server | an interface to implement, with pydantic DTOs |
+
+Paired with `fastapi-raml`, which goes the other way — a FastAPI app rendered as
+RAML — `contrib/` covers both workflows over the same fixture: code-first, and
+design-first.
 
 ## Input
 
@@ -146,6 +158,93 @@ decisions here are client conventions rather than readings of the language:
 declared media type. There are no `4xx` response classes — RAML states 3-digit
 codes only.
 
+## The `fastapi` target
+
+The same document read the other way round: not a client that calls the API, but
+the API to be written.
+
+```
+out/
+  <package>/
+    __init__.py  app.py  security.py  runtime.py  py.typed
+    models/      pydantic models, one module per type
+    api/         one abstract class per path group, and the routes that bind it
+  impl.py        every method stubbed — copy it out and fill it in
+  pyproject.toml  README.md
+```
+
+```python
+from bookstore_server import Api, create_app
+from bookstore_server.models import Book
+
+
+class Bookstore(Api):
+    async def get_books(self, *, credential, offset=0, limit=20) -> list[Book]:
+        return await self.catalogue.page(offset, limit)
+
+
+app = create_app(Bookstore())
+```
+
+`Api` inherits one abstract class per path group. `abc` refuses to construct a
+subclass with a method missing, so an operation the document describes and the
+code does not is an error at startup rather than a 500 later. The generated
+package depends on `fastapi` and `pydantic`.
+
+### Facets are enforced, which is the one place the two targets disagree
+
+The client leaves a `pattern:` in the docstring because a client that validated
+would restate the language and still could not say whether the server or the
+document was wrong. **A server is the party that decides**, so the facets become
+pydantic constraints and a request the document forbids is a `422` before any
+handler runs.
+
+| tree | server |
+|---|---|
+| `minLength`, `maxLength` | `min_length`, `max_length` |
+| `minimum`, `maximum` | `ge`, `le`, written as the exact decimal the document wrote |
+| `pattern` | `pattern` — pydantic matches by search, which is what RAML's is |
+| `minItems`, `maxItems` | `min_length`, `max_length` |
+| `uniqueItems` | an `AfterValidator`; pydantic has no equivalent |
+| `enum` | `Literal[...]` |
+| `default` | the parameter's default, so it is never widened to `None` |
+| `multipleOf` | **documented, not enforced** |
+
+`multipleOf` is the exception because pydantic compares it in binary floating
+point: with `multipleOf: 1.1` it accepts `3.3000000000000003`, which the exact
+decimal arithmetic the parser uses rejects. Spelling the field `Decimal` to fix
+that would let a facet decide the *type*, which is the one thing a constraint
+must not do.
+
+A union is tagged with `Field(discriminator=...)` only where every member states
+a `discriminatorValue:`; pydantic tells the rest apart itself. Where a type
+states one, the property carrying it is a `Literal` of that value.
+
+### Security
+
+A secured operation depends on the schemes its `securedBy:` names, and the
+method receives a `Credential` — the token, the scheme it arrived under, and the
+scopes the operation requires. **Verifying it is yours.** The document says an
+operation is secured, not what a valid token looks like.
+
+`securedBy: [null, oauth2]` makes the credential `Credential | None`, because
+the document says the call may be made either way.
+
+### Conventions, not readings of the language
+
+Four, and the generated README repeats them:
+
+- the method returns the lowest documented `2xx`; every other status reaches
+  FastAPI's `responses=` and is the implementation's to raise;
+- a request body is parsed as JSON;
+- a missing credential on a secured operation is a `401` with
+  `WWW-Authenticate`, which is RFC 7235;
+- `populate_by_name=True`, so the server also accepts `created_at` where the
+  document says `createdAt`. That is one request the document does not describe.
+  The alternative is a model nobody can construct from Python without writing
+  wire names, which is most of what a model is for when the thing being written
+  is the server. Responses go out under the document's names only.
+
 ## Working on it
 
 ```bash
@@ -154,9 +253,15 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy raml_codegen/
 ```
 
 The suite reads two committed trees, `tests/api.json` and `tests/inline.json`,
-so it needs no parser. It compares generation against the golden record in
-`tests/golden/`, then runs `ruff`, `mypy --strict` and `compileall` over the
-result, imports it, and drives requests through an `httpx.MockTransport`.
+so it needs no parser. Each target is compared against its golden record under
+`tests/golden/<target>/`, then `ruff`, `mypy --strict` and `compileall` run over
+the result. Both are then imported and driven: the client through an
+`httpx.MockTransport`, and the server — implemented — through an
+`httpx.ASGITransport`.
+
+Adding a target is a module under `targets/` and an entry in `TARGETS`.
+`targets/shared/` holds the reading of the tree, so what a new target writes is
+the six spelling hooks in `shared/annotate.py` and its own templates.
 
 ```bash
 uv run python tests/regenerate_golden.py

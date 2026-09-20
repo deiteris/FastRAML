@@ -131,7 +131,7 @@ the loader refuses the ascent, which is the behaviour being checked.
 | `viewer/` | Renders that committed JSON. `npm run sample` rewrites it. |
 | `contrib/fastmcp-raml` | Builds MCP tools from it; its suite asserts what each construct becomes. |
 | `contrib/raml-mock` | Serves its routes in process, and its `examples/server.py` keeps the book resource in memory; its suite checks that the effective API can answer every one of them. |
-| `contrib/raml-codegen` | Reads it as *projected JSON* (`tests/api.json`, committed) and generates a Python client, kept as a golden record. |
+| `contrib/raml-codegen` | Reads it as *projected JSON* (`tests/api.json`, committed) and generates a Python client and a FastAPI server, each kept as a golden record. |
 
 It lives at the repo root because it belongs to no one of them. Putting it
 inside any consumer makes the other four reach into that consumer's directory to
@@ -161,7 +161,7 @@ project's `pyproject.toml` and nothing in the root gate sees them.
 | `fastmcp-raml` | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
 | `raml-mock` | RAML → HTTP | Runs an in-process aiohttp mock, validates common HTTP representations, and returns examples or generated values. |
 | `fastraml-viewer` | — | The built `viewer/` bundle as static assets, a function that says where they are, and `serve(document)`, which runs them over stdlib HTTP for `fastraml serve` (§ 2). Depends on nothing, including `fastraml`. |
-| `raml-codegen` | tree → code | Generates source from a `fastraml tree` document. A target registry with one target, `python`, which writes a typed `httpx` client. **Depends on no parser** (§ 5.2). |
+| `raml-codegen` | tree → code | Generates source from a `fastraml tree` document. Two targets: `python`, a typed `httpx` client, and `fastapi`, a server interface to implement (§ 5.3). **Depends on no parser** (§ 5.2). |
 
 `fastapi-raml` and `fastmcp-raml` both need an authoring model, and one
 duplicated across two integrations is one that disagrees with itself — so
@@ -199,6 +199,27 @@ It is worth having because it **generates** rather than renders. The viewer was
 the only consumer of the tree until now, and a renderer never has to decide what
 a union, a recursion marker or a `json` shape becomes. A generator has no such
 option, so it reaches parts of the projection the viewer cannot.
+
+### 5.3 Both directions, over one fixture
+
+`fastapi-raml` goes code → RAML. `raml-codegen fastapi` goes the other way, so
+`contrib/` now covers the two workflows over the same document: **code-first**,
+where the app is the source and the RAML falls out of it, and **design-first**,
+where the document is the source and the server interface falls out of that.
+
+The `fastapi` target is also where the § 2.1 line is drawn most finely, because
+it is the first consumer that *enforces* a facet rather than reporting one. That
+is not a rule the package holds: RAML says what `minLength:` constrains and
+pydantic says the same thing in its own words, so transcribing one into the
+other is a spelling. What would be a rule is deciding something the document
+does not — and the four places it does are named in its README as conventions,
+not as readings.
+
+One facet does not transcribe, and it is the kind of finding § 1 says consumers
+exist to produce. pydantic compares `multiple_of` in binary floating point, so
+with `multipleOf: 1.1` it accepts `3.3000000000000003`, which the exact decimal
+arithmetic of docs/10 rejects. Spelling the field `Decimal` to close the gap
+would let a facet decide the *type*. It stays documented.
 
 ## 6. The gate
 

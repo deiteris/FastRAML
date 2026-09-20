@@ -11,24 +11,26 @@ Every method raises `NotImplementedError` until you replace it.
 
 ## When the document changes
 
-Regenerate the package. You do not have to work out what moved -- two things
+Regenerate the package. You do not have to work out what moved -- three things
 tell you, and both name it:
 
 * an operation the document gained is an abstract method nobody implements, so
   `Implementation()` raises `TypeError` naming it, at startup rather than on
   the first request that reaches it;
 * an operation whose parameters or response changed is an incompatible
-  override, so `mypy impl.py` prints both signatures side by side.
+  override, so `mypy impl.py` prints both signatures side by side;
+* an operation the document *dropped* leaves a method with nothing to override,
+  which is what `@override` on each of them is for -- without it that method
+  would sit here routing nowhere and type-checking fine.
 
-Copy the new method from its abstract declaration in `bookstore_server/api/`,
-which carries the signature and the documentation. An operation the document
-dropped leaves a method here that nothing routes; delete it when you notice.
+Copy a new method from its abstract declaration in `bookstore_server/api/`,
+which carries the signature and the documentation the document gave it.
 """
 
 from __future__ import annotations
 
 import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, override
 
 from pydantic import Field
 
@@ -40,6 +42,7 @@ from bookstore_server.runtime import Credential
 class Implementation(Api):
     """Bookstore API."""
 
+    @override
     async def post_books(
         self,
         *,
@@ -49,6 +52,7 @@ class Implementation(Api):
         """Add a book"""
         raise NotImplementedError
 
+    @override
     async def get_books(
         self,
         *,
@@ -59,6 +63,7 @@ class Implementation(Api):
         """List Books"""
         raise NotImplementedError
 
+    @override
     async def get_books_isbn(
         self,
         *,
@@ -68,6 +73,7 @@ class Implementation(Api):
         """Retrieve a book"""
         raise NotImplementedError
 
+    @override
     async def delete_books_isbn(
         self,
         *,
@@ -77,6 +83,7 @@ class Implementation(Api):
         """Delete a book"""
         raise NotImplementedError
 
+    @override
     async def post_shelves(
         self,
         *,
@@ -86,6 +93,7 @@ class Implementation(Api):
         """Create a shelf"""
         raise NotImplementedError
 
+    @override
     async def get_deliveries(
         self,
         *,
@@ -98,6 +106,7 @@ class Implementation(Api):
         """List deliveries"""
         raise NotImplementedError
 
+    @override
     async def get_publications(
         self,
         *,
@@ -106,6 +115,7 @@ class Implementation(Api):
         """List publications"""
         raise NotImplementedError
 
+    @override
     async def get_search(
         self,
         *,

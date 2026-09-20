@@ -11,18 +11,20 @@ Every method raises `NotImplementedError` until you replace it.
 
 ## When the document changes
 
-Regenerate the package. You do not have to work out what moved -- two things
+Regenerate the package. You do not have to work out what moved -- three things
 tell you, and both name it:
 
 * an operation the document gained is an abstract method nobody implements, so
   `Implementation()` raises `TypeError` naming it, at startup rather than on
   the first request that reaches it;
 * an operation whose parameters or response changed is an incompatible
-  override, so `mypy impl.py` prints both signatures side by side.
+  override, so `mypy impl.py` prints both signatures side by side;
+* an operation the document *dropped* leaves a method with nothing to override,
+  which is what `@override` on each of them is for -- without it that method
+  would sit here routing nowhere and type-checking fine.
 
-Copy the new method from its abstract declaration in `{{ package.module }}/api/`,
-which carries the signature and the documentation. An operation the document
-dropped leaves a method here that nothing routes; delete it when you notice.
+Copy a new method from its abstract declaration in `{{ package.module }}/api/`,
+which carries the signature and the documentation the document gave it.
 """
 
 {{ imports.block }}
@@ -32,6 +34,7 @@ class Implementation(Api):
     """{{ package.title }}."""
 
 {% for route in routes %}
+    @override
     async def {{ route.name }}(
         self,
 {% if route.signature %}

@@ -20,11 +20,14 @@ other version of a formatter would.
 
 from __future__ import annotations
 
+import copy
 import subprocess
 import sys
 
 import pytest
 from conftest import GOLDEN, TARGETS
+
+from raml_codegen import generate
 
 _IGNORED = frozenset({'__pycache__', '.ruff_cache', '.mypy_cache'})
 
@@ -149,7 +152,94 @@ class TestTheStubIsGeneratedButNotOwned:
         assert not generated.write(tmp_path).kept
 
 
+class TestTheStubSaysWhenTheDocumentMovesUnderIt:
+    """Three ways a document can change, and what reports each.
+
+    The stub is generated once and then edited, so it is the file most likely
+    to fall behind the document. None of this finds out *how* to implement an
+    operation -- only that one is waiting, or gone, or no longer the shape it
+    was, which is the part a person should not have to go looking for.
+    """
+
+    def test_a_gained_operation_is_named_at_startup(self, document, tmp_path):
+        # `abc` refuses the class, so this is a failure to start rather than a
+        # 500 on the first request that reaches an unrouted path.
+        _write(_with_put_books(document), tmp_path, keep_stub_from=document)
+        failed = _run(_IMPORT_STUB, cwd=tmp_path)
+        assert failed.returncode != 0
+        assert "abstract method 'put_books'" in failed.stderr
+
+    def test_a_gained_operation_is_also_a_type_error(self, document, tmp_path):
+        _write(_with_put_books(document), tmp_path, keep_stub_from=document)
+        assert 'put_books' in _mypy(tmp_path)
+
+    def test_a_changed_signature_is_an_incompatible_override(self, document, tmp_path):
+        narrowed = copy.deepcopy(document)
+        narrowed['endpoints']['/search']['operations']['get']['query_parameters'] = {}
+        _write(narrowed, tmp_path, keep_stub_from=document)
+        reported = _mypy(tmp_path)
+        assert 'Signature of "get_search" incompatible with supertype' in reported
+
+    def test_a_dropped_operation_is_an_override_of_nothing(self, document, tmp_path):
+        # This is what `@override` on every generated method buys, and it is
+        # the only one of the three that nothing else catches: `abc` does not
+        # mind a subclass having extra methods, and a method with no base
+        # declaration is ordinary Python.
+        shrunk = copy.deepcopy(document)
+        del shrunk['endpoints']['/books/{isbn}']['operations']['delete']
+        _write(shrunk, tmp_path, keep_stub_from=document)
+        reported = _mypy(tmp_path)
+        assert 'Method "delete_books_isbn" is marked as an override' in reported
+
+    def test_a_dropped_operation_would_otherwise_pass(self, document, tmp_path):
+        # The same case with the decorators taken off, to say what the decorator
+        # is for rather than assert it into the dark.
+        shrunk = copy.deepcopy(document)
+        del shrunk['endpoints']['/books/{isbn}']['operations']['delete']
+        _write(shrunk, tmp_path, keep_stub_from=document)
+        stub = tmp_path / 'impl.py'
+        stub.write_text(stub.read_text(encoding='utf-8').replace('    @override\n', ''), encoding='utf-8')
+        assert 'no issues found' in _mypy(tmp_path)
+
+    def test_every_generated_method_carries_it(self, served):
+        # Indented, so the one in the docstring that explains it is not counted.
+        stub = served.files['impl.py']
+        decorated = sum(1 for line in stub.splitlines() if line == '    @override')
+        assert decorated == stub.count('    async def ')
+        assert decorated > 0
+
+
+_IMPORT_STUB = "import sys; sys.path.insert(0, '.'); import impl"
+
+
+def _with_put_books(document):
+    grown = copy.deepcopy(document)
+    operations = grown['endpoints']['/books']['operations']
+    operations['put'] = copy.deepcopy(operations['post'])
+    operations['put']['display_name'] = 'Replace a book'
+    return grown
+
+
+def _write(document, destination, *, keep_stub_from):
+    """Generate `document`, but keep the stub the *original* document produced.
+
+    That is the developer's situation exactly: a file written once and edited
+    since, beside a package that has been regenerated from a document that has
+    moved on.
+    """
+    settings = TARGETS['python-fastapi']
+    generate(keep_stub_from, 'python-fastapi', settings).write(destination)
+    return generate(document, 'python-fastapi', settings).write(destination)
+
+
+def _mypy(cwd):
+    return _run(['-m', 'mypy', 'impl.py'], cwd=cwd).stdout
+
+
 def _run(arguments, cwd):
+    """Run the interpreter, with a string meaning `-c`."""
+    if isinstance(arguments, str):
+        arguments = ['-c', arguments]
     return subprocess.run(
         [sys.executable, *arguments],
         capture_output=True,

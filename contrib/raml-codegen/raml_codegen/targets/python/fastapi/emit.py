@@ -379,6 +379,7 @@ _FROM: Final = {
     'Annotated': Source('typing', third_party=False),
     'Any': Source('typing', third_party=False),
     'Literal': Source('typing', third_party=False),
+    'override': Source('typing', third_party=False),
     'APIRouter': Source('fastapi', third_party=True),
     'Depends': Source('fastapi', third_party=True),
     'FastAPI': Source('fastapi', third_party=True),
@@ -451,7 +452,11 @@ def _stub_imports(package: Package, routes: list[Route], by_name: Mapping[str, M
     """
     written = [one.source for route in routes for one in route.signature]
     annotations = tuple(one for route in routes for one in route.endpoint.annotations)
-    names = tuple(name for name in ('Annotated', 'Field') if _mentions(written, name))
+    # `override` on every method, always. It is what turns an operation the
+    # document dropped into a type error: the method is left with nothing to
+    # override, where otherwise it would sit here routing nowhere and checking
+    # out fine.
+    names = ('override', *(name for name in ('Annotated', 'Field') if _mentions(written, name)))
     lines = [f'from {package.module} import Api, create_app']
     if _mentions(written, 'Credential'):
         lines.append(f'from {package.module}.runtime import Credential')

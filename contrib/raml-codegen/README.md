@@ -207,7 +207,12 @@ it is the thing that reports:
 |---|---|
 | gained an operation | `TypeError` at startup, naming the method nobody implements |
 | changed a signature | `mypy`, as an incompatible override, printing both signatures |
-| dropped an operation | nothing; the method stays, routes nowhere, and is yours to delete |
+| dropped an operation | `mypy`, as a method marked `@override` with no base method |
+
+The third row is why every stubbed method carries `typing.override`. `abc` does
+not mind a subclass having extra methods and a method with no base declaration
+is ordinary Python, so without the decorator a dropped operation leaves a method
+that routes nowhere and type-checks fine.
 
 Writing the body is still manual, which it has to be. Finding out that one is
 needed is not, and the signature to copy is in the abstract declaration under

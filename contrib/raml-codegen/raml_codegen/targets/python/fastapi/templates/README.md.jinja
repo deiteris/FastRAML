@@ -42,7 +42,12 @@ You do not have to work out what moved:
 |---|---|
 | gained an operation | `TypeError` at startup, naming the method nobody implements |
 | changed a signature | `mypy impl.py`, printing both signatures side by side |
-| dropped an operation | nothing — the method stays and routes nowhere; delete it |
+| dropped an operation | `mypy impl.py` — a method marked `@override` with nothing to override |
+
+Every stubbed method carries `typing.override`, which is what makes the third
+row work: `abc` does not mind extra methods on a subclass, so without it a
+dropped operation would leave a method here routing nowhere and checking out
+fine.
 
 Copy a new method from its abstract declaration under `{{ package.module }}/api/`,
 which carries the signature and the documentation the document gave it.

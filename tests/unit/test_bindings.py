@@ -1,6 +1,6 @@
-"""The generated TypeScript contract — docs/16-graph.md § 11.11.
+"""The generated contracts — docs/16-graph.md § 11.11.
 
-Two questions, and the second is the one that cannot be argued with.
+Two questions per backend, and the second is the one that cannot be argued with.
 
 Is the checked-in file what the generator produces? That is the golden idiom,
 and it is needed because the file is read by a build this suite never runs.
@@ -9,10 +9,15 @@ And does the generator agree with the *emitter*? Only output can answer that. A
 generator reads source and can be wrong about what running it does, so a
 document declaring every kind is projected and its keys are checked against the
 file. Law 19 in `tests/tck/test_properties.py` asks the same of the corpus.
+
+Both destinations sit inside a consumer — `viewer/` and `contrib/raml-codegen` —
+and both are read as *text*. That is the direction docs/17 § 2 states: the gate
+may look at a consumer's committed output, and may not import one.
 """
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 import subprocess
@@ -21,12 +26,13 @@ import sys
 import pytest
 
 from fastraml import ParseOptions, parse_from_path
-from fastraml.views.bindings import typescript
+from fastraml.views.bindings import python, typescript
 from fastraml.views.bindings.schema import contract_schema
 from fastraml.views.tree import build_tree
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 TYPESCRIPT_DESTINATION = 'viewer/src/tree.d.ts'
+PYTHON_DESTINATION = 'contrib/raml-codegen/raml_codegen/tree.py'
 
 
 def declared_members() -> dict[str, set[str]]:
@@ -47,7 +53,31 @@ def declared_shape_members() -> set[str]:
     )
 
 
-class TestTheCheckedInFileIsGenerated:
+def python_members() -> dict[str, set[str]]:
+    """Every field of every TypedDict in the generated module, by class.
+
+    Read with `ast` rather than a regex: the file is Python, and the regex the
+    TypeScript half needs is only there because TypeScript is not.
+    """
+    source = ast.parse((ROOT / PYTHON_DESTINATION).read_text(encoding='utf-8'))
+    return {
+        node.name: {
+            statement.target.id
+            for statement in node.body
+            if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name)
+        }
+        for node in source.body
+        if isinstance(node, ast.ClassDef)
+    }
+
+
+def python_shape_members() -> set[str]:
+    """Every field accepted by at least one generated shape TypedDict."""
+    classes = python_members()
+    return set().union(*(fields for name, fields in classes.items() if name == 'ShapeBase' or name.endswith('Shape')))
+
+
+class TestTheCheckedInTypeScriptFileIsGenerated:
     def test_regenerating_changes_nothing(self):
         # The golden idiom, for the same reason the goldens use it: the file is
         # read by a build this suite does not run, so nothing else would notice
@@ -96,6 +126,79 @@ class TestTheCheckedInFileIsGenerated:
         assert 'export type Shape = AnyShape | NilShape | BooleanShape' in generated
         assert 'binding: ParameterBinding;' in generated
         assert 'type: ShapeNode | null;' in generated
+
+
+class TestTheCheckedInPythonFileIsGenerated:
+    """The same two questions of the Python backend, plus one Python only has.
+
+    A `TypedDict` reports its own required and optional keys at run time, and
+    under `from __future__ import annotations` it reports them *wrong* -- every
+    annotation is a string by the time `TypedDict` reads it, so `NotRequired`
+    is invisible and every key looks required. Nothing raises. The generated
+    module therefore does not enable PEP 563, and this asks the object itself.
+    """
+
+    def test_regenerating_changes_nothing(self):
+        current = (ROOT / PYTHON_DESTINATION).read_text(encoding='utf-8')
+        assert current == python(), (
+            f'run `python -m fastraml.views.bindings python -o {PYTHON_DESTINATION}` -- {PYTHON_DESTINATION} is stale'
+        )
+
+    def test_the_module_writes_the_destination_its_caller_names(self, tmp_path):
+        destination = tmp_path / 'tree.py'
+        result = subprocess.run(  # noqa: S603 - executable and arguments are test-owned
+            [sys.executable, '-m', 'fastraml.views.bindings', 'python', '-o', str(destination)],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+        )
+        assert str(destination.resolve()) in result.stdout
+        assert destination.read_text(encoding='utf-8') == python()
+
+    def test_the_module_can_write_stdout(self):
+        result = subprocess.run(
+            [sys.executable, '-m', 'fastraml.views.bindings', 'python', '-o', '-'],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+        )
+        assert result.stdout == python()
+
+    def test_it_imports_and_reports_its_own_optional_keys(self, tmp_path):
+        # Imported from a copy, not from `contrib`: the gate may read a
+        # consumer's committed output and may not import the consumer
+        # (docs/17 § 2). What is imported here is a file this test wrote.
+        (tmp_path / 'generated_tree.py').write_text(python(), encoding='utf-8')
+        sys.path.insert(0, str(tmp_path))
+        try:
+            module = __import__('generated_tree')
+        finally:
+            sys.path.remove(str(tmp_path))
+            sys.modules.pop('generated_tree', None)
+
+        assert module.Document.__optional_keys__ == frozenset()
+        assert 'properties' in module.ObjectShape.__optional_keys__
+        assert module.ObjectShape.__required_keys__ == frozenset({'id', 'name', 'type'})
+        assert module.Ref.__annotations__ == {'$ref': str}
+
+    def test_closed_wire_vocabularies_are_literal_unions(self):
+        generated = python()
+        assert "ParameterBinding: TypeAlias = Literal['uri', 'query', 'header']" in generated
+        assert "class ObjectShape(ShapeBase):\n    type: Literal['object']" in generated
+        assert 'Shape: TypeAlias = (\n    AnyShape\n    | NilShape' in generated
+
+    def test_nested_fixed_records_are_named(self):
+        generated = python()
+        assert "documentation: NotRequired['list[DocumentationItem]']" in generated
+        assert 'class DocumentationItem(TypedDict):' in generated
+
+    def test_an_open_vocabulary_is_not_pretended_closed(self):
+        # `x-<anything>` is a scheme type the spec allows and `Literal` cannot
+        # spell. Closing over the six would make a valid document unreadable.
+        generated = python()
+        assert "'Pass Through',\n    ]\n    | str\n)" in generated
 
 
 class TestTheSchemaIsLanguageNeutral:
@@ -177,6 +280,16 @@ class TestEveryKindLandsInTheContract:
     def test_every_key_that_arrives_is_declared(self, keys):
         declared = declared_shape_members() | {'head'}
         assert not keys - declared, f'emitted but not in the contract: {sorted(keys - declared)}'
+
+    def test_every_key_that_arrives_is_declared_in_python_too(self, keys):
+        # Asked of each backend separately. The key *sets* come from one schema,
+        # but each backend decides which of them it writes, and a backend that
+        # silently drops one is the failure this whole file exists to catch.
+        declared = python_shape_members() | {'head'}
+        assert not keys - declared, f'emitted but not in the contract: {sorted(keys - declared)}'
+
+    def test_both_backends_declare_the_same_shape_fields(self, keys):
+        assert declared_shape_members() == python_shape_members()
 
     def test_the_document_reaches_the_facets_it_was_written_for(self, keys):
         # A vacuous pass is how a corpus-shaped test fails: an empty set of

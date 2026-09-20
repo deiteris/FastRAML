@@ -1,0 +1,69 @@
+# bookstore-server
+
+Bookstore API v2, as a FastAPI server to implement.
+
+A worked example exercising every construct the tree carries — including **Markdown** in a description, which is what the RAML spec says every `description:` is. See [Getting started](#) for the `{tenant}` you will need.
+
+Generated from a RAML 1.0 definition by `raml-codegen`. `bookstore_server/`
+is regenerated; `impl.py` is not.
+
+## Implement it
+
+```python
+from bookstore_server import Api, create_app
+
+class Implementation(Api):
+    ...
+
+app = create_app(Implementation())
+```
+
+`impl.py` is that file with every method stubbed. Copy it out, fill it in, and
+run it:
+
+```bash
+uvicorn impl:app --reload
+```
+
+`Api` inherits one abstract class per path group (books, shelves, deliveries, publications, search).
+`abc` refuses to construct a subclass with a method missing, so an operation the
+document describes and the implementation does not is an error at startup.
+
+## What the routes do before you see a request
+
+Every facet the document states is a pydantic constraint on the route, so a
+request that does not match is a **422 before your method is called**. A
+`pattern:` is a search, which is what RAML's is. `multipleOf:` is the one
+exception: pydantic compares it in binary floating point, so it is documented
+and not enforced.
+
+A secured operation depends on the schemes its `securedBy:` names, and your
+method receives a `Credential` — the token, the scheme it arrived under, and the
+scopes the operation requires. **Verifying it is yours.** The document says an
+operation is secured, not what a valid token looks like.
+
+| scheme | header | prefix |
+|---|---|---|
+| `oauth2` | `Authorization` | `Bearer` |
+| `machineToken` | `Authorization` | `Bearer` |
+| `basic` | `Authorization` | `Basic` |
+
+A missing credential on a required operation is a 401 with `WWW-Authenticate`.
+That is RFC 7235, not something RAML states.
+
+## Models
+
+Flat. `type: [A, B]` has no MRO and a narrowed property has no override, so a
+subtype carries its supertype's properties and is a class of its own rather than
+a subclass. Where the document states a `discriminatorValue:`, the module holds
+it as `DISCRIMINATOR` and the property that carries it is a `Literal`.
+
+An optional property is `| None = None`. Use `model_dump(exclude_unset=True)` to
+tell "not sent" from "sent as null".
+
+## Base URI
+
+The document states `https://{tenant}.books.example.com/{version}`, kept in `app.BASE_URI` as written.
+Nothing mounts it: what its tokens stand for is the deployment's to decide, and
+a placeholder would be a value the document does not give. Pass `root_path=` to
+`create_app` if you want one.

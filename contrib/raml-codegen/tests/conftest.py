@@ -18,6 +18,17 @@ GOLDEN = HERE / 'golden'
 #: from going stale.
 TREE = HERE / 'api.json'
 
+#: Each target, and the settings its golden record was generated with.
+#:
+#: The two packages are named differently on purpose. Both would otherwise be
+#: `bookstore_api`, and the suite imports each of them out of a temporary
+#: directory -- two packages of one name in one `sys.modules` is a collision
+#: waiting for whichever test runs second.
+TARGETS = {
+    'python': Settings(),
+    'fastapi': Settings(package='bookstore-server'),
+}
+
 
 @pytest.fixture(scope='session')
 def document() -> dict:
@@ -31,7 +42,14 @@ def tree(document) -> Tree:
 
 @pytest.fixture(scope='session')
 def generated(document):
-    return generate(document, 'python', Settings())
+    """The `python` target's output: a client."""
+    return generate(document, 'python', TARGETS['python'])
+
+
+@pytest.fixture(scope='session')
+def served(document):
+    """The `fastapi` target's output: a server to implement."""
+    return generate(document, 'fastapi', TARGETS['fastapi'])
 
 
 def envelope(**overrides) -> dict:

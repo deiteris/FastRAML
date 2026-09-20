@@ -16,6 +16,16 @@ def test_it_lists_its_targets():
     result = runner.invoke(app, ['targets'])
     assert result.exit_code == 0
     assert 'python' in result.stdout
+    assert 'fastapi' in result.stdout
+
+
+def test_it_generates_a_server_from_the_same_document(tmp_path):
+    # The same tree, read the other way round: `python` calls the API and
+    # `fastapi` states the one to write.
+    result = runner.invoke(app, ['fastapi', str(TREE), '-o', str(tmp_path), '--package', 'bookstore-server'])
+    assert result.exit_code == 0, result.stdout
+    assert (tmp_path / 'bookstore_server' / 'api' / 'books.py').exists()
+    assert (tmp_path / 'impl.py').exists()
 
 
 def test_it_generates_from_a_tree_document(tmp_path):

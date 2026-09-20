@@ -1,4 +1,4 @@
-"""Rewrite the committed golden record.
+"""Rewrite the committed golden record, for every target.
 
     uv run python tests/regenerate_golden.py
 
@@ -20,24 +20,27 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 # The line above is what makes the next two importable when run as a script.
-from conftest import GOLDEN, TREE
+from conftest import GOLDEN, TARGETS, TREE
 
-from raml_codegen import Settings, generate
+from raml_codegen import generate
 
 
 def main() -> None:
-    generated = generate(json.loads(TREE.read_text(encoding='utf-8')), 'python', Settings())
-    if GOLDEN.exists():
-        shutil.rmtree(GOLDEN)
-    GOLDEN.mkdir(parents=True)
-    # Empty files -- `py.typed` -- are left out: git records them and the
-    # comparison would have to special-case reading them back as ''.
-    written = [name for name, text in generated.files.items() if text]
-    for name in written:
-        path = GOLDEN / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(generated.files[name], encoding='utf-8')
-    print(f'wrote {len(written)} files to {GOLDEN}')  # noqa: T201
+    document = json.loads(TREE.read_text(encoding='utf-8'))
+    for target, settings in TARGETS.items():
+        generated = generate(document, target, settings)
+        destination = GOLDEN / target
+        if destination.exists():
+            shutil.rmtree(destination)
+        destination.mkdir(parents=True)
+        # Empty files -- `py.typed` -- are left out: git records them and the
+        # comparison would have to special-case reading them back as ''.
+        written = [name for name, text in generated.files.items() if text]
+        for name in written:
+            path = destination / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(generated.files[name], encoding='utf-8')
+        print(f'{target}: wrote {len(written)} files to {destination}')  # noqa: T201
 
 
 if __name__ == '__main__':

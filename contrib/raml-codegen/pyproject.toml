@@ -73,9 +73,13 @@ multiline-quotes = "double"
 "raml_codegen/targets/fastapi/runtime/*.py" = ["ALL"]
 "tests/*.py" = [
     "S101", "ANN", "D", "INP001", "PLR2004", "PLC0415", "SLF001", "S603",
-    "S607", "ARG", "S106", "DTZ",
+    "S607", "ARG", "S105", "S106", "DTZ", "RET501", "PLR1711",
 ]
-"examples/*.py" = ["INP001", "T201", "S106", "SLF001"]
+# An example implements a generated interface, so its signatures are the
+# generated ones: annotating them again here would say twice what the abstract
+# method already says, and an unused `credential` is the point of the parameter
+# being there at all.
+"examples/*.py" = ["INP001", "T201", "S106", "SLF001", "ANN", "ARG", "DTZ"]
 
 [tool.mypy]
 python_version = "3.12"

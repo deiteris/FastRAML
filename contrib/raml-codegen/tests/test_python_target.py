@@ -11,12 +11,14 @@ from __future__ import annotations
 import pytest
 
 from raml_codegen.targets import Settings
-from raml_codegen.targets.python.plan import plan
+from raml_codegen.targets.python.annotate import make_annotator
+from raml_codegen.targets.python.emit import _RESERVED
+from raml_codegen.targets.shared.plan import plan
 
 
 @pytest.fixture(scope='session')
 def package(tree):
-    return plan(tree, Settings())
+    return plan(tree, Settings(), make_annotator, _RESERVED)
 
 
 def model(package, name):
@@ -37,7 +39,7 @@ class TestThePackage:
         assert package.module == 'bookstore_api'
 
     def test_the_caller_may_name_it_instead(self, tree):
-        assert plan(tree, Settings(package='books-client')).distribution == 'books-client'
+        assert plan(tree, Settings(package='books-client'), make_annotator, _RESERVED).distribution == 'books-client'
 
     def test_a_templated_base_uri_keeps_its_tokens(self, package):
         # What `{tenant}` stands for is the caller's to supply; substituting a
@@ -152,33 +154,33 @@ class TestADescriptionKeepsItsShape:
     """RAML says every `description:` is Markdown, so it may be a list."""
 
     def test_a_list_is_not_flattened_into_a_sentence(self, package):
-        from raml_codegen.targets.python.emit import _details
+        from raml_codegen.targets.shared.docs import details
 
-        rendered = _details(model(package, 'Book').description)
+        rendered = details(model(package, 'Book').description)
         assert '* `price` is the current price' in rendered
         # Collapsing the whole description to one line is what put a bullet in
         # the middle of the sentence above it.
         assert 'about: *' not in rendered
 
     def test_each_item_is_on_its_own_line(self, package):
-        from raml_codegen.targets.python.emit import _details
+        from raml_codegen.targets.shared.docs import details
 
-        items = [line for line in _details(model(package, 'Book').description).splitlines() if line.strip()[:1] == '*']
+        items = [line for line in details(model(package, 'Book').description).splitlines() if line.strip()[:1] == '*']
         assert len(items) == 2
 
     def test_a_paragraph_is_separated_from_the_list(self, package):
-        from raml_codegen.targets.python.emit import _details
+        from raml_codegen.targets.shared.docs import details
 
-        rendered = _details(model(package, 'Book').description)
+        rendered = details(model(package, 'Book').description)
         assert 'worth knowing about:' + chr(10) * 2 + '    * `price`' in rendered
 
     def test_a_pattern_is_never_wrapped_mid_token(self, package):
         # `^(?:[A-Z]{2}-` on one line and `)?(?:AISLE` on the next reads as part
         # of the pattern.
-        from raml_codegen.targets.python.emit import _attribute
+        from raml_codegen.targets.shared.docs import attribute
 
         locator = next(one for one in model(package, 'ShelfSlot').fields if one.wire == 'locator')
-        wrapped = _attribute(locator)
+        wrapped = attribute(locator)
         assert '^(?:[A-Z]{2}-)?(?:AISLE|BAY|SHELF)' in wrapped
 
 

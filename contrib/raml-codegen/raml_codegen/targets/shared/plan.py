@@ -4,8 +4,13 @@ A template asks questions; a plan answers them in advance. Keeping the two apart
 means the reading of the tree can be tested without rendering anything, and that
 no `{% if %}` has to decide what a union is.
 
-Nothing here decides a RAML rule. It decides Python spellings, module layout,
-and the two client conventions the README names.
+Nothing here decides a RAML rule. It decides module layout and the order things
+come in, and it holds the one client-and-server convention both targets share:
+which documented response is the answer.
+
+The plan is the same for every Python target. What differs is the annotator it
+is given — `plan(tree, settings, make_annotator=...)` — and each target's own
+reading of the result.
 """
 
 from __future__ import annotations
@@ -16,16 +21,16 @@ from typing import TYPE_CHECKING, cast
 
 from ...naming import Names, class_name, field_name, from_address, module_name
 from ...reader import is_recursion, is_ref, properties_of
-from .annotate import Annotation, Annotator
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from ...reader import Declaration, Tree
     from ...targets import Settings
     from ...tree import EntryPoint, Operation, Parameter, SecurityScheme, Shape, ShapeNode
+    from .annotate import Annotation, Annotator
 
-__all__ = ['Package', 'Scheme', 'plan']
+__all__ = ['Argument', 'Body', 'Case', 'Endpoint', 'Field', 'Model', 'Package', 'Scheme', 'plan']
 
 _URI_TOKEN = re.compile(r'\{([^}]+)\}')
 
@@ -49,7 +54,7 @@ _CONSTRAINTS = (
 
 @dataclass(frozen=True, slots=True)
 class Field:
-    """One attribute of a generated dataclass."""
+    """One attribute of a generated model."""
 
     name: str
     wire: str
@@ -62,10 +67,10 @@ class Field:
 class Model:
     """One generated module under `models/`.
 
-    Either a dataclass (`fields`) or a type alias (`alias`). A RAML declaration
-    that is not an object with properties — `Isbn: string`, `Prices: Money[]`,
-    `Payload: Book[] | Review` — has no attributes to carry, and an empty class
-    would hide what the author declared.
+    Either a class with attributes (`fields`) or a type alias (`alias`). A RAML
+    declaration that is not an object with properties — `Isbn: string`,
+    `Prices: Money[]`, `Payload: Book[] | Review` — has no attributes to carry,
+    and an empty class would hide what the author declared.
     """
 
     name: str
@@ -118,8 +123,8 @@ class Scheme:
     """One `securitySchemes:` entry, as the mechanics of sending a credential.
 
     The document says where the credential goes. A `Pass Through` or `x-`
-    scheme names its own header through `describedBy:`, so a client that always
-    sent `Authorization: Bearer` would send it where the API is not reading.
+    scheme names its own header through `describedBy:`, so code that always
+    read `Authorization: Bearer` would look where the API is not writing.
     """
 
     name: str
@@ -133,7 +138,7 @@ class Scheme:
 
 @dataclass(frozen=True, slots=True)
 class Endpoint:
-    """One generated module under `api/`."""
+    """One operation: a module under `api/` for a client, a method for a server."""
 
     group: str
     module: str
@@ -146,8 +151,8 @@ class Endpoint:
     header_arguments: tuple[Argument, ...]
     body: Body | None
     cases: tuple[Case, ...]
-    #: The lowest documented 2xx. A *client convention*, not a RAML rule: RAML
-    #: orders responses and says nothing about which one is the answer.
+    #: The lowest documented 2xx. A *convention*, not a RAML rule: RAML orders
+    #: responses and says nothing about which one is the answer.
     success: Case | None
     #: True when every way of calling this needs credentials.
     requires_auth: bool
@@ -199,12 +204,21 @@ class Package:
 # -- building ------------------------------------------------------------------
 
 
-def plan(tree: Tree, settings: Settings) -> Package:
-    """Read the whole tree into one plan."""
+def plan(
+    tree: Tree,
+    settings: Settings,
+    make_annotator: Callable[[Tree, Names], Annotator],
+    reserved: frozenset[str] = frozenset(),
+) -> Package:
+    """Read the whole tree into one plan.
+
+    `reserved` names the modules the generated package root already uses, so
+    that a declared type cannot be given one of them.
+    """
     entry: EntryPoint = tree.document['entry_point'] or cast('EntryPoint', {})
     title = entry.get('title') or 'API'
     distribution = settings.package or module_name(title).replace('_', '-')
-    builder = _Builder(tree)
+    builder = _Builder(tree, make_annotator, reserved)
     # Endpoints first: annotating a response body reaches models that nothing in
     # `types:` declares, and draining the model queue before that happened left
     # them named in a signature and generated nowhere.
@@ -226,13 +240,16 @@ def plan(tree: Tree, settings: Settings) -> Package:
 @dataclass(slots=True)
 class _Builder:
     tree: Tree
+    make_annotator: Callable[[Tree, Names], Annotator]
+    reserved: frozenset[str]
     classes: Names = field(default_factory=Names)
-    modules: Names = field(default_factory=lambda: Names(frozenset({'types', 'client', 'errors'})))
+    modules: Names = field(init=False)
     annotator: Annotator = field(init=False)
     _declared: dict[str, Declaration] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.annotator = Annotator(tree=self.tree, names=self.classes)
+        self.modules = Names(self.reserved)
+        self.annotator = self.make_annotator(self.tree, self.classes)
         # Claimed before anything is annotated, and in declaration order, so a
         # generated name is a function of the document rather than of the order
         # a walk happened to reach things.
@@ -275,12 +292,12 @@ class _Builder:
             if not outstanding:
                 break
             for address, shape in outstanding:
-                built[address] = self._dataclass(address, shape)
+                built[address] = self._model(address, shape)
 
         ordered = [built[address] for address in self.annotator.wanted if address in built]
         return (*_by_declaration_order(ordered, self._declared, self.classes), *aliases)
 
-    def _dataclass(self, address: str, shape: Shape) -> Model:
+    def _model(self, address: str, shape: Shape) -> Model:
         content = self.tree.content_of(shape)
         declared = self._declared.get(address)
         preferred = class_name(declared.name) if declared else _preferred(content, address)
@@ -389,7 +406,7 @@ class _Builder:
     def _body(self, operation: Operation, path: str, method: str) -> Body | None:
         for media_type, node in operation.get('bodies', {}).items():
             # The first declared media type. RAML orders them and says nothing
-            # about preference, so this is a client convention (README).
+            # about preference, so this is a convention (README).
             return Body(
                 media_type=media_type,
                 annotation=self.annotator.of(node, f'{method}-{_slug(path)}-body'),
@@ -453,9 +470,8 @@ def _description(shape: Shape) -> str:
 def _docs(tree: Tree, node: ShapeNode | None) -> str:
     """Describe a type in one line: its description, then its constraints.
 
-    Constraints are documented and not enforced. A client that validated would
-    state the language's rules a second time, and it still could not answer the
-    question that matters: whether the server agrees with them.
+    A target that enforces a constraint still wants it written down, because the
+    generated docstring is what a reader has in front of them.
     """
     if node is None or is_recursion(node):
         return ''
@@ -477,8 +493,7 @@ def _docs(tree: Tree, node: ShapeNode | None) -> str:
 
 
 #: What precedes the credential for each scheme type, where `describedBy:` does
-#: not say. Only OAuth 2.0 fixes a spelling; the rest are conventions, and a
-#: caller can override any of them on the client.
+#: not say. Only OAuth 2.0 fixes a spelling; the rest are conventions.
 _PREFIX_OF = {
     'Basic Authentication': 'Basic',
     'Digest Authentication': 'Digest',
@@ -547,7 +562,7 @@ def _ordered_for(path: str, arguments: tuple[Argument, ...]) -> tuple[Argument, 
 
 
 def _success(cases: tuple[Case, ...]) -> Case | None:
-    """Pick the lowest documented 2xx. A client convention; see the README."""
+    """Pick the lowest documented 2xx. A convention; see the README."""
     successes = sorted(
         (case for case in cases if case.status.isdigit() and int(case.status) in _SUCCESSFUL),
         key=lambda case: int(case.status),

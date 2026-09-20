@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from ....reader import Tree
     from ..shared.annotate import Annotation
     from ..shared.imports import Imports
-    from ..shared.plan import Argument, Endpoint, Field, Model, Package
+    from ..shared.plan import Argument, Case, Endpoint, Field, Model, Package
 
 __all__ = ['generate_fastapi']
 
@@ -298,21 +298,58 @@ def _decorator(endpoint: Endpoint, returns: str) -> str:
 
 
 def _other_responses(endpoint: Endpoint) -> str:
-    """Every documented status but the one the method returns.
+    """What `responses=` says, so the generated OpenAPI says what the RAML said.
 
-    They reach FastAPI's `responses=`, so the generated OpenAPI says what the
-    RAML said. Raising them is the implementation's; the document does not say
-    when.
+    Every documented status but the one the method returns -- raising those is
+    the implementation's, because the document does not say when. The answered
+    status appears too where it carries *headers*, which FastAPI does not know
+    about from the return type alone.
     """
     answered = endpoint.success.status if endpoint.success else ''
     entries = []
     for case in endpoint.cases:
-        if case.status == answered:
+        if case.status == answered and not case.headers:
             continue
-        described = f"'description': {docs.one_line(case.description)!r}" if case.description else "'description': ''"
-        model = f", 'model': {case.annotation.spelling}" if case.annotation else ''
-        entries.append(f'{int(case.status)}: {{{described}{model}}}')
+        parts = [f"'description': {docs.one_line(case.description)!r}"]
+        if case.annotation and case.status != answered:
+            parts.append(f"'model': {case.annotation.spelling}")
+        if case.headers:
+            parts.append(f"'headers': {_documented_headers(case)}")
+        entries.append(f'{int(case.status)}: {{{", ".join(parts)}}}')
     return '{' + ', '.join(entries) + '}' if entries else ''
+
+
+#: A header's type, as OpenAPI spells it. Everything crosses the wire as text,
+#: so an unknown type is a string rather than a guess; the ones below are the
+#: document being specific about what that text holds.
+_HEADER_SCHEMA = {
+    'str': "{'type': 'string'}",
+    'int': "{'type': 'integer'}",
+    'float': "{'type': 'number'}",
+    'bool': "{'type': 'boolean'}",
+    'datetime.datetime': "{'type': 'string', 'format': 'date-time'}",
+    'datetime.date': "{'type': 'string', 'format': 'date'}",
+    'datetime.time': "{'type': 'string', 'format': 'time'}",
+}
+
+
+def _documented_headers(case: Case) -> str:
+    """The headers a response carries, as OpenAPI describes one.
+
+    Publishing them is not producing them: a handler that has to *set* a header
+    needs somewhere to set it, which is a question about signatures rather than
+    about documents.
+    """
+    entries = []
+    for one in case.headers:
+        parts = [
+            f"'required': {one.required}",
+            f"'schema': {_HEADER_SCHEMA.get(one.annotation.plain, _HEADER_SCHEMA['str'])}",
+        ]
+        if one.description:
+            parts.insert(0, f"'description': {one.description!r}")
+        entries.append(f'{one.wire!r}: {{{", ".join(parts)}}}')
+    return '{' + ', '.join(entries) + '}'
 
 
 def _attribute(one: Field) -> Parameter:

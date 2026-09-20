@@ -125,7 +125,7 @@ def router(implementation: BooksApi) -> APIRouter:
         status_code=201,
         summary='Add a book',
         description='Adds one book to the catalogue and returns it with its identifier.',
-        responses={400: {'description': 'The body did not match `Book` — see the schema above. The response carries no envelope; the status code is the whole of it.'}},
+        responses={201: {'description': 'Created', 'headers': {'Location': {'required': True, 'schema': {'type': 'string'}}}}, 400: {'description': 'The body did not match `Book` — see the schema above. The response carries no envelope; the status code is the whole of it.'}},
     )
     async def post_books(
         body: Book,

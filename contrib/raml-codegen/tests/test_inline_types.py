@@ -3,8 +3,9 @@
 `fixtures/sample/api.raml` declares every body by name — `type: Book`,
 `type: Delivery[]` — so the whole anonymous-naming path is unreachable from it,
 and every name it produces was untested until this file. Changing the shared
-fixture to reach it would move four other consumers (docs/17 § 3), so the
-document is here.
+fixture to reach it would move four other consumers (docs/17 § 3), so this
+document is its own. `DOCUMENT` below is the source; `tests/inline.json` is that
+document projected, and is what the tests actually read.
 
 Where a name comes from, in order:
 
@@ -18,10 +19,16 @@ Where a name comes from, in order:
 
 from __future__ import annotations
 
+import json
+
 import pytest
+from conftest import HERE
 
-from raml_codegen import Settings, generate_from_path
+from raml_codegen import Settings, generate
 
+#: `tests/inline.json` is this document, projected. It is kept here because it
+#: is what a reader needs to check the names below against, and because it is
+#: what to edit before regenerating the JSON beside it.
 DOCUMENT = """#%RAML 1.0
 title: Inline API
 mediaType: [application/json]
@@ -84,10 +91,9 @@ types:
 
 
 @pytest.fixture(scope='module')
-def generated(tmp_path_factory):
-    root = tmp_path_factory.mktemp('inline')
-    (root / 'api.raml').write_text(DOCUMENT, encoding='utf-8')
-    return generate_from_path(root / 'api.raml', 'python', Settings(), workspace_root=root)
+def generated():
+    document = json.loads((HERE / 'inline.json').read_text(encoding='utf-8'))
+    return generate(document, 'python', Settings())
 
 
 @pytest.fixture(scope='module')

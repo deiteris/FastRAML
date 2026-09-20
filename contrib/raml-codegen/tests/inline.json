@@ -1,0 +1,267 @@
+{
+  "format": "fastraml-tree",
+  "format_version": 1,
+  "view": "effective",
+  "base": "fastraml://id",
+  "entry_point": {
+    "kind": "API",
+    "title": "Inline API",
+    "media_types": [
+      "application/json"
+    ],
+    "protocols": []
+  },
+  "types": {
+    "api.raml": {
+      "Order": {
+        "id": "fastraml://id#/declarations/types/Order",
+        "name": "Order",
+        "type": "object",
+        "properties": {
+          "sku": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Order/property/sku/schema",
+              "name": "sku",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "annotation_types": {},
+  "security_schemes": {},
+  "endpoints": {
+    "/drafts": {
+      "id": "fastraml://id#/web-api/endpoint/%2Fdrafts",
+      "operations": {
+        "post": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fdrafts/supportedOperation/post",
+          "responses": {},
+          "bodies": {
+            "application/json": {
+              "id": "fastraml://id#/web-api/endpoint/%2Fdrafts/supportedOperation/post/request/payload/application%2Fjson/schema",
+              "name": "application/json",
+              "type": "object",
+              "inherits": [
+                {
+                  "$ref": "fastraml://id#/declarations/types/Order"
+                }
+              ],
+              "type_expr": "Order",
+              "properties": {
+                "sku": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Order/property/sku/schema",
+                    "name": "sku",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fdrafts/supportedOperation/put",
+          "responses": {},
+          "bodies": {
+            "application/json": {
+              "id": "fastraml://id#/web-api/endpoint/%2Fdrafts/supportedOperation/put/request/payload/application%2Fjson/schema",
+              "name": "application/json",
+              "type": "object",
+              "inherits": [
+                {
+                  "$ref": "fastraml://id#/declarations/types/Order"
+                }
+              ],
+              "type_expr": "Order",
+              "properties": {
+                "draft": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/web-api/endpoint/%2Fdrafts/supportedOperation/put/request/payload/application%2Fjson/schema/property/draft/schema",
+                    "name": "draft",
+                    "type": "boolean",
+                    "type_expr": "boolean"
+                  }
+                },
+                "sku": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Order/property/sku/schema",
+                    "name": "sku",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "secured_by": []
+    },
+    "/orders": {
+      "id": "fastraml://id#/web-api/endpoint/%2Forders",
+      "operations": {
+        "post": {
+          "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/post",
+          "responses": {
+            "201": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/post/returns/201/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/post/returns/201/payload/application%2Fjson/schema/property/id/schema",
+                        "name": "id",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/post/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "object",
+                  "display_name": "Existing order",
+                  "properties": {
+                    "id": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/post/returns/200/payload/application%2Fjson/schema/property/id/schema",
+                        "name": "id",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "bodies": {
+            "application/json": {
+              "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/post/request/payload/application%2Fjson/schema",
+              "name": "application/json",
+              "type": "object",
+              "properties": {
+                "sku": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/post/request/payload/application%2Fjson/schema/property/sku/schema",
+                    "name": "sku",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                },
+                "shipTo": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/post/request/payload/application%2Fjson/schema/property/shipTo/schema",
+                    "name": "shipTo",
+                    "type": "object",
+                    "properties": {
+                      "street": {
+                        "required": true,
+                        "type": {
+                          "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/post/request/payload/application%2Fjson/schema/property/shipTo/schema/property/street/schema",
+                          "name": "street",
+                          "type": "string",
+                          "type_expr": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "get": {
+          "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "array",
+                  "type_expr": "array",
+                  "items": {
+                    "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/get/returns/200/payload/application%2Fjson/schema/items",
+                    "name": "items",
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "required": true,
+                        "type": {
+                          "id": "fastraml://id#/web-api/endpoint/%2Forders/supportedOperation/get/returns/200/payload/application%2Fjson/schema/items/property/id/schema",
+                          "name": "id",
+                          "type": "string",
+                          "type_expr": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "secured_by": []
+    },
+    "/invoices": {
+      "id": "fastraml://id#/web-api/endpoint/%2Finvoices",
+      "operations": {
+        "get": {
+          "id": "fastraml://id#/web-api/endpoint/%2Finvoices/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Finvoices/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "array",
+                  "type_expr": "array",
+                  "items": {
+                    "id": "fastraml://id#/web-api/endpoint/%2Finvoices/supportedOperation/get/returns/200/payload/application%2Fjson/schema/items",
+                    "name": "items",
+                    "type": "object",
+                    "properties": {
+                      "total": {
+                        "required": true,
+                        "type": {
+                          "id": "fastraml://id#/web-api/endpoint/%2Finvoices/supportedOperation/get/returns/200/payload/application%2Fjson/schema/items/property/total/schema",
+                          "name": "total",
+                          "type": "number",
+                          "type_expr": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "secured_by": []
+    }
+  },
+  "annotations": []
+}

@@ -2,12 +2,17 @@
 
     uv run python tests/regenerate_golden.py
 
-Read the diff before committing it. A golden that changed without a template or
-a spelling changing is a golden that recorded something it should not have.
+Reads `tests/api.json`, the committed tree. To refresh that instead, run
+`fastraml tree fixtures/sample/api.raml -w fixtures` from the repository root;
+the root's `tests/unit/test_bindings.py` fails while it is stale.
+
+Read the diff before committing. A golden that changed without a template or a
+spelling changing is a golden that recorded something it should not have.
 """
 
 from __future__ import annotations
 
+import json
 import pathlib
 import shutil
 import sys
@@ -15,13 +20,13 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 # The line above is what makes the next two importable when run as a script.
-from conftest import FIXTURE, GOLDEN, WORKSPACE
+from conftest import GOLDEN, TREE
 
-from raml_codegen import Settings, generate_from_path
+from raml_codegen import Settings, generate
 
 
 def main() -> None:
-    generated = generate_from_path(FIXTURE, 'python', Settings(), workspace_root=WORKSPACE)
+    generated = generate(json.loads(TREE.read_text(encoding='utf-8')), 'python', Settings())
     if GOLDEN.exists():
         shutil.rmtree(GOLDEN)
     GOLDEN.mkdir(parents=True)

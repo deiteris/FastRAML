@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     import pathlib
     from collections.abc import Mapping
 
-__all__ = ['TARGETS', 'Generated', 'Settings', 'generate', 'generate_from_path']
+__all__ = ['TARGETS', 'Generated', 'Settings', 'generate']
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,26 +64,14 @@ TARGETS: dict[str, Target] = {'python': _python_target}
 
 
 def generate(document: object, target: str, settings: Settings | None = None) -> Generated:
-    """Run one target over a `fastraml tree` document."""
+    """Run one target over a `fastraml tree` document.
+
+    `document` is the decoded JSON. It is not RAML and not a path to RAML:
+    producing it needs the parser, and this package does not have one. Run
+    `fastraml tree api.raml > api.json` wherever the RAML lives, then bring the
+    JSON here.
+    """
     chosen = TARGETS.get(target)
     if chosen is None:
         raise LookupError(f'no such target: {target!r} (have {", ".join(sorted(TARGETS))})')
     return chosen(Tree.of(document), settings or Settings())
-
-
-def generate_from_path(
-    source: pathlib.Path,
-    target: str,
-    settings: Settings | None = None,
-    *,
-    workspace_root: pathlib.Path | None = None,
-) -> Generated:
-    """Parse a RAML file, project it, and run one target over the result.
-
-    The parse is the only place `fastraml` is used, and `unwrap=True` is not
-    optional: the law a consumer relies on is bought by it (docs/16 § 11.7).
-    """
-    from fastraml import ParseOptions, build_tree, parse_from_path  # noqa: PLC0415 - only this entry point parses
-
-    options = ParseOptions(unwrap=True, workspace_root=workspace_root)
-    return generate(build_tree(parse_from_path(source, options)), target, settings)

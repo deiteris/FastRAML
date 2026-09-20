@@ -352,11 +352,37 @@ class TestTheViewerSampleIsNotStale:
     def test_regenerating_changes_nothing(self):
         import json
 
-        from fastraml.views.tree import build_tree
-
         raml = parse_from_path(
             ROOT / SAMPLE_SOURCE,
             ParseOptions(unwrap=True, workspace_root=ROOT / SAMPLE_ROOT),
         )
         current = json.loads((ROOT / SAMPLE).read_text(encoding='utf-8'))
         assert current == build_tree(raml), f'run `npm run sample` in viewer/ -- {SAMPLE} is stale'
+
+
+#: `raml-codegen` reads the same document, and reads it the same way the viewer
+#: does: as committed JSON, with no parser installed.
+CODEGEN_SAMPLE = 'contrib/raml-codegen/tests/api.json'
+
+
+class TestTheCodegenSampleIsNotStale:
+    """A consumer that depends on no parser still depends on its output.
+
+    `raml-codegen` takes `fastraml tree` output and nothing else -- it does not
+    install `fastraml`, so its own suite cannot notice the projection moving
+    under it. Somebody has to, and the somebody is the side that owns the
+    projection. This is `TestTheViewerSampleIsNotStale` for the other consumer
+    on the same footing.
+    """
+
+    def test_regenerating_changes_nothing(self):
+        import json
+
+        raml = parse_from_path(
+            ROOT / SAMPLE_SOURCE,
+            ParseOptions(unwrap=True, workspace_root=ROOT / SAMPLE_ROOT),
+        )
+        current = json.loads((ROOT / CODEGEN_SAMPLE).read_text(encoding='utf-8'))
+        assert current == build_tree(raml), (
+            f'run `fastraml tree {SAMPLE_SOURCE} -w {SAMPLE_ROOT} > {CODEGEN_SAMPLE}` -- it is stale'
+        )

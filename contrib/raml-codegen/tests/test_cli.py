@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from conftest import FIXTURE, WORKSPACE, envelope
+from conftest import TREE, envelope
 from typer.testing import CliRunner
 
 from raml_codegen.cli import app
@@ -18,23 +18,28 @@ def test_it_lists_its_targets():
     assert 'python' in result.stdout
 
 
-def test_it_generates_from_a_raml_file(tmp_path):
-    result = runner.invoke(
-        app,
-        ['python', str(FIXTURE), '-o', str(tmp_path), '-w', str(WORKSPACE)],
-    )
+def test_it_generates_from_a_tree_document(tmp_path):
+    result = runner.invoke(app, ['python', str(TREE), '-o', str(tmp_path)])
     assert result.exit_code == 0, result.stdout
     assert (tmp_path / 'bookstore_api' / 'models' / 'book.py').exists()
 
 
-def test_it_generates_from_a_projected_tree(tmp_path, document):
-    # The point of a published wire format: a machine with the JSON and no RAML
-    # files can still generate, which is what `fastraml tree > api.json` is for.
-    source = tmp_path / 'api.json'
-    source.write_text(json.dumps(document), encoding='utf-8')
-    result = runner.invoke(app, ['python', str(source), '-o', str(tmp_path / 'out')])
+def test_it_reads_a_tree_from_stdin(tmp_path, document):
+    # So `fastraml tree api.raml | raml-codegen python - -o out/` is a pipeline
+    # and nothing has to touch the disk between the two.
+    result = runner.invoke(app, ['python', '-', '-o', str(tmp_path)], input=json.dumps(document))
     assert result.exit_code == 0, result.stdout
-    assert (tmp_path / 'out' / 'bookstore_api' / 'models' / 'book.py').exists()
+    assert (tmp_path / 'bookstore_api' / 'models' / 'book.py').exists()
+
+
+def test_raml_is_not_an_input(tmp_path):
+    # This package has no parser. Saying so beats a traceback about a byte that
+    # is not JSON.
+    source = tmp_path / 'api.raml'
+    source.write_text('#%RAML 1.0\ntitle: Nope\n', encoding='utf-8')
+    result = runner.invoke(app, ['python', str(source), '-o', str(tmp_path / 'out')])
+    assert result.exit_code == 2
+    assert 'not JSON' in result.output
 
 
 def test_the_package_name_can_be_chosen(tmp_path, document):

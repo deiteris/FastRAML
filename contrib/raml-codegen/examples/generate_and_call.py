@@ -1,25 +1,26 @@
-"""Generate a client from `fixtures/sample/api.raml`, then call it.
+"""Generate a client from a tree document, then call it.
 
     uv run python examples/generate_and_call.py
 
-The loop closes in one file: parse, project, generate, import, request. The
-server is an `httpx.MockTransport`, so nothing listens on a socket and the
-example needs no second process.
+The loop closes in one file: read the tree, generate, import, request. No parser
+is involved — the tree was written by `fastraml tree` and committed, which is
+the point of it being a wire format. The server is an `httpx.MockTransport`, so
+nothing listens on a socket and the example needs no second process.
 """
 
 from __future__ import annotations
 
 import importlib
+import json
 import pathlib
 import sys
 import tempfile
 
 import httpx
 
-from raml_codegen import Settings, generate_from_path
+from raml_codegen import Settings, generate
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
-FIXTURE = ROOT / 'fixtures' / 'sample' / 'api.raml'
+TREE = pathlib.Path(__file__).resolve().parent.parent / 'tests' / 'api.json'
 
 BOOK = {
     'title': 'Dune',
@@ -42,7 +43,8 @@ def catalogue(request: httpx.Request) -> httpx.Response:
 def main() -> None:
     with tempfile.TemporaryDirectory() as directory:
         destination = pathlib.Path(directory)
-        generated = generate_from_path(FIXTURE, 'python', Settings(), workspace_root=ROOT / 'fixtures')
+        document = json.loads(TREE.read_text(encoding='utf-8'))
+        generated = generate(document, 'python', Settings())
         written = generated.write(destination)
         print(f'generated {len(written)} files for {generated.package}')
 

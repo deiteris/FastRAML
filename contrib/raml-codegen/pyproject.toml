@@ -1,20 +1,20 @@
 [project]
 name = "raml-codegen"
 version = "0.1.0"
-description = "Generate source code from a RAML 1.0 definition, through the fastraml effective tree"
+description = "Generate source code from a fastraml effective-tree document"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
-dependencies = ["fastraml>=0.1,<0.2", "jinja2>=3.1", "typer>=0.26"]
+# No `fastraml`. The input is the published wire format, so generating needs
+# the JSON and not the parser that wrote it — the same footing `viewer/` is on
+# (docs/17 § 2).
+dependencies = ["jinja2>=3.1", "typer>=0.26"]
 
 [project.scripts]
 raml-codegen = "raml_codegen.cli:app"
 
 [dependency-groups]
 dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6", "httpx>=0.27"]
-
-[tool.uv.sources]
-fastraml = { path = "../..", editable = true }
 
 [build-system]
 requires = ["hatchling"]

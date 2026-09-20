@@ -30,8 +30,9 @@ about RAML, so it belongs on this side of the line.
 rule that belongs to the language. The direction is one-way and total:
 
 ```
-fastraml/  ←  viewer/          (through `fastraml tree` output, not through Python)
-         ←  contrib/*        (through the public API in docs/13)
+fastraml/  ←  viewer/            (through `fastraml tree` output, not through Python)
+         ←  raml-codegen       (the same: output, not Python)
+         ←  contrib/*          (through the public API in docs/13)
 ```
 
 **One exception, and it is the exception that proves the rule: `fastraml-viewer`.**
@@ -130,7 +131,7 @@ the loader refuses the ascent, which is the behaviour being checked.
 | `viewer/` | Renders that committed JSON. `npm run sample` rewrites it. |
 | `contrib/fastmcp-raml` | Builds MCP tools from it; its suite asserts what each construct becomes. |
 | `contrib/raml-mock` | Serves its routes in process, and its `examples/server.py` keeps the book resource in memory; its suite checks that the effective API can answer every one of them. |
-| `contrib/raml-codegen` | Generates a Python client from it, and keeps the result as a golden record; its suite runs `ruff` and `mypy` over what it generated. |
+| `contrib/raml-codegen` | Reads it as *projected JSON* (`tests/api.json`, committed) and generates a Python client, kept as a golden record. |
 
 It lives at the repo root because it belongs to no one of them. Putting it
 inside any consumer makes the other four reach into that consumer's directory to
@@ -160,7 +161,7 @@ project's `pyproject.toml` and nothing in the root gate sees them.
 | `fastmcp-raml` | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
 | `raml-mock` | RAML → HTTP | Runs an in-process aiohttp mock, validates common HTTP representations, and returns examples or generated values. |
 | `fastraml-viewer` | — | The built `viewer/` bundle as static assets, a function that says where they are, and `serve(document)`, which runs them over stdlib HTTP for `fastraml serve` (§ 2). Depends on nothing, including `fastraml`. |
-| `raml-codegen` | RAML → code | Generates source from the `fastraml tree` output (docs/16 § 11). A target registry with one target, `python`, which writes a typed `httpx` client. |
+| `raml-codegen` | tree → code | Generates source from a `fastraml tree` document. A target registry with one target, `python`, which writes a typed `httpx` client. **Depends on no parser** (§ 5.2). |
 
 `fastapi-raml` and `fastmcp-raml` both need an authoring model, and one
 duplicated across two integrations is one that disagrees with itself — so
@@ -175,101 +176,29 @@ writing a document refers to types by name and has run no pass.
 A rule the RAML language states. If two integrations both need it, that is
 evidence it belongs in a pass or a view, not in `raml-document`.
 
-### 5.2 `raml-codegen` reads the tree, not the model
+### 5.2 `raml-codegen` depends on no parser
 
-Every other consumer reads `fastraml.Raml`. `raml-codegen` reads the JSON that
-`fastraml tree` writes, through the generated binding in § 11.11a, and that is
-the point of it: the tree is a published wire format and until now the only
-thing consuming it was the viewer, which *renders*. A renderer never has to
-decide what a union, a recursion marker or a `json` shape becomes — it shows
-them. A generator has no such option, which is why it measures the projection
-where the viewer cannot.
+Every other `contrib` project imports `fastraml`. `raml-codegen` does not, and
+its `pyproject.toml` does not name it: the input is a `fastraml tree` document,
+read through the generated binding in docs/16 § 11.11a. That is `viewer/`'s
+arrangement in Python, and the edge in § 2 is the same one.
 
-It states no RAML rule, and it is worth naming why it can afford not to: by the
-time the tree exists, nine passes have run (docs/16 § 11.7). What is left is a
-choice of Python spellings. Two places where reasoning by analogy to OpenAPI
-would have invented a rule, and what is done instead:
+```bash
+fastraml tree api.raml > api.json
+raml-codegen python api.json -o out/
+```
 
-- **No `4xx` response classes.** RAML states 3-digit codes only (docs/08 § 3).
-  This is the mistake § 2.1 records against `raml-mock`, and it is noted here
-  because a generator modelled on an OpenAPI generator is exactly where it would
-  recur.
-- **Which response a `sync()` call returns** is a *client* convention — the
-  lowest documented `2xx` — not a reading of RAML. Named as a convention in the
-  README, with every code reachable through the detailed variants.
+The consequence needs saying, because it costs what § 6 is for: a project that
+does not import `fastraml` cannot notice the model moving under it. So the check
+sits on the side that owns the projection. Its suite reads committed trees —
+`tests/api.json` and `tests/inline.json` — and `tests/unit/test_bindings.py`
+regenerates them and fails while either is stale, exactly as it does for
+`viewer/public/api.json`.
 
-### 5.3 What generating found that rendering had not
-
-Three, and all three are places where reading the tree *literally* produces a
-wrong answer rather than a missing one — which is why only a generator finds
-them.
-
-**An inlined supertype reads as a new type.** The effective view inlines a
-supertype wherever it is not referenced by name (docs/16 § 11.3), so
-`body: Book` arrives as an anonymous object carrying every one of Book's
-properties and inheriting `{"$ref": Book}`. Generated literally, that is
-`PostBooksBody` — a duplicate of `Book` under a name the author never wrote, in
-every operation that mentions the type. A shape that inherits exactly one
-declaration and names exactly its properties is that declaration; narrowing a
-facet does not break it, because a tighter `maxLength` is still a `str`.
-
-**A body is named after its media type.** `name` on a body shape is
-`application/json`, which says how the value was sent and nothing about what it
-is. The viewer displays that string and it reads fine; a generator turns it into
-`ApplicationJson3`.
-
-**A union is the one thing that does not know its own type.** Every other field
-carries its conversion; a union carries one per member and no way to pick until
-it has a value. The viewer never has to pick. `raml-codegen` picks by what the
-document says — a `discriminator:` and its `discriminatorValue:` first, then a
-required property no sibling requires, then list-or-object — and where the
-document distinguishes nothing, hands the value back as it arrived.
-
-That last case is where the first draft went wrong, and it is worth recording.
-It widened the *annotation* to `Any`, on the argument that `Book | Review` over
-an undecoded `dict` is a wrong answer rather than a missing one. But the
-annotation is not a promise about what this generator can reconstruct; it is
-what the author wrote, and `Book | Review | …` is true of the value either way.
-Narrowing it described a limitation of the generator by discarding a statement
-of the document.
-
-None of the three is a gap in a pass. All three are the difference between a
-projection that can be *displayed* and one that can be *compiled*.
-
-### 5.4 A generated client meets a server, not a document
-
-The other question only a generator raises: what happens when the API stops
-matching the document it was generated from. Nothing in the parser, the views or
-any other consumer has to answer it, because nothing else is still running
-months after the document was read.
-
-**A payload never takes the caller down.** The first draft raised on a missing
-required property, on the argument that the value a client would have to invent
-is the one thing it does not have. That argument is sound about the *property*
-and wrong about the *call*: it fails the whole body rather than the one thing
-that changed, discarding every property that did arrive — usually all of them,
-and usually all the caller wanted. A client that does that stops working the
-first time the API moves, which is the thing a generated client exists to
-survive.
-
-So the discrepancy is reported rather than raised. The attribute holds `UNSET`,
-which is falsy; `Response.mismatches` says what did not match and
-`Response.content` still holds the bytes; `Client(strict=True)` restores the
-exception for a caller that would rather stop. The same backstop covers a value
-that cannot be read and a body of the wrong shape entirely — those cost the
-parsed body and not the call.
-
-This is the mirror of § 2.1 and worth naming as such. A consumer may not hold a
-rule the language states, and it may not invent one; but what to do when the
-*server* disagrees with the document is neither. RAML says nothing about it,
-because RAML describes documents and this is about a socket.
-
-The direction still lines up with `compat` (docs/16 § 10): a property added is
-ignored and a property removed is reported, so a change `fastraml compat` calls
-compatible is one a generated client does not even notice. The two reached that
-from opposite ends — `compat` from reading two documents, the client from
-reading a payload — which is some evidence that the direction in § 10.2 is a
-property of the format rather than of the comparison.
+It is worth having because it **generates** rather than renders. The viewer was
+the only consumer of the tree until now, and a renderer never has to decide what
+a union, a recursion marker or a `json` shape becomes. A generator has no such
+option, so it reaches parts of the projection the viewer cannot.
 
 ## 6. The gate
 

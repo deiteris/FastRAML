@@ -19,6 +19,7 @@ from __future__ import annotations
 import pathlib
 import re
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Final
 
 import jinja2
@@ -166,10 +167,18 @@ class Route:
     forwarded: tuple[str, ...]
     returns: str
     decorator: str
+    #: The constant naming this operation's documented statuses, and its source.
+    constant: str
+    documented: str
 
     @property
     def name(self) -> str:
         return self.endpoint.module
+
+    @property
+    def sets_headers(self) -> bool:
+        """True where the document says a response of this carries a header."""
+        return any(case.headers for case in self.endpoint.cases)
 
 
 def _route(endpoint: Endpoint) -> Route:
@@ -190,6 +199,14 @@ def _route(endpoint: Endpoint) -> Route:
         plain.append(credential[0])
         placed.append(credential[1])
 
+    if any(case.headers for case in endpoint.cases):
+        # Only where the document creates the need. An argument that goes
+        # nowhere is worse than a missing one -- the same reading that drops a
+        # URI parameter the path never mentions.
+        named = ', '.join(sorted({one.wire for case in endpoint.cases for one in case.headers}))
+        plain.append(Parameter('response', 'Response', None, f'set {named} on it; the document says this carries it.'))
+        placed.append(Parameter('response', 'Response', None))
+
     for one in endpoint.query_arguments:
         plain.append(_argument(one))
         placed.append(Parameter(one.name, _located(one, 'Query'), _default_of(one)))
@@ -207,7 +224,26 @@ def _route(endpoint: Endpoint) -> Route:
         forwarded=tuple(f'{one.name}={one.name}' for one in plain),
         returns=returns,
         decorator=_decorator(endpoint, returns),
+        constant=endpoint.module.upper(),
+        documented=_documented_statuses(endpoint),
     )
+
+
+def _documented_statuses(endpoint: Endpoint) -> str:
+    """One operation's documented statuses, by the names the RFC gives them.
+
+    `HTTPStatus.BAD_REQUEST` rather than an invented name: a RAML `enum:` lists
+    values nobody named, but a status code has a name the standard states, so
+    reading it off `http.HTTPStatus` is not guesswork.
+    """
+    entries = []
+    for case in endpoint.cases:
+        known = HTTPStatus(int(case.status))
+        # The document's own words where it has any, and the RFC's reason
+        # phrase where it says nothing -- never a sentence invented here.
+        described = docs.one_line(case.description) or known.phrase
+        entries.append(f'    HTTPStatus.{known.name}: {described!r},')
+    return '\n'.join(entries)
 
 
 def _argument(one: Argument) -> Parameter:
@@ -424,6 +460,7 @@ _FROM: Final = {
     'Any': Source('typing', third_party=False),
     'Literal': Source('typing', third_party=False),
     'override': Source('typing', third_party=False),
+    'HTTPStatus': Source('http', third_party=False),
     'APIRouter': Source('fastapi', third_party=True),
     'Depends': Source('fastapi', third_party=True),
     'FastAPI': Source('fastapi', third_party=True),
@@ -447,7 +484,7 @@ def _imports_for(annotations: Iterable[Annotation], by_name: Mapping[str, Model]
 #: predicting them drifted the moment `_located` started leaving a `Query()`
 #: with nothing to say off -- the parameter lost the call and kept the import,
 #: and an unused import is an error in the generated package's own gate.
-_WRITTEN = ('Annotated', 'Depends', 'Header', 'Path', 'Query')
+_WRITTEN = ('Annotated', 'Depends', 'Header', 'Path', 'Query', 'Response')
 
 
 #: Anything that is not part of a Python name, so that a name can be looked for
@@ -468,18 +505,22 @@ def _group_imports(routes: list[Route], by_name: Mapping[str, Model]) -> Imports
     """
     written = [one.source for route in routes for one in route.parameters]
     annotations = tuple(one for route in routes for one in route.endpoint.annotations)
-    names = ['abc', 'APIRouter', *(name for name in _WRITTEN if _mentions(written, name))]
-    if any(route.returns == 'None' for route in routes):
+    names = ['abc', 'APIRouter', 'HTTPStatus', *(name for name in _WRITTEN if _mentions(written, name))]
+    if any(route.returns == 'None' for route in routes) and 'Response' not in names:
         # FastAPI's default response class writes `null`, which a 204 may not
         # carry, so those routes name `Response` in their decorator.
         names.append('Response')
 
+    from_runtime = ['Responses']
     lines = []
     secured = [route for route in routes if route.endpoint.scheme_names]
     if secured:
         lines.append('from .. import security')
-        wanted = sorted({'accepts' if route.endpoint.optional_auth else 'requires' for route in secured})
-        lines.append(f'from ..runtime import {", ".join(["Credential", *wanted])}')
+        from_runtime += [
+            'Credential',
+            *{'accepts' if route.endpoint.optional_auth else 'requires' for route in secured},
+        ]
+    lines.append(f'from ..runtime import {", ".join(sorted(from_runtime))}')
     return _imports_for(
         annotations,
         by_name,
@@ -500,7 +541,7 @@ def _stub_imports(package: Package, routes: list[Route], by_name: Mapping[str, M
     # document dropped into a type error: the method is left with nothing to
     # override, where otherwise it would sit here routing nowhere and checking
     # out fine.
-    names = ('override', *(name for name in ('Annotated', 'Field') if _mentions(written, name)))
+    names = ('override', *(name for name in ('Annotated', 'Field', 'Response') if _mentions(written, name)))
     lines = [f'from {package.module} import Api, create_app']
     if _mentions(written, 'Credential'):
         lines.append(f'from {package.module}.runtime import Credential')

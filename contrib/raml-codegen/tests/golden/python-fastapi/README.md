@@ -92,6 +92,40 @@ operation is secured, not what a valid token looks like.
 A missing credential on a required operation is a 401 with `WWW-Authenticate`.
 That is RFC 7235, not something RAML states.
 
+## Answering with an error
+
+The request side is enforced before your method runs. A response comes out of
+your own code, so nothing can enforce it the same way — what there is instead is
+somewhere to raise *from*, so the status and the words both come from the
+document:
+
+```python
+from bookstore_server.api.books import POST_BOOKS
+
+raise POST_BOOKS.fail(400)                       # the document's own description
+raise POST_BOOKS.fail(400, 'isbn already here')  # your own
+raise POST_BOOKS.fail(418)                       # LookupError, where you wrote it
+```
+
+A status the operation does not document raises `LookupError` at the raise site.
+That is a mistake in this code rather than an answer to a caller, so it is not
+an `HTTPException` — making it one would answer the request with a 500 and hide
+what was wrong. `HTTPException` still works directly if you want a status the
+document does not name; nothing checks that one.
+
+Where a documented response carries **headers**, the method is handed a
+`Response` to set them on, and only then:
+
+```python
+async def post_books(self, *, body, credential, response: Response) -> Book:
+    book = await self.catalogue.add(body)
+    response.headers['Location'] = f'/books/{book.isbn}'
+    return book
+```
+
+Setting it is yours — nothing checks that a required header was set. The
+document's headers reach `/openapi.json` either way.
+
 ## Models
 
 Flat. `type: [A, B]` has no MRO and a narrowed property has no override, so a

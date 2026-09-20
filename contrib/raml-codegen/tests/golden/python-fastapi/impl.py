@@ -33,6 +33,7 @@ from __future__ import annotations
 import datetime
 from typing import Annotated, Literal, override
 
+from fastapi import Response
 from pydantic import Field
 
 from bookstore_server import Api, create_app
@@ -49,6 +50,7 @@ class Implementation(Api):
         *,
         body: Book,
         credential: Credential,
+        response: Response,
     ) -> Book:
         """Add a book"""
         raise NotImplementedError

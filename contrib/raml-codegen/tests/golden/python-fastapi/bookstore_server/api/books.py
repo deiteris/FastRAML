@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import abc
+from http import HTTPStatus
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
@@ -9,7 +10,52 @@ from pydantic import Field
 
 from .. import security
 from ..models.book import Book
-from ..runtime import Credential, accepts, requires
+from ..runtime import Credential, Responses, accepts, requires
+
+POST_BOOKS = Responses({
+    HTTPStatus.CREATED: 'Created',
+    HTTPStatus.BAD_REQUEST: 'The body did not match `Book` — see the schema above. The response carries no envelope; the status code is the whole of it.',
+})
+"""What `POST /books` documents, and what the document calls each.
+
+    raise POST_BOOKS.fail(400)
+
+A status this does not name raises `LookupError` where you wrote it, rather
+than answering a caller with something the document never described.
+"""
+
+GET_BOOKS = Responses({
+    HTTPStatus.OK: 'OK',
+})
+"""What `GET /books` documents, and what the document calls each.
+
+    raise GET_BOOKS.fail(200)
+
+A status this does not name raises `LookupError` where you wrote it, rather
+than answering a caller with something the document never described.
+"""
+
+GET_BOOKS_ISBN = Responses({
+    HTTPStatus.OK: 'OK',
+})
+"""What `GET /books/{isbn}` documents, and what the document calls each.
+
+    raise GET_BOOKS_ISBN.fail(200)
+
+A status this does not name raises `LookupError` where you wrote it, rather
+than answering a caller with something the document never described.
+"""
+
+DELETE_BOOKS_ISBN = Responses({
+    HTTPStatus.NO_CONTENT: 'No Content',
+})
+"""What `DELETE /books/{isbn}` documents, and what the document calls each.
+
+    raise DELETE_BOOKS_ISBN.fail(204)
+
+A status this does not name raises `LookupError` where you wrote it, rather
+than answering a caller with something the document never described.
+"""
 
 
 class BooksApi(abc.ABC):
@@ -25,6 +71,7 @@ class BooksApi(abc.ABC):
         *,
         body: Book,
         credential: Credential,
+        response: Response,
     ) -> Book:
         r"""Add a book
 
@@ -33,6 +80,7 @@ class BooksApi(abc.ABC):
         Args:
             body (Book): sent as application/json.
             credential (Credential): the credential the caller sent.
+            response (Response): set Location on it; the document says this carries it.
 
         Responses:
             201: Created
@@ -130,10 +178,12 @@ def router(implementation: BooksApi) -> APIRouter:
     async def post_books(
         body: Book,
         credential: Annotated[Credential, Depends(requires(security.OAUTH2, security.BASIC, scopes=('write:books', 'read:reviews', 'write:reviews', 'admin:catalogue')))],
+        response: Response,
     ) -> Book:
         return await implementation.post_books(
             body=body,
             credential=credential,
+            response=response,
         )
 
     @api.get(

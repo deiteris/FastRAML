@@ -2,13 +2,25 @@
 from __future__ import annotations
 
 import abc
+from http import HTTPStatus
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
 from .. import security
 from ..models.publication import Publication
-from ..runtime import Credential, requires
+from ..runtime import Credential, Responses, requires
+
+GET_PUBLICATIONS = Responses({
+    HTTPStatus.OK: 'OK',
+})
+"""What `GET /publications` documents, and what the document calls each.
+
+    raise GET_PUBLICATIONS.fail(200)
+
+A status this does not name raises `LookupError` where you wrote it, rather
+than answering a caller with something the document never described.
+"""
 
 
 class PublicationsApi(abc.ABC):

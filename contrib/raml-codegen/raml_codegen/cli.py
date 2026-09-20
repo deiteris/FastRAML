@@ -1,9 +1,11 @@
 """`raml-codegen <target> api.json -o out/`.
 
+A target is named `<language>-<library>`. `raml-codegen targets` lists them.
+
 The input is a `fastraml tree` document. Produce one where the RAML lives:
 
     fastraml tree api.raml > api.json
-    fastraml tree api.raml | raml-codegen python - -o out/
+    fastraml tree api.raml | raml-codegen python-httpx - -o out/
 """
 
 from __future__ import annotations
@@ -32,24 +34,24 @@ def list_targets() -> None:
         typer.echo(name)
 
 
-@app.command('python')
-def python_target(
+@app.command('python-httpx')
+def python_httpx(
     source: Annotated[pathlib.Path, SOURCE],
     output: Annotated[pathlib.Path, OUTPUT],
     package: Annotated[str | None, PACKAGE] = None,
 ) -> None:
-    """Generate a typed httpx client."""
-    _run('python', source, output, package)
+    """Generate a typed httpx client that calls the documented API."""
+    _run('python-httpx', source, output, package)
 
 
-@app.command('fastapi')
-def fastapi_target(
+@app.command('python-fastapi')
+def python_fastapi(
     source: Annotated[pathlib.Path, SOURCE],
     output: Annotated[pathlib.Path, OUTPUT],
     package: Annotated[str | None, PACKAGE] = None,
 ) -> None:
     """Generate a FastAPI server interface to implement."""
-    _run('fastapi', source, output, package)
+    _run('python-fastapi', source, output, package)
 
 
 def _run(target: str, source: pathlib.Path, output: pathlib.Path, package: str | None) -> None:

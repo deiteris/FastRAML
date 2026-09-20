@@ -161,7 +161,7 @@ project's `pyproject.toml` and nothing in the root gate sees them.
 | `fastmcp-raml` | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
 | `raml-mock` | RAML → HTTP | Runs an in-process aiohttp mock, validates common HTTP representations, and returns examples or generated values. |
 | `fastraml-viewer` | — | The built `viewer/` bundle as static assets, a function that says where they are, and `serve(document)`, which runs them over stdlib HTTP for `fastraml serve` (§ 2). Depends on nothing, including `fastraml`. |
-| `raml-codegen` | tree → code | Generates source from a `fastraml tree` document. Two targets: `python`, a typed `httpx` client, and `fastapi`, a server interface to implement (§ 5.3). **Depends on no parser** (§ 5.2). |
+| `raml-codegen` | tree → code | Generates source from a `fastraml tree` document. Two targets, named `<language>-<library>`: `python-httpx`, a typed client, and `python-fastapi`, a server interface to implement (§ 5.3). **Depends on no parser** (§ 5.2). |
 
 `fastapi-raml` and `fastmcp-raml` both need an authoring model, and one
 duplicated across two integrations is one that disagrees with itself — so
@@ -185,7 +185,7 @@ arrangement in Python, and the edge in § 2 is the same one.
 
 ```bash
 fastraml tree api.raml > api.json
-raml-codegen python api.json -o out/
+raml-codegen python-httpx api.json -o out/
 ```
 
 The consequence needs saying, because it costs what § 6 is for: a project that
@@ -202,12 +202,12 @@ option, so it reaches parts of the projection the viewer cannot.
 
 ### 5.3 Both directions, over one fixture
 
-`fastapi-raml` goes code → RAML. `raml-codegen fastapi` goes the other way, so
+`fastapi-raml` goes code → RAML. `raml-codegen python-fastapi` goes the other way, so
 `contrib/` now covers the two workflows over the same document: **code-first**,
 where the app is the source and the RAML falls out of it, and **design-first**,
 where the document is the source and the server interface falls out of that.
 
-The `fastapi` target is also where the § 2.1 line is drawn most finely, because
+The `python-fastapi` target is also where the § 2.1 line is drawn most finely, because
 it is the first consumer that *enforces* a facet rather than reporting one. That
 is not a rule the package holds: RAML says what `minLength:` constrains and
 pydantic says the same thing in its own words, so transcribing one into the

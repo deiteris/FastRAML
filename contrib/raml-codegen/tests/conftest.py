@@ -25,8 +25,8 @@ TREE = HERE / 'api.json'
 #: directory -- two packages of one name in one `sys.modules` is a collision
 #: waiting for whichever test runs second.
 TARGETS = {
-    'python': Settings(),
-    'fastapi': Settings(package='bookstore-server'),
+    'python-httpx': Settings(),
+    'python-fastapi': Settings(package='bookstore-server'),
 }
 
 
@@ -42,14 +42,14 @@ def tree(document) -> Tree:
 
 @pytest.fixture(scope='session')
 def generated(document):
-    """The `python` target's output: a client."""
-    return generate(document, 'python', TARGETS['python'])
+    """The `python-httpx` target's output: a client."""
+    return generate(document, 'python-httpx', TARGETS['python-httpx'])
 
 
 @pytest.fixture(scope='session')
 def served(document):
-    """The `fastapi` target's output: a server to implement."""
-    return generate(document, 'fastapi', TARGETS['fastapi'])
+    """The `python-fastapi` target's output: a server to implement."""
+    return generate(document, 'python-fastapi', TARGETS['python-fastapi'])
 
 
 def envelope(**overrides) -> dict:

@@ -36,7 +36,7 @@ def target(request):
 
 @pytest.fixture(scope='session')
 def output(target, generated, served):
-    return {'python': generated, 'fastapi': served}[target]
+    return {'python-httpx': generated, 'python-fastapi': served}[target]
 
 
 class TestTheGoldenRecord:

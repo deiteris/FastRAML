@@ -52,23 +52,25 @@ class Target(Protocol):
     def __call__(self, tree: Tree, settings: Settings) -> Generated: ...
 
 
-def _python_target(tree: Tree, settings: Settings) -> Generated:
+def _python_fastapi(tree: Tree, settings: Settings) -> Generated:
     # Imported inside the call so the registry costs nothing to list, and a
     # target with a heavy dependency does not load for a caller using another.
-    from .python import generate_python  # noqa: PLC0415 - deferred so listing the registry loads nothing
-
-    return generate_python(tree, settings)
-
-
-def _fastapi_target(tree: Tree, settings: Settings) -> Generated:
-    from .fastapi import generate_fastapi  # noqa: PLC0415 - as above
+    from .python.fastapi import generate_fastapi  # noqa: PLC0415 - deferred so listing the registry loads nothing
 
     return generate_fastapi(tree, settings)
 
 
-#: The two directions a document can be read in. `python` calls an API that
-#: exists; `fastapi` states the one to write.
-TARGETS: dict[str, Target] = {'fastapi': _fastapi_target, 'python': _python_target}
+def _python_httpx(tree: Tree, settings: Settings) -> Generated:
+    from .python.httpx import generate_httpx  # noqa: PLC0415 - as above
+
+    return generate_httpx(tree, settings)
+
+
+#: A target is named `<language>-<library>`, and its module path is the name
+#: with the dash as a dot: `python-httpx` is `targets.python.httpx`. The two
+#: here read one document in opposite directions -- `httpx` writes the caller,
+#: `fastapi` writes the thing being called.
+TARGETS: dict[str, Target] = {'python-fastapi': _python_fastapi, 'python-httpx': _python_httpx}
 
 
 def generate(document: object, target: str, settings: Settings | None = None) -> Generated:

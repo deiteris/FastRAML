@@ -27,10 +27,10 @@ build-backend = "hatchling.build"
 packages = ["raml_codegen"]
 artifacts = [
     "raml_codegen/py.typed",
-    "raml_codegen/targets/python/templates/*",
-    "raml_codegen/targets/python/runtime/*",
-    "raml_codegen/targets/fastapi/templates/*",
-    "raml_codegen/targets/fastapi/runtime/*",
+    "raml_codegen/targets/python/httpx/templates/*",
+    "raml_codegen/targets/python/httpx/runtime/*",
+    "raml_codegen/targets/python/fastapi/templates/*",
+    "raml_codegen/targets/python/fastapi/runtime/*",
 ]
 
 [tool.ruff]
@@ -69,8 +69,7 @@ multiline-quotes = "double"
 # The runtime is *copied into* a generated package rather than imported from
 # here, so it is written for its destination: it imports `httpx`, which this
 # project does not depend on, and names that only resolve once it is in place.
-"raml_codegen/targets/python/runtime/*.py" = ["ALL"]
-"raml_codegen/targets/fastapi/runtime/*.py" = ["ALL"]
+"raml_codegen/targets/python/*/runtime/*.py" = ["ALL"]
 "tests/*.py" = [
     "S101", "ANN", "D", "INP001", "PLR2004", "PLC0415", "SLF001", "S603",
     "S607", "ARG", "S105", "S106", "DTZ", "RET501", "PLR1711",
@@ -88,7 +87,7 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
-exclude = "raml_codegen/targets/(python|fastapi)/runtime/"
+exclude = "raml_codegen/targets/python/(httpx|fastapi)/runtime/"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

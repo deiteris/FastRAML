@@ -41,7 +41,7 @@ BOOK = {
 def build(destination: pathlib.Path):
     """Generate the server package and import it."""
     document = json.loads(TREE.read_text(encoding='utf-8'))
-    generated = generate(document, 'fastapi', Settings(package='bookstore-server'))
+    generated = generate(document, 'python-fastapi', Settings(package='bookstore-server'))
     generated.write(destination)
     print(f'generated {len(generated.files)} files into {destination}')
     sys.path.insert(0, str(destination))
@@ -74,7 +74,9 @@ def implement(server):
                 title='Unknown',
                 price=models.Money(amount=0.0, currency='GBP'),
                 id='bk-0',
-                created_at=datetime.datetime(2024, 1, 1),
+                # `createdAt`, not `created_at`: a model accepts the name the
+                # document gave the property and no other.
+                createdAt=datetime.datetime(2024, 1, 1),
             )
 
         async def delete_books_isbn(self, *, isbn, credential):

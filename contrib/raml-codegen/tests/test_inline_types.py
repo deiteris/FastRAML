@@ -93,7 +93,7 @@ types:
 @pytest.fixture(scope='module')
 def generated():
     document = json.loads((HERE / 'inline.json').read_text(encoding='utf-8'))
-    return generate(document, 'python', Settings())
+    return generate(document, 'python-httpx', Settings())
 
 
 @pytest.fixture(scope='module')

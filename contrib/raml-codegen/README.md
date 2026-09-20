@@ -6,20 +6,23 @@ direction.
 ```bash
 fastraml tree api.raml > api.json
 
-raml-codegen python api.json -o client/     # call the API the document describes
-raml-codegen fastapi api.json -o server/    # write the API the document describes
+raml-codegen python-httpx   api.json -o client/   # call the API the document describes
+raml-codegen python-fastapi api.json -o server/   # write the API the document describes
 ```
 
 The two commands pipe, so nothing needs to touch the disk in between:
 
 ```bash
-fastraml tree api.raml | raml-codegen python - -o out/
+fastraml tree api.raml | raml-codegen python-httpx - -o out/
 ```
+
+A target is named `<language>-<library>`, and its module path is the name with
+the dash as a dot: `python-httpx` is `targets/python/httpx/`.
 
 | target | direction | what it generates |
 |---|---|---|
-| `python` | document → caller | a typed `httpx` client, with stdlib dataclasses |
-| `fastapi` | document → server | an interface to implement, with pydantic DTOs |
+| `python-httpx` | document → caller | a typed client, with stdlib dataclasses |
+| `python-fastapi` | document → server | an interface to implement, with pydantic DTOs |
 
 Paired with `fastapi-raml`, which goes the other way — a FastAPI app rendered as
 RAML — `contrib/` covers both workflows over the same fixture: code-first, and
@@ -36,7 +39,7 @@ format.
 `python -m fastraml.views.bindings python`. Do not edit it; the parser's gate
 fails when it is stale.
 
-## The `python` target
+## The `python-httpx` target
 
 A typed `httpx` client, in the shape
 [openapi-python-client](https://github.com/openapi-generators/openapi-python-client)
@@ -158,7 +161,7 @@ decisions here are client conventions rather than readings of the language:
 declared media type. There are no `4xx` response classes — RAML states 3-digit
 codes only.
 
-## The `fastapi` target
+## The `python-fastapi` target
 
 The same document read the other way round: not a client that calls the API, but
 the API to be written.
@@ -230,20 +233,29 @@ operation is secured, not what a valid token looks like.
 `securedBy: [null, oauth2]` makes the credential `Credential | None`, because
 the document says the call may be made either way.
 
+### Names are the document's
+
+A property whose wire name is not a Python name becomes an alias --
+`created_at: Annotated[datetime, Field(alias='createdAt')]` -- and **the alias
+is the only name accepted**. `populate_by_name=True` would let `created_at`
+through on the wire as well, which is a request the document does not describe,
+and a server may not be looser than the document it was generated from.
+
+So a response is built with the document's name:
+
+```python
+Book(isbn='9780441013593', title='Dune', createdAt=datetime.now(UTC), ...)
+```
+
 ### Conventions, not readings of the language
 
-Four, and the generated README repeats them:
+Three, and the generated README repeats them:
 
 - the method returns the lowest documented `2xx`; every other status reaches
   FastAPI's `responses=` and is the implementation's to raise;
 - a request body is parsed as JSON;
 - a missing credential on a secured operation is a `401` with
-  `WWW-Authenticate`, which is RFC 7235;
-- `populate_by_name=True`, so the server also accepts `created_at` where the
-  document says `createdAt`. That is one request the document does not describe.
-  The alternative is a model nobody can construct from Python without writing
-  wire names, which is most of what a model is for when the thing being written
-  is the server. Responses go out under the document's names only.
+  `WWW-Authenticate`, which is RFC 7235.
 
 ## Working on it
 
@@ -259,9 +271,11 @@ the result. Both are then imported and driven: the client through an
 `httpx.MockTransport`, and the server — implemented — through an
 `httpx.ASGITransport`.
 
-Adding a target is a module under `targets/` and an entry in `TARGETS`.
-`targets/shared/` holds the reading of the tree, so what a new target writes is
-the six spelling hooks in `shared/annotate.py` and its own templates.
+Adding a Python target is a package under `targets/python/` and an entry in
+`TARGETS`. `targets/python/shared/` holds the reading of the tree, so what a new
+one writes is the six spelling hooks in `shared/annotate.py` and its own
+templates. A different language would be a sibling of `targets/python/`, with a
+`shared/` of its own.
 
 ```bash
 uv run python tests/regenerate_golden.py

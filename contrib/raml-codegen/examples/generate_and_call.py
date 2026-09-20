@@ -44,7 +44,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as directory:
         destination = pathlib.Path(directory)
         document = json.loads(TREE.read_text(encoding='utf-8'))
-        generated = generate(document, 'python', Settings())
+        generated = generate(document, 'python-httpx', Settings())
         written = generated.write(destination)
         print(f'generated {len(written)} files for {generated.package}')
 

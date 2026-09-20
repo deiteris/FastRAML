@@ -1,16 +1,21 @@
-"""The `python` target: a typed `httpx` client.
+"""The targets that write Python, and the part of them that is the same.
 
-Two modules. `annotate.py` decides what one shape is in Python and how a value
-of it crosses the JSON boundary; `emit.py` renders the plan through the
-templates and works out each module's imports. The reading of the tree is in
-`targets/shared/`, which every Python target does the same way.
+A target name is `<language>-<library>`, and the module path follows it:
+`python-httpx` is `targets.python.httpx` and `python-fastapi` is
+`targets.python.fastapi`. A second language would be a sibling of this package,
+with a `shared/` of its own.
 
-None of it states a RAML rule — everything the language says already ran, nine
-passes ago (docs/16 § 11.7).
+`shared/` holds everything that is not a spelling — descending the tree,
+following a link, stopping at a recursion marker, claiming a name for an
+anonymous shape — plus the two parts that are Python's rather than any one
+library's: a RAML `description:` as a docstring, and a module's import block.
+
+The two targets read the same document in opposite directions. `httpx` writes
+the caller; `fastapi` writes the thing being called. They disagree in exactly
+one place — a facet is documentation to a client and a constraint to a server —
+and `docs/17` § 5.3 says why.
 """
 
 from __future__ import annotations
 
-from .emit import generate_python
-
-__all__ = ['generate_python']
+__all__: list[str] = []

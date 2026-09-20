@@ -112,6 +112,42 @@ class TestTheStubIsGeneratedButNotOwned:
         result = _run(['-m', 'mypy', 'impl.py'], cwd=tmp_path)
         assert result.returncode == 0, result.stdout + result.stderr
 
+    def test_regenerating_does_not_overwrite_it(self, served, tmp_path):
+        # The whole point of the file. It said it was safe from regeneration
+        # before anything made it so, and an implementation is exactly the work
+        # that cannot be generated back.
+        served.write(tmp_path)
+        mine = (tmp_path / 'impl.py').read_text(encoding='utf-8') + '\nMINE = 1\n'
+        (tmp_path / 'impl.py').write_text(mine, encoding='utf-8')
+
+        again = served.write(tmp_path)
+        assert (tmp_path / 'impl.py').read_text(encoding='utf-8') == mine
+        assert [path.name for path in again.kept] == ['impl.py']
+        assert (tmp_path / 'impl.py') not in again.paths
+
+    def test_the_package_around_it_is_rewritten(self, served, tmp_path):
+        # Keeping one file is not the same as keeping the directory. Everything
+        # the document owns is regenerated whole, which is what makes it safe
+        # to read.
+        served.write(tmp_path)
+        routes = tmp_path / 'bookstore_server' / 'api' / 'books.py'
+        routes.write_text('# clobbered\n', encoding='utf-8')
+        served.write(tmp_path)
+        assert routes.read_text(encoding='utf-8') != '# clobbered\n'
+
+    def test_force_overwrites_it(self, served, tmp_path):
+        served.write(tmp_path)
+        (tmp_path / 'impl.py').write_text('# mine\n', encoding='utf-8')
+        again = served.write(tmp_path, force=True)
+        assert (tmp_path / 'impl.py').read_text(encoding='utf-8') == served.files['impl.py']
+        assert not again.kept
+
+    def test_the_client_target_keeps_nothing(self, generated, tmp_path):
+        # Every file a client target writes is an artefact. There is no
+        # starting point among them, so nothing is write-once.
+        generated.write(tmp_path)
+        assert not generated.write(tmp_path).kept
+
 
 def _run(arguments, cwd):
     return subprocess.run(

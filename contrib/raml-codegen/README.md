@@ -194,6 +194,25 @@ subclass with a method missing, so an operation the document describes and the
 code does not is an error at startup rather than a 500 later. The generated
 package depends on `fastapi` and `pydantic`.
 
+### When the document changes
+
+`<package>/` is regenerated whole; **`impl.py` is written once and then left
+alone**, because it is the one file that holds work no generator can produce
+again. `--force` overwrites it.
+
+Nobody has to work out what moved. The interface is the thing that changed, so
+it is the thing that reports:
+
+| the document | reported by |
+|---|---|
+| gained an operation | `TypeError` at startup, naming the method nobody implements |
+| changed a signature | `mypy`, as an incompatible override, printing both signatures |
+| dropped an operation | nothing; the method stays, routes nowhere, and is yours to delete |
+
+Writing the body is still manual, which it has to be. Finding out that one is
+needed is not, and the signature to copy is in the abstract declaration under
+`<package>/api/`.
+
 ### Facets are enforced, which is the one place the two targets disagree
 
 The client leaves a `pattern:` in the docstring because a client that validated

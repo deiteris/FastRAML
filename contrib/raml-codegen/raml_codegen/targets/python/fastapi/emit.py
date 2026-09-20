@@ -137,7 +137,10 @@ def generate_fastapi(tree: Tree, settings: Settings) -> Generated:
     files['pyproject.toml'] = environment.get_template('pyproject.toml.jinja').render(package=package)
     files['README.md'] = environment.get_template('README.md.jinja').render(package=package)
 
-    return Generated(package=package.distribution, files=files)
+    # `impl.py` is a starting point rather than an artefact: it is generated
+    # once and then belongs to whoever edits it. Regenerating rewrites the
+    # package around it and leaves it alone.
+    return Generated(package=package.distribution, files=files, once=frozenset({'impl.py'}))
 
 
 # -- one operation, as source --------------------------------------------------

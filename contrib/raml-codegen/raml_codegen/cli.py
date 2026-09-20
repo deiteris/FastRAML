@@ -25,6 +25,7 @@ app = typer.Typer(add_completion=False, help=__doc__)
 SOURCE = typer.Argument(help='a `fastraml tree` JSON document, or - to read one from stdin')
 OUTPUT = typer.Option('-o', '--output', help='directory to write the package into')
 PACKAGE = typer.Option('--package', help="the generated package name; defaults to the API's title")
+FORCE = typer.Option('--force', help='overwrite a starting-point file that is already there, such as impl.py')
 
 
 @app.command('targets')
@@ -39,9 +40,10 @@ def python_httpx(
     source: Annotated[pathlib.Path, SOURCE],
     output: Annotated[pathlib.Path, OUTPUT],
     package: Annotated[str | None, PACKAGE] = None,
+    force: Annotated[bool, FORCE] = False,
 ) -> None:
     """Generate a typed httpx client that calls the documented API."""
-    _run('python-httpx', source, output, package)
+    _run('python-httpx', source, output, package, force=force)
 
 
 @app.command('python-fastapi')
@@ -49,12 +51,20 @@ def python_fastapi(
     source: Annotated[pathlib.Path, SOURCE],
     output: Annotated[pathlib.Path, OUTPUT],
     package: Annotated[str | None, PACKAGE] = None,
+    force: Annotated[bool, FORCE] = False,
 ) -> None:
     """Generate a FastAPI server interface to implement."""
-    _run('python-fastapi', source, output, package)
+    _run('python-fastapi', source, output, package, force=force)
 
 
-def _run(target: str, source: pathlib.Path, output: pathlib.Path, package: str | None) -> None:
+def _run(
+    target: str,
+    source: pathlib.Path,
+    output: pathlib.Path,
+    package: str | None,
+    *,
+    force: bool = False,
+) -> None:
     try:
         generated = generate(_read(source), target, Settings(package=package))
     except UnreadableTree as error:
@@ -64,8 +74,18 @@ def _run(target: str, source: pathlib.Path, output: pathlib.Path, package: str |
         typer.secho(f'{source}: not JSON: {error}', fg='red', err=True)
         raise typer.Exit(code=2) from error
 
-    written = generated.write(output)
-    typer.echo(f'wrote {len(written)} files to {output.resolve()}')
+    written = generated.write(output, force=force)
+    typer.echo(f'wrote {len(written.paths)} files to {output.resolve()}')
+    for path in written.kept:
+        # Said rather than left to be discovered: the alternative to saying it
+        # is the developer assuming the new stub arrived and wondering why the
+        # method they were told about is not in the file.
+        typer.secho(
+            f'kept {path.name}, which already exists and is yours to edit'
+            ' -- generate into an empty directory to see the current stub,'
+            ' or pass --force to overwrite it',
+            fg='yellow',
+        )
 
 
 def _read(source: pathlib.Path) -> object:

@@ -20,12 +20,29 @@ def test_it_lists_its_targets():
 
 
 def test_it_generates_a_server_from_the_same_document(tmp_path):
-    # The same tree, read the other way round: `python` calls the API and
-    # `fastapi` states the one to write.
+    # The same tree, read the other way round: `python-httpx` calls the API and
+    # `python-fastapi` states the one to write.
     result = runner.invoke(app, ['python-fastapi', str(TREE), '-o', str(tmp_path), '--package', 'bookstore-server'])
     assert result.exit_code == 0, result.stdout
     assert (tmp_path / 'bookstore_server' / 'api' / 'books.py').exists()
     assert (tmp_path / 'impl.py').exists()
+
+
+def test_it_says_when_it_kept_a_file_rather_than_writing_one(tmp_path):
+    # A developer who is not told assumes the new stub arrived, and then
+    # wonders why the method they were told about is not in the file.
+    arguments = ['python-fastapi', str(TREE), '-o', str(tmp_path), '--package', 'bookstore-server']
+    runner.invoke(app, arguments)
+    (tmp_path / 'impl.py').write_text('# mine\n', encoding='utf-8')
+
+    result = runner.invoke(app, arguments)
+    assert result.exit_code == 0, result.stdout
+    assert 'kept impl.py' in result.output
+    assert (tmp_path / 'impl.py').read_text(encoding='utf-8') == '# mine\n'
+
+    forced = runner.invoke(app, [*arguments, '--force'])
+    assert forced.exit_code == 0, forced.stdout
+    assert (tmp_path / 'impl.py').read_text(encoding='utf-8') != '# mine\n'
 
 
 def test_it_generates_from_a_tree_document(tmp_path):

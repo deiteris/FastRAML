@@ -18,8 +18,7 @@ class Implementation(Api):
 app = create_app(Implementation())
 ```
 
-`impl.py` is that file with every method stubbed. Copy it out, fill it in, and
-run it:
+`impl.py` is that file with every method stubbed. Fill it in and run it:
 
 ```bash
 uvicorn impl:app --reload
@@ -28,6 +27,23 @@ uvicorn impl:app --reload
 `Api` inherits one abstract class per path group (books, shelves, deliveries, publications, search).
 `abc` refuses to construct a subclass with a method missing, so an operation the
 document describes and the implementation does not is an error at startup.
+
+## When the document changes
+
+Regenerate. `bookstore_server/` is rewritten whole and **`impl.py` is left
+alone** — it is the one file here that is yours, and `--force` is what it takes
+to overwrite it.
+
+You do not have to work out what moved:
+
+| the document | you find out from |
+|---|---|
+| gained an operation | `TypeError` at startup, naming the method nobody implements |
+| changed a signature | `mypy impl.py`, printing both signatures side by side |
+| dropped an operation | nothing — the method stays and routes nowhere; delete it |
+
+Copy a new method from its abstract declaration under `bookstore_server/api/`,
+which carries the signature and the documentation the document gave it.
 
 ## What the routes do before you see a request
 

@@ -1,14 +1,28 @@
 """A starting point for implementing Bookstore API.
 
 **This file is yours.** It has no generated header because nothing regenerates
-it: `raml-codegen` rewrites `bookstore_server/` and leaves this alone. Copy
-it into your own project, fill in the methods, and delete this paragraph.
+it: `raml-codegen` rewrites `bookstore_server/` around it and leaves this
+alone unless asked with `--force`. Fill in the methods and delete this
+docstring.
 
     uvicorn impl:app --reload
 
-Every method raises `NotImplementedError` until you replace it. `abc` will not
-let `Implementation()` be constructed while one is missing, so the document and
-the implementation cannot drift apart without the server refusing to start.
+Every method raises `NotImplementedError` until you replace it.
+
+## When the document changes
+
+Regenerate the package. You do not have to work out what moved -- two things
+tell you, and both name it:
+
+* an operation the document gained is an abstract method nobody implements, so
+  `Implementation()` raises `TypeError` naming it, at startup rather than on
+  the first request that reaches it;
+* an operation whose parameters or response changed is an incompatible
+  override, so `mypy impl.py` prints both signatures side by side.
+
+Copy the new method from its abstract declaration in `bookstore_server/api/`,
+which carries the signature and the documentation. An operation the document
+dropped leaves a method here that nothing routes; delete it when you notice.
 """
 
 from __future__ import annotations

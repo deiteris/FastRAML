@@ -1154,6 +1154,32 @@ fact carried by the call stack, not reconstructed from a graph path. Shapes are
 already unwrapped by P9; the walk follows aliases and treats a `RecursiveShape`
 as the explicit leaf marker it is, never following its `head` back into a cycle.
 
+### 10.0a Declared types, graded both ways
+
+`backward_types(old, new)` compares `types:` rather than operations, behind
+`compat --types`. It exists because `backward` walks operations and a library
+has none: the default answer for two versions of a library was an empty list and
+exit 0, which reads as "compatible" for a document whose whole contract moved.
+
+**`TypeDeclaration` is the one coordinate `side_of` answers `None` for**, and
+that is the feature. A declared type is neither sent nor received until
+something uses it, so `emit` grades it once as a request and once as a
+response — `request-constraint-tightened` is `breaking` and
+`response-constraint-tightened` is `compatible`, and both are true of the same
+edit. They are two changes and not one change with two grades, because `impact`
+is the field `configure` overrides, `--severity` filters and the exit code
+reads; one of those per record keeps every one of them working. The report pairs
+them back into a row with **If sent** and **If received**, listed under the
+worse.
+
+**Nothing is walked twice.** Direction was never an input to the traversal, only
+to the grading it fed: the walk names a movement and `rule_for` supplies the
+side. One traversal therefore answers a coordinate that has no side, which is
+why the pair provably agrees on location, path, kind, subject and values.
+
+A movement that names no side — `entity-added`, `entity-removed` for a whole
+type — yields one record, because there is no second answer to give.
+
 ### 10.1 The change list is the contract
 
 `backward(old, new) -> list[Changed | OperationAdded | OperationRemoved]`

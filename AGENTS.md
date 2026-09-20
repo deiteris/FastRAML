@@ -63,7 +63,8 @@ over it: `views/graph.py` emits a node set — identity and reference — and
 `views/tree.py` emits containment, the two being lossy on orthogonal axes rather
 than one filtering the other. `views/render.py` is the reading view of a single
 type or endpoint, `views/queries.py` the SPARQL catalogue, `views/backward/` the
-version comparison and its backward-compatibility policy, `views/jsonschema.py`
+version comparison and its backward-compatibility policy, over operations or
+over `types:` declarations, `views/jsonschema.py`
 a shape as JSON Schema draft-07 (`docs/16` § 12), and `views/openapi.py` the
 effective API as OpenAPI 3.0.3 (`docs/16` § 13). Ten CLI verbs — `graph`,
 `tree`, `serve`, `list`, `refs`, `deps`, `show`, `query`, `compat`, `openapi`.

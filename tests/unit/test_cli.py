@@ -704,7 +704,46 @@ def versions(workspace):
     return str(root / 'v1.raml'), str(root / 'v2.raml')
 
 
+LIBRARY = """#%RAML 1.0 Library
+types:
+  Money:
+    type: object
+    properties:
+      amount: {type: number, minimum: 0}
+"""
+
+
 class TestCompat:
+    def test_types_compares_declarations_and_grades_them_both_ways(self, workspace, capsys):
+        """The mode `compat` has no answer for otherwise. A library declares no
+        operation, so the operation walk correctly finds nothing -- and reported
+        "compatible" for a document whose whole contract had moved.
+        """
+        library = LIBRARY
+        root = workspace({'a.raml': library, 'b.raml': library.replace('minimum: 0', 'minimum: 1')})
+        args = [str(root / 'a.raml'), str(root / 'b.raml')]
+
+        assert main(['compat', *args]) == EXIT_OK
+        assert capsys.readouterr().out == '', 'the operation walk sees nothing in a library'
+
+        assert main(['compat', '--types', *args]) == EXIT_INVALID
+        out = capsys.readouterr().out
+        assert '# Type compatibility' in out
+        assert '### `Money`' in out
+        assert '| `$.amount` | `minimum` | `0` -> `1` | Breaking | Compatible |' in out
+
+    def test_types_carries_json_and_the_two_records_share_a_coordinate(self, workspace, capsys):
+        library = LIBRARY
+        root = workspace({'a.raml': library, 'b.raml': library.replace('minimum: 0', 'minimum: 1')})
+
+        assert main(['compat', '--types', '--json', str(root / 'a.raml'), str(root / 'b.raml')]) == EXIT_INVALID
+
+        records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        assert {r['rule'] for r in records} == {'request-constraint-tightened', 'response-constraint-tightened'}
+        assert {r['impact'] for r in records} == {'breaking', 'compatible'}
+        assert {r['location']['kind'] for r in records} == {'TypeDeclaration'}
+        assert len({(r['location']['name'], tuple(s['name'] for s in r['path'])) for r in records}) == 1
+
     """docs/13 § 8.2. The exit code is the contract a CI job depends on."""
 
     def test_a_breaking_change_exits_one(self, versions, capsys):

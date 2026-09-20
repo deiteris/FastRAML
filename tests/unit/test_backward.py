@@ -26,14 +26,17 @@ from fastraml.views.backward import (
     ResponseStatus,
     SecurityLocation,
     TransportLocation,
+    TypeDeclaration,
     UnionMemberSegment,
     backward,
     backward_markdown,
+    backward_types,
     configure,
     impact_of,
     record,
     render_markdown,
     rule_for,
+    side_of_rule,
 )
 from fastraml.views.backward.compare import _loosened
 from fastraml.views.backward.markdown import _location_label
@@ -1265,6 +1268,107 @@ def _worked_example() -> tuple[list[Change], str]:
     old = parse_from_path(root / 'v1.raml', options)
     new = parse_from_path(root / 'v2.raml', options)
     return backward(old, new), backward_markdown(old, new)
+
+
+LIBRARY = """#%RAML 1.0 Library
+types:
+  Money:
+    type: object
+    properties:
+      amount: {type: number, minimum: 0}
+      note?: string
+  Retired: string
+"""
+
+
+def typed(tmp_path, old: str, new: str):
+    options = ParseOptions(unwrap=True)
+    before = parse_from_string(old, file_name='old.raml', base_dir=tmp_path, options=options)
+    after = parse_from_string(new, file_name='new.raml', base_dir=tmp_path, options=options)
+    return backward_types(before, after)
+
+
+def test_a_declaration_is_graded_for_a_sender_and_for_a_reader(tmp_path):
+    """A type on neither side of the wire gets both answers, not a guess at one.
+
+    Tightening a bound rejects producers and reassures readers; removing a
+    property does the reverse. One grade would have to pick a side and be wrong
+    for the other reader, so the walk emits one change per side and the report
+    pairs them.
+    """
+    new = LIBRARY.replace('minimum: 0', 'minimum: 1')
+
+    found = typed(tmp_path, LIBRARY, new)
+
+    assert {(change.rule, change.impact) for change in found} == {
+        ('request-constraint-tightened', 'breaking'),
+        ('response-constraint-tightened', 'compatible'),
+    }
+    assert {change.location for change in found} == {TypeDeclaration('Money')}
+    assert {change.path for change in found} == {(PropertySegment('amount'),)}
+    assert {record(change)['scope'] for change in found} == {'api-schema'}
+
+
+def test_one_traversal_answers_both_sides(tmp_path):
+    """Direction was never an input to the walk, only to the grading it fed.
+
+    So a two-sided verdict is one walk emitting twice, not two walks. The proof
+    is that the pair agrees on everything except the rule and the grade it
+    implies -- if the shape were walked twice, nothing would guarantee that.
+    """
+    new = LIBRARY.replace('      note?: string\n', '')
+
+    found = typed(tmp_path, LIBRARY, new)
+    request = next(c for c in found if side_of_rule(c.rule) == 'request')
+    response = next(c for c in found if side_of_rule(c.rule) == 'response')
+
+    assert (request.location, request.path, request.kind) == (response.location, response.path, response.kind)
+    assert (request.subject, request.attribute) == (response.subject, response.attribute)
+    assert (request.before, request.after) == (response.before, response.after)
+    assert request.impact == 'review'
+    assert response.impact == 'breaking'
+
+
+def test_a_movement_with_no_side_of_its_own_is_reported_once(tmp_path):
+    """A whole type that left is one fact, not two: `entity-removed` names no
+    side, so `emit` has nothing to ask and produces a single change.
+    """
+    new = LIBRARY.replace('  Retired: string\n', '')
+
+    found = [change for change in typed(tmp_path, LIBRARY, new) if change.location == TypeDeclaration('Retired')]
+
+    assert len(found) == 1
+    assert found[0].rule == 'entity-removed'
+    assert found[0].path is None, 'a whole type that left is the coordinate, not a shape under one'
+
+
+def test_the_types_report_states_both_grades_in_one_row(tmp_path):
+    new = LIBRARY.replace('minimum: 0', 'minimum: 1').replace('      note?: string\n', '')
+
+    report = render_markdown(typed(tmp_path, LIBRARY, new))
+
+    assert '# Type compatibility' in report
+    assert '## Type declarations' in report
+    assert '### `Money`' in report
+    assert '| If sent | If received |' in report
+    assert '| `$.amount` | `minimum` | `0` -> `1` | Breaking | Compatible |' in report
+    assert '| `$.note` | optional `string` | Review | Breaking |' in report
+    # The heading named the type, so the coordinate column drops out entirely.
+    assert '| Where |' not in report.split('## Type declarations')[1]
+
+
+def test_a_library_is_silent_under_the_operation_walk(tmp_path):
+    """The reason the types mode exists. `backward` compares operations, and a
+    library has none, so it correctly reports nothing -- which read as "no
+    changes, all compatible" for a document whose whole contract had moved.
+    """
+    new = LIBRARY.replace('minimum: 0', 'minimum: 1')
+    options = ParseOptions(unwrap=True)
+    before = parse_from_string(LIBRARY, file_name='old.raml', base_dir=tmp_path, options=options)
+    after = parse_from_string(new, file_name='new.raml', base_dir=tmp_path, options=options)
+
+    assert backward(before, after) == []
+    assert backward_types(before, after) != []
 
 
 def test_a_coordinate_is_two_optional_fields_and_not_four_classes():

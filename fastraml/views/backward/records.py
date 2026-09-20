@@ -9,7 +9,7 @@ are kept where a reader sees both.
 from __future__ import annotations
 
 from dataclasses import asdict, replace
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal, TypedDict
 
 from fastraml.views.backward.model import (
     RULE_IDS,
@@ -26,9 +26,33 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from fastraml.config import CompatibilityConfig, CompatibilityMatch
-    from fastraml.views.backward.model import Location
+    from fastraml.views.backward.model import Impact, Location
 
-__all__ = ['configure', 'record']
+__all__ = ['ChangeRecord', 'configure', 'record']
+
+
+class ChangeRecord(TypedDict, total=False):
+    """The JSON shape of one change, so a consumer types what it reads.
+
+    `total=False` because the coordinate fields are the point: `operation` is
+    absent for an API-level default and `path` for a change that is not inside a
+    shape, and a consumer that assumes either is present is the bug this says
+    out loud. `scope` names which combination it is, and is always present.
+    """
+
+    scope: Literal['api', 'api-schema', 'operation', 'schema']
+    operation: dict[str, str]
+    kind: str
+    location: dict[str, object]
+    path: list[dict[str, object]]
+    subject: str
+    attribute: str | None
+    before: object
+    after: object
+    display_name: str | None
+    description: str | None
+    impact: Impact
+    rule: str
 
 
 def configure(changes: Sequence[Change], config: CompatibilityConfig) -> list[Change]:
@@ -62,7 +86,7 @@ def configure(changes: Sequence[Change], config: CompatibilityConfig) -> list[Ch
 #: `scope` names the cell of owner x path that a change sits in, for a consumer
 #: that wants to filter without reading two optional fields. Derived, because
 #: two fields and a name for their combination are one fact, not two.
-_SCOPE: Final[dict[tuple[bool, bool], str]] = {
+_SCOPE: Final[dict[tuple[bool, bool], Literal['api', 'api-schema', 'operation', 'schema']]] = {
     (False, False): 'api',
     (False, True): 'api-schema',
     (True, False): 'operation',
@@ -70,7 +94,7 @@ _SCOPE: Final[dict[tuple[bool, bool], str]] = {
 }
 
 
-def record(change: Change) -> dict[str, object]:
+def record(change: Change) -> ChangeRecord:
     """One JSON object per change. `api` omits `operation`; a contract omits `path`.
 
     A field is absent rather than null when the change has no such coordinate,
@@ -86,7 +110,7 @@ def record(change: Change) -> dict[str, object]:
             'impact': change.impact,
             'rule': change.rule,
         }
-    out: dict[str, object] = {'scope': _SCOPE[change.operation is not None, change.path is not None]}
+    out: ChangeRecord = {'scope': _SCOPE[change.operation is not None, change.path is not None]}
     if change.operation is not None:
         out['operation'] = {'path': change.operation.path, 'method': change.operation.method}
     out['kind'] = change.kind

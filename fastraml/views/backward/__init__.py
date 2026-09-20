@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastraml.views.backward.compare import backward
+from fastraml.views.backward.compare import backward, backward_types
 from fastraml.views.backward.markdown import render_markdown
 from fastraml.views.backward.model import (
     IMPACTS,
@@ -31,6 +31,7 @@ from fastraml.views.backward.model import (
     Direction,
     Impact,
     ItemsSegment,
+    Location,
     OperationAdded,
     OperationContract,
     OperationId,
@@ -42,30 +43,37 @@ from fastraml.views.backward.model import (
     RequestBody,
     ResponseBody,
     ResponseStatus,
+    SchemaLocation,
     SecurityLocation,
     Subject,
     TransportLocation,
+    TypeDeclaration,
     UnionMemberSegment,
     impact_of,
     rule_for,
     side_of,
+    side_of_rule,
 )
-from fastraml.views.backward.records import configure, record
+from fastraml.views.backward.records import ChangeRecord, configure, record
+from fastraml.views.backward.rules import RULES, Rule
 
 if TYPE_CHECKING:
     from fastraml.registry import Raml
 
 __all__ = [
     'IMPACTS',
+    'RULES',
     'RULE_IDS',
     'SUBJECTS',
     'BackwardChange',
     'Change',
     'ChangeKind',
+    'ChangeRecord',
     'Changed',
     'Direction',
     'Impact',
     'ItemsSegment',
+    'Location',
     'OperationAdded',
     'OperationContract',
     'OperationId',
@@ -77,18 +85,23 @@ __all__ = [
     'RequestBody',
     'ResponseBody',
     'ResponseStatus',
+    'Rule',
+    'SchemaLocation',
     'SecurityLocation',
     'Subject',
     'TransportLocation',
+    'TypeDeclaration',
     'UnionMemberSegment',
     'backward',
     'backward_markdown',
+    'backward_types',
     'configure',
     'impact_of',
     'record',
     'render_markdown',
     'rule_for',
     'side_of',
+    'side_of_rule',
 ]
 
 

@@ -50,6 +50,31 @@ not. `-o` writes UTF-8 with LF newlines on every platform, reports an unwritable
 path on stderr instead of the verdict, and leaves the exit code and the breaking
 count as they are. It carries `--json` output too.
 
+## Compare declared types instead of operations
+
+```bash
+fastraml compat --types old/lib.raml new/lib.raml
+```
+
+Use this when the document declares no operations — a RAML library — or when the
+question is about the types themselves rather than the endpoints carrying them.
+The default walk compares operations, so on a library it reports nothing and
+exits 0, which reads as "compatible" for a document whose whole contract may
+have moved.
+
+A declared type is on neither side of the wire until something uses it, so every
+change is graded **twice**: once for code that produces a value of that type and
+once for code that reads one. Tightening a constraint rejects producers and
+reassures readers; loosening one does the reverse. The Markdown report carries
+`If sent` and `If received` columns and lists each row under the worse of the
+two. `--json` emits both grades as two records sharing one `location` and
+`path`, each with its own `rule` and `impact` — read the `request-`/`response-`
+prefix on `rule` to tell which half you are holding. The exit code follows the
+worse, as everywhere else.
+
+A change that names no side — a whole type that arrived or left — is one record
+with one grade.
+
 ## Choose the workspace boundary
 
 Each document defaults to its own directory as workspace root. That is enough

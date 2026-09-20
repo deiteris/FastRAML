@@ -73,17 +73,47 @@ from fastraml.types.values import same_value as same_value
 from fastraml.uris import file_uri_to_path as file_uri_to_path
 from fastraml.uris import path_to_file_uri as path_to_file_uri
 from fastraml.uris import resolve_uri_ref as resolve_uri_ref
+from fastraml.views.backward import IMPACTS as IMPACTS
+from fastraml.views.backward import RULE_IDS as RULE_IDS
+from fastraml.views.backward import RULES as RULES
+from fastraml.views.backward import SUBJECTS as SUBJECTS
+from fastraml.views.backward import BackwardChange as BackwardChange
+from fastraml.views.backward import Change as Change
 from fastraml.views.backward import Changed as Changed
+from fastraml.views.backward import ChangeKind as ChangeKind
+from fastraml.views.backward import ChangeRecord as ChangeRecord
+from fastraml.views.backward import Direction as Direction
+from fastraml.views.backward import Impact as Impact
 from fastraml.views.backward import ItemsSegment as ItemsSegment
+from fastraml.views.backward import Location as Location
 from fastraml.views.backward import OperationAdded as OperationAdded
+from fastraml.views.backward import OperationContract as OperationContract
 from fastraml.views.backward import OperationId as OperationId
 from fastraml.views.backward import OperationRemoved as OperationRemoved
+from fastraml.views.backward import ParameterLocation as ParameterLocation
+from fastraml.views.backward import PathSegment as PathSegment
 from fastraml.views.backward import PatternPropertySegment as PatternPropertySegment
 from fastraml.views.backward import PropertySegment as PropertySegment
+from fastraml.views.backward import RequestBody as RequestBody
+from fastraml.views.backward import ResponseBody as ResponseBody
+from fastraml.views.backward import ResponseStatus as ResponseStatus
+from fastraml.views.backward import Rule as Rule
+from fastraml.views.backward import SchemaLocation as SchemaLocation
+from fastraml.views.backward import SecurityLocation as SecurityLocation
+from fastraml.views.backward import Subject as Subject
+from fastraml.views.backward import TransportLocation as TransportLocation
+from fastraml.views.backward import TypeDeclaration as TypeDeclaration
 from fastraml.views.backward import UnionMemberSegment as UnionMemberSegment
 from fastraml.views.backward import backward as backward
 from fastraml.views.backward import backward_markdown as backward_markdown
+from fastraml.views.backward import backward_types as backward_types
+from fastraml.views.backward import configure as configure
+from fastraml.views.backward import impact_of as impact_of
+from fastraml.views.backward import record as record
 from fastraml.views.backward import render_markdown as render_compatibility_markdown
+from fastraml.views.backward import rule_for as rule_for
+from fastraml.views.backward import side_of as side_of
+from fastraml.views.backward import side_of_rule as side_of_rule
 from fastraml.views.graph import Edge as Edge
 from fastraml.views.graph import Graph as Graph
 from fastraml.views.graph import Route as Route
@@ -101,15 +131,19 @@ from fastraml.yamlnode import backend_name as backend_name
 from fastraml.yamlnode import compose as compose
 
 __version__: str
-__all__ = (
+__all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'APIFragment',
     'Accumulator',
     'Addresses',
     'AnyShape',
     'ArrayShape',
+    'BackwardChange',
     'BaseShape',
     'Body',
     'BooleanShape',
+    'Change',
+    'ChangeKind',
+    'ChangeRecord',
     'Changed',
     'CompatibilityConfig',
     'CompatibilityMatch',
@@ -120,6 +154,7 @@ __all__ = (
     'DateOnlyShape',
     'DateTimeOnlyShape',
     'DateTimeShape',
+    'Direction',
     'DocumentationItem',
     'DocumentationItemFragment',
     'DomainExtension',
@@ -135,6 +170,8 @@ __all__ = (
     'Graph',
     'GraphNode',
     'HTTPLoader',
+    'IMPACTS',
+    'Impact',
     'IncludeInfo',
     'IncludeRef',
     'IntegerShape',
@@ -142,6 +179,7 @@ __all__ = (
     'JsonShape',
     'Library',
     'LoaderError',
+    'Location',
     'NamedExample',
     'NilShape',
     'Node',
@@ -151,33 +189,48 @@ __all__ = (
     'ObjectShape',
     'Operation',
     'OperationAdded',
+    'OperationContract',
     'OperationId',
     'OperationRemoved',
     'Parameter',
+    'ParameterLocation',
     'ParseCtx',
     'ParseOptions',
     'ParserConfig',
+    'PathSegment',
     'PatternProperty',
     'PatternPropertySegment',
     'Position',
     'Property',
     'PropertySegment',
+    'RULES',
+    'RULE_IDS',
     'Raml',
     'RamlError',
     'RecursiveShape',
     'Request',
+    'RequestBody',
     'ResourceLoader',
     'ResourceTypeFragment',
     'Response',
+    'ResponseBody',
+    'ResponseStatus',
     'Route',
+    'Rule',
+    'SUBJECTS',
     'SafeFileLoader',
     'ScalarFacet',
+    'SchemaLocation',
     'SchemeLoader',
+    'SecurityLocation',
     'SecuritySchemeFragment',
     'StringShape',
+    'Subject',
     'TimeOnlyShape',
     'Trace',
     'TraitFragment',
+    'TransportLocation',
+    'TypeDeclaration',
     'UnionMemberSegment',
     'UnionShape',
     'UnknownShape',
@@ -189,19 +242,26 @@ __all__ = (
     'backend_name',
     'backward',
     'backward_markdown',
+    'backward_types',
     'build_graph',
     'build_loader',
     'build_tree',
     'compose',
+    'configure',
     'file_uri_to_path',
+    'impact_of',
     'load_config',
     'parse_from_path',
     'parse_from_string',
     'parse_lenient',
     'path_to_file_uri',
+    'record',
     'render_compatibility_markdown',
     'resolve_uri_ref',
+    'rule_for',
     'same_value',
+    'side_of',
+    'side_of_rule',
     'to_json_schema',
     'to_openapi',
 )

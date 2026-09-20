@@ -107,6 +107,11 @@ name; `deps` finds everything the name is built from. Each result is a route.
 
 Compare two versions and grade each change. Exits 1 when any change is breaking.
 
+- `--types` — compare `types:` declarations instead of operations. Use it on a
+  library, which declares no operation and which the default walk therefore
+  reports nothing about. A declaration is on neither side of the wire, so each
+  change is graded twice and the report carries **If sent** and **If received**
+  columns; both grades are in `--json`, as two records sharing one coordinate.
 - `--breaking-only` — report only breaking changes. Still exits 1 if any.
 - `--severity S` — report this severity **and everything worse**. Values:
   `breaking`, `review`, `compatible`, `cosmetic`. Default `cosmetic`, which shows

@@ -30,9 +30,11 @@ from fastraml.views.backward.model import (
     SecurityLocation,
     Subject,
     TransportLocation,
+    TypeDeclaration,
     _normal,
     _path_label,
     side_of,
+    side_of_rule,
 )
 
 if TYPE_CHECKING:
@@ -57,17 +59,32 @@ def render_markdown(changes: Sequence[Change]) -> str:
     field `configure` rewrites -- ordering the change list by a grading a project
     is free to override would leave the list stale the moment one did.
     """
-    api = [change for change in changes if isinstance(change, Changed) and change.operation is None]
+    api = [
+        change
+        for change in changes
+        if isinstance(change, Changed) and change.operation is None and not isinstance(change.location, TypeDeclaration)
+    ]
     added = [change for change in changes if isinstance(change, OperationAdded)]
     removed = [change for change in changes if isinstance(change, OperationRemoved)]
     shared, owned_by = _rollup(changes)
-    entries: list[Change] = [*api, *added, *removed, *(entry.change for entry in shared)]
-    entries.extend(change for owned in owned_by.values() for change in owned)
-    counts = {impact: sum(entry.impact == impact for entry in entries) for impact in IMPACTS.order}
+    declared = _declaration_rows(changes)
+    # Counted per *row*, not per record: one edit reaching four operations is one
+    # decision, and a declaration graded for both sides is one edit with two
+    # answers. The exit code still follows the records, which is `cli`'s job.
+    graded: list[Impact] = [
+        *(change.impact for change in api),
+        *(change.impact for change in added),
+        *(change.impact for change in removed),
+        *(entry.change.impact for entry in shared),
+        *(change.impact for owned in owned_by.values() for change in owned),
+        *(row.worst() for row in declared),
+    ]
+    counts = {impact: graded.count(impact) for impact in IMPACTS.order}
     result = 'Breaking' if counts['breaking'] else ('Review required' if counts['review'] else 'Compatible')
     callout = 'CAUTION' if counts['breaking'] else ('WARNING' if counts['review'] else 'TIP')
+    operational = bool(api or added or removed or shared or owned_by)
     lines = [
-        '# API compatibility',
+        '# API compatibility' if operational or not declared else '# Type compatibility',
         '',
         f'> [!{callout}]',
         f'> **{result}.** {_verdict_sentence(counts)}',
@@ -78,7 +95,7 @@ def render_markdown(changes: Sequence[Change]) -> str:
         f'| Review required | {counts["review"]} |',
         f'| Compatible | {counts["compatible"]} |',
         f'| Documentation | {counts["cosmetic"]} |',
-        *_LEGEND,
+        *(_LEGEND if operational or not declared else _TYPE_LEGEND),
     ]
     if api:
         lines.extend(('', '## Every operation', '', 'Declared once at the API root, so these reach every operation.'))
@@ -97,15 +114,29 @@ def render_markdown(changes: Sequence[Change]) -> str:
     for operation, owned in owned_by.items():
         lines.extend(('', f'## {_inline_code(f"{operation.method.upper()} {operation.path}")}'))
         lines.extend(_sided_tables([_Entry(change) for change in owned]))
+    lines.extend(_declaration_tables(declared))
     return '\n'.join(lines) + '\n'
 
 
 @dataclass(frozen=True, slots=True)
 class _Entry:
-    """A row, and every operation it says the same thing about."""
+    """A row: one change, plus what else it says the same thing about.
+
+    `operations` is every operation one shared edit reaches. `counterpart` is
+    the other half of a two-sided verdict -- a type declaration is graded once
+    for a sender and once for a reader, and those are two changes in the list
+    but one row to read, because they are one edit.
+    """
 
     change: Changed
     operations: tuple[OperationId, ...] = ()
+    counterpart: Changed | None = None
+
+    def worst(self) -> Impact:
+        """The row's grade: the worse half, so a break never hides behind a pass."""
+        if self.counterpart is None:
+            return self.change.impact
+        return min((self.change.impact, self.counterpart.impact), key=IMPACTS.rank)
 
 
 def _rollup(changes: Sequence[Change]) -> tuple[list[_Entry], dict[OperationId, list[Changed]]]:
@@ -175,6 +206,31 @@ _LEGEND: Final[tuple[str, ...]] = (
     'has no use for are left out of it.',
 )
 
+#: The same definitions for a report with no operations in it. A declared type
+#: is on neither side of the wire, so the split a caller reads by is not
+#: Request/Response down the page but two grades across each row.
+_TYPE_LEGEND: Final[tuple[str, ...]] = (
+    '',
+    '## How to read this',
+    '',
+    'These are `types:` declarations, compared as declarations. A type is neither',
+    'sent nor received until something uses it, so each row carries two grades.',
+    '',
+    '| Column | Means |',
+    '|---|---|',
+    '| **If sent** | what the change does to code that *produces* a value of this type |',
+    '| **If received** | what it does to code that *reads* one |',
+    '',
+    'Tightening a constraint rejects producers and reassures readers; loosening one',
+    'does the reverse. A row is listed under the worse of its two grades, so nothing',
+    'breaking sits below something safe.',
+    '',
+    'A row names **Where** the change is, and a **Path** when it reaches inside a',
+    'shape. The value column is headed by what it holds -- **Type**, **Value** --',
+    'or **Detail** where a table mixes them. A change states `old -> new`. Columns',
+    'a table has no use for are left out of it.',
+)
+
 #: Request before response, because a caller fixes what it sends before it can
 #: see what it receives. `None` is the documentation bucket: prose that changed
 #: on no side of the wire, kept out of both so neither reads as actionable.
@@ -235,6 +291,10 @@ _VALUE_NOUN: Final[dict[Subject, str]] = {
 
 
 def _kind_table(rows: Sequence[_Entry], *, side_stated: bool, transition: bool) -> list[str]:
+    # A declaration is on neither side of the wire, so one grade would have to
+    # pick one and be wrong for the other reader. Two columns state both.
+    sided = any(row.counterpart is not None for row in rows)
+    wheres = any(_location_label(row.change.location, side_stated=side_stated) for row in rows)
     paths = any(row.change.path for row in rows)
     details = any(_detail(row.change) for row in rows)
     described = any(_description(row.change) for row in rows)
@@ -246,10 +306,11 @@ def _kind_table(rows: Sequence[_Entry], *, side_stated: bool, transition: bool) 
     nouns = {_VALUE_NOUN.get(row.change.subject, 'Detail') for row in rows if _detail(row.change)}
     subjects = not transition and len(nouns) > 1
     value = 'Detail' if transition or len(nouns) != 1 else nouns.pop()
-    columns = ['Where', *(['Path'] if paths else []), *(['Change'] if transition else [])]
+    columns = [*(['Where'] if wheres else []), *(['Path'] if paths else []), *(['Change'] if transition else [])]
     columns.extend([*(['What'] if subjects else []), *([value] if details else [])])
     columns.extend([*(['Description'] if described else [])])
-    columns.extend(['Compatibility', *(['Operations'] if operations else [])])
+    columns.extend(['If sent', 'If received'] if sided else ['Compatibility'])
+    columns.extend(['Operations'] if operations else [])
     return [
         f'| {" | ".join(columns)} |',
         f'|{"---|" * len(columns)}',
@@ -257,21 +318,96 @@ def _kind_table(rows: Sequence[_Entry], *, side_stated: bool, transition: bool) 
             _change_row(
                 entry,
                 side_stated=side_stated,
+                wheres=wheres,
                 paths=paths,
                 change=transition,
                 subjects=subjects,
                 details=details,
                 described=described,
                 operations=operations,
+                sided=sided,
             )
             for entry in _by_impact(rows)
         ),
     ]
 
 
+def _declaration_tables(rows: Sequence[_Entry]) -> list[str]:
+    """One section per declared type, graded for a sender and for a reader.
+
+    A declaration is not on the wire, so there is no Request/Response split to
+    make here: the *row* carries both answers instead of the section doing it.
+    Kinds still split, because "what left" and "what arrived" are still two
+    questions.
+    """
+    if not rows:
+        return []
+    lines = [
+        '',
+        '## Type declarations',
+        '',
+        'One section per declared type. Each row is graded both ways, because a',
+        'type is neither sent nor received until something uses it.',
+    ]
+    for name in dict.fromkeys(_declared_name(row) for row in rows):
+        owned = [row for row in rows if _declared_name(row) == name]
+        lines.extend(('', f'### {_inline_code(name)}'))
+        for kind, group in sorted(
+            ((kind, [row for row in owned if row.change.kind == kind]) for kind in _KINDS),
+            key=lambda pair: min((IMPACTS.rank(row.worst()) for row in pair[1]), default=len(IMPACTS.order)),
+        ):
+            if not group:
+                continue
+            lines.extend(('', f'**{kind.title()}**', ''))
+            lines.extend(_kind_table(group, side_stated=True, transition=kind == 'changed'))
+    return lines
+
+
+def _declared_name(entry: _Entry) -> str:
+    location = entry.change.location
+    return location.name if isinstance(location, TypeDeclaration) else ''
+
+
+def _halves(entry: _Entry) -> tuple[Impact, Impact]:
+    """The row's two grades, sender first, read from which side each rule names."""
+    pair = [entry.change, *([] if entry.counterpart is None else [entry.counterpart])]
+    by_side = {side_of_rule(change.rule): change.impact for change in pair}
+    only = entry.change.impact
+    return by_side.get('request', only), by_side.get('response', only)
+
+
+def _declaration_rows(changes: Sequence[Change]) -> list[_Entry]:
+    """The two halves of each declaration verdict, paired into one row.
+
+    They are two changes on purpose -- each carries the single `impact` that
+    `configure` overrides and the exit code reads -- and one row on purpose,
+    because they are one edit and a reader deciding whether to publish wants
+    both answers side by side.
+    """
+    grouped: dict[object, list[Changed]] = {}
+    for change in changes:
+        if isinstance(change, Changed) and isinstance(change.location, TypeDeclaration):
+            key = (
+                change.location,
+                change.path,
+                change.kind,
+                change.subject,
+                change.attribute,
+                _normal(change.before),
+                _normal(change.after),
+            )
+            grouped.setdefault(key, []).append(change)
+    rows: list[_Entry] = []
+    for members in grouped.values():
+        first = next((c for c in members if side_of_rule(c.rule) == 'request'), members[0])
+        other = next((c for c in members if c is not first), None)
+        rows.append(_Entry(first, counterpart=other))
+    return rows
+
+
 def _by_impact(entries: Sequence[_Entry]) -> list[_Entry]:
     """Most costly first, ties in declaration order -- `sorted` is stable."""
-    return sorted(entries, key=lambda entry: IMPACTS.rank(entry.change.impact))
+    return sorted(entries, key=lambda entry: IMPACTS.rank(entry.worst()))
 
 
 def _change_row(  # noqa: PLR0913 - one flag per column the table decided to carry
@@ -279,11 +415,13 @@ def _change_row(  # noqa: PLR0913 - one flag per column the table decided to car
     *,
     side_stated: bool,
     paths: bool,
+    wheres: bool = True,
     change: bool,
     subjects: bool,
     details: bool,
     described: bool,
     operations: bool,
+    sided: bool = False,
 ) -> str:
     """One row shape for all four results: they differ in owner, not in reading.
 
@@ -295,7 +433,7 @@ def _change_row(  # noqa: PLR0913 - one flag per column the table decided to car
     then it is anchored at `$` because `$.title` needs somewhere to hang.
     """
     result = entry.change
-    cells = [_cell(_location_label(result.location, side_stated=side_stated))]
+    cells = [_cell(_location_label(result.location, side_stated=side_stated))] if wheres else []
     if paths:
         inside = ''
         if result.path:
@@ -309,7 +447,13 @@ def _change_row(  # noqa: PLR0913 - one flag per column the table decided to car
         cells.append(_cell(_detail(result)))
     if described:
         cells.append(_cell(_plain_inline(_summary(_description(result)))))
-    cells.append(result.impact.title())
+    if sided:
+        # `request` first, because a caller fixes what it sends before it can see
+        # what it receives -- the same order the wire sections are in.
+        sent, received = _halves(entry)
+        cells.extend([sent.title(), received.title()])
+    else:
+        cells.append(result.impact.title())
     if operations:
         cells.append(
             ', '.join(_inline_code(f'{operation.method.upper()} {operation.path}') for operation in entry.operations)
@@ -380,6 +524,11 @@ def _location_label(  # noqa: PLR0911 - one spelling per location variant
         # A header is a header; only the other three bindings are RAML "parameters".
         noun = 'header' if location.binding == 'header' else f'{location.binding} parameter'
         return f'{prefix}{noun} {_inline_code(location.name)}'
+    if isinstance(location, TypeDeclaration):
+        # Under `### Money` the heading has named it, exactly as a Request or
+        # Response heading names the side -- so the cell is empty and the column
+        # drops out. A row addressing the whole type still needs the name.
+        return '' if side_stated else _inline_code(location.name)
     if isinstance(location, SecurityLocation):
         return 'Security'
     if isinstance(location, TransportLocation):

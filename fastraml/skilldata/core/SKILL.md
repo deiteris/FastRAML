@@ -106,6 +106,7 @@ entirely and lets fastraml read any path the process can reach.
 | What breaks if I change this type? | `refs` |
 | What is this type built from? | `deps` |
 | Did this change break a caller? | `compat` |
+| Did this change break a type my library publishes? | `compat --types` |
 | Can I have the whole model as data? | `tree` or `graph` |
 | What is in here, as a report? | `query` |
 

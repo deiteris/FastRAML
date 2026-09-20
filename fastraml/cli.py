@@ -127,27 +127,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_serve(commands)
     _add_navigation(commands)
 
-    compat = commands.add_parser('compat', help='compare two versions for backward compatibility, and what breaks')
-    compat.add_argument('files', metavar='FILE', nargs=2, help='the old document, then the new one')
-    compat.add_argument('--json', action='store_true', help='one JSON object per change')
-    compat.add_argument(
-        '--breaking-only', action='store_true', help='report only breaking changes (still exits 1 if any)'
-    )
-    compat.add_argument(
-        '--severity',
-        choices=('breaking', 'review', 'compatible', 'cosmetic'),
-        default='cosmetic',
-        help='show this severity and worse (default: cosmetic, meaning everything)',
-    )
-    compat.add_argument(
-        '--rule',
-        action='append',
-        default=[],
-        metavar='ID=IMPACT|off',
-        help='regrade or disable one compatibility rule; repeat for more',
-    )
-    _add_output(compat)
-    _add_common(compat)
+    _add_compat(commands)
 
     query = commands.add_parser('query', help='run SPARQL over the graph (needs pyoxigraph)')
     query.add_argument('files', metavar='FILE', nargs='*')
@@ -230,6 +210,36 @@ def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> 
     )
     _add_output(lint)
     _add_common(lint)
+
+
+def _add_compat(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The compatibility verb. Its own function because `_parser` is at its limit."""
+    compat = commands.add_parser('compat', help='compare two versions for backward compatibility, and what breaks')
+    compat.add_argument('files', metavar='FILE', nargs=2, help='the old document, then the new one')
+    compat.add_argument('--json', action='store_true', help='one JSON object per change')
+    compat.add_argument(
+        '--types',
+        action='store_true',
+        help='compare `types:` declarations instead of operations, graded both ways',
+    )
+    compat.add_argument(
+        '--breaking-only', action='store_true', help='report only breaking changes (still exits 1 if any)'
+    )
+    compat.add_argument(
+        '--severity',
+        choices=('breaking', 'review', 'compatible', 'cosmetic'),
+        default='cosmetic',
+        help='show this severity and worse (default: cosmetic, meaning everything)',
+    )
+    compat.add_argument(
+        '--rule',
+        action='append',
+        default=[],
+        metavar='ID=IMPACT|off',
+        help='regrade or disable one compatibility rule; repeat for more',
+    )
+    _add_output(compat)
+    _add_common(compat)
 
 
 def _add_output(parser: argparse.ArgumentParser) -> None:
@@ -844,6 +854,7 @@ def _compat(args: argparse.Namespace) -> int:
     from fastraml.views.backward import (  # noqa: PLC0415 - compat verb only
         IMPACTS,
         backward,
+        backward_types,
         configure,
         record,
         render_markdown,
@@ -859,7 +870,8 @@ def _compat(args: argparse.Namespace) -> int:
     threshold = IMPACTS.rank('breaking' if args.breaking_only else args.severity)
     try:
         compatibility = _compatibility_rule_overrides(args.fastraml_config.compatibility, args.rule)
-        changes = configure(backward(models[0], models[1]), compatibility)
+        compare = backward_types if args.types else backward
+        changes = configure(compare(models[0], models[1]), compatibility)
     except ValueError as err:
         print(f'compat: {err}', file=sys.stderr)
         return EXIT_INVALID

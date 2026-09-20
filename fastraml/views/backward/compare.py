@@ -40,6 +40,7 @@ from fastraml.views.backward.model import (
     SecurityLocation,
     Subject,
     TransportLocation,
+    TypeDeclaration,
     UnionMemberSegment,
     impact_of,
     rule_for,
@@ -75,6 +76,25 @@ def backward(old: Raml, new: Raml) -> list[Change]:
     analyzer = _Backward(old, new)
     analyzer.run()
     return analyzer.changes
+
+
+def backward_types(old: Raml, new: Raml) -> list[Change]:
+    """Compare the `types:` declarations of two models parsed with ``unwrap=True``.
+
+    For a library, or for an API whose types are the contract other documents
+    build on. A declaration is on neither side of the wire, so every change is
+    graded twice -- once for anyone sending a value of that type and once for
+    anyone reading one -- and both grades are in the list. `side_of_rule` says
+    which half a record is, and the report pairs them into one row.
+    """
+    analyzer = _Backward(old, new)
+    analyzer.declarations(_declared(old), _declared(new))
+    return analyzer.changes
+
+
+def _declared(raml: Raml) -> dict[str, BaseShape]:
+    """`types:` off the entry point, whether that is an API or a Library."""
+    return dict(getattr(raml.entry_point, 'types', None) or {})
 
 
 _NUMBER_WIDTH: Final = {'float': 0, 'double': 1}
@@ -673,10 +693,19 @@ class _Backward:
     ) -> None:
         """The one place a change is built, and the one place a side is decided.
 
-        `movement` names what happened -- `property-removed`, `constraint-tightened`
-        -- and `rule_for` turns that into a rule id using the side the coordinate
-        sits on. The walk therefore never says `request` or `response`, which is
-        what lets one traversal answer for a coordinate that has no side.
+        `movement` names what happened -- `property-removed`,
+        `constraint-tightened` -- and `rule_for` turns it into a rule id using
+        the side the coordinate sits on. The walk therefore never says `request`
+        or `response`, which is what lets one traversal answer a coordinate that
+        has no side.
+
+        **A coordinate with no side gets both.** A declared type is neither sent
+        nor received until something uses it, so removing a property from one is
+        `review` for anyone sending it and `breaking` for anyone reading it, and
+        both are true. That is two changes rather than one with two grades: each
+        carries the single `impact` that `configure` overrides, `--severity`
+        filters and the exit code reads, and the report pairs them into one row.
+        A movement with no side of its own -- `type-changed` -- still yields one.
 
         The API root has no method contract, so `OperationContract` cannot arrive
         without an owner. Refused here rather than in the types: it is a fact
@@ -684,21 +713,49 @@ class _Backward:
         """
         if at.operation is None and isinstance(at.location, OperationContract):
             raise AssertionError('the API root has no operation contract to change')
-        rule = rule_for(movement, side_of(at.location))
-        self.changes.append(
-            Changed(
-                at.operation,
-                at.location,
-                at.path,
-                kind,
-                subject,
-                attribute,
-                before,
-                after,
-                impact_of(rule),
-                rule,
+        side = side_of(at.location)
+        sides: tuple[Direction | None, ...] = (side,) if side is not None else ('request', 'response')
+        emitted: list[str] = []
+        for direction in sides:
+            rule = rule_for(movement, direction)
+            if rule in emitted:
+                continue
+            emitted.append(rule)
+            self.changes.append(
+                Changed(
+                    at.operation,
+                    at.location,
+                    at.path,
+                    kind,
+                    subject,
+                    attribute,
+                    before,
+                    after,
+                    impact_of(rule),
+                    rule,
+                )
             )
-        )
+
+    def declarations(self, old: Mapping[str, BaseShape], new: Mapping[str, BaseShape]) -> None:
+        """`types:` compared as declarations, for a library or a types-only pass.
+
+        The same shape walk the endpoints use, at a coordinate that has no side,
+        so every rule it reaches is graded both ways by `emit`. Nothing here is
+        a second traversal: direction was never an input to the walk, only to
+        the grading it fed.
+        """
+        for name, before in old.items():
+            at = _At(TypeDeclaration(name), path=())
+            after = new.get(name)
+            if after is None:
+                self.emit(
+                    _At(TypeDeclaration(name)), 'removed', 'type', 'entity-removed', before=_shape_described(before)
+                )
+                continue
+            self.shape(at, before, after, {})
+        for name, after in new.items():
+            if name not in old:
+                self.emit(_At(TypeDeclaration(name)), 'added', 'type', 'entity-added', after=_shape_described(after))
 
 
 def _operations(raml: Raml) -> dict[OperationId, tuple[EndPoint, Operation]]:

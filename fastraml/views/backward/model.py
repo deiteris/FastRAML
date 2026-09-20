@@ -42,9 +42,11 @@ __all__ = [
     'SecurityLocation',
     'Subject',
     'TransportLocation',
+    'TypeDeclaration',
     'UnionMemberSegment',
     'impact_of',
     'side_of',
+    'side_of_rule',
 ]
 
 type Impact = Literal['breaking', 'review', 'compatible', 'cosmetic']
@@ -126,6 +128,19 @@ _SIDED: Final = frozenset(
 )
 
 
+def side_of_rule(rule: str) -> Direction | None:
+    """Which side a rule id speaks for, or `None` for one that speaks for both.
+
+    The side is in the name -- `request-property-removed` -- which is what lets
+    a reader of a record know which half of a two-sided verdict they are holding
+    without the record carrying a second field to say so.
+    """
+    for direction in ('request', 'response'):
+        if rule.startswith(f'{direction}-'):
+            return direction
+    return None
+
+
 def rule_for(movement: str, direction: Direction | None) -> str:
     """The rule id for `movement` seen from `direction`.
 
@@ -195,6 +210,18 @@ class TransportLocation:
     pass
 
 
+@dataclass(frozen=True, slots=True)
+class TypeDeclaration:
+    """A named type in `types:`, compared as a declaration rather than a use.
+
+    The one coordinate `side_of` answers `None` for, and deliberately: a
+    declared type is neither sent nor received until an operation uses it, so
+    the honest report is what it does to a caller *both* ways.
+    """
+
+    name: str
+
+
 #: Every coordinate a change can sit at. One union and not one per owner: an
 #: API-level `protocols:` and an operation's own sit at the same
 #: `TransportLocation`, and who owns them is `Changed.operation`, not a second
@@ -212,11 +239,12 @@ type Location = (
     | ParameterLocation
     | SecurityLocation
     | TransportLocation
+    | TypeDeclaration
 )
 
 #: The coordinates a shape hangs off. Narrower than `Location` because a shape
 #: has no contract, status or transport to sit at.
-type SchemaLocation = RequestBody | ResponseBody | ParameterLocation
+type SchemaLocation = RequestBody | ResponseBody | ParameterLocation | TypeDeclaration
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,10 +361,11 @@ def side_of(location: Location) -> Direction | None:
 
     Transport and security are the caller's side: a protocol it may no longer
     speak and a credential it must now present both stop the request before a
-    response exists. `OperationContract` and `ApiContract` are neither -- a
-    `description` changed on no side of the wire at all.
+    response exists. `OperationContract` is neither -- a `description` changed on
+    no side of the wire at all -- and neither is `TypeDeclaration`, which is not
+    on the wire until something uses it, and is therefore graded both ways.
     """
-    if isinstance(location, OperationContract):
+    if isinstance(location, (OperationContract, TypeDeclaration)):
         return None
     if isinstance(location, (ResponseBody, ResponseStatus)):
         return 'response'

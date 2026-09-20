@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, Protocol
 
 from fastraml.parser.fragments import APIFragment
 from fastraml.types.base import BaseShape, Parameter, facets_of
@@ -20,17 +20,15 @@ from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, Uni
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.types.scalars import DATETIME_FORMATS, INTEGER_FORMATS, DateTimeShape, FileShape
 from fastraml.views.backward.model import (
-    ApiChanged,
-    ApiSchemaChanged,
     Change,
+    Changed,
     ChangeKind,
     Direction,
     ItemsSegment,
+    Location,
     OperationAdded,
-    OperationChanged,
     OperationContract,
     OperationId,
-    OperationLocation,
     OperationRemoved,
     ParameterLocation,
     PathSegment,
@@ -39,17 +37,30 @@ from fastraml.views.backward.model import (
     RequestBody,
     ResponseBody,
     ResponseStatus,
-    SchemaChanged,
-    SchemaLocation,
     SecurityLocation,
     Subject,
     TransportLocation,
     UnionMemberSegment,
     impact_of,
+    rule_for,
+    side_of,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+
+    class _Described(Protocol):
+        """Anything carrying the two prose facets: an operation, a response, a shape.
+
+        Read-only members, so the protocol is covariant in them and a concrete
+        `ScalarFacet[str] | None` satisfies it. Nothing writes through this.
+        """
+
+        @property
+        def display_name(self) -> object: ...
+
+        @property
+        def description(self) -> object: ...
 
     from fastraml.parser.directives import SecurityScheme
     from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
@@ -70,26 +81,29 @@ _NUMBER_WIDTH: Final = {'float': 0, 'double': 1}
 
 
 @dataclass(frozen=True, slots=True)
-class _Site:
-    """One shape coordinate, and the side of the wire it faces.
+class _At:
+    """Where the walk is: an owner, a coordinate, and a path if it is in a shape.
 
-    The owner, the contract location, the path into the shape and the direction
-    travel together through every shape method and are never read apart, so they
-    travel as one value and a descent is `site.at(segment)`.
+    `path is None` is a contract change -- the coordinate in `location` is the
+    thing that moved -- and `path == ()` is the root of a shape hanging off it.
+    `operation is None` is the API scope, which `emit` is the only reader of.
 
-    `operation is None` is the API scope -- `baseUriParameters`, the only shape
-    RAML hangs off the root -- and `schema_change` is the single place that reads
-    it, so the walk above it never branches on whose shape it is in.
+    There is no `direction` field. It is `side_of(location)`, it was measured to
+    agree with the threaded value at every at in the corpus, and a stored copy
+    of a neighbour's function is how the two eventually stop agreeing.
     """
 
-    operation: OperationId | None
-    location: SchemaLocation
-    direction: Direction
-    path: tuple[PathSegment, ...] = ()
+    location: Location
+    operation: OperationId | None = None
+    path: tuple[PathSegment, ...] | None = None
 
-    def at(self, segment: PathSegment) -> _Site:
+    def at(self, segment: PathSegment) -> _At:
         """The same coordinate, one step further into the shape."""
-        return _Site(self.operation, self.location, self.direction, (*self.path, segment))
+        return _At(self.location, self.operation, (*(self.path or ()), segment))
+
+    def shape(self) -> _At:
+        """The same coordinate, at the root of the shape hanging off it."""
+        return _At(self.location, self.operation, ())
 
 
 class _Backward:
@@ -142,46 +156,44 @@ class _Backward:
             self.security(operation_id, old.secured_by, new.secured_by)
         self.request(operation_id, old.request, new.request)
         self.responses(operation_id, old.responses, new.responses)
-        self.documentation(operation_id, OperationContract(), old, new)
+        self.documentation(_At(OperationContract(), operation_id), old, new)
 
     def base_uri(self) -> None:
         old = _facet(self.old_api.base_uri) if self.old_api is not None else None
         new = _facet(self.new_api.base_uri) if self.new_api is not None else None
         if old != new:
-            self.operation_change(
-                None, TransportLocation(), 'changed', 'base-uri', 'base-uri-changed', 'baseUri', old, new
-            )
+            self.emit(_At(TransportLocation(), None), 'changed', 'base-uri', 'base-uri-changed', 'baseUri', old, new)
 
     def api_parameters(self) -> None:
         old = {} if self.old_api is None else self.old_api.base_uri_parameters
         new = {} if self.new_api is None else self.new_api.base_uri_parameters
         for name, before in old.items():
             after = new.get(name)
-            site = _Site(None, ParameterLocation('baseUri', name), 'request')
+            at = _At(ParameterLocation('baseUri', name), path=())
             if after is None:
-                self.schema_change(site, 'removed', 'parameter', 'request-property-removed', before=_parameter(before))
+                self.emit(at, 'removed', 'parameter', 'property-removed', before=_parameter(before))
                 continue
             # The same requiredness rule a property gets, and the same walk over the
             # shape: an API-scoped parameter differs from an operation's in who owns
-            # it, which is the one thing `_Site` carries and nothing here re-decides.
-            self.required(site, before.required, after.required)
-            self.shape(site, before.base, after.base, {})
+            # it, which is the one thing `_At` carries and nothing here re-decides.
+            self.required(at, before.required, after.required)
+            self.shape(at, before.base, after.base, {})
         for name, after in new.items():
             if name in old:
                 continue
-            self.schema_change(
-                _Site(None, ParameterLocation('baseUri', name), 'request'),
+            self.emit(
+                _At(ParameterLocation('baseUri', name), path=()),
                 'added',
                 'parameter',
-                'request-property-added-required' if after.required else 'request-property-added',
+                'property-added-required' if after.required else 'property-added',
                 after=_parameter(after),
             )
 
     def api_protocols(self) -> None:
         old, new = _api_protocols(self.old_api), _api_protocols(self.new_api)
         if old != new:
-            self.operation_change(
-                None, TransportLocation(), 'changed', 'protocol', _protocol_rule(old, new), 'protocols', old, new
+            self.emit(
+                _At(TransportLocation(), None), 'changed', 'protocol', _protocol_rule(old, new), 'protocols', old, new
             )
 
     def api_security(self) -> None:
@@ -220,8 +232,14 @@ class _Backward:
         old = old_declared or _api_protocols(self.old_api)
         new = new_declared or _api_protocols(self.new_api)
         if old != new:
-            self.operation_change(
-                operation, TransportLocation(), 'changed', 'protocol', _protocol_rule(old, new), 'protocols', old, new
+            self.emit(
+                _At(TransportLocation(), operation),
+                'changed',
+                'protocol',
+                _protocol_rule(old, new),
+                'protocols',
+                old,
+                new,
             )
 
     def request(self, operation: OperationId, old: Request | None, new: Request | None) -> None:
@@ -234,7 +252,7 @@ class _Backward:
         )
         self.bodies(operation, {} if old is None else old.bodies, {} if new is None else new.bodies, 'request')
         self.optional_shape(
-            _Site(operation, ParameterLocation('query', 'queryString'), 'request'),
+            _At(ParameterLocation('query', 'queryString'), operation, ()),
             None if old is None else old.query_string,
             None if new is None else new.query_string,
         )
@@ -248,9 +266,8 @@ class _Backward:
         for status, before in old.items():
             after = new.get(status)
             if after is None:
-                self.operation_change(
-                    operation,
-                    ResponseStatus(status),
+                self.emit(
+                    _At(ResponseStatus(status), operation),
                     'removed',
                     'response',
                     'entity-removed',
@@ -259,40 +276,31 @@ class _Backward:
                 continue
             self.parameters(operation, before.headers, after.headers, 'header', response_status=status)
             self.bodies(operation, before.bodies, after.bodies, 'response', status=status)
-            self.documentation(operation, ResponseStatus(status), before, after)
+            self.documentation(_At(ResponseStatus(status), operation), before, after)
         for status in new:
             if status in old:
                 continue
-            self.operation_change(
-                operation,
-                ResponseStatus(status),
+            self.emit(
+                _At(ResponseStatus(status), operation),
                 'added',
                 'response',
                 'entity-added',
                 after=_descriptor(new[status].description),
             )
 
-    def documentation(
-        self,
-        operation: OperationId | None,
-        location: OperationLocation,
-        old: Operation | Response,
-        new: Operation | Response,
-    ) -> None:
-        """`displayName` and `description`, wherever a node carries both.
+    def documentation(self, at: _At, old: _Described, new: _Described) -> None:
+        """`displayName` and `description`, wherever anything carries both.
 
-        Two callers wrote the pair out in full -- nine lines each, identical but
-        for the attribute name -- so the pair lives here and a caller names the
-        node instead.
+        An operation, a response and a shape all do, and the pair used to be
+        written out at each -- nine lines apiece, identical but for the
+        attribute name, and the shape's copy went through a second emitter for
+        no reason but that it had a path.
         """
         for attribute, before, after in (
             ('displayName', _facet(old.display_name), _facet(new.display_name)),
             ('description', _facet(old.description), _facet(new.description)),
         ):
-            if before != after:
-                self.operation_change(
-                    operation, location, 'changed', 'documentation', 'documentation-changed', attribute, before, after
-                )
+            self.scalar(at, 'documentation', 'documentation-changed', attribute, before, after)
 
     def parameters(
         self,
@@ -303,26 +311,21 @@ class _Backward:
         *,
         response_status: str | None = None,
     ) -> None:
-        direction: Direction = 'response' if response_status is not None else 'request'
         for name, before in old.items():
             after = new.get(name)
             location = ParameterLocation(binding, name, response_status)
             if after is None:
-                rule = f'{direction}-property-removed'
-                self.operation_change(operation, location, 'removed', 'parameter', rule, before=_parameter(before))
+                rule = 'property-removed'
+                self.emit(_At(location, operation), 'removed', 'parameter', rule, before=_parameter(before))
                 continue
-            self.parameter_required(operation, location, before.required, after.required, direction)
-            self.shape(_Site(operation, location, direction), before.base, after.base, {})
+            self.required(_At(location, operation), before.required, after.required)
+            self.shape(_At(location, operation, ()), before.base, after.base, {})
         for name, after in new.items():
             if name in old:
                 continue
-            if direction == 'request' and after.required:
-                rule = 'request-property-added-required'
-            else:
-                rule = f'{direction}-property-added'
-            self.operation_change(
-                operation,
-                ParameterLocation(binding, name, response_status),
+            rule = 'property-added-required' if after.required else 'property-added'
+            self.emit(
+                _At(ParameterLocation(binding, name, response_status), operation),
                 'added',
                 'parameter',
                 rule,
@@ -344,22 +347,20 @@ class _Backward:
         for media_type, before in old.items():
             after = new.get(media_type)
             if after is None:
-                self.operation_change(
-                    operation,
-                    at(media_type),
+                self.emit(
+                    _At(at(media_type), operation),
                     'removed',
                     'body',
                     'entity-removed',
                     before=_shape_described(before.shape),
                 )
                 continue
-            self.optional_shape(_Site(operation, at(media_type), direction), before.shape, after.shape)
+            self.optional_shape(_At(at(media_type), operation, ()), before.shape, after.shape)
         for media_type in new:
             if media_type in old:
                 continue
-            self.operation_change(
-                operation,
-                at(media_type),
+            self.emit(
+                _At(at(media_type), operation),
                 'added',
                 'body',
                 'entity-added',
@@ -372,9 +373,7 @@ class _Backward:
         new_open = not new or any(scheme.is_null for scheme in new)
         if old_open != new_open:
             rule = 'security-added' if not new_open else 'security-removed'
-            self.operation_change(
-                operation, location, 'changed', 'security', rule, 'required', not old_open, not new_open
-            )
+            self.emit(_At(location, operation), 'changed', 'security', rule, 'required', not old_open, not new_open)
         if old_open or new_open:
             return
         old_by_name = {scheme.name: scheme for scheme in old}
@@ -382,9 +381,8 @@ class _Backward:
         for name, before in old_by_name.items():
             after = new_by_name.get(name)
             if after is None:
-                self.operation_change(
-                    operation,
-                    location,
+                self.emit(
+                    _At(location, operation),
                     'removed',
                     'security-alternative',
                     'security-alternative-removed',
@@ -400,9 +398,8 @@ class _Backward:
         for name, arrival in new_by_name.items():
             if name in old_by_name:
                 continue
-            self.operation_change(
-                operation,
-                location,
+            self.emit(
+                _At(location, operation),
                 'added',
                 'security-alternative',
                 'security-alternative-added',
@@ -417,7 +414,7 @@ class _Backward:
         if old == new:
             return
         rule = 'security-added' if set(new) - set(old) else 'security-removed'
-        self.operation_change(operation, SecurityLocation(), 'changed', 'security', rule, 'scopes', old, new)
+        self.emit(_At(SecurityLocation(), operation), 'changed', 'security', rule, 'scopes', old, new)
 
     def settings(self, operation: OperationId | None, before: SecurityScheme, after: SecurityScheme) -> None:
         """An endpoint a scheme points at, retargeted: the two may not agree."""
@@ -425,9 +422,8 @@ class _Backward:
         for setting in sorted(old.keys() | new.keys()):
             old_value, new_value = old.get(setting), new.get(setting)
             if old_value != new_value:
-                self.operation_change(
-                    operation,
-                    SecurityLocation(),
+                self.emit(
+                    _At(SecurityLocation(), operation),
                     'changed',
                     'security-setting',
                     'reference-retargeted',
@@ -451,52 +447,12 @@ class _Backward:
         )
         self.responses(operation, {} if old is None else old.responses, {} if new is None else new.responses)
 
-    def parameter_required(
-        self,
-        operation: OperationId | None,
-        location: ParameterLocation,
-        old: bool,  # noqa: FBT001 - the old declaration value
-        new: bool,  # noqa: FBT001 - the new declaration value
-        direction: Direction,
-    ) -> None:
-        if old != new:
-            became = 'required' if new else 'optional'
-            self.operation_change(
-                operation, location, 'changed', 'required', f'{direction}-property-{became}', 'required', old, new
-            )
-
-    def operation_change(  # noqa: PLR0913, PLR0917 - mirrors the immutable result
-        self,
-        operation: OperationId | None,
-        location: OperationLocation,
-        kind: ChangeKind,
-        subject: Subject,
-        rule: str,
-        attribute: str | None = None,
-        before: object = None,
-        after: object = None,
-    ) -> None:
-        """No owner means an API-level default, compared once at the root.
-
-        The mirror of `schema_change` below. `OperationContract` is the one
-        coordinate that cannot arrive here without one -- the API node's own
-        facets are `ApiContract` -- so it is the one case this refuses.
-        """
-        if operation is None:
-            if isinstance(location, OperationContract):
-                raise AssertionError('the API root has no operation contract to change')
-            self.changes.append(ApiChanged(location, kind, subject, attribute, before, after, impact_of(rule), rule))
-        else:
-            self.changes.append(
-                OperationChanged(operation, location, kind, subject, attribute, before, after, impact_of(rule), rule)
-            )
-
-    def optional_shape(self, site: _Site, old: BaseShape | None, new: BaseShape | None) -> None:
+    def optional_shape(self, at: _At, old: BaseShape | None, new: BaseShape | None) -> None:
         if old is None or new is None:
             if old is not new:
                 kind: ChangeKind = 'added' if old is None else 'removed'
-                self.schema_change(
-                    site,
+                self.emit(
+                    at,
                     kind,
                     'type',
                     'type-changed',
@@ -504,12 +460,12 @@ class _Backward:
                     after=None if new is None else new.type,
                 )
             return
-        self.shape(site, old, new, {})
+        self.shape(at, old, new, {})
 
-    def shape(self, site: _Site, old: BaseShape, new: BaseShape, ancestors: dict[BaseShape, BaseShape]) -> None:
+    def shape(self, at: _At, old: BaseShape, new: BaseShape, ancestors: dict[BaseShape, BaseShape]) -> None:
         old_kind, new_kind = old.shape, new.shape
         if old_kind is None or new_kind is None or type(old_kind) is not type(new_kind):
-            self.schema_change(site, 'changed', 'type', 'type-changed', 'type', old.type, new.type)
+            self.emit(at, 'changed', 'type', 'type-changed', 'type', old.type, new.type)
             return
         if isinstance(old_kind, RecursiveShape) or isinstance(new_kind, RecursiveShape):
             if not (
@@ -517,27 +473,25 @@ class _Backward:
                 and isinstance(new_kind, RecursiveShape)
                 and (old_kind.head.name, old_kind.head.type) == (new_kind.head.name, new_kind.head.type)
             ):
-                self.schema_change(
-                    site, 'changed', 'type', 'other', 'recursionHead', _shape_name(old_kind), _shape_name(new_kind)
-                )
+                self.emit(at, 'changed', 'type', 'other', 'recursionHead', _shape_name(old_kind), _shape_name(new_kind))
             return
         if isinstance(old_kind, JsonShape) and isinstance(new_kind, JsonShape):
-            self.schema_scalar(site, 'type', 'other', 'schema', old_kind.raw, new_kind.raw)
+            self.scalar(at, 'type', 'other', 'schema', old_kind.raw, new_kind.raw)
             return
         ancestors[old] = new
         try:
-            self.shape_facets(site, old, new)
+            self.shape_facets(at, old, new)
             if isinstance(old_kind, ObjectShape) and isinstance(new_kind, ObjectShape):
-                self.object_shape(site, old_kind, new_kind, ancestors)
+                self.object_shape(at, old_kind, new_kind, ancestors)
             elif isinstance(old_kind, ArrayShape) and isinstance(new_kind, ArrayShape):
-                self.shape_pair(site.at(ItemsSegment()), old_kind.items, new_kind.items, ancestors)
+                self.shape_pair(at.at(ItemsSegment()), old_kind.items, new_kind.items, ancestors)
             elif isinstance(old_kind, UnionShape) and isinstance(new_kind, UnionShape):
-                self.union_shape(site, old_kind, new_kind, ancestors)
+                self.union_shape(at, old_kind, new_kind, ancestors)
         finally:
             del ancestors[old]
 
     def shape_pair(
-        self, site: _Site, old: BaseShape | None, new: BaseShape | None, ancestors: dict[BaseShape, BaseShape]
+        self, at: _At, old: BaseShape | None, new: BaseShape | None, ancestors: dict[BaseShape, BaseShape]
     ) -> None:
         """`shape` where both sides exist, `optional_shape` where one may not.
 
@@ -545,11 +499,11 @@ class _Backward:
         has nothing to guard where one side is absent.
         """
         if old is None or new is None:
-            self.optional_shape(site, old, new)
+            self.optional_shape(at, old, new)
         else:
-            self.shape(site, old, new, ancestors)
+            self.shape(at, old, new, ancestors)
 
-    def shape_facets(self, site: _Site, old: BaseShape, new: BaseShape) -> None:
+    def shape_facets(self, at: _At, old: BaseShape, new: BaseShape) -> None:
         old_facets = {name: _literal(facet.value) for name, facet in facets_of(old.shape)}
         new_facets = {name: _literal(facet.value) for name, facet in facets_of(new.shape)}
         if isinstance(old.shape, DateTimeShape) and isinstance(new.shape, DateTimeShape):
@@ -558,41 +512,20 @@ class _Backward:
         for name in sorted(old_facets.keys() | new_facets.keys()):
             before, after = old_facets.get(name), new_facets.get(name)
             if before != after:
-                self.schema_change(
-                    site, 'changed', 'constraint', _facet_rule(site.direction, name, before, after), name, before, after
-                )
-        self.enum(site, old, new)
-        self.schema_documentation(site, old, new)
-        self.schema_scalar(site, 'custom-facet', 'other', 'customFacets', _custom(old), _custom(new))
+                self.emit(at, 'changed', 'constraint', _facet_movement(name, before, after), name, before, after)
+        self.enum(at, old, new)
+        self.documentation(at, old, new)
+        self.scalar(at, 'custom-facet', 'other', 'customFacets', _custom(old), _custom(new))
         if isinstance(old.shape, FileShape) and isinstance(new.shape, FileShape):
             before_types = _facet_list(old.shape.file_types)
             after_types = _facet_list(new.shape.file_types)
-            self.schema_scalar(site, 'constraint', 'other', 'fileTypes', before_types, after_types)
+            self.scalar(at, 'constraint', 'other', 'fileTypes', before_types, after_types)
         if isinstance(old.shape, DateTimeShape) and isinstance(new.shape, DateTimeShape):
             before_format = _facet(old.shape.format) or 'rfc3339'
             after_format = _facet(new.shape.format) or 'rfc3339'
-            self.schema_scalar(site, 'constraint', 'format-changed', 'format', before_format, after_format)
+            self.scalar(at, 'constraint', 'format-changed', 'format', before_format, after_format)
 
-    def schema_documentation(self, site: _Site, old: BaseShape, new: BaseShape) -> None:
-        """`documentation`'s mirror for a shape, which is located by a path."""
-        self.schema_scalar(
-            site,
-            'documentation',
-            'documentation-changed',
-            'displayName',
-            _facet(old.display_name),
-            _facet(new.display_name),
-        )
-        self.schema_scalar(
-            site,
-            'documentation',
-            'documentation-changed',
-            'description',
-            _facet(old.description),
-            _facet(new.description),
-        )
-
-    def enum(self, site: _Site, old: BaseShape, new: BaseShape) -> None:
+    def enum(self, at: _At, old: BaseShape, new: BaseShape) -> None:
         before, after = _enum(old), _enum(new)
         if before == after:
             return
@@ -602,66 +535,59 @@ class _Backward:
         # so the renderer never reads an empty `after` as "the enum is gone".
         removed, added = _enum_delta(before, after)
         if removed:
-            self.schema_change(site, 'removed', 'enum-value', f'{site.direction}-enum-value-removed', before=removed)
+            self.emit(at, 'removed', 'enum-value', 'enum-value-removed', before=removed)
         if added:
-            self.schema_change(site, 'added', 'enum-value', f'{site.direction}-enum-value-added', after=added)
+            self.emit(at, 'added', 'enum-value', 'enum-value-added', after=added)
 
-    def object_shape(
-        self, site: _Site, old: ObjectShape, new: ObjectShape, ancestors: dict[BaseShape, BaseShape]
-    ) -> None:
-        direction = site.direction
+    def object_shape(self, at: _At, old: ObjectShape, new: ObjectShape, ancestors: dict[BaseShape, BaseShape]) -> None:
         old_properties, new_properties = old.properties or {}, new.properties or {}
         for name, before in old_properties.items():
-            child = site.at(PropertySegment(name))
+            child = at.at(PropertySegment(name))
             after = new_properties.get(name)
             if after is None:
-                rule = f'{direction}-property-removed'
-                self.schema_change(child, 'removed', 'property', rule, before=_property(before))
+                rule = 'property-removed'
+                self.emit(child, 'removed', 'property', rule, before=_property(before))
                 continue
             self.required(child, before.required, after.required)
             self.shape(child, before.base, after.base, ancestors)
         for name, after in new_properties.items():
             if name in old_properties:
                 continue
-            if direction == 'request' and after.required:
-                rule = 'request-property-added-required'
-            else:
-                rule = f'{direction}-property-added'
-            self.schema_change(site.at(PropertySegment(name)), 'added', 'property', rule, after=_property(after))
-        self.pattern_properties(site, old, new, ancestors)
+            rule = 'property-added-required' if after.required else 'property-added'
+            self.emit(at.at(PropertySegment(name)), 'added', 'property', rule, after=_property(after))
+        self.pattern_properties(at, old, new, ancestors)
 
     def pattern_properties(
-        self, site: _Site, old: ObjectShape, new: ObjectShape, ancestors: dict[BaseShape, BaseShape]
+        self, at: _At, old: ObjectShape, new: ObjectShape, ancestors: dict[BaseShape, BaseShape]
     ) -> None:
         """A `/regex/` key, whose first match wins -- so their order is a contract."""
-        direction = site.direction
         old_patterns, new_patterns = old.pattern_properties or {}, new.pattern_properties or {}
         common = old_patterns.keys() & new_patterns.keys()
         old_order = tuple(name for name in old_patterns if name in common)
         new_order = tuple(name for name in new_patterns if name in common)
         if old_order != new_order:
-            self.schema_change(site, 'changed', 'pattern-property', 'other', 'order', old_order, new_order)
+            self.emit(at, 'changed', 'pattern-property', 'other', 'order', old_order, new_order)
         for pattern, before in old_patterns.items():
-            child = site.at(PatternPropertySegment(pattern))
+            child = at.at(PatternPropertySegment(pattern))
             after = new_patterns.get(pattern)
             if after is None:
-                rule = f'{direction}-constraint-loosened'
-                self.schema_change(child, 'removed', 'pattern-property', rule, 'pattern', before.base.type)
+                rule = 'constraint-loosened'
+                self.emit(child, 'removed', 'pattern-property', rule, 'pattern', before.base.type)
                 continue
             self.shape(child, before.base, after.base, ancestors)
         for pattern, after in new_patterns.items():
             if pattern in old_patterns:
                 continue
-            self.schema_change(
-                site.at(PatternPropertySegment(pattern)),
+            self.emit(
+                at.at(PatternPropertySegment(pattern)),
                 'added',
                 'pattern-property',
-                f'{direction}-constraint-tightened',
+                'constraint-tightened',
                 'pattern',
                 after=after.base.type,
             )
 
-    def union_shape(self, site: _Site, old: UnionShape, new: UnionShape, ancestors: dict[BaseShape, BaseShape]) -> None:
+    def union_shape(self, at: _At, old: UnionShape, new: UnionShape, ancestors: dict[BaseShape, BaseShape]) -> None:
         old_members, new_members = old.any_of or [], new.any_of or []
         buckets: dict[tuple[str, str], deque[tuple[int, BaseShape]]] = defaultdict(deque)
         # Fingerprinted once each, not once per old member the bucket is searched for:
@@ -677,10 +603,10 @@ class _Backward:
             key = _member_key(before)
             candidates = buckets[key]
             old_occurrences[key] += 1
-            child = site.at(UnionMemberSegment(before.name, before.type, old_occurrences[key]))
+            child = at.at(UnionMemberSegment(before.name, before.type, old_occurrences[key]))
             if not candidates:
-                rule = f'{site.direction}-enum-value-removed'
-                self.schema_change(child, 'removed', 'union-member', rule, before=_shape_described(before))
+                rule = 'enum-value-removed'
+                self.emit(child, 'removed', 'union-member', rule, before=_shape_described(before))
                 continue
             fingerprint = _shape_fingerprint(before)
             exact = next((candidate for candidate in candidates if new_fingerprints[candidate[0]] == fingerprint), None)
@@ -697,28 +623,35 @@ class _Backward:
             new_occurrences[key] += 1
             if index in matched:
                 continue
-            self.schema_change(
-                site.at(UnionMemberSegment(after.name, after.type, new_occurrences[key])),
+            self.emit(
+                at.at(UnionMemberSegment(after.name, after.type, new_occurrences[key])),
                 'added',
                 'union-member',
-                f'{site.direction}-enum-value-added',
+                'enum-value-added',
                 after=_shape_described(after),
             )
 
     def required(
         self,
-        site: _Site,
+        at: _At,
         old: bool,  # noqa: FBT001 - the old facet value
         new: bool,  # noqa: FBT001 - the new facet value
     ) -> None:
+        """One rule for one question, wherever the thing that can be required is.
+
+        A query parameter and a property are the same statement about the same
+        wire, so they get the same rule. This had two implementations differing
+        only in which emitter each called, and the parameter one took a
+        `direction` its coordinate already knew.
+        """
         if old != new:
             became = 'required' if new else 'optional'
-            rule = f'{site.direction}-property-{became}'
-            self.schema_change(site, 'changed', 'required', rule, 'required', old, new)
+            rule = f'property-{became}'
+            self.emit(at, 'changed', 'required', rule, 'required', old, new)
 
-    def schema_scalar(  # noqa: PLR0913, PLR0917 - a scalar delta at one coordinate
+    def scalar(  # noqa: PLR0913, PLR0917 - a scalar delta at one coordinate
         self,
-        site: _Site,
+        at: _At,
         subject: Subject,
         rule: str,
         attribute: str,
@@ -726,39 +659,46 @@ class _Backward:
         after: object,
     ) -> None:
         if before != after:
-            self.schema_change(site, 'changed', subject, rule, attribute, before, after)
+            self.emit(at, 'changed', subject, rule, attribute, before, after)
 
-    def schema_change(  # noqa: PLR0913, PLR0917 - mirrors the immutable result
+    def emit(  # noqa: PLR0913, PLR0917 - mirrors the immutable result
         self,
-        site: _Site,
+        at: _At,
         kind: ChangeKind,
         subject: Subject,
-        rule: str,
+        movement: str,
         attribute: str | None = None,
         before: object = None,
         after: object = None,
     ) -> None:
-        """No owner means an API-level default, compared once at the root.
+        """The one place a change is built, and the one place a side is decided.
 
-        The mirror of `operation_change` above, and the one place the walk reads
-        `site.operation`. Narrowed by check rather than by `cast`: `baseUriParameters`
-        is the only API-scoped shape RAML has, so a second no-owner caller over a
-        body would otherwise file a body change under `ParameterLocation` and say
-        nothing about it.
+        `movement` names what happened -- `property-removed`, `constraint-tightened`
+        -- and `rule_for` turns that into a rule id using the side the coordinate
+        sits on. The walk therefore never says `request` or `response`, which is
+        what lets one traversal answer for a coordinate that has no side.
+
+        The API root has no method contract, so `OperationContract` cannot arrive
+        without an owner. Refused here rather than in the types: it is a fact
+        about the walk, and the alternative is a silent change filed nowhere.
         """
-        impact = impact_of(rule)
-        if site.operation is None:
-            if not isinstance(site.location, ParameterLocation):
-                raise AssertionError(f'an API-scoped shape change needs a parameter location, not {site.location!r}')
-            self.changes.append(
-                ApiSchemaChanged(site.location, site.path, kind, subject, attribute, before, after, impact, rule)
+        if at.operation is None and isinstance(at.location, OperationContract):
+            raise AssertionError('the API root has no operation contract to change')
+        rule = rule_for(movement, side_of(at.location))
+        self.changes.append(
+            Changed(
+                at.operation,
+                at.location,
+                at.path,
+                kind,
+                subject,
+                attribute,
+                before,
+                after,
+                impact_of(rule),
+                rule,
             )
-        else:
-            self.changes.append(
-                SchemaChanged(
-                    site.operation, site.location, site.path, kind, subject, attribute, before, after, impact, rule
-                )
-            )
+        )
 
 
 def _operations(raml: Raml) -> dict[OperationId, tuple[EndPoint, Operation]]:
@@ -777,13 +717,13 @@ def _api_protocols(api: APIFragment | None) -> tuple[str, ...]:
     return () if api is None else tuple(facet.value for facet in api.protocols)
 
 
-def _facet_rule(direction: Direction, attribute: str, before: object, after: object) -> str:
+def _facet_movement(attribute: str, before: object, after: object) -> str:
     if attribute == 'format' and (before in DATETIME_FORMATS or after in DATETIME_FORMATS):
         return 'format-changed'
     loosened = _loosened(attribute, before, after)
     if loosened is None:
         return 'other'
-    return f'{direction}-constraint-{"loosened" if loosened else "tightened"}'
+    return f'constraint-{"loosened" if loosened else "tightened"}'
 
 
 _UPPER: Final = frozenset({'maxItems', 'maxLength', 'maxProperties', 'maximum'})

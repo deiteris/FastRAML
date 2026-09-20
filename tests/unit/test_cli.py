@@ -1087,7 +1087,7 @@ class TestSkillsVerb:
         assert main(['skills', 'get', 'backward']) == EXIT_OK
         rendered = capsys.readouterr().out
         assert yaml.safe_load(rendered.split('---')[1])['name'] == 'backward'
-        assert 'scope: "api-schema"' in rendered
+        assert '`api-schema`' in rendered
         assert 'PatternPropertySegment' in rendered
         assert {'breaking', 'review', 'compatible', 'cosmetic'} <= set(re.findall(r'`([a-z]+)`', rendered))
 

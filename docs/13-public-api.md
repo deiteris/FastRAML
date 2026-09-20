@@ -696,8 +696,8 @@ nested request and responses are subsumed. Markdown renders those availability
 changes as separate added/removed lists under **Operations added and removed**,
 not as one-row operation tables. Each list item includes the present operation's
 `displayName` and `description` when supplied; the same fields are present in
-its JSON record. Matched operations produce `OperationChanged` and
-`SchemaChanged` values; global parameter shapes produce `ApiSchemaChanged`.
+its JSON record. Every one is a `Changed`; `operation` and `path` say which of
+the four scopes it sits in, and a global parameter shape has a path and no owner.
 
 `--json` emits one typed record per line. API changes have `scope: api`, and API
 parameter shapes have `scope: api-schema`;

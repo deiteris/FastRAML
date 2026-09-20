@@ -9,19 +9,15 @@ are kept where a reader sees both.
 from __future__ import annotations
 
 from dataclasses import asdict, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from fastraml.views.backward.model import (
     RULE_IDS,
     SUBJECTS,
-    ApiChanged,
-    ApiSchemaChanged,
     Change,
     OperationAdded,
-    OperationLocation,
     OperationRemoved,
     PathSegment,
-    SchemaChanged,
     _normal,
     _path_label,
 )
@@ -30,6 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from fastraml.config import CompatibilityConfig, CompatibilityMatch
+    from fastraml.views.backward.model import Location
 
 __all__ = ['configure', 'record']
 
@@ -62,62 +59,50 @@ def configure(changes: Sequence[Change], config: CompatibilityConfig) -> list[Ch
     return configured
 
 
+#: `scope` names the cell of owner x path that a change sits in, for a consumer
+#: that wants to filter without reading two optional fields. Derived, because
+#: two fields and a name for their combination are one fact, not two.
+_SCOPE: Final[dict[tuple[bool, bool], str]] = {
+    (False, False): 'api',
+    (False, True): 'api-schema',
+    (True, False): 'operation',
+    (True, True): 'schema',
+}
+
+
 def record(change: Change) -> dict[str, object]:
-    if isinstance(change, ApiChanged):
+    """One JSON object per change. `api` omits `operation`; a contract omits `path`.
+
+    A field is absent rather than null when the change has no such coordinate,
+    because `"path": null` reads as "at no path" where the truth is "this is not
+    a change inside a shape at all". `path` is `[]` at a shape root.
+    """
+    if isinstance(change, (OperationAdded, OperationRemoved)):
         return {
-            'scope': 'api',
-            'kind': change.kind,
-            'subject': change.subject,
-            'attribute': change.attribute,
-            'before': change.before,
-            'after': change.after,
+            'operation': {'path': change.operation.path, 'method': change.operation.method},
+            'kind': 'operation-added' if isinstance(change, OperationAdded) else 'operation-removed',
+            'display_name': change.display_name,
+            'description': change.description,
             'impact': change.impact,
             'rule': change.rule,
         }
-    if isinstance(change, ApiSchemaChanged):
-        return {
-            'scope': 'api-schema',
-            'kind': change.kind,
-            'location': _location_record(change.location),
-            'path': [_segment_record(segment) for segment in change.path],
-            'subject': change.subject,
-            'attribute': change.attribute,
-            'before': change.before,
-            'after': change.after,
-            'impact': change.impact,
-            'rule': change.rule,
-        }
-    base: dict[str, object] = {
-        'operation': {'path': change.operation.path, 'method': change.operation.method},
-        'impact': change.impact,
-        'rule': change.rule,
-    }
-    if isinstance(change, OperationAdded):
-        return base | {
-            'kind': 'operation-added',
-            'display_name': change.display_name,
-            'description': change.description,
-        }
-    if isinstance(change, OperationRemoved):
-        return base | {
-            'kind': 'operation-removed',
-            'display_name': change.display_name,
-            'description': change.description,
-        }
-    detail = {
-        'kind': change.kind,
-        'location': _location_record(change.location),
-        'subject': change.subject,
-        'attribute': change.attribute,
-        'before': change.before,
-        'after': change.after,
-    }
-    if isinstance(change, SchemaChanged):
-        return base | {'scope': 'schema', 'path': [_segment_record(segment) for segment in change.path]} | detail
-    return base | {'scope': 'operation'} | detail
+    out: dict[str, object] = {'scope': _SCOPE[change.operation is not None, change.path is not None]}
+    if change.operation is not None:
+        out['operation'] = {'path': change.operation.path, 'method': change.operation.method}
+    out['kind'] = change.kind
+    out['location'] = _location_record(change.location)
+    if change.path is not None:
+        out['path'] = [_segment_record(segment) for segment in change.path]
+    out['subject'] = change.subject
+    out['attribute'] = change.attribute
+    out['before'] = change.before
+    out['after'] = change.after
+    out['impact'] = change.impact
+    out['rule'] = change.rule
+    return out
 
 
-def _location_record(location: OperationLocation) -> dict[str, object]:
+def _location_record(location: Location) -> dict[str, object]:
     return {'kind': type(location).__name__, **asdict(location)}
 
 
@@ -143,14 +128,19 @@ def _matches(change: Change, match: CompatibilityMatch | None) -> bool:
 
 
 def _operation_of(change: Change) -> str | None:
-    if isinstance(change, (ApiChanged, ApiSchemaChanged)):
-        return None
-    return f'{change.operation.method.upper()} {change.operation.path}'
+    operation = change.operation
+    return None if operation is None else f'{operation.method.upper()} {operation.path}'
 
 
 def _match_fields(change: Change) -> tuple[str, str | None, str, str | None, object, object]:
-    if isinstance(change, ApiChanged):
-        return 'Api', None, change.subject, change.attribute, change.before, change.after
+    """What an override matches on, in the spelling a project writes.
+
+    `location` is the coordinate's class name for every change that has one --
+    including an API-level default, which used to report the string `Api` and so
+    matched no `location:` a reader could have guessed. `docs/13` and the
+    `backward` skill both show `location: TransportLocation` against exactly that
+    case.
+    """
     if isinstance(change, (OperationAdded, OperationRemoved)):
         # No `attribute` and no values. An operation that arrived or left has no
         # field that took a new value -- `rule` already separates `entity-added`
@@ -160,7 +150,7 @@ def _match_fields(change: Change) -> tuple[str, str | None, str, str | None, obj
         return 'Operation', None, 'operation', None, None, None
     return (
         type(change.location).__name__,
-        _path_label(change.path) if isinstance(change, (ApiSchemaChanged, SchemaChanged)) else None,
+        None if change.path is None else _path_label(change.path),
         change.subject,
         change.attribute,
         change.before,

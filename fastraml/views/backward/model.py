@@ -19,20 +19,17 @@ __all__ = [
     'IMPACTS',
     'RULE_IDS',
     'SUBJECTS',
-    'ApiChanged',
-    'ApiSchemaChanged',
     'BackwardChange',
     'Change',
     'ChangeKind',
+    'Changed',
     'Direction',
     'Impact',
     'ItemsSegment',
-    'LocatedChange',
+    'Location',
     'OperationAdded',
-    'OperationChanged',
     'OperationContract',
     'OperationId',
-    'OperationLocation',
     'OperationRemoved',
     'ParameterLocation',
     'PathSegment',
@@ -41,7 +38,6 @@ __all__ = [
     'RequestBody',
     'ResponseBody',
     'ResponseStatus',
-    'SchemaChanged',
     'SchemaLocation',
     'SecurityLocation',
     'Subject',
@@ -107,6 +103,47 @@ def impact_of(rule: str) -> Impact:
     return RULES[rule].impact
 
 
+#: Movements whose rule id needs a side before the table can grade it. Removing
+#: a property is `review` on the way in and `breaking` on the way out, so the
+#: walk names *what moved* and the side comes from the coordinate.
+#:
+#: `property-added-required` has no response form on purpose: a new required
+#: field in a response breaks nobody, which `response-property-added` already
+#: says. It falls back to the unqualified movement rather than naming a rule the
+#: table does not have.
+_SIDED: Final = frozenset(
+    {
+        'constraint-loosened',
+        'constraint-tightened',
+        'enum-value-added',
+        'enum-value-removed',
+        'property-added',
+        'property-added-required',
+        'property-optional',
+        'property-removed',
+        'property-required',
+    }
+)
+
+
+def rule_for(movement: str, direction: Direction | None) -> str:
+    """The rule id for `movement` seen from `direction`.
+
+    The walk used to build these itself, as `f'{direction}-property-removed'` at
+    each site, which is why a change could only ever carry one grade: the side
+    was baked in before the table was consulted. Naming the movement instead
+    leaves the side a question this answers, and a coordinate with no side --
+    a type declaration, which is neither sent nor received until someone uses
+    it -- can be asked twice.
+    """
+    if movement not in _SIDED:
+        return movement
+    if direction is None:
+        raise AssertionError(f'{movement} needs a side of the wire, and this coordinate has none')
+    sided = f'{direction}-{movement}'
+    return sided if sided in RULES else f'{direction}-{movement.rsplit("-", 1)[0]}'
+
+
 #: An operation that arrived or left carries its grade as a field default, which
 #: has to be a value rather than a call -- so the two the walk never computes are
 #: read from the table here instead of written out beside it.
@@ -158,7 +195,16 @@ class TransportLocation:
     pass
 
 
-type OperationLocation = (
+#: Every coordinate a change can sit at. One union and not one per owner: an
+#: API-level `protocols:` and an operation's own sit at the same
+#: `TransportLocation`, and who owns them is `Changed.operation`, not a second
+#: spelling of where they are. `OperationContract` is the one a root change
+#: cannot use, because the API node has no method contract -- which `emit`
+#: refuses rather than the type system, since it is a fact about the walk.
+#:
+#: `baseUri` is `TransportLocation` and not a root facet of its own: with
+#: `protocols` it is how a caller reaches the API, and the two read as one fact.
+type Location = (
     OperationContract
     | RequestBody
     | ResponseBody
@@ -168,18 +214,8 @@ type OperationLocation = (
     | TransportLocation
 )
 
-#: Where an API-scoped change sits: the coordinates an operation uses, minus the
-#: operation's own contract, which the root does not have. An API-level
-#: `protocols:` or `securedBy:` is compared once at the root, and a security
-#: scheme's `describedBy` puts request headers and responses under that one
-#: comparison. `ApiChanged` is `OperationChanged` without an owner, exactly as
-#: `ApiSchemaChanged` is `SchemaChanged` without one.
-#:
-#: `baseUri` is `TransportLocation` and not a root facet of its own: with
-#: `protocols` it is how a caller reaches the API, and the two read as one fact.
-type ApiLocation = (
-    RequestBody | ResponseBody | ResponseStatus | ParameterLocation | SecurityLocation | TransportLocation
-)
+#: The coordinates a shape hangs off. Narrower than `Location` because a shape
+#: has no contract, status or transport to sit at.
 type SchemaLocation = RequestBody | ResponseBody | ParameterLocation
 
 
@@ -223,8 +259,35 @@ class BackwardChange(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class ApiChanged:
-    location: ApiLocation
+class Changed:
+    """One change, at one coordinate.
+
+    The coordinate is three fields and two of them are optional, which is the
+    whole of it:
+
+    ==================  ===========================================
+    `operation is None`  an API-level default, compared once at the
+                         root -- `protocols:`, `securedBy:`, a
+                         `baseUriParameters` shape
+    `path is None`       a contract change, not a shape one: the
+                         coordinate in `location` *is* what moved
+    `path == ()`         a shape change at the root of that shape
+    ==================  ===========================================
+
+    Those were four classes, one per cell of owner x path. Every rule that holds
+    on both sides of either axis then had to be written twice -- requiredness
+    and documentation each had two implementations differing only in which
+    emitter they called -- and eleven `isinstance` checks downstream existed to
+    work out which cell a change came from. Two optional fields say it once, and
+    say it in the form a reader asks the question in.
+
+    `direction` is deliberately absent: it is `side_of(location)`, and storing a
+    function of a neighbouring field is how the two come to disagree.
+    """
+
+    operation: OperationId | None
+    location: Location
+    path: tuple[PathSegment, ...] | None
     kind: ChangeKind
     subject: Subject
     attribute: str | None
@@ -252,57 +315,13 @@ class OperationRemoved:
     rule: str = 'entity-removed'
 
 
-@dataclass(frozen=True, slots=True)
-class ApiSchemaChanged:
-    location: ParameterLocation
-    path: tuple[PathSegment, ...]
-    kind: ChangeKind
-    subject: Subject
-    attribute: str | None
-    before: object
-    after: object
-    impact: Impact
-    rule: str
+#: An operation that arrived or left is not a change *at* a coordinate, it is
+#: the coordinate -- which is why those two stay their own results rather than
+#: becoming a third pair of optional fields on `Changed`.
+type Change = Changed | OperationAdded | OperationRemoved
 
 
-@dataclass(frozen=True, slots=True)
-class OperationChanged:
-    operation: OperationId
-    location: OperationLocation
-    kind: ChangeKind
-    subject: Subject
-    attribute: str | None
-    before: object
-    after: object
-    impact: Impact
-    rule: str
-
-
-@dataclass(frozen=True, slots=True)
-class SchemaChanged:
-    operation: OperationId
-    location: SchemaLocation
-    path: tuple[PathSegment, ...]
-    kind: ChangeKind
-    subject: Subject
-    attribute: str | None
-    before: object
-    after: object
-    impact: Impact
-    rule: str
-
-
-type Change = ApiChanged | ApiSchemaChanged | OperationAdded | OperationRemoved | OperationChanged | SchemaChanged
-
-#: Every result that names a coordinate: the four that carry `location`, `kind`,
-#: `subject`, `attribute` and a value pair. They differ only in who owns them and
-#: whether a `path` reaches inside a shape, so one renderer reads all four.
-#: `OperationAdded` and `OperationRemoved` are outside it -- an operation that
-#: arrived or left is not a change *at* a coordinate, it is the coordinate.
-type LocatedChange = ApiChanged | ApiSchemaChanged | OperationChanged | SchemaChanged
-
-
-def side_of(location: ApiLocation | OperationLocation) -> Direction | None:
+def side_of(location: Location) -> Direction | None:
     """Which side of the wire a coordinate sits on, or `None` for neither.
 
     The walk already decides this when it grades -- a header under a response

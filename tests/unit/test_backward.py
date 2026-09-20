@@ -11,12 +11,10 @@ from fastraml.config import CompatibilityConfig, CompatibilityMatch, Compatibili
 from fastraml.views.backward import (
     RULE_IDS,
     SUBJECTS,
-    ApiChanged,
-    ApiSchemaChanged,
     Change,
+    Changed,
     ItemsSegment,
     OperationAdded,
-    OperationChanged,
     OperationContract,
     OperationId,
     OperationRemoved,
@@ -26,7 +24,6 @@ from fastraml.views.backward import (
     RequestBody,
     ResponseBody,
     ResponseStatus,
-    SchemaChanged,
     SecurityLocation,
     TransportLocation,
     UnionMemberSegment,
@@ -36,11 +33,27 @@ from fastraml.views.backward import (
     impact_of,
     record,
     render_markdown,
+    rule_for,
 )
 from fastraml.views.backward.compare import _loosened
 from fastraml.views.backward.markdown import _location_label
 from fastraml.views.backward.model import _path_label
 from fastraml.views.backward.rules import RULES
+
+
+def in_shape(change) -> bool:
+    """Reaches inside a shape. `path` is the route, and `()` is the shape's root."""
+    return isinstance(change, Changed) and change.path is not None
+
+
+def at_coordinate(change) -> bool:
+    """Addresses the coordinate itself, which is what `path is None` says."""
+    return isinstance(change, Changed) and change.path is None
+
+
+def owned(change) -> bool:
+    """Belongs to one operation, rather than to an API-level default."""
+    return isinstance(change, Changed) and change.operation is not None
 
 
 def graded(tmp_path, old: str, new: str):
@@ -112,7 +125,7 @@ def test_described_by_is_compared_as_request_structure(tmp_path):
     new = old.replace('X-Key: string', 'X-Key: integer')
     found = graded(tmp_path, old, new)
     assert any(
-        isinstance(change, SchemaChanged)
+        (owned(change) and in_shape(change))
         and change.rule == 'type-changed'
         and isinstance(change.location, ParameterLocation)
         and change.location.name == 'X-Key'
@@ -128,10 +141,12 @@ def test_parameter_contract_and_shape_changes_are_separate(tmp_path):
 
     required = next(change for change in found if change.attribute == 'required')
     shape = next(change for change in found if change.attribute == 'type')
-    assert isinstance(required, OperationChanged)
+    assert owned(required)
+    assert at_coordinate(required)
     assert isinstance(required.location, ParameterLocation)
     assert 'path' not in record(required)
-    assert isinstance(shape, SchemaChanged)
+    assert owned(shape)
+    assert in_shape(shape)
     assert isinstance(shape.location, ParameterLocation)
     assert shape.path == ()
     assert record(shape)['path'] == []
@@ -152,7 +167,8 @@ baseUriParameters:
 
     assert len(found) == 1
     change = found[0]
-    assert isinstance(change, ApiSchemaChanged)
+    assert in_shape(change)
+    assert change.operation is None
     assert change.location == ParameterLocation('baseUri', 'tenant')
     assert change.path == ()
     assert change.rule == 'request-constraint-tightened'
@@ -174,7 +190,8 @@ def test_a_base_uri_parameter_is_graded_by_the_rule_every_other_parameter_gets(t
 
     assert len(found) == 1
     change = found[0]
-    assert isinstance(change, ApiSchemaChanged)
+    assert in_shape(change)
+    assert change.operation is None
     assert (change.subject, change.attribute) == ('required', 'required')
     assert change.rule == 'request-property-required'
     assert change.impact == 'breaking'
@@ -199,7 +216,7 @@ types:
 
     found = graded(tmp_path, old, new)
 
-    change = next(change for change in found if isinstance(change, SchemaChanged))
+    change = next(change for change in found if (owned(change) and in_shape(change)))
     assert change.path == (PatternPropertySegment('^x-'),)
     assert change.rule == 'type-changed'
     assert change.impact == 'breaking'
@@ -229,7 +246,7 @@ types:
 
     found = graded(tmp_path, old, new)
 
-    change = next(change for change in found if isinstance(change, SchemaChanged))
+    change = next(change for change in found if (owned(change) and in_shape(change)))
     assert change.subject == 'pattern-property'
     assert change.attribute == 'order'
     assert change.impact == 'review'
@@ -249,8 +266,8 @@ types:
 """
     with_pattern = without.replace('properties: {}', 'properties:\n      /^x-/: string')
 
-    added = next(change for change in graded(tmp_path, without, with_pattern) if isinstance(change, SchemaChanged))
-    removed = next(change for change in graded(tmp_path, with_pattern, without) if isinstance(change, SchemaChanged))
+    added = next(change for change in graded(tmp_path, without, with_pattern) if (owned(change) and in_shape(change)))
+    removed = next(change for change in graded(tmp_path, with_pattern, without) if (owned(change) and in_shape(change)))
 
     assert (added.rule, added.impact) == ('request-constraint-tightened', 'breaking')
     assert (removed.rule, removed.impact) == ('request-constraint-loosened', 'compatible')
@@ -272,7 +289,7 @@ types:
 """
     new = old.replace('enum: [a, b]', 'enum: [b, c]')
 
-    found = [change for change in graded(tmp_path, old, new) if isinstance(change, SchemaChanged)]
+    found = [change for change in graded(tmp_path, old, new) if (owned(change) and in_shape(change))]
 
     assert [(change.rule, change.before, change.after, change.impact) for change in found] == [
         ('response-enum-value-removed', ('a',), None, 'compatible'),
@@ -296,7 +313,7 @@ types:
 """
     new = old.replace('enum: [1]', "enum: ['1']")
 
-    found = [change for change in graded(tmp_path, old, new) if isinstance(change, SchemaChanged)]
+    found = [change for change in graded(tmp_path, old, new) if (owned(change) and in_shape(change))]
 
     assert found[0].before == (1,)
     assert found[1].after == ('1',)
@@ -394,7 +411,7 @@ def test_added_operations_and_statuses_preserve_declaration_order(tmp_path):
     statuses = [
         change
         for change in graded(tmp_path, old_with_statuses, new_with_statuses)
-        if isinstance(change, OperationChanged) and isinstance(change.location, ResponseStatus)
+        if (owned(change) and at_coordinate(change)) and isinstance(change.location, ResponseStatus)
     ]
     assert [change.location.status for change in statuses] == ['202', '201']
 
@@ -432,7 +449,7 @@ def test_large_numeric_bounds_are_compared_exactly(tmp_path):
     old = RECURSIVE.replace('value: string', 'value:\n        type: integer\n        maximum: 9007199254740992')
     new = old.replace('maximum: 9007199254740992', 'maximum: 9007199254740993')
     found = graded(tmp_path, old, new)
-    bound = next(change for change in found if isinstance(change, SchemaChanged) and change.attribute == 'maximum')
+    bound = next(change for change in found if (owned(change) and in_shape(change)) and change.attribute == 'maximum')
     assert bound.rule == 'response-constraint-loosened'
     assert bound.impact == 'breaking'
 
@@ -483,7 +500,9 @@ def test_base_uri_change_is_breaking(tmp_path):
     new = old.replace('old.example.test', 'new.example.test')
     found = graded(tmp_path, old, new)
     assert found == [
-        ApiChanged(
+        Changed(
+            operation=None,
+            path=None,
             location=TransportLocation(),
             kind='changed',
             subject='base-uri',
@@ -621,7 +640,7 @@ types:
 """
     new = old.replace('name?: string', 'name: string')
 
-    change = next(change for change in graded(tmp_path, old, new) if isinstance(change, SchemaChanged))
+    change = next(change for change in graded(tmp_path, old, new) if (owned(change) and in_shape(change)))
 
     assert change.subject == 'required'
     assert '| Requiredness | Optional -> Required |' in render_markdown([change])
@@ -689,7 +708,7 @@ types:
 """
     new = old.replace('\n        maxLength: 10', '')
 
-    change = next(change for change in graded(tmp_path, old, new) if isinstance(change, SchemaChanged))
+    change = next(change for change in graded(tmp_path, old, new) if (owned(change) and in_shape(change)))
 
     assert (change.kind, change.subject) == ('changed', 'constraint')
     assert '| `maxLength` | `10` -> Absent |' in render_markdown([change])
@@ -712,7 +731,9 @@ def test_a_misspelled_subject_in_an_override_is_refused():
     """A `subject:` nobody emits matches nothing, which reads as a policy that ran
     and decided against you. Refused for the same reason an unknown rule id is.
     """
-    change = ApiChanged(TransportLocation(), 'changed', 'base-uri', 'baseUri', 'a', 'b', 'breaking', 'base-uri-changed')
+    change = Changed(
+        None, TransportLocation(), None, 'changed', 'base-uri', 'baseUri', 'a', 'b', 'breaking', 'base-uri-changed'
+    )
     config = CompatibilityConfig(
         rules=(
             CompatibilityRuleSetting(
@@ -760,12 +781,12 @@ def test_an_inherited_security_change_is_reported_once_at_the_api(tmp_path):
 
     found = graded(tmp_path, API_SECURED, new)
 
-    api = [change for change in found if isinstance(change, ApiChanged)]
+    api = [change for change in found if (at_coordinate(change) and change.operation is None)]
     assert [(change.subject, change.kind, change.after) for change in api] == [
         ('security-alternative', 'added', {'name': 'key'})
     ]
     assert isinstance(api[0].location, SecurityLocation)
-    assert not [change for change in found if isinstance(change, OperationChanged)], '/a and /b inherit'
+    assert not [change for change in found if (owned(change) and at_coordinate(change))], '/a and /b inherit'
 
 
 def test_an_api_level_scheme_carries_its_described_by_to_the_api_too(tmp_path):
@@ -780,13 +801,13 @@ def test_an_api_level_scheme_carries_its_described_by_to_the_api_too(tmp_path):
 
     found = graded(tmp_path, old, new)
 
-    change = next(change for change in found if isinstance(change, ApiSchemaChanged))
+    change = next(change for change in found if (in_shape(change) and change.operation is None))
     assert change.location == ParameterLocation('header', 'X-Key')
     assert (change.rule, change.impact) == ('type-changed', 'breaking')
     assert record(change)['scope'] == 'api-schema'
     # `/own` names the same scheme itself, so it reports it on its own account.
     # `/a` and `/b` inherit, and read it from the API table once.
-    owners = {change.operation.path for change in found if isinstance(change, (OperationChanged, SchemaChanged))}
+    owners = {change.operation.path for change in found if owned(change)}
     assert owners == {'/own'}
 
 
@@ -796,8 +817,8 @@ def test_an_operation_that_declares_its_own_security_is_still_compared(tmp_path)
 
     found = graded(tmp_path, API_SECURED, new)
 
-    assert not [change for change in found if isinstance(change, ApiChanged)]
-    operations = {change.operation.path for change in found if isinstance(change, OperationChanged)}
+    assert not [change for change in found if (at_coordinate(change) and change.operation is None)]
+    operations = {change.operation.path for change in found if (owned(change) and at_coordinate(change))}
     assert operations == {'/own'}
 
 
@@ -823,11 +844,11 @@ protocols: [HTTP, HTTPS]
 
     found = graded(tmp_path, old, new)
 
-    api = [change for change in found if isinstance(change, ApiChanged)]
+    api = [change for change in found if (at_coordinate(change) and change.operation is None)]
     assert [(change.subject, change.before, change.after) for change in api] == [
         ('protocol', ('HTTP', 'HTTPS'), ('HTTPS',))
     ]
-    assert not [change for change in found if isinstance(change, OperationChanged)], (
+    assert not [change for change in found if (owned(change) and at_coordinate(change))], (
         '/a and /b inherit, so they restate nothing'
     )
 
@@ -847,8 +868,8 @@ protocols: [HTTP, HTTPS]
 
     found = graded(tmp_path, old, new)
 
-    assert not [change for change in found if isinstance(change, ApiChanged)]
-    operation = next(change for change in found if isinstance(change, OperationChanged))
+    assert not [change for change in found if (at_coordinate(change) and change.operation is None)]
+    operation = next(change for change in found if (owned(change) and at_coordinate(change)))
     assert (operation.rule, operation.impact) == ('protocol-removed', 'breaking')
     assert isinstance(operation.location, TransportLocation)
 
@@ -860,7 +881,7 @@ def test_a_method_that_starts_overriding_an_inherited_default_is_compared(tmp_pa
     old = '#%RAML 1.0\ntitle: T\nprotocols: [HTTP, HTTPS]\n/own:\n  get:\n'
     new = old.replace('/own:\n  get:\n', '/own:\n  get:\n    protocols: [HTTPS]\n')
 
-    operation = next(change for change in graded(tmp_path, old, new) if isinstance(change, OperationChanged))
+    operation = next(change for change in graded(tmp_path, old, new) if (owned(change) and at_coordinate(change)))
 
     assert (operation.before, operation.after) == (('HTTP', 'HTTPS'), ('HTTPS',))
     assert operation.impact == 'breaking'
@@ -943,11 +964,7 @@ def test_an_added_or_removed_entity_never_restates_its_own_coordinate():
     options = ParseOptions(unwrap=True)
     changes = backward(parse_from_path(root / 'v1.raml', options), parse_from_path(root / 'v2.raml', options))
 
-    entities = [
-        change
-        for change in changes
-        if isinstance(change, (OperationChanged, SchemaChanged)) and change.kind in ('added', 'removed')
-    ]
+    entities = [change for change in changes if owned(change) and change.kind in ('added', 'removed')]
     assert {'response', 'body', 'union-member'} <= {change.subject for change in entities}, 'all three are exercised'
 
     for change in entities:
@@ -958,7 +975,7 @@ def test_an_added_or_removed_entity_never_restates_its_own_coordinate():
         if change.subject not in ('property', 'parameter', 'security-alternative'):
             assert not identifying, f'{change.subject} carries {identifying}, which its coordinate already states'
         addressed = _location_label(change.location)
-        addressed += _path_label(change.path) if isinstance(change, SchemaChanged) else ''
+        addressed += _path_label(change.path) if (owned(change) and in_shape(change)) else ''
         for key in identifying:
             assert str(descriptor[key]) not in addressed, f'{change.subject}.{key} restates its coordinate'
 
@@ -1143,7 +1160,7 @@ types:
 
 
 def test_markdown_quotes_hostile_schema_paths_and_table_values():
-    change = SchemaChanged(
+    change = Changed(
         operation=OperationId('/things', 'get'),
         location=ResponseBody('200', 'application/vnd.test|json'),
         path=(PropertySegment('user.name|`raw`'),),
@@ -1175,7 +1192,7 @@ def test_a_value_the_document_states_is_fenced_and_a_word_this_report_chose_is_n
     Optional are this report's words for a state and no document states them, so
     they stay outside a fence and the distinction stays readable.
     """
-    pattern = SchemaChanged(
+    pattern = Changed(
         operation=OperationId('/things', 'get'),
         location=RequestBody('application/json'),
         path=(PropertySegment('code'),),
@@ -1187,7 +1204,8 @@ def test_a_value_the_document_states_is_fenced_and_a_word_this_report_chose_is_n
         impact='review',
         rule='other',
     )
-    required = OperationChanged(
+    required = Changed(
+        path=None,
         operation=OperationId('/things', 'get'),
         location=ParameterLocation('query', 'limit'),
         kind='changed',
@@ -1209,7 +1227,8 @@ def test_a_value_the_document_states_is_fenced_and_a_word_this_report_chose_is_n
 def test_markdown_summarizes_description_changes_but_json_does_not():
     before = '\n\nOld summary\nOld detail'
     after = 'New summary\nNew detail'
-    change = OperationChanged(
+    change = Changed(
+        path=None,
         operation=OperationId('/things', 'get'),
         location=OperationContract(),
         kind='changed',
@@ -1246,6 +1265,83 @@ def _worked_example() -> tuple[list[Change], str]:
     old = parse_from_path(root / 'v1.raml', options)
     new = parse_from_path(root / 'v2.raml', options)
     return backward(old, new), backward_markdown(old, new)
+
+
+def test_a_coordinate_is_two_optional_fields_and_not_four_classes():
+    """`operation` and `path` each present or absent is the whole taxonomy.
+
+    Four classes said the same thing in a way that forced every rule holding on
+    both sides of either axis to be written twice -- requiredness and
+    documentation each had two implementations -- and made eleven `isinstance`
+    checks necessary downstream to recover the cell. `scope` in the record is
+    derived from the pair, so the name and the fields cannot disagree.
+    """
+    root = Path(__file__).parents[2] / 'examples' / 'compatibility'
+    options = ParseOptions(unwrap=True)
+    changes = backward(parse_from_path(root / 'v1.raml', options), parse_from_path(root / 'v2.raml', options))
+
+    located = [change for change in changes if isinstance(change, Changed)]
+    cells = {(change.operation is not None, change.path is not None) for change in located}
+    assert cells == {(False, False), (False, True), (True, False), (True, True)}, 'the worked example fills all four'
+    for change in located:
+        scope = record(change)['scope']
+        assert (
+            scope
+            == {
+                (False, False): 'api',
+                (False, True): 'api-schema',
+                (True, False): 'operation',
+                (True, True): 'schema',
+            }[change.operation is not None, change.path is not None]
+        )
+        assert ('operation' in record(change)) is (change.operation is not None)
+        assert ('path' in record(change)) is (change.path is not None)
+
+
+def test_the_walk_names_a_movement_and_the_side_comes_from_the_coordinate():
+    """A rule id is `{side}-{movement}` and the walk supplies only the movement.
+
+    Building the whole id in the walk baked the side in before the table was
+    consulted, which is why one traversal could only ever produce one grade. It
+    also meant `_At` carried a `direction` that `side_of(location)` already knew.
+    """
+    assert rule_for('property-removed', 'request') == 'request-property-removed'
+    assert rule_for('property-removed', 'response') == 'response-property-removed'
+    assert impact_of(rule_for('property-removed', 'request')) == 'review'
+    assert impact_of(rule_for('property-removed', 'response')) == 'breaking'
+    # A side-free movement is already a rule id and never gains a prefix.
+    assert rule_for('type-changed', 'request') == rule_for('type-changed', 'response') == 'type-changed'
+    # The one asymmetry: a new required field breaks a sender and nobody else,
+    # so the response side falls back to the rule that says exactly that.
+    assert rule_for('property-added-required', 'request') == 'request-property-added-required'
+    assert rule_for('property-added-required', 'response') == 'response-property-added'
+    assert impact_of(rule_for('property-added-required', 'response')) == 'compatible'
+
+
+def test_an_api_level_override_can_name_the_location_the_docs_show():
+    """`match.location` is the coordinate's class name for every scope.
+
+    An API-level default reported the string `Api` instead, so the override the
+    skill and docs/13 both print -- `location: TransportLocation` against an
+    inherited `protocols:` -- matched nothing at all.
+    """
+    change = Changed(
+        None,
+        TransportLocation(),
+        None,
+        'changed',
+        'protocol',
+        'protocols',
+        ('HTTP',),
+        (),
+        'breaking',
+        'protocol-removed',
+    )
+    setting = CompatibilityRuleSetting(
+        id='protocol-removed', impact='compatible', match=CompatibilityMatch(location='TransportLocation')
+    )
+
+    assert configure([change], CompatibilityConfig((setting,)))[0].impact == 'compatible'
 
 
 def test_the_walk_grades_nothing_and_the_table_grades_everything():
@@ -1326,7 +1422,7 @@ def test_the_worked_example_reaches_every_model_coordinate():
     """
     changes, _ = _worked_example()
 
-    operation_locations = {type(change.location) for change in changes if isinstance(change, OperationChanged)}
+    operation_locations = {type(change.location) for change in changes if (owned(change) and at_coordinate(change))}
     assert operation_locations == {
         OperationContract,
         ParameterLocation,
@@ -1336,17 +1432,19 @@ def test_the_worked_example_reaches_every_model_coordinate():
         SecurityLocation,
         TransportLocation,
     }
-    schema_locations = {type(change.location) for change in changes if isinstance(change, SchemaChanged)}
+    schema_locations = {type(change.location) for change in changes if (owned(change) and in_shape(change))}
     assert schema_locations == {ParameterLocation, RequestBody, ResponseBody}
     schema_segments = {
-        type(segment) for change in changes if isinstance(change, SchemaChanged) for segment in change.path
+        type(segment) for change in changes if (owned(change) and in_shape(change)) for segment in change.path
     }
     assert schema_segments == {PropertySegment, ItemsSegment, UnionMemberSegment}
-    assert any(isinstance(change, SchemaChanged) and change.path == () for change in changes)
+    assert any((owned(change) and in_shape(change)) and change.path == () for change in changes)
     removed_member = next(
         change
         for change in changes
-        if isinstance(change, SchemaChanged) and change.operation.path == '/union-members' and change.kind == 'removed'
+        if (owned(change) and in_shape(change))
+        and change.operation.path == '/union-members'
+        and change.kind == 'removed'
     )
     assert removed_member.path[-1] == UnionMemberSegment(name=None, type='integer')
     assert record(removed_member)['path'][-1] == {
@@ -1360,11 +1458,12 @@ def test_the_worked_example_reaches_every_model_coordinate():
     nested_shape = next(
         change
         for change in changes
-        if isinstance(change, SchemaChanged)
+        if (owned(change) and in_shape(change))
         and change.operation.path == '/response-enum-add'
         and change.subject == 'enum-value'
     )
-    assert isinstance(protocol, OperationChanged)
+    assert owned(protocol)
+    assert at_coordinate(protocol)
     assert record(protocol)['scope'] == 'operation'
     assert 'path' not in record(protocol)
     assert record(nested_shape)['scope'] == 'schema'

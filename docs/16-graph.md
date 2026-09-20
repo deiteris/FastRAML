@@ -1156,16 +1156,31 @@ as the explicit leaf marker it is, never following its `head` back into a cycle.
 
 ### 10.1 The change list is the contract
 
-`backward(old, new) -> list[ApiChanged | ApiSchemaChanged | OperationAdded | OperationRemoved | OperationChanged | SchemaChanged]`
+`backward(old, new) -> list[Changed | OperationAdded | OperationRemoved]`
 compares two unwrapped `Raml` models at the operations an API caller reaches.
 
-`baseUri` is represented by `ApiChanged`, outside that operation-local union:
-RAML has one server URI for the API and no endpoint-level override, so repeating
-the same server move under every operation would misstate the model. It carries
-`TransportLocation` rather than a root facet of its own, because with
-`protocols` it is how a caller reaches the API and the two read as one fact. Its
-`baseUriParameters` are likewise walked once and emitted as `ApiSchemaChanged`,
-because their shapes belong to the API rather than to any one method.
+**A coordinate is two optional fields.** `Changed.operation` is `None` for an
+API-level default and `Changed.path` is `None` for a change at the coordinate
+itself rather than inside a shape, which gives four cells and the `scope` a
+record reports:
+
+| | `path is None` | `path` |
+|---|---|---|
+| **`operation is None`** | `api` | `api-schema` |
+| **`operation`** | `operation` | `schema` |
+
+Those were four classes, and that is what made them one. Every rule holding on
+both sides of either axis had to be written twice — requiredness and
+documentation each had two implementations differing only in which emitter they
+called — and eleven `isinstance` checks downstream existed to recover the cell a
+change came from. `path == ()` is still the root of a shape, distinct from `None`.
+
+`baseUri` has no operation: RAML has one server URI for the API and no
+endpoint-level override, so repeating the same server move under every operation
+would misstate the model. It carries `TransportLocation` rather than a root facet
+of its own, because with `protocols` it is how a caller reaches the API and the
+two read as one fact. `baseUriParameters` are likewise walked once, with a path
+and no owner.
 
 Two things are dropped before anyone sees them, and both were reported as API
 changes by the first version:
@@ -1228,16 +1243,15 @@ request and a GET response is compared twice, once at `RequestBody` and once at
 `ResponseBody`; each operation receives the answer its caller needs. There is no
 declaration-level change whose directions have to be accumulated.
 
-The result types preserve the same boundary as the parsed model. An
-`OperationChanged` describes the operation and the entities it owns: transport,
-security, responses, bodies and bound parameters. It has no `path` field. A
-`SchemaChanged` is emitted only by the `BaseShape` walk; its `location` identifies
-the request body, response body or parameter whose shape is being compared.
-`ApiSchemaChanged` is the same shape result without a synthetic operation owner,
-used for `baseUriParameters` and for an API-level scheme's `describedBy`.
-`ApiChanged` stands in the same relation to `OperationChanged`: it carries a
-`location` from `ApiLocation`, which is `OperationLocation` minus the
-operation's own contract, which the root does not have. Their required paths contain `PropertySegment`,
+The result preserves the same boundary as the parsed model. Without a `path` it
+describes the operation and the entities it owns: transport, security, responses,
+bodies and bound parameters. With one it comes from the `BaseShape` walk, and its
+`location` identifies the request body, response body or parameter whose shape is
+being compared. Drop the owner from either and it is the API's — used for
+`baseUriParameters` and for an API-level scheme's `describedBy`. `Location` is one
+union rather than one per owner, because an API-level `protocols:` and an
+operation's own sit at the same `TransportLocation`; `OperationContract` is the
+one coordinate the root cannot use, and `emit` refuses it. Paths contain `PropertySegment`,
 `PatternPropertySegment`, `ItemsSegment` and `UnionMemberSegment`. An empty tuple
 is the shape root and segments identify a nested position. Pattern-property
 order is compared independently because first match wins. A union segment
@@ -1446,7 +1460,7 @@ path addresses RAML properties, array items and union members; it does not
 address XML elements or attributes, and an `xml.name` change may give the old
 and new wire values different XML addresses. Supporting that requires a
 dedicated serialization change record carrying both wire coordinates, not an
-XML facet forced into `SchemaChanged.path`.
+XML facet forced into `Changed.path`.
 
 Direction-independent: an operation removed. A resource with no operation is
 not caller surface and produces no compatibility change. Added and removed
@@ -1471,7 +1485,7 @@ not presentation invented in `cli.py`.
 
 ### 10.3 The policy is separable, and named
 
-Every `ApiSchemaChanged`, `OperationChanged` and `SchemaChanged` carries a named
+Every `Changed` carries a named
 `rule` and its `impact`; operation additions/removals do too. `other` is `review`
 rather than `compatible` on purpose: an unrecognised change is the one case where
 silence misleads. `backward/rules.py` is the table: one `Rule` per id, naming

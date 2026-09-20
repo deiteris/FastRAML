@@ -14,24 +14,19 @@ from typing import TYPE_CHECKING, Final
 
 from fastraml.views.backward.model import (
     IMPACTS,
-    ApiChanged,
-    ApiLocation,
-    ApiSchemaChanged,
     Change,
+    Changed,
     ChangeKind,
     Direction,
     Impact,
-    LocatedChange,
+    Location,
     OperationAdded,
-    OperationChanged,
     OperationId,
-    OperationLocation,
     OperationRemoved,
     ParameterLocation,
     RequestBody,
     ResponseBody,
     ResponseStatus,
-    SchemaChanged,
     SecurityLocation,
     Subject,
     TransportLocation,
@@ -62,7 +57,7 @@ def render_markdown(changes: Sequence[Change]) -> str:
     field `configure` rewrites -- ordering the change list by a grading a project
     is free to override would leave the list stale the moment one did.
     """
-    api = [change for change in changes if isinstance(change, (ApiChanged, ApiSchemaChanged))]
+    api = [change for change in changes if isinstance(change, Changed) and change.operation is None]
     added = [change for change in changes if isinstance(change, OperationAdded)]
     removed = [change for change in changes if isinstance(change, OperationRemoved)]
     shared, owned_by = _rollup(changes)
@@ -109,11 +104,11 @@ def render_markdown(changes: Sequence[Change]) -> str:
 class _Entry:
     """A row, and every operation it says the same thing about."""
 
-    change: LocatedChange
+    change: Changed
     operations: tuple[OperationId, ...] = ()
 
 
-def _rollup(changes: Sequence[Change]) -> tuple[list[_Entry], dict[OperationId, list[LocatedChange]]]:
+def _rollup(changes: Sequence[Change]) -> tuple[list[_Entry], dict[OperationId, list[Changed]]]:
     """One edit reaching many operations is one row, not one row per operation.
 
     The change *list* is right to hold them apart: a caller of `/orders` and a
@@ -126,25 +121,27 @@ def _rollup(changes: Sequence[Change]) -> tuple[list[_Entry], dict[OperationId, 
     Grouped on everything except the owner, so only rows stating the same fact
     collapse. A change reaching one operation stays under it.
     """
-    groups: dict[object, list[OperationChanged | SchemaChanged]] = {}
+    groups: dict[object, list[Changed]] = {}
     for change in changes:
-        if isinstance(change, (OperationChanged, SchemaChanged)):
+        if isinstance(change, Changed) and change.operation is not None:
             groups.setdefault(_shared_key(change), []).append(change)
     shared: list[_Entry] = []
-    owned_by: dict[OperationId, list[LocatedChange]] = {}
+    owned_by: dict[OperationId, list[Changed]] = {}
     for members in groups.values():
+        owner = members[0].operation
         if len(members) > 1:
-            shared.append(_Entry(members[0], tuple(change.operation for change in members)))
-        else:
-            owned_by.setdefault(members[0].operation, []).append(members[0])
+            # Narrowed above, and every member of a group shares the key that
+            # excludes the owner -- so each has one, and each has a different one.
+            shared.append(_Entry(members[0], tuple(m.operation for m in members if m.operation is not None)))
+        elif owner is not None:
+            owned_by.setdefault(owner, []).append(members[0])
     return shared, owned_by
 
 
-def _shared_key(change: OperationChanged | SchemaChanged) -> object:
-    path = change.path if isinstance(change, SchemaChanged) else ()
+def _shared_key(change: Changed) -> object:
     return (
         change.location,
-        path,
+        change.path,
         change.kind,
         change.subject,
         change.attribute,
@@ -238,7 +235,7 @@ _VALUE_NOUN: Final[dict[Subject, str]] = {
 
 
 def _kind_table(rows: Sequence[_Entry], *, side_stated: bool, transition: bool) -> list[str]:
-    paths = any(isinstance(row.change, (ApiSchemaChanged, SchemaChanged)) and row.change.path for row in rows)
+    paths = any(row.change.path for row in rows)
     details = any(_detail(row.change) for row in rows)
     described = any(_description(row.change) for row in rows)
     operations = any(row.operations for row in rows)
@@ -301,7 +298,7 @@ def _change_row(  # noqa: PLR0913 - one flag per column the table decided to car
     cells = [_cell(_location_label(result.location, side_stated=side_stated))]
     if paths:
         inside = ''
-        if isinstance(result, (ApiSchemaChanged, SchemaChanged)) and result.path:
+        if result.path:
             inside = _cell(_inline_code(_path_label(result.path)))
         cells.append(inside)
     if change:
@@ -320,7 +317,7 @@ def _change_row(  # noqa: PLR0913 - one flag per column the table decided to car
     return f'| {" | ".join(cells)} |'
 
 
-def _description(change: LocatedChange) -> str:
+def _description(change: Changed) -> str:
     """What the author said the added or removed thing is for, if anything.
 
     Its own column rather than folded into `Detail`, because a type and a
@@ -334,7 +331,7 @@ def _description(change: LocatedChange) -> str:
     return str(value['description']) if isinstance(value, dict) and 'description' in value else ''
 
 
-def _detail(change: LocatedChange) -> str:
+def _detail(change: Changed) -> str:
     """The values, in one cell: a transition for a change, a descriptor otherwise.
 
     `Before` and `After` fitted a `changed` row and misfitted the other two,
@@ -359,7 +356,7 @@ def _operation_markdown(change: OperationAdded | OperationRemoved) -> str:
 
 
 def _location_label(  # noqa: PLR0911 - one spelling per location variant
-    location: ApiLocation | OperationLocation, *, side_stated: bool = False
+    location: Location, *, side_stated: bool = False
 ) -> str:
     """Where the change is, without the part the reader has already been told.
 
@@ -390,7 +387,7 @@ def _location_label(  # noqa: PLR0911 - one spelling per location variant
     return 'Operation'
 
 
-def _change_label(change: LocatedChange) -> str:
+def _change_label(change: Changed) -> str:
     """The Change column: an attribute is an identifier, a kind is prose.
 
     Every `attribute` is a name -- a RAML facet, a security setting, a node the
@@ -450,7 +447,7 @@ def _scalar(value: object) -> str:
     return str(value)
 
 
-def _markdown_value(change: LocatedChange, value: object) -> str:
+def _markdown_value(change: Changed, value: object) -> str:
     # An added or removed subject has one populated side by construction, and the
     # label already says which. Printing "Absent" opposite it states the same fact
     # twice for a property, and states a false one for an enum member, whose empty

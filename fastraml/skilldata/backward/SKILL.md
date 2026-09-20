@@ -145,12 +145,19 @@ long descriptions to a first-line summary; JSON retains complete values.
 Common fields:
 
 - `impact`, `rule`, `kind`, `subject`, `attribute`, `before`, `after`
-- `scope: "api"` for API values such as `baseUri`
-- `scope: "api-schema"` for `baseUriParameters`
-- `scope: "operation"` plus `operation` and `location` for method-contract
-  changes
-- `scope: "schema"` plus `operation`, `location`, and `path` for operation-owned
-  schemas
+- `location` on every change, naming the coordinate it sits at
+- `operation` only where one owns the change; absent for an API-level default
+- `path` only where the change reaches inside a shape; `[]` at a shape root
+
+`scope` names the combination of those last two, so a consumer can filter on one
+field instead of testing two:
+
+| `scope` | `operation` | `path` | what it is |
+| --- | --- | --- | --- |
+| `api` | absent | absent | an API value such as `baseUri` |
+| `api-schema` | absent | present | a `baseUriParameters` shape |
+| `operation` | present | absent | a method contract |
+| `schema` | present | present | an operation-owned shape |
 
 Read `subject` and `attribute` together. `subject` names what changed and comes
 from a fixed vocabulary: `base-uri`, `body`, `constraint`, `custom-facet`,
@@ -212,7 +219,8 @@ compatibility:
 Omit `operation` when the change comes from the API root, as an inherited
 `protocols:` or `securedBy:` does — those changes have no operation to match,
 and supplying one makes the rule match nothing. Add `operation` to narrow an
-override to the method that declared it.
+override to the method that declared it. `location` is the coordinate's class
+name and works at every scope, including the API root.
 
 Pass that file to the comparison:
 

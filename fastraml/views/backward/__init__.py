@@ -1,8 +1,9 @@
 """Operation-local backward compatibility over two effective RAML models.
 
-Four modules, because four things happen and only the first two share anything:
+Five modules, because five things happen and only the first two share anything:
 
     model       what a comparison can say — coordinates, results, grades
+    rules       every named judgement and what it does to a caller
     compare     the walk that fills them in, from two parsed models
     markdown    the reading view of a finished comparison
     records     the JSON record, and the project policy that matches it
@@ -23,17 +24,14 @@ from fastraml.views.backward.model import (
     IMPACTS,
     RULE_IDS,
     SUBJECTS,
-    ApiChanged,
-    ApiSchemaChanged,
     BackwardChange,
     Change,
+    Changed,
     ChangeKind,
     Direction,
     Impact,
     ItemsSegment,
-    LocatedChange,
     OperationAdded,
-    OperationChanged,
     OperationContract,
     OperationId,
     OperationRemoved,
@@ -44,12 +42,12 @@ from fastraml.views.backward.model import (
     RequestBody,
     ResponseBody,
     ResponseStatus,
-    SchemaChanged,
     SecurityLocation,
     Subject,
     TransportLocation,
     UnionMemberSegment,
     impact_of,
+    rule_for,
     side_of,
 )
 from fastraml.views.backward.records import configure, record
@@ -61,17 +59,14 @@ __all__ = [
     'IMPACTS',
     'RULE_IDS',
     'SUBJECTS',
-    'ApiChanged',
-    'ApiSchemaChanged',
     'BackwardChange',
     'Change',
     'ChangeKind',
+    'Changed',
     'Direction',
     'Impact',
     'ItemsSegment',
-    'LocatedChange',
     'OperationAdded',
-    'OperationChanged',
     'OperationContract',
     'OperationId',
     'OperationRemoved',
@@ -82,7 +77,6 @@ __all__ = [
     'RequestBody',
     'ResponseBody',
     'ResponseStatus',
-    'SchemaChanged',
     'SecurityLocation',
     'Subject',
     'TransportLocation',
@@ -93,6 +87,7 @@ __all__ = [
     'impact_of',
     'record',
     'render_markdown',
+    'rule_for',
     'side_of',
 ]
 

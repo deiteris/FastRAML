@@ -75,6 +75,19 @@ worse, as everywhere else.
 A change that names no side — a whole type that arrived or left — is one record
 with one grade.
 
+**The two modes can disagree about one document, and both are right.** Run on an
+API that declares types, the default mode sees how each type is *used* — a type
+appearing only in a `200` body is only ever received, so tightening it is
+`compatible` — while `--types` grades the declaration without knowing, and
+reports the request side as `breaking` too. Neither is wrong: the first answers
+"does this break a caller of this API", the second answers "does this break
+anyone who might send or receive this type". Use the default to gate an API, and
+`--types` to gate a library other documents build on.
+
+Two things it does not compare, both of which report nothing rather than
+failing: types reached through `uses:` rather than declared in this document,
+and `annotationTypes:`.
+
 ## Choose the workspace boundary
 
 Each document defaults to its own directory as workspace root. That is enough

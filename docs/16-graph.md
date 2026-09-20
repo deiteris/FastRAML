@@ -1180,6 +1180,19 @@ why the pair provably agrees on location, path, kind, subject and values.
 A movement that names no side — `entity-added`, `entity-removed` for a whole
 type — yields one record, because there is no second answer to give.
 
+**The two modes may disagree about one document, and both are right.** On an API
+that declares types, the operation walk knows how each type is *used*: one
+appearing only under a `200` is only ever received, so tightening it is
+`compatible`. `--types` grades the declaration without that knowledge and
+reports the request side as `breaking` as well. The questions differ — "does
+this break a caller of this API" against "does this break anyone who might send
+or receive this type" — so the answers may, and a consumer running both needs
+that stated rather than discovered.
+
+It compares the entry point's own `types:`. Types reached through `uses:`, and
+`annotationTypes:`, are not walked; both report nothing rather than failing,
+which is the honest gap to close next.
+
 ### 10.1 The change list is the contract
 
 `backward(old, new) -> list[Changed | OperationAdded | OperationRemoved]`

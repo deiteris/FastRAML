@@ -10,15 +10,17 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
+from .python import main as _python_main
+from .python import python
 from .typescript import main as _typescript_main
 from .typescript import typescript
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-__all__ = ['main', 'typescript']
+__all__ = ['main', 'python', 'typescript']
 
-_BACKENDS = {'typescript': _typescript_main}
+_BACKENDS = {'python': _python_main, 'typescript': _typescript_main}
 
 
 def main(arguments: Sequence[str] | None = None) -> None:

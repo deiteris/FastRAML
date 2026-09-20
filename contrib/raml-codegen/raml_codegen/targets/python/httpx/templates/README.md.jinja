@@ -1,0 +1,47 @@
+# {{ package.distribution }}
+
+{{ package.description | one_line or (package.title + ', as a Python client.') }}
+
+Generated from a RAML 1.0 definition by
+[`raml-codegen`](https://github.com/deiteris/fastraml). Do not edit by hand —
+regenerate.
+
+## Use
+
+```python
+from {{ package.module }} import Client
+{% for group in package.groups[:1] %}
+{% for endpoint in package.in_group(group)[:1] %}
+from {{ package.module }}.api.{{ group }} import {{ endpoint.module }}
+
+client = Client(base_url={{ (package.base_uri or 'https://example.invalid') | repr }})
+result = {{ endpoint.module }}.sync(client=client{% for one in endpoint.uri_arguments %}, {{ one.name }}=...{% endfor %})
+{% endfor %}
+{% endfor %}
+```
+
+Each module under `api/` exposes `sync`, `sync_detailed`, `asyncio` and
+`asyncio_detailed`. The detailed pair returns a `Response[T]` with the status,
+the raw content and the parsed body; the other two return the parsed body alone.
+
+`sync()` returns the **lowest documented 2xx** response. That is this generator's
+convention, not something the RAML says; every documented status is reachable
+through the detailed variants, and an undocumented one raises
+`errors.UnexpectedStatus` when the client is built with
+`raise_on_unexpected_status=True`.
+
+## What is in here
+
+| | |
+|---|---|
+| `client.py` | `Client` and `AuthenticatedClient`, over `httpx` |
+| `models/` | {{ package.models | length }} declared and nested types, as dataclasses and aliases |
+| `api/` | {{ package.endpoints | length }} operations, grouped by the first path segment |
+| `types.py` | `Unset`/`UNSET`, `Response[T]`, `File` |
+| `errors.py` | `UnexpectedStatus` |
+
+## What it does not do
+
+It does not validate. A `pattern:`, a `minimum:` or a `maxItems:` is in the
+docstring and not in a check — the document's constraints are recorded, and
+whether the server agrees with them is not something a client can answer.

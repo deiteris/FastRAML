@@ -2017,8 +2017,10 @@ different purpose (§ 2). The two disagreeing is by design, not drift.
 
 `fastraml/views/bindings/` holds language backends for the tree contract. Its
 TypeScript backend writes `viewer/src/tree.d.ts` — the same key list as
-TypeScript declarations, for a consumer outside Python. The repository invokes
-it as `python -m fastraml.views.bindings typescript -o viewer/src/tree.d.ts`.
+TypeScript declarations, for a consumer outside Python — and its Python backend
+writes `contrib/raml-codegen/raml_codegen/tree.py`, for a consumer inside it
+(§ 11.11a). The repository invokes them as
+`python -m fastraml.views.bindings <language> -o <file>`.
 The caller always names the destination (`-o -` writes stdout); no backend owns
 a repository path. Hand-written declarations would
 go stale the first time a kind grew a facet, and stale *quietly*: a key the
@@ -2099,6 +2101,49 @@ Three things this found on its first two runs, none of which any test could see:
   mapping kept only the second, dropping `display_name`, `description` and
   `required`. Caught by law 19, which is why that law asks the corpus rather
   than the generator.
+
+### 11.11a The second backend, and what it cost
+
+`schema.py` claims to be language-neutral. A second backend is the only thing
+that can test that claim, and Python is the interesting one to try: a Python
+consumer *could* import the model, and still reads `dict[str, object]` the
+moment it reads the tree, because `build_tree` returns `Json`. The boundary a
+type checker fails to span is the JSON, not the language.
+
+The claim held. `python.py` reads no source: it declares the target-language
+spelling of each structural key and each facet annotation, and takes every key
+set from `ContractSchema` — so `tests/unit/test_bindings.py` can assert the two
+backends declare the *same* shape fields, and a key added to `tree.py` fails
+both by name.
+
+Four things TypeScript spells for free and Python does not. None of them is a
+fact about the contract; all four are facts about the type system, which is what
+a backend is for:
+
+| | TypeScript | Python |
+|---|---|---|
+| an optional key | `field?: T` | `NotRequired[T]`, per key |
+| `$ref` | an ordinary member name | not an identifier — `TypedDict`'s functional form |
+| `` `x-${string}` `` | a template literal type | no spelling; the closed half stays `Literal`, the open half widens to `str` |
+| narrowing `type` on a variant | an interface may re-declare it | a `TypedDict` subclass may not — so `ShapeBase` omits `type` and each variant declares its own |
+
+The last one needed no work: the TypeScript backend already keeps `type` off the
+base, so the discriminated union was free in both.
+
+**The generated module does not enable `from __future__ import annotations`, and
+that is load-bearing.** Under PEP 563 every annotation is a string before
+`TypedDict` reads it, so `NotRequired` is invisible and `__required_keys__`
+reports *every* key as required. Nothing raises; a consumer asking the object
+what is optional simply gets a wrong answer. The contract is cyclic —
+`ShapeBase.inherits` holds a `ShapeNode`, which is a `Shape`, which is built
+from `ShapeBase` — so forward references are unavoidable, and the generator
+quotes the ones that actually reach ahead and leaves the rest bare. A quoted
+annotation in that file means a forward reference and nothing else.
+
+An alias whose own value is a string is never left bare in a union for the same
+reason in the other direction: `ShapeNode | None` would be `str | None` at run
+time, which raises. That one *is* loud, which is why it cost a minute and the
+PEP 563 question cost an hour.
 
 ## 12. A shape as JSON Schema
 

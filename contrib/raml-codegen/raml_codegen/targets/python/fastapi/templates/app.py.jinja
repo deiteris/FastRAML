@@ -1,0 +1,41 @@
+{{ header }}
+"""The application, over one implementation of `Api`."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import FastAPI
+
+from .api import Api, create_router
+
+__all__ = ['create_app']
+
+TITLE = {{ package.title | repr }}
+VERSION = {{ (package.version or '0.0.0') | repr }}
+{% if package.base_uri %}
+BASE_URI = {{ package.base_uri | repr }}
+"""The `baseUri:` the document states.
+
+Left as written, tokens and all. What `{tenant}` stands for is the deployment's
+to decide, and a placeholder would be a value the document does not give.
+"""
+{% endif %}
+
+
+def create_app(implementation: Api, **options: Any) -> FastAPI:
+    """A `FastAPI` application serving `implementation`.
+
+    `options` go to `FastAPI(...)` unchanged, for anything the document does not
+    state -- middleware, a `root_path`, a lifespan.
+    """
+    application = FastAPI(
+        title=TITLE,
+        version=VERSION,
+{% if package.description %}
+        description={{ (package.description | one_line) | repr }},
+{% endif %}
+        **options,
+    )
+    application.include_router(create_router(implementation))
+    return application

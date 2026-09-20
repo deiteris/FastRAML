@@ -1,0 +1,76 @@
+{% macro docstring(route, indent) %}
+{{ ' ' * indent }}r"""{{ route.endpoint.summary | one_line }}
+{% if route.endpoint.description %}
+
+{{ route.endpoint.description | details(indent) or (' ' * indent + (route.endpoint.description | summary)) }}
+{% endif %}
+{% if route.signature %}
+
+{{ ' ' * indent }}Args:
+{% for one in route.signature %}
+{{ one | attribute(indent + 4) }}
+{% endfor %}
+{% endif %}
+{% if route.endpoint.cases %}
+
+{{ ' ' * indent }}Responses:
+{% for case in route.endpoint.cases %}
+{{ ' ' * (indent + 4) }}{{ case.status }}{{ (': ' + (case.description | one_line)) if case.description else '' }}
+{% endfor %}
+{% endif %}
+
+{{ ' ' * indent }}Returns:
+{{ ' ' * (indent + 4) }}{{ route.returns }}{{ ' -- the ' + route.endpoint.success.status + ' response.' if route.endpoint.success else '' }}
+{{ ' ' * indent }}"""
+{%- endmacro %}
+{{ header }}
+{{ imports.block }}
+
+
+class {{ interface }}(abc.ABC):
+    """The `{{ group }}` operations, as the methods to implement.
+
+    `Api` joins this with the other groups; subclass that rather than this, so
+    that one object answers the whole document.
+    """
+
+{% for route in routes %}
+    @abc.abstractmethod
+    async def {{ route.name }}(
+        self,
+{% if route.signature %}
+        *,
+{% endif %}
+{% for one in route.signature %}
+        {{ one.source }},
+{% endfor %}
+    ) -> {{ route.returns }}:
+{{ docstring(route, 8) }}
+{{ '' if loop.last else '\n' }}
+{%- endfor %}
+
+
+def router(implementation: {{ interface }}) -> APIRouter:
+    """Bind one implementation to the routes the document describes.
+
+    Every constraint the document states is on the route rather than in the
+    method: a request that does not match is a 422 before the implementation is
+    called at all.
+    """
+    api = APIRouter(tags=[{{ group | repr }}])
+
+{% for route in routes %}
+    {{ route.decorator }}
+    async def {{ route.name }}(
+{% for one in route.parameters %}
+        {{ one.source }},
+{% endfor %}
+    ) -> {{ route.returns }}:
+        return await implementation.{{ route.name }}(
+{% for one in route.forwarded %}
+            {{ one }},
+{% endfor %}
+        )
+
+{% endfor %}
+    return api

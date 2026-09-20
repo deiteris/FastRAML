@@ -1,0 +1,51 @@
+{{ header }}
+"""The `securitySchemes:` this API declares, as credential mechanics.
+
+Each `SchemeSpec` says which header carries the credential and what precedes it,
+so a scheme that names its own header through `describedBy:` gets the header the
+API is actually reading:
+
+    from {{ package.module }} import security
+
+    client = security.{{ (package.schemes | first).constant if package.schemes else 'OAUTH2' }}.client(
+        base_url=...,
+        token=...,
+    )
+
+Every module under `api/` carries a `SCHEMES` tuple naming which of these its
+operation accepts.
+"""
+
+from __future__ import annotations
+
+from .client import SchemeSpec
+
+{% for scheme in package.schemes %}
+{{ scheme.constant }} = SchemeSpec(
+    name={{ scheme.name | repr }},
+    type={{ scheme.type | repr }},
+    header_name={{ scheme.header_name | repr }},
+    prefix={{ scheme.prefix | repr }},
+{% if scheme.scopes %}
+    scopes=(
+{% for scope in scheme.scopes %}
+        {{ scope | repr }},
+{% endfor %}
+    ),
+{% endif %}
+)
+"""{{ scheme.description | summary or scheme.type }}"""
+
+{% endfor %}
+SCHEMES: dict[str, SchemeSpec] = {
+{% for scheme in package.schemes %}
+    {{ scheme.name | repr }}: {{ scheme.constant }},
+{% endfor %}
+}
+"""Every scheme, by the name the document gave it."""
+
+__all__ = [
+{% for name in (package.schemes | map(attribute='constant') | list + ['SCHEMES']) | sort %}
+    {{ name | repr }},
+{% endfor %}
+]

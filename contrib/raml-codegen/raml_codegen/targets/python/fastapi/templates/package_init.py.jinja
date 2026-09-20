@@ -1,0 +1,28 @@
+{{ header }}
+"""{{ package.title }}{{ ' ' + package.version if package.version else '' }}, as a server to implement.
+
+{% if package.description %}
+{{ package.description | one_line }}
+
+{% endif %}
+Generated from a RAML 1.0 definition. Subclass `Api`, implement every method,
+and hand it to `create_app`:
+
+    from {{ package.module }} import Api, create_app
+
+    class Implementation(Api):
+        ...
+
+    app = create_app(Implementation())
+
+`impl.py`, beside this package, is that file with every method stubbed. Copy it
+out and fill it in -- regenerating rewrites this package and will not touch it.
+"""
+
+from __future__ import annotations
+
+from .api import Api, create_router
+from .app import create_app
+from .runtime import Credential, SchemeSpec
+
+__all__ = ['Api', 'Credential', 'SchemeSpec', 'create_app', 'create_router']

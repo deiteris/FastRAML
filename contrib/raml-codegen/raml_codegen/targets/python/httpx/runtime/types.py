@@ -1,0 +1,173 @@
+"""Shared types for a generated client.
+
+Copied verbatim into the generated package; nothing here is templated.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import contextvars
+import datetime
+from collections.abc import Iterator, Mapping, MutableMapping
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from typing import IO, Any, BinaryIO, Literal, Self
+
+from .errors import UnexpectedPayload
+
+__all__ = [
+    'UNSET',
+    'File',
+    'FileTypes',
+    'Mismatch',
+    'RequestFiles',
+    'Response',
+    'Unset',
+    'absent',
+    'as_list',
+    'reading',
+    'to_json',
+]
+
+
+class Unset:
+    """An argument that was not supplied at all.
+
+    Distinct from `None`, which is a value a document may declare: `?param=` and
+    a parameter left off the call are different requests.
+    """
+
+    _instance: Self | None = None
+
+    def __new__(cls) -> Self:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __bool__(self) -> Literal[False]:
+        return False
+
+    def __repr__(self) -> str:
+        return 'UNSET'
+
+
+UNSET: Unset = Unset()
+
+FileContent = IO[bytes] | bytes | str
+FileTypes = tuple[str | None, FileContent, str | None] | tuple[str | None, FileContent, str | None, Mapping[str, str]]
+RequestFiles = list[tuple[str, FileTypes]]
+
+
+@dataclass(slots=True)
+class File:
+    """A file upload."""
+
+    payload: BinaryIO
+    file_name: str | None = None
+    mime_type: str | None = None
+
+    def to_tuple(self) -> FileTypes:
+        """The form `httpx` accepts for multipart/form-data."""
+        return self.file_name, self.payload, self.mime_type
+
+
+@dataclass(frozen=True, slots=True)
+class Mismatch:
+    """One place a response did not match the document it was generated from."""
+
+    model: str
+    field: str
+    reason: str = 'the document requires this property and the payload does not carry it'
+
+    def __str__(self) -> str:
+        where = f'{self.model}.{self.field}' if self.field else self.model
+        return f'{where}: {self.reason}'
+
+
+@dataclass(slots=True)
+class Response[T]:
+    """One response, with the parsed body beside the raw one.
+
+    `mismatches` is empty when the payload was what the document described. When
+    it is not, `parsed` still holds everything that *did* arrive, and `content`
+    still holds the bytes -- nothing is thrown away because one property was.
+    """
+
+    status_code: HTTPStatus
+    content: bytes
+    headers: MutableMapping[str, str]
+    parsed: T | None
+    mismatches: tuple[Mismatch, ...] = field(default_factory=tuple)
+
+    @property
+    def matched(self) -> bool:
+        """True when the payload was exactly what the document described."""
+        return not self.mismatches
+
+
+#: Set for the duration of one response read. Outside one -- somebody calling
+#: `Model.from_dict` directly -- nothing is collected and nothing is raised.
+_collecting: contextvars.ContextVar[list[Mismatch] | None] = contextvars.ContextVar('_collecting', default=None)
+_strict: contextvars.ContextVar[bool] = contextvars.ContextVar('_strict', default=False)
+
+
+@contextlib.contextmanager
+def reading(*, strict: bool = False) -> Iterator[list[Mismatch]]:
+    """Collect what one payload did not match, instead of failing on the first."""
+    found: list[Mismatch] = []
+    collecting = _collecting.set(found)
+    strictly = _strict.set(strict)
+    try:
+        yield found
+    finally:
+        _collecting.reset(collecting)
+        _strict.reset(strictly)
+
+
+def absent(model: str, field: str) -> Any:
+    """A required property did not arrive. Record it and carry on.
+
+    Raising here would be the client breaking because the *server* changed, and
+    would take the whole response with it -- including every property that did
+    arrive, which is usually all of them and usually all the caller wanted. The
+    discrepancy reaches `Response.mismatches` instead, and the attribute holds
+    `UNSET`, which is falsy.
+
+    `Client(strict=True)` turns it back into an exception for a caller that
+    would rather not proceed on a payload the document does not describe.
+    """
+    found = _collecting.get()
+    if found is not None:
+        found.append(Mismatch(model, field))
+    if _strict.get():
+        raise UnexpectedPayload(model, field, None)
+    return UNSET
+
+
+def as_list(value: Any) -> list[Any]:
+    """A JSON array, or a mismatch.
+
+    Iterating the wrong thing is worse than failing to: a `dict` where an array
+    was promised yields its *keys*, and the client would hand back a list of
+    models built from strings without anything having gone wrong. Raising here
+    reaches the backstop in `_build`, which records it and returns no body.
+    """
+    if isinstance(value, list):
+        return value
+    raise TypeError(f'expected an array, got {type(value).__name__}')
+
+
+def to_json(value: Any) -> Any:
+    """Anything a generated model can hold, as the JSON it is sent as.
+
+    Only a *union* needs this. Every other field knows its own type, so the
+    generated `to_dict` calls `.to_dict()` or `.isoformat()` in place; a union
+    does not know which member it is holding until it is holding one.
+    """
+    if hasattr(value, 'to_dict'):
+        return value.to_dict()
+    if isinstance(value, (list, tuple)):
+        return [to_json(one) for one in value]
+    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        return value.isoformat()
+    return value

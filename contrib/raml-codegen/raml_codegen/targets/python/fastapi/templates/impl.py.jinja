@@ -1,0 +1,53 @@
+"""A starting point for implementing {{ package.title }}.
+
+**This file is yours.** It has no generated header because nothing regenerates
+it: `raml-codegen` rewrites `{{ package.module }}/` around it and leaves this
+alone unless asked with `--force`. Fill in the methods and delete this
+docstring.
+
+    uvicorn impl:app --reload
+
+Every method raises `NotImplementedError` until you replace it.
+
+## When the document changes
+
+Regenerate in place. **No new method appears here** -- nothing writes to this
+file again, so adding one is yours. What you do not have to do is go looking
+for which one: three things report it, and each names the method.
+
+* an operation the document gained is an abstract method nobody implements, so
+  `Implementation()` raises `TypeError` naming it, at startup rather than on
+  the first request that reaches it;
+* an operation whose parameters or response changed is an incompatible
+  override, so `mypy impl.py` prints both signatures side by side;
+* an operation the document *dropped* leaves a method with nothing to override,
+  which is what `@override` on each of them is for -- without it that method
+  would sit here routing nowhere and type-checking fine.
+
+Copy a new method from its abstract declaration in `{{ package.module }}/api/`,
+which carries the signature and the documentation the document gave it.
+"""
+
+{{ imports.block }}
+
+
+class Implementation(Api):
+    """{{ package.title }}."""
+
+{% for route in routes %}
+    @override
+    async def {{ route.name }}(
+        self,
+{% if route.signature %}
+        *,
+{% endif %}
+{% for one in route.signature %}
+        {{ one.source }},
+{% endfor %}
+    ) -> {{ route.returns }}:
+        """{{ route.endpoint.summary | one_line }}"""
+        raise NotImplementedError
+
+{% endfor %}
+
+app = create_app(Implementation())

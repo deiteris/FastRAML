@@ -2019,7 +2019,8 @@ different purpose (§ 2). The two disagreeing is by design, not drift.
 TypeScript backend writes `viewer/src/tree.d.ts` — the same key list as
 TypeScript declarations, for a consumer outside Python — and its Python backend
 writes `contrib/raml-codegen/raml_codegen/tree.py`, for a consumer inside it
-(§ 11.11a). The repository invokes them as
+(§ 11.11a). Its Go backend writes wherever it is pointed, because this
+repository holds no Go consumer (§ 11.11b). The repository invokes them as
 `python -m fastraml.views.bindings <language> -o <file>`.
 The caller always names the destination (`-o -` writes stdout); no backend owns
 a repository path. Hand-written declarations would
@@ -2144,6 +2145,163 @@ An alias whose own value is a string is never left bare in a union for the same
 reason in the other direction: `ShapeNode | None` would be `str | None` at run
 time, which raises. That one *is* loud, which is why it cost a minute and the
 PEP 563 question cost an hour.
+
+### 11.11b The Go backend
+
+`golang.py`. Go shares almost nothing with the two type systems the schema had
+been read through: no union, no literal type, no optional field, no ordered map,
+no structural typing. The schema needed no change to serve it, so
+`tests/unit/test_bindings.py` asks all three backends whether they declare the
+same shape fields, and a key added to `tree.py` fails all three by name.
+
+How Go spells what the other two get from their type systems:
+
+| | TypeScript | Python | Go |
+|---|---|---|---|
+| a union | `A \| B` | `A \| B` | a struct with one field per arm (`ShapeNode`), or an interface plus a lookup (`Shape`, `shapeOf`) |
+| a literal type | `'object'` | `Literal['object']` | a defined string type and one constant per member |
+| an optional key | `field?: T` | `NotRequired[T]` | a nil-able type plus `,omitzero`, so a scalar becomes a pointer |
+| `` `x-${string}` `` | a template literal | widens to `str` | nothing to do: a defined string type is open already |
+| a map's order | kept by the language | kept by the language | discarded, so every map whose keys are data is `*orderedmap.OrderedMap` |
+| arbitrary JSON | `Json` | `Json` | raw bytes, because `any` decodes an object to `map[string]any` |
+
+**Ordered maps are required, not preferred.** Declaration order is preserved
+everywhere the model is exposed, and a Go map discards it without failing.
+`github.com/wk8/go-ordered-map/v2` round-trips JSON in insertion order and is the
+only dependency the generated file has beyond the standard library.
+
+**Optional keys use `,omitzero`, which requires Go 1.24.** `omitempty` differs
+from it on one case, an empty list, and that case occurs: over 880 corpus
+documents `annotations`, `media_types`, `protocols` and `secured_by` arrive as
+`[]`. `omitempty` would write each back as an absent key. No map is affected,
+because an empty `*orderedmap.OrderedMap` is a non-nil pointer that `omitzero`
+keeps. `Json` benefits too: a nil one is an absent key, a `null` one is a value
+the author wrote, and `omitzero` keeps the second.
+
+Declare `go 1.24` in your `go.mod`. An older toolchain then refuses to build or
+upgrades itself; without the floor it ignores the tag and encodes wrongly with no
+error. With the floor, decoding and encoding are both exact.
+
+**The binding carries runtime, and the other two do not.**
+`ShapeNode.UnmarshalJSON` is the § 11.10 discrimination: a `type` of
+`"recursive"` is a marker, any other `type` is a shape, and no `type` is a link.
+`UnmarshalShape` decodes one variant and `shapeOf` looks it up. None of the three
+is generated — they hold nothing derived, so they are hand-written in
+`static/tree.go` (§ 11.11d). What is generated is `shapeKinds`, the table they
+read, which is `KIND_TO_CLASS` as data.
+
+**Its own test runs the output.** `tree.d.ts` is compiled by the viewer's gate
+and `tree.py` is imported by a test; Go has neither, so
+`tests/unit/test_bindings.py` builds a throwaway module, fetches the real
+dependency, and decodes two documents through the generated types — the one
+declaring every kind, and `fixtures/sample/api.raml`, which reaches endpoints,
+operations keyed by an `HttpMethod`, responses keyed by a status, bodies keyed by
+a media type, and settings values that are a scalar in one place and a list in
+another. It then writes back what it decoded and the Python side diffs it. The
+union dispatch, the `$ref` discrimination and the ordered maps are all runtime;
+nothing that reads its own output can settle them.
+
+**These tests skip without a Go toolchain**, so CI has a `bindings-go` job that
+installs one — the same argument `test-extras` makes for the optional extras.
+Because a job whose tests all skip still exits 0, that job asserts there are
+none; every skip in `tests/unit/test_bindings.py` is Go's, so the assertion is
+exact.
+
+### 11.11c A recursion marker carries more than `Recursion` declares
+
+**Status: open.** Found by writing a decoded document back, which is the only
+check that reads a key through the record that claims it.
+
+The projection has two spellings of a recursion marker and the contract is
+generated from the wrong one. `_Projector.recursion()` writes
+`{type, name, head}` and rarely runs, because P9 marks recursion before this
+layer walks anything. What reaches the wire is a `RecursiveShape` through the
+generic `shape()` path, carrying `id` and whatever `ShapeBase` fields the shape
+it stands for had. Over the sample and the whole corpus that is `id`,
+`description`, `custom_facets` and `annotations`.
+
+A consumer holding the declared record sees a marker's `description` as absent:
+a key that arrived, through a declaration that omits it, looking exactly like a
+document that did not say it.
+
+Two checks did not catch it. `declared_shape_members()` and law 19 both ask
+whether a key is declared *somewhere* among the shape members, and all four are
+on `ShapeBase`. `head` was the visible half — the older tests add it to the
+declared set by hand.
+
+`TestARecursionMarkerCarriesMoreThanIsDeclared` asserts both halves, so it fails
+when this changes. Closing it means `tree.py` emitting one spelling, which
+`recursion()`'s own docstring says it wants; that moves the wire format and the
+five committed trees consumers read. No backend can close it.
+
+### 11.11d The hand-written half is a file in its own language
+
+A backend emits two halves and only one is generated:
+
+| artifact | total | hand-written | derived |
+|---|---|---|---|
+| `tree.d.ts` | 318 | 85 (26%) | 233 |
+| `tree.py` | 461 | 96 (20%) | 365 |
+| `tree.go` | 793 | 353 (44%) | 440 |
+
+"Derived" overstates it: what `ContractSchema` decides is *names* — 101 key
+names, 27 facet names, 16 kinds, 51 vocabulary values. The type spellings around
+those names are hand-written tables in each backend, 106 per language.
+
+The hand-written half lives in `bindings/static/`, one file per language, each
+written in that language. The backend reads it and appends what it derives.
+Go's share is double the others' because TypeScript and Python express the
+contract declaratively and Go needs runtime to do it.
+
+**The split follows derived content, not subject matter.** Anything holding no
+generated character belongs in the file; what the backend emits should be
+data-shaped. `UnmarshalShape` was a 24-line Python string with nothing derived
+in it and moved whole; the `switch` it ended with became `shapeKinds`, a
+generated map read by a hand-written `shapeOf`.
+
+What each backend still holds as target-language strings is 45, 52 and 50 lines.
+Two kinds of thing remain, and neither can move: emission scaffolding is the
+generation itself, and a doc comment must sit against the declaration it
+documents, which is derived.
+
+**These are files, not templates.** One substitution exists across all three:
+Go's package clause, written as a real `package tree` so the file stays valid Go.
+A `{{ hole }}` would stop every tool that reads the language from reading it,
+which is the only reason to move the code out of Python. Target languages are
+made of braces: the TypeScript half contains `` `x-${string}` `` and the Go half
+`{"$ref": ...}`, neither distinguishable from a placeholder, and `.format()` on
+the Go preamble failed for that reason.
+
+**Each header names the file to edit**, and is written to be true in both
+places: it is copied into the generated artifact, which must not be edited, and
+it is also the first thing a maintainer sees on opening the static half, which
+is the file they should edit. Do not separate the two with a marker comment. An
+earlier version did, and `ruff format` rewrote the marker so that generation
+silently stopped finding it.
+
+**The Python half is a `.pyi` stub.** As `static/tree.py` it was importable:
+`static/` has no `__init__.py`, but a namespace package needs none, so
+`fastraml.views.bindings.static.tree` resolved and *succeeded*, returning a
+fragment with no `Document` and no vocabularies. Python's import machinery reads
+`.py` and `.pyw` only, so a stub closes this at the root rather than guarding it
+— and a stub is what the file holds: aliases, `TypedDict`s, no runtime.
+
+**`static/` is outside ruff and mypy.** Its style is the contract's, not this
+project's: `TypeAlias` over `type` is load-bearing for the PEP 563 reason in
+§ 11.11a, and it names types only the generated half declares.
+`contrib/raml-codegen` already exempts the same bytes as its generated
+`tree.py`. What remains is that each file parses, checked in place: `gofmt -l`
+for Go, `ast.parse` for Python, and for TypeScript the viewer's own
+`npm run check`, which typechecks the assembled file and so covers its names too.
+
+The derived half stays in Python, where it has the schema to hand and where Go's
+column alignment can be computed: `gofmt` pads every cell to its widest
+neighbour, so all rows must be known before any line is emitted.
+
+**One output moved.** The fixed records sit in the static half, so they are
+declared ahead of everything rather than last, and `_Behind` stops quoting
+`dict[str, Property]`. That makes § 11.11a's claim true: a quoted annotation in
+the generated module is a forward reference and nothing else.
 
 ## 12. A shape as JSON Schema
 

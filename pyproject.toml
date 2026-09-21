@@ -152,7 +152,14 @@ line-length = 120
 # own gate, exactly as `viewer/` has its own `package.json` and `npm run check`.
 # Linting them from here would apply this project's rules to a project that
 # states its own, and would need their dependencies installed to do it.
-exclude = ["docs", "contrib"]
+#
+# `fastraml/views/bindings/static/` holds the hand-written half of each binding
+# (docs/16 § 11.11d). Its style is the *contract's* rather than this project's:
+# `TypeAlias` over `type` is load-bearing there for the PEP 563 reason docs/16
+# § 11.11a gives, and it names types only the generated half declares.
+# `contrib/raml-codegen` already exempts the same bytes as its generated
+# `tree.py`; this is that exemption applied where they are written.
+exclude = ["docs", "contrib", "fastraml/views/bindings/static"]
 
 [tool.ruff.lint]
 select = [
@@ -229,6 +236,10 @@ multiline-quotes = "double"
 ]
 
 [tool.mypy]
+# The hand-written half of the Python binding is data, not code: it is never
+# imported, and it names types only the generated half declares. See the
+# per-file ruff ignore above for why it is a `.py` file at all.
+exclude = "fastraml/views/bindings/static/"
 ignore_missing_imports = true
 disable_error_code = []
 warn_return_any = true

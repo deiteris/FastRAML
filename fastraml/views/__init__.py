@@ -34,9 +34,11 @@ drift from the other's idea of an ordering and neither has to adopt the other's
 idea of a grade.
 
 `bindings` is the odd one: its backends read no model at all, only the *source*
-of `tree` and of the kind classes, and emit the declarations a consumer outside
-Python needs in order to read what `tree` writes. It is here because it
-describes this layer's output and belongs on this side of the line.
+of `tree` and of the kind classes, and emit the declarations a consumer needs in
+order to read what `tree` writes -- in TypeScript, in Python and in Go, because
+the boundary a type checker fails to span is the JSON and not the language. It is
+here because it describes this layer's output and belongs on this side of the
+line.
 
 Importing this package imports nothing: each module is imported by name, and
 `queries` needs `pyoxigraph` only to *run* a query, not to hold one.

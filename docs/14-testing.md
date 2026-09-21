@@ -417,7 +417,9 @@ The laws. Section 4.1 records where each is checked and over what input —
     compiled validator — with an absolute path inside the `repr` — and found
     three keys the generator had dropped because two loops in `shape()` share a
     variable name. `tests/unit/test_bindings.py` asks the same of one document
-    declaring every kind, so the check still runs without a TCK checkout.
+    declaring every kind, so the check still runs without a TCK checkout — of
+    all three backends separately, since the key *sets* come from one schema and
+    what each backend writes is its own.
 
 ### 4.1 Where each law lives, and why
 

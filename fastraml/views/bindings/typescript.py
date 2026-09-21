@@ -1,36 +1,38 @@
 """The tree contract, as TypeScript declarations — docs/16-graph.md § 11.11.
 
-A consumer of `fastraml tree` has to know what the JSON holds. Written by hand
-that list goes stale the first time a facet is added to a kind, and it goes
-stale *quietly*: a key the declarations omit still arrives, and a consumer that
-does not read it looks exactly like a document that did not say it. That is the
-argument `facet_slots` makes for one facet vocabulary (docs/14 § 4, law 14), and
-it applies with more force across a language boundary, where no type checker
-spans both sides.
+Run `python -m fastraml.views.bindings typescript -o FILE`. The caller names the
+destination; `-o -` writes stdout. `tests/unit/test_bindings.py` asserts that
+the viewer's checked-in copy is what generation produces.
 
-The language-neutral schema derives the contract from two sources, by reading
-source rather than importing it:
+A consumer of `fastraml tree` has to know what the JSON holds. A hand-written
+list goes stale the first time a facet is added to a kind, and it goes stale
+*quietly*: a key the declarations omit still arrives, and a consumer that does
+not read it looks exactly like a document that did not say it. That is law 14's
+argument (docs/14 § 4), applied across a boundary no type checker spans.
+
+The output has two halves. `static/tree.d.ts` is hand-written and copied
+verbatim: the metamodel aliases, `Ref` and the fixed records. Everything from
+`ShapeType` on is generated from `ContractSchema`. Edit the static half for the
+first; edit this module for the second.
+
+`schema.py` derives the generated half from two sources, reading source rather
+than importing it:
 
 * **Which keys the projection emits** — from `tree.py`'s own AST. Every
-  `_Projector` method builds a dict, and the keys are literals: in the opening
+  `_Projector` method builds a dict and the keys are literals: in the opening
   display, in `out[...] = ...`, or in the `for field in (...)` loops. Required
   and optional fall out of the same read, since a key assigned under an `if` is
   one the projection may omit.
 * **What a kind's facets are, and their types** — from the `self.x: T = None`
-  annotations in each kind's `__init__`. Python discards those at runtime, so
-  this reads them from the AST; the alternative is a table per kind, which is
-  the thing being avoided.
+  annotations in each kind's `__init__`. Python discards those at run time, so
+  this reads them from the AST. The alternative is a table per kind, which is
+  what is being avoided.
 
-This backend contains no Python source analysis. It maps the neutral schema's
-annotations and wire forms into TypeScript and supplies the value type of each
-structural key: `out['operations']` holds an expression, and no source analysis
-can infer `OperationsByMethod` from it. The key sets still come from the schema,
-so **a key added to the projection and not declared here fails generation by
-name**.
-
-`python -m fastraml.views.bindings typescript -o FILE` selects this backend and
-writes a destination chosen by its caller. `tests/unit/test_bindings.py` asserts
-the viewer's checked-in copy is what generation produces.
+This module performs no source analysis. It maps the schema's annotations and
+wire forms into TypeScript and declares the type of each *structural* key, which
+no source analysis can infer from `out['operations']`. Key sets come from the
+schema, so a key added to the projection and not declared here fails generation
+by name.
 """
 
 from __future__ import annotations
@@ -87,7 +89,6 @@ _PRODUCES: Final = {
     'applied': 'Applied',
     'annotation': 'DocumentAnnotation',
     'example': 'Example',
-    'recursion': 'Recursion',
 }
 
 #: The type of every structural key. Only the types: which keys exist is read
@@ -191,11 +192,6 @@ _STRUCTURAL: Final[dict[str, dict[str, str]]] = {
         'strict': 'boolean',
         'annotations': 'Applied[]',
     },
-    'Recursion': {
-        'type': "'recursive'",
-        'name': 'string | null',
-        'head': 'Ref',
-    },
 }
 
 #: The base fields `shape()` writes itself, before a kind's facets are inlined.
@@ -224,84 +220,41 @@ _SHAPE_FIELDS: Final = {
     #: shape to it (docs/10 § 6.3).
     'json_schema': 'Json',
     'projection': 'Shape',
+    #: A recursion marker. A *shape*, not a record of its own: P9 builds a
+    #: `RecursiveShape` and `shape()` projects it down the generic path, so it
+    #: carries `id`, `name` and any `ShapeBase` field the type it stands for
+    #: had. `_Projector.recursion()` is a safety net that never fires, and the
+    #: contract used to be generated from it -- which is how `description`,
+    #: `custom_facets`, `annotations` and `id` went undeclared (docs/16
+    #: § 11.11c). `head` is hand-declared because `shape()` writes it through a
+    #: loop over `_BACK_POINTERS`, so no AST read can see the key.
+    'head': 'Ref',
 }
 
-_PREAMBLE: Final = """\
-/**
- * The `fastraml tree` contract.
- *
- * GENERATED by `python -m fastraml.views.bindings typescript` -- do not edit. The key sets
- * are read from `fastraml/views/tree.py` and the facets from the kind classes in
- * `fastraml/types/`, so a facet added to a kind arrives here without this file
- * being touched. `tests/unit/test_bindings.py` fails when the two disagree.
- *
- * The metamodel is three constructs (docs/16-graph.md section 11.10):
- *
- *   {"$ref": <address>}                            a link -- look the target up
- *   {"type": "recursive", "head": {"$ref": ...}}   repeats here, do not expand
- *   anything else                                  containment -- descend
- *
- * A consumer descends containment, follows a link when it chooses to, and stops
- * at a recursion marker. It maintains no ancestor set. Requires
- * `ParseOptions(unwrap=True)`, which `fastraml tree` uses.
- */
-
-/** A structural address: stable across re-parses, and the identity of a node. */
-export type Address = string;
-
-/** An exact decimal carried as text so no consumer rounds it through a double. */
-export type ExactDecimal = string;
-
-export interface JsonObject {
-  [key: string]: Json;
-}
-
-export type Json = string | number | boolean | null | Json[] | JsonObject;
-
-export type Protocol = 'HTTP' | 'HTTPS';
-export type ParameterBinding = 'uri' | 'query' | 'header';
-export type SecuritySchemeType =
-  | 'null'
-  | 'OAuth 1.0'
-  | 'OAuth 2.0'
-  | 'Basic Authentication'
-  | 'Digest Authentication'
-  | 'Pass Through'
-  | `x-${string}`;
-
-export type SourceFile = string;
-export type DeclarationName = string;
-export type EndpointPath = string;
-export type StatusCode = string;
-export type MediaType = string;
-
-/** A link. Its sole key is the test -- an expanded shape carries `id` as well. */
-export interface Ref {
-  $ref: Address;
-}
-
-export type ShapeNode = Shape | Ref | Recursion;
-export type ShapeDeclarations = Record<DeclarationName, Shape | Ref>;
-export type ShapeDeclarationsByFile = Record<SourceFile, ShapeDeclarations>;
-export type SecuritySchemeDeclarations = Record<DeclarationName, SecurityScheme>;
-export type SecuritySchemeDeclarationsByFile = Record<SourceFile, SecuritySchemeDeclarations>;
-export type EndpointsByPath = Record<EndpointPath, Endpoint>;
-export type OperationsByMethod = Partial<Record<HttpMethod, Operation>>;
-export type ResponsesByStatus = Record<StatusCode, Response>;
-export type BodiesByMediaType = Record<MediaType, ShapeNode | null>;
-export type SecuritySetting = string | string[];
-export type SecuritySettings = Record<string, SecuritySetting>;
-"""
+#: The hand-written half of the binding. Nothing in it varies with the schema,
+#: so it is a declaration file rather than a Python string: an editor reads it,
+#: and a syntax error fails where it was written. Read the way `config.py` reads
+#: `config.raml`.
+_STATIC: Final = pathlib.Path(__file__).parent / 'static' / 'tree.d.ts'
 
 
 # -- generating ----------------------------------------------------------------
 
 
 def typescript() -> str:
-    """The whole declaration file."""
+    """The whole declaration file: the hand-written half, then the derived one."""
     schema = contract_schema()
-    parts = [_PREAMBLE, _vocabularies(schema), _shape(schema), *_interfaces(schema.projector), _records()]
+    parts = [_static(), _vocabularies(schema), _shape(schema), *_interfaces(schema.projector)]
     return '\n'.join(parts)
+
+
+def _static() -> str:
+    """The hand-written half, verbatim.
+
+    Read and not rendered: the file holds no substitution. It already contains
+    `x-${string}`, which no format string could tell from a placeholder.
+    """
+    return _STATIC.read_text(encoding='utf-8').strip('\n') + '\n'
 
 
 def _vocabularies(schema: ContractSchema) -> str:
@@ -386,6 +339,8 @@ def _shape(schema: ContractSchema) -> str:
             )
         variants.append(f'export interface {model} extends ShapeBase {{\n' + '\n'.join(lines) + '\n}\n')
 
+    variants.append(_recursion())
+
     return (
         '/**\n'
         ' * Fields shared by every expanded type. Kind-specific facets live on the\n'
@@ -400,6 +355,32 @@ def _shape(schema: ContractSchema) -> str:
     )
 
 
+def _recursion() -> str:
+    """The recursion marker, as a shape rather than a record of its own.
+
+    P9 builds a `RecursiveShape` and `shape()` projects it down the generic
+    path, so a marker carries `id`, `name` and whatever `ShapeBase` fields the
+    type it stands for had. It is not in `Shape`: `Shape` is what a declaration
+    and a `projection` hold, and a marker is neither.
+
+    Hand-declared because neither half is derivable. `_Projector.recursion()`
+    emits the right keys but never runs (docs/16 § 11.11c), and `shape()` writes
+    `head` through a loop over `_BACK_POINTERS`, which no AST read resolves.
+    """
+    return (
+        '/**\n'
+        ' * A type that repeats here. Do not expand it; look `head` up instead.\n'
+        ' *\n'
+        ' * Spelled in `type` rather than a key of its own so a consumer that\n'
+        ' * switches on `type` and has not handled it fails loudly.\n'
+        ' */\n'
+        'export interface Recursion extends ShapeBase {\n'
+        "  type: 'recursive';\n"
+        f'  head: {_SHAPE_FIELDS["head"]};\n'
+        '}\n'
+    )
+
+
 def _facet_type(model: str, facet: Facet) -> str:
     if facet.wire_form == 'exact_decimal':
         return 'ExactDecimal'
@@ -411,29 +392,6 @@ def _facet_type(model: str, facet: Facet) -> str:
             f'{model}.{facet.name}: no TypeScript spelling declared for {facet.annotation!r} (see _JSON_OF)'
         )
     return spelling
-
-
-def _records() -> str:
-    """The small fixed records nested inside structural fields."""
-    return (
-        'export interface DocumentationItem {\n'
-        '  title: string;\n'
-        '  content: string;\n'
-        '}\n\n'
-        'export interface Property {\n'
-        '  required: boolean;\n'
-        '  type: ShapeNode | null;\n'
-        '}\n\n'
-        'export interface PatternProperty {\n'
-        '  pattern: string;\n'
-        '  type: ShapeNode | null;\n'
-        '}\n\n'
-        'export interface Parameter {\n'
-        '  binding: ParameterBinding;\n'
-        '  required: boolean;\n'
-        '  type: ShapeNode | null;\n'
-        '}\n'
-    )
 
 
 def main(arguments: Sequence[str] | None = None) -> None:

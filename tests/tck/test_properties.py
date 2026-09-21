@@ -450,7 +450,7 @@ class TestNothingArrivesUndeclared:
 
         _root_or_skip()
         options = ParseOptions(unwrap=True)
-        declared = declared_shape_members() | {'head'}
+        declared = declared_shape_members()
         seen: set[str] = set()
         shapes = 0
         for path in collect_fixtures('valid'):

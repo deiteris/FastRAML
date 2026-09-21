@@ -10,6 +10,8 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
+from .golang import golang
+from .golang import main as _golang_main
 from .python import main as _python_main
 from .python import python
 from .typescript import main as _typescript_main
@@ -18,9 +20,9 @@ from .typescript import typescript
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-__all__ = ['main', 'python', 'typescript']
+__all__ = ['golang', 'main', 'python', 'typescript']
 
-_BACKENDS = {'python': _python_main, 'typescript': _typescript_main}
+_BACKENDS = {'golang': _golang_main, 'python': _python_main, 'typescript': _typescript_main}
 
 
 def main(arguments: Sequence[str] | None = None) -> None:

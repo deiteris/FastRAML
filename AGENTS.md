@@ -66,7 +66,18 @@ type or endpoint, `views/queries.py` the SPARQL catalogue, `views/backward/` the
 version comparison and its backward-compatibility policy, over operations or
 over `types:` declarations, `views/jsonschema.py`
 a shape as JSON Schema draft-07 (`docs/16` § 12), and `views/openapi.py` the
-effective API as OpenAPI 3.0.3 (`docs/16` § 13). Ten CLI verbs — `graph`,
+effective API as OpenAPI 3.0.3 (`docs/16` § 13). `views/bindings/` has three
+language backends for the tree's wire contract — TypeScript, Python and Go
+(`docs/16` § 11.11). Only the first two have a destination in this repository;
+the Go one is pointed wherever its caller wants and is the only one whose output
+its own test compiles and runs. **Each output has two halves**: the hand-written
+one is `bindings/static/tree.{d.ts,pyi,go}`, copied verbatim apart from Go's
+package clause, and the rest is generated — so edit the static file for anything
+that does not vary with the schema, and never put target-language code back into
+a Python string. **No backend reads the model, and none decides a
+key set** — `bindings/schema.py` reads that out of `tree.py`'s AST, and a backend
+that declares a key the projection does not emit, or fails to declare one it
+does, fails generation by name. Ten CLI verbs — `graph`,
 `tree`, `serve`, `list`, `refs`, `deps`, `show`, `query`, `compat`, `openapi`.
 
 All of it runs after P10 and decides no RAML rule. **Nothing under `parser/` or

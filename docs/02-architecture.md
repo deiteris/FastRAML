@@ -174,7 +174,9 @@ view of the same effective model, so the input is not what tells them apart.
 kept in this repository to be read alongside the format it consumes. It has no
 Python dependency and nothing depends on it; the TypeScript backend under
 `fastraml/views/bindings/` writes its `tree.d.ts` and is the only link between
-them, in that direction only.
+them, in that direction only. Two more backends sit beside it — Python, for
+`contrib/raml-codegen`, and Go, for a consumer this repository does not hold
+([16](16-graph.md) § 11.11a and § 11.11b).
 
 Keeping it here has already paid: building it against the tree is what found the
 `JsonShape` validator leak, the missing annotation values at their sites, and

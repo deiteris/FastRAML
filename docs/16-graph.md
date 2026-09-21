@@ -2201,8 +2201,11 @@ another. It then writes back what it decoded and the Python side diffs it. The
 union dispatch, the `$ref` discrimination and the ordered maps are all runtime;
 nothing that reads its own output can settle them.
 
-**These tests skip without a Go toolchain, and CI has none.** Every Go-specific
-check — `gofmt`, the compile, the round trip — runs locally only.
+**These tests skip without a Go toolchain**, so CI has a `bindings-go` job that
+installs one — the same argument `test-extras` makes for the optional extras.
+Because a job whose tests all skip still exits 0, that job asserts there are
+none; every skip in `tests/unit/test_bindings.py` is Go's, so the assertion is
+exact.
 
 ### 11.11c A recursion marker carries more than `Recursion` declares
 

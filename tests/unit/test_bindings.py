@@ -22,7 +22,8 @@ one.
 
 Go is compiled and run as well, because nothing else here runs it: a throwaway
 module decodes two documents through the generated types and writes them back.
-Every Go test skips without a Go toolchain, and CI has none.
+Every skip in this file is Go's, and CI's `bindings-go` job installs a toolchain
+and fails if any of them skip.
 """
 
 from __future__ import annotations
@@ -387,10 +388,11 @@ class TestTheGoBackendDeclaresTheContract:
 def _go_module(tmp_path, *sources: tuple[str, str]):
     """A throwaway Go module holding the generated contract, or a skip.
 
-    Skips rather than fails without a toolchain, because CI has none and the
-    tests above cover the declarations everywhere. This one needs a compiler:
-    whether the file builds, and whether the ordered maps behave as the backend
-    assumes, can only be answered by running it.
+    Skips rather than fails without a toolchain, so the suite still runs on a
+    machine without Go; CI's `bindings-go` job installs one and fails if this
+    skips. The tests above cover the declarations everywhere. This one needs a
+    compiler: whether the file builds, and whether the ordered maps behave as
+    the backend assumes, can only be answered by running it.
 
     `go.mod` declares `go 1.24` because `,omitzero` requires it, and because that
     is what the generated package comment tells a consumer to declare. An older

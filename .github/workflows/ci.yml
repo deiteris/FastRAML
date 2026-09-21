@@ -115,6 +115,45 @@ jobs:
       - run: uv run python -c "import re2, pyoxigraph, fastraml_viewer"
       - run: uv run pytest -q -rs
 
+  # The Go binding, which every other job skips. `tests/unit/test_bindings.py`
+  # compiles the generated contract, decodes two documents through it and writes
+  # them back; the union dispatch, the `$ref` discrimination and the ordered
+  # maps are all runtime, so nothing that reads generated output can settle
+  # them. Without a toolchain those tests skip rather than fail, and the binding
+  # would be verified nowhere -- the same argument `test-extras` makes.
+  #
+  # Every skip in that file is Go's, so the job asserts there are none. A job
+  # whose tests all skip exits 0, which is the outcome this one exists to
+  # prevent.
+  bindings-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      # 1.24 for `,omitzero`. Below it the tag is an unknown option that
+      # `encoding/json` ignores, so an optional list encodes as an absent key
+      # and nothing says so (docs/16 section 11.11b).
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.24'
+      - run: uv sync --dev
+      # `gofmt -l` names offending files and exits 0 either way, so the output
+      # is the assertion. This checks the hand-written half where it lives,
+      # which is the capability moving it out of a Python string bought.
+      - name: The hand-written half must be gofmt-clean
+        run: test -z "$(gofmt -l fastraml/views/bindings/static/tree.go)"
+      - name: The Go tests must run, not skip
+        run: |
+          set -o pipefail
+          uv run pytest tests/unit/test_bindings.py -q -rs | tee result.txt
+          if grep -q skipped result.txt; then
+            echo "::error::the Go binding tests skipped -- toolchain or module fetch failed"
+            exit 1
+          fi
+
   # Linearity is a property of the parser, not of the runner, so it is a gate.
   # Absolute wall-clock is not asserted anywhere; see docs/14 section 5.
   bench:

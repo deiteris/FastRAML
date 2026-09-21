@@ -48,13 +48,12 @@ export type {
 /* -- telling the three constructs apart --------------------------------------- */
 
 /**
- * The metamodel comes from `walk.ts`, which is generated alongside `tree.d.ts`
- * and is the same reading every consumer of the contract gets. This app used to
- * spell both predicates itself; they are rules the *contract* states, so a copy
- * here was a second place for them to be right -- and the Go binding's copy was
- * a different predicate for two years without anything noticing (docs/16
- * § 11.11e). `isRecursive` keeps its name here, which is what this app has
- * always called it.
+ * The metamodel comes from `walk.ts`, which is generated alongside `tree.d.ts`.
+ * These are rules the contract states, so a copy here was a second place for
+ * them to be right: the Go binding tested a link by the absence of `type` where
+ * this app tested its sole key, and nothing compared the two until the
+ * conformance corpus did (docs/16 § 11.11e). `isRecursive` keeps the name this
+ * app uses.
  */
 export { Tree, UnreadableTree, isRef, isShape } from './walk';
 export { isRecursion as isRecursive } from './walk';

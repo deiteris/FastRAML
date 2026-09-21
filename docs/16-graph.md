@@ -2064,9 +2064,11 @@ backend reuse the contract rather than reimplement its discovery.
 **It also declares what every key holds**, which no source read produces:
 `Structural` is a `Holds` (constant, scalar, vocabulary, JSON, shape node,
 shape, ref, record) and a `Container` (one, list, map, map of map), plus the
-contract's own alias where it has one. That replaced 106 per-key spellings in
-each of the three backends with one table and an eight-row leaf map per
-language; `schema.shape_bearing()` derives the walk table from the same record.
+contract's own alias where it has one. That replaced 104 per-key spellings in
+each of the three backends with 102 entries declared once, and left each backend
+declaring 7 rows of leaf spelling -- 12 for Go, which needs five ordered-map
+aliases besides. `schema.shape_bearing()` derives the walk table from the same
+record.
 A key the projection emits and the schema does not declare fails generation in
 all three backends by name.
 
@@ -2081,7 +2083,8 @@ Three things are derived, all by reading source rather than importing it:
 The value type of a *structural* key is not derivable — `out['operations']` is
 an expression — so it is declared. **Once, in `schema.py`, as a structural kind
 rather than three times as three spellings.** Each backend turns that kind into
-its own syntax, which is eight rows plus Go's five ordered-map aliases. The
+its own syntax: 7 rows, or 12 in Go, which also needs five ordered-map
+aliases. The
 hand-written half cannot fall behind, because it is not the half that says which
 keys exist or what they hold.
 
@@ -2321,11 +2324,10 @@ varies with the schema. `walk.py` is too, because Python keeps its table in
 and `walk.go` carries the walk as generated code because Go cannot index a
 struct by a string key.
 
-"Derived" overstates it: what `ContractSchema` decides is *names* — 101 key
-names, 27 facet names, 16 kinds, 51 vocabulary values — plus the structural kind
-of each key, which is what replaced the 106 per-language spellings each backend
-used to declare. A backend now declares eight rows of leaf spelling, plus Go's
-five ordered-map aliases.
+"Derived" overstates it: what `ContractSchema` decides is *names* — 102 key
+names, 20 facet names, 16 kinds, 51 vocabulary values — plus the structural kind
+of each key, which replaced the 104 per-language spellings each backend used to
+declare. A backend now declares 7 rows of leaf spelling, or 12 in Go.
 
 The hand-written half lives in `bindings/static/`, one file per language, each
 written in that language. The backend reads it and appends what it derives.

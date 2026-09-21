@@ -45,14 +45,6 @@ import (
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
 
-// The three constants a Document always carries. Go has no literal type, so the
-// fields are plain and these are what they hold.
-const (
-	Format        = "fastraml-tree"
-	FormatVersion = 1
-	View          = "effective"
-)
-
 // RecursionType is the value of a recursion marker's `type`, and the only thing
 // that tells one apart from a shape.
 const RecursionType = "recursive"
@@ -295,7 +287,13 @@ func (n *ShapeNode) UnmarshalJSON(data []byte) error {
 // switch, or ask it its kind. UnmarshalShape decodes one from bytes.
 type Shape interface {
 	ShapeKind() ShapeType
+	Base() *ShapeBase
 }
+
+// Base returns the fields every expanded type carries. Declared once here and
+// promoted into every variant by embedding, so a walk can read `id` off a Shape
+// without a type switch.
+func (b *ShapeBase) Base() *ShapeBase { return b }
 
 // UnmarshalShape decodes one expanded type into the struct its `type` names.
 func UnmarshalShape(data []byte) (Shape, error) {

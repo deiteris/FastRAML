@@ -1,0 +1,44 @@
+#%RAML 1.0
+title: Every kind
+types:
+  Bounded:
+    type: number
+    minimum: 0.5
+    maximum: 9.5
+    multipleOf: 0.01
+  Counted:
+    type: integer
+    minimum: 1
+    maximum: 10
+  Text:
+    type: string
+    minLength: 1
+    maxLength: 8
+    pattern: ^a
+  Listed:
+    type: array
+    items: Text
+    minItems: 1
+    maxItems: 3
+    uniqueItems: true
+  Structured:
+    type: object
+    minProperties: 1
+    maxProperties: 4
+    additionalProperties: false
+    discriminator: kind
+    properties:
+      kind: string
+      /^x-/: string
+  Either: string | number
+  Upload:
+    type: file
+    fileTypes: [image/png]
+    minLength: 1
+    maxLength: 2
+  When:
+    type: datetime
+    format: rfc3339
+  Chain:
+    properties:
+      next?: Chain

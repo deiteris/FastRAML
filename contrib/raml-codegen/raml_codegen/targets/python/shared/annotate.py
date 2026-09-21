@@ -188,7 +188,7 @@ class Annotator:
         # forbids it from participating in inheritance, so the parser decodes no
         # RAML facet from it and reading it directly reports a type made of
         # nothing (docs/16 § 11.10).
-        content = self.tree.content_of(shape)
+        content = self.tree.content(shape)
         kind = content['type']
 
         if content.get('enum') and kind in {'string', 'integer', 'number', 'boolean'}:
@@ -247,7 +247,7 @@ class Annotator:
         target = self.tree.at(only['$ref'])
         if target is None:
             return None
-        content = self.tree.content_of(target)
+        content = self.tree.content(target)
         if content['type'] != 'object' or set(properties_of(shape)) != set(properties_of(content)):
             return None
         return self._of_shape(content, only['$ref'])
@@ -257,7 +257,7 @@ class Annotator:
         annotation = self.of(node)
         if resolved is None or is_recursion(resolved):
             return Member('scalar', annotation, frozenset())
-        content = self.tree.content_of(cast('Shape', resolved))
+        content = self.tree.content(cast('Shape', resolved))
         kind = content['type']
         if kind == 'array':
             return Member('list', annotation, frozenset())

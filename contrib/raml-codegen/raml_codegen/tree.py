@@ -26,7 +26,7 @@ is invisible: `__required_keys__` would then report every key as required. Quoti
 the *inside* of `NotRequired[...]` keeps both halves right.
 """
 
-from typing import Literal, NotRequired, TypeAlias, TypedDict
+from typing import Final, Literal, NotRequired, TypeAlias, TypedDict
 
 #: A structural address: stable across re-parses, and the identity of a node.
 Address: TypeAlias = str
@@ -401,6 +401,75 @@ class Example(TypedDict):
     display_name: NotRequired[str]
     description: NotRequired[str]
     strict: NotRequired[bool]
+
+
+FORMAT: Final = 'fastraml-tree'
+FORMAT_VERSION: Final = 1
+VIEW: Final = 'effective'
+
+
+#: Where a shape sits under each record: the key, how many, what the
+#: leaf is, and the record named where the leaf is one. Generated, so a
+#: facet that starts holding a shape starts being walked.
+CHILDREN: Final[dict[str, tuple[tuple[str, str, str, str], ...]]] = {
+    'Document': (
+        ('entry_point', 'one', 'record', 'EntryPoint'),
+        ('types', 'map_of_map', 'shape_node', ''),
+        ('annotation_types', 'map_of_map', 'shape_node', ''),
+        ('security_schemes', 'map_of_map', 'record', 'SecurityScheme'),
+        ('endpoints', 'map', 'record', 'Endpoint'),
+    ),
+    'EntryPoint': (('base_uri_parameters', 'map', 'record', 'Parameter'),),
+    'SecurityScheme': (('described_by', 'one', 'record', 'DescribedBy'),),
+    'DescribedBy': (
+        ('headers', 'map', 'record', 'Parameter'),
+        ('query_parameters', 'map', 'record', 'Parameter'),
+        ('query_string', 'one', 'shape_node', ''),
+        ('responses', 'map', 'record', 'Response'),
+    ),
+    'Endpoint': (('operations', 'map', 'record', 'Operation'), ('uri_parameters', 'map', 'record', 'Parameter')),
+    'Operation': (
+        ('responses', 'map', 'record', 'Response'),
+        ('headers', 'map', 'record', 'Parameter'),
+        ('query_parameters', 'map', 'record', 'Parameter'),
+        ('query_string', 'one', 'shape_node', ''),
+        ('bodies', 'map', 'shape_node', ''),
+    ),
+    'Response': (('headers', 'map', 'record', 'Parameter'), ('bodies', 'map', 'shape_node', '')),
+    'ShapeBase': (('inherits', 'list', 'shape_node', ''), ('declared_facets', 'map', 'record', 'Property')),
+    'Property': (('type', 'one', 'shape_node', ''),),
+    'PatternProperty': (('type', 'one', 'shape_node', ''),),
+    'Parameter': (('type', 'one', 'shape_node', ''),),
+    'ObjectShape': (
+        ('pattern_properties', 'map', 'record', 'PatternProperty'),
+        ('properties', 'map', 'record', 'Property'),
+    ),
+    'ArrayShape': (('items', 'one', 'shape_node', ''),),
+    'UnionShape': (('any_of', 'list', 'shape_node', ''),),
+    'JsonShape': (('projection', 'one', 'shape', ''),),
+}
+
+#: The `type` discriminator to the record whose keys describe it. A `type`
+#: absent from here is a recursion marker or a document this file predates,
+#: and either way a walk stops.
+KINDS: Final[dict[str, str]] = {
+    'any': 'AnyShape',
+    'nil': 'NilShape',
+    'null': 'NilShape',
+    'boolean': 'BooleanShape',
+    'string': 'StringShape',
+    'integer': 'IntegerShape',
+    'number': 'NumberShape',
+    'datetime': 'DateTimeShape',
+    'datetime-only': 'DateTimeOnlyShape',
+    'date-only': 'DateOnlyShape',
+    'time-only': 'TimeOnlyShape',
+    'file': 'FileShape',
+    'object': 'ObjectShape',
+    'array': 'ArrayShape',
+    'union': 'UnionShape',
+    'json': 'JsonShape',
+}
 
 
 __all__ = [

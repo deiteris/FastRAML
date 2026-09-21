@@ -75,12 +75,12 @@ class TestASchemaTypeIsNotALeaf:
     def test_a_json_shape_reads_as_its_projection(self, tree):
         invoice = next(one for one in tree.types() if one.name == 'Invoice')
         assert invoice.shape['type'] == 'json'
-        assert tree.content_of(invoice.shape)['type'] == 'object'
-        assert 'number' in tree.content_of(invoice.shape)['properties']
+        assert tree.content(invoice.shape)['type'] == 'object'
+        assert 'number' in tree.content(invoice.shape)['properties']
 
     def test_an_ordinary_shape_is_its_own_content(self, tree):
         book = next(one for one in tree.types() if one.name == 'Book')
-        assert tree.content_of(book.shape) is book.shape
+        assert tree.content(book.shape) is book.shape
 
 
 class TestWhatTheDocumentHolds:

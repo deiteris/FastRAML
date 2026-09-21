@@ -26,7 +26,7 @@ is invisible: `__required_keys__` would then report every key as required. Quoti
 the *inside* of `NotRequired[...]` keeps both halves right.
 """
 
-from typing import Literal, NotRequired, TypeAlias, TypedDict
+from typing import Final, Literal, NotRequired, TypeAlias, TypedDict
 
 #: A structural address: stable across re-parses, and the identity of a node.
 Address: TypeAlias = str

@@ -2020,10 +2020,18 @@ TypeScript backend writes `viewer/src/tree.d.ts` — the same key list as
 TypeScript declarations, for a consumer outside Python — and its Python backend
 writes `contrib/raml-codegen/raml_codegen/tree.py`, for a consumer inside it
 (§ 11.11a). Its Go backend writes wherever it is pointed, because this
-repository holds no Go consumer (§ 11.11b). The repository invokes them as
-`python -m fastraml.views.bindings <language> -o <file>`.
-The caller always names the destination (`-o -` writes stdout); no backend owns
-a repository path. Hand-written declarations would
+repository holds no Go consumer (§ 11.11b).
+
+Each emits three artifacts, and the caller names every destination; no backend
+owns a repository path:
+
+```bash
+python -m fastraml.views.bindings <language>   -o tree.<ext> --runtime walk.<ext> --conform conform.<ext>
+```
+
+`-o` is the types, `--runtime` the reading of the contract, and `--conform` the
+conformance driver (§ 11.11e). `-o -` writes stdout; `--runtime` and
+`--conform` are optional, so a consumer that only decodes takes only the first. Hand-written declarations would
 go stale the first time a kind grew a facet, and stale *quietly*: a key the
 declarations omit still arrives, and a consumer that does not read it looks like
 a document that did not say it. That is law 14's argument, applied across a
@@ -2053,6 +2061,15 @@ shape kinds, facet annotations and wire forms, and closed vocabularies; it never
 walks Python syntax itself. This is the boundary that lets another language
 backend reuse the contract rather than reimplement its discovery.
 
+**It also declares what every key holds**, which no source read produces:
+`Structural` is a `Holds` (constant, scalar, vocabulary, JSON, shape node,
+shape, ref, record) and a `Container` (one, list, map, map of map), plus the
+contract's own alias where it has one. That replaced 106 per-key spellings in
+each of the three backends with one table and an eight-row leaf map per
+language; `schema.shape_bearing()` derives the walk table from the same record.
+A key the projection emits and the schema does not declare fails generation in
+all three backends by name.
+
 Three things are derived, all by reading source rather than importing it:
 
 | | from | how |
@@ -2062,11 +2079,11 @@ Three things are derived, all by reading source rather than importing it:
 | closed vocabularies | `KIND_TO_CLASS`, `METHODS`, `FragmentKind`, `DomainLocation` | the language-neutral schema under `bindings/` reads their literals; each backend renders them in its own type system |
 
 The value type of a *structural* key is not derivable — `out['operations']` is
-an expression — so each backend declares those target-language spellings
-(`_STRUCTURAL` in the TypeScript backend). Only their types: the key sets come
-from `ContractSchema`, so **a key added to the projection and not declared there
-fails generation, by name**. The hand-written half cannot fall behind, because
-it is not the half that says which keys exist.
+an expression — so it is declared. **Once, in `schema.py`, as a structural kind
+rather than three times as three spellings.** Each backend turns that kind into
+its own syntax, which is eight rows plus Go's five ordered-map aliases. The
+hand-written half cannot fall behind, because it is not the half that says which
+keys exist or what they hold.
 
 **The data beside the contract is held to the same standard.**
 `viewer/public/api.json` is what `npm run sample` writes and what the viewer's
@@ -2112,8 +2129,8 @@ moment it reads the tree, because `build_tree` returns `Json`. The boundary a
 type checker fails to span is the JSON, not the language.
 
 The claim held. `python.py` reads no source: it declares the target-language
-spelling of each structural key and each facet annotation, and takes every key
-set from `ContractSchema` — so `tests/unit/test_bindings.py` can assert the two
+spelling of each *structural kind*, and takes every key set — and what each key
+holds — from `ContractSchema` — so `tests/unit/test_bindings.py` can assert the two
 backends declare the *same* shape fields, and a key added to `tree.py` fails
 both by name.
 
@@ -2150,9 +2167,24 @@ PEP 563 question cost an hour.
 
 `golang.py`. Go shares almost nothing with the two type systems the schema had
 been read through: no union, no literal type, no optional field, no ordered map,
-no structural typing. The schema needed no change to serve it, so
+no structural typing. The schema needed no change to serve its *types*, so
 `tests/unit/test_bindings.py` asks all three backends whether they declare the
 same shape fields, and a key added to `tree.py` fails all three by name.
+
+Its **walk** is the one place the schema's neutrality stops at the data and not
+the expression. TypeScript and Python render `shape_bearing()` as a table their
+runtime indexes by string key at run time; Go cannot index a struct that way, so
+the same record is generated as one `childShapes` method per record plus a type
+switch over the kinds. A fourth statically-typed backend falls on Go's side and
+needs its own generator for that, which is the largest single cost in adding
+one.
+
+Go also needed five ordered-map aliases the schema does not supply
+(`ParametersByName`, `ExamplesByName`, `PropertiesByName`,
+`PatternPropertiesByPattern`, `FacetValuesByName`): every map whose keys are
+data must be a named type there, where the other two write `Record<string, X>`
+and `dict[str, X]` inline. So `Structural.alias` is the contract's own naming,
+and a backend may add its own on top.
 
 How Go spells what the other two get from their type systems:
 
@@ -2207,46 +2239,93 @@ Because a job whose tests all skip still exits 0, that job asserts there are
 none; every skip in `tests/unit/test_bindings.py` is Go's, so the assertion is
 exact.
 
-### 11.11c A recursion marker carries more than `Recursion` declares
+### 11.11c A recursion marker is a `ShapeBase`; `recursion()` is a backstop
 
-**Status: open.** Found by writing a decoded document back, which is the only
-check that reads a key through the record that claims it.
+**Wire format.** A marker carries `id`, `name`, `type`, `head`, and whichever of
+`description`, `custom_facets` and `annotations` its head carried.
 
-The projection has two spellings of a recursion marker and the contract is
-generated from the wrong one. `_Projector.recursion()` writes
-`{type, name, head}` and rarely runs, because P9 marks recursion before this
-layer walks anything. What reaches the wire is a `RecursiveShape` through the
-generic `shape()` path, carrying `id` and whatever `ShapeBase` fields the shape
-it stands for had. Over the sample and the whole corpus that is `id`,
-`description`, `custom_facets` and `annotations`.
+```json
+{"id": "…/types/Book/property/related/schema/items", "name": "Book",
+ "type": "recursive", "description": "One book in the catalogue.…",
+ "custom_facets": {…}, "annotations": [{…}], "head": {"$ref": "…/types/Book"}}
+```
 
-A consumer holding the declared record sees a marker's `description` as absent:
-a key that arrived, through a declaration that omits it, looking exactly like a
-document that did not say it.
+The tree requires `ParseOptions(unwrap=True)`, so P9 has already replaced every
+back-edge with a `RecursiveShape`. `unwrap.py:_make_recursive` copies the three
+`ShapeBase` fields off the head:
 
-Two checks did not catch it. `declared_shape_members()` and law 19 both ask
-whether a key is declared *somewhere* among the shape members, and all four are
-on `ShapeBase`. `head` was the visible half — the older tests add it to the
-declared set by hand.
+```python
+base.type = TYPE_RECURSIVE
+base.description = head.description
+base.annotations = head.annotations
+base.custom_facets = head.custom_facets
+```
 
-`TestARecursionMarkerCarriesMoreThanIsDeclared` asserts both halves, so it fails
-when this changes. Closing it means `tree.py` emitting one spelling, which
-`recursion()`'s own docstring says it wants; that moves the wire format and the
-five committed trees consumers read. No backend can close it.
+The projector reaches that node for the first time, so `base.id` is not in
+`seen` and it goes down the generic `shape()` path.
+
+**`Recursion` is hand-declared** in each backend as `ShapeBase` plus `head`.
+`schema.py` derives records by reading a `_Projector` method's AST;
+`_Projector.recursion()` is a literal three-key dict and is the path that never
+runs, so generating from it declares three keys where seven ship. `shape()`'s
+output depends on which `BaseShape` slots are set, which no AST read resolves.
+`TestARecursionMarkerIsDeclaredAsAShape` and
+`TestEveryProjectorMethodTheGeneratorReadsActuallyRuns` cover both halves.
+
+**`recursion()` never fires.** `shape()` terminates because the graph reaching
+it is a DAG, which three mechanisms outside `tree.py` guarantee:
+
+| mechanism | breaks the cycle by | covers |
+|---|---|---|
+| `unwrap.py:_make_recursive` | a `RecursiveShape` with a fresh `id` | every model cycle, `unwrap=True` |
+| `jsonschema_.py:_project_reference` | its own `visiting` map | `$ref` cycles in a projection, which P9 never sees |
+| `shape()`'s alias check | `base.alias` → `reference()` → `$ref` | every self-reference under `unwrap=False` |
+
+The third is the one to know: under `unwrap=False` a self-reference is an
+**alias**, caught one line above the `seen` check, so `Chain.next` is
+`{"$ref": "…/types/Chain"}` from `reference()`.
+
+| corpus | markers | `recursion()` calls |
+|---|---|---|
+| `fixtures/sample`, `unwrap=True` | 7 | 0 |
+| TCK, `unwrap=True` (306 projected) | 5 | 0 |
+| TCK, `unwrap=False` (309 projected) | 0 | 0 |
+| schema with `$ref: "#"`, either mode | 4 / 0 | 0 |
+
+**Do not remove it.** Against a cycle none of the three mechanisms covers — an
+anonymous type whose property points back at its declared ancestor, no alias and
+no marker — the guard emits one extra marker and the document projects; without
+it, `build_tree` raises `RecursionError`.
+`TestTheRecursionGuardTerminatesAnUnmarkedCycle` asserts both.
 
 ### 11.11d The hand-written half is a file in its own language
 
-A backend emits two halves and only one is generated:
+Each backend emits three artifacts, and in each the hand-written part is a file
+under `static/`:
 
 | artifact | total | hand-written | derived |
 |---|---|---|---|
-| `tree.d.ts` | 318 | 85 (26%) | 233 |
-| `tree.py` | 461 | 96 (20%) | 365 |
-| `tree.go` | 793 | 353 (44%) | 440 |
+| `tree.d.ts` | 325 | 87 | 238 |
+| `walk.ts` | 256 | 187 | 69 |
+| `conform.ts` | 76 | 76 | 0 |
+| `tree.py` | 536 | 98 | 438 |
+| `walk.py` | 197 | 197 | 0 |
+| `conform.py` | 78 | 78 | 0 |
+| `tree.go` | 800 | 350 | 450 |
+| `walk.go` | 348 | 154 | 194 |
+| `conform.go` | 153 | 153 | 0 |
+
+A driver is entirely hand-written: it holds no expectations and nothing in it
+varies with the schema. `walk.py` is too, because Python keeps its table in
+`tree.py`; `walk.ts` carries the table because a `.d.ts` cannot hold a value,
+and `walk.go` carries the walk as generated code because Go cannot index a
+struct by a string key.
 
 "Derived" overstates it: what `ContractSchema` decides is *names* — 101 key
-names, 27 facet names, 16 kinds, 51 vocabulary values. The type spellings around
-those names are hand-written tables in each backend, 106 per language.
+names, 27 facet names, 16 kinds, 51 vocabulary values — plus the structural kind
+of each key, which is what replaced the 106 per-language spellings each backend
+used to declare. A backend now declares eight rows of leaf spelling, plus Go's
+five ordered-map aliases.
 
 The hand-written half lives in `bindings/static/`, one file per language, each
 written in that language. The backend reads it and appends what it derives.
@@ -2302,6 +2381,42 @@ neighbour, so all rows must be known before any line is emitted.
 declared ahead of everything rather than last, and `_Behind` stops quoting
 `dict[str, Property]`. That makes § 11.11a's claim true: a quoted annotation in
 the generated module is a forward reference and nothing else.
+
+### 11.11e The conformance corpus
+
+`fastraml/views/bindings/conformance/` is one set of questions and one set of
+expected answers. Each backend ships a driver beside its runtime half —
+`static/conform.{py,ts,go}` — which reads the corpus, runs its own language's
+reading of the contract, and prints the answers as JSON.
+`tests/unit/test_conformance.py` compares; the drivers hold no expectations.
+
+**What it catches that a per-backend suite cannot.** § 11.10's discrimination
+was implemented three times and two different ways: Python and TypeScript tested
+a link by its sole key, Go by the absence of `type`. Both readings were locally
+correct, separately tested, and not the same predicate.
+
+**The questions.** The ordered walk, the direct children of each probe address
+labelled by construct, `resolve`, `content`, and a list of envelopes that must
+be refused. Every answer is a string or a list of strings: the three languages
+differ on what a decoded JSON value is — Go's `Json` is raw bytes, Python's a
+decoded object — and agree exactly on what an address is.
+
+**What the expected answers do and do not prove.** They are generated from the
+Python runtime, so the corpus checks that the three languages agree and locks
+each against silent change. It is not an independent oracle for Python;
+`TestTheGeneratedWalkReachesEveryShape` is, deriving the expected shape set from
+the raw JSON without any reader.
+
+**Both halves are regenerated.** `cases.json` comes from the trees beside it,
+and each tree comes from RAML — `conformance/sources/every-kind.raml` and
+`fixtures/sample/api.raml`. Checking only the first would leave the trees with
+no source of truth, so a change to the projection would move a tree's source and
+the corpus would go on measuring the old shape.
+
+**CI's `bindings` job installs Go and Node and fails on any skip.** Without
+both, two of the three drivers skip and the cross-language check does not run —
+which is the whole of what the corpus is for, and reads as coverage when it is
+not.
 
 ## 12. A shape as JSON Schema
 

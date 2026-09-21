@@ -318,7 +318,7 @@ class _Builder:
         return (*_by_declaration_order(ordered, self._declared, self.classes), *aliases)
 
     def _model(self, address: str, shape: Shape) -> Model:
-        content = self.tree.content_of(shape)
+        content = self.tree.content(shape)
         declared = self._declared.get(address)
         preferred = class_name(declared.name) if declared else _preferred(content, address)
         name = self.classes.claim(address, preferred)
@@ -401,7 +401,7 @@ class _Builder:
         if query_string is None or is_recursion(query_string):
             return named
         # `is_recursion` narrows only where it is true.
-        content = self.tree.content_of(cast('Shape', query_string))
+        content = self.tree.content(cast('Shape', query_string))
         from_string = tuple(
             Argument(
                 name=field_name(wire),
@@ -521,7 +521,7 @@ def _content(tree: Tree, node: ShapeNode | None) -> Shape | None:
     if node is None or is_recursion(node):
         return None
     shape = tree.at(node['$ref']) if is_ref(node) else cast('Shape', node)
-    return None if shape is None else tree.content_of(shape)
+    return None if shape is None else tree.content(shape)
 
 
 def _description(shape: Shape) -> str:

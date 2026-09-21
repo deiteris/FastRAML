@@ -29,6 +29,7 @@ and fails if any of them skip.
 from __future__ import annotations
 
 import ast
+import contextlib
 import importlib
 import json
 import pathlib
@@ -36,17 +37,29 @@ import re
 import shutil
 import subprocess
 import sys
+from unittest import mock
 
 import pytest
 
 from fastraml import ParseOptions, parse_from_path
+from fastraml.views import tree as tree_module
 from fastraml.views.bindings import golang, python, typescript
-from fastraml.views.bindings.schema import contract_schema
+from fastraml.views.bindings.conformance import SOURCES
+from fastraml.views.bindings.golang import golang_runtime
+from fastraml.views.bindings.python import python_runtime
+from fastraml.views.bindings.schema import Container, Holds, Structural, contract_schema
+from fastraml.views.bindings.typescript import typescript_runtime
 from fastraml.views.tree import build_tree
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 TYPESCRIPT_DESTINATION = 'viewer/src/tree.d.ts'
 PYTHON_DESTINATION = 'contrib/raml-codegen/raml_codegen/tree.py'
+#: The reading halves, vendored beside the types they read. A stale one is the
+#: same hazard as a stale declaration and a quieter one: the types still
+#: typecheck, and the walk silently stops descending a key that now holds a
+#: shape (docs/16 § 11.11e).
+TYPESCRIPT_RUNTIME = 'viewer/src/walk.ts'
+PYTHON_RUNTIME = 'contrib/raml-codegen/raml_codegen/walk.py'
 
 
 #: Generated records that carry shape fields but are not named `*Shape`.
@@ -131,6 +144,51 @@ def go_shape_members() -> set[str]:
     """
     structs = go_members()
     return set().union(*(fields for name, fields in structs.items() if name in SHAPE_RECORDS or name.endswith('Shape')))
+
+
+class TestTheCheckedInReadingHalvesAreGenerated:
+    """Both vendored runtimes, checked the way their type halves are.
+
+    The failure this catches is the one the type checkers cannot: `walk.ts` and
+    `walk.py` carry `CHILDREN`, so a kind that grows a shape-bearing facet
+    leaves a stale copy walking the old table. Everything still compiles;
+    the walk just stops arriving somewhere, which is indistinguishable from a
+    document that had nothing there.
+    """
+
+    def test_the_typescript_half_is_current(self):
+        current = (ROOT / TYPESCRIPT_RUNTIME).read_text(encoding='utf-8')
+        assert current == typescript_runtime(), (
+            'run `python -m fastraml.views.bindings typescript '
+            f'-o {TYPESCRIPT_DESTINATION} --runtime {TYPESCRIPT_RUNTIME}` -- it is stale'
+        )
+
+    def test_the_python_half_is_current(self):
+        current = (ROOT / PYTHON_RUNTIME).read_text(encoding='utf-8')
+        assert current == python_runtime(), (
+            'run `python -m fastraml.views.bindings python '
+            f'-o {PYTHON_DESTINATION} --runtime {PYTHON_RUNTIME}` -- it is stale'
+        )
+
+    def test_the_walk_table_is_in_all_three(self):
+        """Every backend renders `shape_bearing()`, in whatever form suits it.
+
+        Three shapes, and each is the language's and not the contract's. Python
+        keeps the table beside the types, since a module can hold a value.
+        TypeScript keeps it in the reading half, since a `.d.ts` cannot.
+        Go has no table at all: it cannot index a struct by a string key, so the
+        same fact is generated as code.
+
+        What must not differ is which keys are in it. Nothing here asks that —
+        `tests/unit/test_conformance.py` asks it of the three *walks*, which is
+        the only place the answer means anything.
+        """
+        assert "('items', 'one', 'shape_node', '')" in python()
+        assert 'CHILDREN: Final[' not in python_runtime()  # imported from `tree.py`, not restated
+        assert "['items', 'one', 'shape_node', '']" in typescript_runtime()
+        assert 'const CHILDREN' not in typescript()
+        assert 'case *ArrayShape:' in golang_runtime()
+        assert 'out = append(out, v.Items)' in golang_runtime()
 
 
 class TestTheCheckedInTypeScriptFileIsGenerated:
@@ -320,7 +378,10 @@ class TestTheGoBackendDeclaresTheContract:
         """
         generated = golang()
         # Hand-written, and reaching the output through the static half.
-        assert 'type Shape interface {\n\tShapeKind() ShapeType\n}' in generated
+        # Two methods: the discriminator, and `Base`, which is what lets the
+        # walk read `id` off a Shape without a type switch (`static/walk.go`).
+        assert 'type Shape interface {\n\tShapeKind() ShapeType\n\tBase() *ShapeBase\n}' in generated
+        assert 'func (b *ShapeBase) Base() *ShapeBase { return b }' in generated
         assert 'func UnmarshalShape(data []byte) (Shape, error) {' in generated
         assert 'func shapeOf(kind ShapeType) (Shape, error) {' in generated
         assert 'empty, found := shapeKinds[kind]' in generated
@@ -331,6 +392,21 @@ class TestTheGoBackendDeclaresTheContract:
         assert go_declares('ShapeTypeNull: func() Shape { return &NilShape{} },', generated)
         assert go_declares('ShapeTypeObject: func() Shape { return &ObjectShape{} },', generated)
         assert 'func (s *ObjectShape) ShapeKind() ShapeType {' in generated
+
+    def test_the_pointer_valued_map_aliases_are_declared_as_listed(self):
+        """`_POINTER_ELEMENTS` against the file it describes.
+
+        The walk addresses a map's element unless the alias already holds a
+        pointer, and which aliases do is a fact about `static/tree.go`. The
+        generator used to read that file with a regex at generation time; the
+        list is clearer, and this is what stops it going stale.
+        """
+        _, module = backend('golang')
+        declared = module._STATIC.read_text(encoding='utf-8')
+        pointer_valued = set(
+            re.findall(r'^	(\w+)\s*=\s*\*orderedmap\.OrderedMap\[\w+, \*ShapeNode\]$', declared, re.MULTILINE)
+        )
+        assert pointer_valued == module._POINTER_ELEMENTS
 
     def test_every_map_whose_keys_are_data_is_ordered(self):
         # Declaration order is preserved everywhere the model is exposed
@@ -750,10 +826,16 @@ class TestTheHandWrittenHalvesAreFilesNotStrings:
         assert module._STATIC.suffix == '.pyi'
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module('fastraml.views.bindings.static.tree')
-        # The directory itself still resolves as an empty namespace package,
-        # which is harmless. What must not be there is anything importable:
-        # `.py` and `.pyw` are the only suffixes the import machinery reads.
-        assert not [path for path in module._STATIC.parent.iterdir() if path.suffix in {'.py', '.pyw'}]
+        # The runtime half *is* a `.py` -- it holds runtime, so a stub cannot
+        # carry it. The hazard is the same one and it is closed the same way:
+        # `walk.py` reads its table `from .tree import`, and `static/` has no
+        # `tree.py`, so importing it where it lives fails at the first line
+        # rather than handing back a walk with no table.
+        for name in ('walk', 'conform'):
+            with pytest.raises(ImportError):
+                importlib.import_module(f'fastraml.views.bindings.static.{name}')
+        importable = {path.name for path in module._STATIC.parent.iterdir() if path.suffix in {'.py', '.pyw'}}
+        assert importable == {'walk.py', 'conform.py'}
 
     def test_the_python_half_parses_where_it_lives(self):
         """Its equivalent of `gofmt -l`, and the reason it is not ruff's job.
@@ -778,6 +860,133 @@ class TestTheHandWrittenHalvesAreFilesNotStrings:
         _, module = backend('typescript')
         contract = module._STATIC.read_text(encoding='utf-8').strip('\n')
         assert contract in (ROOT / TYPESCRIPT_DESTINATION).read_text(encoding='utf-8')
+
+
+class TestTheRecursionGuardTerminatesAnUnmarkedCycle:
+    """What `_Projector.recursion()` is for, demonstrated rather than asserted.
+
+    Nothing in any corpus fires it, and that is not evidence it is dead. It
+    guards against a bug in three *other* modules, each of which makes the shape
+    graph a DAG before this layer walks it:
+
+    * `unwrap.py:_make_recursive` — every model cycle, under `unwrap=True`.
+    * `jsonschema_.py` — `$ref` cycles inside a projection, which P9 never sees.
+    * `shape()`'s own alias check — every self-reference under `unwrap=False`,
+      which is why that mode reaches the guard least of all.
+
+    This splices a cycle none of the three covers, which is the state a
+    regression in any of them produces. With the guard the document projects and
+    carries one extra marker; without it the projection does not terminate
+    (docs/16 § 11.11c).
+    """
+
+    #: An anonymous inner type whose only property is spliced back onto its
+    #: declared ancestor. Written as one literal so the splice below is the
+    #: only interesting line in the fixture.
+    SOURCE = """#%RAML 1.0
+title: spliced
+types:
+  Outer:
+    properties:
+      inner:
+        properties:
+          leaf: string
+"""
+
+    @pytest.fixture
+    def cyclic(self, workspace):
+        root = workspace({'api.raml': self.SOURCE})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        shapes = raml.shapes if isinstance(raml.shapes, dict) else {shape.id: shape for shape in raml.shapes}
+        outer = next(shape for shape in shapes.values() if shape.name == 'Outer')
+        inner = outer.shape.properties['inner'].base
+        # No alias and no `RecursiveShape`: a back-edge of the kind the three
+        # marking passes exist to remove, left in place.
+        inner.shape.properties['leaf'].base = outer
+        return raml
+
+    def test_it_projects_and_marks_instead_of_recursing(self, cyclic):
+        calls: list[str] = []
+        original = tree_module._Projector.recursion
+
+        def spy(self, base):
+            calls.append(base.name)
+            return original(self, base)
+
+        with mock.patch.object(tree_module._Projector, 'recursion', spy):
+            projected = build_tree(cyclic)
+
+        assert calls == ['Outer'], 'the guard did not fire on an unmarked cycle'
+        markers = _recursion_markers(projected, [])
+        assert len(markers) == 1
+        # The fallback spelling, which is fine for what it is: a consumer that
+        # handles a marker handles this one. It is only wrong as a *source for
+        # the contract*, which is why `Recursion` is hand-declared.
+        assert markers[0]['type'] == 'recursive'
+        assert markers[0]['head']['$ref'].endswith('/types/Outer')
+
+    def test_without_it_the_projection_does_not_terminate(self, cyclic):
+        """What the guard buys, priced.
+
+        The same model with the `seen` check defeated. If this ever stops
+        raising, the graph has another cycle-breaker and § 11.11c should say
+        which -- it does not mean the guard became unnecessary.
+        """
+        original = tree_module._Projector.shape
+
+        def unguarded(self, base, seen=frozenset()):
+            return original(self, base, frozenset())
+
+        with mock.patch.object(tree_module._Projector, 'shape', unguarded), pytest.raises(RecursionError):
+            build_tree(cyclic)
+
+
+class TestEveryProjectorMethodTheGeneratorReadsActuallyRuns:
+    """The general form of § 11.11c, asserted so the next instance fails by name.
+
+    `schema.py` derives the contract by reading each `_Projector` method's keys
+    out of its AST. That read is only as good as the assumption that the method
+    *runs*: `recursion()` is a literal three-key dict, reads perfectly, and
+    emits nothing, so the contract it produced declared three keys where seven
+    ship.
+
+    One method is in that position, and it is a deliberate guard. A second one
+    would be the same bug again, so the set is pinned rather than the single
+    name: a new `_Projector` method that never fires is one the generator cannot
+    safely read, and this says so before a consumer finds out.
+    """
+
+    @pytest.fixture
+    def ran(self, workspace):
+        counted = dict.fromkeys(contract_schema().projector, 0)
+        patches = []
+        for name in counted:
+            original = getattr(tree_module._Projector, name)
+
+            def spy(self, *arguments, _name=name, _original=original, **keywords):
+                counted[_name] += 1
+                return _original(self, *arguments, **keywords)
+
+            patches.append(mock.patch.object(tree_module._Projector, name, spy))
+        # Two documents: one declaring every kind, and the worked sample, which
+        # is the one with endpoints, security schemes and a JSON-schema type.
+        # Neither needs the TCK checkout, so this always runs.
+        root = workspace({'api.raml': DOCUMENT})
+        with contextlib.ExitStack() as stack:
+            for patch in patches:
+                stack.enter_context(patch)
+            build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+            build_tree(
+                parse_from_path(ROOT / SAMPLE_SOURCE, ParseOptions(unwrap=True, workspace_root=ROOT / SAMPLE_ROOT))
+            )
+        return counted
+
+    def test_exactly_one_method_never_fires_and_it_is_the_guard(self, ran):
+        silent = {name for name, count in ran.items() if count == 0}
+        assert silent == {'recursion'}, (
+            f'{sorted(silent)} never ran. A method the generator reads and the emitter never calls is '
+            'what docs/16 § 11.11c is about -- declare its record by hand, or find out why it is dead.'
+        )
 
 
 class TestARecursionMarkerIsDeclaredAsAShape:
@@ -816,6 +1025,58 @@ class TestARecursionMarkerIsDeclaredAsAShape:
         assert {'id', 'description', 'custom_facets', 'annotations', 'head'} <= emitted
         for declared in (declared_shape_members(), python_shape_members(), go_shape_members()):
             assert not emitted - declared, sorted(emitted - declared)
+
+    def test_the_spelling_that_ships_is_not_the_one_recursion_writes(self, markers):
+        """Which of `tree.py`'s two spellings actually runs, measured not read.
+
+        `_Projector.recursion()` writes `{type, name, head}` and reads perfectly
+        as source, which is how the contract came to be generated from it. It is
+        also the path that does not run: the tree expects an unwrapped model, so
+        P9 has marked every cycle and the projector meets each marker fresh.
+
+        Asserted rather than commented, because the assumption has been made
+        twice. If this ever fails, `recursion()` has become live and docs/16
+        § 11.11c is the thing to reread -- not a line to delete.
+        """
+        calls: list[str] = []
+        original = tree_module._Projector.recursion
+
+        def spy(self, base):
+            calls.append(base.name)
+            return original(self, base)
+
+        raml = parse_from_path(ROOT / SAMPLE_SOURCE, ParseOptions(unwrap=True, workspace_root=ROOT / SAMPLE_ROOT))
+        with mock.patch.object(tree_module._Projector, 'recursion', spy):
+            projected = build_tree(raml)
+
+        assert _recursion_markers(projected, []), 'the sample no longer contains a recursive type'
+        assert calls == [], f'`recursion()` ran: {calls}'
+        # And what did ship is the ShapeBase spelling, which is seven keys where
+        # `recursion()` writes three.
+        assert all({'id', 'name', 'type', 'head'} <= set(marker) for marker in markers)
+
+    def test_unwrap_false_reaches_the_guard_least_of_all(self):
+        """The part that is easy to get backwards.
+
+        `recursion()` looks like the `unwrap=False` path and is not: without
+        unwrap a cycle runs through a *declaration*, `reference()` short-circuits
+        it to a `$ref`, and `shape()` never re-enters. So that mode produces no
+        markers and no calls either. The guard stays for the cycle that reaches
+        `shape()` past neither a declaration nor a marker.
+        """
+        calls: list[str] = []
+        original = tree_module._Projector.recursion
+
+        def spy(self, base):
+            calls.append(base.name)
+            return original(self, base)
+
+        raml = parse_from_path(ROOT / SAMPLE_SOURCE, ParseOptions(unwrap=False, workspace_root=ROOT / SAMPLE_ROOT))
+        with mock.patch.object(tree_module._Projector, 'recursion', spy):
+            projected = build_tree(raml)
+
+        assert _recursion_markers(projected, []) == []
+        assert calls == []
 
     def test_it_extends_the_shape_base_in_every_backend(self):
         # Asked of each separately: one schema supplies the key sets, but what
@@ -912,52 +1173,33 @@ class TestTheSchemaIsLanguageNeutral:
         assert all(number_facets[name].wire_form == 'exact_decimal' for name in schema.exact_decimal_slots)
         assert {'minimum', 'maximum', 'multiple_of'} == schema.exact_decimal_slots
 
+    def test_every_backend_can_spell_every_structural_kind(self):
+        """The check the three tables could not make of each other.
 
-DOCUMENT = """#%RAML 1.0
-title: Every kind
-types:
-  Bounded:
-    type: number
-    minimum: 0.5
-    maximum: 9.5
-    multipleOf: 0.01
-  Counted:
-    type: integer
-    minimum: 1
-    maximum: 10
-  Text:
-    type: string
-    minLength: 1
-    maxLength: 8
-    pattern: ^a
-  Listed:
-    type: array
-    items: Text
-    minItems: 1
-    maxItems: 3
-    uniqueItems: true
-  Structured:
-    type: object
-    minProperties: 1
-    maxProperties: 4
-    additionalProperties: false
-    discriminator: kind
-    properties:
-      kind: string
-      /^x-/: string
-  Either: string | number
-  Upload:
-    type: file
-    fileTypes: [image/png]
-    minLength: 1
-    maxLength: 2
-  When:
-    type: datetime
-    format: rfc3339
-  Chain:
-    properties:
-      next?: Chain
-"""
+        What each key holds is declared once, so the failure a backend can now
+        have is the new one: a structural kind it has no spelling for. Asked of
+        every key in the contract rather than of the ones a document happens to
+        reach, because a backend that cannot render a kind fails generation
+        outright and the corpus would only find it by luck.
+        """
+        schema = contract_schema()
+        for name in ('typescript', 'python', 'golang'):
+            _, module = backend(name)
+            for record, keys in schema.structural.items():
+                for key, structure in keys.items():
+                    assert module._spelling(structure), f'{name} cannot spell {record}.{key}'
+            for facets in schema.shape_facets.values():
+                for facet in facets:
+                    assert module._spelling(schema.facet_structure(facet)), f'{name} cannot spell {facet.name}'
+
+    def test_a_structural_kind_no_backend_knows_fails_by_name(self):
+        """A new `Holds` member is a change every backend has to answer."""
+        _, module = backend('golang')
+        with pytest.raises(LookupError, match='named ordered-map alias'):
+            module._spelling(Structural(Holds.RECORD, 'Unheard', container=Container.MAP))
+
+
+DOCUMENT = SOURCES.joinpath('every-kind.raml').read_text(encoding='utf-8')
 
 
 class TestEveryKindLandsInTheContract:
@@ -1090,3 +1332,84 @@ class TestTheCodegenSampleIsNotStale:
         assert current == build_tree(raml), (
             f'run `fastraml tree {SAMPLE_SOURCE} -w {SAMPLE_ROOT} > {CODEGEN_SAMPLE}` -- it is stale'
         )
+
+
+class TestTheGeneratedWalkReachesEveryShape:
+    """The check a hand-written walk cannot make of itself.
+
+    `CHILDREN` is the table that says where shapes sit, and the runtime half is
+    generic over it. The failure it exists to prevent is the quiet one: a walk
+    that descends everything it was told about, reaches most of the document,
+    and never says what it skipped. So the question is asked of the *document*
+    rather than of the table -- every `id` the projection emits anywhere must be
+    a shape the walk arrives at.
+
+    It found one on its first run. `raml-codegen`'s hand-written reachability
+    never descended `entry_point.base_uri_parameters`, so a `$ref` naming a base
+    URI parameter's type resolved to nothing -- and resolving to nothing is
+    indistinguishable, at every call site, from a document that did not say it.
+    """
+
+    @pytest.fixture
+    def document(self, workspace):
+        root = workspace({'api.raml': DOCUMENT})
+        return build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+
+    def test_every_addressed_shape_is_reached(self, document, tmp_path):
+        walk = _vendored(tmp_path)
+        assert _unreached(walk, document) == set()
+
+    def test_it_reaches_the_sample_too(self, tmp_path):
+        """The one worked document, which has an endpoint tree the other lacks."""
+        walk = _vendored(tmp_path)
+        document = json.loads((ROOT / CODEGEN_SAMPLE).read_text(encoding='utf-8'))
+        assert _unreached(walk, document) == set()
+
+    def test_a_link_and_a_marker_are_both_stops(self, document, tmp_path):
+        """Neither is descended, which is what lets the walk keep no visited set."""
+        tree = _vendored(tmp_path).Tree.of(document)
+        assert list(tree.children({'$ref': 'fastraml://id#/x'})) == []
+        assert list(tree.children({'type': 'recursive', 'name': 'Chain', 'id': 'fastraml://id#/y'})) == []
+
+
+def _unreached(walk, document):
+    """Addressed shapes the walk does not arrive at, by containment."""
+    reached = {shape['id'] for shape in walk.Tree.of(document).shapes() if shape.get('id') is not None}
+    return _addressed(document, walk.KINDS, set()) - reached
+
+
+def _vendored(tmp_path):
+    """Import the two halves the way a consumer vendors them: side by side."""
+    import importlib.util
+
+    package = tmp_path / 'vendored'
+    package.mkdir()
+    (package / '__init__.py').write_text('', encoding='utf-8')
+    (package / 'tree.py').write_text(python(), encoding='utf-8')
+    (package / 'walk.py').write_text(python_runtime(), encoding='utf-8')
+    sys.path.insert(0, str(tmp_path))
+    try:
+        for name in ('vendored', 'vendored.tree', 'vendored.walk'):
+            sys.modules.pop(name, None)
+        return importlib.import_module('vendored.walk')
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+def _addressed(value, kinds, found):
+    """Every expanded shape's `id`, wherever it sits in the raw JSON.
+
+    Asked of the JSON rather than through any reader, so the answer does not
+    depend on the thing under test. `type in kinds` is what makes it *shapes*: a
+    security scheme carries an `id` and a `type` too, and a recursion marker
+    carries both and is a stop.
+    """
+    if isinstance(value, dict):
+        if isinstance(value.get('id'), str) and value.get('type') in kinds:
+            found.add(value['id'])
+        for item in value.values():
+            _addressed(item, kinds, found)
+    elif isinstance(value, list):
+        for item in value:
+            _addressed(item, kinds, found)
+    return found

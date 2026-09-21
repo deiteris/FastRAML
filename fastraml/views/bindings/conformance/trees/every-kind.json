@@ -1,0 +1,146 @@
+{
+  "format": "fastraml-tree",
+  "format_version": 1,
+  "view": "effective",
+  "base": "fastraml://id",
+  "entry_point": {
+    "kind": "API",
+    "title": "Every kind",
+    "media_types": [],
+    "protocols": []
+  },
+  "types": {
+    "api.raml": {
+      "Bounded": {
+        "id": "fastraml://id#/declarations/types/Bounded",
+        "name": "Bounded",
+        "type": "number",
+        "type_expr": "number",
+        "maximum": "9.5",
+        "minimum": "0.5",
+        "multiple_of": "0.01"
+      },
+      "Counted": {
+        "id": "fastraml://id#/declarations/types/Counted",
+        "name": "Counted",
+        "type": "integer",
+        "type_expr": "integer",
+        "maximum": "10",
+        "minimum": "1"
+      },
+      "Text": {
+        "id": "fastraml://id#/declarations/types/Text",
+        "name": "Text",
+        "type": "string",
+        "type_expr": "string",
+        "max_length": 8,
+        "min_length": 1,
+        "pattern": "^a"
+      },
+      "Listed": {
+        "id": "fastraml://id#/declarations/types/Listed",
+        "name": "Listed",
+        "type": "array",
+        "type_expr": "array",
+        "items": {
+          "$ref": "fastraml://id#/declarations/types/Text"
+        },
+        "max_items": 3,
+        "min_items": 1,
+        "unique_items": true
+      },
+      "Structured": {
+        "id": "fastraml://id#/declarations/types/Structured",
+        "name": "Structured",
+        "type": "object",
+        "type_expr": "object",
+        "additional_properties": false,
+        "discriminator": "kind",
+        "max_properties": 4,
+        "min_properties": 1,
+        "pattern_properties": {
+          "^x-": {
+            "pattern": "^x-",
+            "type": {
+              "id": "fastraml://id#/declarations/types/Structured/patternProperty/%5Ex-/schema",
+              "name": "/^x-/",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        },
+        "properties": {
+          "kind": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Structured/property/kind/schema",
+              "name": "kind",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "Either": {
+        "id": "fastraml://id#/declarations/types/Either",
+        "name": "Either",
+        "type": "union",
+        "type_expr": "string | number",
+        "any_of": [
+          {
+            "id": "fastraml://id#/declarations/types/Either/anyOf/0",
+            "name": null,
+            "type": "string",
+            "type_expr": "string | number"
+          },
+          {
+            "id": "fastraml://id#/declarations/types/Either/anyOf/1",
+            "name": null,
+            "type": "number",
+            "type_expr": "string | number"
+          }
+        ]
+      },
+      "Upload": {
+        "id": "fastraml://id#/declarations/types/Upload",
+        "name": "Upload",
+        "type": "file",
+        "type_expr": "file",
+        "file_types": [
+          "image/png"
+        ],
+        "max_length": 2,
+        "min_length": 1
+      },
+      "When": {
+        "id": "fastraml://id#/declarations/types/When",
+        "name": "When",
+        "type": "datetime",
+        "type_expr": "datetime",
+        "format": "rfc3339"
+      },
+      "Chain": {
+        "id": "fastraml://id#/declarations/types/Chain",
+        "name": "Chain",
+        "type": "object",
+        "properties": {
+          "next": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Chain/property/next/schema",
+              "name": "Chain",
+              "type": "recursive",
+              "head": {
+                "$ref": "fastraml://id#/declarations/types/Chain"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "annotation_types": {},
+  "security_schemes": {},
+  "endpoints": {},
+  "annotations": []
+}

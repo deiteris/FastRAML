@@ -1,0 +1,3180 @@
+{
+  "format": "fastraml-tree",
+  "format_version": 1,
+  "view": "effective",
+  "base": "fastraml://id",
+  "entry_point": {
+    "kind": "API",
+    "title": "Bookstore API",
+    "version": "v2",
+    "base_uri": "https://{tenant}.books.example.com/{version}",
+    "media_types": [
+      "application/json"
+    ],
+    "protocols": [
+      "HTTP",
+      "HTTPS"
+    ],
+    "description": "A worked example exercising every construct the tree carries — including\n**Markdown** in a description, which is what the RAML spec says every\n`description:` is.\n\nSee [Getting started](#) for the `{tenant}` you will need.\n",
+    "base_uri_parameters": {
+      "tenant": {
+        "binding": "uri",
+        "required": true,
+        "type": {
+          "id": "fastraml://id#/web-api/parameter/baseUri/tenant/schema",
+          "name": "tenant",
+          "type": "string",
+          "description": "The tenant subdomain",
+          "type_expr": "string",
+          "pattern": "^[a-z0-9-]+$"
+        }
+      }
+    },
+    "documentation": [
+      {
+        "title": "Getting started",
+        "content": "Every request goes to your own tenant, so the first thing to settle is\nthe `{tenant}` in the base URI: it is the subdomain you were given at\nsign-up, and it is not optional.\n\n    curl https://acme.books.example.com/v2/books\n\nReads of the catalogue are open. Anything that writes needs a token —\nsee **Authentication** below.\n"
+      },
+      {
+        "title": "Authentication",
+        "content": "The API speaks OAuth 2.0. Send the caller to `/oauth/authorize`, exchange\nthe code at `/oauth/token`, and put the result in an `Authorization`\nheader:\n\n    Authorization: Bearer <token>\n\nAsk for the narrowest scopes that will do. `read:books` is enough to\nlist and retrieve; `write:books` is needed to add one; `admin:catalogue`\nis for tools, not for applications.\n\n`GET /books/{isbn}` may also be called with no token at all, which is\nwhat the open padlock on that method means.\n"
+      },
+      {
+        "title": "Pagination",
+        "content": "Collections are paged with `offset` and `limit`. `limit` defaults to 20\nand is capped at 100; asking for more is not an error, it is quietly\nreduced.\n\nThere is no cursor. Adding a book while you page can shift the window,\nso a client walking the whole catalogue should sort and de-duplicate on\n`isbn` rather than trusting the offsets.\n"
+      },
+      {
+        "title": "Errors",
+        "content": "Failures use the status code and nothing else — there is no error\nenvelope to parse.\n\n* `400` — the body did not match the schema on this page.\n* `401` — no token, or one that has expired.\n* `422` — the body was well-formed but matched no member of a union.\n* `500` — ours. Retry with backoff; it is safe for every method here\n  except `POST /books`, which is not idempotent.\n"
+      }
+    ],
+    "secured_by": [
+      {
+        "name": "oauth2",
+        "is_null": false,
+        "bound": true,
+        "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+        "scopes": null
+      }
+    ]
+  },
+  "types": {
+    "sample/api.raml": {
+      "Money": {
+        "id": "fastraml://id#/declarations/types/Money",
+        "name": "Money",
+        "type": "object",
+        "display_name": "Monetary amount",
+        "description": "An amount and the currency it is denominated in.",
+        "type_expr": "object",
+        "properties": {
+          "amount": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Money/property/amount/schema",
+              "name": "amount",
+              "type": "number",
+              "type_expr": "number",
+              "minimum": "0",
+              "multiple_of": "0.01"
+            }
+          },
+          "currency": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Money/property/currency/schema",
+              "name": "currency",
+              "type": "string",
+              "enum": [
+                "USD",
+                "EUR",
+                "GBP"
+              ],
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "Entity": {
+        "id": "fastraml://id#/declarations/types/Entity",
+        "name": "Entity",
+        "type": "object",
+        "declared_facets": {
+          "stewardedBy": {
+            "required": true,
+            "type": {
+              "id": null,
+              "name": "stewardedBy",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "retiredAfter": {
+            "required": false,
+            "type": {
+              "id": null,
+              "name": "retiredAfter?",
+              "type": "date-only",
+              "type_expr": "date-only"
+            }
+          },
+          "reviewedEvery": {
+            "required": false,
+            "type": {
+              "id": null,
+              "name": "reviewedEvery?",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "sources": {
+            "required": false,
+            "type": {
+              "id": null,
+              "name": "sources?",
+              "type": "array",
+              "type_expr": "string[]",
+              "items": {
+                "id": null,
+                "name": null,
+                "type": "string",
+                "type_expr": "string[]"
+              }
+            }
+          },
+          "provenance": {
+            "required": false,
+            "type": {
+              "id": null,
+              "name": "provenance?",
+              "type": "object",
+              "type_expr": "object",
+              "properties": {
+                "team": {
+                  "required": true,
+                  "type": {
+                    "id": null,
+                    "name": "team",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                },
+                "since": {
+                  "required": true,
+                  "type": {
+                    "id": null,
+                    "name": "since",
+                    "type": "date-only",
+                    "type_expr": "date-only"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "type_expr": "object",
+        "properties": {
+          "id": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entity/property/id/schema",
+              "name": "id",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "createdAt": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entity/property/createdAt/schema",
+              "name": "createdAt",
+              "type": "datetime",
+              "type_expr": "datetime"
+            }
+          }
+        }
+      },
+      "Isbn": {
+        "id": "fastraml://id#/declarations/types/Isbn",
+        "name": "Isbn",
+        "type": "string",
+        "display_name": "ISBN-13",
+        "description": "The thirteen-digit ISBN, without separators.",
+        "example": {
+          "value": "9780441013593"
+        },
+        "type_expr": "string",
+        "max_length": 13,
+        "min_length": 13,
+        "pattern": "^\\d{13}$"
+      },
+      "Book": {
+        "id": "fastraml://id#/declarations/types/Book",
+        "name": "Book",
+        "type": "object",
+        "display_name": "A Book",
+        "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+        "example": {
+          "value": {
+            "id": "b-1",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "title": "Dune",
+            "isbn": "9780441013593",
+            "price": {
+              "amount": 9.99,
+              "currency": "USD"
+            }
+          }
+        },
+        "inherits": [
+          {
+            "$ref": "fastraml://id#/declarations/types/Entity"
+          }
+        ],
+        "custom_facets": {
+          "stewardedBy": "catalogue-team",
+          "reviewedEvery": 90,
+          "sources": [
+            "publisher-feed",
+            "isbndb"
+          ],
+          "provenance": {
+            "team": "catalogue",
+            "since": "2024-01-01"
+          }
+        },
+        "annotations": [
+          {
+            "name": "deprecated",
+            "type": "fastraml://id#/declarations/annotations/deprecated",
+            "value": "use Publication instead"
+          }
+        ],
+        "type_expr": "Entity",
+        "properties": {
+          "title": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Book/property/title/schema",
+              "name": "title",
+              "type": "string",
+              "display_name": "Title",
+              "description": "The book's title as printed on the cover.",
+              "example": {
+                "value": "Dune"
+              },
+              "type_expr": "string",
+              "max_length": 200,
+              "min_length": 1
+            }
+          },
+          "isbn": {
+            "required": true,
+            "type": {
+              "$ref": "fastraml://id#/declarations/types/Isbn"
+            }
+          },
+          "price": {
+            "required": true,
+            "type": {
+              "$ref": "fastraml://id#/declarations/types/Money"
+            }
+          },
+          "tags": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Book/property/tags/schema",
+              "name": "tags?",
+              "type": "array",
+              "type_expr": "array",
+              "items": {
+                "id": "fastraml://id#/declarations/types/Book/property/tags/schema/items",
+                "name": "items",
+                "type": "string",
+                "example": {
+                  "value": "science-fiction"
+                },
+                "type_expr": "string",
+                "max_length": 24,
+                "min_length": 2,
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "max_items": 10,
+              "unique_items": true
+            }
+          },
+          "related": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Book/property/related/schema",
+              "name": "related?",
+              "type": "array",
+              "type_expr": "Book[]",
+              "items": {
+                "id": "fastraml://id#/declarations/types/Book/property/related/schema/items",
+                "name": "Book",
+                "type": "recursive",
+                "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                "custom_facets": {
+                  "stewardedBy": "catalogue-team",
+                  "reviewedEvery": 90,
+                  "sources": [
+                    "publisher-feed",
+                    "isbndb"
+                  ],
+                  "provenance": {
+                    "team": "catalogue",
+                    "since": "2024-01-01"
+                  }
+                },
+                "annotations": [
+                  {
+                    "name": "deprecated",
+                    "type": "fastraml://id#/declarations/annotations/deprecated",
+                    "value": "use Publication instead"
+                  }
+                ],
+                "head": {
+                  "$ref": "fastraml://id#/declarations/types/Book"
+                }
+              }
+            }
+          },
+          "reviews": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Book/property/reviews/schema",
+              "name": "reviews?",
+              "type": "array",
+              "description": "Up to twenty reviews, most recent first.",
+              "type_expr": "Review[]",
+              "items": {
+                "$ref": "fastraml://id#/declarations/types/Review"
+              },
+              "max_items": 20
+            }
+          },
+          "priceHistory": {
+            "required": false,
+            "type": {
+              "$ref": "fastraml://id#/declarations/types/Prices"
+            }
+          },
+          "metadata": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Book/property/metadata/schema",
+              "name": "metadata?",
+              "type": "object",
+              "type_expr": "object",
+              "pattern_properties": {
+                "^x-": {
+                  "pattern": "^x-",
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                    "name": "/^x-/",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                }
+              }
+            }
+          },
+          "id": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entity/property/id/schema",
+              "name": "id",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "createdAt": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entity/property/createdAt/schema",
+              "name": "createdAt",
+              "type": "datetime",
+              "type_expr": "datetime"
+            }
+          }
+        }
+      },
+      "Prices": {
+        "id": "fastraml://id#/declarations/types/Prices",
+        "name": "Prices",
+        "type": "array",
+        "display_name": "Price history",
+        "description": "Every price this book has been sold at, oldest first.",
+        "type_expr": "Money[]",
+        "items": {
+          "$ref": "fastraml://id#/declarations/types/Money"
+        }
+      },
+      "Review": {
+        "id": "fastraml://id#/declarations/types/Review",
+        "name": "Review",
+        "type": "object",
+        "display_name": "A review",
+        "description": "One reader's verdict on a book.",
+        "examples": {
+          "terse": {
+            "value": {
+              "rating": 5,
+              "author": {
+                "name": "Ada",
+                "verified": true
+              }
+            }
+          },
+          "full": {
+            "value": {
+              "rating": 3,
+              "body": "Uneven, but the middle third is superb.",
+              "author": {
+                "name": "Grace",
+                "verified": false
+              }
+            },
+            "display_name": "A full review",
+            "description": "Everything a review may carry, including the optional body."
+          },
+          "legacy": {
+            "value": {
+              "rating": 3,
+              "author": "Grace"
+            },
+            "display_name": "An older record",
+            "description": "Kept to show what the v1 API used to return.",
+            "strict": false
+          }
+        },
+        "type_expr": "object",
+        "properties": {
+          "rating": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Review/property/rating/schema",
+              "name": "rating",
+              "type": "integer",
+              "description": "Stars, one to five.",
+              "type_expr": "integer",
+              "maximum": "5",
+              "minimum": "1"
+            }
+          },
+          "body": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Review/property/body/schema",
+              "name": "body?",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "author": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Review/property/author/schema",
+              "name": "author",
+              "type": "object",
+              "type_expr": "object",
+              "properties": {
+                "name": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Review/property/author/schema/property/name/schema",
+                    "name": "name",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                },
+                "verified": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Review/property/author/schema/property/verified/schema",
+                    "name": "verified",
+                    "type": "boolean",
+                    "default": false,
+                    "annotations": [
+                      {
+                        "name": "deprecated",
+                        "type": "fastraml://id#/declarations/annotations/deprecated",
+                        "value": "the account service is authoritative"
+                      }
+                    ],
+                    "type_expr": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Shelf": {
+        "id": "fastraml://id#/declarations/types/Shelf",
+        "name": "Shelf",
+        "type": "array",
+        "display_name": "A shelf",
+        "description": "An array whose items are declared inline rather than by name.",
+        "example": {
+          "value": [
+            {
+              "position": 1,
+              "book": {
+                "id": "b-1",
+                "createdAt": "2024-01-01T00:00:00Z",
+                "title": "Dune",
+                "isbn": "9780441013593",
+                "price": {
+                  "amount": 9.99,
+                  "currency": "USD"
+                }
+              },
+              "note": "front of house",
+              "locator": "GB-SHELF-12.3-LEFT/reserve"
+            }
+          ]
+        },
+        "type_expr": "array",
+        "items": {
+          "id": "fastraml://id#/declarations/types/Shelf/items",
+          "name": "items",
+          "type": "object",
+          "display_name": "Shelf slot",
+          "type_expr": "object",
+          "properties": {
+            "position": {
+              "required": true,
+              "type": {
+                "id": "fastraml://id#/declarations/types/Shelf/items/property/position/schema",
+                "name": "position",
+                "type": "integer",
+                "type_expr": "integer"
+              }
+            },
+            "book": {
+              "required": true,
+              "type": {
+                "$ref": "fastraml://id#/declarations/types/Book"
+              }
+            },
+            "note": {
+              "required": false,
+              "type": {
+                "id": "fastraml://id#/declarations/types/Shelf/items/property/note/schema",
+                "name": "note?",
+                "type": "string",
+                "type_expr": "string"
+              }
+            },
+            "locator": {
+              "required": false,
+              "type": {
+                "id": "fastraml://id#/declarations/types/Shelf/items/property/locator/schema",
+                "name": "locator?",
+                "type": "string",
+                "description": "Where the physical copy sits, as one string.",
+                "example": {
+                  "value": "GB-SHELF-12.3-LEFT/reserve"
+                },
+                "type_expr": "string",
+                "pattern": "^(?:[A-Z]{2}-)?(?:AISLE|BAY|SHELF)-[0-9]{1,3}(?:\\.[0-9]{1,2})?(?:-(?:LEFT|RIGHT|CENTRE))?(?:/[A-Za-z0-9_]{1,16})*$"
+              }
+            }
+          }
+        },
+        "min_items": 1
+      },
+      "Payload": {
+        "id": "fastraml://id#/declarations/types/Payload",
+        "name": "Payload",
+        "type": "union",
+        "display_name": "Anything postable",
+        "description": "A union whose members are an array and an object, to show both.",
+        "type_expr": "Book[] | Review",
+        "any_of": [
+          {
+            "id": "fastraml://id#/declarations/types/Payload/anyOf/0",
+            "name": null,
+            "type": "array",
+            "type_expr": "Book[] | Review",
+            "items": {
+              "$ref": "fastraml://id#/declarations/types/Book"
+            }
+          },
+          {
+            "$ref": "fastraml://id#/declarations/types/Review"
+          }
+        ]
+      },
+      "Chain": {
+        "id": "fastraml://id#/declarations/types/Chain",
+        "name": "Chain",
+        "type": "object",
+        "type_expr": "object",
+        "properties": {
+          "next": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Chain/property/next/schema",
+              "name": "Chain",
+              "type": "recursive",
+              "head": {
+                "$ref": "fastraml://id#/declarations/types/Chain"
+              }
+            }
+          }
+        }
+      },
+      "Search": {
+        "id": "fastraml://id#/declarations/types/Search",
+        "name": "Search",
+        "type": "union",
+        "type_expr": "string | number",
+        "any_of": [
+          {
+            "id": "fastraml://id#/declarations/types/Search/anyOf/0",
+            "name": null,
+            "type": "string",
+            "type_expr": "string | number"
+          },
+          {
+            "id": "fastraml://id#/declarations/types/Search/anyOf/1",
+            "name": null,
+            "type": "number",
+            "type_expr": "string | number"
+          }
+        ]
+      },
+      "Anything": {
+        "id": "fastraml://id#/declarations/types/Anything",
+        "name": "Anything",
+        "type": "union",
+        "display_name": "Any payload",
+        "description": "Everything this API will accept in a body, as one type.",
+        "type_expr": "Book | Review | Money | Shelf | Prices | Publication | Magazine | Pamphlet | Delivery",
+        "any_of": [
+          {
+            "$ref": "fastraml://id#/declarations/types/Book"
+          },
+          {
+            "$ref": "fastraml://id#/declarations/types/Review"
+          },
+          {
+            "$ref": "fastraml://id#/declarations/types/Money"
+          },
+          {
+            "$ref": "fastraml://id#/declarations/types/Shelf"
+          },
+          {
+            "$ref": "fastraml://id#/declarations/types/Prices"
+          },
+          {
+            "$ref": "fastraml://id#/declarations/types/Publication"
+          },
+          {
+            "$ref": "fastraml://id#/declarations/types/Magazine"
+          },
+          {
+            "$ref": "fastraml://id#/declarations/types/Pamphlet"
+          },
+          {
+            "$ref": "fastraml://id#/declarations/types/Delivery"
+          }
+        ]
+      },
+      "AnythingAlias": {
+        "$ref": "fastraml://id#/declarations/types/Anything"
+      },
+      "Paged": {
+        "id": "fastraml://id#/declarations/types/Paged",
+        "name": "Paged",
+        "type": "object",
+        "type_expr": "object",
+        "properties": {
+          "total": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Paged/property/total/schema",
+              "name": "total",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "items": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Paged/property/items/schema",
+              "name": "items",
+              "type": "array",
+              "type_expr": "Anything[]",
+              "items": {
+                "$ref": "fastraml://id#/declarations/types/Anything"
+              }
+            }
+          }
+        }
+      },
+      "DeliveryQuery": {
+        "id": "fastraml://id#/declarations/types/DeliveryQuery",
+        "name": "DeliveryQuery",
+        "type": "object",
+        "display_name": "Delivery search",
+        "description": "The whole query string as one type. RAML allows this instead of\n`queryParameters:`, never as well as it.\n",
+        "type_expr": "object",
+        "properties": {
+          "since": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/DeliveryQuery/property/since/schema",
+              "name": "since",
+              "type": "datetime",
+              "description": "Only deliveries promised on or after this instant.",
+              "example": {
+                "value": "2024-06-01T00:00:00Z"
+              },
+              "type_expr": "datetime"
+            }
+          },
+          "status": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/DeliveryQuery/property/status/schema",
+              "name": "status?",
+              "type": "string",
+              "example": {
+                "value": "sent"
+              },
+              "enum": [
+                "pending",
+                "sent",
+                "delivered"
+              ],
+              "type_expr": "string"
+            }
+          },
+          "city": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/DeliveryQuery/property/city/schema",
+              "name": "city?",
+              "type": "string",
+              "description": "Matched against the address, case-insensitively.",
+              "example": {
+                "value": "Bristol"
+              },
+              "type_expr": "string"
+            }
+          },
+          "carrier": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/DeliveryQuery/property/carrier/schema",
+              "name": "carrier?",
+              "type": "string",
+              "description": "Only deliveries handed to this carrier.",
+              "enum": [
+                "royal-mail-tracked-48-signed-for",
+                "dpd-next-day-before-noon",
+                "evri-standard"
+              ],
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "Delivery": {
+        "id": "fastraml://id#/declarations/types/Delivery",
+        "name": "Delivery",
+        "type": "object",
+        "display_name": "A delivery",
+        "description": "Where an order goes, and when it was promised.",
+        "example": {
+          "value": {
+            "address": {
+              "line1": "1 Bridge Street",
+              "city": "Bristol",
+              "postcode": "BS1 1AA",
+              "country": "GB"
+            },
+            "promisedFor": "2024-06-02T09:00:00Z"
+          }
+        },
+        "type_expr": "object",
+        "properties": {
+          "address": {
+            "required": true,
+            "type": {
+              "$ref": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Address"
+            }
+          },
+          "promisedFor": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Delivery/property/promisedFor/schema",
+              "name": "promisedFor",
+              "type": "datetime",
+              "type_expr": "datetime"
+            }
+          },
+          "parcel": {
+            "required": false,
+            "type": {
+              "$ref": "fastraml://id/shared%2Fmeasures.raml#/declarations/types/Parcel"
+            }
+          }
+        }
+      },
+      "Barcode": {
+        "id": "fastraml://id#/declarations/types/Barcode",
+        "name": "Barcode",
+        "type": "json",
+        "display_name": "A barcode",
+        "description": "Declared by a JSON Schema written in place.",
+        "example": {
+          "value": {
+            "symbology": "EAN-13",
+            "code": "9780441013593"
+          }
+        },
+        "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"required\": [\"symbology\", \"code\"],\n  \"properties\": {\n    \"symbology\": { \"type\": \"string\", \"enum\": [\"EAN-13\", \"UPC-A\", \"CODE-128\"] },\n    \"code\": { \"type\": \"string\", \"minLength\": 1 }\n  }\n}\n",
+        "json_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": [
+            "symbology",
+            "code"
+          ],
+          "properties": {
+            "symbology": {
+              "type": "string",
+              "enum": [
+                "EAN-13",
+                "UPC-A",
+                "CODE-128"
+              ]
+            },
+            "code": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "projection": {
+          "id": null,
+          "name": null,
+          "type": "object",
+          "properties": {
+            "symbology": {
+              "required": true,
+              "type": {
+                "id": "fastraml://id#/declarations/types/Barcode/property/symbology/schema",
+                "name": null,
+                "type": "string",
+                "enum": [
+                  "EAN-13",
+                  "UPC-A",
+                  "CODE-128"
+                ]
+              }
+            },
+            "code": {
+              "required": true,
+              "type": {
+                "id": "fastraml://id#/declarations/types/Barcode/property/code/schema",
+                "name": null,
+                "type": "string",
+                "min_length": 1
+              }
+            }
+          }
+        }
+      },
+      "Publication": {
+        "id": "fastraml://id#/declarations/types/Publication",
+        "name": "Publication",
+        "type": "object",
+        "display_name": "A publication",
+        "description": "Everything the store sells. The `kind` property says which.",
+        "example": {
+          "value": {
+            "kind": "Publication",
+            "title": "Dune"
+          }
+        },
+        "type_expr": "object",
+        "discriminator": "kind",
+        "properties": {
+          "kind": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Publication/property/kind/schema",
+              "name": "kind",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "title": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Publication/property/title/schema",
+              "name": "title",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "Magazine": {
+        "id": "fastraml://id#/declarations/types/Magazine",
+        "name": "Magazine",
+        "type": "object",
+        "description": "A periodical, told apart by `kind: monthly`.",
+        "inherits": [
+          {
+            "$ref": "fastraml://id#/declarations/types/Publication"
+          }
+        ],
+        "type_expr": "Publication",
+        "discriminator": "kind",
+        "discriminator_value": "monthly",
+        "properties": {
+          "issue": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Magazine/property/issue/schema",
+              "name": "issue",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "kind": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Publication/property/kind/schema",
+              "name": "kind",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "title": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Publication/property/title/schema",
+              "name": "title",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "Pamphlet": {
+        "id": "fastraml://id#/declarations/types/Pamphlet",
+        "name": "Pamphlet",
+        "type": "object",
+        "description": "No `discriminatorValue`, so the value is the type's own name.",
+        "inherits": [
+          {
+            "$ref": "fastraml://id#/declarations/types/Publication"
+          }
+        ],
+        "type_expr": "Publication",
+        "discriminator": "kind",
+        "properties": {
+          "pages": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Pamphlet/property/pages/schema",
+              "name": "pages",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "kind": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Publication/property/kind/schema",
+              "name": "kind",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "title": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Publication/property/title/schema",
+              "name": "title",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "Invoice": {
+        "id": "fastraml://id#/declarations/types/Invoice",
+        "name": "Invoice",
+        "type": "json",
+        "display_name": "An invoice",
+        "description": "Declared by an external JSON Schema, not by RAML facets.",
+        "example": {
+          "value": {
+            "number": "INV-000417",
+            "total": 24.5,
+            "paid": false,
+            "lines": [
+              {
+                "description": "One paperback",
+                "amount": 24.5
+              }
+            ]
+          }
+        },
+        "inherits": [
+          {
+            "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json",
+            "name": "invoice.json",
+            "type": "json",
+            "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"settled\": { \"$ref\": \"../shared/money.schema.json#/definitions/Amount\" },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n",
+            "json_schema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "title": "Invoice",
+              "description": "A type declared by JSON Schema rather than by RAML.",
+              "type": "object",
+              "required": [
+                "number",
+                "total"
+              ],
+              "properties": {
+                "number": {
+                  "type": "string",
+                  "description": "The invoice number, as printed.",
+                  "pattern": "^INV-[0-9]{6}$"
+                },
+                "total": {
+                  "type": "number",
+                  "description": "The amount due, in the currency of the account.",
+                  "minimum": 0,
+                  "multipleOf": 0.01
+                },
+                "settled": {
+                  "$ref": "#/definitions/Amount"
+                },
+                "paid": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "lines": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/definitions/line"
+                  }
+                }
+              },
+              "definitions": {
+                "line": {
+                  "type": "object",
+                  "required": [
+                    "description",
+                    "amount"
+                  ],
+                  "properties": {
+                    "description": {
+                      "type": "string"
+                    },
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "Amount": {
+                  "type": "object",
+                  "description": "A sum of money, in the smallest unit of its currency.",
+                  "required": [
+                    "minor",
+                    "currency"
+                  ],
+                  "properties": {
+                    "minor": {
+                      "type": "integer",
+                      "description": "Pence, cents, or the equivalent."
+                    },
+                    "currency": {
+                      "type": "string",
+                      "enum": [
+                        "USD",
+                        "EUR",
+                        "GBP"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "projection": {
+              "id": null,
+              "name": "invoice",
+              "type": "object",
+              "display_name": "Invoice",
+              "description": "A type declared by JSON Schema rather than by RAML.",
+              "properties": {
+                "number": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id/sample%2Finvoice.json#/properties/number",
+                    "name": null,
+                    "type": "string",
+                    "description": "The invoice number, as printed.",
+                    "pattern": "^INV-[0-9]{6}$"
+                  }
+                },
+                "total": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id/sample%2Finvoice.json#/properties/total",
+                    "name": null,
+                    "type": "number",
+                    "description": "The amount due, in the currency of the account.",
+                    "minimum": "0",
+                    "multiple_of": "0.01"
+                  }
+                },
+                "settled": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount",
+                    "name": "Amount",
+                    "type": "object",
+                    "description": "A sum of money, in the smallest unit of its currency.",
+                    "properties": {
+                      "minor": {
+                        "required": true,
+                        "type": {
+                          "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/minor",
+                          "name": null,
+                          "type": "integer",
+                          "description": "Pence, cents, or the equivalent."
+                        }
+                      },
+                      "currency": {
+                        "required": true,
+                        "type": {
+                          "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/currency",
+                          "name": null,
+                          "type": "string",
+                          "enum": [
+                            "USD",
+                            "EUR",
+                            "GBP"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "paid": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id/sample%2Finvoice.json#/properties/paid",
+                    "name": null,
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "lines": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id/sample%2Finvoice.json#/properties/lines",
+                    "name": null,
+                    "type": "array",
+                    "items": {
+                      "id": "fastraml://id/sample%2Finvoice.json#/definitions/line",
+                      "name": "line",
+                      "type": "object",
+                      "properties": {
+                        "description": {
+                          "required": true,
+                          "type": {
+                            "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/description",
+                            "name": null,
+                            "type": "string"
+                          }
+                        },
+                        "amount": {
+                          "required": true,
+                          "type": {
+                            "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/amount",
+                            "name": null,
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "min_items": 1
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "type_expr": "invoice.json",
+        "json_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "title": "Invoice",
+          "description": "A type declared by JSON Schema rather than by RAML.",
+          "type": "object",
+          "required": [
+            "number",
+            "total"
+          ],
+          "properties": {
+            "number": {
+              "type": "string",
+              "description": "The invoice number, as printed.",
+              "pattern": "^INV-[0-9]{6}$"
+            },
+            "total": {
+              "type": "number",
+              "description": "The amount due, in the currency of the account.",
+              "minimum": 0,
+              "multipleOf": 0.01
+            },
+            "settled": {
+              "$ref": "#/definitions/Amount"
+            },
+            "paid": {
+              "type": "boolean",
+              "default": false
+            },
+            "lines": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/line"
+              }
+            }
+          },
+          "definitions": {
+            "line": {
+              "type": "object",
+              "required": [
+                "description",
+                "amount"
+              ],
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "number"
+                }
+              }
+            },
+            "Amount": {
+              "type": "object",
+              "description": "A sum of money, in the smallest unit of its currency.",
+              "required": [
+                "minor",
+                "currency"
+              ],
+              "properties": {
+                "minor": {
+                  "type": "integer",
+                  "description": "Pence, cents, or the equivalent."
+                },
+                "currency": {
+                  "type": "string",
+                  "enum": [
+                    "USD",
+                    "EUR",
+                    "GBP"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "projection": {
+          "id": null,
+          "name": "invoice",
+          "type": "object",
+          "display_name": "Invoice",
+          "description": "A type declared by JSON Schema rather than by RAML.",
+          "properties": {
+            "number": {
+              "required": true,
+              "type": {
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/number",
+                "name": null,
+                "type": "string",
+                "description": "The invoice number, as printed.",
+                "pattern": "^INV-[0-9]{6}$"
+              }
+            },
+            "total": {
+              "required": true,
+              "type": {
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/total",
+                "name": null,
+                "type": "number",
+                "description": "The amount due, in the currency of the account.",
+                "minimum": "0",
+                "multiple_of": "0.01"
+              }
+            },
+            "settled": {
+              "required": false,
+              "type": {
+                "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount",
+                "name": "Amount",
+                "type": "object",
+                "description": "A sum of money, in the smallest unit of its currency.",
+                "properties": {
+                  "minor": {
+                    "required": true,
+                    "type": {
+                      "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/minor",
+                      "name": null,
+                      "type": "integer",
+                      "description": "Pence, cents, or the equivalent."
+                    }
+                  },
+                  "currency": {
+                    "required": true,
+                    "type": {
+                      "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/currency",
+                      "name": null,
+                      "type": "string",
+                      "enum": [
+                        "USD",
+                        "EUR",
+                        "GBP"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "paid": {
+              "required": false,
+              "type": {
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/paid",
+                "name": null,
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "lines": {
+              "required": false,
+              "type": {
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/lines",
+                "name": null,
+                "type": "array",
+                "items": {
+                  "id": "fastraml://id/sample%2Finvoice.json#/definitions/line",
+                  "name": "line",
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/description",
+                        "name": null,
+                        "type": "string"
+                      }
+                    },
+                    "amount": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/amount",
+                        "name": null,
+                        "type": "number"
+                      }
+                    }
+                  }
+                },
+                "min_items": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "sample/common.raml": {
+      "Address": {
+        "id": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Address",
+        "name": "Address",
+        "type": "object",
+        "display_name": "A postal address",
+        "description": "Where a physical thing is sent.",
+        "type_expr": "object",
+        "properties": {
+          "line1": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Address/property/line1/schema",
+              "name": "line1",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "line2": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Address/property/line2/schema",
+              "name": "line2?",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "city": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Address/property/city/schema",
+              "name": "city",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "postcode": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Address/property/postcode/schema",
+              "name": "postcode",
+              "type": "string",
+              "type_expr": "string",
+              "pattern": "^[A-Z0-9 ]{4,10}$"
+            }
+          },
+          "country": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Address/property/country/schema",
+              "name": "country",
+              "type": "string",
+              "description": "An ISO 3166-1 alpha-2 code.",
+              "type_expr": "string",
+              "max_length": 2,
+              "min_length": 2
+            }
+          }
+        }
+      },
+      "Page": {
+        "id": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Page",
+        "name": "Page",
+        "type": "object",
+        "display_name": "One page of a collection",
+        "description": "The envelope every paged collection is returned in.\n\n`total` counts the whole collection, not the page.\n",
+        "type_expr": "object",
+        "properties": {
+          "total": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Page/property/total/schema",
+              "name": "total",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "offset": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Page/property/offset/schema",
+              "name": "offset",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "limit": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id/sample%2Fcommon.raml#/declarations/types/Page/property/limit/schema",
+              "name": "limit",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          }
+        }
+      }
+    },
+    "shared/measures.raml": {
+      "Grams": {
+        "id": "fastraml://id/shared%2Fmeasures.raml#/declarations/types/Grams",
+        "name": "Grams",
+        "type": "integer",
+        "display_name": "A weight in grams",
+        "description": "Whole grams. Nothing here is sold by fractions of one.",
+        "example": {
+          "value": 9223372036854775807
+        },
+        "type_expr": "integer",
+        "maximum": "9223372036854775807",
+        "minimum": "1"
+      },
+      "Tolerance": {
+        "id": "fastraml://id/shared%2Fmeasures.raml#/declarations/types/Tolerance",
+        "name": "Tolerance",
+        "type": "number",
+        "display_name": "A measurement tolerance",
+        "description": "The bounds a scale is allowed to be out by, written at the limits of a\n64-bit float because that is where a reader finds out whether the\ndocumentation survived the trip.\n",
+        "type_expr": "number",
+        "maximum": "1.7976931348623157E+308",
+        "minimum": "2.2250738585072014E-308",
+        "multiple_of": "0.000001"
+      },
+      "Parcel": {
+        "id": "fastraml://id/shared%2Fmeasures.raml#/declarations/types/Parcel",
+        "name": "Parcel",
+        "type": "object",
+        "display_name": "A parcel",
+        "description": "What a delivery is packed in.",
+        "type_expr": "object",
+        "properties": {
+          "weight": {
+            "required": true,
+            "type": {
+              "$ref": "fastraml://id/shared%2Fmeasures.raml#/declarations/types/Grams"
+            }
+          },
+          "tolerance": {
+            "required": false,
+            "type": {
+              "$ref": "fastraml://id/shared%2Fmeasures.raml#/declarations/types/Tolerance"
+            }
+          },
+          "trackingNumber": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id/shared%2Fmeasures.raml#/declarations/types/Parcel/property/trackingNumber/schema",
+              "name": "trackingNumber",
+              "type": "integer",
+              "description": "The carrier's own identifier, which is a signed 64-bit integer.",
+              "example": {
+                "value": 9223372036854775806
+              },
+              "type_expr": "integer"
+            }
+          }
+        }
+      }
+    }
+  },
+  "annotation_types": {
+    "sample/api.raml": {
+      "deprecated": {
+        "id": "fastraml://id#/declarations/annotations/deprecated",
+        "name": "deprecated",
+        "type": "string",
+        "allowed_targets": [
+          "Method",
+          "TypeDeclaration"
+        ],
+        "type_expr": "string"
+      },
+      "rateLimit": {
+        "id": "fastraml://id#/declarations/annotations/rateLimit",
+        "name": "rateLimit",
+        "type": "object",
+        "type_expr": "object",
+        "properties": {
+          "perMinute": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/annotations/rateLimit/property/perMinute/schema",
+              "name": "perMinute",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          }
+        }
+      }
+    },
+    "sample/common.raml": {
+      "internal": {
+        "id": "fastraml://id/sample%2Fcommon.raml#/declarations/annotations/internal",
+        "name": "internal",
+        "type": "nil",
+        "description": "Marks something that is not part of the public contract.",
+        "allowed_targets": [
+          "Method",
+          "TypeDeclaration"
+        ],
+        "type_expr": "nil"
+      }
+    }
+  },
+  "security_schemes": {
+    "sample/api.raml": {
+      "oauth2": {
+        "id": "fastraml://id#/declarations/securitySchemes/oauth2",
+        "name": "oauth2",
+        "type": "OAuth 2.0",
+        "description": "Standard three-legged flow.",
+        "settings": {
+          "authorizationUri": "https://books.example.com/oauth/authorize",
+          "accessTokenUri": "https://books.example.com/oauth/token",
+          "authorizationGrants": [
+            "authorization_code",
+            "client_credentials"
+          ],
+          "scopes": [
+            "read:books",
+            "write:books",
+            "delete:books",
+            "read:reviews",
+            "write:reviews",
+            "admin:catalogue"
+          ]
+        },
+        "described_by": {
+          "headers": {
+            "Authorization": {
+              "binding": "header",
+              "required": true,
+              "type": {
+                "id": null,
+                "name": "Authorization",
+                "type": "string",
+                "description": "Bearer token",
+                "type_expr": "string"
+              }
+            }
+          },
+          "responses": {
+            "401": {
+              "description": "Not authenticated"
+            }
+          }
+        }
+      },
+      "machineToken": {
+        "id": "fastraml://id#/declarations/securitySchemes/machineToken",
+        "name": "machineToken",
+        "type": "OAuth 2.0",
+        "display_name": "Machine token",
+        "description": "Two-legged client credentials, for server-to-server callers that have no user\nto send through a browser.\n",
+        "settings": {
+          "accessTokenUri": "https://books.example.com/oauth/token",
+          "authorizationGrants": [
+            "client_credentials"
+          ],
+          "scopes": [
+            "read:books",
+            "read:deliveries"
+          ]
+        },
+        "described_by": {
+          "headers": {
+            "Authorization": {
+              "binding": "header",
+              "required": true,
+              "type": {
+                "id": null,
+                "name": "Authorization",
+                "type": "string",
+                "description": "The word Bearer, a space, then the access token.",
+                "type_expr": "string",
+                "pattern": "^Bearer [A-Za-z0-9._~+/-]+=*$"
+              }
+            }
+          },
+          "query_parameters": {
+            "access_token": {
+              "binding": "query",
+              "required": false,
+              "type": {
+                "id": null,
+                "name": "access_token?",
+                "type": "string",
+                "description": "The same token, for callers that cannot set a header (RFC 6750 § 2.3).\nPrefer the header: a query string is logged by every proxy in between.\n",
+                "type_expr": "string"
+              }
+            }
+          },
+          "responses": {
+            "401": {
+              "description": "The token was missing, expired, or issued to another client."
+            }
+          }
+        }
+      },
+      "basic": {
+        "id": "fastraml://id#/declarations/securitySchemes/basic",
+        "name": "basic",
+        "type": "Basic Authentication",
+        "description": "Username and password, for server-to-server callers only.",
+        "described_by": {
+          "headers": {
+            "Authorization": {
+              "binding": "header",
+              "required": true,
+              "type": {
+                "id": null,
+                "name": "Authorization",
+                "type": "string",
+                "description": "The word Basic, a space, then base64(user:password).",
+                "type_expr": "string"
+              }
+            }
+          },
+          "responses": {
+            "401": {
+              "description": "Missing or malformed credentials."
+            }
+          }
+        }
+      }
+    }
+  },
+  "endpoints": {
+    "/books": {
+      "id": "fastraml://id#/web-api/endpoint/%2Fbooks",
+      "operations": {
+        "post": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post",
+          "responses": {
+            "201": {
+              "description": "Created",
+              "headers": {
+                "Location": {
+                  "binding": "header",
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/returns/201/parameter/header/Location/schema",
+                    "name": "Location",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                }
+              },
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/returns/201/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "object",
+                  "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                  "inherits": [
+                    {
+                      "$ref": "fastraml://id#/declarations/types/Book"
+                    }
+                  ],
+                  "custom_facets": {
+                    "stewardedBy": "catalogue-team",
+                    "reviewedEvery": 90,
+                    "sources": [
+                      "publisher-feed",
+                      "isbndb"
+                    ],
+                    "provenance": {
+                      "team": "catalogue",
+                      "since": "2024-01-01"
+                    }
+                  },
+                  "type_expr": "Book",
+                  "properties": {
+                    "title": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/title/schema",
+                        "name": "title",
+                        "type": "string",
+                        "display_name": "Title",
+                        "description": "The book's title as printed on the cover.",
+                        "example": {
+                          "value": "Dune"
+                        },
+                        "type_expr": "string",
+                        "max_length": 200,
+                        "min_length": 1
+                      }
+                    },
+                    "isbn": {
+                      "required": true,
+                      "type": {
+                        "$ref": "fastraml://id#/declarations/types/Isbn"
+                      }
+                    },
+                    "price": {
+                      "required": true,
+                      "type": {
+                        "$ref": "fastraml://id#/declarations/types/Money"
+                      }
+                    },
+                    "tags": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/tags/schema",
+                        "name": "tags?",
+                        "type": "array",
+                        "type_expr": "array",
+                        "items": {
+                          "id": "fastraml://id#/declarations/types/Book/property/tags/schema/items",
+                          "name": "items",
+                          "type": "string",
+                          "example": {
+                            "value": "science-fiction"
+                          },
+                          "type_expr": "string",
+                          "max_length": 24,
+                          "min_length": 2,
+                          "pattern": "^[a-z][a-z0-9-]*$"
+                        },
+                        "max_items": 10,
+                        "unique_items": true
+                      }
+                    },
+                    "related": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/related/schema",
+                        "name": "related?",
+                        "type": "array",
+                        "type_expr": "Book[]",
+                        "items": {
+                          "id": "fastraml://id#/declarations/types/Book/property/related/schema/items",
+                          "name": "Book",
+                          "type": "recursive",
+                          "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                          "custom_facets": {
+                            "stewardedBy": "catalogue-team",
+                            "reviewedEvery": 90,
+                            "sources": [
+                              "publisher-feed",
+                              "isbndb"
+                            ],
+                            "provenance": {
+                              "team": "catalogue",
+                              "since": "2024-01-01"
+                            }
+                          },
+                          "annotations": [
+                            {
+                              "name": "deprecated",
+                              "type": "fastraml://id#/declarations/annotations/deprecated",
+                              "value": "use Publication instead"
+                            }
+                          ],
+                          "head": {
+                            "$ref": "fastraml://id#/declarations/types/Book"
+                          }
+                        }
+                      }
+                    },
+                    "reviews": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/reviews/schema",
+                        "name": "reviews?",
+                        "type": "array",
+                        "description": "Up to twenty reviews, most recent first.",
+                        "type_expr": "Review[]",
+                        "items": {
+                          "$ref": "fastraml://id#/declarations/types/Review"
+                        },
+                        "max_items": 20
+                      }
+                    },
+                    "priceHistory": {
+                      "required": false,
+                      "type": {
+                        "$ref": "fastraml://id#/declarations/types/Prices"
+                      }
+                    },
+                    "metadata": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/metadata/schema",
+                        "name": "metadata?",
+                        "type": "object",
+                        "type_expr": "object",
+                        "pattern_properties": {
+                          "^x-": {
+                            "pattern": "^x-",
+                            "type": {
+                              "id": "fastraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                              "name": "/^x-/",
+                              "type": "string",
+                              "type_expr": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "id": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entity/property/id/schema",
+                        "name": "id",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "createdAt": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entity/property/createdAt/schema",
+                        "name": "createdAt",
+                        "type": "datetime",
+                        "type_expr": "datetime"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "The body did not match `Book` — see the schema above. The response\ncarries no envelope; the status code is the whole of it.\n"
+            }
+          },
+          "description": "Adds one book to the catalogue and returns it with its identifier.",
+          "display_name": "Add a book",
+          "secured_by": [
+            {
+              "name": "oauth2",
+              "is_null": false,
+              "bound": true,
+              "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+              "scopes": [
+                "write:books",
+                "read:reviews",
+                "write:reviews",
+                "admin:catalogue"
+              ]
+            },
+            {
+              "name": "basic",
+              "is_null": false,
+              "bound": true,
+              "declaration": "fastraml://id#/declarations/securitySchemes/basic",
+              "scopes": null
+            }
+          ],
+          "annotations": [
+            {
+              "name": "deprecated",
+              "type": "fastraml://id#/declarations/annotations/deprecated",
+              "value": "use PUT"
+            }
+          ],
+          "bodies": {
+            "application/json": {
+              "id": "fastraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/request/payload/application%2Fjson/schema",
+              "name": "application/json",
+              "type": "object",
+              "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+              "inherits": [
+                {
+                  "$ref": "fastraml://id#/declarations/types/Book"
+                }
+              ],
+              "custom_facets": {
+                "stewardedBy": "catalogue-team",
+                "reviewedEvery": 90,
+                "sources": [
+                  "publisher-feed",
+                  "isbndb"
+                ],
+                "provenance": {
+                  "team": "catalogue",
+                  "since": "2024-01-01"
+                }
+              },
+              "type_expr": "Book",
+              "properties": {
+                "title": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/title/schema",
+                    "name": "title",
+                    "type": "string",
+                    "display_name": "Title",
+                    "description": "The book's title as printed on the cover.",
+                    "example": {
+                      "value": "Dune"
+                    },
+                    "type_expr": "string",
+                    "max_length": 200,
+                    "min_length": 1
+                  }
+                },
+                "isbn": {
+                  "required": true,
+                  "type": {
+                    "$ref": "fastraml://id#/declarations/types/Isbn"
+                  }
+                },
+                "price": {
+                  "required": true,
+                  "type": {
+                    "$ref": "fastraml://id#/declarations/types/Money"
+                  }
+                },
+                "tags": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/tags/schema",
+                    "name": "tags?",
+                    "type": "array",
+                    "type_expr": "array",
+                    "items": {
+                      "id": "fastraml://id#/declarations/types/Book/property/tags/schema/items",
+                      "name": "items",
+                      "type": "string",
+                      "example": {
+                        "value": "science-fiction"
+                      },
+                      "type_expr": "string",
+                      "max_length": 24,
+                      "min_length": 2,
+                      "pattern": "^[a-z][a-z0-9-]*$"
+                    },
+                    "max_items": 10,
+                    "unique_items": true
+                  }
+                },
+                "related": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/related/schema",
+                    "name": "related?",
+                    "type": "array",
+                    "type_expr": "Book[]",
+                    "items": {
+                      "id": "fastraml://id#/declarations/types/Book/property/related/schema/items",
+                      "name": "Book",
+                      "type": "recursive",
+                      "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                      "custom_facets": {
+                        "stewardedBy": "catalogue-team",
+                        "reviewedEvery": 90,
+                        "sources": [
+                          "publisher-feed",
+                          "isbndb"
+                        ],
+                        "provenance": {
+                          "team": "catalogue",
+                          "since": "2024-01-01"
+                        }
+                      },
+                      "annotations": [
+                        {
+                          "name": "deprecated",
+                          "type": "fastraml://id#/declarations/annotations/deprecated",
+                          "value": "use Publication instead"
+                        }
+                      ],
+                      "head": {
+                        "$ref": "fastraml://id#/declarations/types/Book"
+                      }
+                    }
+                  }
+                },
+                "reviews": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/reviews/schema",
+                    "name": "reviews?",
+                    "type": "array",
+                    "description": "Up to twenty reviews, most recent first.",
+                    "type_expr": "Review[]",
+                    "items": {
+                      "$ref": "fastraml://id#/declarations/types/Review"
+                    },
+                    "max_items": 20
+                  }
+                },
+                "priceHistory": {
+                  "required": false,
+                  "type": {
+                    "$ref": "fastraml://id#/declarations/types/Prices"
+                  }
+                },
+                "metadata": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/metadata/schema",
+                    "name": "metadata?",
+                    "type": "object",
+                    "type_expr": "object",
+                    "pattern_properties": {
+                      "^x-": {
+                        "pattern": "^x-",
+                        "type": {
+                          "id": "fastraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                          "name": "/^x-/",
+                          "type": "string",
+                          "type_expr": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "id": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Entity/property/id/schema",
+                    "name": "id",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                },
+                "createdAt": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Entity/property/createdAt/schema",
+                    "name": "createdAt",
+                    "type": "datetime",
+                    "type_expr": "datetime"
+                  }
+                }
+              }
+            },
+            "application/xml": {
+              "id": "fastraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/post/request/payload/application%2Fxml/schema",
+              "name": "application/xml",
+              "type": "object",
+              "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+              "inherits": [
+                {
+                  "$ref": "fastraml://id#/declarations/types/Book"
+                }
+              ],
+              "custom_facets": {
+                "stewardedBy": "catalogue-team",
+                "reviewedEvery": 90,
+                "sources": [
+                  "publisher-feed",
+                  "isbndb"
+                ],
+                "provenance": {
+                  "team": "catalogue",
+                  "since": "2024-01-01"
+                }
+              },
+              "type_expr": "Book",
+              "properties": {
+                "title": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/title/schema",
+                    "name": "title",
+                    "type": "string",
+                    "display_name": "Title",
+                    "description": "The book's title as printed on the cover.",
+                    "example": {
+                      "value": "Dune"
+                    },
+                    "type_expr": "string",
+                    "max_length": 200,
+                    "min_length": 1
+                  }
+                },
+                "isbn": {
+                  "required": true,
+                  "type": {
+                    "$ref": "fastraml://id#/declarations/types/Isbn"
+                  }
+                },
+                "price": {
+                  "required": true,
+                  "type": {
+                    "$ref": "fastraml://id#/declarations/types/Money"
+                  }
+                },
+                "tags": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/tags/schema",
+                    "name": "tags?",
+                    "type": "array",
+                    "type_expr": "array",
+                    "items": {
+                      "id": "fastraml://id#/declarations/types/Book/property/tags/schema/items",
+                      "name": "items",
+                      "type": "string",
+                      "example": {
+                        "value": "science-fiction"
+                      },
+                      "type_expr": "string",
+                      "max_length": 24,
+                      "min_length": 2,
+                      "pattern": "^[a-z][a-z0-9-]*$"
+                    },
+                    "max_items": 10,
+                    "unique_items": true
+                  }
+                },
+                "related": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/related/schema",
+                    "name": "related?",
+                    "type": "array",
+                    "type_expr": "Book[]",
+                    "items": {
+                      "id": "fastraml://id#/declarations/types/Book/property/related/schema/items",
+                      "name": "Book",
+                      "type": "recursive",
+                      "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                      "custom_facets": {
+                        "stewardedBy": "catalogue-team",
+                        "reviewedEvery": 90,
+                        "sources": [
+                          "publisher-feed",
+                          "isbndb"
+                        ],
+                        "provenance": {
+                          "team": "catalogue",
+                          "since": "2024-01-01"
+                        }
+                      },
+                      "annotations": [
+                        {
+                          "name": "deprecated",
+                          "type": "fastraml://id#/declarations/annotations/deprecated",
+                          "value": "use Publication instead"
+                        }
+                      ],
+                      "head": {
+                        "$ref": "fastraml://id#/declarations/types/Book"
+                      }
+                    }
+                  }
+                },
+                "reviews": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/reviews/schema",
+                    "name": "reviews?",
+                    "type": "array",
+                    "description": "Up to twenty reviews, most recent first.",
+                    "type_expr": "Review[]",
+                    "items": {
+                      "$ref": "fastraml://id#/declarations/types/Review"
+                    },
+                    "max_items": 20
+                  }
+                },
+                "priceHistory": {
+                  "required": false,
+                  "type": {
+                    "$ref": "fastraml://id#/declarations/types/Prices"
+                  }
+                },
+                "metadata": {
+                  "required": false,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Book/property/metadata/schema",
+                    "name": "metadata?",
+                    "type": "object",
+                    "type_expr": "object",
+                    "pattern_properties": {
+                      "^x-": {
+                        "pattern": "^x-",
+                        "type": {
+                          "id": "fastraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                          "name": "/^x-/",
+                          "type": "string",
+                          "type_expr": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "id": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Entity/property/id/schema",
+                    "name": "id",
+                    "type": "string",
+                    "type_expr": "string"
+                  }
+                },
+                "createdAt": {
+                  "required": true,
+                  "type": {
+                    "id": "fastraml://id#/declarations/types/Entity/property/createdAt/schema",
+                    "name": "createdAt",
+                    "type": "datetime",
+                    "type_expr": "datetime"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "get": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "array",
+                  "type_expr": "Book[]",
+                  "items": {
+                    "$ref": "fastraml://id#/declarations/types/Book"
+                  }
+                }
+              }
+            }
+          },
+          "description": "Returns a page of Book records.",
+          "display_name": "List Books",
+          "secured_by": [
+            {
+              "name": "oauth2",
+              "is_null": false,
+              "bound": true,
+              "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+              "scopes": null
+            }
+          ],
+          "query_parameters": {
+            "offset": {
+              "binding": "query",
+              "required": false,
+              "type": {
+                "id": "fastraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/get/request/parameter/query/offset/schema",
+                "name": "offset?",
+                "type": "integer",
+                "default": 0,
+                "type_expr": "integer"
+              }
+            },
+            "limit": {
+              "binding": "query",
+              "required": false,
+              "type": {
+                "id": "fastraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/get/request/parameter/query/limit/schema",
+                "name": "limit?",
+                "type": "integer",
+                "default": 20,
+                "type_expr": "integer",
+                "maximum": "100"
+              }
+            }
+          }
+        }
+      },
+      "secured_by": [
+        {
+          "name": "oauth2",
+          "is_null": false,
+          "bound": true,
+          "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+          "scopes": null
+        }
+      ],
+      "display_name": "Books",
+      "description": "The catalogue of every book the store carries."
+    },
+    "/books/{isbn}": {
+      "id": "fastraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D",
+      "operations": {
+        "get": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "object",
+                  "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                  "inherits": [
+                    {
+                      "$ref": "fastraml://id#/declarations/types/Book"
+                    }
+                  ],
+                  "custom_facets": {
+                    "stewardedBy": "catalogue-team",
+                    "reviewedEvery": 90,
+                    "sources": [
+                      "publisher-feed",
+                      "isbndb"
+                    ],
+                    "provenance": {
+                      "team": "catalogue",
+                      "since": "2024-01-01"
+                    }
+                  },
+                  "type_expr": "Book",
+                  "properties": {
+                    "title": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/title/schema",
+                        "name": "title",
+                        "type": "string",
+                        "display_name": "Title",
+                        "description": "The book's title as printed on the cover.",
+                        "example": {
+                          "value": "Dune"
+                        },
+                        "type_expr": "string",
+                        "max_length": 200,
+                        "min_length": 1
+                      }
+                    },
+                    "isbn": {
+                      "required": true,
+                      "type": {
+                        "$ref": "fastraml://id#/declarations/types/Isbn"
+                      }
+                    },
+                    "price": {
+                      "required": true,
+                      "type": {
+                        "$ref": "fastraml://id#/declarations/types/Money"
+                      }
+                    },
+                    "tags": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/tags/schema",
+                        "name": "tags?",
+                        "type": "array",
+                        "type_expr": "array",
+                        "items": {
+                          "id": "fastraml://id#/declarations/types/Book/property/tags/schema/items",
+                          "name": "items",
+                          "type": "string",
+                          "example": {
+                            "value": "science-fiction"
+                          },
+                          "type_expr": "string",
+                          "max_length": 24,
+                          "min_length": 2,
+                          "pattern": "^[a-z][a-z0-9-]*$"
+                        },
+                        "max_items": 10,
+                        "unique_items": true
+                      }
+                    },
+                    "related": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/related/schema",
+                        "name": "related?",
+                        "type": "array",
+                        "type_expr": "Book[]",
+                        "items": {
+                          "id": "fastraml://id#/declarations/types/Book/property/related/schema/items",
+                          "name": "Book",
+                          "type": "recursive",
+                          "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                          "custom_facets": {
+                            "stewardedBy": "catalogue-team",
+                            "reviewedEvery": 90,
+                            "sources": [
+                              "publisher-feed",
+                              "isbndb"
+                            ],
+                            "provenance": {
+                              "team": "catalogue",
+                              "since": "2024-01-01"
+                            }
+                          },
+                          "annotations": [
+                            {
+                              "name": "deprecated",
+                              "type": "fastraml://id#/declarations/annotations/deprecated",
+                              "value": "use Publication instead"
+                            }
+                          ],
+                          "head": {
+                            "$ref": "fastraml://id#/declarations/types/Book"
+                          }
+                        }
+                      }
+                    },
+                    "reviews": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/reviews/schema",
+                        "name": "reviews?",
+                        "type": "array",
+                        "description": "Up to twenty reviews, most recent first.",
+                        "type_expr": "Review[]",
+                        "items": {
+                          "$ref": "fastraml://id#/declarations/types/Review"
+                        },
+                        "max_items": 20
+                      }
+                    },
+                    "priceHistory": {
+                      "required": false,
+                      "type": {
+                        "$ref": "fastraml://id#/declarations/types/Prices"
+                      }
+                    },
+                    "metadata": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/metadata/schema",
+                        "name": "metadata?",
+                        "type": "object",
+                        "type_expr": "object",
+                        "pattern_properties": {
+                          "^x-": {
+                            "pattern": "^x-",
+                            "type": {
+                              "id": "fastraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                              "name": "/^x-/",
+                              "type": "string",
+                              "type_expr": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "id": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entity/property/id/schema",
+                        "name": "id",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "createdAt": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entity/property/createdAt/schema",
+                        "name": "createdAt",
+                        "type": "datetime",
+                        "type_expr": "datetime"
+                      }
+                    }
+                  }
+                },
+                "application/xml": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get/returns/200/payload/application%2Fxml/schema",
+                  "name": "application/xml",
+                  "type": "object",
+                  "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                  "inherits": [
+                    {
+                      "$ref": "fastraml://id#/declarations/types/Book"
+                    }
+                  ],
+                  "custom_facets": {
+                    "stewardedBy": "catalogue-team",
+                    "reviewedEvery": 90,
+                    "sources": [
+                      "publisher-feed",
+                      "isbndb"
+                    ],
+                    "provenance": {
+                      "team": "catalogue",
+                      "since": "2024-01-01"
+                    }
+                  },
+                  "type_expr": "Book",
+                  "properties": {
+                    "title": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/title/schema",
+                        "name": "title",
+                        "type": "string",
+                        "display_name": "Title",
+                        "description": "The book's title as printed on the cover.",
+                        "example": {
+                          "value": "Dune"
+                        },
+                        "type_expr": "string",
+                        "max_length": 200,
+                        "min_length": 1
+                      }
+                    },
+                    "isbn": {
+                      "required": true,
+                      "type": {
+                        "$ref": "fastraml://id#/declarations/types/Isbn"
+                      }
+                    },
+                    "price": {
+                      "required": true,
+                      "type": {
+                        "$ref": "fastraml://id#/declarations/types/Money"
+                      }
+                    },
+                    "tags": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/tags/schema",
+                        "name": "tags?",
+                        "type": "array",
+                        "type_expr": "array",
+                        "items": {
+                          "id": "fastraml://id#/declarations/types/Book/property/tags/schema/items",
+                          "name": "items",
+                          "type": "string",
+                          "example": {
+                            "value": "science-fiction"
+                          },
+                          "type_expr": "string",
+                          "max_length": 24,
+                          "min_length": 2,
+                          "pattern": "^[a-z][a-z0-9-]*$"
+                        },
+                        "max_items": 10,
+                        "unique_items": true
+                      }
+                    },
+                    "related": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/related/schema",
+                        "name": "related?",
+                        "type": "array",
+                        "type_expr": "Book[]",
+                        "items": {
+                          "id": "fastraml://id#/declarations/types/Book/property/related/schema/items",
+                          "name": "Book",
+                          "type": "recursive",
+                          "description": "One book in the catalogue.\n\nA book is identified by its `isbn`, which is the *thirteen*-digit form\nwith no separators. Two fields are worth knowing about:\n\n* `price` is the current price; `priceHistory` is every price it has\n  had, oldest first.\n* `related` is a list of other books, and may point back at this one.\n",
+                          "custom_facets": {
+                            "stewardedBy": "catalogue-team",
+                            "reviewedEvery": 90,
+                            "sources": [
+                              "publisher-feed",
+                              "isbndb"
+                            ],
+                            "provenance": {
+                              "team": "catalogue",
+                              "since": "2024-01-01"
+                            }
+                          },
+                          "annotations": [
+                            {
+                              "name": "deprecated",
+                              "type": "fastraml://id#/declarations/annotations/deprecated",
+                              "value": "use Publication instead"
+                            }
+                          ],
+                          "head": {
+                            "$ref": "fastraml://id#/declarations/types/Book"
+                          }
+                        }
+                      }
+                    },
+                    "reviews": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/reviews/schema",
+                        "name": "reviews?",
+                        "type": "array",
+                        "description": "Up to twenty reviews, most recent first.",
+                        "type_expr": "Review[]",
+                        "items": {
+                          "$ref": "fastraml://id#/declarations/types/Review"
+                        },
+                        "max_items": 20
+                      }
+                    },
+                    "priceHistory": {
+                      "required": false,
+                      "type": {
+                        "$ref": "fastraml://id#/declarations/types/Prices"
+                      }
+                    },
+                    "metadata": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Book/property/metadata/schema",
+                        "name": "metadata?",
+                        "type": "object",
+                        "type_expr": "object",
+                        "pattern_properties": {
+                          "^x-": {
+                            "pattern": "^x-",
+                            "type": {
+                              "id": "fastraml://id#/declarations/types/Book/property/metadata/schema/patternProperty/%5Ex-/schema",
+                              "name": "/^x-/",
+                              "type": "string",
+                              "type_expr": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "id": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entity/property/id/schema",
+                        "name": "id",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "createdAt": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entity/property/createdAt/schema",
+                        "name": "createdAt",
+                        "type": "datetime",
+                        "type_expr": "datetime"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "description": "Returns one book by its ISBN-13.",
+          "display_name": "Retrieve a book",
+          "secured_by": [
+            {
+              "name": "oauth2",
+              "is_null": false,
+              "bound": true,
+              "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+              "scopes": [
+                "read:books"
+              ]
+            },
+            {
+              "name": "null",
+              "is_null": true,
+              "bound": true,
+              "declaration": null,
+              "scopes": null
+            }
+          ]
+        },
+        "delete": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/delete",
+          "responses": {
+            "204": {}
+          },
+          "description": "Removes a book from the catalogue. Idempotent.",
+          "display_name": "Delete a book",
+          "secured_by": [
+            {
+              "name": "oauth2",
+              "is_null": false,
+              "bound": true,
+              "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+              "scopes": [
+                "write:books"
+              ]
+            }
+          ]
+        }
+      },
+      "secured_by": [
+        {
+          "name": "oauth2",
+          "is_null": false,
+          "bound": true,
+          "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+          "scopes": null
+        }
+      ],
+      "uri_parameters": {
+        "isbn": {
+          "binding": "uri",
+          "required": true,
+          "type": {
+            "id": "fastraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/parameter/path/isbn/schema",
+            "name": "isbn",
+            "type": "string",
+            "type_expr": "string",
+            "pattern": "^\\d{13}$"
+          }
+        }
+      }
+    },
+    "/shelves": {
+      "id": "fastraml://id#/web-api/endpoint/%2Fshelves",
+      "operations": {
+        "post": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fshelves/supportedOperation/post",
+          "responses": {
+            "201": {
+              "description": "Created",
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Fshelves/supportedOperation/post/returns/201/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "array",
+                  "description": "An array whose items are declared inline rather than by name.",
+                  "inherits": [
+                    {
+                      "$ref": "fastraml://id#/declarations/types/Shelf"
+                    }
+                  ],
+                  "type_expr": "Shelf",
+                  "items": {
+                    "id": "fastraml://id#/declarations/types/Shelf/items",
+                    "name": "items",
+                    "type": "object",
+                    "display_name": "Shelf slot",
+                    "type_expr": "object",
+                    "properties": {
+                      "position": {
+                        "required": true,
+                        "type": {
+                          "id": "fastraml://id#/declarations/types/Shelf/items/property/position/schema",
+                          "name": "position",
+                          "type": "integer",
+                          "type_expr": "integer"
+                        }
+                      },
+                      "book": {
+                        "required": true,
+                        "type": {
+                          "$ref": "fastraml://id#/declarations/types/Book"
+                        }
+                      },
+                      "note": {
+                        "required": false,
+                        "type": {
+                          "id": "fastraml://id#/declarations/types/Shelf/items/property/note/schema",
+                          "name": "note?",
+                          "type": "string",
+                          "type_expr": "string"
+                        }
+                      },
+                      "locator": {
+                        "required": false,
+                        "type": {
+                          "id": "fastraml://id#/declarations/types/Shelf/items/property/locator/schema",
+                          "name": "locator?",
+                          "type": "string",
+                          "description": "Where the physical copy sits, as one string.",
+                          "example": {
+                            "value": "GB-SHELF-12.3-LEFT/reserve"
+                          },
+                          "type_expr": "string",
+                          "pattern": "^(?:[A-Z]{2}-)?(?:AISLE|BAY|SHELF)-[0-9]{1,3}(?:\\.[0-9]{1,2})?(?:-(?:LEFT|RIGHT|CENTRE))?(?:/[A-Za-z0-9_]{1,16})*$"
+                        }
+                      }
+                    }
+                  },
+                  "min_items": 1
+                }
+              }
+            },
+            "422": {
+              "description": "The payload matched neither member of the union."
+            },
+            "500": {
+              "description": "Something went wrong on our side."
+            }
+          },
+          "description": "Accepts either a list of books or a single review.",
+          "display_name": "Create a shelf",
+          "secured_by": [
+            {
+              "name": "oauth2",
+              "is_null": false,
+              "bound": true,
+              "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+              "scopes": null
+            }
+          ],
+          "bodies": {
+            "application/json": {
+              "id": "fastraml://id#/web-api/endpoint/%2Fshelves/supportedOperation/post/request/payload/application%2Fjson/schema",
+              "name": "application/json",
+              "type": "union",
+              "description": "A union whose members are an array and an object, to show both.",
+              "inherits": [
+                {
+                  "$ref": "fastraml://id#/declarations/types/Payload"
+                }
+              ],
+              "type_expr": "Payload",
+              "any_of": [
+                {
+                  "id": "fastraml://id#/declarations/types/Payload/anyOf/0",
+                  "name": null,
+                  "type": "array",
+                  "type_expr": "Book[] | Review",
+                  "items": {
+                    "$ref": "fastraml://id#/declarations/types/Book"
+                  }
+                },
+                {
+                  "$ref": "fastraml://id#/declarations/types/Review"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "secured_by": [
+        {
+          "name": "oauth2",
+          "is_null": false,
+          "bound": true,
+          "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+          "scopes": null
+        }
+      ],
+      "display_name": "Shelves",
+      "description": "Physical arrangement of the catalogue."
+    },
+    "/deliveries": {
+      "id": "fastraml://id#/web-api/endpoint/%2Fdeliveries",
+      "operations": {
+        "get": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fdeliveries/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Fdeliveries/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "array",
+                  "type_expr": "Delivery[]",
+                  "items": {
+                    "$ref": "fastraml://id#/declarations/types/Delivery"
+                  }
+                }
+              }
+            }
+          },
+          "description": "Every delivery, newest first.",
+          "display_name": "List deliveries",
+          "secured_by": [
+            {
+              "name": "machineToken",
+              "is_null": false,
+              "bound": true,
+              "declaration": "fastraml://id#/declarations/securitySchemes/machineToken",
+              "scopes": [
+                "read:deliveries"
+              ]
+            },
+            {
+              "name": "oauth2",
+              "is_null": false,
+              "bound": true,
+              "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+              "scopes": [
+                "read:books"
+              ]
+            }
+          ],
+          "annotations": [
+            {
+              "name": "common.internal",
+              "type": "fastraml://id/sample%2Fcommon.raml#/declarations/annotations/internal",
+              "value": null
+            }
+          ],
+          "query_string": {
+            "$ref": "fastraml://id#/declarations/types/DeliveryQuery"
+          }
+        }
+      },
+      "secured_by": [
+        {
+          "name": "oauth2",
+          "is_null": false,
+          "bound": true,
+          "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+          "scopes": null
+        }
+      ],
+      "display_name": "Deliveries",
+      "description": "Where the store has sent things."
+    },
+    "/publications": {
+      "id": "fastraml://id#/web-api/endpoint/%2Fpublications",
+      "operations": {
+        "get": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fpublications/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Fpublications/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "array",
+                  "type_expr": "Publication[]",
+                  "items": {
+                    "$ref": "fastraml://id#/declarations/types/Publication"
+                  }
+                }
+              }
+            }
+          },
+          "description": "Every publication, of whatever kind.",
+          "display_name": "List publications",
+          "protocols": [
+            "HTTPS"
+          ],
+          "secured_by": [
+            {
+              "name": "oauth2",
+              "is_null": false,
+              "bound": true,
+              "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+              "scopes": null
+            }
+          ]
+        }
+      },
+      "secured_by": [
+        {
+          "name": "oauth2",
+          "is_null": false,
+          "bound": true,
+          "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+          "scopes": null
+        }
+      ],
+      "display_name": "Publications",
+      "description": "Books, magazines and pamphlets, discriminated by `kind`."
+    },
+    "/search": {
+      "id": "fastraml://id#/web-api/endpoint/%2Fsearch",
+      "operations": {
+        "get": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fsearch/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Fsearch/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "array",
+                  "type_expr": "Book[]",
+                  "items": {
+                    "$ref": "fastraml://id#/declarations/types/Book"
+                  }
+                }
+              }
+            }
+          },
+          "description": "Full-text search across titles and authors.",
+          "display_name": "Search the catalogue",
+          "secured_by": [
+            {
+              "name": "oauth2",
+              "is_null": false,
+              "bound": true,
+              "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+              "scopes": null
+            }
+          ],
+          "annotations": [
+            {
+              "name": "rateLimit",
+              "type": "fastraml://id#/declarations/annotations/rateLimit",
+              "value": {
+                "perMinute": 60
+              }
+            }
+          ],
+          "query_parameters": {
+            "q": {
+              "binding": "query",
+              "required": true,
+              "type": {
+                "id": "fastraml://id#/web-api/endpoint/%2Fsearch/supportedOperation/get/request/parameter/query/q/schema",
+                "name": "q",
+                "type": "union",
+                "display_name": "Query",
+                "description": "The words to search for. Quoted phrases are matched whole.",
+                "required": true,
+                "example": {
+                  "value": "\"the dispossessed\" le guin"
+                },
+                "inherits": [
+                  {
+                    "$ref": "fastraml://id#/declarations/types/Search"
+                  }
+                ],
+                "type_expr": "Search",
+                "any_of": [
+                  {
+                    "id": "fastraml://id#/declarations/types/Search/anyOf/0",
+                    "name": null,
+                    "type": "string",
+                    "type_expr": "string | number"
+                  },
+                  {
+                    "id": "fastraml://id#/declarations/types/Search/anyOf/1",
+                    "name": null,
+                    "type": "number",
+                    "type_expr": "string | number"
+                  }
+                ]
+              }
+            },
+            "sort": {
+              "binding": "query",
+              "required": false,
+              "type": {
+                "id": "fastraml://id#/web-api/endpoint/%2Fsearch/supportedOperation/get/request/parameter/query/sort/schema",
+                "name": "sort?",
+                "type": "string",
+                "description": "A field name, optionally prefixed with `-` to reverse it.",
+                "default": "title",
+                "example": {
+                  "value": "-price"
+                },
+                "type_expr": "string",
+                "pattern": "^-?(title|isbn|price)$"
+              }
+            }
+          }
+        }
+      },
+      "secured_by": [
+        {
+          "name": "oauth2",
+          "is_null": false,
+          "bound": true,
+          "declaration": "fastraml://id#/declarations/securitySchemes/oauth2",
+          "scopes": null
+        }
+      ],
+      "display_name": "Search"
+    }
+  },
+  "annotations": [
+    {
+      "name": "deprecated",
+      "target": "TypeDeclaration",
+      "type": "fastraml://id#/declarations/annotations/deprecated",
+      "value": "use Publication instead"
+    },
+    {
+      "name": "deprecated",
+      "target": "TypeDeclaration",
+      "type": "fastraml://id#/declarations/annotations/deprecated",
+      "value": "the account service is authoritative"
+    },
+    {
+      "name": "deprecated",
+      "target": "Method",
+      "type": "fastraml://id#/declarations/annotations/deprecated",
+      "value": "use PUT"
+    },
+    {
+      "name": "common.internal",
+      "target": "Method",
+      "type": "fastraml://id/sample%2Fcommon.raml#/declarations/annotations/internal",
+      "value": null
+    },
+    {
+      "name": "rateLimit",
+      "target": "Method",
+      "type": "fastraml://id#/declarations/annotations/rateLimit",
+      "value": {
+        "perMinute": 60
+      }
+    }
+  ]
+}

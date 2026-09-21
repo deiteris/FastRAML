@@ -21,6 +21,7 @@ import { highlightCode } from './components/highlighting';
 import { renderMarkdown } from './components/markdown';
 import {
   Index,
+  Tree,
   camel,
   declarations,
   facetsOf,
@@ -35,7 +36,7 @@ import { parse, stringify } from './numbers';
 
 const source = process.argv[2] ?? 'public/api.json';
 const document = parse(readFileSync(source, 'utf-8')) as Document;
-const index = new Index(document);
+const index = new Index(Tree.of(document));
 
 /**
  * The addresses of the security schemes, which the checks below are not about.

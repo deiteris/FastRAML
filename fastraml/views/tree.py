@@ -22,7 +22,10 @@ document shifts every position after it, and a view that churned on every edit
 would be read as noise (docs/14 § 2).
 
 Requires `ParseOptions(unwrap=True)`: this is the effective document, so the
-addresses and the contents are both of the unwrapped model.
+addresses and the contents are both of the unwrapped model. P9 has therefore
+replaced every back-edge with a `RecursiveShape` before this module runs, and
+`_Projector.recursion()` is a backstop for the case that does not arise
+(docs/16 § 11.11c).
 """
 
 from __future__ import annotations
@@ -269,13 +272,21 @@ class _Projector:
         return self.addresses.of.get(entity_id)
 
     def recursion(self, base: BaseShape) -> Json:
-        """The marker that says the structure repeats from here.
+        """The marker for a cycle P9 did not already mark (docs/16 § 11.11c).
 
-        Spelled as P9's `RecursiveShape` is, because it means the same thing.
-        Keeping it in `type` rather than a key of its own is deliberate: a
-        consumer that switches on `type` and has not handled `recursive` gets an
-        unrecognised value — a loud failure — where a separate key would be
-        silently ignored and hang.
+        Not the spelling that reaches the wire. The tree requires
+        `unwrap=True`, so every back-edge is already a `RecursiveShape`; the
+        projector reaches it for the first time and sends it down the generic
+        `shape()` path, which writes seven keys rather than these three.
+
+        This fires only for a cycle reaching `shape()` past neither a
+        declaration nor a marker. Nothing in the sample, the TCK corpus,
+        `unwrap=False`, or a self-referential JSON Schema produces one; without
+        it, such a cycle raises `RecursionError`.
+
+        `type` carries the discriminator rather than a key of its own, so a
+        consumer switching on `type` fails loudly on an unhandled value instead
+        of ignoring a key and hanging.
         """
         return {'type': 'recursive', 'name': base.name, 'head': {'$ref': self.at(base.id)}}
 

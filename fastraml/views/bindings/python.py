@@ -15,11 +15,11 @@ verbatim: the imports, the aliases, `Ref` and the fixed records. Everything from
 first; edit this module for the second.
 
 This module performs no source analysis. `schema.py` does that. What is left
-here is the same two jobs the TypeScript backend has: map the schema's
-annotations and wire forms into a type system, and declare the type of each
-*structural* key, which no source analysis can infer from `out['operations']`.
-Key sets come from the schema, so a key added to the projection and not declared
-here fails generation by name.
+here is one job: spell each of the schema's structural kinds in this type
+system. What every key *holds* is declared once in `schema.py`, because three
+languages write `dict[str, Parameter]` three ways and agree entirely on what it
+is; a key added to the projection and not declared there fails generation by
+name, in all three backends at once.
 
 What TypeScript spells for free and Python does not:
 
@@ -38,196 +38,55 @@ What TypeScript spells for free and Python does not:
 from __future__ import annotations
 
 import argparse
+import importlib
 import pathlib
 import re
 import sys
+import tempfile
+from functools import cache
 from typing import TYPE_CHECKING, Final
 
-from .schema import ContractSchema, Emitted, Facet, contract_schema
+from .schema import PRODUCES, Container, ContractSchema, Holds, Structural, contract_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
+    from types import ModuleType
 
-__all__ = ['python']
+__all__ = ['python', 'python_conform', 'python_runtime', 'vendored']
 
-#: How neutral Python annotations are represented on the wire. These are the
-#: *model's* annotations, not the wire's: a `ScalarFacet[int]` arrives as a bare
-#: number, and a `Fraction` as an exact decimal string (§ 11.4a). Wire forms that
-#: override an annotation are selected from the schema before this is consulted.
-_PYTHON_OF: Final = {
-    'ScalarFacet[int] | None': 'int',
-    'ScalarFacet[str] | None': 'str',
-    'ScalarFacet[bool] | None': 'bool',
-    # A `Fraction` is stringified rather than divided: a facet's value is built
-    # from the raw scalar text, and `float` would lose it (CLAUDE.md).
-    'ScalarFacet[Fraction] | None': 'ExactDecimal',
-    # The pattern's source text, not a compiled object.
-    'ScalarFacet[re.Pattern[str]] | None': 'str',
-    'list[ScalarFacet[str]] | None': 'list[str]',
-    'BaseShape | None': 'ShapeNode',
-    'list[BaseShape] | None': 'list[ShapeNode]',
-    'dict[str, Property] | None': 'dict[str, Property]',
-    'dict[str, PatternProperty] | None': 'dict[str, PatternProperty]',
-    # `discriminator_value` is user data, so it is whatever the author wrote.
-    'DataNode | None': 'Json',
+#: How each structural kind is written in Python. Eight rows, where the table
+#: they replaced had one row per key -- the key set and what each key holds are
+#: facts about the contract, and `schema.py` states them once for all three
+#: languages. What is left here is the spelling, which is all a backend is for.
+_LEAF: Final[dict[Holds, str]] = {
+    Holds.SCALAR: '',  # the domain names itself: `str`, `Address`, `ExactDecimal`
+    Holds.VOCABULARY: '',
+    Holds.RECORD: '',
+    Holds.JSON: 'Json',
+    Holds.SHAPE_NODE: 'ShapeNode',
+    Holds.SHAPE: 'Shape',
+    Holds.REF: 'Ref',
 }
+
+
+def _spelling(structure: Structural) -> str:
+    """One structural kind as a Python annotation."""
+    if structure.alias:
+        return f'{structure.alias} | None' if structure.nullable else structure.alias
+    if structure.holds is Holds.CONSTANT:
+        return f'Literal[{structure.constant!r}]'
+    leaf = _LEAF[structure.holds] or structure.of
+    key = structure.key or 'str'
+    if structure.container is Container.LIST:
+        leaf = f'list[{leaf}]'
+    elif structure.container is Container.MAP:
+        leaf = f'dict[{key}, {leaf}]'
+    elif structure.container is Container.MAP_OF_MAP:
+        leaf = f'dict[SourceFile, dict[{key}, {leaf}]]'
+    return f'{leaf} | None' if structure.nullable else leaf
 
 
 # -- the hand-declared half ----------------------------------------------------
-
-#: Which TypedDict each `_Projector` method produces. The generator checks that
-#: every method emitting literal keys is named here, so a new one cannot be
-#: forgotten.
-_PRODUCES: Final = {
-    'model': 'Document',
-    'fragment': 'EntryPoint',
-    'scheme': 'SecurityScheme',
-    'described': 'DescribedBy',
-    'endpoint': 'Endpoint',
-    'operation': 'Operation',
-    'request': 'Operation',
-    'response': 'Response',
-    'schemes': 'SecuredBy',
-    'applied': 'Applied',
-    'annotation': 'DocumentAnnotation',
-    'example': 'Example',
-}
-
-#: The type of every structural key. Only the types: which keys exist is read
-#: from `tree.py`, and generation fails on a key absent from here.
-_STRUCTURAL: Final[dict[str, dict[str, str]]] = {
-    'Document': {
-        'format': "Literal['fastraml-tree']",
-        'format_version': 'Literal[1]',
-        'view': "Literal['effective']",
-        'base': 'Address',
-        'entry_point': 'EntryPoint | None',
-        'types': 'ShapeDeclarationsByFile',
-        'annotation_types': 'ShapeDeclarationsByFile',
-        'security_schemes': 'SecuritySchemeDeclarationsByFile',
-        'endpoints': 'EndpointsByPath',
-        'annotations': 'list[DocumentAnnotation]',
-    },
-    'EntryPoint': {
-        'kind': 'FragmentKind',
-        'title': 'str',
-        'version': 'str',
-        'base_uri': 'str',
-        'media_types': 'list[str]',
-        'protocols': 'list[Protocol]',
-        'usage': 'str',
-        'description': 'str',
-        'base_uri_parameters': 'dict[str, Parameter]',
-        'documentation': 'list[DocumentationItem]',
-        #: `securedBy:` at the root. Every endpoint declaring none carries the
-        #: same list, so this says the API declared a *default*, not what any
-        #: one endpoint requires.
-        'secured_by': 'list[SecuredBy]',
-        'annotations': 'list[Applied]',
-    },
-    'SecurityScheme': {
-        'id': 'Address | None',
-        'name': 'str',
-        'type': 'SecuritySchemeType',
-        'display_name': 'str',
-        'description': 'str',
-        'settings': 'SecuritySettings',
-        'described_by': 'DescribedBy',
-        'annotations': 'list[Applied]',
-    },
-    'DescribedBy': {
-        'headers': 'dict[str, Parameter]',
-        'query_parameters': 'dict[str, Parameter]',
-        'query_string': 'ShapeNode | None',
-        'responses': 'ResponsesByStatus',
-    },
-    'Endpoint': {
-        'id': 'Address | None',
-        'operations': 'OperationsByMethod',
-        'secured_by': 'list[SecuredBy]',
-        'display_name': 'str',
-        'description': 'str',
-        'uri_parameters': 'dict[str, Parameter]',
-        'annotations': 'list[Applied]',
-    },
-    'Operation': {
-        'id': 'Address | None',
-        'responses': 'ResponsesByStatus',
-        'description': 'str',
-        'display_name': 'str',
-        'protocols': 'list[Protocol]',
-        'secured_by': 'list[SecuredBy]',
-        'annotations': 'list[Applied]',
-        'headers': 'dict[str, Parameter]',
-        'query_parameters': 'dict[str, Parameter]',
-        'query_string': 'ShapeNode | None',
-        'bodies': 'BodiesByMediaType',
-    },
-    'Response': {
-        'description': 'str',
-        'headers': 'dict[str, Parameter]',
-        'bodies': 'BodiesByMediaType',
-        'annotations': 'list[Applied]',
-    },
-    'SecuredBy': {
-        'name': 'str',
-        'is_null': 'bool',
-        'bound': 'bool',
-        'declaration': 'Address | None',
-        'scopes': 'list[str] | None',
-    },
-    'Applied': {
-        'name': 'str',
-        'type': 'Address | None',
-        'value': 'Json',
-    },
-    'DocumentAnnotation': {
-        'name': 'str',
-        'target': 'AnnotationTarget',
-        'type': 'Address | None',
-        'value': 'Json',
-    },
-    'Example': {
-        'value': 'Json',
-        'display_name': 'str',
-        'description': 'str',
-        'strict': 'bool',
-        'annotations': 'list[Applied]',
-    },
-}
-
-#: The base fields `shape()` writes itself, before a kind's facets are inlined.
-_SHAPE_FIELDS: Final = {
-    'id': 'Address | None',
-    'name': 'str | None',
-    'type': 'ShapeType',
-    'display_name': 'str',
-    'description': 'str',
-    'required': 'bool',
-    'default': 'Json',
-    'example': 'Example',
-    'examples': 'dict[str, Example]',
-    'enum': 'list[Json]',
-    'xml': 'Json',
-    'allowed_targets': 'list[AnnotationTarget]',
-    'inherits': 'list[ShapeNode]',
-    #: Custom facet *values* -- what this type supplies. `declared_facets` is
-    #: the other half: what a subtype must supply (docs/10 § 4).
-    'custom_facets': 'dict[str, Json]',
-    'declared_facets': 'dict[str, Property]',
-    'annotations': 'list[Applied]',
-    'type_expr': 'str',
-    #: Both only on a `json` shape, and both about the same schema: the schema
-    #: itself with every reference out of it resolved, and the nearest RAML
-    #: shape to it (docs/10 § 6.3).
-    'json_schema': 'Json',
-    'projection': 'Shape',
-    #: A recursion marker. A *shape*, not a record of its own -- see the
-    #: TypeScript backend's note and docs/16 § 11.11c. `head` is hand-declared
-    #: because `shape()` writes it through a loop over `_BACK_POINTERS`, so no
-    #: AST read can see the key.
-    'head': 'Ref',
-}
 
 #: The hand-written half of the binding. Nothing in it varies with the schema,
 #: so it is a file rather than a Python string: an editor reads it, and a syntax
@@ -240,6 +99,22 @@ _SHAPE_FIELDS: Final = {
 #: failure this whole subsystem exists to prevent. As a stub it cannot be
 #: imported at all.
 _STATIC: Final = pathlib.Path(__file__).parent / 'static' / 'tree.pyi'
+
+#: The runtime half: the metamodel's three constructs, and the walk over the
+#: table `tree.py` carries. Copied verbatim, holding no generated character --
+#: it reads `CHILDREN` from the module beside it, so the two are vendored
+#: together and a stale pair fails to import rather than reading a short tree.
+#:
+#: A real `.py` and not a stub, because this half *is* runtime. Importing it
+#: where it lives fails on `from .tree import CHILDREN`, since `static/` holds
+#: only the `.pyi`; the half-contract problem the stub closes is closed here by
+#: the import itself.
+_RUNTIME: Final = pathlib.Path(__file__).parent / 'static' / 'walk.py'
+
+#: The conformance driver: one set of questions, answered in every language
+#: (`conformance.py`). It holds no expectations, so nothing in it varies
+#: with the schema and it is copied verbatim.
+_CONFORM: Final = pathlib.Path(__file__).parent / 'static' / 'conform.py'
 
 #: The generated file is checked in and gate-compared as text, so it has to be
 #: what `ruff format` would leave. Emitting it already wrapped is cheaper than
@@ -269,12 +144,45 @@ def python() -> str:
     blocks.append(_vocabularies(schema))
     behind.add(vocabulary.name for vocabulary in schema.vocabularies)
 
-    for block in (*_shape(schema, behind), *_typed_dicts(schema.projector, behind)):
+    for block in (*_shape(schema, behind), *_typed_dicts(schema, behind)):
         blocks.append(block)
         behind.add(_declared_in(block))
 
+    blocks.append(_envelope(schema))
+    blocks.append(_children(schema))
     blocks.append(_exports(schema))
     return '\n\n\n'.join(blocks) + '\n'
+
+
+def python_conform() -> str:
+    """The conformance driver, verbatim. It holds no expectations."""
+    return _CONFORM.read_text(encoding='utf-8')
+
+
+def python_runtime() -> str:
+    """The runtime half, verbatim. Nothing in it varies with the schema."""
+    return _RUNTIME.read_text(encoding='utf-8')
+
+
+@cache
+def vendored() -> ModuleType:
+    """The two halves, imported the way a consumer vendors them: side by side.
+
+    Not `raml_codegen.walk` and not a private path through this package: the
+    corpus and the tests measure the artifact that is actually shipped, which is
+    these two files in one package, and nothing else.
+    """
+    root = pathlib.Path(tempfile.mkdtemp(prefix='fastraml-tree-'))
+    package = root / 'fastraml_tree_vendored'
+    package.mkdir()
+    (package / '__init__.py').write_text('', encoding='utf-8')
+    (package / 'tree.py').write_text(python(), encoding='utf-8')
+    (package / 'walk.py').write_text(python_runtime(), encoding='utf-8')
+    sys.path.insert(0, str(root))
+    try:
+        return importlib.import_module(f'{package.name}.walk')
+    finally:
+        sys.path.remove(str(root))
 
 
 def _static() -> str:
@@ -331,35 +239,28 @@ def _literal_alias(name: str, values: tuple[str, ...]) -> str:
     return f'{name}: TypeAlias = Literal[\n' + '\n'.join(f'    {value!r},' for value in values) + '\n]'
 
 
-def _typed_dicts(emitted: dict[str, Emitted], behind: _Behind) -> list[str]:
+def _typed_dicts(schema: ContractSchema, behind: _Behind) -> list[str]:
     """One TypedDict per structural producer, keys checked against the source.
 
     Every one of them is emitted against the same `behind`: they reference each
     other, so declaring the earlier ones first would only move which are quoted.
     """
     written: dict[str, list[str]] = {}
-    for method, name in _PRODUCES.items():
-        found = emitted.get(method)
+    for method, name in PRODUCES.items():
+        found = schema.projector.get(method)
         if found is None:
-            raise LookupError(f'_PRODUCES names `{method}`, which is not a _Projector method')
-        declared = _STRUCTURAL.get(name)
-        if declared is None:
-            raise LookupError(f'no types declared for `{name}` (see _STRUCTURAL)')
+            raise LookupError(f'PRODUCES names `{method}`, which is not a _Projector method')
         lines = written.setdefault(name, [])
         for key in found.required:
-            lines.append(_field(name, declared, key, behind, optional=False))
+            lines.append(_field(schema, name, key, behind, optional=False))
         for key in found.optional:
-            lines.append(_field(name, declared, key, behind, optional=True))
+            lines.append(_field(schema, name, key, behind, optional=True))
 
     return [f'class {name}(TypedDict):\n' + '\n'.join(dict.fromkeys(lines)) for name, lines in written.items()]
 
 
-def _field(owner: str, declared: dict[str, str], name: str, behind: _Behind, *, optional: bool) -> str:
-    spelling = declared.get(name)
-    if spelling is None:
-        raise LookupError(
-            f'{owner}.{name}: emitted by tree.py and not declared in _STRUCTURAL. Add its Python type there.'
-        )
+def _field(schema: ContractSchema, owner: str, name: str, behind: _Behind, *, optional: bool) -> str:
+    spelling = _spelling(schema.structure_of(owner, name))
     return f'    {name}: {_annotation(spelling, behind, optional=optional)}'
 
 
@@ -383,23 +284,19 @@ def _shape(schema: ContractSchema, behind: _Behind) -> list[str]:
     # tree and never reaches this file, silently.
     delegated = schema.delegated_fields(found)
     known = set(found.required) | set(found.optional) | set(delegated)
-    undeclared = sorted(known - set(_SHAPE_FIELDS))
+    undeclared = sorted(known - set(schema.structural['ShapeBase']))
     if undeclared:
-        raise LookupError(f'shape() emits {undeclared}, not declared in _SHAPE_FIELDS')
+        raise LookupError(f"shape() emits {undeclared}, not declared under 'ShapeBase' in schema.py")
 
     # `type` is left off the base and declared on each variant: a TypedDict
     # subclass may not re-declare a key, so this is the only way the
     # discriminator narrows.
-    base = [
-        f'    {name}: {_annotation(_SHAPE_FIELDS[name], behind, optional=False)}'
-        for name in found.required
-        if name != 'type'
-    ]
+    base = [_field(schema, 'ShapeBase', name, behind, optional=False) for name in found.required if name != 'type']
     # A delegate's keys are optional whatever it says of them: whether it runs
     # at all is the caller's condition, not the delegate's. JSON-schema fields
     # are the exception: they belong only to JsonShape below.
     base += [
-        f'    {name}: {_annotation(_SHAPE_FIELDS[name], behind, optional=True)}'
+        _field(schema, 'ShapeBase', name, behind, optional=True)
         for name in found.optional
         if name not in {'json_schema', 'projection'}
     ]
@@ -415,10 +312,11 @@ def _shape(schema: ContractSchema, behind: _Behind) -> list[str]:
             note = ''
             if facet.wire_form == 'exact_decimal':
                 note = "  # exact decimal, e.g. '0.01' or '1.7976931348623157E+308'"
-            lines.append(f'    {facet.name}: {_annotation(_facet_type(model, facet), behind, optional=True)}{note}')
+            spelling = _spelling(schema.facet_structure(facet))
+            lines.append(f'    {facet.name}: {_annotation(spelling, behind, optional=True)}{note}')
         if model == 'JsonShape':
             lines.extend(
-                f'    {name}: {_annotation(_SHAPE_FIELDS[name], behind, optional=True)}'
+                _field(schema, 'ShapeBase', name, behind, optional=True)
                 for name in delegated
                 if name in {'json_schema', 'projection'}
             )
@@ -438,10 +336,10 @@ def _shape(schema: ContractSchema, behind: _Behind) -> list[str]:
         '\n'
         f'{"\n".join(base)}'
     )
-    return [head, *variants, _union_alias('Shape', tuple(by_model)), _recursion()]
+    return [head, *variants, _union_alias('Shape', tuple(by_model)), _recursion(schema)]
 
 
-def _recursion() -> str:
+def _recursion(schema: ContractSchema) -> str:
     """The recursion marker, as a shape rather than a record of its own.
 
     P9 builds a `RecursiveShape` and `shape()` projects it down the generic
@@ -449,11 +347,14 @@ def _recursion() -> str:
     type it stands for had. It is not a member of `Shape`: `Shape` is what a
     declaration and a `projection` hold, and a marker is neither.
 
-    Hand-declared because neither half is derivable. `_Projector.recursion()`
-    emits the right keys but never runs (docs/16 section 11.11c), and `shape()`
-    writes `head` through a loop over `_BACK_POINTERS`, which no AST read
-    resolves. `name` is not re-declared: a TypedDict subclass may not, and
-    `ShapeBase` already carries it.
+    Hand-declared. `schema.py` derives records by reading a `_Projector`
+    method's AST, and `_Projector.recursion()` is a literal three-key dict that
+    never runs, so generating from it declares three keys where seven ship
+    (docs/16 section 11.11c). `head` is hand-declared for a second reason:
+    `shape()` writes it through a loop over `_BACK_POINTERS`, which no AST read
+    resolves.
+    `name` is not re-declared: a TypedDict subclass may not, and `ShapeBase`
+    already carries it.
     """
     return (
         'class Recursion(ShapeBase):\n'
@@ -464,7 +365,7 @@ def _recursion() -> str:
         '    """\n'
         '\n'
         "    type: Literal['recursive']\n"
-        f'    head: {_SHAPE_FIELDS["head"]}'
+        f'    head: {_spelling(schema.structure_of("ShapeBase", "head"))}'
     )
 
 
@@ -476,17 +377,58 @@ def _union_alias(name: str, members: tuple[str, ...]) -> str:
     return f'{name}: TypeAlias = (\n{body}\n)'
 
 
-def _facet_type(model: str, facet: Facet) -> str:
-    if facet.wire_form == 'exact_decimal':
-        return 'ExactDecimal'
-    if facet.wire_form == 'reference':
-        return 'Ref'
-    spelling = _PYTHON_OF.get(facet.annotation)
-    if spelling is None:
-        raise LookupError(
-            f'{model}.{facet.name}: no Python spelling declared for {facet.annotation!r} (see _PYTHON_OF)'
-        )
-    return spelling
+def _envelope(schema: ContractSchema) -> str:
+    """The three constants a document always carries, as values.
+
+    Declared as `Literal` types above, which a consumer cannot compare against.
+    The envelope exists so a reader can refuse a representation it does not
+    know (docs/16 § 11.9), and refusing needs the value.
+    """
+    names = {'format': 'FORMAT', 'format_version': 'FORMAT_VERSION', 'view': 'VIEW'}
+    return '\n'.join(
+        f'{name}: Final = {schema.structure_of("Document", key).constant!r}' for key, name in names.items()
+    )
+
+
+def _children(schema: ContractSchema) -> str:
+    """Where shapes sit under every record, as data a walk reads.
+
+    This is the table a consumer writes by hand today, and the one place a
+    hand-written one goes quietly stale: a kind that grows a shape-bearing facet
+    arrives in the declarations above and is silently not descended. Keys that
+    cannot reach a shape are left out, so the table says only what a walk needs.
+    """
+    bearing = schema.shape_bearing()
+    rows: list[str] = []
+    for record, keys in bearing.items():
+        entries = [
+            f'({key!r}, {structure.container.value!r}, {structure.holds.value!r}, {structure.of!r})'
+            for key, structure in keys.items()
+        ]
+        # What `ruff format` would leave: collapsed while it fits, exploded
+        # otherwise. The file is checked in and gate-compared as text.
+        # A one-element tuple keeps its comma because the syntax needs it; a
+        # longer one must not have one, or the magic trailing comma explodes the
+        # line that was about to fit.
+        inner = f'{entries[0]},' if len(entries) == 1 else ', '.join(entries)
+        single = f'    {record!r}: ({inner}),'
+        if len(single) <= _LINE_LENGTH:
+            rows.append(f'{single}\n')
+        else:
+            body = ''.join(f'        {entry},\n' for entry in entries)
+            rows.append(f'    {record!r}: (\n{body}    ),\n')
+    kinds = ''.join(f'    {kind.name!r}: {kind.model!r},\n' for kind in schema.shape_kinds)
+    return (
+        '#: Where a shape sits under each record: the key, how many, what the\n'
+        '#: leaf is, and the record named where the leaf is one. Generated, so a\n'
+        '#: facet that starts holding a shape starts being walked.\n'
+        f'CHILDREN: Final[dict[str, tuple[tuple[str, str, str, str], ...]]] = {{\n{"".join(rows)}}}\n'
+        '\n'
+        '#: The `type` discriminator to the record whose keys describe it. A `type`\n'
+        '#: absent from here is a recursion marker or a document this file predates,\n'
+        '#: and either way a walk stops.\n'
+        f'KINDS: Final[dict[str, str]] = {{\n{kinds}}}'
+    )
 
 
 def _exports(schema: ContractSchema) -> str:
@@ -523,7 +465,7 @@ def _exports(schema: ContractSchema) -> str:
         'SourceFile',
         'StatusCode',
         *(vocabulary.name for vocabulary in schema.vocabularies),
-        *dict.fromkeys(_PRODUCES.values()),
+        *dict.fromkeys(PRODUCES.values()),
         *dict.fromkeys(kind.model for kind in schema.shape_kinds),
     ]
     body = '\n'.join(f'    {name!r},' for name in sorted(set(names)))
@@ -533,12 +475,23 @@ def _exports(schema: ContractSchema) -> str:
 def main(arguments: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog='python -m fastraml.views.bindings python')
     parser.add_argument('-o', '--output', required=True, help='output file, or - for stdout')
+    parser.add_argument(
+        '--runtime', help='where to write the reading half; vendor it beside --output, which it imports'
+    )
+    parser.add_argument('--conform', help='where to write the conformance driver; vendor it beside --runtime')
     options = parser.parse_args(arguments)
-    rendered = python()
-    if options.output == '-':
+    _write(options.output, python())
+    if options.runtime:
+        _write(options.runtime, python_runtime())
+    if options.conform:
+        _write(options.conform, python_conform())
+
+
+def _write(destination: str, rendered: str) -> None:
+    if destination == '-':
         sys.stdout.write(rendered)
         return
-    path = pathlib.Path(options.output)
+    path = pathlib.Path(destination)
     path.write_text(rendered, encoding='utf-8')
     sys.stdout.write(f'wrote {path.resolve()}\n')
 

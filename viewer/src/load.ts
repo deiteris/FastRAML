@@ -18,6 +18,7 @@
  */
 
 import { parse } from './numbers';
+import { Tree, UnreadableTree } from './walk';
 import type { Document } from './tree';
 
 export const DEFAULT_SOURCE = 'api.json';
@@ -41,11 +42,13 @@ function validate(value: unknown): Document {
   if (document.nodes !== undefined && document.endpoints === undefined) {
     throw new Error('this looks like `fastraml graph --format json`; this app reads `fastraml tree` output');
   }
-  if (document.format !== 'fastraml-tree' || document.view !== 'effective') {
-    throw new Error('expected the effective `fastraml tree` format');
-  }
-  if (document.format_version !== 1) {
-    throw new Error(`unsupported fastraml tree format version: ${String(document.format_version)}`);
+  // The envelope check is the contract's, so `Tree.of` owns it and this only
+  // translates the failure into the message this app shows. A second copy here
+  // was a second place for the three constants to go stale.
+  try {
+    Tree.check(value);
+  } catch (error) {
+    throw new Error(error instanceof UnreadableTree ? error.message : String(error));
   }
   for (const key of ['types', 'endpoints', 'annotation_types', 'security_schemes'] as const) {
     if (typeof document[key] !== 'object' || document[key] === null) {

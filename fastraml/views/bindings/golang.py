@@ -48,34 +48,62 @@ import re
 import sys
 from typing import TYPE_CHECKING, Final
 
-from .schema import ContractSchema, Emitted, Facet, contract_schema
+from .schema import PRODUCES, Container, ContractSchema, Holds, Structural, contract_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
-__all__ = ['golang']
+__all__ = ['golang', 'golang_conform', 'golang_runtime']
 
-#: How neutral Python annotations are represented in Go. These are the *model's*
-#: annotations, not the wire's: a `ScalarFacet[int]` arrives as a bare number and
-#: a `Fraction` as an exact decimal string (§ 11.4a). Every facet is optional, so
-#: the scalars here are bare and `_optional` makes them pointers.
-_GO_OF: Final = {
-    'ScalarFacet[int] | None': 'int',
-    'ScalarFacet[str] | None': 'string',
-    'ScalarFacet[bool] | None': 'bool',
-    # A `Fraction` is stringified rather than divided: a facet's value is built
-    # from the raw scalar text, and `float64` would lose it (CLAUDE.md).
-    'ScalarFacet[Fraction] | None': 'ExactDecimal',
-    # The pattern's source text, not a compiled object.
-    'ScalarFacet[re.Pattern[str]] | None': 'string',
-    'list[ScalarFacet[str]] | None': '[]string',
-    'BaseShape | None': 'ShapeNode',
-    'list[BaseShape] | None': '[]ShapeNode',
-    'dict[str, Property] | None': 'PropertiesByName',
-    'dict[str, PatternProperty] | None': 'PatternPropertiesByPattern',
-    # `discriminator_value` is user data, so it is whatever the author wrote.
-    'DataNode | None': 'Json',
+#: How each structural kind is written in Go. What every key *holds* is declared
+#: once in `schema.py`; what is here is the spelling, which is all a backend is
+#: for. Go needs more of it than the other two, for the reason it needs more of
+#: everything: no literal type, no optional field, and no ordered map.
+_LEAF: Final[dict[Holds, str]] = {
+    Holds.JSON: 'Json',
+    Holds.SHAPE_NODE: 'ShapeNode',
+    #: Always an expanded shape and never a link, but Go cannot narrow a union.
+    Holds.SHAPE: '*ShapeNode',
+    Holds.REF: 'Ref',
 }
+
+_SCALAR: Final = {'str': 'string', 'bool': 'bool', 'int': 'int'}
+
+#: Every map whose keys are data is an ordered map, and an ordered map is a named
+#: alias in `static/tree.go` -- Go has no inline spelling for one. Where the
+#: contract names the alias itself, `Structural.alias` carries it and this table
+#: is not reached; these are the ones only Go needs, because the other two
+#: languages write those maps inline.
+_MAPS: Final[dict[tuple[Holds, str], str]] = {
+    (Holds.RECORD, 'Parameter'): 'ParametersByName',
+    (Holds.RECORD, 'Example'): 'ExamplesByName',
+    (Holds.RECORD, 'Property'): 'PropertiesByName',
+    (Holds.RECORD, 'PatternProperty'): 'PatternPropertiesByPattern',
+    (Holds.JSON, ''): 'FacetValuesByName',
+}
+
+
+def _spelling(structure: Structural) -> str:
+    """One structural kind as a Go type."""
+    if structure.holds is Holds.CONSTANT:
+        # Go has no literal type. The struct field is the value's type, and the
+        # constants below the preamble's aliases carry the values.
+        return 'string' if isinstance(structure.constant, str) else 'int'
+    if structure.container in {Container.MAP, Container.MAP_OF_MAP}:
+        alias = structure.alias or _MAPS.get((structure.holds, structure.of))
+        if alias is None:
+            raise LookupError(f'a map needs a named ordered-map alias; `{structure}` has none (see _MAPS)')
+        return alias
+    leaf = structure.alias or _LEAF.get(structure.holds) or _SCALAR.get(structure.of, structure.of)
+    if structure.container is Container.LIST:
+        return f'[]{leaf}'
+    # A struct has to be a pointer to be nil-able, and a record under a nullable
+    # or an optional key is exactly that. `_optional` leaves an existing `*`
+    # alone, so adding it here is not doubled.
+    if structure.holds is Holds.RECORD or structure.nullable:
+        return _optional(leaf)
+    return leaf
+
 
 #: Go's spelling of the words that are acronyms. Nothing here is a choice about
 #: the contract; `golint` would rewrite `Id` and `Uri` either way.
@@ -109,24 +137,6 @@ _NILABLE: Final = frozenset(
 
 # -- the hand-declared half ----------------------------------------------------
 
-#: Which struct each `_Projector` method produces. The generator checks that
-#: every method emitting literal keys is named here, so a new one cannot be
-#: forgotten.
-_PRODUCES: Final = {
-    'model': 'Document',
-    'fragment': 'EntryPoint',
-    'scheme': 'SecurityScheme',
-    'described': 'DescribedBy',
-    'endpoint': 'Endpoint',
-    'operation': 'Operation',
-    'request': 'Operation',
-    'response': 'Response',
-    'schemes': 'SecuredBy',
-    'applied': 'Applied',
-    'annotation': 'DocumentAnnotation',
-    'example': 'Example',
-}
-
 #: A one-line doc comment per struct, so the generated file reads like Go rather
 #: than like a table. A struct absent from here is documented by its name alone.
 _DOC: Final = {
@@ -143,145 +153,6 @@ _DOC: Final = {
     'Example': 'Example is one example value and what the author said about it.',
 }
 
-#: The type of every structural key. Only the types: which keys exist is read
-#: from `tree.py`, and generation fails on a key absent from here.
-_STRUCTURAL: Final[dict[str, dict[str, str]]] = {
-    'Document': {
-        # Go has no literal type. The three constants below the preamble's
-        # aliases carry the values these keys always hold.
-        'format': 'string',
-        'format_version': 'int',
-        'view': 'string',
-        'base': 'Address',
-        'entry_point': '*EntryPoint',
-        'types': 'ShapeDeclarationsByFile',
-        'annotation_types': 'ShapeDeclarationsByFile',
-        'security_schemes': 'SecuritySchemeDeclarationsByFile',
-        'endpoints': 'EndpointsByPath',
-        'annotations': '[]DocumentAnnotation',
-    },
-    'EntryPoint': {
-        'kind': 'FragmentKind',
-        'title': 'string',
-        'version': 'string',
-        'base_uri': 'string',
-        'media_types': '[]string',
-        'protocols': '[]Protocol',
-        'usage': 'string',
-        'description': 'string',
-        'base_uri_parameters': 'ParametersByName',
-        'documentation': '[]DocumentationItem',
-        #: `securedBy:` at the root. Every endpoint declaring none carries the
-        #: same list, so this says the API declared a *default*, not what any
-        #: one endpoint requires.
-        'secured_by': '[]SecuredBy',
-        'annotations': '[]Applied',
-    },
-    'SecurityScheme': {
-        'id': '*Address',
-        'name': 'string',
-        'type': 'SecuritySchemeType',
-        'display_name': 'string',
-        'description': 'string',
-        'settings': 'SecuritySettings',
-        'described_by': '*DescribedBy',
-        'annotations': '[]Applied',
-    },
-    'DescribedBy': {
-        'headers': 'ParametersByName',
-        'query_parameters': 'ParametersByName',
-        'query_string': '*ShapeNode',
-        'responses': 'ResponsesByStatus',
-    },
-    'Endpoint': {
-        'id': '*Address',
-        'operations': 'OperationsByMethod',
-        'secured_by': '[]SecuredBy',
-        'display_name': 'string',
-        'description': 'string',
-        'uri_parameters': 'ParametersByName',
-        'annotations': '[]Applied',
-    },
-    'Operation': {
-        'id': '*Address',
-        'responses': 'ResponsesByStatus',
-        'description': 'string',
-        'display_name': 'string',
-        'protocols': '[]Protocol',
-        'secured_by': '[]SecuredBy',
-        'annotations': '[]Applied',
-        'headers': 'ParametersByName',
-        'query_parameters': 'ParametersByName',
-        'query_string': '*ShapeNode',
-        'bodies': 'BodiesByMediaType',
-    },
-    'Response': {
-        'description': 'string',
-        'headers': 'ParametersByName',
-        'bodies': 'BodiesByMediaType',
-        'annotations': '[]Applied',
-    },
-    'SecuredBy': {
-        'name': 'string',
-        'is_null': 'bool',
-        'bound': 'bool',
-        'declaration': '*Address',
-        'scopes': '[]string',
-    },
-    'Applied': {
-        'name': 'string',
-        'type': '*Address',
-        'value': 'Json',
-    },
-    'DocumentAnnotation': {
-        'name': 'string',
-        'target': 'AnnotationTarget',
-        'type': '*Address',
-        'value': 'Json',
-    },
-    'Example': {
-        'value': 'Json',
-        'display_name': 'string',
-        'description': 'string',
-        'strict': 'bool',
-        'annotations': '[]Applied',
-    },
-}
-
-#: The base fields `shape()` writes itself, before a kind's facets are inlined.
-_SHAPE_FIELDS: Final = {
-    'id': '*Address',
-    'name': '*string',
-    'type': 'ShapeType',
-    'display_name': 'string',
-    'description': 'string',
-    'required': 'bool',
-    'default': 'Json',
-    'example': '*Example',
-    'examples': 'ExamplesByName',
-    'enum': '[]Json',
-    'xml': 'Json',
-    'allowed_targets': '[]AnnotationTarget',
-    'inherits': '[]ShapeNode',
-    #: Custom facet *values* -- what this type supplies. `declared_facets` is
-    #: the other half: what a subtype must supply (docs/10 § 4).
-    'custom_facets': 'FacetValuesByName',
-    'declared_facets': 'PropertiesByName',
-    'annotations': '[]Applied',
-    'type_expr': 'string',
-    #: Both only on a `json` shape, and both about the same schema: the schema
-    #: itself with every reference out of it resolved, and the nearest RAML
-    #: shape to it (docs/10 § 6.3). `projection` is always an expanded shape and
-    #: never a link, but Go cannot narrow a union, so it is a `ShapeNode`.
-    'json_schema': 'Json',
-    'projection': '*ShapeNode',
-    #: A recursion marker. A *shape*, not a record of its own -- see the
-    #: TypeScript backend's note and docs/16 § 11.11c. `head` is hand-declared
-    #: because `shape()` writes it through a loop over `_BACK_POINTERS`, so no
-    #: AST read can see the key.
-    'head': 'Ref',
-}
-
 #: Fields that only a `json` shape carries. Named once, read twice.
 _JSON_ONLY: Final = frozenset({'json_schema', 'projection'})
 
@@ -291,10 +162,28 @@ _JSON_ONLY: Final = frozenset({'json_schema', 'projection'})
 #: downstream. Read the way `config.py` reads `config.raml`.
 _STATIC: Final = pathlib.Path(__file__).parent / 'static' / 'tree.go'
 
+#: The ordered-map aliases in `static/tree.go` whose element is already a
+#: pointer. Everything else holds its `ShapeNode` by value and is addressed.
+_POINTER_ELEMENTS: Final = frozenset({'BodiesByMediaType'})
+
 #: The package clause the static half is written with, so the file is valid Go
 #: rather than Go with a hole in it. A `{placeholder}` would cost exactly the
 #: thing the file is there for.
 _STATIC_PACKAGE: Final = 'package tree'
+
+#: The reading half: the walk over the contract, and the descent generated from
+#: the same table the other two backends render as data. A separate file in the
+#: same package, so a consumer that only decodes need not take it.
+_RUNTIME: Final = pathlib.Path(__file__).parent / 'static' / 'walk.go'
+
+#: The conformance driver: one set of questions, answered in every language
+#: (`conformance.py`). It holds no expectations, so nothing in it varies
+#: with the schema and it is copied verbatim.
+_CONFORM: Final = pathlib.Path(__file__).parent / 'static' / 'conform.go'
+
+#: The import path the driver is written with, so the file compiles where it
+#: lives rather than being Go with a hole in it.
+_CONFORM_IMPORT: Final = 'conformance/tree'
 
 #: What a Go identifier may not be split across. Anything else separates words.
 _WORDS: Final = re.compile(r'[^0-9A-Za-z]+')
@@ -308,11 +197,166 @@ def golang(package: str = 'tree') -> str:
     schema = contract_schema()
     blocks = [
         _static(package),
+        _envelope(schema),
         _vocabularies(schema),
         *_shape(schema),
-        *_structs(schema.projector),
+        *_structs(schema),
     ]
     return '\n\n'.join(blocks) + '\n'
+
+
+def golang_conform(import_path: str = 'conformance/tree') -> str:
+    """The conformance driver, with its import path set.
+
+    The one substitution it takes, and the same argument the package clause
+    takes: the file is real Go, and a `{placeholder}` is what stops Go's own
+    tools reading it.
+    """
+    text = _CONFORM.read_text(encoding='utf-8')
+    if _CONFORM_IMPORT not in text:
+        raise LookupError(f'{_CONFORM} does not import `{_CONFORM_IMPORT}`')
+    return text.replace(_CONFORM_IMPORT, import_path, 1)
+
+
+def golang_runtime(package: str = 'tree') -> str:
+    """The reading half: the hand-written walk, then the generated descent."""
+    schema = contract_schema()
+    return '\n\n'.join([_runtime_static(package), *_walk(schema)]) + '\n'
+
+
+def _runtime_static(package: str) -> str:
+    """The hand-written reading, with its package clause set.
+
+    The one substitution in either half, for the reason `_static` gives: the
+    file is real Go so that Go's own tools read it, and a `{placeholder}` is
+    exactly what stops them.
+    """
+    text = _RUNTIME.read_text(encoding='utf-8').strip('\n')
+    if _STATIC_PACKAGE not in text:
+        raise LookupError(f'{_RUNTIME} does not declare `{_STATIC_PACKAGE}`')
+    return text.replace(_STATIC_PACKAGE, f'package {package}', 1)
+
+
+def _envelope(schema: ContractSchema) -> str:
+    """The three constants a Document always carries.
+
+    Go has no literal type, so the struct fields are plain `string` and `int`
+    and these carry the values. Generated, because the contract states them and
+    a hand-written copy is a second place for them to be wrong.
+    """
+    rows = [
+        (_go_name(key), f'= {_go_literal(schema.structure_of("Document", key).constant)}', '', '')
+        for key in ('format', 'format_version', 'view')
+    ]
+    return (
+        '// The three constants a Document always carries, and the values a reader\n'
+        '// refuses a document for not matching.\n'
+        'const (\n' + '\n'.join(_aligned(rows)) + '\n)'
+    )
+
+
+def _go_literal(value: str | int | None) -> str:
+    """One constant in Go's syntax: a double-quoted string, or a bare int."""
+    return f'"{value}"' if isinstance(value, str) else str(value)
+
+
+def _walk(schema: ContractSchema) -> list[str]:
+    """One `childShapes` method per record, and the switch over shape kinds.
+
+    The other two backends render `shape_bearing()` as a table their runtime
+    indexes by string. Go cannot index a struct, so the same fact is code here.
+    Nothing about which keys are in it is decided here.
+    """
+    bearing = schema.shape_bearing()
+    kinds = {kind.model for kind in schema.shape_kinds}
+    blocks = [
+        _child_method(schema, record, keys)
+        for record, keys in bearing.items()
+        if record not in kinds and record != 'ShapeBase'
+    ]
+    blocks.append(_child_method(schema, 'ShapeBase', bearing['ShapeBase']))
+    blocks.append(_shape_children(schema, bearing))
+    return blocks
+
+
+def _child_method(schema: ContractSchema, record: str, keys: dict[str, Structural]) -> str:
+    body = ''.join(_descend(schema, record, key, structure) for key, structure in keys.items())
+    return (
+        f'// childShapes appends every shape node a {record} holds directly.\n'
+        f'func (v *{record}) childShapes(out []*ShapeNode) []*ShapeNode {{\n{body}\treturn out\n}}'
+    )
+
+
+def _shape_children(schema: ContractSchema, bearing: dict[str, dict[str, Structural]]) -> str:
+    arms = []
+    for model in dict.fromkeys(kind.model for kind in schema.shape_kinds):
+        body = ''.join(_descend(schema, model, key, structure) for key, structure in bearing.get(model, {}).items())
+        arm = f'\tcase *{model}:\n\t\tout = v.ShapeBase.childShapes(out)\n' + _indent(body)
+        arms.append(arm.rstrip())
+    return (
+        '// shapeChildren appends every shape node one expanded type holds directly.\n'
+        '// A kind with no shape-bearing facet of its own contributes only what every\n'
+        '// shape carries.\n'
+        'func shapeChildren(shape Shape, out []*ShapeNode) []*ShapeNode {\n'
+        '\tswitch v := shape.(type) {\n' + '\n'.join(arms) + '\n\t}\n\treturn out\n}'
+    )
+
+
+def _indent(body: str) -> str:
+    return ''.join(f'\t{line}\n' if line else '\n' for line in body.split('\n')[:-1])
+
+
+def _descend(schema: ContractSchema, record: str, key: str, structure: Structural) -> str:
+    """One key's descent, in the idiom its container needs.
+
+    Four idioms, one per container, and the only variation inside them is
+    whether the element is already a pointer. Every map whose values are records
+    holds them by value -- `EndpointsByPath` is `[EndpointPath, Endpoint]`, not
+    `[EndpointPath, *Endpoint]` -- so those are addressed rather than nil-checked.
+    """
+    field = f'v.{_go_name(key)}'
+    if structure.container is Container.ONE:
+        # A record or a nullable node under a single key is a pointer either
+        # way; nothing else reaches here.
+        return f'\tif {field} != nil {{\n\t\t{_take(structure, field)}\n\t}}\n'
+    if structure.container is Container.LIST:
+        return f'\tfor i := range {field} {{\n\t\t{_take(structure, f"&{field}[i]")}\n\t}}\n'
+    element = 'pair.Value' if structure.container is Container.MAP else 'inner.Value'
+    if structure.holds is Holds.RECORD:
+        body = _take(structure, element)
+    else:
+        held = _pointer(schema, record, key, element)
+        body = (
+            _take(structure, held) if held.startswith('&') else f'if {held} != nil {{\n\t{_take(structure, held)}\n}}'
+        )
+    if structure.container is Container.MAP_OF_MAP:
+        body = _loop('inner', 'pair.Value', body)
+    return _shift(_loop('pair', field, body) + '\n')
+
+
+def _loop(name: str, over: str, body: str) -> str:
+    return f'for {name} := {over}.Oldest(); {name} != nil; {name} = {name}.Next() {{\n{_shift(body)}\n}}'
+
+
+def _take(structure: Structural, element: str) -> str:
+    if structure.holds is Holds.RECORD:
+        return f'out = {element}.childShapes(out)'
+    return f'out = append(out, {element})'
+
+
+def _shift(body: str) -> str:
+    return '\n'.join(f'\t{line}' if line else '' for line in body.split('\n'))
+
+
+def _pointer(schema: ContractSchema, record: str, key: str, value: str) -> str:
+    """Whether a map's innermost shape-node value is already a pointer.
+
+    `BodiesByMediaType` holds `*ShapeNode`; `ShapeDeclarations` holds a bare
+    `ShapeNode`, which has to be addressed. Both are aliases `static/tree.go`
+    declares, and `TestTheGoMapElementsAreDeclaredAsListed` checks this list
+    against that file rather than this reading it at generation time.
+    """
+    return value if schema.structure_of(record, key).alias in _POINTER_ELEMENTS else f'&{value}'
 
 
 def _static(package: str) -> str:
@@ -342,30 +386,24 @@ def _vocabularies(schema: ContractSchema) -> str:
     return '\n\n'.join(blocks)
 
 
-def _structs(emitted: dict[str, Emitted]) -> list[str]:
+def _structs(schema: ContractSchema) -> list[str]:
     """One struct per structural producer, keys checked against the source."""
     written: dict[str, list[tuple[str, str, str, str]]] = {}
-    for method, name in _PRODUCES.items():
-        found = emitted.get(method)
+    for method, name in PRODUCES.items():
+        found = schema.projector.get(method)
         if found is None:
-            raise LookupError(f'_PRODUCES names `{method}`, which is not a _Projector method')
-        declared = _STRUCTURAL.get(name)
-        if declared is None:
-            raise LookupError(f'no types declared for `{name}` (see _STRUCTURAL)')
+            raise LookupError(f'PRODUCES names `{method}`, which is not a _Projector method')
         rows = written.setdefault(name, [])
         for key in found.required:
-            rows.append(_row(name, declared, key, optional=False))
+            rows.append(_row(schema, name, key, optional=False))
         for key in found.optional:
-            rows.append(_row(name, declared, key, optional=True))
+            rows.append(_row(schema, name, key, optional=True))
 
     return [_struct(name, _DOC.get(name, f'{name} is one node of the tree.'), rows) for name, rows in written.items()]
 
 
-def _row(owner: str, declared: dict[str, str], key: str, *, optional: bool) -> tuple[str, str, str, str]:
-    spelling = declared.get(key)
-    if spelling is None:
-        raise LookupError(f'{owner}.{key}: emitted by tree.py and not declared in _STRUCTURAL. Add its Go type there.')
-    return _field(key, spelling, optional=optional)
+def _row(schema: ContractSchema, owner: str, key: str, *, optional: bool) -> tuple[str, str, str, str]:
+    return _field(key, _spelling(schema.structure_of(owner, key)), optional=optional)
 
 
 def _field(key: str, spelling: str, *, optional: bool, note: str = '') -> tuple[str, str, str, str]:
@@ -400,17 +438,17 @@ def _shape(schema: ContractSchema) -> list[str]:
     # tree and never reaches this file, silently.
     delegated = schema.delegated_fields(found)
     known = set(found.required) | set(found.optional) | set(delegated)
-    undeclared = sorted(known - set(_SHAPE_FIELDS))
+    undeclared = sorted(known - set(schema.structural['ShapeBase']))
     if undeclared:
-        raise LookupError(f'shape() emits {undeclared}, not declared in _SHAPE_FIELDS')
+        raise LookupError(f"shape() emits {undeclared}, not declared under 'ShapeBase' in schema.py")
 
     # `type` is left off the base and declared on each variant: it is what the
     # union discriminates on, and it is what `ShapeKind` returns.
-    base = [_field(name, _SHAPE_FIELDS[name], optional=False) for name in found.required if name != 'type']
+    base = [_row(schema, 'ShapeBase', name, optional=False) for name in found.required if name != 'type']
     # A delegate's keys are optional whatever it says of them: whether it runs at
     # all is the caller's condition, not the delegate's. JSON-schema fields are
     # the exception: they belong only to JsonShape below.
-    base += [_field(name, _SHAPE_FIELDS[name], optional=True) for name in found.optional if name not in _JSON_ONLY]
+    base += [_row(schema, 'ShapeBase', name, optional=True) for name in found.optional if name not in _JSON_ONLY]
 
     by_model: dict[str, list[str]] = {}
     for kind in schema.shape_kinds:
@@ -437,21 +475,22 @@ def _shape(schema: ContractSchema) -> list[str]:
             note = ''
             if facet.wire_form == 'exact_decimal':
                 note = '// exact decimal, e.g. "0.01" or "1.7976931348623157E+308"'
-            rows.append(_field(facet.name, _facet_type(model, facet), optional=True, note=note))
+            spelling = _spelling(schema.facet_structure(facet))
+            rows.append(_field(facet.name, spelling, optional=True, note=note))
         if model == 'JsonShape':
-            rows += [_field(name, _SHAPE_FIELDS[name], optional=True) for name in delegated if name in _JSON_ONLY]
+            rows += [_row(schema, 'ShapeBase', name, optional=True) for name in delegated if name in _JSON_ONLY]
         spelled = ' or '.join(f'`{name}`' for name in names)
         blocks.append(_struct(model, f'{model} is the expanded form of a type whose kind is {spelled}.', rows))
         blocks.append(
             f'// ShapeKind implements Shape.\nfunc (s *{model}) ShapeKind() ShapeType {{\n\treturn s.Type\n}}'
         )
 
-    blocks.append(_recursion())
+    blocks.append(_recursion(schema))
     blocks.append(_dispatcher(by_model))
     return blocks
 
 
-def _recursion() -> str:
+def _recursion(schema: ContractSchema) -> str:
     """The recursion marker, as a shape rather than a record of its own.
 
     P9 builds a `RecursiveShape` and `shape()` projects it down the generic
@@ -461,15 +500,17 @@ def _recursion() -> str:
     declaration and a `projection` hold and a marker is neither. `ShapeNode`
     holds it as its own arm.
 
-    Hand-declared because neither half is derivable. `_Projector.recursion()`
-    emits the right keys but never runs (docs/16 section 11.11c), and `shape()`
-    writes `head` through a loop over `_BACK_POINTERS`, which no AST read
+    Hand-declared. `schema.py` derives records by reading a `_Projector`
+    method's AST, and `_Projector.recursion()` is a literal three-key dict that
+    never runs, so generating from it declares three keys where seven ship
+    (docs/16 section 11.11c). `head` is hand-declared for a second reason:
+    `shape()` writes it through a loop over `_BACK_POINTERS`, which no AST read
     resolves.
     """
     rows = [
         ('', 'ShapeBase', '', ''),
         ('Type', 'string', '`json:"type"`', '// always RecursionType'),
-        ('Head', _SHAPE_FIELDS['head'], '`json:"head"`', ''),
+        ('Head', _spelling(schema.structure_of('ShapeBase', 'head')), '`json:"head"`', ''),
     ]
     return _struct(
         'Recursion',
@@ -498,17 +539,6 @@ def _dispatcher(by_model: dict[str, list[str]]) -> str:
         '// parser shares an implementation.\n'
         'var shapeKinds = map[ShapeType]func() Shape{\n' + '\n'.join(_aligned(rows)) + '\n}'
     )
-
-
-def _facet_type(model: str, facet: Facet) -> str:
-    if facet.wire_form == 'exact_decimal':
-        return 'ExactDecimal'
-    if facet.wire_form == 'reference':
-        return 'Ref'
-    spelling = _GO_OF.get(facet.annotation)
-    if spelling is None:
-        raise LookupError(f'{model}.{facet.name}: no Go spelling declared for {facet.annotation!r} (see _GO_OF)')
-    return spelling
 
 
 def _struct(name: str, doc: str, rows: Iterable[tuple[str, str, str, str]]) -> str:
@@ -570,12 +600,24 @@ def main(arguments: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog='python -m fastraml.views.bindings golang')
     parser.add_argument('-o', '--output', required=True, help='output file, or - for stdout')
     parser.add_argument('-p', '--package', default='tree', help='name of the generated package (default: tree)')
+    parser.add_argument('--conform', help='where to write the conformance driver')
+    parser.add_argument(
+        '--conform-import', default='conformance/tree', help='import path the driver reaches the package by'
+    )
+    parser.add_argument('--runtime', help='where to write the reading half; a second file in the same package')
     options = parser.parse_args(arguments)
-    rendered = golang(options.package)
-    if options.output == '-':
+    _write(options.output, golang(options.package))
+    if options.runtime:
+        _write(options.runtime, golang_runtime(options.package))
+    if options.conform:
+        _write(options.conform, golang_conform(options.conform_import))
+
+
+def _write(destination: str, rendered: str) -> None:
+    if destination == '-':
         sys.stdout.write(rendered)
         return
-    path = pathlib.Path(options.output)
+    path = pathlib.Path(destination)
     path.write_text(rendered, encoding='utf-8')
     sys.stdout.write(f'wrote {path.resolve()}\n')
 

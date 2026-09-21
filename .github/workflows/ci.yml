@@ -115,19 +115,18 @@ jobs:
       - run: uv run python -c "import re2, pyoxigraph, fastraml_viewer"
       - run: uv run pytest -q -rs
 
-  # The Go binding, which every other job skips. `tests/unit/test_bindings.py`
-  # compiles the generated contract, decodes two documents through it and writes
-  # them back; the union dispatch, the `$ref` discrimination and the ordered
-  # maps are all runtime, so nothing that reads generated output can settle
-  # them. Without a toolchain those tests skip rather than fail, and the binding
-  # would be verified nowhere -- the same argument `test-extras` makes.
+  # The Go and TypeScript halves, which every other job skips. Go compiles the
+  # generated contract, decodes two documents through it and writes them back;
+  # the union dispatch, the `$ref` discrimination and the ordered maps are all
+  # runtime. The conformance corpus then asks all three languages the same
+  # questions and requires the same answers.
   #
-  # Every skip in that file is Go's, so the job asserts there are none. A job
-  # whose tests all skip exits 0, which is the outcome this one exists to
-  # prevent.
-  bindings-go:
+  # Both need a toolchain the other jobs lack, and without one the tests skip
+  # rather than fail. A job whose tests all skip exits 0, so this one asserts
+  # there are none.
+  bindings:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.1.0
@@ -139,18 +138,32 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: '1.24'
+      # The conformance corpus is answered in all three languages, so this job
+      # needs Node as well: without it the TypeScript driver skips and the
+      # cross-language check silently does not run (docs/16 section 11.11e).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: npm ci
+        working-directory: viewer
       - run: uv sync --dev
       # `gofmt -l` names offending files and exits 0 either way, so the output
-      # is the assertion. This checks the hand-written half where it lives,
-      # which is the capability moving it out of a Python string bought.
-      - name: The hand-written half must be gofmt-clean
-        run: test -z "$(gofmt -l fastraml/views/bindings/static/tree.go)"
-      - name: The Go tests must run, not skip
+      # is the assertion. This checks every hand-written Go file where it lives,
+      # which is the capability moving them out of Python strings bought.
+      - name: The hand-written Go must be gofmt-clean
+        run: test -z "$(gofmt -l fastraml/views/bindings/static/)"
+      # Both files, and no skips in either. A skip here is the Go or TypeScript
+      # driver not running, which is the whole of what the corpus is for.
+      - name: The binding tests must run, not skip
         run: |
           set -o pipefail
-          uv run pytest tests/unit/test_bindings.py -q -rs | tee result.txt
+          uv run pytest tests/unit/test_bindings.py tests/unit/test_conformance.py -q -rs | tee result.txt
           if grep -q skipped result.txt; then
-            echo "::error::the Go binding tests skipped -- toolchain or module fetch failed"
+            echo "::error::a binding test skipped -- a toolchain, module fetch or npm install failed"
             exit 1
           fi
 

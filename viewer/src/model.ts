@@ -18,7 +18,8 @@
  * recurses without a depth budget.
  */
 
-import type { Address, Document, Endpoint, EntryPoint, HttpMethod, Json, Operation, Recursion, Ref, SecurityScheme, Shape, ShapeNode } from './tree';
+import { Tree, isRecursion, isRef } from './walk';
+import type { Address, Endpoint, EntryPoint, HttpMethod, Json, Operation, Recursion, Ref, SecurityScheme, Shape, ShapeNode } from './tree';
 
 export type {
   Address,
@@ -46,18 +47,17 @@ export type {
 
 /* -- telling the three constructs apart --------------------------------------- */
 
-/** A link. The sole key is the test: an expanded shape carries `id` too. */
-export function isRef(node: unknown): node is Ref {
-  return typeof node === 'object' && node !== null && '$ref' in node && Object.keys(node).length === 1;
-}
-
 /**
- * A recursion marker. Distinct from a link on purpose: merging the two would
- * force every consumer to carry an ancestor set (docs/16 § 11.7).
+ * The metamodel comes from `walk.ts`, which is generated alongside `tree.d.ts`
+ * and is the same reading every consumer of the contract gets. This app used to
+ * spell both predicates itself; they are rules the *contract* states, so a copy
+ * here was a second place for them to be right -- and the Go binding's copy was
+ * a different predicate for two years without anything noticing (docs/16
+ * § 11.11e). `isRecursive` keeps its name here, which is what this app has
+ * always called it.
  */
-export function isRecursive(node: unknown): node is Recursion {
-  return typeof node === 'object' && node !== null && (node as Recursion).type === 'recursive';
-}
+export { Tree, UnreadableTree, isRef, isShape } from './walk';
+export { isRecursion as isRecursive } from './walk';
 
 /* -- the index ---------------------------------------------------------------- */
 
@@ -84,21 +84,21 @@ export interface Entry {
  */
 export class Index {
   readonly byAddress = new Map<Address, Entry>();
-  /** The declared shapes, so a link can also be expanded where it sits. */
-  readonly shapes = new Map<Address, Shape>();
   /** The declared schemes, so a `securedBy` entry can be read where it sits. */
   readonly schemes = new Map<Address, SecurityScheme>();
+  /** The contract's reading of the document. Shape lookup delegates to it. */
+  readonly tree: Tree;
 
-  constructor(document: Document) {
+  constructor(tree: Tree) {
+    this.tree = tree;
+    const document = tree.document;
     for (const { file, name, value } of declarations(document.types)) {
       if (isRef(value)) continue;
       this.add(value.id, name, 'type', file);
-      if (value.id !== null) this.shapes.set(value.id, value);
     }
     for (const { file, name, value } of declarations(document.annotation_types)) {
       if (isRef(value)) continue;
       this.add(value.id, name, 'annotationType', file);
-      if (value.id !== null) this.shapes.set(value.id, value);
     }
     for (const { file, name, value } of declarations(document.security_schemes)) {
       this.add(value.id, name, 'securityScheme', file);
@@ -129,8 +129,21 @@ export class Index {
     return this.get(isRef(node) ? node.$ref : node.id);
   }
 
+  /**
+   * The shape an address names, through `walk.ts`'s index.
+   *
+   * Not a map of declarations built here: `Tree` indexes every addressed shape
+   * by the generated walk, so a position this app never enumerated still
+   * resolves. The Python consumer's hand-written equivalent missed
+   * `entry_point.base_uri_parameters` for exactly that reason.
+   */
   shape(address: Address | null | undefined): Shape | undefined {
-    return address == null ? undefined : this.shapes.get(address);
+    return address == null ? undefined : this.tree.at(address);
+  }
+
+  /** What a shape is rather than how it arrived; the rule is the contract's. */
+  content(shape: Shape): Shape {
+    return this.tree.content(shape);
   }
 
   scheme(address: Address | null | undefined): SecurityScheme | undefined {
@@ -335,7 +348,7 @@ export function spellingOf(shape: Shape, index: Index, borrowed = false): string
   const items = shape.items;
   if (items === null || items === undefined) return 'any[]';
   if (isRef(items)) return `${index.label(items.$ref)}[]`;
-  if (isRecursive(items)) return `${items.name ?? 'recursive'}[]`;
+  if (isRecursion(items)) return `${items.name ?? 'recursive'}[]`;
   return `${spellingOf(items, index, true)}[]`;
 }
 
@@ -348,7 +361,7 @@ export function spellingOf(shape: Shape, index: Index, borrowed = false): string
  */
 export const TYPE_JSON = 'json';
 
-/** What a JSON-schema type says, which is what its projection says. */
+/** What a JSON-schema type says. `Index.content` is the same rule with a tree. */
 export function contentOf(shape: Shape): Shape {
   return shape.type === TYPE_JSON && shape.projection ? shape.projection : shape;
 }
@@ -396,7 +409,7 @@ export function detailed(shape: Shape | null | undefined): shape is Shape {
 export function leadsSomewhere(node: Shape | Ref | Recursion | null | undefined, index: Index): boolean {
   if (node === null || node === undefined) return false;
   if (isRef(node)) return detailed(index.shape(node.$ref));
-  if (isRecursive(node)) return false;
+  if (isRecursion(node)) return false;
   return detailed(node);
 }
 
@@ -409,7 +422,7 @@ export function leadsSomewhere(node: Shape | Ref | Recursion | null | undefined,
  */
 export function labelOf(member: Shape | Ref | Recursion, index: Index): string {
   if (isRef(member)) return index.label(member.$ref);
-  if (isRecursive(member)) return member.name ?? 'recursive';
+  if (isRecursion(member)) return member.name ?? 'recursive';
   return spellingOf(member, index, true);
 }
 
@@ -452,7 +465,7 @@ function parent(shape: Shape, index: Index): Shape | undefined {
   const first = (shape.inherits ?? [])[0];
   if (first === undefined) return undefined;
   if (isRef(first)) return index.shape(first.$ref);
-  return isRecursive(first) ? undefined : first;
+  return isRecursion(first) ? undefined : first;
 }
 
 /* -- where a request actually goes ----------------------------------------------- */

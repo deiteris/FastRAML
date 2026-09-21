@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { HashRouter, Route, Routes, useLocation } from 'react-router';
 import { Sidebar } from './components/Sidebar';
 import { DEFAULT_SOURCE, loadDocument } from './load';
-import { type Document, Index } from './model';
+import { type Document, Index, Tree } from './model';
 import {
   AnnotationTypeList,
   AnnotationTypePage,
@@ -50,7 +50,9 @@ function Shell() {
       .catch((cause: Error) => setError(cause.message));
   }, []);
 
-  const index = useMemo(() => (document ? new Index(document) : null), [document]);
+  // One `Tree` per document: it indexes every addressed shape by the
+  // generated walk, and `Index` adds the page routing on top.
+  const index = useMemo(() => (document ? new Index(Tree.of(document)) : null), [document]);
 
   if (!document || !index) {
     return (

@@ -181,6 +181,8 @@ function Expandable({ what, children }: { what: string; children: ReactNode }) {
 
 /** What is behind a name, in the words of the kind it names. */
 function behind(shape: Shape): string {
+  // `contentOf` and not `index.content`: this has a shape and no tree, and the
+  // two are the same rule.
   const content = contentOf(shape);
   if (content.type === 'object' && (content.properties || content.pattern_properties)) return 'child attributes';
   if (content.type === 'union' && content.any_of) return 'members';
@@ -345,9 +347,9 @@ function Body({
   // the spec forbids a RAML facet beside a schema, so the declaration carries
   // the name, the description and the example, and everything else it says is
   // in the projection (docs/10 § 6.3). Reading structure through one accessor
-  // is what keeps that a fact about `contentOf` rather than a branch in every
+  // is what keeps that a fact about the contract rather than a branch in every
   // block below.
-  const content = contentOf(shape);
+  const content = index.content(shape);
   const facets = facetsOf(content);
   const inherits = shape.inherits ?? [];
   const properties = Object.entries(content.type === 'object' ? (content.properties ?? {}) : {});

@@ -1,7 +1,7 @@
 """Every type construct that needed work to render, in one model.
 
 Recursion, a tagged union, `dict[str, X]`, a `RootModel`, a two-member union, a
-nullable, a bare `None`, an enum and a nested array. `Everything` is what the
+nullable, a bare `None`, an enum, a nested array and a subclass. `Everything` is what the
 differential gate validates payloads against.
 """
 
@@ -23,6 +23,18 @@ class Node(BaseModel):
 
     name: str
     children: list['Node'] = []
+
+
+class Vehicle(BaseModel):
+    """A base other models extend, so RAML gets a real supertype to name."""
+
+    wheels: int
+
+
+class Car(Vehicle):
+    """`type: Vehicle`, declaring only what it adds."""
+
+    doors: int
 
 
 class Cat(BaseModel):
@@ -49,6 +61,7 @@ class Everything(BaseModel):
     pet: Pet
     tags: dict[str, str]
     scores: list[list[int]]
+    car: Car
     either: int | str
     maybe: str | None
     nothing: None = None

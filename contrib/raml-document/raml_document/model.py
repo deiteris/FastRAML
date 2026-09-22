@@ -91,9 +91,13 @@ class TypeDecl:
     here. `type` holds a *type expression* -- `string`, `Pet`, `Cat | Dog`,
     `string[]` -- because that is what RAML accepts in the position, and
     resolving it is the parser's job rather than the emitter's.
+
+    A *list* of names is RAML's multiple inheritance -- `type: [Animal, Pet]`.
+    It is a separate spelling from the `|` in a type expression, which is a
+    union: a value of `A | B` is one of the two, a type of `[A, B]` is both.
     """
 
-    type: str | None = None
+    type: str | list[str] | None = None
     display_name: str | None = None
     description: str | None = None
     required: bool | None = None
@@ -131,8 +135,10 @@ class TypeDecl:
         what keeps it out of every call site.
         """
         out: dict[str, Yaml] = {}
-        if self.type is not None:
+        if isinstance(self.type, str):
             out['type'] = self.type
+        elif self.type is not None:
+            out['type'] = [*self.type]
         for attribute, spelling in _FACETS:
             value = getattr(self, attribute)
             if value is not None:
@@ -153,7 +159,10 @@ class TypeDecl:
             out['default'] = self.default
         if self.examples is not None:
             out['examples'] = dict(self.examples)
-        if len(out) == 1 and self.type is not None:
+        # Only a single name collapses to the bare form. `[A, B]` has to keep
+        # its `type:` key -- a declaration whose whole value is a list is a
+        # different node, not the shorthand.
+        if len(out) == 1 and isinstance(self.type, str):
             return self.type
         return out
 

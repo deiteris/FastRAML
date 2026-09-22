@@ -20,8 +20,8 @@ import pytest
 from fastraml import ParseOptions, parse_from_path
 from pydantic import BaseModel, ValidationError
 
+from aiohttp_raml import render
 from examples import hard, library
-from fastapi_raml import render
 
 OK: dict[str, Any] = {
     'status': 'draft',
@@ -76,13 +76,13 @@ BOOKS = [
 ]
 
 
-def shape_for(app: Any, model: type[BaseModel]) -> Any:
+def shape_for(app: Any, model: type[BaseModel], **metadata: Any) -> Any:
     """Render `app`, parse the result back, and return the shape for `model`.
 
     Through a file rather than a string so the failure mode matches what a
     reader would hit running `fastraml validate` on the same output.
     """
-    report = render(app)
+    report = render(app, **metadata)
     assert not report.dropped, f'renderer dropped: {report.dropped}'
     with tempfile.TemporaryDirectory() as directory:
         source = pathlib.Path(directory) / 'api.raml'
@@ -102,20 +102,20 @@ def agrees(shape: Any, model: type[BaseModel], value: dict[str, Any]) -> tuple[b
 
 @pytest.mark.parametrize(('label', 'value'), EVERYTHING, ids=[label for label, _ in EVERYTHING])
 def test_everything_agrees(label: str, value: dict[str, Any]) -> None:
-    shape = shape_for(hard.app, hard.Everything)
+    shape = shape_for(hard.app, hard.Everything, **hard.METADATA)
     by_raml, by_pydantic = agrees(shape, hard.Everything, value)
     assert by_raml == by_pydantic, f'{label}: raml={by_raml} pydantic={by_pydantic}'
 
 
 @pytest.mark.parametrize(('label', 'value'), BOOKS, ids=[label for label, _ in BOOKS])
 def test_book_agrees(label: str, value: dict[str, Any]) -> None:
-    shape = shape_for(library.app, library.Book)
+    shape = shape_for(library.app, library.Book, **library.METADATA)
     by_raml, by_pydantic = agrees(shape, library.Book, value)
     assert by_raml == by_pydantic, f'{label}: raml={by_raml} pydantic={by_pydantic}'
 
 
 def test_the_cases_are_not_all_one_verdict() -> None:
     """A gate where everything passes or everything fails measures nothing."""
-    shape = shape_for(hard.app, hard.Everything)
+    shape = shape_for(hard.app, hard.Everything, **hard.METADATA)
     verdicts = {shape.validate(value) is None for _, value in EVERYTHING}
     assert verdicts == {True, False}

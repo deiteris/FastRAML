@@ -8,12 +8,16 @@ root gate does not see them. `docs/17-consumers.md` settles the boundary.
 |---|---|---|
 | [`raml-document`](raml-document/) | neither | A typed authoring model for a RAML document, and a reader that builds one from pydantic models. Depends on no web framework. |
 | [`fastapi-raml`](fastapi-raml/) | code → RAML | Renders a FastAPI app's routes as RAML, and serves it. |
+| [`aiohttp-raml`](aiohttp-raml/) | code → RAML | Code-first RAML for aiohttp: pydantic-validated views that describe themselves. Depends on no other web framework package. |
 | [`fastmcp-raml`](fastmcp-raml/) | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
 | [`raml-mock`](raml-mock/) | RAML → HTTP | Runs an in-process aiohttp mock with request validation and generated responses. |
+| [`fastraml-viewer`](fastraml-viewer/) | neither | The built `viewer/` bundle as static assets, and `serve(document)`. Depends on nothing, including `fastraml`. |
 | [`raml-codegen`](raml-codegen/) | tree → code | Generates source from a `fastraml tree` document. Two targets: `python-httpx`, a typed client, and `python-fastapi`, a server interface to implement. |
 
-`raml-document` is the part the other two share, so that two integrations cannot
-disagree about what a RAML document is.
+`raml-document` is the part the two framework integrations share, so that they
+cannot disagree about what a RAML document is. The second one earned its keep
+immediately: two bugs in that model were reachable from `fastapi-raml` and
+invisible until something else read it the same way.
 
 `fastapi-raml` and `raml-codegen python-fastapi` are the two workflows over one
 fixture. **Code-first**: the app is the source and the RAML falls out of it.
@@ -49,4 +53,4 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy <package>/ &&
 
 `fastraml` resolves to `../..` as an editable install, so a change to the parser is
 visible here without a reinstall. That is what lets these suites catch a change
-to the model that breaks a consumer of it. CI runs all four as a matrix.
+to the model that breaks a consumer of it. CI runs all seven as a matrix.

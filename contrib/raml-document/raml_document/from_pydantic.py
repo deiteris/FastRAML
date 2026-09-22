@@ -110,25 +110,24 @@ class Walk:
         return qualified
 
     def _body(self, model: type[BaseModel], at: str) -> TypeDecl:
-        decl = TypeDecl(type='object')
-        config = getattr(model, 'model_config', {})
-        if config.get('extra') == 'forbid':
-            decl.additional_properties = False
-        if model.__doc__ and not _is_default_doc(model):
-            decl.description = model.__doc__.strip()
-
         root = model.model_fields.get('root')
         if root is not None and len(model.model_fields) == 1:
             # A RootModel: the declaration *is* its single field.
             return self.field(root, f'{at}.root')
 
+        parents = [self.model(base) for base in _supertypes(model)]
+        decl = TypeDecl(type=parents[0] if len(parents) == 1 else (parents or 'object'))
+        if _forbids_extra(model) and not any(_forbids_extra(base) for base in _supertypes(model)):
+            decl.additional_properties = False
+        if model.__doc__ and not _is_default_doc(model):
+            decl.description = model.__doc__.strip()
+
+        # Only what this class declares. RAML inherits the rest, so repeating an
+        # inherited property would state twice what the supertype already says.
         for name, info in model.model_fields.items():
-            prop = self.field(info, f'{at}.{name}')
-            if not info.is_required():
-                prop.required = False
-                if info.default is not None and info.default is not PydanticUndefined:
-                    prop.default = _as_yaml(info.default)
-            decl.properties[info.alias or name] = prop
+            if parents and name not in _own_fields(model):
+                continue
+            decl.properties[info.alias or name] = self.optional(self.field(info, f'{at}.{name}'), info)
         return decl
 
     # -- fields ---------------------------------------------------------------
@@ -141,6 +140,31 @@ class Walk:
             decl.description = info.description
         if info.examples:
             decl.examples = {f'e{index}': _as_yaml(value) for index, value in enumerate(info.examples)}
+        return decl
+
+    def optional(self, decl: TypeDecl, info: FieldInfo) -> TypeDecl:
+        """Apply a field's optionality and its default to its declaration.
+
+        Separate from `field` because the two are not the same question and only
+        one of them is about the annotation. `field` reads what a value must
+        look like; this reads whether the value has to be there at all, which is
+        a property of the *position* -- a model property, a query parameter, a
+        header. Returns the declaration, so the two compose in one expression.
+
+        **RAML's default in every one of those positions is `required: true`.**
+        A caller that reads the annotation and stops there renders an optional
+        parameter as a mandatory one, and the document is then stricter than the
+        code it describes -- wrong in the direction nothing complains about,
+        because every request the tests send does carry the parameter.
+
+        `default: ~` is not written for a field defaulting to `None`: RAML would
+        take it as a value, and the field is simply absent.
+        """
+        if info.is_required():
+            return decl
+        decl.required = False
+        if info.default is not None and info.default is not PydanticUndefined:
+            decl.default = _as_yaml(info.default)
         return decl
 
     def _tag_name(self, info: FieldInfo, at: str) -> str | None:
@@ -209,7 +233,9 @@ class Walk:
         if discriminator is not None:
             return self.tagged_union(args, at, discriminator)
         members = [self.annotation(arg, at) for arg in args]
-        spellings = [member.type for member in members if member.type is not None]
+        # A list type is multiple inheritance, which has no place in a `|`
+        # expression -- so it fails the same test as a member with no type.
+        spellings = [member.type for member in members if isinstance(member.type, str)]
         if len(spellings) != len(members):
             self.drop(at, 'a union member has no type expression; rendered as any')
             return TypeDecl(type='any')
@@ -247,7 +273,8 @@ class Walk:
                 return TypeDecl(type='any')
             members.append((name, value))
             spelling = self.types[name].properties.get(discriminator)
-            tag_type = spelling.type if spelling is not None else tag_type
+            if spelling is not None and isinstance(spelling.type, str):
+                tag_type = spelling.type
 
         base = f'{at.rsplit(".", 1)[-1].title()}Base'
         self.types[base] = TypeDecl(
@@ -257,7 +284,9 @@ class Walk:
         )
         for name, value in members:
             member = self.types[name]
-            member.type = base
+            # Added, not assigned: a member may already inherit a real model,
+            # and overwriting would drop that supertype without a word.
+            member.type = _inherit(member.type, base)
             member.discriminator_value = value
             # `Literal['cat'] = 'cat'` carries a default, so the tag arrives
             # optional. In a tagged union it is not: the default applies once a
@@ -278,7 +307,7 @@ class Walk:
             decl.unique_items = True
         # `string[]` where the item has a plain spelling, which is what a union
         # member and a nested `items` both need.
-        if items.type is not None and items.render() == items.type and '|' not in items.type:
+        if isinstance(items.type, str) and items.render() == items.type and '|' not in items.type:
             return TypeDecl(type=f'{items.type}[]', unique_items=decl.unique_items)
         return decl
 
@@ -305,7 +334,8 @@ class Walk:
         string, `minItems` on an array -- so the declaration decides, which it
         can because it was built first.
         """
-        sequence = decl.type == 'array' or (decl.type or '').endswith('[]')
+        spelling = decl.type if isinstance(decl.type, str) else ''
+        sequence = spelling == 'array' or spelling.endswith('[]')
         for item in metadata or ():
             match item:
                 case annotated_types.Ge(ge=bound):
@@ -346,6 +376,18 @@ class Walk:
             decl.maximum = float(decimal.Decimal(10) ** (digits - places) - decimal.Decimal(1).scaleb(-places))
         if pattern is None and places is None and digits is None:
             self.drop(at, f'no RAML facet for {item!r}')
+
+
+def _inherit(existing: str | list[str] | None, added: str) -> str | list[str]:
+    """Add a supertype to whatever a declaration already inherits.
+
+    `object` is the absence of a supertype rather than one of them, so it is
+    replaced; a real name is kept and the two become multiple inheritance.
+    """
+    if existing is None or existing == 'object':
+        return added
+    current = [existing] if isinstance(existing, str) else list(existing)
+    return current if added in current else [*current, added]
 
 
 def _set_length(decl: TypeDecl, end: str, length: int | None, *, sequence: bool) -> None:
@@ -410,6 +452,39 @@ def _as_yaml(value: Any) -> Yaml:
     if isinstance(value, dict):
         return {str(key): _as_yaml(item) for key, item in value.items()}
     return str(value)
+
+
+def _supertypes(model: type[BaseModel]) -> list[type[BaseModel]]:
+    """The bases RAML should inherit from, which is not every Python base.
+
+    `BaseModel` itself is not a RAML type. Neither is `RootModel`, whose job is
+    to *be* its single field rather than to be a supertype of anything. Neither
+    is a parametrised generic such as `Page[Book]`: pydantic builds a class for
+    it, but its name is not a name a document can declare, so a model deriving
+    from one keeps its properties inline.
+    """
+    return [base for base in model.__bases__ if _is_supertype(base)]
+
+
+def _is_supertype(base: Any) -> bool:
+    if not (isinstance(base, type) and issubclass(base, BaseModel)) or base is BaseModel:
+        return False
+    if any(ancestor.__name__ == 'RootModel' for ancestor in base.__mro__):
+        return False
+    return getattr(base, '__pydantic_generic_metadata__', {}).get('origin') is None
+
+
+def _own_fields(model: type[BaseModel]) -> set[str]:
+    """The fields declared on this class, not the ones it inherits.
+
+    An override re-annotates, so a narrowed property is its own and is written
+    again -- which is what RAML expects of a subtype that restricts one.
+    """
+    return set(getattr(model, '__annotations__', {})) & set(model.model_fields)
+
+
+def _forbids_extra(model: type[BaseModel]) -> bool:
+    return bool(getattr(model, 'model_config', {}).get('extra') == 'forbid')
 
 
 def _is_default_doc(model: type[BaseModel]) -> bool:

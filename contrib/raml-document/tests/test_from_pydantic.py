@@ -12,13 +12,13 @@ import tempfile
 import uuid
 from decimal import Decimal
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 import pytest
 from fastraml import ParseOptions, parse_from_path
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, RootModel, Tag
 
-from raml_document import Document
+from raml_document import Document, TypeDecl
 from raml_document.from_pydantic import Walk
 
 
@@ -246,3 +246,130 @@ class TestWhatIsReported:
         walk = Walk()
         walk.model(M)
         assert any('tuple' in message for message in walk.dropped)
+
+
+class TestInheritance:
+    """Python subclassing becomes RAML subtyping, so a subtype says what it adds."""
+
+    def test_a_subclass_names_its_base_and_adds_only_its_own_properties(self):
+        class Vehicle(BaseModel):
+            wheels: int
+
+        class Car(Vehicle):
+            doors: int
+
+        walk = Walk()
+        walk.model(Car)
+        assert walk.types['Car'].render() == {'type': 'Vehicle', 'properties': {'doors': 'integer'}}
+        assert walk.types['Vehicle'].render() == {'type': 'object', 'properties': {'wheels': 'integer'}}
+        assert walk.dropped == []
+
+    def test_two_bases_become_ramls_multiple_inheritance(self):
+        """`type: [A, B]` is *both*, which is a different node from `A | B`."""
+
+        class Left(BaseModel):
+            a: int
+
+        class Right(BaseModel):
+            b: int
+
+        class Both(Left, Right):
+            c: int
+
+        walk = Walk()
+        walk.model(Both)
+        assert walk.types['Both'].render() == {'type': ['Left', 'Right'], 'properties': {'c': 'integer'}}
+
+    def test_a_list_type_keeps_its_key_rather_than_collapsing(self):
+        """`{type: [A, B]}` has no shorthand; only a single name has one."""
+        assert TypeDecl(type=['A', 'B']).render() == {'type': ['A', 'B']}
+        assert TypeDecl(type='A').render() == 'A'
+
+    def test_an_inherited_additional_properties_is_not_repeated(self):
+        """RAML inherits the facet, so restating it says twice what one says."""
+
+        class Closed(BaseModel):
+            model_config = ConfigDict(extra='forbid')
+            a: int
+
+        class Child(Closed):
+            b: int
+
+        walk = Walk()
+        walk.model(Child)
+        assert walk.types['Closed'].additional_properties is False
+        assert walk.types['Child'].additional_properties is None
+
+    def test_an_overridden_property_is_written_again(self):
+        """A subtype restricting a property has to state the restriction."""
+
+        class Loose(BaseModel):
+            code: str
+
+        class Tight(Loose):
+            code: Annotated[str, Field(max_length=4)]
+
+        walk = Walk()
+        walk.model(Tight)
+        assert walk.types['Tight'].render()['properties']['code']['maxLength'] == 4
+
+    def test_a_tagged_union_member_keeps_the_base_it_already_had(self):
+        """The synthesised base is added to a real one, never over it."""
+
+        class Animal(BaseModel):
+            name: str
+
+        class Cat(Animal):
+            kind: Literal['cat'] = 'cat'
+            meows: bool
+
+        class Dog(Animal):
+            kind: Literal['dog'] = 'dog'
+            barks: bool
+
+        class Owner(BaseModel):
+            pet: Annotated[Cat | Dog, Field(discriminator='kind')]
+
+        walk = Walk()
+        walk.model(Owner)
+        assert walk.types['Cat'].type == ['Animal', 'PetBase']
+        assert walk.types['Cat'].discriminator_value == 'cat'
+        assert 'name' not in walk.types['Cat'].properties
+
+    def test_a_tagged_union_member_with_no_real_base_inherits_only_the_synthesised_one(self):
+        class Cat(BaseModel):
+            kind: Literal['cat'] = 'cat'
+            meows: bool
+
+        class Dog(BaseModel):
+            kind: Literal['dog'] = 'dog'
+            barks: bool
+
+        class Owner(BaseModel):
+            pet: Annotated[Cat | Dog, Field(discriminator='kind')]
+
+        walk = Walk()
+        walk.model(Owner)
+        assert walk.types['Cat'].type == 'PetBase'
+
+    def test_a_root_model_is_its_field_and_not_a_subtype_of_root_model(self):
+        class Headers(RootModel[dict[str, str]]):
+            pass
+
+        walk = Walk()
+        walk.model(Headers)
+        assert walk.types['Headers'].render() == {'type': 'object', 'properties': {'//': 'string'}}
+
+    def test_a_parametrised_generic_base_is_not_a_raml_name(self):
+        """`Page[Book]` is a class pydantic built; no document can declare it."""
+        T = TypeVar('T')
+
+        class Page(BaseModel, Generic[T]):
+            items: list[T]
+
+        class Books(Page[int]):
+            pass
+
+        walk = Walk()
+        walk.model(Books)
+        assert walk.types['Books'].render() == {'type': 'object', 'properties': {'items': 'integer[]'}}

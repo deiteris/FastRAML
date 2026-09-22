@@ -3,14 +3,20 @@
 Recursion, a tagged union, `dict[str, X]`, a `RootModel`, a two-member union, a
 nullable, a bare `None`, an enum, a nested array and a subclass. `Everything` is what the
 differential gate validates payloads against.
+
+The models are the same file `fastapi-raml` keeps, deliberately: two
+integrations reading the same models must produce the same `types:`, and a
+divergence is a bug in one of them.
 """
 
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from fastapi import FastAPI
+from aiohttp import web
 from pydantic import BaseModel, Field, RootModel
+
+from aiohttp_raml import RamlView, Responds
 
 
 class Status(StrEnum):
@@ -67,8 +73,16 @@ class Everything(BaseModel):
     nothing: None = None
 
 
-app = FastAPI(title='Hard', version='1')
+class EverythingView(RamlView):
+    async def post(self, body: Everything) -> Annotated[web.Response, Responds(200, Headers)]:
+        return web.json_response({})
 
 
-@app.post('/x')
-def post_everything(body: Everything) -> Headers: ...
+def build_app() -> web.Application:
+    app = web.Application()
+    app.router.add_view('/x', EverythingView)
+    return app
+
+
+app = build_app()
+METADATA = {'title': 'Hard', 'version': '1'}

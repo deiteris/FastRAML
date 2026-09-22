@@ -26,6 +26,7 @@ __all__ = [
     'UNSET',
     'Body',
     'Document',
+    'Documentation',
     'Method',
     'Parameters',
     'Resource',
@@ -69,6 +70,7 @@ _FACETS: Final[tuple[tuple[str, str], ...]] = (
     ('pattern', 'pattern'),
     ('min_length', 'minLength'),
     ('max_length', 'maxLength'),
+    ('file_types', 'fileTypes'),
     ('minimum', 'minimum'),
     ('maximum', 'maximum'),
     ('multiple_of', 'multipleOf'),
@@ -91,9 +93,13 @@ class TypeDecl:
     here. `type` holds a *type expression* -- `string`, `Pet`, `Cat | Dog`,
     `string[]` -- because that is what RAML accepts in the position, and
     resolving it is the parser's job rather than the emitter's.
+
+    A *list* of names is RAML's multiple inheritance -- `type: [Animal, Pet]`.
+    It is a separate spelling from the `|` in a type expression, which is a
+    union: a value of `A | B` is one of the two, a type of `[A, B]` is both.
     """
 
-    type: str | None = None
+    type: str | list[str] | None = None
     display_name: str | None = None
     description: str | None = None
     required: bool | None = None
@@ -115,6 +121,9 @@ class TypeDecl:
     max_items: int | None = None
     unique_items: bool | None = None
 
+    # file -- `minLength` and `maxLength` above are bytes on this kind
+    file_types: list[str] | None = None
+
     # string and numbers
     pattern: str | None = None
     min_length: int | None = None
@@ -131,8 +140,10 @@ class TypeDecl:
         what keeps it out of every call site.
         """
         out: dict[str, Yaml] = {}
-        if self.type is not None:
+        if isinstance(self.type, str):
             out['type'] = self.type
+        elif self.type is not None:
+            out['type'] = [*self.type]
         for attribute, spelling in _FACETS:
             value = getattr(self, attribute)
             if value is not None:
@@ -153,7 +164,10 @@ class TypeDecl:
             out['default'] = self.default
         if self.examples is not None:
             out['examples'] = dict(self.examples)
-        if len(out) == 1 and self.type is not None:
+        # Only a single name collapses to the bare form. `[A, B]` has to keep
+        # its `type:` key -- a declaration whose whole value is a list is a
+        # different node, not the shorthand.
+        if len(out) == 1 and isinstance(self.type, str):
             return self.type
         return out
 
@@ -246,9 +260,15 @@ class Resource:
 
         `/books/{isbn}` nests as RAML nests it, `/books:` then `/{isbn}:`, which
         is also how a reader finds it.
+
+        **`/` is a resource and not this node.** An API answering on its own
+        base URI writes `/:` in RAML, which is a relative URI like any other;
+        returning the document root instead would put `get:` beside `title:`,
+        where RAML has no method node at all and a parser rejects the document.
         """
-        node = self
-        for segment in (part for part in path.split('/') if part):
+        segments = [part for part in path.split('/') if part]
+        node = self if segments else self.children.setdefault('/', Resource())
+        for segment in segments:
             node = node.children.setdefault(f'/{segment}', Resource())
         return node
 
@@ -289,6 +309,21 @@ class SecurityScheme:
 
 
 @dataclass(slots=True)
+class Documentation:
+    """One entry of the root `documentation:` node.
+
+    Both keys are required: RAML has no untitled documentation and no empty
+    one. `content` is markdown.
+    """
+
+    title: str
+    content: str
+
+    def render(self) -> Yaml:
+        return {'title': self.title, 'content': self.content}
+
+
+@dataclass(slots=True)
 class Document:
     """A RAML 1.0 API definition: the root node and everything under it."""
 
@@ -297,6 +332,7 @@ class Document:
     description: str | None = None
     base_uri: str | None = None
     base_uri_parameters: Parameters = field(default_factory=dict)
+    documentation: list[Documentation] = field(default_factory=list)
     types: dict[str, TypeDecl] = field(default_factory=dict)
     security_schemes: dict[str, SecurityScheme] = field(default_factory=dict)
     root: Resource = field(default_factory=Resource)
@@ -312,6 +348,8 @@ class Document:
             out['baseUri'] = self.base_uri
         if self.base_uri_parameters:
             out['baseUriParameters'] = {name: decl.render() for name, decl in self.base_uri_parameters.items()}
+        if self.documentation:
+            out['documentation'] = [entry.render() for entry in self.documentation]
         if self.types:
             out['types'] = {name: decl.render() for name, decl in self.types.items()}
         if self.security_schemes:

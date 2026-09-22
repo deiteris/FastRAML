@@ -5,7 +5,7 @@
 # short-lived token is minted per run. `id-token: write` is what mints it, and
 # it is granted per job rather than at the top level.
 #
-# Tag form decides what publishes, because the six distributions version
+# Tag form decides what publishes, because the seven distributions version
 # independently:
 #
 #   v0.1.0                  -> fastraml, the parser
@@ -22,6 +22,7 @@ on:
       - 'v*'
       - 'raml-document-v*'
       - 'fastapi-raml-v*'
+      - 'aiohttp-raml-v*'
       - 'fastmcp-raml-v*'
       - 'fastraml-viewer-v*'
       - 'raml-mock-v*'
@@ -99,15 +100,17 @@ jobs:
         run: echo "dist=${GITHUB_REF_NAME%-v*}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v7
-        # Only fastraml-viewer needs it, and it needs it before the build: its
-        # hatch hook copies `viewer/dist`, which does not exist until npm has run.
-        if: steps.which.outputs.dist == 'fastraml-viewer'
+        # `fastraml-viewer` needs it before the build: its hatch hook copies
+        # `viewer/dist`, which does not exist until npm has run. The two
+        # framework integrations need it during `uv sync --all-extras`, which
+        # pulls their `viewer` extra and so runs that same hook.
+        if: contains(fromJSON('["fastraml-viewer", "fastapi-raml", "aiohttp-raml"]'), steps.which.outputs.dist)
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: viewer/package-lock.json
       - name: Build the viewer bundle
-        if: steps.which.outputs.dist == 'fastraml-viewer'
+        if: contains(fromJSON('["fastraml-viewer", "fastapi-raml", "aiohttp-raml"]'), steps.which.outputs.dist)
         env:
           PUPPETEER_SKIP_DOWNLOAD: '1'
         run: npm ci && npm run build

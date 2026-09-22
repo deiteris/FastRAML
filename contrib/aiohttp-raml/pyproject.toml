@@ -1,0 +1,110 @@
+[project]
+name = "aiohttp-raml"
+version = "0.1.0"
+description = "Render an aiohttp-pydantic application as RAML 1.0, and serve it"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+
+# A consumer of fastraml, so fastraml is a dependency here and this is not one
+# there. The parser must not depend on a web framework.
+dependencies = [
+    "raml-document>=0.1,<0.2",
+    "fastraml>=0.1,<0.2",
+    "aiohttp>=3.10",
+    "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+# The built SPA, mounted at `/raml-viewer`. An extra and not a dependency:
+# the two routes that carry the RAML and its tree need no frontend, and most
+# callers want exactly those.
+viewer = ["fastraml-viewer>=0.1,<0.2"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-aiohttp>=1.1",
+    "mypy>=1.10",
+    "ruff>=0.6",
+    # So the gate exercises the mount rather than only the absent branch.
+    "fastraml-viewer",
+]
+
+# The parent repo, in place: this project is developed against the working tree
+# rather than a release, so a parser change shows up here without a publish.
+[tool.uv.sources]
+fastraml = { path = "../..", editable = true }
+raml-document = { path = "../raml-document", editable = true }
+fastraml-viewer = { path = "../fastraml-viewer", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# `examples` and `tests` stay out of the wheel. The tests import `examples`,
+# which is why the gate runs from a checkout rather than an install.
+packages = ["aiohttp_raml"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM",    # flake8-commas
+    "C90",    # mccabe complexity
+    "D100",   # module/class/function docstrings are not all mandatory
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D107",
+    "D203",
+    "D213",   # summary on the first line, matching the parent project
+    "D400",
+    "D401",
+    "D415",
+    "E501",   # line length is the formatter's business
+    "EM101",
+    "EM102",
+    "TRY003",
+    "CPY001",
+    "ANN401",
+]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+multiline-quotes = "double"
+
+[tool.ruff.lint.per-file-ignores]
+# Examples are written to be read: they declare models and views and little
+# else, and their handlers are stubs where the body is not the point.
+# `S106`: a `*_uri` keyword is a URL, not a password.
+"examples/*.py" = ["ANN", "ARG001", "ARG002", "D", "INP001", "RUF029", "S106"]
+# Tests assert on private state and print their table.
+# `TC`: a status-code annotation is resolved at runtime by `get_type_hints`,
+# so moving it into a type-checking block would break the handler it is on.
+"tests/*.py" = ["ANN", "ARG001", "ARG002", "D", "INP001", "PLC0415", "PLR2004", "S101", "S106", "SLF001", "T201", "TC"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+
+# The RAML model is checked strictly where it lives, in `raml-document`. What is
+# left here reads aiohttp-pydantic internals, so `Any` arrives at every boundary
+# and a stricter setting would be satisfied by annotating that `Any` as `Any`.
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

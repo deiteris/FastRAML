@@ -121,6 +121,16 @@ class TestResourceNesting:
         root.at('/books/{isbn}')
         assert list(root.children) == ['/books']
 
+    def test_the_base_uri_is_a_resource_and_not_the_document_root(self):
+        """An API answering on its own base URI writes `/:`, a relative URI like
+        any other. Returning the document root instead would put `get:` beside
+        `title:`, where RAML has no method node and a parser rejects it."""
+        document = Document(title='T')
+        document.root.at('/').methods['get'] = Method()
+        rendered = document.render()
+        assert 'get' not in rendered
+        assert rendered['/'] == {'get': {}}
+
 
 class TestParsesBack:
     def test_the_smallest_document(self):

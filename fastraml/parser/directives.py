@@ -44,7 +44,7 @@ class DirectiveRef:
     """One `type:`, `is:` or `securedBy:` entry.
 
     `params` holds the argument nodes undigested: a parameter value may be any
-    scalar, and substituting it is Phase 6's business, not decoding it.
+    scalar, and substituting it is P4's business, not decoding it.
     """
 
     name: str

@@ -1,7 +1,7 @@
 """Stage 2 — materialize the endpoint IR into the model.
 
 Each retained tree is decoded **exactly once**, which is the whole point of the
-two-stage split (docs/08 section 2). By the time this runs, Phase 6's merge has
+two-stage split (docs/08 section 2). By the time this runs, P4's merge has
 finished rearranging the IR, so what arrives here is the final branch.
 
 Every shape this creates is registered with `Raml.put_typedef`. That is the seam

@@ -757,7 +757,7 @@ class _DefinitionFragment(_UsesOnlyFragment):
 
     Trait, ResourceType and SecurityScheme differ only in which builder the body
     goes to, so stripping `uses:` is shared. The first two override `decode` to
-    build their definition; SecurityScheme keeps the seam until Phase 7.
+    build their definition; SecurityScheme keeps the deferred-definition seam.
     """
 
     __slots__ = ('_raw_definition', 'definition')

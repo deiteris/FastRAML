@@ -337,8 +337,8 @@ def compile_source_provenance(
 
     Static content is left **unmarked** and therefore keeps the template's own
     declaration scope; only nodes that received a value are recorded, as
-    `caller_scope`. That is the whole of decision D2 (docs/08 section 6.2):
-    static goes to the declaration site, dynamic to the application site.
+    `caller_scope`: static content resolves at its declaration and substituted
+    values resolve at their application site (docs/08 section 4.1).
 
     Unchanged node pointers are shared with the input, so the result is still a
     valid key set for the overlay and for the merge that follows.

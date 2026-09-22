@@ -9,9 +9,9 @@ for `headers`, `queryParameters`, `responses`, `body` and every shape facet —
 and then re-resolve type names, because a name contributed by a trait was never
 resolved in the operation's scope.
 
-So stage 1 consumes exactly four kinds of key and leaves everything else as it
-found it. Stage 2 (`source_decode.py`) turns what survives into the model, once,
-after Phase 6's merge has finished rearranging it.
+Stage 1 consumes the three directive keys, recognises methods and subresources,
+and leaves every other pair as YAML. Stage 2 (`source_decode.py`) turns what
+survives into the model once P4's directive merge has finished rearranging it.
 
 See docs/08-templates-and-endpoints.md section 3.
 """
@@ -54,7 +54,7 @@ class SourceOperation:
     id: int
     method: str
     location: str
-    #: `is:` written here. `rt_traits` is filled by Phase 6 with traits arriving
+    #: `is:` written here. `rt_traits` is filled by P4 with traits arriving
     #: through a resource type; the split is what keeps the four priority
     #: classes of docs/08 section 5.2 distinguishable after the merge.
     traits: list[DirectiveRef] = field(default_factory=list)
@@ -68,7 +68,7 @@ class SourceOperation:
     body: Node | None = None
     #: The scope names in this branch resolve in, captured at decode time.
     scope: ParseCtx | None = None
-    #: Filled by Phase 6: which scope a grafted node came from (docs/08 § 6).
+    #: Filled by P4: which scope a grafted node came from (docs/08 § 4).
     provenance: dict[Node, ParseCtx] = field(default_factory=dict)
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
@@ -109,7 +109,7 @@ class SourceEndPoint:
 def _retained(kept: list[Node], source: Node) -> Node | None:
     """The leftover keys as a fresh mapping, carrying the original's position.
 
-    A new node rather than a filtered view of the old one: Phase 6 merges into
+    A new node rather than a filtered view of the old one: P4 merges into
     this and must not reach the document's own tree, which invariant "structural
     merge never mutates either input" depends on.
     """

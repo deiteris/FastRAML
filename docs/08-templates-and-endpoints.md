@@ -539,7 +539,15 @@ unexpected `}`, empty expression, invalid characters in a varname (RFC 6570
 `varname = varchar *( "." 1*varchar )`), malformed pct-encoding.
 
 The same routine parses `baseUri`, at the API root's own decode: `http://{myapi.com`
-is an unclosed expression, not a hostname. Only the *template* half is shared —
+is an unclosed expression, not a hostname. Spec § Base URI also requires the value
+to "conform to the URI specification", so `check_uri_reference` then reads the
+text around the expressions against RFC 3986, which obsoletes the RFC 2396 the
+spec cites. It rejects a character a URI may not contain (`invalid character in
+uri`), a `%` not followed by two hex digits (`invalid pct-encoded sequence in
+uri`), and a malformed scheme such as `1http:` (`invalid uri scheme`). A relative
+reference is accepted, since `api.example.com/{version}` and the spec's own
+`//api.test.com//common//` are both used as base URIs. An IRI is not a URI: a
+non-ASCII character must be pct-encoded. Only the *template* half is shared —
 `baseUriParameters` are not cross-checked against it the way a resource's are,
 because `{version}` is legal there with nothing declaring it.
 

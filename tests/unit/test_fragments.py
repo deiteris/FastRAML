@@ -228,6 +228,40 @@ class TestGlobalPrePass:
         root = workspace({'api.raml': API + 'version: v1\nbaseUri: http://api.example.com/{version}\n'})
         assert parse_from_path(root / 'api.raml') is not None
 
+    @pytest.mark.parametrize(
+        ('base_uri', 'message', 'info'),
+        [
+            ('https://x.test/a b', 'invalid character in uri', {'character': ' '}),
+            ('https://x.test/<id>', 'invalid character in uri', {'character': '<'}),
+            ('https://x.test/%zz', 'invalid pct-encoded sequence in uri', {}),
+            ('1http://x.test', 'invalid uri scheme', {'scheme': '1http'}),
+        ],
+    )
+    def test_a_base_uri_that_is_not_a_uri_reference_is_rejected(self, workspace, base_uri, message, info):
+        # Spec § Base URI: the value MUST conform to the URI specification or
+        # be a Template URI; the template half is checked separately above.
+        root = workspace({'api.raml': API + f"baseUri: '{base_uri}'\n"})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml')
+        trace = traces(caught.value)[0]
+        assert trace.message == message
+        assert trace.info == info
+
+    @pytest.mark.parametrize(
+        'base_uri',
+        [
+            'api.example.com/{version}',
+            '//api.test.com//common//',
+            'http://localhost:8080/api/',
+            '{scheme}://{host}/v1',
+            'https://x.test/a%20b?q=1#top',
+            'http://[::1]:8080/',
+        ],
+    )
+    def test_a_relative_or_templated_base_uri_is_accepted(self, workspace, base_uri):
+        root = workspace({'api.raml': API + f"version: v1\nbaseUri: '{base_uri}'\n"})
+        assert parse_from_path(root / 'api.raml').entry_point.base_uri.value == base_uri
+
     def test_an_unknown_protocol_is_rejected(self, workspace):
         root = workspace({'api.raml': API + 'protocols: [FTP]\n'})
         with pytest.raises(RamlError) as caught:

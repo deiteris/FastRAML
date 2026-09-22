@@ -41,7 +41,7 @@ from fastraml.parser.references import resolve_library_reference, resolve_refere
 from fastraml.parser.resourcetypes import ResourceTypeDefinition, make_resource_type_definition
 from fastraml.parser.security import SecuritySchemeDefinition, make_security_scheme_definition
 from fastraml.parser.traits import TraitDefinition, make_trait_definition
-from fastraml.parser.uritemplates import extract_uri_template_params
+from fastraml.parser.uritemplates import check_uri_reference, extract_uri_template_params
 from fastraml.registry import ParseCtx
 from fastraml.types.examples import Example, make_example
 from fastraml.types.shape import make_parameter_map, make_shape, unmarshal_types
@@ -575,8 +575,10 @@ class APIFragment(_BaseFragment):
             facet = make_string_facet(raml, key, value, self.location)
             # A base URI is a URI template like a resource's own, so it gets the
             # same parse: `http://{myapi.com` is an unclosed expression, not a
-            # hostname (docs/08 section 8.2).
+            # hostname. Around the expressions it must be a URI reference
+            # (docs/08 section 8.2).
             extract_uri_template_params(facet.value, self.location, facet.value_pos)
+            check_uri_reference(facet.value, self.location, facet.value_pos)
             self.base_uri = facet
         elif name == FACET_DOCUMENTATION:
             self.documentation = unmarshal_documentation_items(raml, key, value, self.location)

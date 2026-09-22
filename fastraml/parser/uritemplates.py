@@ -13,8 +13,9 @@ reporting the position of the enclosing `uri:` node. See docs/11-diagnostics.md.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.positions import UNKNOWN
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     'UriTemplateExpression',
+    'check_uri_reference',
     'extract_uri_template_params',
     'resource_path_name',
     'simple_parameter_segment',
@@ -47,6 +49,14 @@ _ERR_UNEXPECTED_BRACE = "unexpected '}'"
 _ERR_EMPTY_EXPRESSION = 'empty expression'
 _ERR_INVALID_CHARACTER = 'invalid character in variable name'
 _ERR_INVALID_PCT_ENCODING = 'invalid pct-encoded sequence in variable name'
+
+#: Outside its template expressions, what a URI reference may not contain: a
+#: character RFC 3986 § 2 does not allow, or a `%` that does not start a
+#: pct-encoded octet. An expression matches first, so it is skipped whole.
+_URI_REFERENCE_FAULT: Final = re.compile(r"\{[^}]*\}|%(?![0-9A-Fa-f]{2})|[^A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]")
+#: A colon before any `/`, `?`, `#` or expression ends a scheme (RFC 3986 § 4.2).
+_SCHEME_PREFIX: Final = re.compile(r'[^:/?#{]*:')
+_SCHEME: Final = re.compile(r'[A-Za-z][A-Za-z0-9+.-]*')
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +148,26 @@ def extract_uri_template_params(uri: str, location: str, uri_pos: Position) -> l
         else:
             i += 1
     return expressions
+
+
+def check_uri_reference(uri: str, location: str, uri_pos: Position) -> None:
+    """Spec § Base URI: `baseUri` MUST conform to the URI specification, or be a Template URI.
+
+    Checks the text around the template expressions against RFC 3986, which
+    obsoletes the RFC 2396 the spec cites: every character is one a URI may
+    contain, every `%` starts a pct-encoded octet, and a scheme, if there is
+    one, is well formed. A relative reference is accepted, as the spec's own
+    `//api.test.com//common//` is one. Run after `extract_uri_template_params`,
+    which has already rejected a malformed expression.
+    """
+    for match in _URI_REFERENCE_FAULT.finditer(uri):
+        if match.group()[0] == '%':
+            raise _template_error('invalid pct-encoded sequence in uri', location, uri_pos, match.start())
+        if match.group()[0] != '{':
+            raise _template_error('invalid character in uri', location, uri_pos, match.start(), character=match.group())
+    prefix = _SCHEME_PREFIX.match(uri)
+    if prefix is not None and _SCHEME.fullmatch(uri, 0, prefix.end() - 1) is None:
+        raise _template_error('invalid uri scheme', location, uri_pos, 0, scheme=uri[: prefix.end() - 1])
 
 
 def simple_parameter_segment(segment: str) -> bool:

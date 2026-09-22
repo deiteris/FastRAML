@@ -70,6 +70,7 @@ _FACETS: Final[tuple[tuple[str, str], ...]] = (
     ('pattern', 'pattern'),
     ('min_length', 'minLength'),
     ('max_length', 'maxLength'),
+    ('file_types', 'fileTypes'),
     ('minimum', 'minimum'),
     ('maximum', 'maximum'),
     ('multiple_of', 'multipleOf'),
@@ -119,6 +120,9 @@ class TypeDecl:
     min_items: int | None = None
     max_items: int | None = None
     unique_items: bool | None = None
+
+    # file -- `minLength` and `maxLength` above are bytes on this kind
+    file_types: list[str] | None = None
 
     # string and numbers
     pattern: str | None = None

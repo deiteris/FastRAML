@@ -138,7 +138,7 @@ def _new_registry(options: ParseOptions, *, default_root: str) -> Raml:
 
 
 def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = None) -> tuple[Raml, RamlError | None]:
-    """Parse `path`, returning the partial model **and** the error, never raising.
+    """Parse `path`, returning the partial model and error when recovery is safe.
 
     What an editor integration wants: a document with a mistake in it should
     still yield the fragments, the endpoints, the types that were fine and their
@@ -151,20 +151,9 @@ def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = N
     the error returned is the same one `parse_from_path` would have raised —
     complete for the pass that failed, at the granularity docs/11 § 2 gives.
 
-    **Continuing past the failing pass was tried, measured, and rejected.** The
-    passes consume each other's output, so a later pass walking state an earlier
-    one reported as broken re-derives the same fault instead of finding a new
-    one. Measured: a missing library used by twenty types goes from **1
-    diagnostic to 41**, and a single dangling type name doubles, because P7
-    re-reports what P1-P3 said and P9 re-reports P7. Recovering the genuinely
-    independent diagnostics means skipping the *entities* known to be broken
-    rather than the passes, which is real machinery inside P9 and P10; it is
-    recorded as an After-v1 item in docs/15 rather than approximated here.
-
-    Four failures still raise, because none of them leaves anything to hand back
-    (`_FATAL`, and docs/13-public-api.md § 1): an unreadable entry file, a
-    missing or unrecognised RAML header, a root that is not a mapping, and a
-    fragment whose kind does not match its context.
+    Entry loading, unknown or unsupported headers, fragment-kind mismatches, and
+    non-mapping entry roots still raise because they leave no trustworthy entry
+    model to return (`_FATAL`, docs/11 section 2, and docs/13 section 1).
     """
     options = options or _DEFAULT_OPTIONS
     raml, uri, text = _open(path, options)
@@ -198,11 +187,8 @@ def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = N
 #: parse begins, in both modes, and `load resource` inside the parse is always
 #: an included file.
 #:
-#: A `raml.entry_point is None` test would be tidier and is wrong. A root that is
-#: not a mapping fails *after* the fragment is registered, so it would look
-#: recoverable; a bad type declaration fails *before* `entry_point` is assigned,
-#: so it would look fatal. The two need telling apart and only the message does
-#: it.
+#: `entry_point is None` cannot classify fatal errors: registration and body
+#: decoding do not establish the same recovery boundary.
 _FATAL: Final = frozenset(
     {
         'unknown fragment kind',  # no RAML header, or one nothing recognises

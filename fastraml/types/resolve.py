@@ -329,10 +329,8 @@ def _nil(raml: Raml, template: BaseShape) -> BaseShape:
 def _column(base: BaseShape, offset: int) -> Position:
     """A file position for a 0-based offset inside the type expression.
 
-    Exact for a plain scalar, which is how a type expression is all but always
-    written. A quoted or block scalar shifts the text right of the position the
-    composer reports, and the offset is not adjusted for it; go-raml has the
-    same limitation.
+    Exact for a plain scalar. A quoted or block scalar shifts the text right of
+    the position the composer reports, and the offset is not adjusted for it.
     """
     if base.type_expr is None:
         return base.key_pos

@@ -478,10 +478,12 @@ One broken response body does not discard its sibling responses, and one broken
 endpoint does not discard the API. Passes collect diagnostics into an accumulator
 and return the partial model together with the accumulated trace.
 
-Three failures stop the affected unit immediately, because continuing would
-produce a model that misrepresents the source: an unreadable entry file, a
-fragment whose first line is not a RAML header, and a root node that is not a
-mapping. See [11-diagnostics.md](11-diagnostics.md).
+Entry-level failures stop parsing when no trustworthy entry model can be
+returned. These cover an unreadable entry file, an unknown or unsupported RAML
+header, a fragment kind that conflicts with its loading context, and a root node
+that is not a mapping. The same failure inside an included fragment remains
+local when its caller can continue. See [11-diagnostics.md](11-diagnostics.md)
+section 2.
 
 ## 6. Why two stages for endpoints
 

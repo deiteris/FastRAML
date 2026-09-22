@@ -1,12 +1,12 @@
-# 11 — Diagnostics
+# 11 - Diagnostics
 
-A RAML file that fails to parse should tell the author *what* is wrong, *where*,
-and *how the parser got there*. The last part matters more than it sounds: an
-error like "cannot inherit from different type: string vs integer" is useless
-without the chain `unwrap shapes → unwrap shape (common.raml:15) → merge shapes →
-inherit property 'a' (common.raml:17)`.
+Diagnostics tell a caller what failed, where it failed, and which parser
+operations led to the failure. A parse can report several independent failures,
+and each failure can contain a chain of contextual frames.
 
-## 1. Model
+## 1. Data model
+
+`fastraml.positions.Position` stores a source span:
 
 ```python
 @dataclass(slots=True, frozen=True)
@@ -14,172 +14,232 @@ class Position:
     line: int
     column: int
     end_line: int = 0
-    end_column: int = 0  # 1-based, end exclusive
+    end_column: int = 0
+```
 
+Lines and columns are 1-based. End positions are exclusive. A position with no
+known end uses the default zero values. `UNKNOWN` represents a synthesized or
+otherwise unavailable source position.
 
+`fastraml.errors` defines the diagnostic graph:
+
+```python
 class ErrorKind(StrEnum):
-    PARSING = "parsing"
-    READING = "reading"
-    LOADING = "loading"
-    RESOLVING = "resolving"
-    UNWRAPPING = "unwrapping"
-    VALIDATING = "validating"
+    PARSING = 'parsing'
+    READING = 'reading'
+    LOADING = 'loading'
+    RESOLVING = 'resolving'
+    UNWRAPPING = 'unwrapping'
+    VALIDATING = 'validating'
 
 
 class Trace:
-    """One frame: a message, where it happened, and optional key/value info."""
-
-    __slots__ = ("message", "location", "position", "kind", "info", "cause")
+    __slots__ = ('cause', 'info', 'kind', 'location', 'message', 'position')
 
 
 class RamlError(Exception):
-    """A trace chain plus zero or more sibling chains."""
-
-    __slots__ = ("head", "siblings")
+    __slots__ = ('head', 'siblings')
 ```
 
-Two composition operations, matching go-raml's `stacktrace`:
+A `Trace` is one contextual frame. `Trace.cause` links to the next inner frame.
+`RamlError.head` is the outermost frame, and `RamlError.siblings` contains
+independent errors.
 
-- **wrap** — `err = wrap("merge shapes", cause, location, position)` pushes a
-  frame. This is the vertical dimension: how we got here.
-- **append** — `err.append(other)` records an independent failure. This is the
-  horizontal dimension: several things went wrong.
+Use these operations to compose diagnostics:
 
-Rendering flattens both: a list of chains, each a list of frames, innermost last.
+- `RamlError.new(...)` starts a chain.
+- `RamlError.wrap(...)` adds an outer frame. Wrapping a `RamlError` preserves its
+  sibling chains. Wrapping another exception records its text as the innermost
+  frame.
+- `RamlError.append(...)` returns a new error with another independent failure.
+  It does not mutate either input.
+- `RamlError.frames()` returns one chain from outermost to innermost.
+- `RamlError.chains()` returns the main chain followed by all sibling chains.
+- `RamlError.messages()` returns the rendered innermost message from each chain.
 
-## 2. Accumulation
+## 2. Accumulation and partial results
+
+`Accumulator` collects independent `RamlError` instances. `result()` returns
+`None`, the single original error, or one error whose siblings contain the other
+failures. `raise_if_any()` raises that combined result.
+
+Accumulation is local and nested. A decoder catches a failure only when it can
+continue without misreading the enclosing construct. The current boundaries are:
+
+| Pipeline area | What can continue independently |
+|---|---|
+| P1-P3 fragment decoding | Library links, declarations, fields, and list entries where the decoder has a local recovery boundary |
+| P4 and P6 endpoint construction | Resources, directive applications, endpoint fields, operations, responses, nested resources, and URI parameters |
+| P5 security | Scheme fields, settings, required settings, and scheme references |
+| P7 shape resolution | Each queued shape |
+| Discriminator declaration check | Each offending discriminator facet |
+| P8 annotation resolution | Each annotation application |
+| P9 unwrap | Each declared type |
+| P10 validation | Declarations and annotation applications, with nested accumulation for facets, examples, defaults, and values |
+
+This table describes recovery boundaries, not a promise that every malformed
+child survives. Invalid container structure or a missing prerequisite can abort
+the current enclosing construct.
+
+`parse_lenient()` runs the same passes as `parse_from_path()` and stops at the
+same failing pass. It returns the registry built up to that point and the error
+that strict parsing would raise. Successfully decoded siblings remain available;
+the construct that failed can be absent or incomplete.
+
+`parse_lenient()` re-raises an entry-level failure when no trustworthy entry
+model can be returned. An entry load failure raises before parsing starts.
+During parsing, fatal classification requires both an outermost message key and
+the entry URI as that frame's location:
+
+| Message key | Meaning |
+|---|---|
+| `unknown fragment kind` | The entry header is missing or unrecognized |
+| `fragment kind not supported` | The entry names an unsupported fragment kind |
+| `unexpected fragment kind` | A fragment header conflicts with the context that loaded it |
+| `must be map` | The entry root is not a mapping |
+
+The same failure in an included fragment remains local even when a type-fragment
+include surfaces it without an extra frame, because its location is not the entry
+URI. `parse_lenient()` accepts paths only; there is no string-input lenient entry
+point.
+
+## 3. Source positions
+
+Source-backed declarations generally carry `location` and a `key_pos`, a
+`value_pos`, or both. Synthesized and programmatically created entities may use
+`UNKNOWN` or reuse the enclosing construct's position.
+
+- `key_pos` identifies a declaration key such as `minLength`, `/users`, or
+  `get`.
+- `value_pos` usually spans the complete value, including child nodes.
+- A tagged node's full span includes the tag, so `!include file.raml` can be
+  highlighted as one source range.
+
+YAML node spans come from the composer's marks. Some parsers derive a more
+specific position within a scalar:
+
+- URI-template diagnostics add a Python character offset to the URI scalar's
+  start position.
+- Type-expression diagnostics rebase a lexer token's zero-based column onto the
+  type-expression scalar. This is exact for plain scalars. Quoting and block
+  scalar prefixes can shift the reported column because the YAML composer does
+  not expose their content offset.
+
+`Position.shifted(offset)` returns a one-character span at the shifted column.
+
+## 4. Locations after structural merge
+
+Stage 2 endpoint decoding can read nodes supplied by traits or resource types.
+The active provenance overlay maps those node identities to the `ParseCtx` under
+which they must be decoded.
 
 ```python
-class Accumulator:
-    __slots__ = ("_errors",)
-
-    def add(self, err: RamlError | None) -> None: ...
-    def result(self) -> RamlError | None: ...
-    def raise_if_any(self) -> None: ...
-```
-
-Passes that can tolerate a local failure use an accumulator:
-
-| Pass | Granularity of tolerance |
-|------|-------------------------|
-| P3 resolve `uses:` | per library |
-| P4a directive resolution | per endpoint, per trait application |
-| P4b materialization | per facet, per operation, per nested endpoint |
-| P7 shape resolution | per shape |
-| P8 annotation resolution | per annotation |
-| P9 unwrap | per declared type |
-| P10 validation | per declared type, per annotation |
-
-Everything else fails fast. The rule: **tolerate what is independent, stop at what
-invalidates the rest**. Four failures are fail-fast, because continuing past any
-of them produces a model that misrepresents the source: an unreadable entry file,
-a missing or unrecognised RAML header, a non-mapping root, and a fragment whose
-kind does not match the context.
-
-Accumulation improves more than the error messages. A broken file still yields a
-usable partial model, which is what an editor integration needs on every
-keystroke — and `parse_lenient` ([13](13-public-api.md) § 1) is what hands that
-model back.
-
-**The table above is the whole of the tolerance, and deliberately so.** Tolerance
-is *within* a pass, at the granularity each pass can defend. It is not between
-passes: a pass that ran on state an earlier one reported as broken re-derives the
-same fault instead of finding a new one, and measurement puts the cost at 41
-diagnostics for one missing library ([13](13-public-api.md) § 1). So
-`parse_lenient` stops where a strict parse stops and returns the half-built model
-— which is the rule at the top of this section applied one level up: tolerate
-what is independent, stop at what invalidates the rest.
-
-## 3. Positions everywhere
-
-Every entity carries `location` (a URI) plus `key_pos` and `value_pos`. They come
-from the YAML node and are never recomputed by scanning text.
-
-- `key_pos` points at the identifier (`minLength`, `/users`, `get`), which is
-  what an author looks for.
-- `value_pos` spans the value including composite children, so an editor can
-  underline a whole block.
-- For a node with a custom tag the span covers the tag too: `!include foo.raml`
-  underlines all 18 characters, not the filename alone.
-
-Sub-token positioning is used where it helps:
-
-- **URI templates** — an error in `/bom/{item Id}` points at the space, computed
-  as `uri_pos.column + byte_offset`.
-- **Type expressions** — a bad name in `(Manager | Admn)[]` points at `Admn`,
-  computed as `type_expr.value_pos.column + expression_column`.
-
-## 4. Location attribution across the merge
-
-After the structural merge a node's file is not the file being decoded
-([08](08-templates-and-endpoints.md) § 6). One function answers the question:
-
-```python
-def location_of(self, node: Node | None, default: str) -> str:
-    if node is None or self._active_overlay is None:
+def location_of(self, node: Node, default: str) -> str:
+    overlay = self._active_overlay
+    if overlay is None:
         return default
-    scope = self._active_overlay.get(node)
-    return scope.anchor.location if scope and scope.anchor else default
+    scope = overlay.get(node)
+    if scope is not None and scope.anchor is not None:
+        return scope.anchor.location
+    return default
 ```
 
-It is called at the top of every entity constructor and structural helper, not at
-the loop that walks facets — because the merge synthesises intermediate container
-nodes that carry no overlay mark of their own, while their grafted children do.
-Calling it one layer deeper is what makes "error in the trait's 200 response"
-report the trait's path.
+Provenance-aware decoders call `Raml.location_of()` at the boundaries where a
+node can come from a merged source. The returned location is the overlay scope's
+anchor location when one exists, otherwise the decoder's default location. An
+anchor identifies the namespace used to resolve names and can differ from a
+shape's authored `location`; callers must not assume they are interchangeable.
 
-## 5. YAML backend errors
+Merge-created container nodes may have no overlay entry. Decoders therefore ask
+for the location of the specific child that produced an entity or diagnostic,
+not only the enclosing mapping.
 
-PyYAML's messages embed positions and context in prose. They are normalised:
+## 5. YAML errors
 
-- the `MarkedYAMLError` marks become a `Position` (converted to 1-based);
-- the message keeps the problem text but drops the `in "<unicode string>", line
-  N, column M` tail, which duplicates the position we already carry;
-- the result is wrapped in a `Trace` with `kind=PARSING` and the file URI.
+`yamlnode.compose()` converts a `yaml.MarkedYAMLError` into one `RamlError`:
 
-## 6. Message style
+- `problem_mark`, or `context_mark` when no problem mark exists, becomes a
+  1-based start position.
+- `problem`, or `context` when no problem text exists, becomes the message.
+- When both problem and context text exist, `Trace.info['context']` retains the
+  context.
+- PyYAML's generated `in "<unicode string>", line ..., column ...` text is not
+  copied because the trace already carries the location and position.
 
-Lowercase, no trailing period, no interpolated positions (the position is
-structured data). Values that vary go in `info`, not the message:
+An unmarked `yaml.YAMLError` keeps its raw text and has no source position.
+Additional YAML-layer diagnostics cover recursive anchors, depth and alias
+expansion limits, unknown local tags, and unsupported unquoted line-separator
+characters. [YAML layer and I/O](03-yaml-and-io.md) defines those rules.
+
+## 6. Message conventions
+
+New parser-authored diagnostics MUST use a stable message key:
+
+- lowercase;
+- no trailing period;
+- no source position in the message;
+- varying values in `Trace.info` rather than interpolated into `Trace.message`.
 
 ```python
-raise RamlError.new("cannot redefine built-in type", location, key_pos, info={"type": name})
+raise RamlError.new(
+    'cannot redefine built-in type',
+    location,
+    key_pos,
+    info={'type': name},
+)
 ```
 
-Rendering produces `cannot redefine built-in type: type: string`. Keeping
-variables out of the message string means diagnostics group cleanly and can be
-matched in tests without brittle substring assertions.
+This keeps `Trace.message` suitable for grouping and for test assertions.
+Tests assert the message key and `info` separately, not assembled display text.
+Wrapped external exceptions and some existing diagnostics can contain free-form
+text; the diagnostic model does not enforce the convention.
+
+`Trace.rendered_message()` appends `info` entries in insertion order, producing
+`cannot redefine built-in type: type: string` for the example above.
 
 ## 7. Rendering
 
-Two renderers ship:
+Two renderers are part of the public error model:
 
-```python
-str(err)  # human: indented chains, "file:line:col message"
-err.to_dict()  # machine: nested dicts, mirrors go-raml's JSON output
-```
+- `str(error)` prints numbered chains. Each frame is indented and contains its
+  location, optional start line and column, and rendered message.
+- `error.to_dict()` returns a `traces` list whose entries contain flattened
+  `stack` lists.
 
-The `to_dict()` shape follows go-raml so that go-raml's CLI
-output and fastRAML's are comparable during TCK work:
+Each serialized frame contains `message`, `position`, `severity`, and `type`:
 
 ```json
-{"traces": [{"stack": [
-  {"message": "unwrap shapes", "position": "/tmp/library.raml:1",
-   "severity": "error", "type": "parsing"},
-  {"message": "cannot inherit from different type: source: string: target: integer",
-   "position": "/tmp/common.raml:17:10", "severity": "error", "type": "unwrapping"}
-]}]}
+{
+  "traces": [
+    {
+      "stack": [
+        {
+          "message": "unwrap shapes",
+          "position": "file:///tmp/library.raml",
+          "severity": "error",
+          "type": "parsing"
+        },
+        {
+          "message": "cannot inherit from different type: source: string: target: integer",
+          "position": "file:///tmp/common.raml:17:10",
+          "severity": "error",
+          "type": "unwrapping"
+        }
+      ]
+    }
+  ]
+}
 ```
 
-A third renderer — LSP `Diagnostic[]` — is trivial from the same data (the
-`end_line`/`end_column` fields exist for it) and is left to a future package.
+This is a projection, not a lossless serialization of the object graph.
+`position` is a string, `info` is folded into the rendered message, and end
+positions are omitted. A renderer that needs source ranges, such as an LSP
+adapter, must read the in-memory `Trace.position` objects.
 
-## 8. Cost on the success path
+## 8. Success-path cost
 
-Diagnostics are built on the error path only. Two rules keep them off the hot
-path:
-
-- No f-string is evaluated unless an error is being constructed. Helpers take
-  `info` as a dict, not a pre-formatted string.
-- No traceback capture, no `inspect`, no stack walking. A `Trace` frame is four
-  slots and is created only when a pass explicitly wraps.
+Parser code constructs trace frames only after a failure occurs. It does not
+capture Python tracebacks, inspect the call stack, or walk frames to build parser
+context. Each parser operation that adds context calls `RamlError.wrap()`
+explicitly. Variable values are passed as `info` when the diagnostic is created,
+so the success path does not format the rendered diagnostic.

@@ -193,11 +193,7 @@ class RamlError(Exception):
         return '\n'.join(lines)
 
     def to_dict(self) -> dict[str, Any]:
-        """A machine-readable projection.
-
-        The shape matches go-raml's JSON output so the two can be diffed fixture
-        by fixture. See docs/14-testing.md section 1.3.
-        """
+        """Return the flattened machine-readable chain projection."""
         return {'traces': [{'stack': [frame.to_dict() for frame in chain]} for chain in self.chains()]}
 
 

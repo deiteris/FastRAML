@@ -90,8 +90,8 @@ def _is_hex_digit(char: str) -> bool:
 def _validate_varname(name: str, location: str, uri_pos: Position, name_start: int) -> None:
     """Validate `varname = varchar *( "." 1*varchar )`; `varchar = ALPHA / DIGIT / "_" / pct-encoded`.
 
-    `name_start` is the byte offset of `name`'s first character within the
-    enclosing URI template, so diagnostics land on the exact offending byte.
+    `name_start` is the character offset of `name`'s first character within the
+    enclosing URI template, so diagnostics land on the offending character.
     """
     length = len(name)
     i = 0
@@ -114,7 +114,7 @@ def _validate_varname(name: str, location: str, uri_pos: Position, name_start: i
 def extract_uri_template_params(uri: str, location: str, uri_pos: Position) -> list[UriTemplateExpression]:
     """Parse `uri` and return its RFC 6570 Level 1/2 template expressions.
 
-    Raises `RamlError`, positioned at the exact offending byte, for: an
+    Raises `RamlError`, positioned at the offending character, for: an
     unclosed `{`, a nested `{`, an unexpected `}`, an empty expression `{}`,
     an invalid character in a variable name, and a malformed percent-encoded
     sequence. See docs/08-templates-and-endpoints.md section 8.2.

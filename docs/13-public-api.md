@@ -42,47 +42,21 @@ a strict parse stops — **the model is the deliverable, not extra diagnostics.*
 The error is the one `parse_from_path` would have raised, complete for the pass
 that failed at the granularity [11](11-diagnostics.md) § 2 gives.
 
-### Why it does not continue past the failing pass
-
-It was built that way first, and measured. The passes consume each other's
-output, so a pass walking state an earlier one already reported as broken
-re-derives the same fault rather than finding a new one:
-
-| Input | strict | continuing past each failure |
-|-------|--------|------------------------------|
-| one dangling type name, unused | 1 | 2 |
-| one dangling type name, 50 dependents | 51 | 102 |
-| **a missing library used by 20 types** | **1** | **41** |
-| a library with a syntax error, 20 users | 1 | 41 |
-
-P7 re-reports what P1–P3 said, then P9 re-reports P7. Forty-one squiggles for one
-unsaved import is worse for an editor than one. The genuinely independent
-diagnostics — a security-scheme error *and* an unrelated type error — are
-recoverable, but only by skipping the broken **entities** inside P9 and P10
-rather than the passes, which is machinery those passes do not have. It is
-After-v1 item 6 in [15](15-implementation-plan.md).
+Later passes do not run after a pass fails because they require that pass's
+output. Accumulators still report independent failures within the pass at the
+boundaries listed in [11](11-diagnostics.md) section 2.
 
 ### What still raises
 
-Four failures, because none leaves anything to hand back: an unreadable entry
-file, a missing or unrecognised RAML header, a root that is not a mapping, and a
-fragment whose kind does not match its context.
+An unreadable entry file raises before parsing starts. During parsing, four
+outer message keys are fatal only when the head location is the entry URI:
+`unknown fragment kind`, `fragment kind not supported`, `unexpected fragment
+kind`, and `must be map`.
 
-They are matched on the **head** of the error, and only when the head is located
-in the entry file. Two reasons, and the second is not obvious. First, the same
-problem in an *included* file is a local failure — a library whose root is a
-sequence should not abandon a parse of the document that used it. A library's
-failure arrives wrapped in the diagnostic for `uses:`, but a fragment
-`!include`d in a type position surfaces unwrapped, with its own location as the
-head, so the message alone is not enough: a missing include, or one outside the
-workspace, would otherwise abandon the parse. The unreadable entry file is
-raised before the parse begins and is not matched at all. Second, the
-tidier-looking test, `raml.entry_point is None`, is wrong in both directions: a
-root that is not a mapping fails *after* the fragment is registered so it would
-look recoverable, and a bad type declaration fails *before* `entry_point` is
-assigned so it would look fatal. The latter is the commonest state an editor
-sees, and `decode_fragment` registers the fragment before decoding its body
-precisely so that there is something to return.
+The location check keeps the same failure recoverable in an included fragment,
+including a type-fragment include whose error is not wrapped. When a nonfatal
+decode error occurs before `entry_point` is assigned, `parse_lenient` returns the
+fragment already registered by `decode_fragment`.
 
 There is no string-input variant. An editor holding an unsaved buffer supplies a
 `file_loader` that shadows it (§ 2) and parses by path, which is also how the

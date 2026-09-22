@@ -173,7 +173,12 @@ class TestRuleExamples:
         [
             ('application/json', 'object', True),
             ('application/json', 'string', True),
-            ('application/problem+json', 'file', False),
+            ('application/problem+json', 'file', True),
+            ('application/xml', 'file', True),
+            ('font/woff2', 'string', False),
+            ('application/cbor', 'object', False),
+            ('application/vnd.example+cbor', 'string', False),
+            ('application/vnd.example+zip', 'file', True),
             ('application/octet-stream', 'file', True),
             ('application/octet-stream', 'object', False),
             ('image/png', 'file', True),
@@ -193,6 +198,14 @@ class TestRuleExamples:
         config = Config(extends=(), rules=(RuleSetting(id='meaningless-media-type-schema'),))
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
         assert bool(findings) is not valid
+
+    def test_request_body_schema_must_match_media_type(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/octet-stream:\n        type: object\n'
+        )
+        config = Config(extends=(), rules=(RuleSetting(id='meaningless-media-type-schema'),))
+        findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+        assert [finding.info['reason'] for finding in findings] == ['binary media requires a file shape']
 
     def test_file_types_must_include_the_body_media_type(self, tmp_path):
         source = (

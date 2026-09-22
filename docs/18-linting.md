@@ -463,11 +463,15 @@ compared with another template by its literal prefix and suffix, so
 assumed to overlap; their types are not intersected. Reserved and fragment
 expansions may span segments, so a route containing one is not compared.
 
-`meaningless-media-type-schema` uses only the response body model. JSON scalars
-are valid JSON and are accepted; file shapes are rejected for `application/json`
-and every structured `+json` subtype. XML has the corresponding file exclusion.
-Octet-stream, PDF, ZIP, gzip, image, audio and video representations require a
-file shape. URL-encoded and multipart forms require an object shape, and
+`meaningless-media-type-schema` reads every request and response body. JSON
+scalars are valid JSON and are accepted. A `file` in a JSON or XML body is
+accepted too: RAML 1.0 § File says file content "SHOULD be a base64-encoded
+string" in JSON, and the validator accepts one (docs/10 § 5), so the earlier
+exclusion contradicted the language. Octet-stream, PDF, ZIP, gzip and CBOR
+(RFC 8949 § 9.3); the `audio`, `font` (RFC 8081), `image` and `video` top-level
+types; and the binary structured syntax suffixes `+ber`, `+der`,
+`+fastinfoset`, `+wbxml`, `+zip` (RFC 6839 §§ 3.2–3.6), `+gzip` (RFC 8460
+§ 6.3) and `+cbor` (RFC 8949 § 9.5) require a file shape. URL-encoded and multipart forms require an object shape, and
 `text/plain` requires a scalar or file shape without pretending every `text/*`
 format is plain text. A file's `fileTypes` must include the body's media type,
 including wildcard entries, and every union member must be compatible. `any`

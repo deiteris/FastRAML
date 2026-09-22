@@ -123,12 +123,7 @@ class Walk:
             return self.field(root, f'{at}.root')
 
         for name, info in model.model_fields.items():
-            prop = self.field(info, f'{at}.{name}')
-            if not info.is_required():
-                prop.required = False
-                if info.default is not None and info.default is not PydanticUndefined:
-                    prop.default = _as_yaml(info.default)
-            decl.properties[info.alias or name] = prop
+            decl.properties[info.alias or name] = self.optional(self.field(info, f'{at}.{name}'), info)
         return decl
 
     # -- fields ---------------------------------------------------------------
@@ -141,6 +136,31 @@ class Walk:
             decl.description = info.description
         if info.examples:
             decl.examples = {f'e{index}': _as_yaml(value) for index, value in enumerate(info.examples)}
+        return decl
+
+    def optional(self, decl: TypeDecl, info: FieldInfo) -> TypeDecl:
+        """Apply a field's optionality and its default to its declaration.
+
+        Separate from `field` because the two are not the same question and only
+        one of them is about the annotation. `field` reads what a value must
+        look like; this reads whether the value has to be there at all, which is
+        a property of the *position* -- a model property, a query parameter, a
+        header. Returns the declaration, so the two compose in one expression.
+
+        **RAML's default in every one of those positions is `required: true`.**
+        A caller that reads the annotation and stops there renders an optional
+        parameter as a mandatory one, and the document is then stricter than the
+        code it describes -- wrong in the direction nothing complains about,
+        because every request the tests send does carry the parameter.
+
+        `default: ~` is not written for a field defaulting to `None`: RAML would
+        take it as a value, and the field is simply absent.
+        """
+        if info.is_required():
+            return decl
+        decl.required = False
+        if info.default is not None and info.default is not PydanticUndefined:
+            decl.default = _as_yaml(info.default)
         return decl
 
     def _tag_name(self, info: FieldInfo, at: str) -> str | None:

@@ -11,8 +11,8 @@ Parsing uses one `Raml` registry and a fixed pass order.
 | P2 | Decode fragments and declarations; retain endpoint source nodes. |
 | P3 | Resolve `uses:` libraries recursively. |
 | P4 | Build endpoints: merge source IR directives, then materialize the result. |
-| P5 | Bind and inherit security schemes. |
 | P6 | Propagate URI parameters. |
+| P5 | Bind and inherit security schemes. |
 | P7 | Resolve type expressions and shape references. |
 | P8 | Bind domain extensions to annotation types. |
 | P9 | Optionally unwrap inheritance and mark recursion. |
@@ -82,10 +82,10 @@ serialized views; they are not content hashes.
 
 ## 5. Errors and recovery
 
-Decoders accumulate independent local diagnostics and return partial models
-where possible. Entry loading, an unknown or unsupported header, a fragment-kind
-mismatch, and a non-mapping entry root are fatal because they leave no
-trustworthy entry model. See [11](11-diagnostics.md).
+Strict entry points raise accumulated errors. `parse_lenient()` returns a partial
+model unless entry loading fails, or its outermost failure has one of the entry
+classifications at the entry URI described in [11](11-diagnostics.md). The same
+classification in an included fragment remains recoverable.
 
 ## 6. Endpoint construction
 

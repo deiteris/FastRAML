@@ -20,8 +20,9 @@ separate parse instances.
 
 - Root metadata: `title`, `description`, `version`, `baseUri`,
   `baseUriParameters`, `protocols`, `mediaType`, and `documentation`. `baseUri`
-  must be an RFC 3986 URI reference, every declared base URI parameter must name
-  a template variable, and media types must use valid `type/subtype` syntax.
+  rejects invalid URI characters, malformed percent escapes, and malformed
+  schemes. Every declared base URI parameter must name a template variable, and
+  media types must use valid `type/subtype` syntax.
 - Declarations: `types` (and the deprecated `schemas` alias),
   `annotationTypes`, `traits`, `resourceTypes`, `securitySchemes`, and `uses`.
 - Domain extensions at supported RAML targets.

@@ -36,7 +36,7 @@ to a hot path, and put the delta in the commit message (`docs/12` Part 4).
   `pyoxigraph` and `fastraml-viewer` are optional extras imported inside their CLI
   verb.
 - `fastraml/views/bindings/`: TypeScript, Python and Go backends for the tree's wire
-  contract (`docs/16` § 11.11). `bindings/schema.py` decides key sets and each key's
+  contract (`docs/16-graph.md` § 7). `bindings/schema.py` decides key sets and each key's
   structural kind; a backend only spells a kind. Code that does not vary with the
   schema lives in `bindings/static/`; edit it there and never embed target-language
   code in a Python string. `bindings/conformance/` drivers hold no expectations;
@@ -90,27 +90,28 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
 - Where an annotation was applied rides `ParseCtx`, not a parameter. A decoder that
   establishes a new application site wraps itself in `Raml.target_scope(...)` and
   gets a test that names the site; a missing scope silently records the enclosing
-  site (`docs/09` § B5).
+  site (`docs/09` § B4).
 - A shape's `location` (file authored in) and its `anchor`'s location (namespace its
   names resolve in) may differ legitimately, e.g. a library resource type reading
-  `type: <<item>>` (`docs/08` § 6.3). Do not assert they agree.
+  `type: <<item>>` (`docs/08` § 4). Do not assert they agree.
 - A template's variable index is keyed by node identity, never by position:
-  optional-method filtering removes subtrees between scan and use (`docs/08` § 7.1).
-- An alias shares its referent's containers on purpose (`docs/07` § 3.6); an
-  inheritance merge sharing containers is a corruption (§ 3.3). Any traversal that
+  optional-method filtering removes subtrees between scan and use (`docs/08` § 5).
+- An alias shares its referent's containers on purpose (`docs/07` § 3); an
+  inheritance merge sharing containers is a corruption (§ 4). Any traversal that
   reaches a type must follow `aliasOf`, or `User[]` reports `User`'s supertypes
-  (`docs/16` § 2.4).
-- Accumulate errors; do not fail fast. Exceptions: an unreadable entry file, a
-  missing or unrecognised RAML header, a non-mapping root, and a fragment whose kind
-  does not match its context.
+  (`docs/16-graph.md` § 3).
+- Accumulate errors; do not fail fast. `parse_lenient` re-raises an unreadable
+  entry file, or an unknown/unsupported header, fragment-kind mismatch, or
+  non-mapping root only when the outermost frame is located at the entry URI;
+  the same included-fragment failure returns a partial model.
 - Numbers never pass through `float` on either side of a comparison. Build a facet's
   `Fraction` from the raw scalar text, and a value via `Fraction(repr(v))`, not
   `as_integer_ratio()`. `multipleOf: 1.1` must accept `2.2`.
 - `pattern:` and `/regex/` property names use `search`, not `fullmatch`; the author
-  writes anchors (`docs/10` § 5.4).
+  writes anchors (`docs/10` § 5).
 - The discriminator inline-declaration rule runs before P9, because after unwrap
   every subtype carries an inherited discriminator. The check on discriminator
-  values runs in P10, outside the `strict` gate (`docs/05` § 9).
+  values runs in P10, outside the `strict` gate (`docs/05` § 6).
 - Read `Examples.entries()`, never `Examples.values`, which is empty when
   `examples: !include ...` is used.
 - No per-character Python loops where a compiled regex or C-level string method will

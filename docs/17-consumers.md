@@ -69,7 +69,7 @@ python -m fastraml.views.bindings typescript \
   -o viewer/src/tree.d.ts --runtime viewer/src/walk.ts
 ```
 
-Regenerate the sample through the CLI:
+Regenerate the sample from `viewer/`:
 
 ```bash
 npm run sample

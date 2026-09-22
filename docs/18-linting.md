@@ -171,11 +171,13 @@ other accepted threshold. `--severity` remains an independent display filter.
 
 ### 5.1 Finding limits
 
-The CLI shows at most 1,000 findings and 100 findings per rule by default. Pass
-`0` to disable either limit. Limits affect presentation only: rules still run to
-completion, JSON and summary output retain complete counts, and omitted error
-or warning findings still affect the `--fail-on` result. Per-rule limiting is
-applied before the global limit.
+The CLI shows at most 1,000 findings and 100 findings per rule per source file
+by default. Pass `0` to disable either limit. Limits apply after the `--severity`
+display filter. Within that eligible set, selection gives errors, then warnings,
+then info findings priority; retained findings keep reading order. The per-rule
+limit is applied before the global limit. Rules still run to completion; JSON
+and summary output retain complete counts for the display-filtered set, and
+omitted error or warning findings still affect the `--fail-on` result.
 
 ### 5.2 Metrics
 

@@ -42,9 +42,9 @@ The key features are:
 * **Structured diagnostics**: errors carry source locations and trace chains, including failures reached through includes and merged templates. Independent failures accumulate rather than stop the parse, wherever the parser can continue safely.
 * **Model navigation**: `list`, `show`, `refs` and `deps` inspect named entities and the routes between them. `graph` emits RDF, Graphviz or JSON, while `tree` emits an addressed containment view.
 * **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` checks the effective model against 84 built-in rules, with opt-in security (OWASP and OAuth), HTTP semantics (RFC 9110), problem details (RFC 9457), I-JSON (RFC 7493) and style rulesets, per-rule explanations and plugins ([Linting](#linting)).
-* **Version comparison**: `compat` walks two effective API models in parallel and classifies compatibility impact by whether a value is sent in a request or received in a response ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md#103-the-policy-is-separable-and-named)). It exits non-zero when the policy identifies a breaking change.
+* **Version comparison**: `compat` walks two effective API models in parallel and classifies compatibility impact by whether a value is sent in a request or received in a response ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md#5-compatibility-view)). It exits non-zero when the policy identifies a breaking change.
 * **OpenAPI and JSON Schema output**: convert an effective API to a typed OpenAPI 3.0.3 document, or a RAML shape to JSON Schema draft-07. Both conversion APIs report information the target format could not represent.
-* **Typed and measured**: ships `py.typed` and checks the package with strict mypy. The benchmark gate checks linear scaling; on the recorded machine, 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using **98 MB**. The method, the per-configuration numbers, and the comparison against [go-raml](https://github.com/acronis/go-raml) — measured rather than quoted — are in [docs/12](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md).
+* **Typed and measured**: ships `py.typed` and checks the package with strict mypy. CI gates linear scaling; the local benchmark harness measures time, allocations, and RSS under a machine fingerprint ([docs/12](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md)).
 * **Version-matched agent guides**: the CLI ships its own usage guides for coding agents, so the guide always matches the installed version ([Using it from an agent](#using-it-from-an-agent)).
 
 ## Status
@@ -141,7 +141,7 @@ fastraml validate api.raml           # exit 1 and a positioned trace if invalid
 fastraml validate --json *.raml      # one JSON object per file
 fastraml info api.raml               # YAML backend, timing, model counts
 fastraml openapi api.raml            # OpenAPI 3.0.3 YAML; --format json for JSON
-fastraml lint api.raml               # spec, security and style checks (see Linting)
+fastraml lint api.raml               # recommended spec checks (see Linting)
 ```
 
 ### Inspecting the model
@@ -176,8 +176,9 @@ Operation  api.raml:446  Add a book -request-> request -payload-> application/js
 
 `fastraml lint` checks whether a valid document is a *good* one. It runs on the
 effective model, after traits, resource types and inheritance are applied, so it
-sees what a client of the API sees. The 84 built-in rules fall into six
-rulesets, and you choose which ones run:
+sees what a client of the API sees. The 84 built-in rules are grouped into six
+categories. The default `recommended` ruleset enables `spec`; `all` enables every
+built-in rule and activated plugin:
 
 * **`spec`** (15 rules, the default `recommended` ruleset): problems the RAML and
   JSON Schema specifications themselves imply, such as a `$ref` whose sibling
@@ -355,10 +356,10 @@ Where fastRAML reads the spec differently from
 | Extra | For |
 |-------|-----|
 | `fastraml[graph]` (`pyoxigraph`) | `fastraml query` — SPARQL over the graph projection; the graph itself needs nothing |
-| `fastraml[serve]` (`fastraml-viewer`) | `fastraml serve` — the document in a browser; the built viewer bundle, a static package with no dependencies of its own ([why it is its own distribution](https://github.com/deiteris/FastRAML/blob/master/docs/17-consumers.md#72-why-fastraml-viewer-is-its-own-distribution)) |
-| `fastraml[http]` (`httpx`) or `requests` | remote `!include`; supply the client yourself, or use `fastraml validate -r`. Synchronous clients only — from async code run the parse in `asyncio.to_thread` ([why](https://github.com/deiteris/FastRAML/blob/master/docs/03-yaml-and-io.md#51-the-http-client-is-synchronous-and-refused-if-it-is-not)) |
+| `fastraml[serve]` (`fastraml-viewer`) | `fastraml serve` — the document in a browser; the built viewer bundle, a static package with no dependencies of its own ([consumer boundary](https://github.com/deiteris/FastRAML/blob/master/docs/17-consumers.md)) |
+| `fastraml[http]` (`httpx`) or `requests` | remote `!include`; supply the client yourself, or use `fastraml validate -r`. Synchronous clients only — from async code run the parse in `asyncio.to_thread` ([loaders](https://github.com/deiteris/FastRAML/blob/master/docs/03-yaml-and-io.md#5-resource-loaders)) |
 | `fastraml[re2]` (`google-re2`) | `ParseOptions(regex_engine="re2")` — linear-time patterns for untrusted input |
-| libyaml | selected automatically when PyYAML was built with it; roughly an order of magnitude faster, and **not only** a speed choice ([D9](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md#d9--a-tab-after-a-keys-colon-depends-on-the-yaml-backend)) |
+| libyaml | selected automatically when PyYAML was built with it; its scanner differs from the pure-Python backend for a tab after a mapping colon ([YAML behavior](https://github.com/deiteris/FastRAML/blob/master/docs/03-yaml-and-io.md#21-yaml-12-scalar-behavior)) |
 
 ## Development
 

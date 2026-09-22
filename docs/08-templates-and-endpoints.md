@@ -214,10 +214,9 @@ string key. `protocols` accepts only HTTP or HTTPS, case-insensitively, and
 stores uppercase values.
 
 The API root parses `baseUri` with the same RFC 6570 level-1/level-2 template
-parser, then validates the surrounding text as an RFC 3986 URI reference.
-Relative references are accepted; invalid characters, malformed percent escapes,
-and malformed schemes are rejected. A non-ASCII IRI character must be
-percent-encoded.
+parser, then rejects invalid URI characters, malformed percent escapes, and
+malformed schemes in the surrounding text. Relative references are accepted,
+and a non-ASCII IRI character must be percent-encoded.
 
 ### 6.2 URI parameters
 

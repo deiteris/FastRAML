@@ -16,9 +16,10 @@ types:
         displayName: Rulesets to enable
         description: |
           A ruleset name, or several. `recommended` is the spec-derived set and the
-          default; `security` is the OWASP set; `style` is opt-in authoring
-          conventions; `all` is every rule registered, including any a plugin
-          contributed.
+          default; `security` (OWASP and the OAuth RFCs), `http` (RFC 9110),
+          `problem-details` (RFC 9457) and `i-json` (RFC 7493) follow from
+          published standards; `style` is opt-in authoring conventions; `all`
+          is every rule registered, including any a plugin contributed.
         type: LintName | StringList
       plugins?:
         displayName: Plugins to activate

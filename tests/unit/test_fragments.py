@@ -185,7 +185,7 @@ class TestApiDecoding:
                 + 'types:\n  A: string\nannotationTypes:\n  B: string\ntraits:\n  t: {}\n'
                 + 'resourceTypes:\n  r: {}\n'
                 + 'securitySchemes:\n  s:\n    type: Basic Authentication\n'
-                + 'baseUriParameters:\n  p: string\n'
+                + 'baseUri: https://{p}.example.test\nbaseUriParameters:\n  p: string\n'
             }
         )
         api = parse_from_path(root / 'api.raml').entry_point
@@ -227,6 +227,69 @@ class TestGlobalPrePass:
     def test_a_well_formed_base_uri_template_is_accepted(self, workspace):
         root = workspace({'api.raml': API + 'version: v1\nbaseUri: http://api.example.com/{version}\n'})
         assert parse_from_path(root / 'api.raml') is not None
+
+    @pytest.mark.parametrize(
+        ('base_uri', 'message', 'info'),
+        [
+            ('https://x.test/a b', 'invalid character in uri', {'character': ' '}),
+            ('https://x.test/<id>', 'invalid character in uri', {'character': '<'}),
+            ('https://x.test/%zz', 'invalid pct-encoded sequence in uri', {}),
+            ('1http://x.test', 'invalid uri scheme', {'scheme': '1http'}),
+        ],
+    )
+    def test_a_base_uri_that_is_not_a_uri_reference_is_rejected(self, workspace, base_uri, message, info):
+        # Spec § Base URI: the value MUST conform to the URI specification or
+        # be a Template URI; the template half is checked separately above.
+        root = workspace({'api.raml': API + f"baseUri: '{base_uri}'\n"})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml')
+        trace = traces(caught.value)[0]
+        assert trace.message == message
+        assert trace.info == info
+
+    @pytest.mark.parametrize(
+        'base_uri',
+        [
+            'api.example.com/{version}',
+            '//api.test.com//common//',
+            'http://localhost:8080/api/',
+            '{scheme}://{host}/v1',
+            'https://x.test/a%20b?q=1#top',
+            'http://[::1]:8080/',
+        ],
+    )
+    def test_a_relative_or_templated_base_uri_is_accepted(self, workspace, base_uri):
+        root = workspace({'api.raml': API + f"version: v1\nbaseUri: '{base_uri}'\n"})
+        assert parse_from_path(root / 'api.raml').entry_point.base_uri.value == base_uri
+
+    @pytest.mark.parametrize(
+        ('document', 'uri'),
+        [
+            ('baseUri: https://x.test\nbaseUriParameters:\n  p: string\n', 'https://x.test'),
+            ('baseUriParameters:\n  p: string\nbaseUri: https://x.test\n', 'https://x.test'),
+            ('baseUriParameters:\n  p: string\n', ''),
+        ],
+    )
+    def test_a_base_uri_parameter_the_base_uri_does_not_use_is_rejected(self, workspace, document, uri):
+        # Spec § Base URI: `baseUriParameters` has the structure of
+        # `uriParameters`, whose every name MUST be a variable in the URI.
+        root = workspace({'api.raml': API + document})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml')
+        trace = traces(caught.value)[0]
+        assert trace.message == 'uri parameter is not used'
+        assert trace.info == {'parameter': 'p', 'uri': uri}
+
+    def test_a_base_uri_that_failed_is_not_followed_by_one_error_per_parameter(self, workspace):
+        root = workspace({'api.raml': API + 'baseUri: http://{p\nbaseUriParameters:\n  p: string\n'})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml')
+        assert [trace.message for trace in traces(caught.value)] == ["unclosed '{'"]
+
+    def test_version_needs_no_declaration_but_may_have_one(self, workspace):
+        document = 'version: v1\nbaseUri: https://x.test/{version}\nbaseUriParameters:\n  version: string\n'
+        root = workspace({'api.raml': API + document})
+        assert list(parse_from_path(root / 'api.raml').entry_point.base_uri_parameters) == ['version']
 
     def test_an_unknown_protocol_is_rejected(self, workspace):
         root = workspace({'api.raml': API + 'protocols: [FTP]\n'})

@@ -23,7 +23,7 @@ from fastraml.yamlnode import NodeKind, pairs
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from fastraml.parser.endpoints import Body, Response
+    from fastraml.parser.endpoints import Body
     from fastraml.parser.fragments import Fragment
     from fastraml.types.base import BaseShape, Property
     from fastraml.views.lint.engine import Context
@@ -40,19 +40,47 @@ __all__ = [
 
 
 class DeprecatedSchemas:
-    """The deprecated `schemas:` alias for `types:`."""
+    """The deprecated `schemas:` alias for `types:`, and `schema:` for `type:`."""
 
     requires_source: ClassVar = True
 
     meta: ClassVar = RuleMeta(
         id='deprecated-schemas',
         category=Category.SPEC,
-        summary='a fragment that declares types with the deprecated schemas key',
-        rationale='RAML 1.0 retains `schemas:` for compatibility and explicitly deprecates it in favour of `types:`.',
+        summary='the deprecated schemas and schema keys',
+        rationale=(
+            'RAML 1.0 retains `schemas:` and the `schema:` facet for compatibility with RAML 0.8 and deprecates '
+            'both: a future version might remove them. Use `types:` and `type:`, which accept XML and JSON '
+            'schemas too.'
+        ),
         severity=Severity.WARNING,
-        good='#%RAML 1.0\ntitle: t\ntypes:\n  User: string\n',
-        bad='#%RAML 1.0\ntitle: t\nschemas:\n  User: string\n',
+        references=(
+            'RAML 1.0 § The Root of the Document',
+            'RAML 1.0 § Type Declarations',
+            'RAML 1.0 § Using XML and JSON Schemas',
+        ),
+        good='#%RAML 1.0\ntitle: t\ntypes:\n  User:\n    type: string\n',
+        bad='#%RAML 1.0\ntitle: t\nschemas:\n  User:\n    type: string\n',
     )
+
+    def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
+        authored = None if ctx.raml.source_info is None else ctx.raml.source_info.get(base.id)
+        if authored is None or authored[1].kind is not NodeKind.MAPPING:
+            return ()
+        # Keys only, sliced rather than paired: this runs once per type node,
+        # and most declarations have nothing to report.
+        return [
+            ctx.at(
+                self.meta,
+                'schema is deprecated; use type',
+                location=base.location,
+                position=key.position,
+                iri=iri,
+                field='schema',
+            )
+            for key in authored[1].content[::2]
+            if key.value == 'schema'
+        ]
 
     def unit(self, ctx: Context, iri: str, fragment: Fragment) -> Iterable[Finding]:
         root = ctx.raml.source_node(fragment.location)
@@ -90,6 +118,7 @@ class JsonRefSiblings:
             'sibling. A constraint written beside it looks active and silently has no effect.'
         ),
         severity=Severity.WARNING,
+        references=('JSON Schema draft-07 § 8.3',),
         good=(
             '#%RAML 1.0\ntitle: t\ntypes:\n  User: |\n'
             '    {"definitions":{"Name":{"type":"string"}},"allOf":[{"$ref":"#/definitions/Name"}]}\n'
@@ -282,6 +311,7 @@ class UntypedPayload:
             'gets when its type was left off, not something an author chooses.'
         ),
         severity=Severity.WARNING,
+        references=('RAML 1.0 § Determine Default Types',),
         good=(
             '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n'
             '        body:\n          application/json:\n            type: string\n'
@@ -306,56 +336,68 @@ class UntypedPayload:
 
 
 class MeaninglessMediaTypeSchema:
-    """A response shape that contradicts the representation's media type."""
+    """A request or response shape that contradicts the representation's media type."""
 
     meta: ClassVar = RuleMeta(
         id='meaningless-media-type-schema',
         category=Category.SPEC,
-        summary='a response media type whose schema cannot represent that media',
+        summary='a body media type whose schema cannot represent that media',
         rationale=(
-            'The media type tells clients how to decode bytes before the schema is applied. File values cannot be '
-            'JSON or XML documents, binary media needs a file value, and form encodings need named object fields.'
+            'The media type tells the reader how to decode bytes before the schema is applied, so binary media '
+            'needs a file value, form encodings need named object fields, and plain text needs a scalar. A '
+            '`file` in a JSON or XML body is not reported: RAML represents it as a base64-encoded string.'
         ),
         severity=Severity.WARNING,
+        references=(
+            'RAML 1.0 § File',
+            'RFC 6839 § 3.6',
+            'RFC 7578',
+            'RFC 8081',
+            'RFC 8460 § 6.3',
+            'RFC 8949 § 9.3',
+            'RFC 8949 § 9.5',
+        ),
         good=(
             '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        body:\n'
             '          application/json:\n            type: object\n            properties:\n              id: string\n'
         ),
         bad=(
             '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        body:\n'
-            '          application/problem+json: file\n'
+            '          application/octet-stream:\n            type: object\n'
         ),
     )
 
-    def response(self, ctx: Context, iri: str, response: Response) -> Iterable[Finding]:
-        found = []
-        for body in response.bodies.values():
-            base = body.shape
-            media_type = body.media_type.partition(';')[0].strip().casefold()
-            issue = _media_type_issue(base, media_type)
-            if issue is not None:
-                found.append(
-                    ctx.on(
-                        self.meta,
-                        'response schema is meaningless for its media type',
-                        body,
-                        iri=iri,
-                        mediaType=body.media_type,
-                        type=base.type if base is not None else 'none',
-                        reason=issue,
-                    )
-                )
-        return found
+    def payload(self, ctx: Context, iri: str, body: Body) -> Iterable[Finding]:
+        base = body.shape
+        issue = _media_type_issue(base, body.media_type.partition(';')[0].strip().casefold())
+        if issue is None:
+            return ()
+        return (
+            ctx.on(
+                self.meta,
+                'body schema is meaningless for its media type',
+                body,
+                iri=iri,
+                mediaType=body.media_type,
+                type=base.type if base is not None else 'none',
+                reason=issue,
+            ),
+        )
 
 
 _BINARY_MEDIA = frozenset(
     {
+        'application/cbor',
         'application/gzip',
         'application/octet-stream',
         'application/pdf',
         'application/zip',
     }
 )
+#: Top-level types whose every subtype is binary; `font` is RFC 8081.
+_BINARY_TOP_LEVEL = ('audio/', 'font/', 'image/', 'video/')
+#: Structured syntax suffixes naming a binary encoding: RFC 6839 §§ 3.2-3.6, RFC 8460 § 6.3, RFC 8949 § 9.5.
+_BINARY_SUFFIXES = ('+ber', '+cbor', '+der', '+fastinfoset', '+gzip', '+wbxml', '+zip')
 _FORM_MEDIA = frozenset({'application/x-www-form-urlencoded', 'multipart/form-data'})
 
 
@@ -379,12 +421,8 @@ def _media_type_issue(base: BaseShape | None, media_type: str) -> str | None:  #
     if isinstance(shape, FileShape):
         if shape.file_types and not any(_matches_media_type(facet.value, media_type) for facet in shape.file_types):
             return 'fileTypes excludes the declared media type'
-        if media_type == 'application/json' or media_type.endswith('+json'):
-            return 'JSON cannot represent a file value'
-        if media_type in {'application/xml', 'text/xml'} or media_type.endswith('+xml'):
-            return 'XML cannot represent a file value'
         return None
-    if media_type in _BINARY_MEDIA or media_type.startswith(('audio/', 'image/', 'video/')):
+    if media_type in _BINARY_MEDIA or media_type.startswith(_BINARY_TOP_LEVEL) or media_type.endswith(_BINARY_SUFFIXES):
         return 'binary media requires a file shape'
     if media_type in _FORM_MEDIA and not isinstance(shape, ObjectShape):
         return 'form media requires an object shape'

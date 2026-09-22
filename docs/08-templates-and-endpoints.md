@@ -539,9 +539,23 @@ unexpected `}`, empty expression, invalid characters in a varname (RFC 6570
 `varname = varchar *( "." 1*varchar )`), malformed pct-encoding.
 
 The same routine parses `baseUri`, at the API root's own decode: `http://{myapi.com`
-is an unclosed expression, not a hostname. Only the *template* half is shared —
-`baseUriParameters` are not cross-checked against it the way a resource's are,
-because `{version}` is legal there with nothing declaring it.
+is an unclosed expression, not a hostname. Spec § Base URI also requires the value
+to "conform to the URI specification", so `check_uri_reference` then reads the
+text around the expressions against RFC 3986, which obsoletes the RFC 2396 the
+spec cites. It rejects a character a URI may not contain (`invalid character in
+uri`), a `%` not followed by two hex digits (`invalid pct-encoded sequence in
+uri`), and a malformed scheme such as `1http:` (`invalid uri scheme`). A relative
+reference is accepted, since `api.example.com/{version}` and the spec's own
+`//api.test.com//common//` are both used as base URIs. An IRI is not a URI: a
+non-ASCII character must be pct-encoded.
+
+`baseUriParameters` is cross-checked in one direction only. Spec § Base URI gives
+it the structure of `uriParameters`, so every name it declares must be a variable
+in `baseUri` (`uri parameter is not used`, with `uri` empty when there is no
+`baseUri`). The check runs after the root's main loop, since the two keys may come
+in either order, and is skipped when `baseUri` itself failed. The other direction
+is not checked, and no variable is synthesised: `{version}` is legal with nothing
+declaring it.
 
 **Propagation** (P6): each endpoint's parameter map is rewritten to
 ancestor-declared parameters first, then its own. A nested resource therefore
@@ -555,8 +569,8 @@ consumer indexing parameters by identity gets one entry per declaration rather
 than one per resource that inherits it. A synthesised variable is created at the
 endpoint whose template named it, so it is not shared.
 
-`baseUriParameters` binds as `uri` too, and is the one parameter map with no
-template to check against — § 8.2 above says why.
+`baseUriParameters` binds as `uri` too, and is the one parameter map that is not
+propagated: it belongs to the API, not to a resource.
 
 ### 8.3 Bodies and default media types
 
@@ -571,3 +585,16 @@ template to check against — § 8.2 above says why.
 A mapping that mixes media-type keys and non-media-type keys is an error listing
 each offending key — this catches the common
 `body: {application/json: ..., type: Foo}` mistake.
+
+### 8.4 The query string
+
+`queryString` and `queryParameters` are mutually exclusive on one method, checked
+as the request decodes. Spec § The Query String as a Whole also restricts the
+type: after every union is expanded, each base type must be a scalar type or
+`object`. That is a question about the flattened type, so it belongs to P10
+([10](10-validation.md) § 2) and runs only with `validate=True`, over every
+operation's request (a trait's `queryString` included, since traits are merged by
+then) and every security scheme's `describedBy`. An array anywhere in the
+flattened union's members is `query string must be a scalar or object type`; an
+array-typed *property* of an object query string is fine, and is how a parameter
+repeats.

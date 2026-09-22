@@ -17,6 +17,7 @@ def validate_shapes(self) -> None:
     unwrap_cache: dict[int, BaseShape] = {}
     acc = Accumulator()
     acc.add(self._validate_types(unwrap_cache))
+    acc.add(self._validate_query_strings(unwrap_cache))
     acc.add(self._validate_domain_extensions(unwrap_cache))
     acc.raise_if_any()
 ```
@@ -66,6 +67,16 @@ as though it constrains something.
 `BaseShape.check()` additionally validates **every `enum` member against the
 shape itself**, so `type: integer, enum: [1, "two"]` fails at the declaration,
 not at first use.
+
+One check depends on where a type is used rather than on its kind.
+`_validate_query_strings` reads each `queryString`, from an operation or a
+security scheme's `describedBy`, in its flattened form, and rejects one whose
+union members include an array: spec § The Query String as a Whole allows only
+scalar types and `object` (`query string must be a scalar or object type`,
+[08](08-templates-and-endpoints.md) § 8.4). The flattened form is what makes it
+simple: after unwrap a named union's members are in `any_of`, with no alias or
+supertype left to follow. A query string that cannot be unwrapped is skipped,
+because `_validate_types` has already reported it.
 
 ## 3. Examples, defaults, enums
 

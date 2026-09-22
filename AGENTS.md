@@ -4,7 +4,7 @@ A RAML 1.0 parser for Python 3.12+. `docs/` is normative: start at `docs/README.
 `docs/02-architecture.md` maps each area to its document and modules.
 
 Status: phases 0–9 of `docs/15-implementation-plan.md` are complete, the TCK passes
-915 of 915, and remaining work is the "After v1" list in `docs/15`.
+926 of 926, and remaining work is the "After v1" list in `docs/15`.
 
 ## Before changing anything
 

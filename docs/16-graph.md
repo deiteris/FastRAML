@@ -742,7 +742,7 @@ Three different proposals hide behind "use AMF":
 **Run AMF to produce the graph.** Rejected. It adds a JVM/Node dependency and a
 second RAML implementation whose resolution pipelines do their own trait and
 resource-type expansion. The graph would then answer *AMF's* questions, and the
-915-of-915 conformance this project maintains would describe a model nobody
+926-of-926 conformance this project maintains would describe a model nobody
 queries.
 
 **Emit AMF's vocabulary from this model.** Rejected. It is strictly more work,

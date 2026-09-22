@@ -117,16 +117,24 @@ def parse_severity(value: str) -> Severity:
 class Category(StrEnum):
     """What kind of judgement a rule makes — docs/18 § 1.
 
-    Not a taxonomy of subject matter. `SPEC` and `SECURITY` are the two
-    provenance groups that ship here, and `STYLE` exists so a plugin's rules
-    land somewhere that is visibly not either of them.
+    Not a taxonomy of subject matter. `SPEC` is RAML's own semantics;
+    `SECURITY`, `HTTP`, `PROBLEM_DETAILS` and `I_JSON` each follow from a
+    published standard; `STYLE` is taste. Each built-in category is also the
+    ruleset that enables it, so a project turns a standard on and grades it
+    under one name.
     """
 
     #: Derived from RAML's own semantics (§ 1 group 1).
     SPEC = 'spec'
-    #: Derived from a published standard, off by default (§ 1 group 2).
+    #: Derived from OWASP and the OAuth RFCs, off by default (§ 1 group 2).
     SECURITY = 'security'
-    #: Taste. No built-in is in this category (§ 1 group 3).
+    #: Derived from RFC 9110 HTTP semantics, off by default (§ 1 group 2).
+    HTTP = 'http'
+    #: Derived from RFC 9457 problem details, off by default (§ 1 group 2).
+    PROBLEM_DETAILS = 'problem-details'
+    #: Derived from the RFC 7493 I-JSON profile, off by default (§ 1 group 2).
+    I_JSON = 'i-json'
+    #: Taste, off by default (§ 1 group 3).
     STYLE = 'style'
 
 
@@ -138,6 +146,11 @@ class RuleMeta:
     on the first and fire on the second (docs/18 § 2.1). That makes the
     documentation a test rather than a comment, which is the lesson docs/16
     § 6.2 paid for.
+
+    `references` names the published sources a rule follows from, one citation
+    per entry: `OWASP API4:2023`, `RFC 9110 § 15.5.2`, `CWE-770`. It is data
+    rather than prose so that a reader, or a tool, can find every rule one
+    clause produced (docs/18 § 2.2).
     """
 
     id: str
@@ -147,6 +160,7 @@ class RuleMeta:
     severity: Severity
     good: str = ''
     bad: str = ''
+    references: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -138,7 +138,7 @@ was fixed at its cause rather than recorded:
   scoring as a correct rejection of an `invalid-` fixture, which is credit for
   the wrong reason.
 
-Skipping by header rather than by path is why the ratchet holds 915 of the 965,
+Skipping by header rather than by path is why the ratchet holds 926 of the 976,
 with 50 skipped. The fiftieth is not a category: `spec-examples/APIs/external-
 type-extend-invalid.raml` is a correct fixture that a deliberate deviation
 contradicts (`SKIPPED_FIXTURES`, with D11 as its reason). It is skipped rather
@@ -155,7 +155,7 @@ deviation ([01](01-scope-and-coverage.md) § 4). It needs a Go toolchain, so it
 would not run in CI.
 
 It was meant to be the fastest way to diagnose a TCK failure, and there are none
-— the ratchet is 915 of 915. Every disagreement that did arise was settled by
+— the ratchet is 926 of 926. Every disagreement that did arise was settled by
 running go-raml directly against a throwaway Go test, which is what `CLAUDE.md`
 prescribes and which needs no script and no agreed output format. That is the
 standing method; this section describes an alternative to it that was never

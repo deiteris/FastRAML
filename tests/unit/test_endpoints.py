@@ -95,6 +95,41 @@ class TestOperations:
         assert error is not None
         assert 'queryString and queryParameters are mutually exclusive' in messages(error)
 
+    @pytest.mark.parametrize(
+        'document',
+        [
+            '/users:\n  get:\n    queryString:\n      type: array\n      items: string\n',
+            '/users:\n  get:\n    queryString: string[]\n',
+            '/users:\n  get:\n    queryString:\n      type: object | string[]\n',
+            'types:\n  Q: string[]\n/users:\n  get:\n    queryString: Q\n',
+            'types:\n  Q: string[]\n  R: Q\n/users:\n  get:\n    queryString:\n      type: R\n',
+            'types:\n  Q: string | integer[]\n/users:\n  get:\n    queryString:\n      type: object | Q\n',
+            (
+                'types:\n  Q: string | integer[]\n  R:\n    type: Q\n    description: d\n'
+                '/users:\n  get:\n    queryString:\n      type: object | R\n'
+            ),
+            'traits:\n  t:\n    queryString: string[]\n/users:\n  get:\n    is: [t]\n',
+            'securitySchemes:\n  s:\n    type: x-custom\n    describedBy:\n      queryString: string[]\n',
+        ],
+    )
+    def test_a_query_string_that_admits_an_array_is_rejected(self, workspace, document):
+        # Spec § The Query String as a Whole: after expanding every union, each
+        # base type MUST be a scalar type or the object type. Checked in P10,
+        # on the flattened form, so only when validating.
+        assert parse(workspace, document) is not None
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, document, validate=True)
+        assert 'query string must be a scalar or object type' in messages(caught.value)
+
+    @pytest.mark.parametrize(
+        'query_string',
+        ['string', 'integer | boolean', '\n      properties:\n        q: string[]', 'object | string', 'nil'],
+    )
+    def test_a_scalar_or_object_query_string_is_accepted(self, workspace, query_string):
+        # An array-typed *property* is what repeats a parameter; only the
+        # query string's own type is restricted.
+        assert parse(workspace, f'/users:\n  get:\n    queryString: {query_string}\n', validate=True) is not None
+
     def test_an_unknown_method_field_is_rejected(self, workspace):
         error = fails(workspace, '/users:\n  get:\n    nonsense: 1\n')
         assert error is not None

@@ -37,16 +37,24 @@ the final `SUMMARY` record when text output is truncated. Use
 `--max-findings 0` or `--max-findings-per-rule 0` only when the task requires
 every finding.
 
-## Three categories, and only one is on by default
+## Six categories, and only one is on by default
 
 | Category | What it means | Default |
 | --- | --- | --- |
 | `spec` | Follows from RAML's own semantics | **enabled** |
-| `security` | Follows from OWASP API Security | disabled |
+| `security` | Follows from OWASP API Security and the OAuth RFCs | disabled |
+| `http` | Follows from RFC 9110 HTTP semantics | disabled |
+| `problem-details` | Follows from RFC 9457, for APIs that use problem details | disabled |
+| `i-json` | Follows from RFC 7493, for APIs that adopt the I-JSON profile | disabled |
 | `style` | Consistent RAML notation and documentation | disabled |
 
+Each category is also the ruleset that turns it on. `--explain RULE` lists the
+sources a standards rule cites, such as `RFC 9110 § 15.5.2` or `OWASP API4:2023`.
+
 `spec` rules are not style preferences. `json-ref-siblings` fires because a
-draft-07 resolver silently ignores keys beside a `$ref`. `optional-and-nil` is
+draft-07 resolver silently ignores keys beside a `$ref`; `empty-path-segment`,
+`unnested-resource` and `undescribed-security-scheme` follow a SHOULD in the RAML
+1.0 specification, and `--explain` names the section. `optional-and-nil` is
 instead opt-in style: omitted, present-null and present-with-value are distinct
 states, useful in PATCH-like contracts but worth reviewing elsewhere.
 
@@ -62,6 +70,14 @@ Add `style` when you also want notation and documentation conventions:
 ```yaml
 lint:
   extends: [recommended, security, style]
+```
+
+Add `http` for HTTP-level contradictions, and `problem-details` or `i-json`
+only when the API has adopted RFC 9457 error bodies or the RFC 7493 profile:
+
+```yaml
+lint:
+  extends: [recommended, security, http, problem-details]
 ```
 
 `recommended` is the `spec` set. `all` is every rule registered, including any
@@ -93,7 +109,7 @@ lint:
 
   categories:
     security:
-      severity: error        # fail CI on anything OWASP flags
+      severity: error        # fail CI on any security finding
 
   rules:
     - id: explicit-uri-parameter  # enable this opt-in style rule

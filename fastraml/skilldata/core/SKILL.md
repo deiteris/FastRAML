@@ -360,8 +360,10 @@ fastraml lint --list-rules                    # what is available
 fastraml lint --explain unused-type           # one rule, with good and bad RAML
 ```
 
-Only the `spec` rules run by default; the OWASP `security` set is opt-in, and
-house style is yours to add. Both need a config file:
+Only the `spec` rules run by default; the `security`, `http`,
+`problem-details`, `i-json` and `style` sets are opt-in, and house style is
+yours to add.
+Both need a config file:
 
 ```bash
 fastraml skills get lint

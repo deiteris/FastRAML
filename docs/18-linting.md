@@ -25,18 +25,29 @@ rules rather than to compatibility rules, splits them into three:
 
 1. **Derived from the language.** A `$ref` carrying siblings inside an included
    JSON Schema has constraints the draft-07 resolver silently ignores;
-   `schemas:` is explicitly deprecated in favour of `types:`; and a body whose
-   media type cannot carry any value admitted by its shape gives consumers two
-   contradictory decoding instructions. None of those is taste.
-2. **Derived from a published standard.** The OWASP API Security rules. Not one
-   organisation's house style, but not RAML's either.
+   `schemas:` and `schema:` are explicitly deprecated in favour of `types:` and
+   `type:`; and a body whose media type cannot carry any value admitted by its
+   shape gives consumers two contradictory decoding instructions. None of those
+   is taste.
+2. **Derived from a published standard.** OWASP API Security and the OAuth
+   RFCs, RFC 9110 HTTP semantics, RFC 9457 problem details and the RFC 7493
+   I-JSON profile. Not one organisation's house style, but not RAML's either:
+   each rule states a requirement the standard makes and the parser does not
+   enforce, and names the clause in `references` (§ 2.2).
 3. **Taste.** Kebab-case paths, notation preferences, declarations sorted,
    descriptions required. § 10.3's example lives here.
 
-Group 1 ships in `fastraml/views/lint/` and is the default ruleset. Groups 2
-and 3 ship beside it as the named `security` and `style` rulesets, both **off
-by default**. The built-in style set covers RAML-wide authoring conventions;
-§ 6 remains the mechanism for organisation-specific policy.
+Group 1 ships in `fastraml/views/lint/` and is the default ruleset. Group 2
+ships beside it as the `security`, `http`, `problem-details` and `i-json`
+rulesets, and group 3 as `style`, all **off by default**. The built-in style
+set covers RAML-wide authoring conventions; § 6 remains the mechanism for
+organisation-specific policy.
+
+A company API guideline is group 3 however widely it is followed: it is one
+organisation's choices, and it ships as a plugin. The linter is also not a
+security scanner. It judges the contract a document states, reports in its own
+formats (§ 7), and leaves exchange formats such as SARIF to a tool built for
+that job.
 
 That is an amendment to § 10.3 rather than a reinterpretation of it, and § 10.3
 is amended to say so — the same move § 10.3 itself performed on § 7.
@@ -75,6 +86,7 @@ class RuleMeta:
     severity: Severity    # the default; config overrides it
     good: str = ''        # RAML showing the rule satisfied
     bad: str = ''         # RAML showing it violated
+    references: tuple[str, ...] = ()   # the published sources it follows from
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +127,30 @@ reference page does not give:
   first and fires on the second**. A rule whose examples are wrong fails its own
   test. [16](16-graph.md) § 6.2 is why this is not optional: three catalogue
   queries were wrong, ran, and returned plausible rows.
+
+### 2.2 `references` name the source, not the rationale
+
+A rule derived from a published standard (§ 1 group 2) names it in
+`references`, one citation per entry, and a `spec` rule may name the RAML or
+JSON Schema clause it follows from. Six spellings are accepted:
+
+| Spelling | Example |
+|---|---|
+| OWASP API Security Top 10 category | `OWASP API4:2023` |
+| OWASP document, by title | `OWASP File Upload Cheat Sheet` |
+| RFC, or one of its clauses | `RFC 6749`, `RFC 9110 § 15.5.2`, `RFC 9457 Appendix B` |
+| CWE weakness | `CWE-770` |
+| RAML 1.0 section, by title, since the spec does not number them | `RAML 1.0 § File` |
+| JSON Schema draft-07 (`draft-handrews-json-schema-01`) section | `JSON Schema draft-07 § 8.3` |
+
+The rationale explains *why* in prose and does not repeat the identifiers.
+Keeping them as data lets `--explain` list them, and lets a reader find every
+rule one clause produced without searching prose. The suite asserts that every
+`security`, `http`, `problem-details` and `i-json` rule has at least one
+reference, and that every rule's references match the spellings above.
+`unused-type` and `unused-trait` cite nothing: they follow from the document's
+own reachability, not from a clause. RFC citations are to the current document:
+RFC 9110, not the RFC 7231 it obsoletes, and RFC 9457, not RFC 7807.
 
 ## 3. Two rule shapes
 
@@ -223,7 +259,7 @@ existing twice:
 | `undocumented-operations` | removed; description requirements are plugin policy (§ 1 group 3) |
 | `unsecured-operations` | `unsecured-operation` |
 | `unbounded-strings` | `unbounded-string` |
-| `get-with-request-body` | `get-with-body` |
+| `get-with-request-body` | `meaningless-request-body` (formerly `get-with-body`) |
 | `untyped-payloads` | `untyped-payload` |
 | `multiple-inheritance` | `multiple-inheritance` |
 
@@ -277,8 +313,11 @@ configuration file. For one run, repeat `--rule ID` to enable a rule,
 These overrides run after the file configuration and duplicate IDs are rejected.
 `--severity` remains only a display threshold and does not reconfigure a rule.
 
-Rulesets: `spec` (group 1), `security` (group 2), `style` (group 3),
-`recommended` = `spec`, `all` = every built-in plus every enabled plugin.
+Rulesets: `spec` (group 1); `security`, `http`, `problem-details` and
+`i-json` (group 2); `style` (group 3); `recommended` = `spec`; `all` = every built-in plus
+every enabled plugin. Each built-in ruleset has the category of the same name,
+so `categories: {http: {severity: error}}` grades exactly the rules
+`extends: [http]` enables.
 
 ### 5.1 Built-in policy
 
@@ -292,6 +331,173 @@ The additional security rules cover HTTPS-only operations; Basic authentication;
 typed `401`, `429`, `500` and `400`/`422` responses; numeric URI parameters;
 rate-limit headers; bounded arrays and integers; restricted strings; and closed
 or size-bounded objects.
+Each security rule's `references` names the OWASP API Security Top 10 (2023)
+category it follows from, using the assignments in Stoplight's
+`spectral-owasp-ruleset` (`https://github.com/stoplightio/spectral-owasp-ruleset`),
+the ruleset Speakeasy's rules came from. That ruleset places them as follows:
+API1 `numeric-resource-id`; API2 `unsecured-operation` and
+`insecure-basic-authentication`; API3 `no-additional-properties`; API3 and API4
+`bounded-additional-properties`; API4 the rate-limit, `429`, string, array and
+integer rules; API8 `https-only` and the `401`, `500` and validation-error
+responses. The rationale then gives OWASP's own prevention advice, not a
+paraphrase of the ruleset. API1 asks for random identifiers only as an extra
+layer of defence, and `numeric-resource-id` says so, since only an authorization
+check on each access actually fixes API1.
+
+The security set also holds rules no OpenAPI catalogue supplied:
+
+- `credential-in-query` reads a security scheme's `describedBy` query
+  parameters and query string. Their placement makes them credentials, so this
+  is the one credential rule that needs no name guess (below), and it follows
+  RFC 6750 § 2.3's advice against tokens in the URI.
+- `oauth2-insecure-grant` reports the `password` grant (RFC 9700 § 2.4, MUST
+  NOT) and the `implicit` grant (§ 2.1.2, SHOULD NOT), naming the clause in
+  `info`. `oauth-endpoint-https` reports an `http:` authorization, token or
+  OAuth 1.0 endpoint (RFC 6749 §§ 3.1–3.2 require TLS); a relative URI is not
+  reported, since only an explicit `http:` states a cleartext endpoint.
+  `oauth1-scheme` reports OAuth 1.0, which RFC 6749 obsoletes.
+- `unanchored-string-pattern` exists because RAML matches `pattern:` with
+  `search` (docs/10 § 5.4): on input, `[a-z]+` accepts any value containing a
+  letter. Every top-level alternative must start at `^` or `\A` and end at `$`,
+  `\Z` or `\z`; a leading `(?m)` makes the anchors line anchors and is reported.
+  The pattern-property counterpart stays in `style`, because a property name is
+  not a value a client supplies.
+- `nested-quantifier-pattern` is the one heuristic in the set, which is why it
+  reports at `info`. It reports an unboundedly repeated group whose content
+  also repeats and has no separator — `(a+)+`, `(\w+\s?)*` — and accepts
+  `(-[a-z]+)*`, where the separator fixes each repetition's start. It is silent
+  under `regex_engine='re2'`, whose matching is linear. A tokenizer reads both
+  pattern rules' expressions, with a run of literals as one token (docs/12 § 12).
+- `bounded-number`, `bounded-file` and `restricted-file-types` extend the input
+  bounds to `number` and `file`; `fileTypes: ['*/*']` counts as no list.
+  `restricted-request-media-type` reports a wildcard request body media type.
+- `base-uri-userinfo` reports a `baseUri` whose authority holds
+  `user:password`, a form RFC 3986 § 3.2.1 deprecates; a user name alone is
+  not reported. It lives in `rules/uris.py` beside the path rules below.
+
+The `http` set states what RFC 9110 requires of a response and RAML does not
+check. `no-content-body` reports a body on a 1xx, 204 or 304 response or on any
+HEAD response, naming the clause in `info`. `allow-header-405`,
+`proxy-authenticate-407` and `www-authenticate-401` report a missing header a
+server MUST send. `redirect-location` covers 301, 302, 307 and 308, the codes
+whose sections say SHOULD; 303 is left out because its section describes
+Location without requiring it. `content-range-header` accepts a 206 whose body
+is `multipart/byteranges` instead of a Content-Range header (§ 15.3.7.2). The
+parser does not copy a scheme's `describedBy` into the operations it secures,
+so `www-authenticate-401` reads both: an operation's 401 passes when a securing
+scheme's `describedBy` 401 declares the header, and a `describedBy` 401 without
+it is reported on the scheme. `meaningless-request-body` stays in `spec`,
+where its GET-only predecessor `get-with-body` was: moving it would turn off a
+default rule. It covers the four methods RFC 9110 gives no request content
+meaning — GET, HEAD and DELETE in the same words (§§ 9.3.1, 9.3.2, 9.3.5), and
+TRACE, whose client MUST NOT send content (§ 9.3.8) — and names the clause in
+`info`. The old identifier is not kept as an alias: a configuration naming it
+fails with `unknown rule`, which says what changed rather than silently
+running a wider rule under the old name.
+
+The header-field rules live in `rules/headers.py`, in the same `http` set.
+`header-field-name` requires a field name to be a token (§§ 5.1, 5.6.2);
+`duplicate-header` reports two keys in one header map that differ only in
+case, since field names are case-insensitive and RAML keys are not; and
+`hop-by-hop-header` reports `Connection`, `Keep-Alive`, `Proxy-Connection`,
+`TE`, `Transfer-Encoding` and `Upgrade`, which intermediaries remove
+(§ 7.6.1). `http-date-header` requires `Date`, `Expires`, `Last-Modified`,
+`If-Modified-Since`, `If-Unmodified-Since` and `Sunset` to be `datetime` with
+`format: rfc2616`, the IMF-fixdate of § 5.6.7; RAML's default `datetime` is
+RFC 3339 and the `-only` types are not HTTP dates. A `string` is not reported,
+because it constrains nothing rather than contradicting the format, and
+`Retry-After`, which may be delta-seconds, keeps its own rule.
+`content-type-header` reports a declared `Content-Type` whose enumeration
+names a media type no body has, or one declared where there is no body
+(§ 8.3); media-type parameters are ignored in the comparison. The per-header
+rules visit the effective operations, so a header a trait adds is reported
+once for each operation the trait applies to, each finding naming its
+operation's IRI.
+
+Three status rules close the set. `obsolete-status-code` reports 305
+(deprecated, § 15.4.6), 306 (§ 15.4.7) and 418 (§ 15.5.19), both reserved.
+`not-modified-headers` reports a 304 that omits any of `Cache-Control`,
+`Content-Location`, `Date`, `ETag`, `Expires` or `Vary` its operation's 200
+declares, since the server MUST send them (§ 15.4.5). `unreachable-status`
+reports, at `info`, a response the declared request can never produce: a 304
+outside GET and HEAD or without `If-None-Match`/`If-Modified-Since`; a 412
+without any precondition header; a 206 or 416 outside GET or without `Range`
+(§ 14.2); and a 413 or 415 on an operation with no request body. It is `info`
+because a client may send headers the contract omits; the finding usually
+means a request header is missing from the contract, not that the response is
+wrong.
+
+RFC 9110 § 4.2 defines HTTP URIs through RFC 3986, and § 8.3 media types
+through RFC 6838, so the rules for both belong to the `http` set.
+`uri-path-characters` reports a resource segment holding a character outside
+RFC 3986's `pchar` once template expressions are removed; percent-encoded
+octets are accepted and a non-ASCII letter is not. `dot-segment-path` reports a
+`.` or `..` segment, which reference resolution removes (§ 5.2.4). Both read
+the segments a resource adds, not its full path, so a parent's fault is not
+repeated on every child. `json-charset` reports a `charset` parameter on
+`application/json` or a `+json` type: `utf-8` has no effect (RFC 8259 § 11)
+and anything else breaks § 8.1's MUST, and `info` names which.
+`duplicate-media-type` reports two body keys in one map naming one media type:
+type, subtype and parameter names are compared without case, parameter values
+exactly, since RFC 6838 § 4.2 makes only the names case-insensitive.
+
+The `problem-details` set is for APIs that adopt RFC 9457, which obsoletes RFC
+7807 and keeps its media types, so it judges documents written against either.
+Adopting the format is the author's choice, so the set is opt-in, but once it
+is on `problem-media-type` expects every error response with a body to offer
+`application/problem+json` or `application/problem+xml`. `problem-member-types`
+checks the five standard members' JSON types (§ 3.1), tolerating a nilable
+member; `problem-status` reports an enumerated `status` that excludes the
+response's own code (§ 3.1.2). Both read RAML-typed bodies only: a body typed by
+an included JSON Schema is skipped rather than half-checked. Extension members
+are unconstrained, so a problem details object is open by design and
+`require-closed-object` in `style` will disagree with it; a project using both
+disables one for those types.
+
+The `i-json` set is for APIs that adopt RFC 7493, a profile of JSON that every
+receiver can process exactly. It reads `application/json` and `+json` bodies,
+RAML-typed ones only, walking properties, pattern properties, array items and
+union members. `i-json-top-level` reports a body that is neither an object
+nor an array (§ 4.1); a union reports if any member is a scalar, and `nil`,
+`any` and a JSON Schema body are left alone. `i-json-integer-range` reports an
+`integer` with `format: int64` or `long`, or a bound beyond ±(2⁵³−1), which a
+receiver reading doubles cannot hold exactly (§ 2.2); RAML's `int` is 32-bit
+and is not reported. `i-json-datetime` reports `datetime-only`, which has no
+offset (RFC 3339 § 4.4), and `datetime` with `format: rfc2616` (§ 4.3).
+`i-json-binary` reports a `file` at `info`: RAML § File represents it as
+base64, and § 4.4 recommends base64url. The three rules that look inside a
+body are document rules keyed by source position, so a named type used by
+several JSON bodies is reported once, where it was written.
+
+The spec set also holds the RAML 1.0 SHOULDs the parser accepts, and the
+constructs the specification leaves without a meaning. They live in
+`rules/spec.py` and each cites its section. `empty-path-segment` reports an
+optional URI parameter that is a whole segment, `/{id}/`, which § Template URIs
+says should be required, and a path with an empty segment between two others,
+including a nested resource under a parent that ends in `/`; a trailing slash is
+not reported. `unnested-resource` reports `/bom/items` written beside `/bom`
+rather than nested in it (§ Resources and Nested Resources), naming the longest
+declared resource the key extends. `base-uri-protocol` reports an explicit
+`protocols` that omits the `http` or `https` scheme of `baseUri`, since
+`protocols` overrides it (§ Protocols). `undefined-version` reports `{version}` in
+`baseUri` or a resource with no root `version` to supply it.
+`undescribed-security-scheme` reports a scheme with no `describedBy`, which
+§ Security Scheme Declaration asks for "even for standard security schemes".
+`non-scalar-parameter` reports a header or query parameter typed as an object, a
+union with a non-scalar member, or an array of either, and for a header an array
+of arrays: § Headers and § Query Parameters say RAML defines no validation for
+them. URI parameters are not reported, because § Template URIs defaults them to
+JSON. `non-standard-method` reports `trace` and `connect`, which fastRAML accepts
+as an extension ([01](01-scope-and-coverage.md) § 3) and § Methods does not
+list. The MUSTs next to these (a `baseUri` that is not a URI, a
+`baseUriParameters` name the base URI does not use, and a `queryString` typed as
+an array) are parse or P10 errors, not rules (§ 1.1).
+
+`deprecated-schemas` reports the root `schemas:` key and the `schema:` facet of
+any type declaration, a body's included. The facet is read from
+`raml.source_info`, which indexes only type declarations, so a property named
+`schema` is not mistaken for it.
+
 `json-ref-siblings` inspects parsed JSON Schema, which retains structure but not
 token positions. Each finding therefore names the schema document and an RFC
 6901 `schemaPath` ending at the offending `$ref`. External schemas are reported
@@ -343,11 +549,30 @@ one named `year`, while numeric query parameters are not. The endpoint's own URI
 template selects the declarations to inspect, avoiding duplicate findings for
 parameters propagated to descendants.
 
-`meaningless-media-type-schema` uses only the response body model. JSON scalars
-are valid JSON and are accepted; file shapes are rejected for `application/json`
-and every structured `+json` subtype. XML has the corresponding file exclusion.
-Octet-stream, PDF, ZIP, gzip, image, audio and video representations require a
-file shape. URL-encoded and multipart forms require an object shape, and
+`no-ambiguous-paths` compares routes one segment at a time, which is sound
+because simple expansion percent-encodes `/` (RFC 6570 § 3.2.2) and RAML 1.0
+§ Template URIs forbids a matched value to contain one, "to avoid ambiguous
+matching". A literal
+segment overlaps a template only if every parameter's type accepts the text it
+would have to take: `/users/me` beside `/users/{id}` with `id: integer` or an
+`enum` without `me` is not reported, while `/users/42` is. The text is tried as a
+string, a number (through `Decimal`) and a boolean, because a path carries text
+that a typed parameter reads as its own kind. A segment mixing literals and
+parameters, such as `{name}.json`, is matched as a pattern against literals and
+compared with another template by its literal prefix and suffix, so
+`{name}.json` meets `{id}` but not `{name}.xml`. Two templates are otherwise
+assumed to overlap; their types are not intersected. Reserved and fragment
+expansions may span segments, so a route containing one is not compared.
+
+`meaningless-media-type-schema` reads every request and response body. JSON
+scalars are valid JSON and are accepted. A `file` in a JSON or XML body is
+accepted too: RAML 1.0 § File says file content "SHOULD be a base64-encoded
+string" in JSON, and the validator accepts one (docs/10 § 5), so the earlier
+exclusion contradicted the language. Octet-stream, PDF, ZIP, gzip and CBOR
+(RFC 8949 § 9.3); the `audio`, `font` (RFC 8081), `image` and `video` top-level
+types; and the binary structured syntax suffixes `+ber`, `+der`,
+`+fastinfoset`, `+wbxml`, `+zip` (RFC 6839 §§ 3.2–3.6), `+gzip` (RFC 8460
+§ 6.3) and `+cbor` (RFC 8949 § 9.5) require a file shape. URL-encoded and multipart forms require an object shape, and
 `text/plain` requires a scalar or file shape without pretending every `text/*`
 format is plain text. A file's `fileTypes` must include the body's media type,
 including wildcard entries, and every union member must be compatible. `any`

@@ -51,7 +51,7 @@ Legend: **v1** = required for the first release · **v1.1** = planned follow-up 
 |------|--------|-------|
 | `title` | v1 | Required; must be non-empty |
 | `description`, `version` | v1 | Annotated-scalar form supported |
-| `baseUri`, `baseUriParameters` | v1 | Template parsed (RFC 6570 L1/L2); undeclared vars synthesised as required `string` |
+| `baseUri`, `baseUriParameters` | v1 | Template parsed (RFC 6570 L1/L2) and checked as an RFC 3986 URI reference; every declared parameter must be a variable in it |
 | `protocols` | v1 | Non-empty, case-insensitive `HTTP`/`HTTPS` |
 | `mediaType` | v1 | Scalar or sequence; validated as RFC 6838 `type/subtype` |
 | `documentation` | v1 | Sequence of `{title, content}`; `!include` per item |

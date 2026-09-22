@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 
 import pytest
@@ -86,10 +87,15 @@ class TestRuleExamples:
         input_rules = {
             'bounded-additional-properties',
             'bounded-array',
+            'bounded-file',
             'bounded-integer',
+            'bounded-number',
             'integer-format',
+            'nested-quantifier-pattern',
             'no-additional-properties',
+            'restricted-file-types',
             'restricted-string',
+            'unanchored-string-pattern',
             'unbounded-string',
         }
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
@@ -120,6 +126,43 @@ class TestRuleExamples:
         findings = Linter(builtin_registry(), config).run(parsed('#%RAML 1.0\ntitle: t\n' + paths, tmp_path))
         assert [finding.rule for finding in findings] == ['no-ambiguous-paths']
 
+    @pytest.mark.parametrize(
+        ('paths', 'ambiguous'),
+        [
+            ('/users/me:\n  get:\n/users/{id}:\n  uriParameters:\n    id: integer\n  get:\n', False),
+            ('/users/me:\n  get:\n/users/{id}:\n  uriParameters:\n    id:\n      enum: [a, b]\n  get:\n', False),
+            ('/users/42:\n  get:\n/users/{id}:\n  uriParameters:\n    id: integer\n  get:\n', True),
+            ('/flags/true:\n  get:\n/flags/{on}:\n  uriParameters:\n    on: boolean\n  get:\n', True),
+            ('/files/{name}.json:\n  get:\n/files/{id}:\n  get:\n', True),
+            ('/files/{name}.json:\n  get:\n/files/{name}.xml:\n  get:\n', False),
+            ('/files/report.json:\n  get:\n/files/{name}.json:\n  get:\n', True),
+        ],
+    )
+    def test_ambiguous_paths_respect_parameter_types_and_mixed_segments(self, paths, ambiguous, tmp_path):
+        config = Config(extends=(), rules=(RuleSetting(id='no-ambiguous-paths'),))
+        findings = Linter(builtin_registry(), config).run(parsed('#%RAML 1.0\ntitle: t\n' + paths, tmp_path))
+        assert bool(findings) is ambiguous
+
+    @pytest.mark.parametrize(
+        ('method', 'clause'),
+        [
+            ('get', 'RFC 9110 § 9.3.1'),
+            ('head', 'RFC 9110 § 9.3.2'),
+            ('delete', 'RFC 9110 § 9.3.5'),
+            ('trace', 'RFC 9110 § 9.3.8'),
+            ('options', None),
+        ],
+    )
+    def test_meaningless_request_body_covers_the_methods_rfc_9110_names(self, method, clause, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  {method}:\n    body:\n      application/json: string\n'
+        config = Config(extends=(), rules=(RuleSetting(id='meaningless-request-body'),))
+        findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+        assert [finding.info['clause'] for finding in findings] == ([clause] if clause else [])
+
+    def test_the_renamed_get_with_body_is_not_kept_as_an_alias(self):
+        with pytest.raises(ValueError, match='unknown rule: get-with-body'):
+            parse_config('rules:\n  - id: get-with-body\n', builtin_registry())
+
     def test_disjoint_methods_do_not_make_overlapping_paths_ambiguous(self, tmp_path):
         source = '#%RAML 1.0\ntitle: t\n/users/me:\n  get:\n/users/{id}:\n  post:\n'
         config = Config(extends=(), rules=(RuleSetting(id='no-ambiguous-paths'),))
@@ -130,7 +173,12 @@ class TestRuleExamples:
         [
             ('application/json', 'object', True),
             ('application/json', 'string', True),
-            ('application/problem+json', 'file', False),
+            ('application/problem+json', 'file', True),
+            ('application/xml', 'file', True),
+            ('font/woff2', 'string', False),
+            ('application/cbor', 'object', False),
+            ('application/vnd.example+cbor', 'string', False),
+            ('application/vnd.example+zip', 'file', True),
             ('application/octet-stream', 'file', True),
             ('application/octet-stream', 'object', False),
             ('image/png', 'file', True),
@@ -150,6 +198,14 @@ class TestRuleExamples:
         config = Config(extends=(), rules=(RuleSetting(id='meaningless-media-type-schema'),))
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
         assert bool(findings) is not valid
+
+    def test_request_body_schema_must_match_media_type(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/octet-stream:\n        type: object\n'
+        )
+        config = Config(extends=(), rules=(RuleSetting(id='meaningless-media-type-schema'),))
+        findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+        assert [finding.info['reason'] for finding in findings] == ['binary media requires a file shape']
 
     def test_file_types_must_include_the_body_media_type(self, tmp_path):
         source = (
@@ -515,6 +571,471 @@ class TestRuleExamples:
         assert not Linter(builtin_registry(), config).run(raml)
 
 
+def run_rule(rule_id: str, source: str, tmp_path, **options):
+    config = Config(extends=(), rules=(RuleSetting(id=rule_id),))
+    raml = parse_from_string(
+        source,
+        file_name='api.raml',
+        base_dir=tmp_path,
+        options=ParseOptions(unwrap=True, validate=False, retain_source=True, **options),
+    )
+    return Linter(builtin_registry(), config).run(raml)
+
+
+#: `RuleMeta.references` entries: an OWASP category or document, an RFC clause, a CWE,
+#: a RAML 1.0 section or a JSON Schema draft-07 section (docs/18 § 2.2).
+REFERENCE = re.compile(
+    r'^(OWASP API(10|[1-9]):2023|OWASP [A-Z][A-Za-z ]+|RFC \d+( (§ [\d.]+|Appendix [A-Z]))?|CWE-\d+'
+    r'|RAML 1\.0 § .+|JSON Schema draft-07 § [\d.]+)$'
+)
+
+#: The categories derived from a published standard (docs/18 § 1 group 2).
+STANDARD_CATEGORIES = (Category.SECURITY, Category.HTTP, Category.PROBLEM_DETAILS, Category.I_JSON)
+
+
+class TestStandardsRules:
+    """The rulesets derived from a published standard — docs/18 § 1 group 2, § 5.1."""
+
+    @pytest.mark.parametrize(
+        'rule',
+        [rule for rule in builtin_registry().all() if rule.meta.category in STANDARD_CATEGORIES],
+        ids=lambda rule: rule.meta.id,
+    )
+    def test_standard_derived_rules_cite_their_source(self, rule):
+        assert rule.meta.references
+        assert all(REFERENCE.fullmatch(reference) for reference in rule.meta.references), rule.meta.references
+
+    @pytest.mark.parametrize('rule', builtin_registry().all(), ids=lambda rule: rule.meta.id)
+    def test_every_reference_uses_a_documented_spelling(self, rule):
+        assert all(REFERENCE.fullmatch(reference) for reference in rule.meta.references), rule.meta.references
+
+    def test_each_standard_category_is_the_ruleset_that_enables_it(self):
+        registry = builtin_registry()
+        for category in STANDARD_CATEGORIES:
+            expected = [rule.meta.id for rule in registry.all() if rule.meta.category is category]
+            assert registry.ids_in(str(category)) == expected
+
+    @pytest.mark.parametrize(
+        ('pattern', 'anchored'),
+        [
+            ('^[a-z]+$', True),
+            (r'\A[a-z]+\Z', True),
+            ('^(?:a|b)$', True),
+            ('^a$|^b$', True),
+            ('(?i)^a$', True),
+            ('[a-z]+', False),
+            ('^a|b$', False),
+            ('(?m)^a$', False),
+            (r'^a\$', False),
+        ],
+    )
+    def test_unanchored_string_pattern_reads_alternation_and_line_mode(self, pattern, anchored, tmp_path):
+        source = f"#%RAML 1.0\ntitle: t\n/a:\n  get:\n    queryParameters:\n      q:\n        pattern: '{pattern}'\n"
+        findings = run_rule('unanchored-string-pattern', source, tmp_path)
+        assert bool(findings) is not anchored
+
+    def test_unanchored_string_pattern_ignores_response_only_shapes(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        body:\n'
+            "          application/json:\n            type: string\n            pattern: '[a-z]+'\n"
+        )
+        assert not run_rule('unanchored-string-pattern', source, tmp_path)
+
+    @pytest.mark.parametrize(
+        ('pattern', 'nested'),
+        [
+            ('^([a-z]+)+$', True),
+            (r'^(\w+\s?)*$', True),
+            ('^((a+))+$', True),
+            ('^(?:a+)+$', True),
+            ('^(a*){2,}$', True),
+            ('^[a-z]+(-[a-z]+)*$', False),
+            (r'^(\d+,)*$', False),
+            ('^(a+)?$', False),
+            ('^(ab)*$', False),
+            ('^a++$', False),
+        ],
+    )
+    def test_nested_quantifier_needs_a_repeated_group_without_a_separator(self, pattern, nested, tmp_path):
+        source = f"#%RAML 1.0\ntitle: t\n/a:\n  get:\n    queryParameters:\n      q:\n        pattern: '{pattern}'\n"
+        assert bool(run_rule('nested-quantifier-pattern', source, tmp_path)) is nested
+
+    def test_nested_quantifier_is_silent_under_re2(self, tmp_path):
+        pytest.importorskip('re2')
+        source = "#%RAML 1.0\ntitle: t\n/a:\n  get:\n    queryParameters:\n      q:\n        pattern: '^(a+)+$'\n"
+        assert not run_rule('nested-quantifier-pattern', source, tmp_path, regex_engine='re2')
+
+    def test_credential_in_query_reports_a_query_string_too(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  token:\n    type: Pass Through\n'
+            '    describedBy:\n      queryString:\n        properties:\n          key: string\n'
+        )
+        findings = run_rule('credential-in-query', source, tmp_path)
+        assert [finding.info for finding in findings] == [{'scheme': 'token', 'parameter': 'queryString'}]
+
+    def test_oauth2_insecure_grant_names_the_retiring_clause(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  oauth:\n    type: OAuth 2.0\n    settings:\n'
+            '      authorizationUri: https://example.test/authorize\n'
+            '      accessTokenUri: https://example.test/token\n'
+            '      authorizationGrants: [authorization_code, implicit, password]\n'
+        )
+        findings = run_rule('oauth2-insecure-grant', source, tmp_path)
+        assert [(finding.info['grant'], finding.info['clause']) for finding in findings] == [
+            ('implicit', 'RFC 9700 § 2.1.2'),
+            ('password', 'RFC 9700 § 2.4'),
+        ]
+
+    def test_oauth_endpoint_https_checks_oauth1_endpoints(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  oauth:\n    type: OAuth 1.0\n    settings:\n'
+            '      requestTokenUri: http://example.test/request\n'
+            '      authorizationUri: https://example.test/authorize\n'
+            '      tokenCredentialsUri: https://example.test/token\n'
+        )
+        findings = run_rule('oauth-endpoint-https', source, tmp_path)
+        assert [finding.info['setting'] for finding in findings] == ['requestTokenUri']
+
+    def test_restricted_file_types_treats_a_wildcard_as_unrestricted(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/octet-stream:\n'
+            "        type: file\n        fileTypes: ['*/*']\n"
+        )
+        findings = run_rule('restricted-file-types', source, tmp_path)
+        assert findings[0].info['fileTypes'] == '*/*'
+
+    def test_no_content_body_covers_head_responses(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  head:\n    responses:\n      200:\n'
+            '        body:\n          application/json: string\n'
+        )
+        findings = run_rule('no-content-body', source, tmp_path)
+        assert findings[0].info['clause'] == 'RFC 9110 § 9.3.2'
+
+    def test_multipart_byteranges_satisfies_a_206_without_content_range(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      206:\n'
+            '        body:\n          multipart/byteranges: file\n'
+        )
+        assert not run_rule('content-range-header', source, tmp_path)
+
+    def test_www_authenticate_on_a_described_by_401_without_an_operation_401(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  token:\n    type: Pass Through\n    describedBy:\n'
+            '      headers:\n        Authorization: string\n      responses:\n        401: {}\n'
+        )
+        findings = run_rule('www-authenticate-401', source, tmp_path)
+        assert [finding.info for finding in findings] == [
+            {'scheme': 'token', 'status': '401', 'header': 'WWW-Authenticate'}
+        ]
+
+    @pytest.mark.parametrize(
+        ('declaration', 'reported'),
+        [
+            ('datetime', True),
+            ('date-only', True),
+            ('datetime-only', True),
+            ('string', False),
+            ('\n            type: datetime\n            format: rfc2616', False),
+        ],
+    )
+    def test_http_date_header_accepts_only_an_rfc2616_datetime(self, declaration, reported, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  get:\n    headers:\n      If-Modified-Since: {declaration}\n'
+        findings = run_rule('http-date-header', source, tmp_path)
+        assert [finding.info['clause'] for finding in findings] == (['RFC 9110 § 13.1.3'] if reported else [])
+
+    def test_hop_by_hop_header_ignores_case(self, tmp_path):
+        source = '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    headers:\n      transfer-encoding: string\n'
+        assert [finding.info for finding in run_rule('hop-by-hop-header', source, tmp_path)] == [
+            {'header': 'transfer-encoding'}
+        ]
+
+    def test_duplicate_header_reads_a_described_by_map(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  token:\n    type: Pass Through\n    describedBy:\n'
+            '      headers:\n        Authorization: string\n        authorization: string\n'
+        )
+        findings = run_rule('duplicate-header', source, tmp_path)
+        assert [finding.info for finding in findings] == [
+            {'header': 'authorization', 'duplicates': 'Authorization', 'where': 'request'}
+        ]
+
+    @pytest.mark.parametrize(
+        ('body', 'enum', 'reported'),
+        [
+            ('application/json', '[application/json; charset=utf-8]', False),
+            ('application/json', '[application/json, text/plain]', True),
+            (None, '[application/json]', True),
+        ],
+    )
+    def test_content_type_header_must_agree_with_the_bodies(self, body, enum, reported, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  post:\n    headers:\n      Content-Type:\n        enum: {enum}\n'
+        if body:
+            source += f'    body:\n      {body}: string\n'
+        assert bool(run_rule('content-type-header', source, tmp_path)) is reported
+
+    @pytest.mark.parametrize(
+        ('case', 'clause'),
+        [
+            (('get', 304, '', False), 'RFC 9110 § 15.4.5'),
+            (('get', 304, 'If-None-Match', False), None),
+            (('post', 304, 'If-None-Match', True), 'RFC 9110 § 15.4.5'),
+            (('put', 412, '', True), 'RFC 9110 § 15.5.13'),
+            (('put', 412, 'If-Match', True), None),
+            (('get', 416, 'Range', False), None),
+            (('post', 206, 'Range', True), 'RFC 9110 § 14.2'),
+            (('get', 415, '', False), 'RFC 9110 § 15.5.16'),
+            (('post', 413, '', True), None),
+        ],
+    )
+    def test_unreachable_status_reads_the_declared_request(self, case, clause, tmp_path):
+        method, status, headers, body = case
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  {method}:\n'
+        if headers:
+            source += f'    headers:\n      {headers}: string\n'
+        if body:
+            source += '    body:\n      application/json: string\n'
+        source += f'    responses:\n      {status}: {{}}\n'
+        findings = run_rule('unreachable-status', source, tmp_path)
+        assert [finding.info['clause'] for finding in findings] == ([clause] if clause else [])
+
+    def test_not_modified_headers_lists_what_the_304_omits(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        headers:\n'
+            '          etag: string\n          Cache-Control: string\n      304:\n        headers:\n'
+            '          ETag: string\n'
+        )
+        findings = run_rule('not-modified-headers', source, tmp_path)
+        assert [finding.info['missing'] for finding in findings] == ['Cache-Control']
+
+    @pytest.mark.parametrize(
+        ('path', 'reported'),
+        [('/caf%C3%A9', False), ('/café', True), ('/{id}.json', False), ("/a:b@c!$&'()*+,;=", False), ('/a|b', True)],
+    )
+    def test_uri_path_characters_strips_templates_and_accepts_percent_encoding(self, path, reported, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\n"{path}":\n  get:\n'
+        assert bool(run_rule('uri-path-characters', source, tmp_path)) is reported
+
+    @pytest.mark.parametrize(
+        ('base_uri', 'reported'),
+        [('https://user:pw@example.test', True), ('https://user@example.test', False), ('https://example.test', False)],
+    )
+    def test_base_uri_userinfo_reports_only_the_password_form(self, base_uri, reported, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\nbaseUri: {base_uri}\n'
+        assert bool(run_rule('base-uri-userinfo', source, tmp_path)) is reported
+
+    @pytest.mark.parametrize(
+        ('media_type', 'clause'),
+        [
+            ('application/json; charset=utf-8', 'RFC 8259 § 11'),
+            ('application/vnd.example+json; charset=utf-16', 'RFC 8259 § 8.1'),
+            ('text/plain; charset=utf-16', None),
+        ],
+    )
+    def test_json_charset_separates_noise_from_a_forbidden_encoding(self, media_type, clause, tmp_path):
+        source = f"#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      '{media_type}': string\n"
+        findings = run_rule('json-charset', source, tmp_path)
+        assert [finding.info['clause'] for finding in findings] == ([clause] if clause else [])
+
+    def test_duplicate_media_type_compares_parameter_values_exactly(self, tmp_path):
+        source = (
+            "#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      'text/plain; format=A': string\n"
+            "      'TEXT/plain; Format=a': string\n      'Text/Plain; FORMAT=A': string\n"
+        )
+        findings = run_rule('duplicate-media-type', source, tmp_path)
+        assert [finding.info['mediaType'] for finding in findings] == ['Text/Plain; FORMAT=A']
+
+    @pytest.mark.parametrize(
+        ('facets', 'reported'),
+        [
+            ('format: int64', True),
+            ('format: long', True),
+            ('format: int', False),
+            ('maximum: 9007199254740991', False),
+            ('maximum: 9007199254740992', True),
+            ('minimum: -9007199254740992', True),
+        ],
+    )
+    def test_i_json_integer_range_reads_format_and_bounds(self, facets, reported, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/json:\n'
+            f'        properties:\n          n:\n            type: integer\n            {facets}\n'
+        )
+        assert bool(run_rule('i-json-integer-range', source, tmp_path)) is reported
+
+    def test_i_json_reports_a_shared_declaration_once(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n  Event:\n    properties:\n      at: datetime-only\n'
+            '/a:\n  post:\n    body:\n      application/json: Event\n'
+            '    responses:\n      200:\n        body:\n          application/vnd.example+json: Event\n'
+            '/b:\n  put:\n    body:\n      application/json: Event\n      application/xml: Event\n'
+        )
+        findings = run_rule('i-json-datetime', source, tmp_path)
+        assert [finding.info for finding in findings] == [{'type': 'at', 'reason': 'no UTC offset'}]
+
+    @pytest.mark.parametrize(
+        ('shape', 'reported'),
+        [('string', True), ('object | nil', False), ('string | object', True), ('string[]', False)],
+    )
+    def test_i_json_top_level_accepts_objects_arrays_and_null(self, shape, reported, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        body:\n'
+            f'          application/json: {shape}\n'
+        )
+        assert bool(run_rule('i-json-top-level', source, tmp_path)) is reported
+
+    def test_i_json_ignores_bodies_typed_by_json_schema(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/json:\n'
+            '        type: |\n          {"type":"object","properties":{"n":{"type":"integer","format":"int64"}}}\n'
+        )
+        assert not run_rule('i-json-integer-range', source, tmp_path)
+
+    def test_problem_media_type_accepts_the_xml_form(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      404:\n'
+            '        body:\n          application/problem+xml: string\n'
+        )
+        assert not run_rule('problem-media-type', source, tmp_path)
+
+    def test_problem_member_types_tolerate_a_nilable_member(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      404:\n        body:\n'
+            '          application/problem+json:\n            properties:\n              detail: string | nil\n'
+        )
+        assert not run_rule('problem-member-types', source, tmp_path)
+
+    def test_problem_member_types_report_a_non_object_body(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      404:\n'
+            '        body:\n          application/problem+json: string\n'
+        )
+        findings = run_rule('problem-member-types', source, tmp_path)
+        assert findings[0].info == {'status': '404', 'type': 'string'}
+
+
+class TestSpecRules:
+    """The rules derived from RAML 1.0 itself — docs/18 § 1 group 1, § 5.1."""
+
+    def test_deprecated_schemas_reads_the_schema_facet_wherever_a_type_is_declared(self, tmp_path):
+        # RAML 1.0 § Type Declarations deprecates `schema:` beside `schemas:`.
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n  A:\n    schema: string\n  B:\n    properties:\n'
+            '      p:\n        schema: integer\n'
+            '/a:\n  post:\n    body:\n      application/json:\n        schema: A\n'
+        )
+        findings = run_rule('deprecated-schemas', source, tmp_path)
+        assert [(finding.position.line, finding.info) for finding in findings] == [
+            (5, {'field': 'schema'}),
+            (9, {'field': 'schema'}),
+            (14, {'field': 'schema'}),
+        ]
+
+    def test_deprecated_schemas_ignores_a_property_named_schema(self, tmp_path):
+        source = '#%RAML 1.0\ntitle: t\ntypes:\n  A:\n    properties:\n      schema: string\n'
+        assert not run_rule('deprecated-schemas', source, tmp_path)
+
+    @pytest.mark.parametrize(
+        ('resources', 'expected'),
+        [
+            ('/a//b:\n  get:\n', [('/a//b', None)]),
+            ('/users/:\n  /{id}:\n    get:\n', [('/users//{id}', None)]),
+            ('/items/{id}:\n  uriParameters:\n    id:\n      required: false\n', [('/items/{id}', 'id')]),
+            ('/users/:\n  get:\n', []),
+            ('/people/~{fields}:\n  uriParameters:\n    fields?: string\n', []),
+            ('/items/{id}:\n  uriParameters:\n    id?: string\n  /tags:\n    get:\n', [('/items/{id}', 'id')]),
+        ],
+    )
+    def test_empty_path_segment_reads_only_the_segments_a_resource_adds(self, resources, expected, tmp_path):
+        # RAML 1.0 § Template URIs: a parameter surrounded by slashes SHOULD be
+        # required, and optional only beside other text. A trailing slash is
+        # not an empty segment between two others, and a parent's optional
+        # parameter is reported on the parent, not again on each child.
+        findings = run_rule('empty-path-segment', '#%RAML 1.0\ntitle: t\n' + resources, tmp_path)
+        assert [(finding.info['path'], finding.info.get('parameter')) for finding in findings] == expected
+
+    @pytest.mark.parametrize(
+        ('resources', 'expected'),
+        [
+            ('/bom:\n  get:\n/bom/items:\n  get:\n', ['/bom']),
+            # `/b/c/d` extends `/a/b/c`, the longest match; the top-level
+            # `/a/b/c` extends the nested `/a/b` in turn.
+            ('/a:\n  /b:\n    get:\n  /b/c/d:\n    get:\n/a/b/c:\n  get:\n', ['/a/b/c', '/a/b']),
+            ('/bom/items:\n  get:\n', []),
+            ('/bom:\n  get:\n  /items:\n    get:\n', []),
+        ],
+    )
+    def test_unnested_resource_names_the_longest_resource_it_extends(self, resources, expected, tmp_path):
+        findings = run_rule('unnested-resource', '#%RAML 1.0\ntitle: t\n' + resources, tmp_path)
+        assert [finding.info['resource'] for finding in findings] == expected
+
+    @pytest.mark.parametrize(
+        ('root', 'reported'),
+        [
+            ('baseUri: https://x.test\nprotocols: [HTTP]\n', True),
+            ('baseUri: https://x.test\nprotocols: [http, https]\n', False),
+            ('baseUri: https://x.test\n', False),
+            ("baseUri: '{scheme}://x.test'\nprotocols: [HTTP]\n", False),
+            ('baseUri: x.test/api\nprotocols: [HTTP]\n', False),
+        ],
+    )
+    def test_base_uri_protocol_needs_an_explicit_web_scheme_and_protocols(self, root, reported, tmp_path):
+        findings = run_rule('base-uri-protocol', '#%RAML 1.0\ntitle: t\n' + root, tmp_path)
+        assert [finding.info for finding in findings] == (
+            [{'scheme': 'HTTPS', 'protocols': 'HTTP'}] if reported else []
+        )
+
+    @pytest.mark.parametrize(
+        ('document', 'uris'),
+        [
+            ('baseUri: https://x.test/{version}\n', ['https://x.test/{version}']),
+            ('/v{version}:\n  /items:\n    get:\n', ['/v{version}']),
+            ('version: v1\nbaseUri: https://x.test/{version}\n/v{version}:\n  get:\n', []),
+        ],
+    )
+    def test_undefined_version_reads_the_base_uri_and_resource_templates(self, document, uris, tmp_path):
+        findings = run_rule('undefined-version', '#%RAML 1.0\ntitle: t\n' + document, tmp_path)
+        assert [finding.info['uri'] for finding in findings] == uris
+
+    def test_undescribed_security_scheme_names_the_scheme_type(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  basic:\n    type: Basic Authentication\n'
+            '  described:\n    type: Basic Authentication\n    describedBy:\n      responses:\n        401: {}\n'
+        )
+        findings = run_rule('undescribed-security-scheme', source, tmp_path)
+        assert [finding.info for finding in findings] == [{'scheme': 'basic', 'type': 'Basic Authentication'}]
+
+    @pytest.mark.parametrize(
+        ('declaration', 'reason'),
+        [
+            ('queryParameters:\n      p:\n        properties:\n          a: string\n', 'object'),
+            ('headers:\n      p:\n        type: object\n', 'object'),
+            ('queryParameters:\n      p:\n        type: string | object\n', 'union of non-scalar types'),
+            ('queryParameters:\n      p:\n        type: array\n        items: object\n', 'array of objects'),
+            ('headers:\n      p:\n        type: array\n        items: string[]\n', 'array of arrays'),
+            ('queryParameters:\n      p:\n        type: array\n        items: string[]\n', None),
+            ('queryParameters:\n      p: string[]\n', None),
+            ('queryParameters:\n      p: string | integer\n', None),
+        ],
+    )
+    def test_non_scalar_parameter_follows_the_types_raml_leaves_undefined(self, declaration, reason, tmp_path):
+        # RAML 1.0 § Headers adds arrays of arrays to the list; § Query
+        # Parameters does not.
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  get:\n    {declaration}'
+        findings = run_rule('non-scalar-parameter', source, tmp_path)
+        assert [finding.info['reason'] for finding in findings] == ([reason] if reason else [])
+
+    def test_non_scalar_parameter_leaves_uri_parameters_to_json(self, tmp_path):
+        # RAML 1.0 § Template URIs defaults a non-scalar URI parameter to JSON.
+        source = '#%RAML 1.0\ntitle: t\n/a/{p}:\n  uriParameters:\n    p:\n      type: object\n  get:\n'
+        assert not run_rule('non-scalar-parameter', source, tmp_path)
+
+    @pytest.mark.parametrize('method', ['trace', 'connect'])
+    def test_non_standard_method_reports_the_methods_raml_does_not_define(self, method, tmp_path):
+        findings = run_rule('non-standard-method', f'#%RAML 1.0\ntitle: t\n/a:\n  {method}:\n  get:\n', tmp_path)
+        assert [finding.info for finding in findings] == [{'method': method}]
+
+
 class TestConfiguration:
     def test_source_spelling_rules_require_retained_source(self, tmp_path):
         raml = parse_from_string(
@@ -639,6 +1160,10 @@ class TestLintCli:
         assert main(['lint', '--explain', 'optional-and-nil']) == EXIT_OK
         assert 'Good:' in capsys.readouterr().out
 
+    def test_explain_lists_a_rules_references(self, capsys):
+        assert main(['lint', '--explain', 'https-only']) == EXIT_OK
+        assert '- CWE-319\n' in capsys.readouterr().out
+
     def test_default_warnings_do_not_fail_the_run(self, workspace, capsys):
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
         assert main(['lint', str(root / 'api.raml')]) == EXIT_OK
@@ -739,6 +1264,11 @@ class TestLintCli:
         assert 'unused-type' in summary
         assert '2' in summary
 
+    def test_summary_of_a_clean_file_is_a_zero_total(self):
+        header, total = render_findings([], 'summary').splitlines()
+        assert header.split() == ['severity', 'rule', 'findings']
+        assert total.split() == ['total', '0']
+
     def test_cli_limits_output_and_reports_truncation(self, workspace, capsys):
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n  C: string\n'})
         assert main(['lint', '--max-findings', '1', '--max-findings-per-rule', '0', str(root / 'api.raml')]) == EXIT_OK
@@ -783,11 +1313,11 @@ class TestLintCli:
         declarations = ''.join(f'  T{index}: string\n' for index in range(5))
         source = f'#%RAML 1.0\ntitle: t\ntypes:\n{declarations}/a:\n  get:\n    body:\n      application/json: string\n'
         root = workspace({'api.raml': source})
-        arguments = ['lint', '--format', 'json', '--max-findings', '2', '--rule', 'get-with-body=error']
+        arguments = ['lint', '--format', 'json', '--max-findings', '2', '--rule', 'meaningless-request-body=error']
         assert main([*arguments, str(root / 'api.raml')]) == EXIT_INVALID
         output = json.loads(capsys.readouterr().out)
         assert output['counts']['info'] == 5
-        assert 'get-with-body' in [finding['rule'] for finding in output['findings']]
+        assert 'meaningless-request-body' in [finding['rule'] for finding in output['findings']]
         assert output['shownCounts']['error'] == 1
 
     @pytest.mark.parametrize(

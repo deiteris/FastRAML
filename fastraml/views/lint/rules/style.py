@@ -375,8 +375,12 @@ class MissingExample:
         'missing-example',
         Category.STYLE,
         'types and operations should have examples',
-        'Examples make the intended wire representation concrete for readers and generated documentation.',
+        (
+            'Examples make the intended wire representation concrete for readers and generated documentation. '
+            'RAML 1.0 highly recommends that API documentation include a rich selection of them.'
+        ),
         Severity.INFO,
+        references=('RAML 1.0 § Defining Examples in RAML',),
         good='#%RAML 1.0\ntitle: t\ntypes:\n  T:\n    type: string\n    example: x\n',
         bad='#%RAML 1.0\ntitle: t\ntypes:\n  T: string\n',
     )

@@ -41,11 +41,11 @@ The key features are:
 * **Tested coverage with explicit boundaries**: all **915 evaluated fixtures in the RAML Test Compliance Kit (TCK)** produce their expected outcome. Overlay and Extension merging is deferred, and XML Schema external types are not supported; the [coverage matrix](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md) records the details.
 * **Structured diagnostics**: errors carry source locations and trace chains, including failures reached through includes and merged templates. Independent failures accumulate rather than stop the parse, wherever the parser can continue safely.
 * **Model navigation**: `list`, `show`, `refs` and `deps` inspect named entities and the routes between them. `graph` emits RDF, Graphviz or JSON, while `tree` emits an addressed containment view.
-* **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` provides configurable built-in rules, optional security and style rulesets, explanations, and plugin support.
+* **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` checks the effective model against 41 built-in rules, with opt-in security and style rulesets, per-rule explanations and plugins ([Linting](#linting)).
 * **Version comparison**: `compat` walks two effective API models in parallel and classifies compatibility impact by whether a value is sent in a request or received in a response ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md#103-the-policy-is-separable-and-named)). It exits non-zero when the policy identifies a breaking change.
 * **OpenAPI and JSON Schema output**: convert an effective API to a typed OpenAPI 3.0.3 document, or a RAML shape to JSON Schema draft-07. Both conversion APIs report information the target format could not represent.
 * **Typed and measured**: ships `py.typed` and checks the package with strict mypy. The benchmark gate checks linear scaling; on the recorded machine, 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using **98 MB**. The method, the per-configuration numbers, and the comparison against [go-raml](https://github.com/acronis/go-raml) — measured rather than quoted — are in [docs/12](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md).
-* **Version-matched agent guides**: `fastraml skills get` serves CLI guidance from the installed package, and `fastraml skills install` installs a discovery stub under `.agents/skills/` or another selected directory: a small skill whose only job is to point an agent at `fastraml skills get`, so the guide it reads matches the installed version.
+* **Version-matched agent guides**: the CLI ships its own usage guides for coding agents, so the guide always matches the installed version ([Using it from an agent](#using-it-from-an-agent)).
 
 ## Status
 
@@ -55,13 +55,14 @@ TCK fixture in its evaluated scope, and the design is settled in
 What is *not* settled is the surface you code against:
 
 * **The public API may change before 1.0**, including names, signatures and
-  model attributes. Pin a version — `fastraml>=0.1,<0.2`.
+  model attributes. There is no release yet, so pin a commit:
+  `git+https://github.com/deiteris/FastRAML@<commit>`.
 * **Emitted identifiers are provisional.** The `fastraml://id` address base and
-  the `urn:fastraml:ns:raml#` RDF namespace are not frozen; read `RAML_NS` from
-  the package rather than hard-coding it.
-* **Features may be added or withdrawn.** Overlays and Extensions are the one
-  language feature deferred, and XML Schema external types are out of scope.
-  JSON Schema external types are supported.
+  the `urn:fastraml:ns:raml#` RDF namespace are not frozen; read
+  `fastraml.RAML_NS` rather than hard-coding it.
+* **Features may be added or withdrawn.** The
+  [coverage matrix](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md)
+  records what is deferred and what is out of scope.
 
 Report anything that looks wrong at
 [Issues](https://github.com/deiteris/FastRAML/issues). A failure within the
@@ -79,7 +80,7 @@ fastraml is not yet on PyPI. Until it is:
 uv tool install git+https://github.com/deiteris/FastRAML
 ```
 
-## Example
+## Python API
 
 ```python
 from fastraml import ParseOptions, ObjectShape, parse_from_path
@@ -101,7 +102,9 @@ inspect un-flattened declarations — `validate=True` alone unwraps a private co
 of every type it checks, and the benchmarks measure it slower for that.
 
 `parse_lenient(path)` returns `(model, error)` rather than raising, for an editor
-that needs a partial model on every keystroke.
+that needs a partial model on every keystroke. It still raises when there is no
+model to return: the entry file cannot be read, its RAML header is missing or
+unrecognised, it is an Overlay or Extension, or its root is not a mapping.
 
 OpenAPI export stays typed until the serialization boundary:
 
@@ -116,6 +119,21 @@ if get_users is not None:
 payload = openapi.to_dict()  # JSON/YAML-ready only when you need it
 ```
 
+### Files outside the entry file's directory
+
+The parser reads files only inside a *workspace root*, which defaults to the
+directory of the file you parse. An `!include`, `uses:` or JSON Schema `$ref`
+that leaves that directory fails with `path is outside the workspace root`, and
+the error suggests a root that would contain it. Set the root to a directory
+that contains every file the document reaches:
+
+```python
+raml = parse_from_path('api/api.raml', ParseOptions(workspace_root='.'))
+```
+
+On the command line, pass `-w DIR` (`--workspace-root`). `--no-workspace-guard`
+turns the check off; use it only for documents you trust.
+
 ## Command line
 
 ```bash
@@ -123,28 +141,95 @@ fastraml validate api.raml           # exit 1 and a positioned trace if invalid
 fastraml validate --json *.raml      # one JSON object per file
 fastraml info api.raml               # YAML backend, timing, model counts
 fastraml openapi api.raml            # OpenAPI 3.0.3 YAML; --format json for JSON
-fastraml lint api.raml               # configurable semantic, security and style checks
+fastraml lint api.raml               # spec, security and style checks (see Linting)
 ```
 
-For inspecting the resolved model, the CLI provides both containment and graph
+### Inspecting the model
+
+These commands work on the resolved model, through its containment and graph
 views
 ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md)):
 
 ```bash
-fastraml list api.raml               # what is in here: every name you can ask about
-fastraml refs api.raml User          # every operation that can carry a User, with the route
-fastraml deps api.raml User          # everything User is built from
+fastraml list api.raml               # every name you can ask about
+fastraml refs api.raml User          # everything that uses User, with the route to it
+fastraml deps api.raml User          # everything User is built from, with the route
+fastraml show api.raml /users        # the effective view: everything merged in, with origins
 fastraml graph api.raml              # the whole projection as Turtle (or nt, dot, json)
 fastraml tree api.raml               # addressed JSON retaining containment and leaf data
-fastraml show api.raml /users        # the effective view: everything merged in, with origins
-fastraml compat v1.raml v2.raml        # effective-model compatibility report
 fastraml query --list                # 9 named analysis queries
 fastraml query api.raml -n type-fan-in   # or -q '<sparql>' for your own
 ```
 
-The Python API can render the same comparison directly as Markdown for a pull
-request or build summary. `examples/backward_report.py` is complete, runnable,
-and its two RAML files exercise every model-native compatibility rule:
+`refs` and `deps` print a **route** for each result, not only the entity it
+reached, for example:
+
+```
+Operation  api.raml:446  Add a book -request-> request -payload-> application/json -range-> ... -inherits-> Book
+```
+
+`show` accepts a type, a resource by its path or `displayName`, or any name that
+`list` prints. `query` needs the `graph` extra (see
+[Optional dependencies](#optional-dependencies)).
+
+### Linting
+
+`fastraml lint` checks whether a valid document is a *good* one. It runs on the
+effective model, after traits, resource types and inheritance are applied, so it
+sees what a client of the API sees. There are 41 built-in rules in three
+categories: `spec`, `security` and `style`. By default only the `recommended`
+ruleset runs, which is the `spec` rules.
+
+```bash
+fastraml lint api.raml                        # the recommended rules
+fastraml lint --list-rules                    # every rule, with its category, severity and source
+fastraml lint --explain unused-type           # what a rule checks, with good and bad examples
+fastraml lint api.raml --rule https-only=error    # enable or regrade one rule for this run
+fastraml lint api.raml --format text          # one line per finding; also json and summary
+```
+
+`lint` exits 1 when any finding has `error` severity, or when a document fails
+to parse. Built-in rules report at `warning` or `info`, so a run fails only on
+rules you have raised to `error`. Every file is linted before the command exits.
+Output is capped at 1,000 findings, and 100 per rule; the exit status still
+counts every finding, and `--max-findings 0` removes the cap.
+
+Keep lasting policy in the `lint:` section of the [configuration](#configuration)
+file:
+
+```yaml
+lint:
+  extends: [recommended, security]  # also: style, all
+  categories:
+    security: { severity: error }
+  rules:
+    - id: unused-type
+      match: '.*internal.*'         # drop only the findings whose message matches
+      disabled: true
+```
+
+To silence one finding, put a comment on the line directly above the line it
+points to:
+
+```yaml
+# fastraml: ignore missing-description,missing-example
+User: string
+```
+
+Rules from other packages are found through the `fastraml.lint_rules` entry
+point group, and none of them run until `plugins:` names them. The rule model,
+every built-in policy and the output formats are in
+[docs/18](https://github.com/deiteris/FastRAML/blob/master/docs/18-linting.md).
+
+### Comparing versions
+
+```bash
+fastraml compat v1.raml v2.raml      # exit 1 if any change is breaking
+```
+
+The Python API renders the same comparison as Markdown, for a pull request or a
+build summary. `examples/backward_report.py` is complete and runnable, and its
+two RAML files exercise every model-native compatibility rule:
 
 ```python
 from fastraml import ParseOptions, backward_markdown, parse_from_path
@@ -155,9 +240,12 @@ new = parse_from_path('v2.raml', options)
 print(backward_markdown(old, new))
 ```
 
-Every parsing command accepts one common YAML configuration with `parser:`,
-`lint:` and `compatibility:` sections. For example, a deployment behind an HTTP
-redirect can regrade only the transition from HTTP+HTTPS to HTTPS:
+### Configuration
+
+Every command that parses a document takes `--config FILE`: one YAML file with
+`parser:`, `lint:` and `compatibility:` sections. For example, a deployment
+behind an HTTP redirect can regrade only the transition from HTTP+HTTPS to
+HTTPS:
 
 ```yaml
 compatibility:
@@ -169,13 +257,6 @@ compatibility:
         after: [HTTPS]
 ```
 
-```
-Operation  get -returns-> 200 -payload-> application/json -range-> ... -items-> User
-```
-
-Each result is a **route**, not just a hit — which is the one thing a SPARQL
-property path cannot give you, and the reason these are not canned queries.
-
 ## Using it from an agent
 
 `fastraml skills` serves a usage guide from inside the installed package, so the
@@ -186,17 +267,20 @@ fastraml skills install              # into ./.agents/skills/, read by most agen
 fastraml skills get core             # or just print the guide
 ```
 
-## The rest of the family
+## Related packages
 
-Separate distributions, versioned independently, each depending on fastRAML
-rather than the other way round — the parser takes no web framework.
+Separate distributions, versioned independently. fastRAML depends on none of
+them, so the parser takes no web framework. `raml-codegen` reads `fastraml tree`
+output and depends on no parser, and `fastraml-viewer` depends on nothing.
 
 | Package | Direction | What it is |
 |---------|-----------|------------|
 | [`raml-document`](https://github.com/deiteris/FastRAML/tree/master/contrib/raml-document) | — | A typed authoring model, and a reader that builds one from pydantic models |
 | [`fastapi-raml`](https://github.com/deiteris/FastRAML/tree/master/contrib/fastapi-raml) | code → RAML | Renders a FastAPI app's routes as RAML, and serves them |
+| [`aiohttp-raml`](https://github.com/deiteris/FastRAML/tree/master/contrib/aiohttp-raml) | code → RAML | Code-first RAML for aiohttp: pydantic-validated views that describe themselves |
 | [`fastmcp-raml`](https://github.com/deiteris/FastRAML/tree/master/contrib/fastmcp-raml) | RAML → MCP | Serves a RAML-described API as an MCP server |
 | [`raml-mock`](https://github.com/deiteris/FastRAML/tree/master/contrib/raml-mock) | RAML → HTTP | Runs an in-process mock that validates requests and returns examples |
+| [`raml-codegen`](https://github.com/deiteris/FastRAML/tree/master/contrib/raml-codegen) | tree → code | Generates a typed `httpx` client, or a FastAPI server interface to implement, from `fastraml tree` output |
 | [`fastraml-viewer`](https://github.com/deiteris/FastRAML/tree/master/contrib/fastraml-viewer) | — | The tree viewer as static assets any server can mount |
 
 ## Design documents
@@ -231,6 +315,9 @@ uv run mypy fastraml/
 
 All four must pass before any change lands.
 
+`uv sync` leaves out the viewer bundle, so `fastraml serve` does not work in a
+fresh checkout. Run `npm run build` in `viewer/`, then `uv sync --group viewer`.
+
 ### RAML Test Compliance Kit
 
 The fixtures are a submodule, from
@@ -252,8 +339,12 @@ regression, or progress that was not recorded. See
 ```bash
 python -m bench run                      # every bench, every configuration
 python -m bench linearity                # the one hard requirement
+python -m bench compare                  # fail on a >25 % regression against the baseline
 FASTRAML_BENCH=1 uv run pytest tests/bench # the same gate, under pytest
 ```
+
+Run `compare` before and after any change to a hot path, and put the delta in
+the commit message.
 
 ## Licence
 

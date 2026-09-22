@@ -245,7 +245,7 @@ blast radius" is a report; "more than ten" would be taste.
 
 ```yaml
 lint:
-  extends: [recommended]            # or: all, spec, security
+  extends: [recommended]            # or: all, spec, security, style
   plugins: [house-style]            # nothing from a plugin runs until named
 
   categories:

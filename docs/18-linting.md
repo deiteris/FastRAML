@@ -253,7 +253,7 @@ existing twice:
 | `undocumented-operations` | removed; description requirements are plugin policy (§ 1 group 3) |
 | `unsecured-operations` | `unsecured-operation` |
 | `unbounded-strings` | `unbounded-string` |
-| `get-with-request-body` | `get-with-body` |
+| `get-with-request-body` | `meaningless-request-body` (formerly `get-with-body`) |
 | `untyped-payloads` | `untyped-payload` |
 | `multiple-inheritance` | `multiple-inheritance` |
 
@@ -377,8 +377,14 @@ is `multipart/byteranges` instead of a Content-Range header (§ 15.3.7.2). The
 parser does not copy a scheme's `describedBy` into the operations it secures,
 so `www-authenticate-401` reads both: an operation's 401 passes when a securing
 scheme's `describedBy` 401 declares the header, and a `describedBy` 401 without
-it is reported on the scheme. `get-with-body` stays in `spec`, where it
-already was: moving it would turn off a default rule.
+it is reported on the scheme. `meaningless-request-body` stays in `spec`,
+where its GET-only predecessor `get-with-body` was: moving it would turn off a
+default rule. It covers the four methods RFC 9110 gives no request content
+meaning — GET, HEAD and DELETE in the same words (§§ 9.3.1, 9.3.2, 9.3.5), and
+TRACE, whose client MUST NOT send content (§ 9.3.8) — and names the clause in
+`info`. The old identifier is not kept as an alias: a configuration naming it
+fails with `unknown rule`, which says what changed rather than silently
+running a wider rule under the old name.
 
 The `problem-details` set is for APIs that adopt RFC 9457, which obsoletes RFC
 7807 and keeps its media types, so it judges documents written against either.

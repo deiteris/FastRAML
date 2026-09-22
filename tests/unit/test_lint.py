@@ -143,6 +143,26 @@ class TestRuleExamples:
         findings = Linter(builtin_registry(), config).run(parsed('#%RAML 1.0\ntitle: t\n' + paths, tmp_path))
         assert bool(findings) is ambiguous
 
+    @pytest.mark.parametrize(
+        ('method', 'clause'),
+        [
+            ('get', 'RFC 9110 § 9.3.1'),
+            ('head', 'RFC 9110 § 9.3.2'),
+            ('delete', 'RFC 9110 § 9.3.5'),
+            ('trace', 'RFC 9110 § 9.3.8'),
+            ('options', None),
+        ],
+    )
+    def test_meaningless_request_body_covers_the_methods_rfc_9110_names(self, method, clause, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  {method}:\n    body:\n      application/json: string\n'
+        config = Config(extends=(), rules=(RuleSetting(id='meaningless-request-body'),))
+        findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+        assert [finding.info['clause'] for finding in findings] == ([clause] if clause else [])
+
+    def test_the_renamed_get_with_body_is_not_kept_as_an_alias(self):
+        with pytest.raises(ValueError, match='unknown rule: get-with-body'):
+            parse_config('rules:\n  - id: get-with-body\n', builtin_registry())
+
     def test_disjoint_methods_do_not_make_overlapping_paths_ambiguous(self, tmp_path):
         source = '#%RAML 1.0\ntitle: t\n/users/me:\n  get:\n/users/{id}:\n  post:\n'
         config = Config(extends=(), rules=(RuleSetting(id='no-ambiguous-paths'),))
@@ -990,11 +1010,11 @@ class TestLintCli:
         declarations = ''.join(f'  T{index}: string\n' for index in range(5))
         source = f'#%RAML 1.0\ntitle: t\ntypes:\n{declarations}/a:\n  get:\n    body:\n      application/json: string\n'
         root = workspace({'api.raml': source})
-        arguments = ['lint', '--format', 'json', '--max-findings', '2', '--rule', 'get-with-body=error']
+        arguments = ['lint', '--format', 'json', '--max-findings', '2', '--rule', 'meaningless-request-body=error']
         assert main([*arguments, str(root / 'api.raml')]) == EXIT_INVALID
         output = json.loads(capsys.readouterr().out)
         assert output['counts']['info'] == 5
-        assert 'get-with-body' in [finding['rule'] for finding in output['findings']]
+        assert 'meaningless-request-body' in [finding['rule'] for finding in output['findings']]
         assert output['shownCounts']['error'] == 1
 
     @pytest.mark.parametrize(

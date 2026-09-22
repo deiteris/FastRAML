@@ -13,7 +13,7 @@ from fastraml.views.lint.rules.http import (
     RedirectLocation,
     WwwAuthenticate401,
 )
-from fastraml.views.lint.rules.operations import GetWithBody, UnsecuredOperation
+from fastraml.views.lint.rules.operations import MeaninglessRequestBody, UnsecuredOperation
 from fastraml.views.lint.rules.problems import ProblemMediaType, ProblemMemberTypes, ProblemStatus
 from fastraml.views.lint.rules.schema import (
     DeprecatedSchemas,
@@ -75,9 +75,9 @@ def builtin_registry() -> Registry:
     registry = Registry()
     spec_rules: tuple[Rule, ...] = (
         DeprecatedSchemas(),
-        GetWithBody(),
         JsonRefSiblings(),
         MeaninglessMediaTypeSchema(),
+        MeaninglessRequestBody(),
         NoAmbiguousPaths(),
         UntypedPayload(),
         UnusedTrait(),

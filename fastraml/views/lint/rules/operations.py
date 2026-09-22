@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Final
 
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 
@@ -12,28 +12,48 @@ if TYPE_CHECKING:
     from fastraml.parser.endpoints import Operation
     from fastraml.views.lint.engine import Context
 
-__all__ = ['GetWithBody', 'UnsecuredOperation']
+__all__ = ['MeaninglessRequestBody', 'UnsecuredOperation']
+
+#: Methods whose request content HTTP gives no meaning, with the clause that says so.
+_BODILESS_METHODS: Final = {
+    'get': 'RFC 9110 § 9.3.1',
+    'head': 'RFC 9110 § 9.3.2',
+    'delete': 'RFC 9110 § 9.3.5',
+    'trace': 'RFC 9110 § 9.3.8',
+}
 
 
-class GetWithBody:
+class MeaninglessRequestBody:
     meta: ClassVar = RuleMeta(
-        id='get-with-body',
+        id='meaningless-request-body',
         category=Category.SPEC,
-        summary='a GET operation that declares a request body',
+        summary='a GET, HEAD, DELETE or TRACE operation that declares a request body',
         rationale=(
-            'RAML permits a body on GET, but HTTP gives it no generally defined semantics and implementations '
-            'may reject or ignore it. The contract therefore cannot tell a consumer that sending it will work.'
+            'RAML permits a body on any method, but content in a GET, HEAD or DELETE request "has no generally '
+            'defined semantics, cannot alter the meaning or target of the request", and implementations may '
+            'reject it as a request-smuggling risk; a client MUST NOT send content in a TRACE request. The '
+            'contract therefore cannot tell a consumer that sending the body will work. Formerly '
+            '`get-with-body`, which covered GET only.'
         ),
         severity=Severity.WARNING,
+        references=('RFC 9110 § 9.3.1', 'RFC 9110 § 9.3.2', 'RFC 9110 § 9.3.5', 'RFC 9110 § 9.3.8'),
         good='#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/json:\n        type: string\n',
-        bad='#%RAML 1.0\ntitle: t\n/a:\n  get:\n    body:\n      application/json:\n        type: string\n',
+        bad='#%RAML 1.0\ntitle: t\n/a:\n  delete:\n    body:\n      application/json:\n        type: string\n',
     )
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
-        if operation.method != 'get' or operation.request is None or not operation.request.bodies:
+        clause = _BODILESS_METHODS.get(operation.method)
+        if clause is None or operation.request is None or not operation.request.bodies:
             return ()
         return (
-            ctx.on(self.meta, 'GET operation declares a request body', operation, iri=iri, method=operation.method),
+            ctx.on(
+                self.meta,
+                'operation declares a request body HTTP gives no meaning',
+                operation,
+                iri=iri,
+                method=operation.method,
+                clause=clause,
+            ),
         )
 
 

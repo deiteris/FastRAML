@@ -403,11 +403,10 @@ def schema_registry(raml: Raml) -> SchemaRegistry:
 class JsonShape(ComplexKind):
     """A type declared by an external or inline JSON Schema.
 
-    Spec section Using XML and JSON Schemas: such a type "MUST NOT participate
-    in type inheritance or specialization". Half of that is enforced here — any
-    sibling facet is an error. The wrapper facets the spec does allow
-    (`displayName`, `description`, annotations, `example`/`examples`) are common
-    facets, so `shape.py` has already taken them and they never arrive here.
+    RAML sibling facets that reach this kind are rejected. Common facets are
+    removed by `shape.py` first and are currently accepted by the parser; see
+    docs/10-validation.md section 7 for the exact behavior. Inheritance can
+    merge only an identical schema.
 
     The schema is compiled at construction, not at `check()`: malformed JSON in
     a `type:` is a syntax error in the document, and reporting it only under

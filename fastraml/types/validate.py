@@ -200,11 +200,9 @@ def _validate_commons(base: BaseShape, known: DiscriminatorIndex, acc: Accumulat
     seen.add(id(base))
 
     shape = base.shape
-    # A recursion marker is a **stop**, not a second declaration. P9 builds one
-    # by cloning the cycle's head and clearing `inherits` — so the clone still
-    # carries the head's `custom_facets` with nothing left to declare them, and
-    # every one of them read as `unknown facet`: `Book: Entity` supplying a
-    # facet `Entity` declares was rejected the moment `Book` held a `Book[]`.
+    # A recursion marker is a **stop**, not a second declaration. P9 creates a
+    # fresh marker that delegates to its head; validating its copied metadata as
+    # an independent declaration would report duplicate errors.
     # The same reason `RecursiveShape.check` returns without following `head`:
     # the head is checked where it is declared, and here it already has been.
     if isinstance(shape, RecursiveShape):

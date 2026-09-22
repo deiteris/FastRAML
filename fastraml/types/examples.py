@@ -9,11 +9,9 @@ Spec section Single Example allows two forms, and they are ambiguous:
       strict: false
       (pii): true
 
-The rule, taken from go-raml and the only workable one: a mapping containing a
-`value` key is form B, and anything else is form A. A type that genuinely has a
-property called `value` must therefore write form B explicitly — which is what
-the spec's own example does, and comments on. See docs/05-type-model.md
-section 6.
+The rule is that a mapping containing a `value` key is form B, and anything else
+is form A. A type whose example value has a property called `value` must use the
+wrapper form explicitly. See docs/05-type-model.md section 5.
 """
 
 from __future__ import annotations
@@ -31,8 +29,6 @@ from fastraml.yamlnode import NodeKind, node_error, pairs
 if TYPE_CHECKING:
     from fastraml.datanode import DataNode
     from fastraml.parser.annotations import DomainExtension
-
-    # Phase 1 built the fragment; the annotation is the only reference here.
     from fastraml.parser.fragments import NamedExample
     from fastraml.registry import Raml
     from fastraml.types.base import ScalarFacet

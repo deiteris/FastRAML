@@ -720,7 +720,7 @@ class Shape(Protocol):
         ...
 
     def check(self) -> None:
-        """Is the declaration self-consistent? (P8)"""
+        """Is the declaration self-consistent? (P10)"""
         ...
 
     def validate(self, value: Any, path: str) -> None:

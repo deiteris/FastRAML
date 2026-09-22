@@ -304,7 +304,7 @@ class DateTimeShape(ScalarKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             if key.value == 'format':
-                # The value is checked in P8, not here: doc 10 owns the rule and
+                # The value is checked in P10, not here: doc 10 owns the rule and
                 # an inherited format has to be resolved first.
                 self.format = make_string_facet(self.base._raml, key, value, self.base.location)  # noqa: SLF001
             else:

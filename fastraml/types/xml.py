@@ -1,9 +1,7 @@
 """The `xml:` facet.
 
-Parsed, positioned and retained; nothing in v1 consumes it. It gets a module of
-its own because it is a leaf with no dependencies and no dependants, and it has
-nothing to do with examples beyond both being facets of a declaration. See
-docs/05-type-model.md section 8.
+Parsed, positioned, and retained for consumers and projections. The parser does
+not apply XML wire serialization itself. See docs/05-type-model.md section 5.
 
 Unknown keys inside `xml:` are an error rather than being ignored, so `wraped:`
 is caught where it is written.

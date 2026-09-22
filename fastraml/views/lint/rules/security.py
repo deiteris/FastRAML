@@ -298,7 +298,7 @@ class _RequiredResponse:
 
 class Required401Response(_RequiredResponse):
     status = '401'
-    meta = RuleMeta(
+    meta: ClassVar = RuleMeta(
         'required-401-response',
         Category.SECURITY,
         'operations should document a 401 body',
@@ -328,7 +328,7 @@ class Required401Response(_RequiredResponse):
 
 class Required429Response(_RequiredResponse):
     status = '429'
-    meta = RuleMeta(
+    meta: ClassVar = RuleMeta(
         'required-429-response',
         Category.SECURITY,
         'operations should document a 429 body',
@@ -346,7 +346,7 @@ class Required429Response(_RequiredResponse):
 
 class Required500Response(_RequiredResponse):
     status = '500'
-    meta = RuleMeta(
+    meta: ClassVar = RuleMeta(
         'required-500-response',
         Category.SECURITY,
         'operations should document a 500 body',

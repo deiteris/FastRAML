@@ -122,7 +122,7 @@ class _RequiredHeader:
 class AllowHeader405(_RequiredHeader):
     statuses = frozenset({405})
     header = 'Allow'
-    meta = RuleMeta(
+    meta: ClassVar = RuleMeta(
         'allow-header-405',
         Category.HTTP,
         '405 responses should declare Allow',
@@ -140,7 +140,7 @@ class AllowHeader405(_RequiredHeader):
 class ProxyAuthenticate407(_RequiredHeader):
     statuses = frozenset({407})
     header = 'Proxy-Authenticate'
-    meta = RuleMeta(
+    meta: ClassVar = RuleMeta(
         'proxy-authenticate-407',
         Category.HTTP,
         '407 responses should declare Proxy-Authenticate',
@@ -161,7 +161,7 @@ class ProxyAuthenticate407(_RequiredHeader):
 class RedirectLocation(_RequiredHeader):
     statuses = frozenset({301, 302, 307, 308})
     header = 'Location'
-    meta = RuleMeta(
+    meta: ClassVar = RuleMeta(
         'redirect-location',
         Category.HTTP,
         'redirects should declare Location',

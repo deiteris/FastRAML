@@ -171,7 +171,7 @@ def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = N
     try:
         _parse(raml, uri, text, options)
     except RamlError as err:
-        if err.head.message in _FATAL:
+        if err.head.message in _FATAL and err.head.location == uri:
             raise
         # P1-P3 failing leaves `entry_point` unassigned, but `decode_fragment`
         # registers the fragment before decoding its body — so a document whose
@@ -186,10 +186,17 @@ def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = N
 #: The failures `parse_lenient` re-raises. Each leaves either no model at all or
 #: an empty shell that would misrepresent the file more than an exception does.
 #:
-#: Matched on the **head** of the error, which is where all four are raised. The
-#: same problem in an *included* file arrives wrapped in the trace for the
-#: include, and is a local failure: a library whose root is a sequence should not
-#: abandon a parse of the document that used it.
+#: Matched on the **head** of the error, and only when the head is located in the
+#: entry file. The same problem in an *included* file is a local failure: a
+#: library whose root is a sequence should not abandon a parse of the document
+#: that used it. A library's failure arrives wrapped in the trace for `uses:`,
+#: but a fragment `!include`d in a type position surfaces unwrapped with its own
+#: location as the head — so the message alone would make a missing include,
+#: or one outside the workspace, fatal.
+#:
+#: The unreadable entry file is not in the set: `_open` raises it before the
+#: parse begins, in both modes, and `load resource` inside the parse is always
+#: an included file.
 #:
 #: A `raml.entry_point is None` test would be tidier and is wrong. A root that is
 #: not a mapping fails *after* the fragment is registered, so it would look
@@ -198,7 +205,6 @@ def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = N
 #: it.
 _FATAL: Final = frozenset(
     {
-        'load resource',  # the entry file could not be read
         'unknown fragment kind',  # no RAML header, or one nothing recognises
         'fragment kind not supported',  # Overlay and Extension, until v1.1
         'unexpected fragment kind',  # the header contradicts the context

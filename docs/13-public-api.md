@@ -68,10 +68,15 @@ Four failures, because none leaves anything to hand back: an unreadable entry
 file, a missing or unrecognised RAML header, a root that is not a mapping, and a
 fragment whose kind does not match its context.
 
-They are matched on the **head** of the error. Two reasons, and the second is not
-obvious. First, the same problem in an *included* file arrives wrapped in the
-diagnostic for the include and is a local failure — a library whose root is a
-sequence should not abandon a parse of the document that used it. Second, the
+They are matched on the **head** of the error, and only when the head is located
+in the entry file. Two reasons, and the second is not obvious. First, the same
+problem in an *included* file is a local failure — a library whose root is a
+sequence should not abandon a parse of the document that used it. A library's
+failure arrives wrapped in the diagnostic for `uses:`, but a fragment
+`!include`d in a type position surfaces unwrapped, with its own location as the
+head, so the message alone is not enough: a missing include, or one outside the
+workspace, would otherwise abandon the parse. The unreadable entry file is
+raised before the parse begins and is not matched at all. Second, the
 tidier-looking test, `raml.entry_point is None`, is wrong in both directions: a
 root that is not a mapping fails *after* the fragment is registered so it would
 look recoverable, and a bad type declaration fails *before* `entry_point` is

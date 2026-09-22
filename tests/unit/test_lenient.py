@@ -179,3 +179,34 @@ class TestStillFatal:
         assert error is not None
         assert 'must be map' in messages(error)
         assert raml.entry_point.types['T'].type == 'string'
+
+    INCLUDED = {  # noqa: RUF012 - a table, read once per parametrize
+        'missing': ({}, 'load resource'),
+        'root not a mapping': ({'t.raml': '#%RAML 1.0 DataType\n- a\n'}, 'must be map'),
+        'wrong fragment kind': ({'t.raml': '#%RAML 1.0 Trait\ndescription: x\n'}, 'unexpected fragment kind'),
+    }
+
+    @pytest.mark.parametrize(('files', 'message'), INCLUDED.values(), ids=list(INCLUDED))
+    def test_a_type_include_that_fails_is_not_fatal(self, workspace, files, message):
+        """A fragment `!include`d in a type position is not wrapped for the
+        include: its failure is the head of the error, located in the included
+        file. The message is a fatal one; the location is what says it is not
+        the entry's.
+        """
+        root = workspace({'api.raml': API + 'types:\n  A: !include t.raml\n  T: string\n', **files})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert error.head.message == message
+        assert raml.entry_point is not None
+
+    def test_an_include_outside_the_workspace_is_not_fatal(self, workspace):
+        root = workspace(
+            {
+                'sub/api.raml': API + 'types:\n  A: !include ../t.raml\n  T: string\n',
+                't.raml': '#%RAML 1.0 DataType\ntype: string\n',
+            }
+        )
+        raml, error = parse_lenient(root / 'sub' / 'api.raml', BOTH)
+        assert error is not None
+        assert error.head.message == 'load resource'
+        assert raml.entry_point is not None

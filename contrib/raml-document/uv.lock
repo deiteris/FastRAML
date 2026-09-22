@@ -113,6 +113,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastraml-viewer", marker = "extra == 'serve'", editable = "../fastraml-viewer" },
     { name = "google-re2", marker = "extra == 're2'" },
     { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27" },
     { name = "jsonschema", specifier = ">=4.21" },
@@ -121,7 +122,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "referencing", specifier = ">=0.35" },
 ]
-provides-extras = ["graph", "http", "re2"]
+provides-extras = ["graph", "http", "re2", "serve"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -132,6 +133,7 @@ dev = [
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
+viewer = [{ name = "fastraml-viewer", editable = "../fastraml-viewer" }]
 
 [[package]]
 name = "iniconfig"

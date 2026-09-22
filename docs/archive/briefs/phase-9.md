@@ -2,7 +2,7 @@
 
 **Phase 9 is complete. This brief is kept for what it got wrong**, which is the
 convention since Phase 5. The outcome is recorded in
-[the archived implementation history](../archive/implementation-history.md).
+[the archived implementation history](../implementation-history.md).
 
 What this brief said that was not true:
 

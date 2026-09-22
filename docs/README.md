@@ -60,9 +60,8 @@ architecture. The implementation and these documents must agree.
 
 ## Supporting material
 
-- `briefs/` contains historical phase handoffs. It is not normative.
-- `archive/` contains retired design evidence that remains useful for explaining
-  past decisions. It is not normative.
+- `archive/` contains retired design evidence and phase briefs that remain useful
+  for explaining past decisions. It is not normative.
 - `research/` contains open investigations. Nothing there defines parser
   behavior or may be required by the implementation.
 

@@ -8,7 +8,7 @@ Parsing uses one `Raml` registry and a fixed pass order.
 |---|---|
 | P0 | Identify the RAML fragment header. |
 | P1 | Compose source into position-bearing `Node` trees and resolve data includes. |
-| P2 | Decode fragments and declarations; retain endpoint source IR. |
+| P2 | Decode fragments and declarations; retain endpoint source nodes. |
 | P3 | Resolve `uses:` libraries recursively. |
 | P4 | Build endpoints: merge source IR directives, then materialize the result. |
 | P5 | Bind and inherit security schemes. |

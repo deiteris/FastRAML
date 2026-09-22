@@ -18,7 +18,7 @@ run in dependency order *within* the phase, so a session can stop after any one
 of them and leave the tree green. **Done when** is the checkable definition of
 done.
 
-A working brief per phase lives in `docs/briefs/`. The brief carries a phase's
+A working brief per phase lives in `docs/archive/briefs/`. The brief carries a phase's
 settled decisions; this document
 stays the map.
 
@@ -50,8 +50,8 @@ refuses the three escape vectors; the TCK harness discovers all 967 fixtures.
 
 ## Phase 1 — Fragments and includes — **complete**
 
-**Prerequisites:** Phase 0. Normative: [03](03-yaml-and-io.md) §§ 3–7,
-[04](04-fragments-and-namespaces.md). Brief: `docs/briefs/phase-1.md`.
+**Prerequisites:** Phase 0. Normative: [03](../03-yaml-and-io.md) §§ 3–7,
+[04](../04-fragments-and-namespaces.md). Brief: `docs/archive/briefs/phase-1.md`.
 
 **Build:**
 
@@ -87,9 +87,9 @@ types, templates, or those two v1.1 fragment kinds.
 `put_annotation_type` / `put_typedef` / `put_shape` / `unresolved_shapes`;
 `make_scalar_facet` and `ScalarFacet`; `DataNode`; and the `_raw_types`,
 `_raw_annotation_types`, `_raw_base_uri_parameters`, `_raw_declaration` and
-`_raw_examples` seams. Normative: [05](05-type-model.md), with
-[03](03-yaml-and-io.md) §§ 6–7 for the two value carriers. Brief:
-`docs/briefs/phase-2.md`.
+`_raw_examples` seams. Normative: [05](../05-type-model.md), with
+[03](../03-yaml-and-io.md) §§ 6–7 for the two value carriers. Brief:
+`docs/archive/briefs/phase-2.md`.
 
 **Build:**
 
@@ -105,14 +105,14 @@ types, templates, or those two v1.1 fragment kinds.
    `NotImplementedError` naming the phase that fills them. `ObjectShape`,
    `ArrayShape` and `UnionShape` each declare a `DECLARATION_FACETS` table and
    take those children through `__init__`; no kind imports `shape.py`
-   ([02](02-architecture.md) § 2).
+   ([02](../02-architecture.md) § 2).
 5. `types/shape.py`: `make_shape`, `make_body_shape`, `make_property`,
    `make_pattern_property`, and the kind dispatch — which reads
    `DECLARATION_FACETS` off the class it is about to construct, builds those
    children, and passes them in. This is the step that has to be right; the rest
    of the phase serves it.
 6. Wire the seams: `unmarshal_types(..., is_annotation=)` per
-   [04](04-fragments-and-namespaces.md) § 5.1, called from the `_raw_*`
+   [04](../04-fragments-and-namespaces.md) § 5.1, called from the `_raw_*`
    attributes, and the example builder called from `NamedExample`.
 
 Shapes are created but not resolved; everything unresolvable is an
@@ -133,7 +133,7 @@ include with a pointer (`schema.json#/definitions/User`) was not recognised as
 JSON; and a scalar whose tag would not convert crashed instead of keeping its
 text. The third led to the YAML layer being wrong more broadly — PyYAML resolves
 YAML 1.1, RAML is YAML 1.2 — which is now fixed and pinned by a differential
-oracle ([03](03-yaml-and-io.md) § 2.2, [14](14-testing.md) § 1.4).
+oracle ([03](../03-yaml-and-io.md) § 2.2, [14](../14-testing.md) § 1.4).
 
 ---
 
@@ -143,21 +143,21 @@ oracle ([03](03-yaml-and-io.md) § 2.2, [14](14-testing.md) § 1.4).
 retained on every shape whose kind could not be settled. The RDT tokenizer and
 parser already exist (`types/expressions/lexer.py`, `parser.py`), built ahead of
 the critical path; this phase consumes them rather than writing them. Normative:
-[06](06-type-expressions.md), [07](07-resolution-and-inheritance.md) §§ 1–2.
+[06](../06-type-expressions.md), [07](../07-resolution-and-inheritance.md) §§ 1–2.
 
 **Build:**
 
 1. `types/resolve.py`: `resolve_shapes` and its worklist drain (P7) **and** the
    AST → shape visitor, which are mutually recursive and so share a module
-   ([02](02-architecture.md) § 2). Each `UnknownShape` becomes a concrete kind
+   ([02](../02-architecture.md) § 2). Each `UnknownShape` becomes a concrete kind
    **in place**, so references already taken stay valid.
 2. The reference positions (`TypeExprRef`) that make go-to-definition work
    inside an expression, and the two lookups they need
-   ([06](06-type-expressions.md) § 3.2, [04](04-fragments-and-namespaces.md)
+   ([06](../06-type-expressions.md) § 3.2, [04](../04-fragments-and-namespaces.md)
    § 4.2).
 3. The expression cache, keyed by text into `Raml.expr_cache` — one parse per
    distinct expression, not per occurrence.
-4. Alias-versus-inheritance discrimination ([06](06-type-expressions.md) § 3.1) —
+4. Alias-versus-inheritance discrimination ([06](../06-type-expressions.md) § 3.1) —
    the distinction the remaining resolution rules hang off. It has a decode half
    too: the form of the declaration must be recorded while the value node is
    still in hand.
@@ -178,10 +178,10 @@ Two things the plan had in the wrong place. The visitor and the driver are
 mutually recursive — a reference's target may itself be unresolved — so they
 share `types/resolve.py` rather than splitting across `expressions/build.py`,
 and the driver is a free function because `registry.py` may not import `types/`
-at runtime ([02](02-architecture.md) § 2, [07](07-resolution-and-inheritance.md)
+at runtime ([02](../02-architecture.md) § 2, [07](../07-resolution-and-inheritance.md)
 § 1). Step 4 also turned out to have a decode half: the form of a declaration
 decides alias versus inheritance, and had to be recorded while the value node
-was still in hand ([06](06-type-expressions.md) § 3.1).
+was still in hand ([06](../06-type-expressions.md) § 3.1).
 
 ---
 
@@ -189,12 +189,12 @@ was still in hand ([06](06-type-expressions.md) § 3.1).
 
 **Prerequisites:** Phase 3 — unwrap merges a shape with its parents, and a shape
 whose kind is still `UnknownShape` cannot be merged (the P7-before-P9 ordering in
-[02](02-architecture.md) § 1). Normative: [07](07-resolution-and-inheritance.md)
+[02](../02-architecture.md) § 1). Normative: [07](../07-resolution-and-inheritance.md)
 §§ 3–5.
 
 **Build:**
 
-1. The three clone operations ([07](07-resolution-and-inheritance.md) § 5).
+1. The three clone operations ([07](../07-resolution-and-inheritance.md) § 5).
    Unwrap is defined in terms of them and `copy.deepcopy` is forbidden, so they
    come first.
 2. Per-kind `inherit` and `alias_to` — the rule sets in § 3.5.
@@ -214,7 +214,7 @@ hypothesis.
 corpus from its own `unwrap=True` fixture, kept separate because I4 and I5 are
 about the model *before* flattening.
 
-Four things [07](07-resolution-and-inheritance.md) did not say, now amended
+Four things [07](../07-resolution-and-inheritance.md) did not say, now amended
 there. A union target that declares no members takes the parent's outright —
 not an edge case, since `T: {type: SomeUnion, …}` gets the union kind from P7
 but no `anyOf`, and its absence regressed a valid fixture. `Raml.shapes` is
@@ -240,8 +240,8 @@ Numbered `4b` rather than renumbering what follows: code comments name phases by
 number, and the re-binding step depends on Phase 4's unwrap.
 
 **Prerequisites:** Phase 2 for annotation types, which are shapes, and Phase 4
-for the re-binding. Normative: [09](09-security-and-annotations.md) Part B.
-Brief: `docs/briefs/phase-4b.md`.
+for the re-binding. Normative: [09](../09-security-and-annotations.md) Part B.
+Brief: `docs/archive/briefs/phase-4b.md`.
 
 **Why it moved.** P8 was Phase 7's build step 4, grouped there because that phase
 is titled "Security and annotations". Nothing in it touches security: it binds an
@@ -253,7 +253,7 @@ be written without it.
 
 1. `DomainLocation` in `fastraml/domains.py`, a leaf module because `registry.py`
    carries it on `ParseCtx` and `parser/annotations.py` reads it
-   ([02](02-architecture.md) § 2).
+   ([02](../02-architecture.md) § 2).
 2. `ParseCtx.target` and `Raml.target_scope`, plus the per-`FragmentKind` default
    and the four narrower scopes.
 3. `allowedTargets` decoded onto `BaseShape.allowed_targets`, `None` and `[]`
@@ -292,7 +292,7 @@ shapes, so `make_shape` and `make_body_shape` must exist. **Not** Phase 3 or 4:
 endpoints are built at P4, *before* shapes resolve at P7, precisely so that
 template-contributed subtrees join the same resolution batch.
 `parser/uritemplates.py` already exists. `APIFragment._raw_endpoints` holds the
-input. Normative: [08](08-templates-and-endpoints.md) §§ 3, 8.
+input. Normative: [08](../08-templates-and-endpoints.md) §§ 3, 8.
 
 **Build:**
 
@@ -326,12 +326,12 @@ fixed there (`KNOWN-ISSUES.md` in the go-raml checkout, entries 4 and 5):
 `Annotations/target-locations/valid-response.raml` declared `allowedTargets:
 Method` while applying the annotation at a response, and the two files under
 `Fragments/namedexample-01/examples/` are `!include` targets named as though
-they were documents. [14](14-testing.md) § 1.2 now states the policy that came
+they were documents. [14](../14-testing.md) § 1.2 now states the policy that came
 out of it: a `fail` entry means work outstanding and nothing else.
 
 Two things the plan did not say. `parser/directives.py` holds one
 `DirectiveRef` for all three of `type:`, `is:` and `securedBy:`, rather than a
-class each in the three modules [02](02-architecture.md) § 2 assigns them to —
+class each in the three modules [02](../02-architecture.md) § 2 assigns them to —
 stage 1 needs all three, two phases before those modules exist. And doc 09 § B5
 stated the body-annotation rule too simply: `RequestBody`/`ResponseBody` is the
 *media-type* node, while a `body:` written without media-type keys is a
@@ -354,7 +354,7 @@ variable index, substitution, the ten actions) already exists, built ahead of th
 critical path, and `Raml._active_overlay` is already declared. The `_raw_traits`
 and `_raw_resource_types` seams, plus the `TraitFragment` and
 `ResourceTypeFragment` bodies, hold the input. Normative:
-[08](08-templates-and-endpoints.md) §§ 4–7.
+[08](../08-templates-and-endpoints.md) §§ 4–7.
 
 **Build:**
 
@@ -370,7 +370,7 @@ and `_raw_resource_types` seams, plus the `TraitFragment` and
 5. `resourcePathName` and the parameter rules (§§ 5.3, 7.4).
 
 This is the phase with the highest defect risk. It lands with the merge property
-tests from [14](14-testing.md) § 4.
+tests from [14](../14-testing.md) § 4.
 
 **Done when:** `Traits/`, `ResourceTypes/`, `TemplateFunctions/` pass; the
 three-way provenance case is green; merge purity and target-wins hold under
@@ -397,7 +397,7 @@ that is supplied, leaves `<<TextAboutGet>>` unsubstituted in the model
 (`KNOWN-ISSUES.md` entry 6, measured). The index is now keyed by node identity,
 which removes that fault and the non-injectivity one together, and with it the
 risk-register entry below: there are no longer two walks to keep in agreement.
-[08](08-templates-and-endpoints.md) § 7.1 amended.
+[08](../08-templates-and-endpoints.md) § 7.1 amended.
 
 **`build_endpoints` had no parse context.** P4 runs after the API's own decode
 has popped its own, so until this phase every endpoint shape was built with
@@ -407,7 +407,7 @@ anything a template contributes — invisible for two phases because nothing had
 contributed anything yet.
 
 **`location` and `anchor` are allowed to disagree**, and a corpus test that
-asserts otherwise is wrong. See [08](08-templates-and-endpoints.md) § 6.3.
+asserts otherwise is wrong. See [08](../08-templates-and-endpoints.md) § 6.3.
 
 **Two conformance gaps surfaced by running the fixtures**, both measured against
 go-raml rather than traced: a response key must be a 3-digit status code (`2xx`
@@ -422,7 +422,7 @@ no valid fixture writes a bare scalar, and go-raml accepts one — which is why
 **Prerequisites:** Phase 5 for the operations schemes attach to, and Phase 6 if a
 scheme arrives through a trait. The `_raw_security_schemes` and `_raw_secured_by`
 seams and the `SecuritySchemeFragment` body hold the input. Normative:
-[09](09-security-and-annotations.md) Part A.
+[09](../09-security-and-annotations.md) Part A.
 
 **Build:**
 
@@ -449,7 +449,7 @@ register predicted: nothing here can be silently wrong, only wrongly rejected.
 After this phase `grep -rn '_raw_' fastraml/` returns only Phase 8b's seams.
 
 Three things the plan did not say, all recorded in
-[09](09-security-and-annotations.md).
+[09](../09-security-and-annotations.md).
 
 **One settings class, not six** (§ A2). The six types differ in which keys they
 accept and what they then require; the first is a table and the second is one
@@ -480,7 +480,7 @@ trait fragment has no lexical namespace that could hold one.
 **Not** Phases 5–7. `_validate_types` iterates `fragment_typedefs`, which the
 endpoint decoders register into through the same helpers types use, so endpoints
 feed the validator without the validator changing. Phases 5–7 widen its input,
-they do not change its shape. Normative: [10](10-validation.md).
+they do not change its shape. Normative: [10](../10-validation.md).
 
 **Build:**
 
@@ -524,13 +524,13 @@ lives:
   at `inherits[0]`, so the declaring type neither satisfies its own required
   facets nor may supply one — the second half is `unknown facet`, which is not
   what anyone would guess. This alone accounted for 15 of 19 regressed valid
-  fixtures ([10](10-validation.md) § 4).
+  fixtures ([10](../10-validation.md) § 4).
 - Facets on a union declaration go unenforced (§ 3.7 of
-  [01](01-scope-and-coverage.md)), because they land in `custom_facets` with no
+  [01](../01-scope-and-coverage.md)), because they land in `custom_facets` with no
   kind to be decoded against. Recorded as a tracked gap rather than left
   implicit — and closed in Phase 8c, from that record.
 - `as_fraction` must convert a value through its **decimal text**, not
-  `as_integer_ratio()`. [10](10-validation.md) § 5.3 specified the latter, which
+  `as_integer_ratio()`. [10](../10-validation.md) § 5.3 specified the latter, which
   made `multipleOf: 1.1` reject `2.2` — the exact failure the no-`float` rule
   exists to prevent. Doc amended.
 
@@ -547,8 +547,8 @@ The three divergences found in go-raml are written up in
 ## Phase 8b — JSON Schema and the endpoint-facing remainder — **complete**
 
 **Prerequisites:** Phase 8a. Phase 5 for the four decoders of
-[10](10-validation.md) § 6.2, Phase 7 for the eleven `DomainLocation`s that
-Phases 5–7 create. Normative: [10](10-validation.md) § 6.
+[10](../10-validation.md) § 6.2, Phase 7 for the eleven `DomainLocation`s that
+Phases 5–7 create. Normative: [10](../10-validation.md) § 6.
 
 **Build:**
 
@@ -559,7 +559,7 @@ Phases 5–7 create. Normative: [10](10-validation.md) § 6.
 2. Doc 10 § 6.2's "no schema in query parameters, query string, URI parameters or
    headers". *Not* at the four decoders, as this line first said: a parameter may
    name a schema type instead of declaring one inline, so the check runs after
-   P7, over the built endpoint model ([10](10-validation.md) § 6.2).
+   P7, over the built endpoint model ([10](../10-validation.md) § 6.2).
 3. `allowedTargets` at the sites Phases 5–7 build. Already done: Phase 8a built
    `_check_target` in `types/validate.py` and it reads every one of the seventeen
    `DomainLocation`s, so the two fixtures this line was written for were already
@@ -586,10 +586,10 @@ Six things were established by measurement rather than by reading:
   fixtures differ in nothing but `simpleAnnotationValueOnType` versus
   `simpleAnnotation_value_on_type` under `[a-zA-Z0-9]{8,32}`, and an unanchored
   search accepts both — so under the old reading the pair tested nothing.
-  `/regex/` property *names* stay unanchored ([10](10-validation.md) § 5.4).
+  `/regex/` property *names* stay unanchored ([10](../10-validation.md) § 5.4).
 - **Declaring a pattern property makes the set of them exhaustive.** That reads
   backwards against `additionalProperties: true`, so the spec's own examples
-  settle it in their own comments ([05](05-type-model.md) § 5.1).
+  settle it in their own comments ([05](../05-type-model.md) § 5.1).
 - **A discriminator on an inline declaration cannot be checked after P9**,
   because a discriminator is inherited and every subtype then looks like one.
   go-raml carries this rule as a `FIXME` saying exactly that.
@@ -599,7 +599,7 @@ Six things were established by measurement rather than by reading:
 - **An included NamedExample went unvalidated**, because `Examples.values` is
   empty in that form. Fixing it exposed a second defect: a union's survivors each
   carried the target's `example`, so every example had to satisfy every member
-  ([07](07-resolution-and-inheritance.md) § 3.4).
+  ([07](../07-resolution-and-inheritance.md) § 3.4).
 - **`!include` is the only tag RAML defines**, so any other local tag is refused
   at compose. Otherwise `!includeexample.json` is a valid tag on an empty scalar.
 
@@ -618,8 +618,8 @@ Unit tests: 58 in `test_jsonschema.py`, plus additions to `test_check.py`,
 
 **Prerequisites:** Phase 8b, and only because it made this the last thing left.
 Promoted from After-v1 item 2 once it was the sole remaining conformance gap.
-Normative: [01](01-scope-and-coverage.md) § 3.7,
-[07](07-resolution-and-inheritance.md) § 3.4.
+Normative: [01](../01-scope-and-coverage.md) § 3.7,
+[07](../07-resolution-and-inheritance.md) § 3.4.
 
 **Build:**
 
@@ -651,7 +651,7 @@ to run after `inherit`, since a child narrowing a union has no `anyOf` until the
 
 Wrong: "clone the members" is not enough. A clone is the member, and a facet the
 member itself *declared* — `facets: {minimum: number}` — may then not be supplied
-to it, by the rule in [10](10-validation.md) § 4 that a `facets:` block describes
+to it, by the rule in [10](../10-validation.md) § 4 that a `facets:` block describes
 what subtypes must supply. `union-with-facets/valid-custom-facet.raml` is exactly
 that case. Each member is therefore replaced by a genuine **subtype**: a fresh
 `BaseShape` with `inherits = [member]`, the member's own kind class, and the
@@ -665,22 +665,22 @@ overwrite.
 ## Phase 9 — Hardening and release
 
 **Prerequisites:** Phases 0–8. A benchmark is meaningless against a parser that
-does not yet do all the work. Normative: [12](12-performance.md),
-[13](13-public-api.md).
+does not yet do all the work. Normative: [12](../12-performance.md),
+[13](../13-public-api.md).
 
 **Build:**
 
-1. The benchmark suite and its committed baselines ([14](14-testing.md) § 5).
+1. The benchmark suite and its committed baselines ([14](../14-testing.md) § 5).
 2. Depth guards and `re2` support — the two hardening items that change
    behaviour, so they land before the API is frozen.
 3. `parse_lenient`, which needs every pass to accumulate rather than raise.
-4. The CLI ([13](13-public-api.md) § 8).
+4. The CLI ([13](../13-public-api.md) § 8).
 5. Public API docs, docstrings and the README; reconcile the deviation list in
-   [01](01-scope-and-coverage.md) § 4 against what was actually built.
+   [01](../01-scope-and-coverage.md) § 4 against what was actually built.
 
 **Done when:** `bench_large` is within 15 % of linear against a half-size corpus;
 peak RSS under 400 MB; `mypy --strict` clean; the deviation list in
-[01](01-scope-and-coverage.md) § 4 matches reality; the skip list contains only
+[01](../01-scope-and-coverage.md) § 4 matches reality; the skip list contains only
 Overlays, Extensions and XSD.
 
 **Outcome — complete.** Every criterion met except the last clause, which was
@@ -690,20 +690,20 @@ two fixtures that `!include` a gist, skipped as suite policy since Phase 6.
 Measured: linearity **1.040** (+4.0 %) against a half-size corpus; `bench_large`
 **353 ms** and **98 MB** peak RSS against a 400 MB ceiling. Against go-raml run
 on the same corpora and machine: **5.1x to 10.3x**. The full table is in
-[12](12-performance.md) Part 4.
+[12](../12-performance.md) Part 4.
 
 Four things the phase found that the plan did not anticipate:
 
 1. **The JSON Schema walk had no depth guard at all** — the brief said it had
    one with its own constant. A 200-level schema exhausted CPython's stack inside
    the schema library's own meta-schema validation and surfaced as a raw
-   `RecursionError`, which [12](12-performance.md) § 14 forbids outright. Fixing
+   `RecursionError`, which [12](../12-performance.md) § 14 forbids outright. Fixing
    it is what turned "reconcile three ceilings" from tidying into a bug fix.
 2. **`parse_lenient` cannot continue past the failing pass.** Built that way
    first and measured: one missing library used by twenty types produced 41
    diagnostics instead of one, because each pass re-derives the fault the
    previous one reported. It now stops where a strict parse stops and returns the
-   partial model, which is what [13](13-public-api.md) § 1 described all along.
+   partial model, which is what [13](../13-public-api.md) § 1 described all along.
    The recoverable part is After-v1 item 6.
 3. **Deviation D1 was documented and never implemented.** `!include x.xsd` was
    rejected — by the header check, as `unknown fragment kind: head: <?xml
@@ -715,7 +715,7 @@ Four things the phase found that the plan did not anticipate:
 
 The export list was widened to what a consumer narrows against or walks, and no
 further; the reasoning and what was deliberately left out are in
-[13](13-public-api.md) § 4. The API is stated as unstable before 1.0 rather than
+[13](../13-public-api.md) § 4. The API is stated as unstable before 1.0 rather than
 frozen — there is no consumer yet to tell us which of the remaining names anyone
 needs.
 
@@ -733,25 +733,25 @@ In rough priority order:
    chain, the "all overlays share one master" constraint, and the allowed-
    differences table are the work. Estimated: one phase.
 2. **Multi-parent custom facet chain walk** — the known limitation in
-   [10](10-validation.md) § 4.
+   [10](../10-validation.md) § 4.
 3. **Union `enum` semantics** — spec § Union Type's enum rules, which the
    go-raml also defers.
-4. **Finer provenance granularity** — [08](08-templates-and-endpoints.md) § 6.4.
+4. **Finer provenance granularity** — [08](../08-templates-and-endpoints.md) § 6.4.
 5. **Downstream packages** — LSP server, JSON Schema / OpenAPI converters,
    middleware. All are consumers of the model, not changes to it; `retain_source`
    and the `TypeExprRef`/`IncludeRef` indices exist so none of them requires a
    parser change.
 
    **The first two converters are built and live in-tree**: `fastraml/views/`
-   ([16](16-graph.md)) — one addressing walk under `graph`, `tree`, `render`,
+   ([16](../16-graph.md)) — one addressing walk under `graph`, `tree`, `render`,
    `queries` and `backward`, plus the JSON Schema and OpenAPI projections. It is in the package rather
    than beside it only because the CLI needs it; it is still a consumer, it
    decides no RAML rule, and nothing in the model imports it — which is now a
-   package boundary rather than a convention ([14](14-testing.md) § 4, law 18).
+   package boundary rather than a convention ([14](../14-testing.md) § 4, law 18).
    It required no parser change, which is the claim this item makes.
 6. **Per-entity tolerance across passes**, for `parse_lenient`. Today it stops
    where a strict parse stops and returns the partial model
-   ([13](13-public-api.md) § 1). Running the later passes anyway was built in
+   ([13](../13-public-api.md) § 1). Running the later passes anyway was built in
    Phase 9 and measured: it turns one missing library into 41 diagnostics,
    because P7 re-reports what P1–P3 said and P9 re-reports P7. The independent
    diagnostics are real and worth having — a security-scheme error and an
@@ -762,7 +762,7 @@ In rough priority order:
 7. **Concurrent remote includes, as an async prefetch.** Remote `!include` and
    `uses:` targets are fetched one at a time: the descent discovers each only
    when it reaches it, so eight independent libraries at 50 ms cost 410 ms
-   against a 50 ms floor ([03](03-yaml-and-io.md) § 5.1).
+   against a 50 ms floor ([03](../03-yaml-and-io.md) § 5.1).
 
    **Two halves, and the second is the one that is a design decision.** The
    serialisation is a discovery-order problem — nothing can fetch a second
@@ -774,7 +774,7 @@ In rough priority order:
 
    Fetching one level is then the part an event loop does well, and **async is
    the decided mechanism, not a worker pool**. The parse stays synchronous and
-   single-threaded ([01](01-scope-and-coverage.md) § 2): the prefetch enters a
+   single-threaded ([01](../01-scope-and-coverage.md) § 2): the prefetch enters a
    loop for the duration of one level and leaves with bytes in a cache, so no
    pass becomes `async` and nothing else has to be coloured. It also sidesteps
    the constraint a thread pool would carry — `httpx.Client` promises thread
@@ -795,4 +795,4 @@ In rough priority order:
 | Parent-shape mutation during multiple inheritance | Phase 4 | Explicit test: two children inherit one parent, assert the parent is byte-identical after |
 | `RecursionError` on deep user input | Phases 4, 6, 8 | Depth guard + hypothesis property 10 |
 | Performance regressions creep in unnoticed | all | Benchmarks in CI from Phase 9, baselines committed |
-| Divergence from go-raml on an ambiguous spec point | all | **Closed by the TCK, not by the script that was planned for it.** Every divergence was isolated by a single fixture and settled by running go-raml against a throwaway Go test; the ratchet is 916 of 916 and each resolution is a documented deviation ([01](01-scope-and-coverage.md) § 4) or a bug fixed. The cross-check script ([14](14-testing.md) § 1.3) is deliberately unbuilt |
+| Divergence from go-raml on an ambiguous spec point | all | **Closed by the TCK, not by the script that was planned for it.** Every divergence was isolated by a single fixture and settled by running go-raml against a throwaway Go test; the ratchet is 916 of 916 and each resolution is a documented deviation ([01](../01-scope-and-coverage.md) § 4) or a bug fixed. The cross-check script ([14](../14-testing.md) § 1.3) is deliberately unbuilt |

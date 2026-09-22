@@ -550,7 +550,9 @@ template selects the declarations to inspect, avoiding duplicate findings for
 parameters propagated to descendants.
 
 `no-ambiguous-paths` compares routes one segment at a time, which is sound
-because simple expansion percent-encodes `/` (RFC 6570 § 3.2.2). A literal
+because simple expansion percent-encodes `/` (RFC 6570 § 3.2.2) and RAML 1.0
+§ Template URIs forbids a matched value to contain one, "to avoid ambiguous
+matching". A literal
 segment overlaps a template only if every parameter's type accepts the text it
 would have to take: `/users/me` beside `/users/{id}` with `id: integer` or an
 `enum` without `me` is not reported, while `/users/42` is. The text is tried as a

@@ -143,7 +143,7 @@ class NoAmbiguousPaths:
             'compared by its literal text, since simple expansion cannot produce a `/`.'
         ),
         Severity.WARNING,
-        references=('RFC 6570 § 3.2.2',),
+        references=('RAML 1.0 § Template URIs and URI Parameters', 'RFC 6570 § 3.2.2'),
         good='#%RAML 1.0\ntitle: t\n/users/me:\n  get:\n/users/{id}/posts:\n  get:\n',
         bad='#%RAML 1.0\ntitle: t\n/users/me:\n  get:\n/users/{id}:\n  get:\n',
     )

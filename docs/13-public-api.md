@@ -163,7 +163,8 @@ Exported model classes, all read-oriented, all slotted, all carrying
 **API structure** — `EndPoint`, `Operation`, `Request`, `Response`, `Body`,
 `DocumentationItem`.
 
-**Graph** — `Graph`, `GraphNode`, `Edge`, `Route`, `Entity`, `build_graph`.
+**Graph** — `Graph`, `GraphNode`, `Edge`, `Route`, `Entity`, `build_graph`,
+`RAML_NS` (the RDF namespace, provisional until 1.0).
 `GraphNode.entity` holds the model object the node projects and is never
 `None`; `Graph.entity_at` reads it, and `shape_at`/`endpoint_at`/`operation_at`
 narrow it ([16](16-graph.md) § 2.7). `Graph.__init__` no longer takes `shapes=`

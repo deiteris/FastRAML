@@ -89,6 +89,13 @@ class TestNarrowing:
         expected = {'BaseShape', 'Body', 'EndPoint', 'Operation', 'PatternProperty', 'Property', 'Request', 'Response'}
         assert expected <= set(fastraml.__all__)
 
+    def test_the_rdf_namespace_is_read_from_the_package(self):
+        """The README tells callers to read `RAML_NS` rather than hard-code it,
+        because the namespace is not frozen before 1.0."""
+        from fastraml.views.graph import RAML_NS
+
+        assert fastraml.RAML_NS == RAML_NS
+
     def test_narrowing_reads_the_way_the_doc_writes_it(self, workspace):
         """docs/13 § 6's example, run rather than quoted."""
         root = workspace({'lib.raml': '#%RAML 1.0 Library\ntypes:\n  T:\n    properties:\n      a: string\n'})

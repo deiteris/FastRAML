@@ -114,6 +114,7 @@ from fastraml.views.backward import render_markdown as render_compatibility_mark
 from fastraml.views.backward import rule_for as rule_for
 from fastraml.views.backward import side_of as side_of
 from fastraml.views.backward import side_of_rule as side_of_rule
+from fastraml.views.graph import RAML_NS as RAML_NS
 from fastraml.views.graph import Edge as Edge
 from fastraml.views.graph import Graph as Graph
 from fastraml.views.graph import Route as Route
@@ -203,6 +204,7 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'Position',
     'Property',
     'PropertySegment',
+    'RAML_NS',
     'RULES',
     'RULE_IDS',
     'Raml',

@@ -236,9 +236,9 @@ multiline-quotes = "double"
 ]
 
 [tool.mypy]
-# The hand-written half of the Python binding is data, not code: it is never
-# imported, and it names types only the generated half declares. See the
-# per-file ruff ignore above for why it is a `.py` file at all.
+# The hand-written Python binding declaration half is data, not runtime code: it
+# is a `.pyi` stub, is never imported, and names types only the generated half
+# declares.
 exclude = "fastraml/views/bindings/static/"
 ignore_missing_imports = true
 disable_error_code = []

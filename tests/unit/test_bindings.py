@@ -22,7 +22,7 @@ one.
 
 Go is compiled and run as well, because nothing else here runs it: a throwaway
 module decodes two documents through the generated types and writes them back.
-Every skip in this file is Go's, and CI's `bindings-go` job installs a toolchain
+Every skip in this file is Go's, and CI's `bindings` job installs a toolchain
 and fails if any of them skip.
 """
 

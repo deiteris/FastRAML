@@ -61,7 +61,7 @@ from fastraml.yamlnode import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterator, Mapping
 
     from fastraml.positions import Position
     from fastraml.registry import Raml
@@ -541,8 +541,34 @@ class APIFragment(_BaseFragment):
 
         if self.title is None:
             accumulator.add(node_error('title is required', self.location, node))
+        if self.base_uri is not None or not any(key.value == FACET_BASE_URI for key, _ in remainder):
+            for unused in self._unused_base_uri_parameters():
+                accumulator.add(unused)
         accumulator.raise_if_any()
         self._raw_secured_by = None
+
+    def _unused_base_uri_parameters(self) -> Iterator[RamlError]:
+        """Spec § Base URI: `baseUriParameters` follows the rules of `uriParameters`.
+
+        So every name it declares must be a variable in `baseUri`, which is
+        checked here rather than as the key is decoded because the two keys may
+        come in either order. A `baseUri` that failed to decode is skipped by
+        the caller, so its error is not followed by one per parameter.
+        """
+        uri = ''
+        variables: set[str] = set()
+        if self.base_uri is not None:
+            uri = self.base_uri.value
+            expressions = extract_uri_template_params(uri, self.location, self.base_uri.value_pos)
+            variables = {expression.name for expression in expressions}
+        for name, parameter in self.base_uri_parameters.items():
+            if name not in variables:
+                yield RamlError.new(
+                    'uri parameter is not used',
+                    self.location,
+                    parameter.base.key_pos,
+                    info={'parameter': name, 'uri': uri},
+                )
 
     def _decode_key(self, key: Node, value: Node, declarations: _Declarations) -> None:
         if self._decode_root_facet(key, value) or self._retain_declarations(key, value, declarations):

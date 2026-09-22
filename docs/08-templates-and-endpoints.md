@@ -547,9 +547,15 @@ uri`), a `%` not followed by two hex digits (`invalid pct-encoded sequence in
 uri`), and a malformed scheme such as `1http:` (`invalid uri scheme`). A relative
 reference is accepted, since `api.example.com/{version}` and the spec's own
 `//api.test.com//common//` are both used as base URIs. An IRI is not a URI: a
-non-ASCII character must be pct-encoded. Only the *template* half is shared —
-`baseUriParameters` are not cross-checked against it the way a resource's are,
-because `{version}` is legal there with nothing declaring it.
+non-ASCII character must be pct-encoded.
+
+`baseUriParameters` is cross-checked in one direction only. Spec § Base URI gives
+it the structure of `uriParameters`, so every name it declares must be a variable
+in `baseUri` (`uri parameter is not used`, with `uri` empty when there is no
+`baseUri`). The check runs after the root's main loop, since the two keys may come
+in either order, and is skipped when `baseUri` itself failed. The other direction
+is not checked, and no variable is synthesised: `{version}` is legal with nothing
+declaring it.
 
 **Propagation** (P6): each endpoint's parameter map is rewritten to
 ancestor-declared parameters first, then its own. A nested resource therefore
@@ -563,8 +569,8 @@ consumer indexing parameters by identity gets one entry per declaration rather
 than one per resource that inherits it. A synthesised variable is created at the
 endpoint whose template named it, so it is not shared.
 
-`baseUriParameters` binds as `uri` too, and is the one parameter map with no
-template to check against — § 8.2 above says why.
+`baseUriParameters` binds as `uri` too, and is the one parameter map that is not
+propagated: it belongs to the API, not to a resource.
 
 ### 8.3 Bodies and default media types
 

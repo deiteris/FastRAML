@@ -24,9 +24,8 @@ pytestmark = pytest.mark.skipif(
     reason='set FASTRAML_BENCH=1 to run the benchmarks',
 )
 
-#: A quarter of the published corpus: enough for the ratio to mean something,
-#: quick enough that CI runs it on every push. The nightly job runs
-#: `python -m bench linearity` at full size.
+#: A quarter of the generated corpus: enough for the ratio to mean something and
+#: quick enough for CI. Full-scale measurements remain a local benchmark action.
 SCALE = 0.25
 
 #: How many times each size is measured. `run_suite` already takes the best of

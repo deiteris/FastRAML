@@ -35,11 +35,10 @@ from pathlib import Path
 
 import pytest
 
-#: Fixture categories skipped wholesale, each with the reason. The list only
-#: shrinks; every entry is a line item in docs/15-implementation-plan.md.
+#: Fixture categories skipped wholesale, each with the documented reason.
 SKIPPED_CATEGORIES: dict[str, str] = {
-    'Overlays/': 'overlays are planned for v1.1 (docs/01 section 3.5)',
-    'Extensions/': 'extensions are planned for v1.1 (docs/01 section 3.5)',
+    'Overlays/': 'overlays are unsupported (docs/01 section 3)',
+    'Extensions/': 'extensions are unsupported (docs/01 section 3)',
 }
 
 #: The same two kinds, identified by what a document *is* rather than where it
@@ -59,16 +58,16 @@ SKIPPED_HEADS: dict[str, str] = {
 #: produce an error.
 _NO_NETWORK = 'fetches an https include; the suite must not touch the network'
 
-#: The one fixture a deliberate deviation contradicts. The fixture is correct —
-#: it is the spec's own example of `members: Person[]` over a JSON-schema type —
-#: and fastRAML accepts it on purpose (docs/01 § 4, D11). Skipped rather than
+#: The one fixture the JSON Schema expression policy contradicts. The fixture is
+#: the spec's example of `members: Person[]` over a JSON-schema type, which
+#: fastRAML accepts (docs/01 section 4.5). Skipped rather than
 #: ratcheted to `fail`, because a `fail` entry means work outstanding
-#: (docs/14 § 1.2) and this is a decision, not a gap.
-_D11 = 'deviation D11: a JSON schema type may be used in a type expression'
+#: (docs/14 section 2) and this is a supported policy, not a gap.
+_JSON_SCHEMA_EXPRESSION_POLICY = 'JSON schema types may be used in type expressions'
 SKIPPED_FIXTURES: dict[str, str] = {
     'Root/include-02/valid-https.raml': _NO_NETWORK,
     'Root/include-02/invalid-https.raml': _NO_NETWORK,
-    'spec-examples/APIs/external-type-extend-invalid.raml': _D11,
+    'spec-examples/APIs/external-type-extend-invalid.raml': _JSON_SCHEMA_EXPRESSION_POLICY,
 }
 
 _ENV_VAR = 'FASTRAML_TCK_DIR'

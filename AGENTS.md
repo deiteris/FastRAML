@@ -3,14 +3,14 @@
 A RAML 1.0 parser for Python 3.12+. `docs/` is normative: start at `docs/README.md`;
 `docs/02-architecture.md` maps each area to its document and modules.
 
-Status: phases 0–9 of `docs/15-implementation-plan.md` are complete, the TCK passes
-926 of 926, and remaining work is the "After v1" list in `docs/15`.
+Status: the parser pipeline is complete and the TCK passes 926 of 926. Current
+deferred work is listed in `docs/15-implementation-plan.md`.
 
 ## Before changing anything
 
 1. Read the document that owns the area.
 2. If the code must differ from a document, amend the document in the same commit.
-3. Follow `docs/15` phase order when a change spans phases; it follows dependencies.
+3. Use `docs/15` for current status only; completed phases are archived history.
 
 ## The gate
 

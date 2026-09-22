@@ -8,7 +8,8 @@ exists so you do not have to re-derive what earlier sessions already settled.
 ## 1. What this brief got wrong
 
 Kept for the next brief's author. The phase is complete;
-[15](../15-implementation-plan.md) § Phase 8b holds the outcome.
+[the archived implementation history](../archive/implementation-history.md) holds
+the outcome.
 
 1. **The three-way split of the 25 open fixtures was wrong.** JSON Schema
    accounted for 14, not 10, and the row called "type-system corners:

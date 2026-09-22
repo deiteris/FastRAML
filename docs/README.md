@@ -53,7 +53,7 @@ architecture. The implementation and these documents must agree.
 | 12 | [Performance](12-performance.md) | Complexity requirements, hot paths, recursion limits, and benchmarks |
 | 13 | [Public API](13-public-api.md) | Python exports, parser options, model contracts, and CLI |
 | 14 | [Testing strategy](14-testing.md) | Unit, corpus, conformance, golden, property, and benchmark tests |
-| 15 | [Implementation plan](15-implementation-plan.md) | Completed implementation phases and the remaining After-v1 list |
+| 15 | [Status and roadmap](15-implementation-plan.md) | Non-normative parser status, deferred work, and future possibilities |
 | 16 | [Views](16-graph.md) | Shared traversal, graph and tree projections, queries, rendering, compatibility, bindings, JSON Schema, and OpenAPI |
 | 17 | [Consumers](17-consumers.md) | Consumer boundaries, generated artifacts, fixtures, and independent gates |
 | 18 | [Linting](18-linting.md) | Rule engine, built-in policy, configuration, plugins, and output |
@@ -66,10 +66,9 @@ architecture. The implementation and these documents must agree.
 - `research/` contains open investigations. Nothing there defines parser
   behavior or may be required by the implementation.
 
-Current parser work is complete through Phase 9. The remaining roadmap is the
-After-v1 section of [the implementation plan](15-implementation-plan.md).
-Conformance status belongs in [the testing strategy](14-testing.md), not in this
-index.
+Current parser work is complete. Deferred work is listed in the non-normative
+[status and roadmap](15-implementation-plan.md). Conformance status belongs in
+[the testing strategy](14-testing.md), not in this index.
 
 ## Conventions
 

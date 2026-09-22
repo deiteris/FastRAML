@@ -2,8 +2,7 @@
 
 `parse_from_path` and `parse_from_string` differ only in where the first bytes
 come from; both then run the same fixed sequence of passes over one `Raml`.
-Phase 1 implements P0 to P3. The later passes are named and left as no-ops so
-the order they run in is settled here rather than being rediscovered.
+The driver runs every parser pass in its fixed order.
 
 See docs/02-architecture.md section 1 and docs/13-public-api.md.
 """

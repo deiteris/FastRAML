@@ -1,6 +1,6 @@
 """The RAML Test Compliance Kit, and the ratchet that tracks progress against it.
 
-Every fixture runs and its outcome is compared with `ratchet.json`. CI fails on
+Every evaluated fixture runs and its outcome is compared with `ratchet.json`. CI fails on
 either direction of drift:
 
 * a fixture that passed now fails — a regression;
@@ -10,11 +10,6 @@ either direction of drift:
 Regenerate after intentional change:
 
     FASTRAML_TCK_DIR=... uv run pytest tests/tck --update-ratchet
-
-The parser itself lands in later phases. Until `fastraml.parse_from_path` exists
-these tests skip: recording outcomes against an absent parser would score every
-negative fixture as a pass for the wrong reason. What is exercised now is the
-harness — discovery, keys, the skip list and the ratchet file format.
 
 See docs/14-testing.md section 1.
 """
@@ -34,7 +29,7 @@ pytestmark = pytest.mark.tck
 
 
 def parser_available() -> bool:
-    """Whether a parser entry point exists yet."""
+    """Whether the parser entry point is importable."""
     import fastraml
 
     return hasattr(fastraml, 'parse_from_path')
@@ -42,7 +37,7 @@ def parser_available() -> bool:
 
 requires_parser = pytest.mark.skipif(
     not parser_available(),
-    reason='no parser entry point yet; Phase 0 ships the harness only (docs/15)',
+    reason='parser entry point is unavailable',
 )
 
 
@@ -106,7 +101,7 @@ def _drift_message(key: str, actual: str, expected: str) -> str:
 
 
 # --- harness tests -----------------------------------------------------------
-# These run without a parser, so the discovery logic is covered from Phase 0.
+# These cover discovery, keys, skip policy, and ratchet-file validation directly.
 
 
 class TestDiscovery:

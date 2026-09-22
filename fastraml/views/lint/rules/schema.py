@@ -40,20 +40,45 @@ __all__ = [
 
 
 class DeprecatedSchemas:
-    """The deprecated `schemas:` alias for `types:`."""
+    """The deprecated `schemas:` alias for `types:`, and `schema:` for `type:`."""
 
     requires_source: ClassVar = True
 
     meta: ClassVar = RuleMeta(
         id='deprecated-schemas',
         category=Category.SPEC,
-        summary='a fragment that declares types with the deprecated schemas key',
-        rationale='RAML 1.0 retains `schemas:` for compatibility and explicitly deprecates it in favour of `types:`.',
+        summary='the deprecated schemas and schema keys',
+        rationale=(
+            'RAML 1.0 retains `schemas:` and the `schema:` facet for compatibility with RAML 0.8 and deprecates '
+            'both: a future version might remove them. Use `types:` and `type:`, which accept XML and JSON '
+            'schemas too.'
+        ),
         severity=Severity.WARNING,
-        references=('RAML 1.0 § The Root of the Document',),
-        good='#%RAML 1.0\ntitle: t\ntypes:\n  User: string\n',
-        bad='#%RAML 1.0\ntitle: t\nschemas:\n  User: string\n',
+        references=(
+            'RAML 1.0 § The Root of the Document',
+            'RAML 1.0 § Type Declarations',
+            'RAML 1.0 § Using XML and JSON Schemas',
+        ),
+        good='#%RAML 1.0\ntitle: t\ntypes:\n  User:\n    type: string\n',
+        bad='#%RAML 1.0\ntitle: t\nschemas:\n  User:\n    type: string\n',
     )
+
+    def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
+        authored = None if ctx.raml.source_info is None else ctx.raml.source_info.get(base.id)
+        if authored is None or authored[1].kind is not NodeKind.MAPPING:
+            return ()
+        return [
+            ctx.at(
+                self.meta,
+                'schema is deprecated; use type',
+                location=base.location,
+                position=key.position,
+                iri=iri,
+                field='schema',
+            )
+            for key, _ in pairs(authored[1])
+            if key.value == 'schema'
+        ]
 
     def unit(self, ctx: Context, iri: str, fragment: Fragment) -> Iterable[Finding]:
         root = ctx.raml.source_node(fragment.location)

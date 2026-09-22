@@ -25,9 +25,10 @@ rules rather than to compatibility rules, splits them into three:
 
 1. **Derived from the language.** A `$ref` carrying siblings inside an included
    JSON Schema has constraints the draft-07 resolver silently ignores;
-   `schemas:` is explicitly deprecated in favour of `types:`; and a body whose
-   media type cannot carry any value admitted by its shape gives consumers two
-   contradictory decoding instructions. None of those is taste.
+   `schemas:` and `schema:` are explicitly deprecated in favour of `types:` and
+   `type:`; and a body whose media type cannot carry any value admitted by its
+   shape gives consumers two contradictory decoding instructions. None of those
+   is taste.
 2. **Derived from a published standard.** OWASP API Security and the OAuth
    RFCs, RFC 9110 HTTP semantics, RFC 9457 problem details and the RFC 7493
    I-JSON profile. Not one organisation's house style, but not RAML's either:
@@ -467,6 +468,11 @@ offset (RFC 3339 § 4.4), and `datetime` with `format: rfc2616` (§ 4.3).
 base64, and § 4.4 recommends base64url. The three rules that look inside a
 body are document rules keyed by source position, so a named type used by
 several JSON bodies is reported once, where it was written.
+
+`deprecated-schemas` reports the root `schemas:` key and the `schema:` facet of
+any type declaration, a body's included. The facet is read from
+`raml.source_info`, which indexes only type declarations, so a property named
+`schema` is not mistaken for it.
 
 `json-ref-siblings` inspects parsed JSON Schema, which retains structure but not
 token positions. Each finding therefore names the schema document and an RFC

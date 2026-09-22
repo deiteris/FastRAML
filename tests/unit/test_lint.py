@@ -914,6 +914,28 @@ class TestStandardsRules:
         assert findings[0].info == {'status': '404', 'type': 'string'}
 
 
+class TestSpecRules:
+    """The rules derived from RAML 1.0 itself — docs/18 § 1 group 1, § 5.1."""
+
+    def test_deprecated_schemas_reads_the_schema_facet_wherever_a_type_is_declared(self, tmp_path):
+        # RAML 1.0 § Type Declarations deprecates `schema:` beside `schemas:`.
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n  A:\n    schema: string\n  B:\n    properties:\n'
+            '      p:\n        schema: integer\n'
+            '/a:\n  post:\n    body:\n      application/json:\n        schema: A\n'
+        )
+        findings = run_rule('deprecated-schemas', source, tmp_path)
+        assert [(finding.position.line, finding.info) for finding in findings] == [
+            (5, {'field': 'schema'}),
+            (9, {'field': 'schema'}),
+            (14, {'field': 'schema'}),
+        ]
+
+    def test_deprecated_schemas_ignores_a_property_named_schema(self, tmp_path):
+        source = '#%RAML 1.0\ntitle: t\ntypes:\n  A:\n    properties:\n      schema: string\n'
+        assert not run_rule('deprecated-schemas', source, tmp_path)
+
+
 class TestConfiguration:
     def test_source_spelling_rules_require_retained_source(self, tmp_path):
         raml = parse_from_string(

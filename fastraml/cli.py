@@ -331,7 +331,7 @@ def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser
     )
     _add_common(catalogue)
 
-    show = commands.add_parser('show', help='the effective view of one type, as RAML (doc 16 section 9)')
+    show = commands.add_parser('show', help='the effective view of one type or resource, as RAML (doc 16 section 9)')
     show.add_argument('files', metavar='FILE', nargs=1)
     show.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
     show.add_argument(

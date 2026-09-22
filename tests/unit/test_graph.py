@@ -230,6 +230,18 @@ class TestIris:
             f'{DEFAULT_BASE}/two.raml#/declarations/types/Thing',
         ]
 
+    def test_a_resource_with_a_display_name_is_found_by_its_path_too(self, workspace):
+        """docs/16 § 3.3: `show api.raml /books` answered `no such node` when
+        `/books` declared `displayName: Books`, the name it is listed under."""
+        root = workspace(
+            {'api.raml': '#%RAML 1.0\ntitle: D\n/books:\n  displayName: Books\n  get:\n  /{isbn}:\n    get:\n'}
+        )
+        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        books = f'{DEFAULT_BASE}#/web-api/endpoint/%2Fbooks'
+        assert graph.find('Books') == [books]
+        assert graph.find('/books') == [books]
+        assert graph.find('/books/{isbn}') == [f'{DEFAULT_BASE}#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D']
+
     def test_a_whole_iri_resolves_including_one_inside_a_declaration(self, graph):
         """Which is how a caller resolves the ambiguity above."""
         inner = f'{DEFAULT_BASE}/lib.raml#/declarations/types/User/property/name'

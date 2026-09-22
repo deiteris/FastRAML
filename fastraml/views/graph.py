@@ -419,6 +419,16 @@ class Graph:
         # builds projects the shape and walks every facet its kind declares, all
         # of it discarded here (docs/12 § 19e).
         matched = [iri for iri, node in self.nodes.items() if node.name == name]
+        if not matched and name.startswith('/'):
+            # An endpoint is named by its `displayName` when it has one, but its
+            # path is what the author wrote and what a reader types. Only
+            # endpoints are asked, so the attribute dictionary is built for a
+            # handful of nodes, never for a type.
+            matched = [
+                iri
+                for iri, node in self.nodes.items()
+                if node.kinds[0] == 'EndPoint' and node.attributes.get('path') == name
+            ]
         if not matched:
             matched = [iri for iri in self.nodes if iri == name or iri.endswith('/' + name)]
         declared = [iri for iri in matched if is_declaration(iri)]

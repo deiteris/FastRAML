@@ -491,6 +491,13 @@ synthetic-parent case, because `…/types/Admin/inherits/Entity` is not *inside*
 neither node is a declaration. Two declarations of one name survive both, which
 is right: neither contains the other and the question is real.
 
+**A resource is found by its path as well as its name.** An endpoint's name is
+its `displayName` when it declares one, so `/books` with `displayName: Books` is
+named `Books` — but the path is what the author wrote and what a reader types.
+When nothing is named `name` and `name` starts with `/`, `find` matches endpoints
+by their full path. The name is tried first; the path only when nothing carries
+the name.
+
 ### 3.4 Ordering
 
 RDF is a set of triples and declaration order is an invariant everywhere the

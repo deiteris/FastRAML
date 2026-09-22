@@ -584,7 +584,7 @@ go-raml's *published* ~280 ms is for its own 7124-type corpus on its own
 machine. It is not comparable to a figure from this one and must not be quoted
 beside one: doing so understates the gap roughly fourfold.
 
-go-raml is checked out at `../go-raml-main` and Go is installed, so the figure is
+go-raml (`https://github.com/acronis/go-raml`) was cloned and Go installed, so the figure is
 measured now rather than quoted: the same generated corpora, the same Windows
 box, **one process per measurement on both sides**. That last part is not
 incidental — running nine configurations in one interpreter inflates the later

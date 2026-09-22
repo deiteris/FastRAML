@@ -29,16 +29,18 @@ rules rather than to compatibility rules, splits them into three:
    media type cannot carry any value admitted by its shape gives consumers two
    contradictory decoding instructions. None of those is taste.
 2. **Derived from a published standard.** OWASP API Security and the OAuth
-   RFCs, and RFC 9110 HTTP semantics. Not one organisation's house style, but
-   not RAML's either: each rule states a requirement the standard makes and
-   the parser does not enforce, and names the clause in `references` (§ 2.2).
+   RFCs, RFC 9110 HTTP semantics, and RFC 9457 problem details. Not one
+   organisation's house style, but not RAML's either: each rule states a
+   requirement the standard makes and the parser does not enforce, and names
+   the clause in `references` (§ 2.2).
 3. **Taste.** Kebab-case paths, notation preferences, declarations sorted,
    descriptions required. § 10.3's example lives here.
 
 Group 1 ships in `fastraml/views/lint/` and is the default ruleset. Group 2
-ships beside it as the `security` and `http` rulesets, and group 3 as `style`,
-all **off by default**. The built-in style set covers RAML-wide authoring
-conventions; § 6 remains the mechanism for organisation-specific policy.
+ships beside it as the `security`, `http` and `problem-details` rulesets, and
+group 3 as `style`, all **off by default**. The built-in style set covers
+RAML-wide authoring conventions; § 6 remains the mechanism for
+organisation-specific policy.
 
 A company API guideline is group 3 however widely it is followed: it is one
 organisation's choices, and it ships as a plugin. The linter is also not a
@@ -134,15 +136,15 @@ A rule derived from a published standard (§ 1 group 2) names it in
 |---|---|
 | OWASP API Security Top 10 category | `OWASP API4:2023` |
 | OWASP document, by title | `OWASP File Upload Cheat Sheet` |
-| RFC, or one of its clauses | `RFC 6749`, `RFC 9110 § 15.5.2` |
+| RFC, or one of its clauses | `RFC 6749`, `RFC 9110 § 15.5.2`, `RFC 9457 Appendix B` |
 | CWE weakness | `CWE-770` |
 
 The rationale explains *why* in prose and does not repeat the identifiers.
 Keeping them as data lets `--explain` list them, and lets a reader find every
 rule one clause produced without searching prose. The suite asserts that every
-`security` and `http` rule has at least one reference and that each matches
-the spellings above. RFC citations are to the current
-document: RFC 9110, not the RFC 7231 it obsoletes.
+`security`, `http` and `problem-details` rule has at least one reference and
+that each matches the spellings above. RFC citations are to the current
+document: RFC 9110, not the RFC 7231 it obsoletes, and RFC 9457, not RFC 7807.
 
 ## 3. Two rule shapes
 
@@ -305,10 +307,10 @@ configuration file. For one run, repeat `--rule ID` to enable a rule,
 These overrides run after the file configuration and duplicate IDs are rejected.
 `--severity` remains only a display threshold and does not reconfigure a rule.
 
-Rulesets: `spec` (group 1); `security` and `http` (group 2); `style` (group
-3); `recommended` = `spec`; `all` = every built-in plus every enabled plugin.
-Each built-in ruleset has the category of the same name, so
-`categories: {http: {severity: error}}` grades exactly the rules
+Rulesets: `spec` (group 1); `security`, `http` and `problem-details` (group
+2); `style` (group 3); `recommended` = `spec`; `all` = every built-in plus
+every enabled plugin. Each built-in ruleset has the category of the same name,
+so `categories: {http: {severity: error}}` grades exactly the rules
 `extends: [http]` enables.
 
 ### 5.1 Built-in policy
@@ -377,6 +379,19 @@ so `www-authenticate-401` reads both: an operation's 401 passes when a securing
 scheme's `describedBy` 401 declares the header, and a `describedBy` 401 without
 it is reported on the scheme. `get-with-body` stays in `spec`, where it
 already was: moving it would turn off a default rule.
+
+The `problem-details` set is for APIs that adopt RFC 9457, which obsoletes RFC
+7807 and keeps its media types, so it judges documents written against either.
+Adopting the format is the author's choice, so the set is opt-in, but once it
+is on `problem-media-type` expects every error response with a body to offer
+`application/problem+json` or `application/problem+xml`. `problem-member-types`
+checks the five standard members' JSON types (§ 3.1), tolerating a nilable
+member; `problem-status` reports an enumerated `status` that excludes the
+response's own code (§ 3.1.2). Both read RAML-typed bodies only: a body typed by
+an included JSON Schema is skipped rather than half-checked. Extension members
+are unconstrained, so a problem details object is open by design and
+`require-closed-object` in `style` will disagree with it; a project using both
+disables one for those types.
 
 `json-ref-siblings` inspects parsed JSON Schema, which retains structure but not
 token positions. Each finding therefore names the schema document and an RFC

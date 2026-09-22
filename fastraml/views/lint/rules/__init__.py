@@ -14,6 +14,7 @@ from fastraml.views.lint.rules.http import (
     WwwAuthenticate401,
 )
 from fastraml.views.lint.rules.operations import GetWithBody, UnsecuredOperation
+from fastraml.views.lint.rules.problems import ProblemMediaType, ProblemMemberTypes, ProblemStatus
 from fastraml.views.lint.rules.schema import (
     DeprecatedSchemas,
     DiscriminatorWithoutSubtypes,
@@ -125,6 +126,9 @@ def builtin_registry() -> Registry:
     )
     for rule in http_rules:
         registry.add(rule, sets=('http',))
+    problem_rules: tuple[Rule, ...] = (ProblemMediaType(), ProblemMemberTypes(), ProblemStatus())
+    for rule in problem_rules:
+        registry.add(rule, sets=('problem-details',))
     style_rules: tuple[Rule, ...] = (
         AvoidExplicitInferredType(),
         DiscriminatorWithoutSubtypes(),

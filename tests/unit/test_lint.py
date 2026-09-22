@@ -538,7 +538,7 @@ REFERENCE = re.compile(
 )
 
 #: The categories derived from a published standard (docs/18 § 1 group 2).
-STANDARD_CATEGORIES = (Category.SECURITY, Category.HTTP)
+STANDARD_CATEGORIES = (Category.SECURITY, Category.HTTP, Category.PROBLEM_DETAILS)
 
 
 class TestStandardsRules:
@@ -672,6 +672,28 @@ class TestStandardsRules:
         assert [finding.info for finding in findings] == [
             {'scheme': 'token', 'status': '401', 'header': 'WWW-Authenticate'}
         ]
+
+    def test_problem_media_type_accepts_the_xml_form(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      404:\n'
+            '        body:\n          application/problem+xml: string\n'
+        )
+        assert not run_rule('problem-media-type', source, tmp_path)
+
+    def test_problem_member_types_tolerate_a_nilable_member(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      404:\n        body:\n'
+            '          application/problem+json:\n            properties:\n              detail: string | nil\n'
+        )
+        assert not run_rule('problem-member-types', source, tmp_path)
+
+    def test_problem_member_types_report_a_non_object_body(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      404:\n'
+            '        body:\n          application/problem+json: string\n'
+        )
+        findings = run_rule('problem-member-types', source, tmp_path)
+        assert findings[0].info == {'status': '404', 'type': 'string'}
 
 
 class TestConfiguration:

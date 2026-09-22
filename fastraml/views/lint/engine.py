@@ -118,9 +118,9 @@ class Category(StrEnum):
     """What kind of judgement a rule makes — docs/18 § 1.
 
     Not a taxonomy of subject matter. `SPEC` is RAML's own semantics;
-    `SECURITY` and `HTTP` each follow from a published standard; `STYLE` is
-    taste. Each built-in category is also the ruleset that enables it, so a
-    project turns a standard on and grades it under one name.
+    `SECURITY`, `HTTP` and `PROBLEM_DETAILS` each follow from a published
+    standard; `STYLE` is taste. Each built-in category is also the ruleset that
+    enables it, so a project turns a standard on and grades it under one name.
     """
 
     #: Derived from RAML's own semantics (§ 1 group 1).
@@ -129,6 +129,8 @@ class Category(StrEnum):
     SECURITY = 'security'
     #: Derived from RFC 9110 HTTP semantics, off by default (§ 1 group 2).
     HTTP = 'http'
+    #: Derived from RFC 9457 problem details, off by default (§ 1 group 2).
+    PROBLEM_DETAILS = 'problem-details'
     #: Taste, off by default (§ 1 group 3).
     STYLE = 'style'
 

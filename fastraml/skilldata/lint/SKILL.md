@@ -37,13 +37,14 @@ the final `SUMMARY` record when text output is truncated. Use
 `--max-findings 0` or `--max-findings-per-rule 0` only when the task requires
 every finding.
 
-## Four categories, and only one is on by default
+## Five categories, and only one is on by default
 
 | Category | What it means | Default |
 | --- | --- | --- |
 | `spec` | Follows from RAML's own semantics | **enabled** |
 | `security` | Follows from OWASP API Security and the OAuth RFCs | disabled |
 | `http` | Follows from RFC 9110 HTTP semantics | disabled |
+| `problem-details` | Follows from RFC 9457, for APIs that use problem details | disabled |
 | `style` | Consistent RAML notation and documentation | disabled |
 
 Each category is also the ruleset that turns it on. `--explain RULE` lists the
@@ -68,11 +69,12 @@ lint:
   extends: [recommended, security, style]
 ```
 
-Add `http` for HTTP-level contradictions:
+Add `http` for HTTP-level contradictions, and `problem-details` only when the
+API has adopted RFC 9457 error bodies:
 
 ```yaml
 lint:
-  extends: [recommended, security, http]
+  extends: [recommended, security, http, problem-details]
 ```
 
 `recommended` is the `spec` set. `all` is every rule registered, including any

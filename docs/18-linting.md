@@ -370,6 +370,9 @@ The security set also holds rules no OpenAPI catalogue supplied:
 - `bounded-number`, `bounded-file` and `restricted-file-types` extend the input
   bounds to `number` and `file`; `fileTypes: ['*/*']` counts as no list.
   `restricted-request-media-type` reports a wildcard request body media type.
+- `base-uri-userinfo` reports a `baseUri` whose authority holds
+  `user:password`, a form RFC 3986 § 3.2.1 deprecates; a user name alone is
+  not reported. It lives in `rules/uris.py` beside the path rules below.
 
 The `http` set states what RFC 9110 requires of a response and RAML does not
 check. `no-content-body` reports a body on a 1xx, 204 or 304 response or on any
@@ -422,6 +425,20 @@ without any precondition header; a 206 or 416 outside GET or without `Range`
 because a client may send headers the contract omits; the finding usually
 means a request header is missing from the contract, not that the response is
 wrong.
+
+RFC 9110 § 4.2 defines HTTP URIs through RFC 3986, and § 8.3 media types
+through RFC 6838, so the rules for both belong to the `http` set.
+`uri-path-characters` reports a resource segment holding a character outside
+RFC 3986's `pchar` once template expressions are removed; percent-encoded
+octets are accepted and a non-ASCII letter is not. `dot-segment-path` reports a
+`.` or `..` segment, which reference resolution removes (§ 5.2.4). Both read
+the segments a resource adds, not its full path, so a parent's fault is not
+repeated on every child. `json-charset` reports a `charset` parameter on
+`application/json` or a `+json` type: `utf-8` has no effect (RFC 8259 § 11)
+and anything else breaks § 8.1's MUST, and `info` names which.
+`duplicate-media-type` reports two body keys in one map naming one media type:
+type, subtype and parameter names are compared without case, parameter values
+exactly, since RFC 6838 § 4.2 makes only the names case-insensitive.
 
 The `problem-details` set is for APIs that adopt RFC 9457, which obsoletes RFC
 7807 and keeps its media types, so it judges documents written against either.

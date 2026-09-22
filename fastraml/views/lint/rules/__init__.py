@@ -23,6 +23,7 @@ from fastraml.views.lint.rules.http import (
     UnreachableStatus,
     WwwAuthenticate401,
 )
+from fastraml.views.lint.rules.media import DuplicateMediaType, JsonCharset
 from fastraml.views.lint.rules.operations import MeaninglessRequestBody, UnsecuredOperation
 from fastraml.views.lint.rules.problems import ProblemMediaType, ProblemMemberTypes, ProblemStatus
 from fastraml.views.lint.rules.schema import (
@@ -77,6 +78,7 @@ from fastraml.views.lint.rules.style import (
     UnconstrainedPatternProperty,
     UniqueItemsDiscouraged,
 )
+from fastraml.views.lint.rules.uris import BaseUriUserinfo, DotSegmentPath, UriPathCharacters
 
 __all__ = ['builtin_registry']
 
@@ -96,6 +98,7 @@ def builtin_registry() -> Registry:
     for rule in spec_rules:
         registry.add(rule, sets=('spec', 'recommended'))
     security_rules: tuple[Rule, ...] = (
+        BaseUriUserinfo(),
         BoundedAdditionalProperties(),
         BoundedArray(),
         BoundedFile(),
@@ -130,16 +133,20 @@ def builtin_registry() -> Registry:
         AllowHeader405(),
         ContentRangeHeader(),
         ContentTypeHeader(),
+        DotSegmentPath(),
         DuplicateHeader(),
+        DuplicateMediaType(),
         HeaderFieldName(),
         HopByHopHeader(),
         HttpDateHeader(),
+        JsonCharset(),
         NoContentBody(),
         NotModifiedHeaders(),
         ObsoleteStatusCode(),
         ProxyAuthenticate407(),
         RedirectLocation(),
         UnreachableStatus(),
+        UriPathCharacters(),
         WwwAuthenticate401(),
     )
     for rule in http_rules:

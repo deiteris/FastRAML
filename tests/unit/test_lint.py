@@ -808,6 +808,43 @@ class TestStandardsRules:
         findings = run_rule('not-modified-headers', source, tmp_path)
         assert [finding.info['missing'] for finding in findings] == ['Cache-Control']
 
+    @pytest.mark.parametrize(
+        ('path', 'reported'),
+        [('/caf%C3%A9', False), ('/café', True), ('/{id}.json', False), ("/a:b@c!$&'()*+,;=", False), ('/a|b', True)],
+    )
+    def test_uri_path_characters_strips_templates_and_accepts_percent_encoding(self, path, reported, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\n"{path}":\n  get:\n'
+        assert bool(run_rule('uri-path-characters', source, tmp_path)) is reported
+
+    @pytest.mark.parametrize(
+        ('base_uri', 'reported'),
+        [('https://user:pw@example.test', True), ('https://user@example.test', False), ('https://example.test', False)],
+    )
+    def test_base_uri_userinfo_reports_only_the_password_form(self, base_uri, reported, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\nbaseUri: {base_uri}\n'
+        assert bool(run_rule('base-uri-userinfo', source, tmp_path)) is reported
+
+    @pytest.mark.parametrize(
+        ('media_type', 'clause'),
+        [
+            ('application/json; charset=utf-8', 'RFC 8259 § 11'),
+            ('application/vnd.example+json; charset=utf-16', 'RFC 8259 § 8.1'),
+            ('text/plain; charset=utf-16', None),
+        ],
+    )
+    def test_json_charset_separates_noise_from_a_forbidden_encoding(self, media_type, clause, tmp_path):
+        source = f"#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      '{media_type}': string\n"
+        findings = run_rule('json-charset', source, tmp_path)
+        assert [finding.info['clause'] for finding in findings] == ([clause] if clause else [])
+
+    def test_duplicate_media_type_compares_parameter_values_exactly(self, tmp_path):
+        source = (
+            "#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      'text/plain; format=A': string\n"
+            "      'TEXT/plain; Format=a': string\n      'Text/Plain; FORMAT=A': string\n"
+        )
+        findings = run_rule('duplicate-media-type', source, tmp_path)
+        assert [finding.info['mediaType'] for finding in findings] == ['Text/Plain; FORMAT=A']
+
     def test_problem_media_type_accepts_the_xml_form(self, tmp_path):
         source = (
             '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      404:\n'

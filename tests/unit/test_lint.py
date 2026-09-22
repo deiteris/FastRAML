@@ -582,9 +582,11 @@ def run_rule(rule_id: str, source: str, tmp_path, **options):
     return Linter(builtin_registry(), config).run(raml)
 
 
-#: `RuleMeta.references` entries: an OWASP category or document, an RFC clause, or a CWE.
+#: `RuleMeta.references` entries: an OWASP category or document, an RFC clause, a CWE,
+#: a RAML 1.0 section or a JSON Schema draft-07 section (docs/18 § 2.2).
 REFERENCE = re.compile(
-    r'^(OWASP API(10|[1-9]):2023|OWASP [A-Z][A-Za-z ]+|RFC \d+( (§ [\d.]+|Appendix [A-Z]))?|CWE-\d+)$'
+    r'^(OWASP API(10|[1-9]):2023|OWASP [A-Z][A-Za-z ]+|RFC \d+( (§ [\d.]+|Appendix [A-Z]))?|CWE-\d+'
+    r'|RAML 1\.0 § .+|JSON Schema draft-07 § [\d.]+)$'
 )
 
 #: The categories derived from a published standard (docs/18 § 1 group 2).
@@ -601,6 +603,10 @@ class TestStandardsRules:
     )
     def test_standard_derived_rules_cite_their_source(self, rule):
         assert rule.meta.references
+        assert all(REFERENCE.fullmatch(reference) for reference in rule.meta.references), rule.meta.references
+
+    @pytest.mark.parametrize('rule', builtin_registry().all(), ids=lambda rule: rule.meta.id)
+    def test_every_reference_uses_a_documented_spelling(self, rule):
         assert all(REFERENCE.fullmatch(reference) for reference in rule.meta.references), rule.meta.references
 
     def test_each_standard_category_is_the_ruleset_that_enables_it(self):

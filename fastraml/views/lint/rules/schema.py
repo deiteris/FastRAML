@@ -50,6 +50,7 @@ class DeprecatedSchemas:
         summary='a fragment that declares types with the deprecated schemas key',
         rationale='RAML 1.0 retains `schemas:` for compatibility and explicitly deprecates it in favour of `types:`.',
         severity=Severity.WARNING,
+        references=('RAML 1.0 § The Root of the Document',),
         good='#%RAML 1.0\ntitle: t\ntypes:\n  User: string\n',
         bad='#%RAML 1.0\ntitle: t\nschemas:\n  User: string\n',
     )
@@ -90,6 +91,7 @@ class JsonRefSiblings:
             'sibling. A constraint written beside it looks active and silently has no effect.'
         ),
         severity=Severity.WARNING,
+        references=('JSON Schema draft-07 § 8.3',),
         good=(
             '#%RAML 1.0\ntitle: t\ntypes:\n  User: |\n'
             '    {"definitions":{"Name":{"type":"string"}},"allOf":[{"$ref":"#/definitions/Name"}]}\n'
@@ -282,6 +284,7 @@ class UntypedPayload:
             'gets when its type was left off, not something an author chooses.'
         ),
         severity=Severity.WARNING,
+        references=('RAML 1.0 § Determine Default Types',),
         good=(
             '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n'
             '        body:\n          application/json:\n            type: string\n'
@@ -319,6 +322,7 @@ class MeaninglessMediaTypeSchema:
         ),
         severity=Severity.WARNING,
         references=(
+            'RAML 1.0 § File',
             'RFC 6839 § 3.6',
             'RFC 7578',
             'RFC 8081',

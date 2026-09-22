@@ -130,7 +130,8 @@ reference page does not give:
 ### 2.2 `references` name the source, not the rationale
 
 A rule derived from a published standard (§ 1 group 2) names it in
-`references`, one citation per entry, in one of four spellings:
+`references`, one citation per entry, and a `spec` rule may name the RAML or
+JSON Schema clause it follows from. Six spellings are accepted:
 
 | Spelling | Example |
 |---|---|
@@ -138,12 +139,16 @@ A rule derived from a published standard (§ 1 group 2) names it in
 | OWASP document, by title | `OWASP File Upload Cheat Sheet` |
 | RFC, or one of its clauses | `RFC 6749`, `RFC 9110 § 15.5.2`, `RFC 9457 Appendix B` |
 | CWE weakness | `CWE-770` |
+| RAML 1.0 section, by title, since the spec does not number them | `RAML 1.0 § File` |
+| JSON Schema draft-07 (`draft-handrews-json-schema-01`) section | `JSON Schema draft-07 § 8.3` |
 
 The rationale explains *why* in prose and does not repeat the identifiers.
 Keeping them as data lets `--explain` list them, and lets a reader find every
 rule one clause produced without searching prose. The suite asserts that every
-`security`, `http` and `problem-details` rule has at least one reference and
-that each matches the spellings above. RFC citations are to the current
+`security`, `http` and `problem-details` rule has at least one reference, and
+that every rule's references match the spellings above. `unused-type` and
+`unused-trait` cite nothing: they follow from the document's own reachability,
+not from a clause. RFC citations are to the current
 document: RFC 9110, not the RFC 7231 it obsoletes, and RFC 9457, not RFC 7807.
 
 ## 3. Two rule shapes

@@ -774,6 +774,40 @@ class TestStandardsRules:
             source += f'    body:\n      {body}: string\n'
         assert bool(run_rule('content-type-header', source, tmp_path)) is reported
 
+    @pytest.mark.parametrize(
+        ('case', 'clause'),
+        [
+            (('get', 304, '', False), 'RFC 9110 § 15.4.5'),
+            (('get', 304, 'If-None-Match', False), None),
+            (('post', 304, 'If-None-Match', True), 'RFC 9110 § 15.4.5'),
+            (('put', 412, '', True), 'RFC 9110 § 15.5.13'),
+            (('put', 412, 'If-Match', True), None),
+            (('get', 416, 'Range', False), None),
+            (('post', 206, 'Range', True), 'RFC 9110 § 14.2'),
+            (('get', 415, '', False), 'RFC 9110 § 15.5.16'),
+            (('post', 413, '', True), None),
+        ],
+    )
+    def test_unreachable_status_reads_the_declared_request(self, case, clause, tmp_path):
+        method, status, headers, body = case
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  {method}:\n'
+        if headers:
+            source += f'    headers:\n      {headers}: string\n'
+        if body:
+            source += '    body:\n      application/json: string\n'
+        source += f'    responses:\n      {status}: {{}}\n'
+        findings = run_rule('unreachable-status', source, tmp_path)
+        assert [finding.info['clause'] for finding in findings] == ([clause] if clause else [])
+
+    def test_not_modified_headers_lists_what_the_304_omits(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        headers:\n'
+            '          etag: string\n          Cache-Control: string\n      304:\n        headers:\n'
+            '          ETag: string\n'
+        )
+        findings = run_rule('not-modified-headers', source, tmp_path)
+        assert [finding.info['missing'] for finding in findings] == ['Cache-Control']
+
     def test_problem_media_type_accepts_the_xml_form(self, tmp_path):
         source = (
             '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      404:\n'

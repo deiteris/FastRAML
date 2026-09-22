@@ -24,8 +24,11 @@ __all__ = [
     'AllowHeader405',
     'ContentRangeHeader',
     'NoContentBody',
+    'NotModifiedHeaders',
+    'ObsoleteStatusCode',
     'ProxyAuthenticate407',
     'RedirectLocation',
+    'UnreachableStatus',
     'WwwAuthenticate401',
 ]
 
@@ -273,3 +276,175 @@ class WwwAuthenticate401:
                 header='WWW-Authenticate',
             ),
         )
+
+
+#: Codes RFC 9110 retires, with the clause that does it.
+_OBSOLETE_STATUS: Final = {
+    305: ('deprecated', 'RFC 9110 § 15.4.6'),
+    306: ('unused', 'RFC 9110 § 15.4.7'),
+    418: ('unused', 'RFC 9110 § 15.5.19'),
+}
+
+
+class ObsoleteStatusCode:
+    meta: ClassVar = RuleMeta(
+        'obsolete-status-code',
+        Category.HTTP,
+        'responses should not use a retired status code',
+        (
+            '305 Use Proxy is deprecated, and 306 and 418 are reserved and no longer used. A client that meets '
+            'one has no current definition to act on, and 418 in particular is reserved so that it can be '
+            'assigned to something else later.'
+        ),
+        Severity.WARNING,
+        references=('RFC 9110 § 15.4.6', 'RFC 9110 § 15.4.7', 'RFC 9110 § 15.5.19'),
+        good='#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      400: {}\n',
+        bad='#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      418: {}\n',
+    )
+
+    def response(self, ctx: Context, iri: str, response: Response) -> Iterable[Finding]:
+        retired = _OBSOLETE_STATUS.get(int(response.code))
+        if retired is None:
+            return ()
+        state, clause = retired
+        return (
+            ctx.on(
+                self.meta,
+                'response uses a retired status code',
+                response,
+                iri=iri,
+                status=response.code,
+                state=state,
+                clause=clause,
+            ),
+        )
+
+
+#: What a 304 MUST repeat from the 200 it stands in for (RFC 9110 § 15.4.5).
+_NOT_MODIFIED_FIELDS: Final = ('Cache-Control', 'Content-Location', 'Date', 'ETag', 'Expires', 'Vary')
+
+
+class NotModifiedHeaders:
+    meta: ClassVar = RuleMeta(
+        'not-modified-headers',
+        Category.HTTP,
+        'a 304 should declare the validators and cache fields its 200 declares',
+        (
+            'A server generating a 304 MUST send any of Content-Location, Date, ETag, Vary, Cache-Control and '
+            'Expires that the 200 would have carried, because a cache uses them to update the response it '
+            'already holds. A 304 declaring fewer of them than its 200 describes a response that breaks the '
+            'cache it is meant to refresh.'
+        ),
+        Severity.WARNING,
+        references=('RFC 9110 § 15.4.5',),
+        good=(
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    headers:\n      If-None-Match: string\n    responses:\n'
+            '      200:\n        headers:\n          ETag: string\n'
+            '      304:\n        headers:\n          ETag: string\n'
+        ),
+        bad=(
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    headers:\n      If-None-Match: string\n    responses:\n'
+            '      200:\n        headers:\n          ETag: string\n'
+            '      304: {}\n'
+        ),
+    )
+
+    def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
+        ok, not_modified = operation.responses.get('200'), operation.responses.get('304')
+        if ok is None or not_modified is None:
+            return ()
+        missing = [
+            name
+            for name in _NOT_MODIFIED_FIELDS
+            if _has_header(ok.headers, name) and not _has_header(not_modified.headers, name)
+        ]
+        if not missing:
+            return ()
+        return (
+            ctx.on(
+                self.meta,
+                '304 response omits header fields its 200 declares',
+                not_modified,
+                iri=iri,
+                method=operation.method,
+                missing=','.join(missing),
+            ),
+        )
+
+
+_CONDITIONAL: Final = ('If-Match', 'If-Modified-Since', 'If-None-Match', 'If-Unmodified-Since')
+_RANGE_CODES: Final = frozenset({206, 416})
+_CONTENT_CODES: Final = {413: 'RFC 9110 § 15.5.14', 415: 'RFC 9110 § 15.5.16'}
+
+
+def _unreachable(operation: Operation, code: int) -> tuple[str, str] | None:  # noqa: PLR0911 - one exit per status
+    """Why this operation can never produce `code`, and the clause; `None` when it can."""
+    request = operation.request
+    headers = {} if request is None else request.headers
+    if code == 304:  # noqa: PLR2004 - a status code is its own name
+        if operation.method not in {'get', 'head'}:
+            return 'only a conditional GET or HEAD can be answered with 304', 'RFC 9110 § 15.4.5'
+        if not any(_has_header(headers, name) for name in ('If-Modified-Since', 'If-None-Match')):
+            return 'no If-None-Match or If-Modified-Since request header is declared', 'RFC 9110 § 15.4.5'
+    elif code == 412:  # noqa: PLR2004
+        if not any(_has_header(headers, name) for name in _CONDITIONAL):
+            return 'no precondition request header is declared', 'RFC 9110 § 15.5.13'
+    elif code in _RANGE_CODES:
+        if operation.method != 'get':
+            return 'GET is the only method with range handling', 'RFC 9110 § 14.2'
+        if not _has_header(headers, 'Range'):
+            return 'no Range request header is declared', 'RFC 9110 § 14.2'
+    elif code in _CONTENT_CODES and (request is None or not request.bodies):
+        return 'the request declares no content', _CONTENT_CODES[code]
+    return None
+
+
+class UnreachableStatus:
+    meta: ClassVar = RuleMeta(
+        'unreachable-status',
+        Category.HTTP,
+        'responses should be reachable from the request the operation declares',
+        (
+            'Some status codes answer something in the request: 304 and 412 a conditional header, 206 and 416 '
+            'a Range header on GET, 413 and 415 the request content. When the operation declares none of it, '
+            'the contract lists a response a client following it can never receive. A client may send headers '
+            'the contract omits, so this reports at `info`: the fix is usually to declare the request header.'
+        ),
+        Severity.INFO,
+        references=(
+            'RFC 9110 § 14.2',
+            'RFC 9110 § 15.4.5',
+            'RFC 9110 § 15.5.13',
+            'RFC 9110 § 15.5.14',
+            'RFC 9110 § 15.5.16',
+        ),
+        good=(
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    headers:\n      Range: string\n'
+            '    responses:\n      206:\n        headers:\n          Content-Range: string\n'
+        ),
+        bad=(
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      206:\n'
+            '        headers:\n          Content-Range: string\n'
+        ),
+    )
+
+    def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
+        found = []
+        for code, response in operation.responses.items():
+            why = _unreachable(operation, int(code))
+            if why is None:
+                continue
+            reason, clause = why
+            found.append(
+                ctx.on(
+                    self.meta,
+                    'operation declares a response it cannot produce',
+                    response,
+                    iri=iri,
+                    method=operation.method,
+                    status=code,
+                    reason=reason,
+                    clause=clause,
+                )
+            )
+        return found

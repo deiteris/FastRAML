@@ -16,8 +16,11 @@ from fastraml.views.lint.rules.http import (
     AllowHeader405,
     ContentRangeHeader,
     NoContentBody,
+    NotModifiedHeaders,
+    ObsoleteStatusCode,
     ProxyAuthenticate407,
     RedirectLocation,
+    UnreachableStatus,
     WwwAuthenticate401,
 )
 from fastraml.views.lint.rules.operations import MeaninglessRequestBody, UnsecuredOperation
@@ -132,8 +135,11 @@ def builtin_registry() -> Registry:
         HopByHopHeader(),
         HttpDateHeader(),
         NoContentBody(),
+        NotModifiedHeaders(),
+        ObsoleteStatusCode(),
         ProxyAuthenticate407(),
         RedirectLocation(),
+        UnreachableStatus(),
         WwwAuthenticate401(),
     )
     for rule in http_rules:

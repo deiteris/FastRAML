@@ -410,6 +410,19 @@ rules visit the effective operations, so a header a trait adds is reported
 once for each operation the trait applies to, each finding naming its
 operation's IRI.
 
+Three status rules close the set. `obsolete-status-code` reports 305
+(deprecated, § 15.4.6), 306 (§ 15.4.7) and 418 (§ 15.5.19), both reserved.
+`not-modified-headers` reports a 304 that omits any of `Cache-Control`,
+`Content-Location`, `Date`, `ETag`, `Expires` or `Vary` its operation's 200
+declares, since the server MUST send them (§ 15.4.5). `unreachable-status`
+reports, at `info`, a response the declared request can never produce: a 304
+outside GET and HEAD or without `If-None-Match`/`If-Modified-Since`; a 412
+without any precondition header; a 206 or 416 outside GET or without `Range`
+(§ 14.2); and a 413 or 415 on an operation with no request body. It is `info`
+because a client may send headers the contract omits; the finding usually
+means a request header is missing from the contract, not that the response is
+wrong.
+
 The `problem-details` set is for APIs that adopt RFC 9457, which obsoletes RFC
 7807 and keeps its media types, so it judges documents written against either.
 Adopting the format is the author's choice, so the set is opt-in, but once it

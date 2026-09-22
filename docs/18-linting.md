@@ -163,6 +163,12 @@ class Context:
 `graph` is built once for the whole run, not per rule. A rule that only visits
 does not have to touch it.
 
+A rule builds a finding with `ctx.on(meta, message, entity, iri=..., **info)`,
+which takes the entity's `location` and `key_pos`, or with `ctx.at(meta,
+message, location=..., position=..., ...)` for a place that is not a model
+entity, such as a fragment's root key. Either fills in the rule id and default
+severity; the engine applies configured severities afterwards.
+
 ## 4. Rules are code, not SPARQL
 
 The catalogue ([16](16-graph.md) § 6) answers eight questions that are
@@ -388,8 +394,9 @@ unsupported: PyYAML does not retain comments, and searching for `#` inside a
 line would confuse comments with quoted or block-scalar content. Suppression is
 applied after a rule runs, so metrics still report the work and findings it
 produced before filtering. The linter scans each retained source once per run
-to index line starts; for each finding it reads only the immediately preceding
-line. A finding without a real source position is not suppressible, and
+with one multiline regex that finds every directive line, and indexes the line
+each one covers; checking a finding is then a dictionary lookup rather than a
+read of its preceding line. A finding without a real source position is not suppressible, and
 directives in included files apply using that file's own URI and line numbers.
 This is intentionally lexical: after leading indentation is removed, a whole
 preceding line with the directive spelling is treated as a comment. PyYAML does

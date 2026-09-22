@@ -33,14 +33,7 @@ class GetWithBody:
         if operation.method != 'get' or operation.request is None or not operation.request.bodies:
             return ()
         return (
-            ctx.at(
-                self.meta,
-                'GET operation declares a request body',
-                location=operation.location,
-                position=operation.key_pos,
-                iri=iri,
-                method=operation.method,
-            ),
+            ctx.on(self.meta, 'GET operation declares a request body', operation, iri=iri, method=operation.method),
         )
 
 
@@ -64,13 +57,4 @@ class UnsecuredOperation:
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
         if operation.secured_by and all(not scheme.is_null for scheme in operation.secured_by):
             return ()
-        return (
-            ctx.at(
-                self.meta,
-                'operation has no security scheme',
-                location=operation.location,
-                position=operation.key_pos,
-                iri=iri,
-                method=operation.method,
-            ),
-        )
+        return (ctx.on(self.meta, 'operation has no security scheme', operation, iri=iri, method=operation.method),)

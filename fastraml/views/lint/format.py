@@ -152,10 +152,9 @@ def render_findings(
             + '\n'
         )
     if format_ == 'summary':
-        rank = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.INFO: 2}
         rules = sorted(
             report.rule_counts,
-            key=lambda rule: (rank[report.rule_severities[rule]], -report.rule_counts[rule], rule),
+            key=lambda rule: (report.rule_severities[rule].rank, -report.rule_counts[rule], rule),
         )
         width = max(len('rule'), *map(len, rules))
         lines = [f'{"severity":<9} {"rule":<{width}} findings']

@@ -205,14 +205,7 @@ class PathsAreKebabCase:
     def endpoint(self, ctx: Context, iri: str, endpoint):
         segment = endpoint.uri.lstrip('/')
         if segment and segment != segment.lower():
-            yield ctx.at(
-                self.meta,
-                'resource path is not kebab-case',
-                location=endpoint.location,
-                position=endpoint.key_pos,
-                iri=iri,
-                path=endpoint.uri,
-            )
+            yield ctx.on(self.meta, 'resource path is not kebab-case', endpoint, iri=iri, path=endpoint.uri)
 
 
 RULES = [PathsAreKebabCase()]
@@ -234,10 +227,14 @@ a node to find what references it:
                 ...
 ```
 
-### Build findings with `ctx.at`
+### Build findings with `ctx.on`
 
-It fills in the rule id and severity for you, so a rule never consults the
-config. Keyword arguments become the finding's `info` dict — put the variable
+`ctx.on(meta, message, entity, iri=iri)` places the finding at the entity's
+location and key position; pass `position=` for a more precise one. Use
+`ctx.at(..., location=..., position=...)` for something that is not a model
+entity, such as a fragment root. Both fill in the rule id and severity for you,
+so a rule never consults the config. Keyword arguments become the finding's
+`info` dict — put the variable
 parts there rather than interpolating them into the message, so findings group
 cleanly and tests can assert on them.
 

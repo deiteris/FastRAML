@@ -445,6 +445,20 @@ class TestRuleExamples:
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
         assert [finding.info['property'] for finding in findings] == ['ignored']
 
+    def test_every_directive_in_a_source_covers_its_own_next_line(self, tmp_path):
+        """docs/18 § 5.2: directives are indexed per line, not only the first."""
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n  T:\n    properties:\n'
+            '      # fastraml: ignore optional-and-nil\n'
+            '      first?: string?\n'
+            '      reported?: string?\n'
+            '      # fastraml: ignore optional-and-nil\n'
+            '      second?: string?\n'
+        )
+        config = Config(extends=(), rules=(RuleSetting(id='optional-and-nil'),))
+        findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+        assert [finding.info['property'] for finding in findings] == ['reported']
+
     def test_wildcard_suppression_is_local_to_one_source_line(self, tmp_path):
         source = (
             '#%RAML 1.0\ntitle: t\ntypes:\n  T:\n    properties:\n'

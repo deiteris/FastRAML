@@ -76,11 +76,16 @@ __all__ = [
 
 
 class Severity(StrEnum):
-    """How much a finding matters. Only `ERROR` affects the exit code."""
+    """How much a finding matters. `--fail-on` decides which affect the exit code."""
 
     ERROR = 'error'
     WARNING = 'warning'
     INFO = 'info'
+
+    @property
+    def rank(self) -> int:
+        """0 for the worst, for sorting worst first."""
+        return _RANK.rank(self)
 
 
 #: Worst first, for sorting and for `--severity` to mean "this and worse".
@@ -372,21 +377,23 @@ def limit_findings(
     severity_counts = dict.fromkeys(Severity, 0)
     rule_counts: dict[str, int] = {}
     rule_severities: dict[str, Severity] = {}
-    for finding in findings:
-        severity_counts[finding.severity] += 1
+    bounded = max_findings is not None or max_findings_per_rule is not None
+    # Indices by severity, worst first; each list is in the input's reading order.
+    by_severity: dict[Severity, list[int]] = {severity: [] for severity in _RANK.order}
+    for index, finding in enumerate(findings):
+        severity = finding.severity
+        severity_counts[severity] += 1
         rule_counts[finding.rule] = rule_counts.get(finding.rule, 0) + 1
         previous = rule_severities.get(finding.rule)
-        if previous is None or _RANK.rank(finding.severity) < _RANK.rank(previous):
-            rule_severities[finding.rule] = finding.severity
+        if previous is None or severity.rank < previous.rank:
+            rule_severities[finding.rule] = severity
+        if bounded:
+            by_severity[severity].append(index)
 
-    if max_findings is None and max_findings_per_rule is None:
-        shown = list(findings)
-    else:
-        # A stable sort: within one severity, the input's reading order decides.
-        by_severity = sorted(range(len(findings)), key=lambda index: _RANK.rank(findings[index].severity))
-        selected: list[int] = []
-        per_rule: dict[tuple[str, str], int] = {}
-        for index in by_severity:
+    selected: list[int] = []
+    per_rule: dict[tuple[str, str], int] = {}
+    for indices in by_severity.values():
+        for index in indices:
             if max_findings is not None and len(selected) >= max_findings:
                 break
             finding = findings[index]
@@ -395,9 +402,9 @@ def limit_findings(
                 continue
             selected.append(index)
             per_rule[key] = per_rule.get(key, 0) + 1
-        shown = [findings[index] for index in sorted(selected)]
+    selected.sort()
     return LintReport(
-        findings=shown,
+        findings=[findings[index] for index in selected] if bounded else list(findings),
         total_findings=len(findings),
         severity_counts=severity_counts,
         rule_counts=rule_counts,
@@ -406,29 +413,17 @@ def limit_findings(
 
 
 @dataclass(frozen=True, slots=True)
-class LintRun:
+class LintRun(LintReport):
     """What `Linter.measure` returns: the report, and what it cost to produce.
 
     `Linter.run` returns the findings alone, because that is what every caller
     but a profiler wants and because measuring is not free (§ 7.1).
     """
 
-    findings: list[Finding]
     metrics: LintMetrics
-    total_findings: int
-    severity_counts: Mapping[Severity, int]
-    rule_counts: Mapping[str, int]
-    rule_severities: Mapping[str, Severity]
-
-    @property
-    def omitted_findings(self) -> int:
-        return self.total_findings - len(self.findings)
-
-    @property
-    def truncated(self) -> bool:
-        return self.omitted_findings > 0
 
     def report(self) -> LintReport:
+        """The report alone, without the metrics."""
         return LintReport(
             findings=self.findings,
             total_findings=self.total_findings,
@@ -495,6 +490,42 @@ class Context:
             info=info,
         )
 
+    def on(
+        self,
+        rule: RuleMeta,
+        message: str,
+        subject: _Located,
+        /,
+        *,
+        iri: str,
+        position: Position | None = None,
+        **info: object,
+    ) -> Finding:
+        """`at`, placed on a model entity: its location, and its key's position
+        unless `position` names a more precise one.
+
+        Positional-only up to `subject`, so an `info` key may be called
+        `subject` or `entity` without colliding.
+        """
+        return self.at(
+            rule,
+            message,
+            location=subject.location,
+            position=position or subject.key_pos or UNKNOWN,
+            iri=iri,
+            **info,
+        )
+
+
+class _Located(Protocol):
+    """A model entity a finding can point at."""
+
+    @property
+    def location(self) -> str: ...
+
+    @property
+    def key_pos(self) -> Position | None: ...
+
 
 class VisitorRule(Protocol):
     """A subset of `views.walk.Sink`, each method returning findings.
@@ -517,27 +548,10 @@ class DocumentRule(Protocol):
 
 type Rule = VisitorRule | DocumentRule
 
-#: Every `Sink` role a `VisitorRule` may implement. Kept as an explicit tuple
-#: rather than read off the protocol: `Sink` gains a method when the walk
+#: The `Sink` role each projected node type dispatches to. Kept as an explicit
+#: table rather than read off the protocol: `Sink` gains a method when the walk
 #: reaches something new, and a rule engine that silently started dispatching a
 #: new role would change every plugin's behaviour without anyone saying so.
-VISITS: Final = (
-    'unit',
-    'api',
-    'type_',
-    'property_',
-    'pattern_property',
-    'parameter',
-    'payload',
-    'request',
-    'response',
-    'operation',
-    'endpoint',
-    'trait',
-    'resource_type',
-    'security_scheme',
-)
-
 _NODE_ROLES: Final[dict[type[GraphNode[Any]], str]] = {
     UnitNode: 'unit',
     ApiNode: 'api',
@@ -554,6 +568,9 @@ _NODE_ROLES: Final[dict[type[GraphNode[Any]], str]] = {
     ResourceTypeNode: 'resource_type',
     SecuritySchemeNode: 'security_scheme',
 }
+
+#: Every role a `VisitorRule` may implement.
+VISITS: Final = tuple(_NODE_ROLES.values())
 
 
 # -- configuration -------------------------------------------------------------
@@ -672,6 +689,26 @@ class Registry:
 # -- the driver ----------------------------------------------------------------
 
 
+def _timed(method: Any, tally: _Tally) -> Any:
+    """`method`, with its time, calls and output added to `tally`.
+
+    The result is materialised inside the timed region. It has to be: a rule
+    may return a generator — every rule in `rules/document.py` does — and
+    timing the bare call would then measure building the generator and none of
+    the work, reporting zero for the rules most likely to be slow.
+    """
+
+    def timed(ctx: Context, *args: object) -> tuple[Finding, ...]:
+        start = perf_counter_ns()
+        found = tuple(method(ctx, *args))
+        tally.nanoseconds += perf_counter_ns() - start
+        tally.calls += 1
+        tally.findings += len(found)
+        return found
+
+    return timed
+
+
 class _FanOut:
     """Forward each projected node to the rules implementing its role.
 
@@ -708,25 +745,10 @@ class _FanOut:
         its own. Instrumenting inside `_fan` would put a test per rule per node
         on the hot loop of every ordinary run, which is the shape docs/12 § 12
         rules out.
-
-        The result is materialised inside the timed region. It has to be: a
-        rule may return a generator — every rule in `rules/document.py` does —
-        and timing the bare call would then measure building the generator and
-        none of the work, reporting zero for the rules most likely to be slow.
         """
         tallies = self.tallies
         assert tallies is not None  # noqa: S101 - only called when measuring; narrows for mypy
-        tally = tallies.setdefault(rule_id, _Tally())
-
-        def timed(ctx: Context, *args: object) -> tuple[Finding, ...]:
-            start = perf_counter_ns()
-            found = tuple(method(ctx, *args))
-            tally.nanoseconds += perf_counter_ns() - start
-            tally.calls += 1
-            tally.findings += len(found)
-            return found
-
-        return timed
+        return _timed(method, tallies.setdefault(rule_id, _Tally()))
 
     def _fan(self, role: str, *args: object) -> None:
         for method, ctx in self._by_role.get(role, ()):
@@ -737,12 +759,10 @@ class _FanOut:
     def run(self, graph: Graph) -> None:
         """Visit every projected entity once; edges stay on `graph`."""
         for iri, node in graph.nodes.items():
-            if isinstance(node, UnresolvedNode):
-                raise RuntimeError(  # noqa: TRY004 - the node type is valid; its presence violates pipeline state
-                    f'unresolved reference reached lint graph at {iri}: {node.entity.name}'
-                )
             role = _NODE_ROLES.get(type(node))
             if role is None:
+                if isinstance(node, UnresolvedNode):
+                    raise RuntimeError(f'unresolved reference reached lint graph at {iri}: {node.entity.name}')
                 raise RuntimeError(f'lint has no visitor role for graph node: {type(node).__name__}')
             if isinstance(node, TypeNode):
                 self._fan(role, iri, node.entity, node.shape_kind)
@@ -753,7 +773,7 @@ class _FanOut:
 class Linter:
     """One configured rule set, ready to run over any number of documents."""
 
-    __slots__ = ('_enabled', '_filters', '_settings', 'config', 'registry')
+    __slots__ = ('_enabled', '_filters', '_filters_by_rule', '_settings', '_severities', 'config', 'registry')
 
     def __init__(self, registry: Registry, config: Config | None = None) -> None:
         self.registry = registry
@@ -767,6 +787,13 @@ class Linter:
             self._settings[entry.id] = entry
         self._filters = tuple(entry for entry in self.config.rules if entry.match is not None)
         self._enabled = self._resolve_enabled()
+        # Resolved once per rule rather than once per finding: a large document
+        # produces tens of thousands of findings from a few dozen rules.
+        self._severities = {rule.meta.id: self.severity_of(rule.meta) for rule in self._enabled}
+        self._filters_by_rule = {
+            rule.meta.id: tuple(entry for entry in self._filters if not entry.id or entry.id == rule.meta.id)
+            for rule in self._enabled
+        }
 
     def __repr__(self) -> str:
         return f'<Linter rules={len(self._enabled)}>'
@@ -932,47 +959,32 @@ class Linter:
 
         for rule in documents:
             ctx = Context(raml=raml, graph=graph, options=self.options_for(rule.meta))
-            if not measure:
-                findings.extend(rule.run(ctx))
-                continue
-            tally = tallies.setdefault(rule.meta.id, _Tally())
-            start = perf_counter_ns()
-            # Materialised inside the timed region: every document rule is a
-            # generator, so `extend` outside it would do the work untimed.
-            produced = tuple(rule.run(ctx))
-            tally.nanoseconds += perf_counter_ns() - start
-            tally.calls += 1
-            tally.findings += len(produced)
-            findings.extend(produced)
+            run = _timed(rule.run, tallies.setdefault(rule.meta.id, _Tally())) if measure else rule.run
+            findings.extend(run(ctx))
 
         report = limit_findings(
             self._finish(findings, raml),
             max_findings=max_findings,
             max_findings_per_rule=max_findings_per_rule,
         )
-        if not measure:
-            return LintRun(
-                findings=report.findings,
-                metrics=_NO_METRICS,
-                total_findings=report.total_findings,
-                severity_counts=report.severity_counts,
-                rule_counts=report.rule_counts,
-                rule_severities=report.rule_severities,
-            )
-        total = perf_counter_ns() - started
-        return LintRun(
-            findings=report.findings,
-            metrics=self._metrics(
+        metrics = (
+            self._metrics(
                 tallies,
-                total=total,
+                total=perf_counter_ns() - started,
                 graph=GraphMetric(
                     source=graph_source, nanoseconds=graph_ns, nodes=len(graph.nodes), edges=len(graph.edges)
                 ),
-            ),
+            )
+            if measure
+            else _NO_METRICS
+        )
+        return LintRun(
+            findings=report.findings,
             total_findings=report.total_findings,
             severity_counts=report.severity_counts,
             rule_counts=report.rule_counts,
             rule_severities=report.rule_severities,
+            metrics=metrics,
         )
 
     def _metrics(self, tallies: Mapping[str, _Tally], *, total: int, graph: GraphMetric) -> LintMetrics:
@@ -1050,11 +1062,14 @@ class Linter:
 
     def _apply(self, finding: Finding) -> Finding | None:
         """One finding, re-graded or dropped. `None` means a filter suppressed it."""
-        severity = self.severity_of_id(finding.rule)
-        message = finding.rendered_message()
-        for entry in self._filters:
-            if entry.id and entry.id != finding.rule:
-                continue
+        rule_id = finding.rule
+        severity = self._severities.get(rule_id) or self.severity_of_id(rule_id)
+        filters = self._filters_by_rule.get(rule_id)
+        if filters is None:
+            filters = tuple(entry for entry in self._filters if not entry.id or entry.id == rule_id)
+        # Rendered only when a filter will read it.
+        message = finding.rendered_message() if filters else ''
+        for entry in filters:
             if entry.match is not None and not entry.match.search(message):
                 continue
             if entry.disabled:

@@ -1,9 +1,10 @@
-"""Rules about types — docs/18-linting.md § 1 group 1.
+"""Rules about types and payloads — docs/18-linting.md § 1.
 
-Every judgement here follows from RAML's own semantics rather than from taste.
-Where that is not obvious, the rule's `rationale` says which part of the
-language it follows from, and `tests/unit/test_lint.py` parses its `good` and
-`bad` to prove it fires on one and not the other.
+The `spec` rules here follow from RAML's own semantics rather than from taste;
+where that is not obvious, the rule's `rationale` says which part of the
+language it follows from. The `style` rules judge legal type designs worth a
+review. `tests/unit/test_lint.py` parses every rule's `good` and `bad` to prove
+it fires on one and not the other.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from fastraml.nodes import TypeNode
 from fastraml.positions import UNKNOWN
 from fastraml.types.complex_ import ObjectShape, UnionShape
 from fastraml.types.jsonschema_ import JsonShape, escape_json_pointer_segment, projected
-from fastraml.types.scalars import AnyShape, FileShape, NilShape, StringShape
+from fastraml.types.scalars import AnyShape, FileShape, NilShape
 from fastraml.views.graph import is_declaration
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 from fastraml.yamlnode import NodeKind, pairs
@@ -34,7 +35,6 @@ __all__ = [
     'MeaninglessMediaTypeSchema',
     'MultipleInheritance',
     'OptionalAndNil',
-    'UnboundedString',
     'UntypedPayload',
 ]
 
@@ -179,16 +179,7 @@ class OptionalAndNil:
     def property_(self, ctx: Context, iri: str, prop: Property) -> Iterable[Finding]:
         if prop.required or _nil_member(prop.base) is None:
             return ()
-        return (
-            ctx.at(
-                self.meta,
-                'property is both optional and nilable',
-                location=prop.base.location,
-                position=prop.base.key_pos,
-                iri=iri,
-                property=prop.name,
-            ),
-        )
+        return (ctx.on(self.meta, 'property is both optional and nilable', prop.base, iri=iri, property=prop.name),)
 
 
 class MultipleInheritance:
@@ -216,11 +207,10 @@ class MultipleInheritance:
         if len(base.inherits) < 2 or not is_declaration(iri):  # noqa: PLR2004 - "more than one parent" is the rule
             return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'type inherits from more than one supertype',
-                location=base.location,
-                position=base.key_pos,
+                base,
                 iri=iri,
                 supertypes=', '.join(parent.name or '?' for parent in base.inherits),
             ),
@@ -268,12 +258,12 @@ class DiscriminatorWithoutSubtypes:
             if is_declaration(edge.subject):
                 return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'discriminator declared on a type nothing inherits from',
-                location=base.location,
-                position=shape.discriminator.key_pos,
+                base,
                 iri=iri,
+                position=shape.discriminator.key_pos,
                 discriminator=shape.discriminator.value,
             ),
         )
@@ -304,12 +294,12 @@ class UntypedPayload:
         if base is None or not isinstance(base.shape, AnyShape) or base.inherits:
             return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'body constrains nothing',
-                location=body.location,
-                position=base.key_pos if base.key_pos.is_known else body.key_pos,
+                body,
                 iri=iri,
+                position=base.key_pos if base.key_pos.is_known else body.key_pos,
                 mediaType=body.media_type,
             ),
         )
@@ -345,11 +335,10 @@ class MeaninglessMediaTypeSchema:
             issue = _media_type_issue(base, media_type)
             if issue is not None:
                 found.append(
-                    ctx.at(
+                    ctx.on(
                         self.meta,
                         'response schema is meaningless for its media type',
-                        location=body.location,
-                        position=body.key_pos,
+                        body,
                         iri=iri,
                         mediaType=body.media_type,
                         type=base.type if base is not None else 'none',
@@ -402,47 +391,3 @@ def _media_type_issue(base: BaseShape | None, media_type: str) -> str | None:  #
     if media_type == 'text/plain' and not shape.is_scalar():
         return 'plain text requires a scalar or file shape'
     return None
-
-
-class UnboundedString:
-    """A string shape with no upper bound or restricted value domain."""
-
-    meta: ClassVar = RuleMeta(
-        id='unbounded-string',
-        category=Category.SECURITY,
-        summary='a string with no maxLength, pattern or enum',
-        rationale=(
-            'OWASP API4:2023. A string with no size or value restriction permits an unconstrained allocation '
-            'wherever the shape is used as input. Checking the shape rather than only its current use sites also '
-            'covers named types before they are wired into an endpoint. `maxLength` supplies a direct bound; '
-            '`pattern` and `enum` record an intentional accepted domain.'
-        ),
-        severity=Severity.WARNING,
-        good=(
-            '#%RAML 1.0\ntitle: t\ntypes:\n  Input:\n    type: string\n    maxLength: 64\n'
-            '/a:\n  post:\n    body:\n      text/plain: Input\n'
-        ),
-        bad=('#%RAML 1.0\ntitle: t\ntypes:\n  Input: string\n/a:\n  post:\n    body:\n      text/plain: Input\n'),
-    )
-
-    def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
-        shape = base.shape
-        if base.alias is not None or iri not in ctx.graph.request_shape_iris() or not isinstance(shape, StringShape):
-            return ()
-        if shape.max_length is not None or shape.pattern is not None or base.enum is not None:
-            return ()
-        name = base.name
-        if not name:
-            parent = next(iter(ctx.graph.into(iri, ('anyOf',))), None)
-            if parent is not None:
-                name = ctx.graph.nodes[parent.subject].name
-        return (
-            ctx.at(
-                self.meta,
-                'string type is unbounded',
-                location=base.location,
-                position=base.key_pos,
-                iri=iri,
-                type=name or 'anonymous',
-            ),
-        )

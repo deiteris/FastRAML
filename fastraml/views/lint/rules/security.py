@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, ClassVar
 from fastraml.parser.fragments import APIFragment
 from fastraml.parser.security import TYPE_BASIC
 from fastraml.parser.uritemplates import extract_uri_template_params
-from fastraml.positions import UNKNOWN
 from fastraml.types.complex_ import ArrayShape, ObjectShape
 from fastraml.types.scalars import AnyShape, DateTimeShape, IntegerShape, NumberShape, StringShape
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
@@ -35,6 +34,7 @@ __all__ = [
     'Required500Response',
     'RestrictedString',
     'RetryAfter429',
+    'UnboundedString',
     'ValidationErrorResponse',
 ]
 
@@ -104,14 +104,7 @@ class InsecureBasicAuthentication:
         if definition.resolved().type != TYPE_BASIC:
             return ()
         return (
-            ctx.at(
-                self.meta,
-                'security scheme uses Basic Authentication',
-                location=definition.location,
-                position=definition.key_pos or UNKNOWN,
-                iri=iri,
-                scheme=definition.name,
-            ),
+            ctx.on(self.meta, 'security scheme uses Basic Authentication', definition, iri=iri, scheme=definition.name),
         )
 
 
@@ -131,11 +124,10 @@ class HttpsOnly:
         if protocols == {'https'}:
             return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'operation is not restricted to HTTPS',
-                location=operation.location,
-                position=operation.key_pos,
+                operation,
                 iri=iri,
                 method=operation.method,
                 protocols=','.join(sorted(protocols)) or 'unspecified',
@@ -152,11 +144,10 @@ class _RequiredResponse:
         if _has_typed_body(response):
             return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'operation lacks required response body',
-                location=operation.location,
-                position=operation.key_pos,
+                operation,
                 iri=iri,
                 method=operation.method,
                 status=self.status,
@@ -245,11 +236,10 @@ class ValidationErrorResponse:
         ):
             return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'operation lacks a validation error response body',
-                location=operation.location,
-                position=operation.key_pos,
+                operation,
                 iri=iri,
                 method=operation.method,
             ),
@@ -276,16 +266,7 @@ class RateLimitHeaders:
         if not relevant or any(_rate_header_usable(name, parameter.base.shape) for name, parameter in headers):
             return ()
         message = 'response has no rate-limit header' if not headers else 'response has no usable rate-limit header'
-        return (
-            ctx.at(
-                self.meta,
-                message,
-                location=response.location,
-                position=response.key_pos,
-                iri=iri,
-                status=response.code,
-            ),
-        )
+        return (ctx.on(self.meta, message, response, iri=iri, status=response.code),)
 
 
 class RetryAfter429:
@@ -309,11 +290,10 @@ class RetryAfter429:
             return ()
         message = '429 response has no Retry-After header' if header is None else 'Retry-After has an unusable type'
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 message,
-                location=response.location,
-                position=response.key_pos,
+                response,
                 iri=iri,
                 status=response.code,
                 type='missing' if header is None else header.base.type,
@@ -343,12 +323,12 @@ class NumericResourceId:
             if parameter is None or not isinstance(parameter.base.shape, (IntegerShape, NumberShape)):
                 continue
             found.append(
-                ctx.at(
+                ctx.on(
                     self.meta,
                     'URI template parameter uses a numeric type',
-                    location=parameter.base.location,
-                    position=parameter.key_pos,
+                    parameter.base,
                     iri=iri,
+                    position=parameter.key_pos,
                     parameter=name,
                     type=parameter.base.type,
                 )
@@ -368,18 +348,9 @@ class BoundedArray:
     )
 
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
-        if not _is_input(ctx, iri, base) or not isinstance(base.shape, ArrayShape) or base.shape.max_items is not None:
+        if not isinstance(base.shape, ArrayShape) or base.shape.max_items is not None or not _is_input(ctx, iri, base):
             return ()
-        return (
-            ctx.at(
-                self.meta,
-                'array has no maximum item count',
-                location=base.location,
-                position=base.key_pos,
-                iri=iri,
-                type=base.name or 'anonymous',
-            ),
-        )
+        return (ctx.on(self.meta, 'array has no maximum item count', base, iri=iri, type=base.name or 'anonymous'),)
 
 
 class RestrictedString:
@@ -395,22 +366,52 @@ class RestrictedString:
 
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         if (
-            not _is_input(ctx, iri, base)
-            or not isinstance(base.shape, StringShape)
+            not isinstance(base.shape, StringShape)
             or base.shape.pattern is not None
             or base.enum is not None
+            or not _is_input(ctx, iri, base)
         ):
             return ()
-        return (
-            ctx.at(
-                self.meta,
-                'string has no pattern or enum',
-                location=base.location,
-                position=base.key_pos,
-                iri=iri,
-                type=base.name or 'anonymous',
-            ),
-        )
+        return (ctx.on(self.meta, 'string has no pattern or enum', base, iri=iri, type=base.name or 'anonymous'),)
+
+
+class UnboundedString:
+    """A string shape with no upper bound or restricted value domain."""
+
+    meta: ClassVar = RuleMeta(
+        id='unbounded-string',
+        category=Category.SECURITY,
+        summary='a string with no maxLength, pattern or enum',
+        rationale=(
+            'OWASP API4:2023. A string with no size or value restriction permits an unconstrained allocation '
+            'wherever the shape is used as input. Checking the shape rather than only its current use sites also '
+            'covers named types before they are wired into an endpoint. `maxLength` supplies a direct bound; '
+            '`pattern` and `enum` record an intentional accepted domain.'
+        ),
+        severity=Severity.WARNING,
+        good=(
+            '#%RAML 1.0\ntitle: t\ntypes:\n  Input:\n    type: string\n    maxLength: 64\n'
+            '/a:\n  post:\n    body:\n      text/plain: Input\n'
+        ),
+        bad=('#%RAML 1.0\ntitle: t\ntypes:\n  Input: string\n/a:\n  post:\n    body:\n      text/plain: Input\n'),
+    )
+
+    def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
+        shape = base.shape
+        if (
+            not isinstance(shape, StringShape)
+            or shape.max_length is not None
+            or shape.pattern is not None
+            or base.enum is not None
+            or not _is_input(ctx, iri, base)
+        ):
+            return ()
+        name = base.name
+        if not name:
+            parent = next(iter(ctx.graph.into(iri, ('anyOf',))), None)
+            if parent is not None:
+                name = ctx.graph.nodes[parent.subject].name
+        return (ctx.on(self.meta, 'string type is unbounded', base, iri=iri, type=name or 'anonymous'),)
 
 
 class IntegerFormat:
@@ -425,18 +426,9 @@ class IntegerFormat:
     )
 
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
-        if not _is_input(ctx, iri, base) or not isinstance(base.shape, IntegerShape) or base.shape.format is not None:
+        if not isinstance(base.shape, IntegerShape) or base.shape.format is not None or not _is_input(ctx, iri, base):
             return ()
-        return (
-            ctx.at(
-                self.meta,
-                'integer has no format',
-                location=base.location,
-                position=base.key_pos,
-                iri=iri,
-                type=base.name or 'anonymous',
-            ),
-        )
+        return (ctx.on(self.meta, 'integer has no format', base, iri=iri, type=base.name or 'anonymous'),)
 
 
 class BoundedInteger:
@@ -453,20 +445,13 @@ class BoundedInteger:
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         shape = base.shape
         if (
-            not _is_input(ctx, iri, base)
-            or not isinstance(shape, IntegerShape)
+            not isinstance(shape, IntegerShape)
             or (shape.minimum is not None and shape.maximum is not None)
+            or not _is_input(ctx, iri, base)
         ):
             return ()
         return (
-            ctx.at(
-                self.meta,
-                'integer lacks a lower or upper bound',
-                location=base.location,
-                position=base.key_pos,
-                iri=iri,
-                type=base.name or 'anonymous',
-            ),
+            ctx.on(self.meta, 'integer lacks a lower or upper bound', base, iri=iri, type=base.name or 'anonymous'),
         )
 
 
@@ -492,11 +477,10 @@ class NoAdditionalProperties:
             return ()
         facet = shape.additional_properties
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'object explicitly permits additional properties',
-                location=facet.location,
-                position=facet.key_pos,
+                facet,
                 iri=iri,
                 type=base.name or 'anonymous',
             ),
@@ -518,18 +502,13 @@ class BoundedAdditionalProperties:
         shape = base.shape
         if (
             not isinstance(shape, ObjectShape)
-            or not _is_input(ctx, iri, base)
             or (shape.additional_properties is not None and not shape.additional_properties.value)
             or shape.max_properties is not None
+            or not _is_input(ctx, iri, base)
         ):
             return ()
         return (
-            ctx.at(
-                self.meta,
-                'open object has no maximum property count',
-                location=base.location,
-                position=base.key_pos,
-                iri=iri,
-                type=base.name or 'anonymous',
+            ctx.on(
+                self.meta, 'open object has no maximum property count', base, iri=iri, type=base.name or 'anonymous'
             ),
         )

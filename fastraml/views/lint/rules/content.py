@@ -90,11 +90,10 @@ class NoAmbiguousPaths:
             methods = set(endpoint.operations)
             earlier = routes.overlap(segments, methods)
             if earlier is not None:
-                yield ctx.at(
+                yield ctx.on(
                     self.meta,
                     'endpoint path overlaps another template',
-                    location=endpoint.location,
-                    position=endpoint.key_pos,
+                    endpoint,
                     iri=iri,
                     path=endpoint.full_uri,
                     conflictsWith=earlier.full_uri,

@@ -48,14 +48,7 @@ class UnusedType:
             ):
                 continue
             base = node.entity
-            yield ctx.at(
-                self.meta,
-                'type is never referenced',
-                location=base.location,
-                position=base.key_pos,
-                iri=iri,
-                type=base.name,
-            )
+            yield ctx.on(self.meta, 'type is never referenced', base, iri=iri, type=base.name)
 
 
 class UnusedTrait:
@@ -79,11 +72,4 @@ class UnusedTrait:
             if node.kinds[0] != 'Trait' or any(edge.predicate == 'appliesTrait' for edge in ctx.graph.into(iri)):
                 continue
             definition = node.entity
-            yield ctx.at(
-                self.meta,
-                'trait is never applied',
-                location=definition.location,
-                position=definition.key_pos,
-                iri=iri,
-                trait=definition.name,
-            )
+            yield ctx.on(self.meta, 'trait is never applied', definition, iri=iri, trait=definition.name)

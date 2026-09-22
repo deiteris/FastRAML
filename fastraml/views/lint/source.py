@@ -16,38 +16,41 @@ if TYPE_CHECKING:
 
 __all__ = ['SuppressionIndex', 'declaration_nodes', 'mapping_value']
 
+#: A whole line holding only a directive, after leading indentation.
 _SUPPRESSION = re.compile(
-    r'#[^\S\r\n]*(?i:fastraml:[^\S\r\n]*ignore)[^\S\r\n]+'
-    r'([a-zA-Z0-9*_.-]+(?:[^\S\r\n]*,[^\S\r\n]*[a-zA-Z0-9*_.-]+)*)[^\S\r\n]*\r?'
+    r'^[ \t]*#[^\S\r\n]*(?i:fastraml:[^\S\r\n]*ignore)[^\S\r\n]+'
+    r'([a-zA-Z0-9*_.-]+(?:[^\S\r\n]*,[^\S\r\n]*[a-zA-Z0-9*_.-]+)*)[^\S\r\n]*\r?$',
+    re.MULTILINE,
 )
-_NEWLINE = re.compile('\n')
 
 
 class SuppressionIndex:
-    """Retained source indexed by line start for preceding-comment lookups."""
+    """The directives in retained source, keyed by the line each one covers.
 
-    __slots__ = ('_lines', '_sources')
+    One regex scan per source finds every directive up front, so checking a
+    finding is a dict lookup. A document has thousands of findings and, at
+    most, a handful of directives.
+    """
+
+    __slots__ = ('_covered',)
 
     def __init__(self, sources: Mapping[str, str]) -> None:
-        self._sources = sources
-        self._lines = {
-            location: (0, *(match.end() for match in _NEWLINE.finditer(text))) for location, text in sources.items()
-        }
+        self._covered: dict[tuple[str, int], frozenset[str]] = {}
+        for location, text in sources.items():
+            line, scanned = 1, 0
+            for match in _SUPPRESSION.finditer(text):
+                line += text.count('\n', scanned, match.start())
+                scanned = match.start()
+                rules = frozenset(match.group(1).replace(' ', '').replace('\t', '').split(','))
+                # The directive covers the line after its own.
+                self._covered[location, line + 1] = rules
 
     def suppresses(self, finding: Finding) -> bool:
         """Whether a directive immediately above `finding` names its rule."""
-        if not finding.position.is_known or finding.position.line < 2:  # noqa: PLR2004 - line 1 has no predecessor
+        if not self._covered or not finding.position.is_known:
             return False
-        starts = self._lines.get(finding.location)
-        if starts is None or finding.position.line > len(starts):
-            return False
-        text = self._sources[finding.location]
-        line = text[starts[finding.position.line - 2] : starts[finding.position.line - 1] - 1].lstrip(' \t')
-        match = _SUPPRESSION.fullmatch(line)
-        if match is None:
-            return False
-        rules = match.group(1).replace(' ', '').replace('\t', '').split(',')
-        return '*' in rules or finding.rule in rules
+        rules = self._covered.get((finding.location, finding.position.line))
+        return rules is not None and ('*' in rules or finding.rule in rules)
 
 
 def declaration_nodes(raml: Raml, entity_id: int) -> tuple[Node | None, Node] | None:

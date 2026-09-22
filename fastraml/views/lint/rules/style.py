@@ -66,11 +66,10 @@ class ExplicitUriParameter:
             for expression in extract_uri_template_params(endpoint.uri, endpoint.location, endpoint.key_pos)
         )
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'URI template parameter has no explicit declaration',
-                location=endpoint.location,
-                position=endpoint.key_pos,
+                endpoint,
                 iri=iri,
                 parameter=name,
                 path=endpoint.full_uri,
@@ -94,8 +93,7 @@ class PreferArrayExpression:
     )
 
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
-        node = _source_mapping(ctx, base)
-        if not isinstance(base.shape, ArrayShape) or node is None:
+        if not isinstance(base.shape, ArrayShape) or (node := _source_mapping(ctx, base)) is None:
             return ()
         type_entry, items = mapping_value(node, 'type'), mapping_value(node, 'items')
         if (
@@ -106,12 +104,12 @@ class PreferArrayExpression:
         ):
             return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'array can use type expression notation',
-                location=base.location,
-                position=type_entry[0].position,
+                base,
                 iri=iri,
+                position=type_entry[0].position,
                 type=base.name or 'anonymous',
             ),
         )
@@ -133,12 +131,12 @@ class PreferOptionalProperty:
         if prop.required or required is None or required.value:
             return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'optional property uses required false',
-                location=prop.base.location,
-                position=required.key_pos,
+                prop.base,
                 iri=iri,
+                position=required.key_pos,
                 property=prop.name,
             ),
         )
@@ -170,12 +168,12 @@ class PreferOptionalType:
         if not any(isinstance(member, Primitive) and member.name in {'nil', 'null'} for member in parsed.members):
             return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'nil union can use optional notation',
-                location=base.location,
-                position=expr.position,
+                base,
                 iri=iri,
+                position=expr.position,
                 type=base.name or 'anonymous',
             ),
         )
@@ -205,12 +203,12 @@ class AvoidExplicitInferredType:
         if hints != {type_entry[1].value}:
             return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'type is implied by facets',
-                location=base.location,
-                position=type_entry[0].position,
+                base,
                 iri=iri,
+                position=type_entry[0].position,
                 type=base.name or 'anonymous',
             ),
         )
@@ -237,12 +235,12 @@ class PreferInlineAlias:
         if entry is None or entry[1].kind is not NodeKind.SCALAR:
             return ()
         return (
-            ctx.at(
+            ctx.on(
                 self.meta,
                 'type-only mapping can use inline notation',
-                location=base.location,
-                position=entry[0].position,
+                base,
                 iri=iri,
+                position=entry[0].position,
                 type=entry[1].value,
             ),
         )
@@ -264,16 +262,7 @@ class UniqueItemsDiscouraged:
         if not isinstance(shape, ArrayShape) or shape.unique_items is None or not shape.unique_items.value:
             return ()
         facet = shape.unique_items
-        return (
-            ctx.at(
-                self.meta,
-                'array requires unique items',
-                location=facet.location,
-                position=facet.key_pos,
-                iri=iri,
-                type=base.name or 'anonymous',
-            ),
-        )
+        return (ctx.on(self.meta, 'array requires unique items', facet, iri=iri, type=base.name or 'anonymous'),)
 
 
 class RequireClosedObject:
@@ -294,14 +283,7 @@ class RequireClosedObject:
         ):
             return ()
         return (
-            ctx.at(
-                self.meta,
-                'object permits additional properties',
-                location=base.location,
-                position=base.key_pos,
-                iri=iri,
-                type=base.name or 'anonymous',
-            ),
+            ctx.on(self.meta, 'object permits additional properties', base, iri=iri, type=base.name or 'anonymous'),
         )
 
 
@@ -320,14 +302,7 @@ class UnconstrainedPatternProperty:
         if prop.pattern.pattern:
             return ()
         return (
-            ctx.at(
-                self.meta,
-                'pattern property matches every name',
-                location=prop.base.location,
-                position=prop.base.key_pos,
-                iri=iri,
-                pattern=prop.pattern.pattern,
-            ),
+            ctx.on(self.meta, 'pattern property matches every name', prop.base, iri=iri, pattern=prop.pattern.pattern),
         )
 
 
@@ -346,16 +321,7 @@ class UnanchoredPatternProperty:
         pattern = prop.pattern.pattern
         if pattern.startswith(('^', '\\A')) and pattern.endswith(('$', '\\Z')):
             return ()
-        return (
-            ctx.at(
-                self.meta,
-                'pattern property is not fully anchored',
-                location=prop.base.location,
-                position=prop.base.key_pos,
-                iri=iri,
-                pattern=pattern,
-            ),
-        )
+        return (ctx.on(self.meta, 'pattern property is not fully anchored', prop.base, iri=iri, pattern=pattern),)
 
 
 class MissingDescription:
@@ -373,16 +339,7 @@ class MissingDescription:
     def _finding(ctx: Context, iri: str, entity: Any, name: str) -> tuple[Finding, ...]:
         if entity.description is not None:
             return ()
-        return (
-            ctx.at(
-                MissingDescription.meta,
-                'entity has no description',
-                location=entity.location,
-                position=entity.key_pos,
-                iri=iri,
-                entity=name,
-            ),
-        )
+        return (ctx.on(MissingDescription.meta, 'entity has no description', entity, iri=iri, entity=name),)
 
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         if not is_declaration(iri):
@@ -410,18 +367,7 @@ class MissingDescription:
         return self._finding(ctx, iri, response, response.code)
 
     def security_scheme(self, ctx: Context, iri: str, definition: SecuritySchemeDefinition) -> Iterable[Finding]:
-        if definition.description is not None:
-            return ()
-        return (
-            ctx.at(
-                self.meta,
-                'entity has no description',
-                location=definition.location,
-                position=definition.key_pos or UNKNOWN,
-                iri=iri,
-                entity=definition.name,
-            ),
-        )
+        return self._finding(ctx, iri, definition, definition.name)
 
 
 class MissingExample:
@@ -442,32 +388,14 @@ class MissingExample:
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         if not is_declaration(iri) or self._has_example(base):
             return ()
-        return (
-            ctx.at(
-                self.meta,
-                'type has no example',
-                location=base.location,
-                position=base.key_pos,
-                iri=iri,
-                type=base.name or 'anonymous',
-            ),
-        )
+        return (ctx.on(self.meta, 'type has no example', base, iri=iri, type=base.name or 'anonymous'),)
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
         bodies = list(operation.request.bodies.values()) if operation.request is not None else []
         bodies += [body for response in operation.responses.values() for body in response.bodies.values()]
         if not bodies or any(body.shape is not None and self._has_example(body.shape) for body in bodies):
             return ()
-        return (
-            ctx.at(
-                self.meta,
-                'operation has no payload example',
-                location=operation.location,
-                position=operation.key_pos,
-                iri=iri,
-                method=operation.method,
-            ),
-        )
+        return (ctx.on(self.meta, 'operation has no payload example', operation, iri=iri, method=operation.method),)
 
 
 class MissingDisplayName:
@@ -484,27 +412,9 @@ class MissingDisplayName:
     def endpoint(self, ctx: Context, iri: str, endpoint: EndPoint) -> Iterable[Finding]:
         if endpoint.display_name is not None:
             return ()
-        return (
-            ctx.at(
-                self.meta,
-                'endpoint has no display name',
-                location=endpoint.location,
-                position=endpoint.key_pos,
-                iri=iri,
-                endpoint=endpoint.full_uri,
-            ),
-        )
+        return (ctx.on(self.meta, 'endpoint has no display name', endpoint, iri=iri, endpoint=endpoint.full_uri),)
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
         if operation.display_name is not None:
             return ()
-        return (
-            ctx.at(
-                self.meta,
-                'operation has no display name',
-                location=operation.location,
-                position=operation.key_pos,
-                iri=iri,
-                method=operation.method,
-            ),
-        )
+        return (ctx.on(self.meta, 'operation has no display name', operation, iri=iri, method=operation.method),)

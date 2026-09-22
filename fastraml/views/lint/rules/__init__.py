@@ -13,7 +13,6 @@ from fastraml.views.lint.rules.schema import (
     MeaninglessMediaTypeSchema,
     MultipleInheritance,
     OptionalAndNil,
-    UnboundedString,
     UntypedPayload,
 )
 from fastraml.views.lint.rules.security import (
@@ -31,6 +30,7 @@ from fastraml.views.lint.rules.security import (
     Required500Response,
     RestrictedString,
     RetryAfter429,
+    UnboundedString,
     ValidationErrorResponse,
 )
 from fastraml.views.lint.rules.style import (

@@ -41,7 +41,8 @@ from fastraml.parser.references import resolve_library_reference, resolve_refere
 from fastraml.parser.resourcetypes import ResourceTypeDefinition, make_resource_type_definition
 from fastraml.parser.security import SecuritySchemeDefinition, make_security_scheme_definition
 from fastraml.parser.traits import TraitDefinition, make_trait_definition
-from fastraml.parser.uritemplates import check_uri_reference, extract_uri_template_params
+from fastraml.parser.uritemplates import check_uri_reference, extract_uri_template_params, unused_uri_parameters
+from fastraml.positions import UNKNOWN
 from fastraml.registry import ParseCtx
 from fastraml.types.examples import Example, make_example
 from fastraml.types.shape import make_parameter_map, make_shape, unmarshal_types
@@ -61,7 +62,7 @@ from fastraml.yamlnode import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Callable, Mapping
 
     from fastraml.positions import Position
     from fastraml.registry import Raml
@@ -541,34 +542,16 @@ class APIFragment(_BaseFragment):
 
         if self.title is None:
             accumulator.add(node_error('title is required', self.location, node))
+        # After the loop, since `baseUri` and `baseUriParameters` come in either
+        # order. A `baseUri` that failed has reported already, and is not
+        # followed by one error per parameter (docs/08 section 8.2).
         if self.base_uri is not None or not any(key.value == FACET_BASE_URI for key, _ in remainder):
-            for unused in self._unused_base_uri_parameters():
+            uri = '' if self.base_uri is None else self.base_uri.value
+            variables = [expression.name for expression in extract_uri_template_params(uri, self.location, UNKNOWN)]
+            for unused in unused_uri_parameters(self.base_uri_parameters, variables, uri, self.location):
                 accumulator.add(unused)
         accumulator.raise_if_any()
         self._raw_secured_by = None
-
-    def _unused_base_uri_parameters(self) -> Iterator[RamlError]:
-        """Spec § Base URI: `baseUriParameters` follows the rules of `uriParameters`.
-
-        So every name it declares must be a variable in `baseUri`, which is
-        checked here rather than as the key is decoded because the two keys may
-        come in either order. A `baseUri` that failed to decode is skipped by
-        the caller, so its error is not followed by one per parameter.
-        """
-        uri = ''
-        variables: set[str] = set()
-        if self.base_uri is not None:
-            uri = self.base_uri.value
-            expressions = extract_uri_template_params(uri, self.location, self.base_uri.value_pos)
-            variables = {expression.name for expression in expressions}
-        for name, parameter in self.base_uri_parameters.items():
-            if name not in variables:
-                yield RamlError.new(
-                    'uri parameter is not used',
-                    self.location,
-                    parameter.base.key_pos,
-                    info={'parameter': name, 'uri': uri},
-                )
 
     def _decode_key(self, key: Node, value: Node, declarations: _Declarations) -> None:
         if self._decode_root_facet(key, value) or self._retain_declarations(key, value, declarations):

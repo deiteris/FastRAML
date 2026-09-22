@@ -158,18 +158,11 @@ def _query_strings(raml: Raml) -> Iterator[BaseShape]:
 
 
 def _admits_array(base: BaseShape) -> bool:
-    stack = [base]
-    seen: set[int] = set()
-    while stack:
-        current = stack.pop()
-        if current.id in seen:
-            continue
-        seen.add(current.id)
-        if isinstance(current.shape, ArrayShape):
-            return True
-        if isinstance(current.shape, UnionShape):
-            stack.extend(current.shape.any_of or ())
-    return False
+    """Flattened, a union holds its members in `any_of` and never itself."""
+    shape = base.shape
+    if isinstance(shape, UnionShape):
+        return any(_admits_array(member) for member in shape.any_of or ())
+    return isinstance(shape, ArrayShape)
 
 
 def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) -> BaseShape:

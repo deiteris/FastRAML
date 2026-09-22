@@ -25,7 +25,7 @@ from fastraml.parser.resourcetypes import apply_resource_type
 from fastraml.parser.source_decode import decode_source_endpoint
 from fastraml.parser.source_ir import make_source_endpoint
 from fastraml.parser.traits import apply_traits
-from fastraml.parser.uritemplates import extract_uri_template_params
+from fastraml.parser.uritemplates import extract_uri_template_params, unused_uri_parameters
 from fastraml.registry import ParseCtx
 from fastraml.types.base import TYPE_STRING, BaseShape, Parameter, Property
 from fastraml.types.shape import attach_kind
@@ -151,16 +151,8 @@ def _resolve_uri_parameters(raml: Raml, endpoint: EndPoint, inherited: dict[str,
     ]
 
     accumulator = Accumulator()
-    for name in declared:
-        if name not in variables:
-            accumulator.add(
-                RamlError.new(
-                    'uri parameter is not used',
-                    endpoint.location,
-                    declared[name].base.key_pos,
-                    info={'parameter': name, 'uri': endpoint.uri},
-                )
-            )
+    for unused in unused_uri_parameters(declared, variables, endpoint.uri, endpoint.location):
+        accumulator.add(unused)
     for prop in declared.values():
         accumulator.add(_check_slash_free(prop))
 

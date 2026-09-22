@@ -21,7 +21,10 @@ from fastraml.errors import ErrorKind, RamlError
 from fastraml.positions import UNKNOWN
 
 if TYPE_CHECKING:
+    from collections.abc import Collection, Iterator, Mapping
+
     from fastraml.positions import Position
+    from fastraml.types.base import Parameter
 
 __all__ = [
     'UriTemplateExpression',
@@ -29,6 +32,7 @@ __all__ = [
     'extract_uri_template_params',
     'resource_path_name',
     'simple_parameter_segment',
+    'unused_uri_parameters',
 ]
 
 # RFC 6570 Level 2 operators this parser recognises. Anything else that opens
@@ -161,13 +165,30 @@ def check_uri_reference(uri: str, location: str, uri_pos: Position) -> None:
     which has already rejected a malformed expression.
     """
     for match in _URI_REFERENCE_FAULT.finditer(uri):
-        if match.group()[0] == '%':
+        fault = match.group()
+        if fault[0] == '{':
+            continue
+        if fault == '%':
             raise _template_error('invalid pct-encoded sequence in uri', location, uri_pos, match.start())
-        if match.group()[0] != '{':
-            raise _template_error('invalid character in uri', location, uri_pos, match.start(), character=match.group())
+        raise _template_error('invalid character in uri', location, uri_pos, match.start(), character=fault)
     prefix = _SCHEME_PREFIX.match(uri)
     if prefix is not None and _SCHEME.fullmatch(uri, 0, prefix.end() - 1) is None:
         raise _template_error('invalid uri scheme', location, uri_pos, 0, scheme=uri[: prefix.end() - 1])
+
+
+def unused_uri_parameters(
+    declared: Mapping[str, Parameter], variables: Collection[str], uri: str, location: str
+) -> Iterator[RamlError]:
+    """Spec § Template URIs and URI Parameters: every declared name MUST be a variable in the URI.
+
+    Shared by a resource's `uriParameters` and the root's `baseUriParameters`,
+    which spec § Base URI gives the same structure.
+    """
+    for name, parameter in declared.items():
+        if name not in variables:
+            yield RamlError.new(
+                'uri parameter is not used', location, parameter.base.key_pos, info={'parameter': name, 'uri': uri}
+            )
 
 
 def simple_parameter_segment(segment: str) -> bool:

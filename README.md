@@ -41,7 +41,7 @@ The key features are:
 * **Tested coverage with explicit boundaries**: all **915 evaluated fixtures in the RAML Test Compliance Kit (TCK)** produce their expected outcome. Overlay and Extension merging is deferred, and XML Schema external types are not supported; the [coverage matrix](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md) records the details.
 * **Structured diagnostics**: errors carry source locations and trace chains, including failures reached through includes and merged templates. Independent failures accumulate rather than stop the parse, wherever the parser can continue safely.
 * **Model navigation**: `list`, `show`, `refs` and `deps` inspect named entities and the routes between them. `graph` emits RDF, Graphviz or JSON, while `tree` emits an addressed containment view.
-* **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` checks the effective model against 51 built-in rules, with opt-in security (OWASP and OAuth) and style rulesets, per-rule explanations and plugins ([Linting](#linting)).
+* **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` checks the effective model against 57 built-in rules, with opt-in security (OWASP and OAuth), HTTP semantics (RFC 9110) and style rulesets, per-rule explanations and plugins ([Linting](#linting)).
 * **Version comparison**: `compat` walks two effective API models in parallel and classifies compatibility impact by whether a value is sent in a request or received in a response ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md#103-the-policy-is-separable-and-named)). It exits non-zero when the policy identifies a breaking change.
 * **OpenAPI and JSON Schema output**: convert an effective API to a typed OpenAPI 3.0.3 document, or a RAML shape to JSON Schema draft-07. Both conversion APIs report information the target format could not represent.
 * **Typed and measured**: ships `py.typed` and checks the package with strict mypy. The benchmark gate checks linear scaling; on the recorded machine, 7000 types across 150 libraries parse, unwrap and validate in **429 ms** using **98 MB**. The method, the per-configuration numbers, and the comparison against [go-raml](https://github.com/acronis/go-raml) — measured rather than quoted — are in [docs/12](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md).
@@ -176,7 +176,7 @@ Operation  api.raml:446  Add a book -request-> request -payload-> application/js
 
 `fastraml lint` checks whether a valid document is a *good* one. It runs on the
 effective model, after traits, resource types and inheritance are applied, so it
-sees what a client of the API sees. The 51 built-in rules fall into three
+sees what a client of the API sees. The 57 built-in rules fall into four
 rulesets, and you choose which ones run:
 
 * **`spec`** (8 rules, the default `recommended` ruleset): problems the RAML and
@@ -196,6 +196,11 @@ rulesets, and you choose which ones run:
   typed `400`/`422`, `401` and `500` error responses. Authorization logic,
   server-side request forgery and business-flow abuse depend on runtime
   behaviour, which no rule over a document can check.
+* **`http`** (6 rules, opt-in): what
+  [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) requires of a response and
+  RAML does not check: no body on 1xx, 204, 304 or HEAD responses, and the
+  `WWW-Authenticate`, `Allow`, `Proxy-Authenticate`, `Location` and
+  `Content-Range` headers their status codes call for.
 * **`style`** (16 rules, opt-in): authoring conventions such as descriptions,
   examples, display names, concise type spellings and closed objects.
 

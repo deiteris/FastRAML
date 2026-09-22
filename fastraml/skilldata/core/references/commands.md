@@ -61,8 +61,8 @@ the run.
 - `--metrics` — what each rule and provider cost, written to **stderr** so
   stdout stays parseable.
 
-Only the `spec` rules run by default. The `security` and `style` sets and any plugin
-rules are opt-in through `--config`. See `fastraml skills get lint`.
+Only the `spec` rules run by default. The `security`, `http` and
+`style` sets and any plugin rules are opt-in through `--config`. See `fastraml skills get lint`.
 
 Lints every file before exiting, rather than stopping at the first with
 findings.

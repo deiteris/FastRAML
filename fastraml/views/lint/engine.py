@@ -118,15 +118,17 @@ class Category(StrEnum):
     """What kind of judgement a rule makes — docs/18 § 1.
 
     Not a taxonomy of subject matter. `SPEC` is RAML's own semantics;
-    `SECURITY` follows from a published standard; `STYLE` is taste. Each
-    built-in category is also the ruleset that enables it, so a project turns
-    a standard on and grades it under one name.
+    `SECURITY` and `HTTP` each follow from a published standard; `STYLE` is
+    taste. Each built-in category is also the ruleset that enables it, so a
+    project turns a standard on and grades it under one name.
     """
 
     #: Derived from RAML's own semantics (§ 1 group 1).
     SPEC = 'spec'
     #: Derived from OWASP and the OAuth RFCs, off by default (§ 1 group 2).
     SECURITY = 'security'
+    #: Derived from RFC 9110 HTTP semantics, off by default (§ 1 group 2).
+    HTTP = 'http'
     #: Taste, off by default (§ 1 group 3).
     STYLE = 'style'
 

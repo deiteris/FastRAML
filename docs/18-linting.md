@@ -29,16 +29,16 @@ rules rather than to compatibility rules, splits them into three:
    media type cannot carry any value admitted by its shape gives consumers two
    contradictory decoding instructions. None of those is taste.
 2. **Derived from a published standard.** OWASP API Security and the OAuth
-   RFCs. Not one organisation's house style, but not RAML's either: each rule
-   states a requirement the standard makes and the parser does not enforce,
-   and names the clause in `references` (§ 2.2).
+   RFCs, and RFC 9110 HTTP semantics. Not one organisation's house style, but
+   not RAML's either: each rule states a requirement the standard makes and
+   the parser does not enforce, and names the clause in `references` (§ 2.2).
 3. **Taste.** Kebab-case paths, notation preferences, declarations sorted,
    descriptions required. § 10.3's example lives here.
 
-Group 1 ships in `fastraml/views/lint/` and is the default ruleset. Groups 2
-and 3 ship beside it as the named `security` and `style` rulesets, both **off
-by default**. The built-in style set covers RAML-wide authoring conventions;
-§ 6 remains the mechanism for organisation-specific policy.
+Group 1 ships in `fastraml/views/lint/` and is the default ruleset. Group 2
+ships beside it as the `security` and `http` rulesets, and group 3 as `style`,
+all **off by default**. The built-in style set covers RAML-wide authoring
+conventions; § 6 remains the mechanism for organisation-specific policy.
 
 A company API guideline is group 3 however widely it is followed: it is one
 organisation's choices, and it ships as a plugin. The linter is also not a
@@ -140,8 +140,8 @@ A rule derived from a published standard (§ 1 group 2) names it in
 The rationale explains *why* in prose and does not repeat the identifiers.
 Keeping them as data lets `--explain` list them, and lets a reader find every
 rule one clause produced without searching prose. The suite asserts that every
-`security` rule has at least one reference and that each matches the spellings
-above. RFC citations are to the current
+`security` and `http` rule has at least one reference and that each matches
+the spellings above. RFC citations are to the current
 document: RFC 9110, not the RFC 7231 it obsoletes.
 
 ## 3. Two rule shapes
@@ -305,10 +305,11 @@ configuration file. For one run, repeat `--rule ID` to enable a rule,
 These overrides run after the file configuration and duplicate IDs are rejected.
 `--severity` remains only a display threshold and does not reconfigure a rule.
 
-Rulesets: `spec` (group 1); `security` (group 2); `style` (group 3);
-`recommended` = `spec`; `all` = every built-in plus every enabled plugin. Each built-in ruleset has the category of the same name,
-so `categories: {security: {severity: error}}` grades exactly the rules
-`extends: [security]` enables.
+Rulesets: `spec` (group 1); `security` and `http` (group 2); `style` (group
+3); `recommended` = `spec`; `all` = every built-in plus every enabled plugin.
+Each built-in ruleset has the category of the same name, so
+`categories: {http: {severity: error}}` grades exactly the rules
+`extends: [http]` enables.
 
 ### 5.1 Built-in policy
 
@@ -362,6 +363,20 @@ The security set also holds rules no OpenAPI catalogue supplied:
 - `bounded-number`, `bounded-file` and `restricted-file-types` extend the input
   bounds to `number` and `file`; `fileTypes: ['*/*']` counts as no list.
   `restricted-request-media-type` reports a wildcard request body media type.
+
+The `http` set states what RFC 9110 requires of a response and RAML does not
+check. `no-content-body` reports a body on a 1xx, 204 or 304 response or on any
+HEAD response, naming the clause in `info`. `allow-header-405`,
+`proxy-authenticate-407` and `www-authenticate-401` report a missing header a
+server MUST send. `redirect-location` covers 301, 302, 307 and 308, the codes
+whose sections say SHOULD; 303 is left out because its section describes
+Location without requiring it. `content-range-header` accepts a 206 whose body
+is `multipart/byteranges` instead of a Content-Range header (§ 15.3.7.2). The
+parser does not copy a scheme's `describedBy` into the operations it secures,
+so `www-authenticate-401` reads both: an operation's 401 passes when a securing
+scheme's `describedBy` 401 declares the header, and a `describedBy` 401 without
+it is reported on the scheme. `get-with-body` stays in `spec`, where it
+already was: moving it would turn off a default rule.
 
 `json-ref-siblings` inspects parsed JSON Schema, which retains structure but not
 token positions. Each finding therefore names the schema document and an RFC

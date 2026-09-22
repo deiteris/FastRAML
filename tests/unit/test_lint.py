@@ -538,7 +538,7 @@ REFERENCE = re.compile(
 )
 
 #: The categories derived from a published standard (docs/18 § 1 group 2).
-STANDARD_CATEGORIES = (Category.SECURITY,)
+STANDARD_CATEGORIES = (Category.SECURITY, Category.HTTP)
 
 
 class TestStandardsRules:
@@ -647,6 +647,31 @@ class TestStandardsRules:
         )
         findings = run_rule('restricted-file-types', source, tmp_path)
         assert findings[0].info['fileTypes'] == '*/*'
+
+    def test_no_content_body_covers_head_responses(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  head:\n    responses:\n      200:\n'
+            '        body:\n          application/json: string\n'
+        )
+        findings = run_rule('no-content-body', source, tmp_path)
+        assert findings[0].info['clause'] == 'RFC 9110 § 9.3.2'
+
+    def test_multipart_byteranges_satisfies_a_206_without_content_range(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      206:\n'
+            '        body:\n          multipart/byteranges: file\n'
+        )
+        assert not run_rule('content-range-header', source, tmp_path)
+
+    def test_www_authenticate_on_a_described_by_401_without_an_operation_401(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  token:\n    type: Pass Through\n    describedBy:\n'
+            '      headers:\n        Authorization: string\n      responses:\n        401: {}\n'
+        )
+        findings = run_rule('www-authenticate-401', source, tmp_path)
+        assert [finding.info for finding in findings] == [
+            {'scheme': 'token', 'status': '401', 'header': 'WWW-Authenticate'}
+        ]
 
 
 class TestConfiguration:

@@ -37,16 +37,17 @@ the final `SUMMARY` record when text output is truncated. Use
 `--max-findings 0` or `--max-findings-per-rule 0` only when the task requires
 every finding.
 
-## Three categories, and only one is on by default
+## Four categories, and only one is on by default
 
 | Category | What it means | Default |
 | --- | --- | --- |
 | `spec` | Follows from RAML's own semantics | **enabled** |
 | `security` | Follows from OWASP API Security and the OAuth RFCs | disabled |
+| `http` | Follows from RFC 9110 HTTP semantics | disabled |
 | `style` | Consistent RAML notation and documentation | disabled |
 
 Each category is also the ruleset that turns it on. `--explain RULE` lists the
-sources a standards rule cites, such as `RFC 9700 § 2.4` or `OWASP API4:2023`.
+sources a standards rule cites, such as `RFC 9110 § 15.5.2` or `OWASP API4:2023`.
 
 `spec` rules are not style preferences. `json-ref-siblings` fires because a
 draft-07 resolver silently ignores keys beside a `$ref`. `optional-and-nil` is
@@ -65,6 +66,13 @@ Add `style` when you also want notation and documentation conventions:
 ```yaml
 lint:
   extends: [recommended, security, style]
+```
+
+Add `http` for HTTP-level contradictions:
+
+```yaml
+lint:
+  extends: [recommended, security, http]
 ```
 
 `recommended` is the `spec` set. `all` is every rule registered, including any

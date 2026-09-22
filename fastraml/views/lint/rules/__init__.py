@@ -5,6 +5,14 @@ from __future__ import annotations
 from fastraml.views.lint.engine import Registry, Rule
 from fastraml.views.lint.rules.content import NoAmbiguousPaths
 from fastraml.views.lint.rules.document import UnusedTrait, UnusedType
+from fastraml.views.lint.rules.http import (
+    AllowHeader405,
+    ContentRangeHeader,
+    NoContentBody,
+    ProxyAuthenticate407,
+    RedirectLocation,
+    WwwAuthenticate401,
+)
 from fastraml.views.lint.rules.operations import GetWithBody, UnsecuredOperation
 from fastraml.views.lint.rules.schema import (
     DeprecatedSchemas,
@@ -107,6 +115,16 @@ def builtin_registry() -> Registry:
     )
     for rule in security_rules:
         registry.add(rule, sets=('security',))
+    http_rules: tuple[Rule, ...] = (
+        AllowHeader405(),
+        ContentRangeHeader(),
+        NoContentBody(),
+        ProxyAuthenticate407(),
+        RedirectLocation(),
+        WwwAuthenticate401(),
+    )
+    for rule in http_rules:
+        registry.add(rule, sets=('http',))
     style_rules: tuple[Rule, ...] = (
         AvoidExplicitInferredType(),
         DiscriminatorWithoutSubtypes(),

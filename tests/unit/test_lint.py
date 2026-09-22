@@ -630,7 +630,7 @@ class TestLintCli:
         assert main(['lint', str(root / 'api.raml')]) == EXIT_OK
         output = capsys.readouterr().out
         assert 'deprecated-schemas' in output
-        assert 'FAIL 0 errors, 1 warning and 1 info finding.' in output
+        assert 'WARN 0 errors, 1 warning and 1 info finding.' in output
 
     def test_human_color_is_tty_only_and_can_be_disabled(self, workspace, capsys, monkeypatch):
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
@@ -730,7 +730,7 @@ class TestLintCli:
         assert main(['lint', '--max-findings', '1', '--max-findings-per-rule', '0', str(root / 'api.raml')]) == EXIT_OK
         output = capsys.readouterr().out
         assert output.count('unused-type') == 1
-        assert '2 findings omitted (1 of 3 shown)' in output
+        assert '2 findings omitted (1 of 3 shown, most severe first)' in output
 
     def test_truncated_text_ends_with_compact_complete_counts(self, workspace, capsys):
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n  C: string\n'})
@@ -763,6 +763,47 @@ class TestLintCli:
         assert output['counts']['info'] == 3
         assert output['shownCounts']['info'] == 1
         assert output['omittedByRule'] == {'unused-type': 2}
+
+    def test_cli_truncation_never_hides_an_error_behind_info(self, workspace, capsys):
+        """docs/18 § 7: the error exits 1, so it must also be among those shown."""
+        declarations = ''.join(f'  T{index}: string\n' for index in range(5))
+        source = f'#%RAML 1.0\ntitle: t\ntypes:\n{declarations}/a:\n  get:\n    body:\n      application/json: string\n'
+        root = workspace({'api.raml': source})
+        arguments = ['lint', '--format', 'json', '--max-findings', '2', '--rule', 'get-with-body=error']
+        assert main([*arguments, str(root / 'api.raml')]) == EXIT_INVALID
+        output = json.loads(capsys.readouterr().out)
+        assert output['counts']['info'] == 5
+        assert 'get-with-body' in [finding['rule'] for finding in output['findings']]
+        assert output['shownCounts']['error'] == 1
+
+    @pytest.mark.parametrize(
+        ('arguments', 'code', 'status'),
+        [([], EXIT_OK, 'WARN'), (['--fail-on', 'warning'], EXIT_INVALID, 'FAIL')],
+    )
+    def test_fail_on_sets_the_exit_code_and_the_status_word_together(self, workspace, capsys, arguments, code, status):
+        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
+        assert main(['lint', '--no-color', *arguments, str(root / 'api.raml')]) == code
+        assert capsys.readouterr().out.splitlines()[-1].startswith(f'{status} 0 errors, 1 warning')
+
+    def test_clean_of_errors_and_warnings_is_ok(self):
+        info = Finding('unused-type', Severity.INFO, 'm', 'file:///a.raml', Position(1, 1))
+        assert render_findings([info], 'human').splitlines()[-1].startswith('OK ')
+
+    def test_human_names_files_under_root_relatively_and_brackets_info(self):
+        findings = [
+            Finding('r', Severity.WARNING, 'm', 'file:///w/api.raml', Position(1, 1), info={'a': 1, 'b': 2}),
+            Finding('r', Severity.WARNING, 'm', 'file:///elsewhere/lib.raml', Position(1, 1)),
+        ]
+        lines = render_findings(findings, 'human', root='file:///w/').splitlines()
+        assert lines[0] == ' api.raml'
+        assert lines[2] == ' 1:1  warning  m (a: 1, b: 2)  r'
+        assert lines[4] == ' file:///elsewhere/lib.raml'
+
+    def test_summary_columns_fit_the_longest_rule_id(self):
+        long_rule = 'bounded-additional-properties-and-then-some'
+        findings = [Finding(long_rule, Severity.WARNING, 'm', 'file:///a.raml', Position(1, 1))]
+        header, row, total = render_findings(findings, 'summary').splitlines()
+        assert row.index('1') == header.index('findings') == total.index('1')
 
     def test_zero_disables_finding_limits(self, workspace, capsys):
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n'})
@@ -869,6 +910,27 @@ class TestMetrics:
         report = limit_findings(findings, max_findings=2, max_findings_per_rule=1)
         assert [finding.rule for finding in report.findings] == ['noisy', 'other']
         assert report.rule_counts == {'noisy': 2, 'other': 1}
+
+    def test_bound_selects_worst_severity_first_and_keeps_reading_order(self):
+        """docs/18 § 7: a bound never shows info in place of an error or warning."""
+        findings = [
+            *(Finding(f'info-{i}', Severity.INFO, 'test', 'file:///a.raml', Position(i + 1, 1)) for i in range(5)),
+            Finding('late-warning', Severity.WARNING, 'test', 'file:///a.raml', Position(10, 1)),
+            Finding('late-error', Severity.ERROR, 'test', 'file:///b.raml', Position(1, 1)),
+        ]
+        report = limit_findings(findings, max_findings=3)
+        assert [finding.rule for finding in report.findings] == ['info-0', 'late-warning', 'late-error']
+        assert report.severity_counts[Severity.INFO] == 5
+
+    def test_per_rule_bound_counts_per_source_file(self):
+        """docs/18 § 7: one file cannot spend a rule's allowance for every other file."""
+        findings = [
+            Finding('noisy', Severity.WARNING, 'test', 'file:///a.raml', Position(1, 1)),
+            Finding('noisy', Severity.WARNING, 'test', 'file:///a.raml', Position(2, 1)),
+            Finding('noisy', Severity.WARNING, 'test', 'file:///b.raml', Position(1, 1)),
+        ]
+        report = limit_findings(findings, max_findings_per_rule=1)
+        assert [finding.location for finding in report.findings] == ['file:///a.raml', 'file:///b.raml']
 
     def test_default_report_bounds_a_large_noisy_document(self, tmp_path):
         declarations = ''.join(f'  T{index}: string\n' for index in range(1001))

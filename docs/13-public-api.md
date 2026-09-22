@@ -360,7 +360,7 @@ fastraml deps FILE NAME [--kind K] [--depth N] [--limit N]   # what this is made
 fastraml show FILE NAME [--depth N]     # the effective view of a type or endpoint
 fastraml compat OLD NEW [--types] [--breaking-only] [--severity S] [--json] [-o FILE]
 fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json] [-o FILE]
-fastraml lint [--config FILE] [--severity S] [--rule ID[=SEVERITY|off]]
+fastraml lint [--config FILE] [--severity S] [--fail-on S] [--rule ID[=SEVERITY|off]]
               [--format human|text|json|summary]
               [--max-findings N] [--max-findings-per-rule N]
               [--no-color] [--list-rules] [--explain RULE] [--metrics]

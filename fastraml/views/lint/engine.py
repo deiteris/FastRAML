@@ -358,7 +358,13 @@ def limit_findings(
     max_findings: int | None = None,
     max_findings_per_rule: int | None = None,
 ) -> LintReport:
-    """Bound a sorted report while preserving totals for omitted findings."""
+    """Bound a sorted report while preserving totals for omitted findings.
+
+    Selection is worst severity first, so a bound can never show an info finding
+    in place of an error or warning; the survivors keep their input order. The
+    per-rule bound counts per source file, so one file cannot spend a rule's
+    whole allowance and hide it in the rest (docs/18 § 7).
+    """
     for name, value in (('max_findings', max_findings), ('max_findings_per_rule', max_findings_per_rule)):
         if value is not None and value < 1:
             raise ValueError(f'{name} must be positive or None')
@@ -366,20 +372,30 @@ def limit_findings(
     severity_counts = dict.fromkeys(Severity, 0)
     rule_counts: dict[str, int] = {}
     rule_severities: dict[str, Severity] = {}
-    shown: list[Finding] = []
-    shown_by_rule: dict[str, int] = {}
     for finding in findings:
         severity_counts[finding.severity] += 1
         rule_counts[finding.rule] = rule_counts.get(finding.rule, 0) + 1
         previous = rule_severities.get(finding.rule)
         if previous is None or _RANK.rank(finding.severity) < _RANK.rank(previous):
             rule_severities[finding.rule] = finding.severity
-        if max_findings_per_rule is not None and shown_by_rule.get(finding.rule, 0) >= max_findings_per_rule:
-            continue
-        if max_findings is not None and len(shown) >= max_findings:
-            continue
-        shown.append(finding)
-        shown_by_rule[finding.rule] = shown_by_rule.get(finding.rule, 0) + 1
+
+    if max_findings is None and max_findings_per_rule is None:
+        shown = list(findings)
+    else:
+        # A stable sort: within one severity, the input's reading order decides.
+        by_severity = sorted(range(len(findings)), key=lambda index: _RANK.rank(findings[index].severity))
+        selected: list[int] = []
+        per_rule: dict[tuple[str, str], int] = {}
+        for index in by_severity:
+            if max_findings is not None and len(selected) >= max_findings:
+                break
+            finding = findings[index]
+            key = (finding.location, finding.rule)
+            if max_findings_per_rule is not None and per_rule.get(key, 0) >= max_findings_per_rule:
+                continue
+            selected.append(index)
+            per_rule[key] = per_rule.get(key, 0) + 1
+        shown = [findings[index] for index in sorted(selected)]
     return LintReport(
         findings=shown,
         total_findings=len(findings),

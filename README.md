@@ -207,9 +207,11 @@ fastraml lint api.raml --format text          # one line per finding; also json 
 
 `lint` exits 1 when any finding has `error` severity, or when a document fails
 to parse. Built-in rules report at `warning` or `info`, so a run fails only on
-rules you have raised to `error`. Every file is linted before the command exits.
-Output is capped at 1,000 findings, and 100 per rule; the exit status still
-counts every finding, and `--max-findings 0` removes the cap.
+rules you have raised to `error`, or on warnings too with `--fail-on warning`.
+Every file is linted before the command exits. Output is capped at 1,000
+findings, and 100 per rule in each file, keeping errors and warnings ahead of
+info; the exit status still counts every finding, and `--max-findings 0`
+removes the cap.
 
 Keep lasting policy in the `lint:` section of the [configuration](#configuration)
 file:

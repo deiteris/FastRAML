@@ -31,13 +31,15 @@ failure.
 ## `fastraml lint FILE [FILE ...]`
 
 Check the effective document against named rules. Exits 1 when any finding is at
-`error` severity; `warning` and `info` do not fail the run.
+the `--fail-on` severity or worse; by default `warning` and `info` do not fail
+the run.
 
 - `--config FILE` — lint configuration in YAML: which rulesets, categories and
   rules are enabled, and at what severity.
 - `--severity S` — show this severity **and everything worse**. Values: `error`,
   `warning`, `info`. Default `info`, which shows everything. Filters the report;
   does not change the exit code.
+- `--fail-on error|warning` — the least severity that exits 1. Default `error`.
 - `--rule ID[=SEVERITY|off]` — enable one rule, enable and regrade it, or disable
   it for this run. Repeat for different rules. Overrides the configuration file;
   duplicate IDs are errors.
@@ -49,8 +51,9 @@ Check the effective document against named rules. Exits 1 when any finding is at
   disabled by `NO_COLOR`, a pipe, and `-o`.
 - `--max-findings N` — show at most `N` findings across the run. Default 1,000;
   `0` disables the bound.
-- `--max-findings-per-rule N` — show at most `N` findings from one rule. Default
-  100; `0` disables the bound. Truncated reports retain complete counts.
+- `--max-findings-per-rule N` — show at most `N` findings from one rule in one
+  file. Default 100; `0` disables the bound. Both bounds keep errors, then
+  warnings, then info. Truncated reports retain complete counts.
 - `--list-rules` — every rule with its category, default severity and providing
   distribution, then exit. Needs no document.
 - `--explain RULE` — one rule's summary, rationale and its good and bad RAML,

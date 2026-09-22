@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from fastraml.views.lint.engine import LintReport, Severity, limit_findings
+from fastraml.views.lint.engine import LintReport, Severity, at_least, limit_findings
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -35,7 +35,28 @@ def _count(count: int, noun: str) -> str:
     return f'{count} {noun if count == 1 else noun + "s"}'
 
 
-def _render_human(report: LintReport, *, color: bool) -> str:
+def _message(finding: Finding) -> str:
+    """The message with its `info` in parentheses, for a reader.
+
+    Not `rendered_message`, whose colon-joined form keeps docs/11 § 6 for the
+    stable text and JSON records but reads as one run-on value when chained:
+    `method: get: protocols: unspecified`.
+    """
+    if not finding.info:
+        return finding.message
+    details = ', '.join(f'{key}: {value}' for key, value in finding.info.items())
+    return f'{finding.message} ({details})'
+
+
+def _status(report: LintReport, fail_on: Severity) -> str:
+    """`FAIL` exactly when the findings fail the run, else `WARN` or `OK`."""
+    counts = report.severity_counts
+    if any(counts.get(severity, 0) for severity in at_least(fail_on)):
+        return 'FAIL'
+    return 'WARN' if counts.get(Severity.ERROR, 0) or counts.get(Severity.WARNING, 0) else 'OK'
+
+
+def _render_human(report: LintReport, *, color: bool, fail_on: Severity, root: str | None) -> str:
     """A terminal report grouped for scanning, in Vale's compact style."""
     groups: dict[str, list[Finding]] = {}
     for finding in report.findings:
@@ -46,25 +67,30 @@ def _render_human(report: LintReport, *, color: bool) -> str:
     for location, findings in groups.items():
         if lines:
             lines.append('')
-        lines.extend((f' {_styled(location, _UNDERLINE, color=color)}', ''))
+        # Only a file under `root` is shortened: an ascent through `../` to
+        # another drive or tree is longer to read than the URI it replaces.
+        shown = location.removeprefix(root) if root and location.startswith(root) else location
+        lines.extend((f' {_styled(shown, _UNDERLINE, color=color)}', ''))
         width = max((len(str(finding.position)) if finding.position.is_known else 1) for finding in findings)
         for finding in findings:
             position = str(finding.position) if finding.position.is_known else '-'
             severity = _styled(f'{finding.severity:<7}', styles[finding.severity], color=color)
-            lines.append(f' {position:<{width}}  {severity}  {finding.rendered_message()}  {finding.rule}')
+            lines.append(f' {position:<{width}}  {severity}  {_message(finding)}  {finding.rule}')
 
     if lines:
         lines.append('')
     if report.truncated:
         omitted = (
-            f'... {report.omitted_findings} findings omitted ({len(report.findings)} of {report.total_findings} shown)'
+            f'... {report.omitted_findings} findings omitted ({len(report.findings)} of '
+            f'{report.total_findings} shown, most severe first); --max-findings 0 '
+            '--max-findings-per-rule 0 shows all, --format summary counts them by rule'
         )
         lines.extend((omitted, ''))
 
     errors = report.severity_counts.get(Severity.ERROR, 0)
     warnings = report.severity_counts.get(Severity.WARNING, 0)
     infos = report.severity_counts.get(Severity.INFO, 0)
-    status = 'FAIL' if errors or warnings else 'OK'
+    status = _status(report, fail_on)
     error_text = _styled(_count(errors, 'error'), _RED, color=color)
     warning_text = _styled(_count(warnings, 'warning'), _YELLOW, color=color)
     info_text = _styled(f'{infos} info {"finding" if infos == 1 else "findings"}', _BLUE, color=color)
@@ -72,8 +98,19 @@ def _render_human(report: LintReport, *, color: bool) -> str:
     return '\n'.join(lines) + '\n'
 
 
-def render_findings(findings: Sequence[Finding] | LintReport, format_: str, *, color: bool = False) -> str:
+def render_findings(
+    findings: Sequence[Finding] | LintReport,
+    format_: str,
+    *,
+    color: bool = False,
+    fail_on: Severity = Severity.ERROR,
+    root: str | None = None,
+) -> str:
     """One report, in the format the CLI was asked for.
+
+    `fail_on` is the least severity that fails the run, so the human status word
+    agrees with the exit code. `root` is a directory URI ending in `/`; human
+    output names files under it relatively. `text` and JSON keep whole URIs.
 
     `text` is the fallback rather than a named branch: an unknown format is the
     CLI's to reject, and `argparse` already does with a `choices` list.
@@ -81,7 +118,7 @@ def render_findings(findings: Sequence[Finding] | LintReport, format_: str, *, c
     report = findings if isinstance(findings, LintReport) else limit_findings(findings)
     shown = report.findings
     if format_ == 'human':
-        return _render_human(report, color=color)
+        return _render_human(report, color=color, fail_on=fail_on, root=root)
     if format_ == 'json':
         counts = {str(severity): report.severity_counts.get(severity, 0) for severity in Severity}
         shown_counts = {str(severity): sum(f.severity is severity for f in shown) for severity in Severity}
@@ -110,16 +147,17 @@ def render_findings(findings: Sequence[Finding] | LintReport, format_: str, *, c
             + '\n'
         )
     if format_ == 'summary':
-        lines = ['severity  rule                         findings']
         rank = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.INFO: 2}
         rules = sorted(
             report.rule_counts,
             key=lambda rule: (rank[report.rule_severities[rule]], -report.rule_counts[rule], rule),
         )
-        lines.extend(f'{report.rule_severities[rule]:<9} {rule:<28} {report.rule_counts[rule]}' for rule in rules)
-        lines.append(f'total                                      {report.total_findings}')
+        width = max(len('rule'), *map(len, rules))
+        lines = [f'{"severity":<9} {"rule":<{width}} findings']
+        lines.extend(f'{report.rule_severities[rule]:<9} {rule:<{width}} {report.rule_counts[rule]}' for rule in rules)
+        lines.append(f'{"total":<{10 + width}} {report.total_findings}')
         if report.truncated:
-            lines.append(f'shown                                      {len(shown)}')
+            lines.append(f'{"shown":<{10 + width}} {len(shown)}')
         return '\n'.join(lines) + '\n'
     text = ''.join(
         f'{str(finding.severity).upper()} {finding.rule} {finding.where} {finding.rendered_message()}\n'

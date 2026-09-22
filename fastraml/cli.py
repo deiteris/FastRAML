@@ -174,6 +174,12 @@ def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> 
         help='show this severity and worse (default: info)',
     )
     lint.add_argument(
+        '--fail-on',
+        choices=('error', 'warning'),
+        default='error',
+        help='exit 1 when a finding has this severity or worse (default: error)',
+    )
+    lint.add_argument(
         '--rule',
         action='append',
         default=[],
@@ -420,13 +426,15 @@ def _info(args: argparse.Namespace) -> int:
 
 
 def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0915 - command failures return at their source
+    from pathlib import Path  # noqa: PLC0415 - lint's display root only
+
     import yaml  # noqa: PLC0415 - lint section handoff only
 
     from fastraml.errors import RamlError  # noqa: PLC0415
     from fastraml.parser.entry import parse_from_path  # noqa: PLC0415
+    from fastraml.uris import path_to_file_uri  # noqa: PLC0415
     from fastraml.views.lint import (  # noqa: PLC0415
         Linter,
-        Severity,
         at_least,
         builtin_registry,
         discover_plugins,
@@ -504,7 +512,9 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0915 - command 
         max_findings=args.max_findings or None,
         max_findings_per_rule=args.max_findings_per_rule or None,
     )
-    failed = failed or any(finding.severity is Severity.ERROR for finding in findings)
+    fail_on = parse_severity(args.fail_on)
+    failing = at_least(fail_on)
+    failed = failed or any(finding.severity in failing for finding in findings)
     color = (
         args.format == 'human'
         and not args.no_color
@@ -512,7 +522,8 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0915 - command 
         and 'NO_COLOR' not in os.environ
         and sys.stdout.isatty()
     )
-    emitted = _emit_document(args, render_findings(report, args.format, color=color))
+    root = path_to_file_uri(Path.cwd()).rstrip('/') + '/'
+    emitted = _emit_document(args, render_findings(report, args.format, color=color, fail_on=fail_on, root=root))
     return EXIT_INVALID if failed or emitted == EXIT_INVALID else EXIT_OK
 
 

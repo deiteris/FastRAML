@@ -431,12 +431,14 @@ load `./rules/*.ts`. That solves a problem Go has and Python does not.
 ## 7. Output and exit codes
 
 Findings sort by location, position, then by rule id. Four renderers serve four
-readers: `human` (the default) is a terminal report grouped by source; `text` is
+readers: `human` (the default) is a terminal report grouped by source, naming a
+file under the working directory relatively and a finding's `info` in
+parentheses; `text` is
 one compact, stable, uncoloured record per finding; JSON is the integration
 contract; and `summary` is a table of complete counts by rule.
 
 ```
-fastraml lint [--config FILE] [--severity S] [--rule ID[=SEVERITY|off]]
+fastraml lint [--config FILE] [--severity S] [--fail-on S] [--rule ID[=SEVERITY|off]]
               [--format human|text|json|summary]
               [--max-findings N] [--max-findings-per-rule N]
               [--no-color] [--list-rules] [--explain RULE] [--metrics]
@@ -448,9 +450,10 @@ then `line:column`, severity, message and rule columns, followed by complete
 severity counts. Errors are red, warnings yellow and info findings blue, but the
 labels carry the same information without colour. Colour is emitted only to an
 interactive stdout; `NO_COLOR`, `--no-color`, a pipe, and `-o` all disable it.
-The final `OK` means there are no errors or warnings, not that the report is
-empty, matching Vale's treatment of suggestions; `FAIL` means at least one error
-or warning was reported. ASCII status words keep the default usable in Windows
+The final status word agrees with the exit code: `FAIL` means the run exits 1,
+`WARN` that it exits 0 with warnings reported, and `OK` that there are no errors
+or warnings — not that the report is empty, matching Vale's treatment of
+suggestions. ASCII status words keep the default usable in Windows
 consoles whose output encoding cannot represent Vale's check and cross marks.
 
 `text` is the representation to put directly in an agent's context or consume a
@@ -465,7 +468,8 @@ JSON is for a program that parses the report before using it, not inherently an
 canonical location and formatted `position` and also exposes numeric `line`,
 `column`, `endLine` and `endColumn` fields. Unknown numeric positions are null.
 
-Exit 1 if any finding is at `error`, else 0 — and **every file is linted before
+Exit 1 if any finding is at the `--fail-on` severity or worse (default
+`error`; `warning` is the other choice), else 0 — and **every file is linted before
 exiting**, matching `validate` ([13](13-public-api.md) § 8) and for the same
 reason: the case the tool exists for is a directory in CI.
 
@@ -490,8 +494,14 @@ output states the omitted count, truncated text adds a compact `SUMMARY` record,
 JSON carries `total`, `shown`, `truncated`, complete severity counts and
 `omittedByRule`, and summary output reports complete per-rule totals. Exit status
 also uses the complete findings, so truncation can never hide an error from CI.
-Per-rule limiting runs before the global bound, preventing one broad style rule
-from consuming the entire report.
+Selection is by severity first: errors, then warnings, then info, each in
+reading order, and the survivors are then shown in reading order. A bound
+therefore never shows an info finding while an error or warning is omitted;
+before this, 1,000 info findings early in a large document hid a later error
+that still set the exit code. The per-rule bound counts per source file, so a
+rule cannot spend its allowance in one file and vanish from the next, and it
+applies before the global bound, preventing one broad style rule from consuming
+the entire report. Human output names the flags that lift both bounds.
 
 `Linter.run(raml)` remains complete and unbounded for compatibility. Consumers
 that display findings use `Linter.report(raml) -> LintReport`, whose defaults are

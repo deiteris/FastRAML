@@ -30,7 +30,9 @@ fastraml lint --explain meaningless-media-type-schema  # one rule, with examples
 `--list-rules` and `--explain` need no document and no parse, so they work in a
 checkout with nothing to lint yet.
 
-The CLI shows at most 1,000 findings overall and 100 per rule by default. Read
+The CLI shows at most 1,000 findings overall and 100 per rule per file by
+default, choosing errors, then warnings, then info, so a truncated report never
+omits an error it could have shown. Read
 the final `SUMMARY` record when text output is truncated. Use
 `--max-findings 0` or `--max-findings-per-rule 0` only when the task requires
 every finding.
@@ -133,13 +135,14 @@ fastraml lint -w . api.raml --format text --severity error
 
 Exit codes:
 
-- `0` — no finding at `error` severity.
-- `1` — at least one `error`, or a file failed to parse.
+- `0` — no finding at the `--fail-on` severity or worse.
+- `1` — at least one such finding, or a file failed to parse.
 - `2` — the command line was wrong.
 
-Only `error` affects the exit code. `warning` and `info` are reported and do not
-fail the run, so a default gate passes until you raise something to `error` in
-the config.
+`--fail-on` defaults to `error`, so `warning` and `info` are reported and do not
+fail the run, and a default gate passes until you raise something to `error` in
+the config. `--fail-on warning` fails on warnings too. Human output ends in
+`FAIL` exactly when the run exits 1, `WARN` when it exits 0 with warnings.
 
 **Every file is linted before it exits**, so pass the whole directory and read
 the full report in one run rather than fixing one file at a time.

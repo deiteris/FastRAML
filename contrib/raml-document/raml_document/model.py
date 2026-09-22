@@ -26,6 +26,7 @@ __all__ = [
     'UNSET',
     'Body',
     'Document',
+    'Documentation',
     'Method',
     'Parameters',
     'Resource',
@@ -304,6 +305,21 @@ class SecurityScheme:
 
 
 @dataclass(slots=True)
+class Documentation:
+    """One entry of the root `documentation:` node.
+
+    Both keys are required: RAML has no untitled documentation and no empty
+    one. `content` is markdown.
+    """
+
+    title: str
+    content: str
+
+    def render(self) -> Yaml:
+        return {'title': self.title, 'content': self.content}
+
+
+@dataclass(slots=True)
 class Document:
     """A RAML 1.0 API definition: the root node and everything under it."""
 
@@ -312,6 +328,7 @@ class Document:
     description: str | None = None
     base_uri: str | None = None
     base_uri_parameters: Parameters = field(default_factory=dict)
+    documentation: list[Documentation] = field(default_factory=list)
     types: dict[str, TypeDecl] = field(default_factory=dict)
     security_schemes: dict[str, SecurityScheme] = field(default_factory=dict)
     root: Resource = field(default_factory=Resource)
@@ -327,6 +344,8 @@ class Document:
             out['baseUri'] = self.base_uri
         if self.base_uri_parameters:
             out['baseUriParameters'] = {name: decl.render() for name, decl in self.base_uri_parameters.items()}
+        if self.documentation:
+            out['documentation'] = [entry.render() for entry in self.documentation]
         if self.types:
             out['types'] = {name: decl.render() for name, decl in self.types.items()}
         if self.security_schemes:

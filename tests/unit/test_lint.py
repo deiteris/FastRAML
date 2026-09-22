@@ -739,6 +739,11 @@ class TestLintCli:
         assert 'unused-type' in summary
         assert '2' in summary
 
+    def test_summary_of_a_clean_file_is_a_zero_total(self):
+        header, total = render_findings([], 'summary').splitlines()
+        assert header.split() == ['severity', 'rule', 'findings']
+        assert total.split() == ['total', '0']
+
     def test_cli_limits_output_and_reports_truncation(self, workspace, capsys):
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n  C: string\n'})
         assert main(['lint', '--max-findings', '1', '--max-findings-per-rule', '0', str(root / 'api.raml')]) == EXIT_OK

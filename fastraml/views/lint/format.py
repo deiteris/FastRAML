@@ -156,7 +156,8 @@ def render_findings(
             report.rule_counts,
             key=lambda rule: (report.rule_severities[rule].rank, -report.rule_counts[rule], rule),
         )
-        width = max(len('rule'), *map(len, rules))
+        width = max((len(rule) for rule in rules), default=0)
+        width = max(width, len('rule'))
         lines = [f'{"severity":<9} {"rule":<{width}} findings']
         lines.extend(f'{report.rule_severities[rule]:<9} {rule:<{width}} {report.rule_counts[rule]}' for rule in rules)
         lines.append(f'{"total":<{10 + width}} {report.total_findings}')

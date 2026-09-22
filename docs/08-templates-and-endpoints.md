@@ -585,3 +585,16 @@ propagated: it belongs to the API, not to a resource.
 A mapping that mixes media-type keys and non-media-type keys is an error listing
 each offending key — this catches the common
 `body: {application/json: ..., type: Foo}` mistake.
+
+### 8.4 The query string
+
+`queryString` and `queryParameters` are mutually exclusive on one method, checked
+as the request decodes. Spec § The Query String as a Whole also restricts the
+type: after every union is expanded, each base type must be a scalar type or
+`object`. That is a question about the flattened type, so it belongs to P10
+([10](10-validation.md) § 2) and runs only with `validate=True`, over every
+operation's request (a trait's `queryString` included, since traits are merged by
+then) and every security scheme's `describedBy`. An array anywhere in the
+flattened union's members is `query string must be a scalar or object type`; an
+array-typed *property* of an object query string is fine, and is how a parameter
+repeats.

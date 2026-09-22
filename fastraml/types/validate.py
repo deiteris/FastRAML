@@ -102,6 +102,7 @@ def validate_shapes(raml: Raml) -> None:
     cache: dict[int, BaseShape] = {}
     accumulator = Accumulator()
     _validate_types(raml, cache, accumulator)
+    _validate_query_strings(raml, cache, accumulator)
     _validate_domain_extensions(raml, cache, accumulator)
     accumulator.raise_if_any()
 
@@ -120,6 +121,55 @@ def _validate_types(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator) -
             except RamlError as err:
                 acc.add(err)
             _validate_commons(flattened, known, acc, set())
+
+
+def _validate_query_strings(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator) -> None:
+    """Spec § The Query String as a Whole: every base type is a scalar or `object`.
+
+    After union expressions are expanded at every level, which is what the
+    flattened form holds, so an array anywhere in its `any_of` closure is the
+    fault. Every query string is also a declaration in `fragment_typedefs`, so
+    one that cannot be unwrapped has already been reported by `_validate_types`.
+    """
+    for base in _query_strings(raml):
+        try:
+            flattened = _ensure_unwrapped(raml, base, cache)
+        except RamlError:
+            continue
+        if _admits_array(flattened):
+            acc.add(failure('query string must be a scalar or object type', base.location, base.key_pos))
+
+
+def _query_strings(raml: Raml) -> Iterator[BaseShape]:
+    """Every operation's query string, a trait's included, then every `describedBy`'s."""
+    for endpoint in raml.endpoints.values():
+        for operation in endpoint.operations.values():
+            if operation.request is not None and operation.request.query_string is not None:
+                yield operation.request.query_string
+    for fragment in raml.fragments.values():
+        schemes = list(getattr(fragment, 'security_schemes', {}).values())
+        # A SecurityScheme fragment is one scheme; a Trait or ResourceType
+        # fragment's definition has no `described_by`.
+        schemes.append(getattr(fragment, 'definition', None))
+        for scheme in schemes:
+            described_by = getattr(scheme, 'described_by', None)
+            if described_by is not None and described_by.query_string is not None:
+                yield described_by.query_string
+
+
+def _admits_array(base: BaseShape) -> bool:
+    stack = [base]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if current.id in seen:
+            continue
+        seen.add(current.id)
+        if isinstance(current.shape, ArrayShape):
+            return True
+        if isinstance(current.shape, UnionShape):
+            stack.extend(current.shape.any_of or ())
+    return False
 
 
 def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) -> BaseShape:

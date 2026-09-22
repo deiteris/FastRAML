@@ -506,14 +506,14 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0915 - command 
         # json` run remains parseable when piped (docs/13 section 8).
         print(f'== {path}', file=sys.stderr)
         print(render_metrics(run.metrics, args.format), end='', file=sys.stderr)
-    shown = [finding for finding in findings if finding.severity in at_least(parse_severity(args.severity))]
+    visible = at_least(parse_severity(args.severity))
+    shown = [finding for finding in findings if finding.severity in visible]
     report = limit_findings(
         shown,
         max_findings=args.max_findings or None,
         max_findings_per_rule=args.max_findings_per_rule or None,
     )
-    fail_on = parse_severity(args.fail_on)
-    failing = at_least(fail_on)
+    failing = at_least(parse_severity(args.fail_on))
     failed = failed or any(finding.severity in failing for finding in findings)
     color = (
         args.format == 'human'
@@ -523,7 +523,7 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0915 - command 
         and sys.stdout.isatty()
     )
     root = path_to_file_uri(Path.cwd()).rstrip('/') + '/'
-    emitted = _emit_document(args, render_findings(report, args.format, color=color, fail_on=fail_on, root=root))
+    emitted = _emit_document(args, render_findings(report, args.format, color=color, failed=failed, root=root))
     return EXIT_INVALID if failed or emitted == EXIT_INVALID else EXIT_OK
 
 

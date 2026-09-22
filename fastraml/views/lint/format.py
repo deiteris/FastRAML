@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from fastraml.views.lint.engine import LintReport, Severity, at_least, limit_findings
+from fastraml.views.lint.engine import LintReport, Severity, limit_findings
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -48,15 +48,20 @@ def _message(finding: Finding) -> str:
     return f'{finding.message} ({details})'
 
 
-def _status(report: LintReport, fail_on: Severity) -> str:
-    """`FAIL` exactly when the findings fail the run, else `WARN` or `OK`."""
+def _status(report: LintReport, *, failed: bool | None) -> str:
+    """`FAIL` exactly when the run fails, else `WARN` or `OK`.
+
+    `failed` is the caller's verdict, which may rest on more than these
+    findings: a file that did not parse, or findings below a display threshold.
+    Without one, a run fails on an error, as `--fail-on` does by default.
+    """
     counts = report.severity_counts
-    if any(counts.get(severity, 0) for severity in at_least(fail_on)):
+    if failed if failed is not None else counts.get(Severity.ERROR, 0):
         return 'FAIL'
     return 'WARN' if counts.get(Severity.ERROR, 0) or counts.get(Severity.WARNING, 0) else 'OK'
 
 
-def _render_human(report: LintReport, *, color: bool, fail_on: Severity, root: str | None) -> str:
+def _render_human(report: LintReport, *, color: bool, failed: bool | None, root: str | None) -> str:
     """A terminal report grouped for scanning, in Vale's compact style."""
     groups: dict[str, list[Finding]] = {}
     for finding in report.findings:
@@ -90,7 +95,7 @@ def _render_human(report: LintReport, *, color: bool, fail_on: Severity, root: s
     errors = report.severity_counts.get(Severity.ERROR, 0)
     warnings = report.severity_counts.get(Severity.WARNING, 0)
     infos = report.severity_counts.get(Severity.INFO, 0)
-    status = _status(report, fail_on)
+    status = _status(report, failed=failed)
     error_text = _styled(_count(errors, 'error'), _RED, color=color)
     warning_text = _styled(_count(warnings, 'warning'), _YELLOW, color=color)
     info_text = _styled(f'{infos} info {"finding" if infos == 1 else "findings"}', _BLUE, color=color)
@@ -103,13 +108,13 @@ def render_findings(
     format_: str,
     *,
     color: bool = False,
-    fail_on: Severity = Severity.ERROR,
+    failed: bool | None = None,
     root: str | None = None,
 ) -> str:
     """One report, in the format the CLI was asked for.
 
-    `fail_on` is the least severity that fails the run, so the human status word
-    agrees with the exit code. `root` is a directory URI ending in `/`; human
+    `failed` is whether the run fails, so the human status word agrees with the
+    exit code; `None` means it fails on an error. `root` is a directory URI ending in `/`; human
     output names files under it relatively. `text` and JSON keep whole URIs.
 
     `text` is the fallback rather than a named branch: an unknown format is the
@@ -118,7 +123,7 @@ def render_findings(
     report = findings if isinstance(findings, LintReport) else limit_findings(findings)
     shown = report.findings
     if format_ == 'human':
-        return _render_human(report, color=color, fail_on=fail_on, root=root)
+        return _render_human(report, color=color, failed=failed, root=root)
     if format_ == 'json':
         counts = {str(severity): report.severity_counts.get(severity, 0) for severity in Severity}
         shown_counts = {str(severity): sum(f.severity is severity for f in shown) for severity in Severity}

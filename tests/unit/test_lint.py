@@ -785,6 +785,13 @@ class TestLintCli:
         assert main(['lint', '--no-color', *arguments, str(root / 'api.raml')]) == code
         assert capsys.readouterr().out.splitlines()[-1].startswith(f'{status} 0 errors, 1 warning')
 
+    def test_status_word_fails_when_the_failing_findings_are_hidden(self, workspace, capsys):
+        """docs/18 § 7: `--severity` hides the warning, `--fail-on` still fails on it."""
+        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
+        arguments = ['lint', '--no-color', '--severity', 'error', '--fail-on', 'warning', str(root / 'api.raml')]
+        assert main(arguments) == EXIT_INVALID
+        assert capsys.readouterr().out.splitlines()[-1].startswith('FAIL ')
+
     def test_clean_of_errors_and_warnings_is_ok(self):
         info = Finding('unused-type', Severity.INFO, 'm', 'file:///a.raml', Position(1, 1))
         assert render_findings([info], 'human').splitlines()[-1].startswith('OK ')

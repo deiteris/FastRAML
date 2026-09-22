@@ -117,16 +117,17 @@ def parse_severity(value: str) -> Severity:
 class Category(StrEnum):
     """What kind of judgement a rule makes — docs/18 § 1.
 
-    Not a taxonomy of subject matter. `SPEC` and `SECURITY` are the two
-    provenance groups that ship here, and `STYLE` exists so a plugin's rules
-    land somewhere that is visibly not either of them.
+    Not a taxonomy of subject matter. `SPEC` is RAML's own semantics;
+    `SECURITY` follows from a published standard; `STYLE` is taste. Each
+    built-in category is also the ruleset that enables it, so a project turns
+    a standard on and grades it under one name.
     """
 
     #: Derived from RAML's own semantics (§ 1 group 1).
     SPEC = 'spec'
-    #: Derived from a published standard, off by default (§ 1 group 2).
+    #: Derived from OWASP and the OAuth RFCs, off by default (§ 1 group 2).
     SECURITY = 'security'
-    #: Taste. No built-in is in this category (§ 1 group 3).
+    #: Taste, off by default (§ 1 group 3).
     STYLE = 'style'
 
 

@@ -87,10 +87,15 @@ class TestRuleExamples:
         input_rules = {
             'bounded-additional-properties',
             'bounded-array',
+            'bounded-file',
             'bounded-integer',
+            'bounded-number',
             'integer-format',
+            'nested-quantifier-pattern',
             'no-additional-properties',
+            'restricted-file-types',
             'restricted-string',
+            'unanchored-string-pattern',
             'unbounded-string',
         }
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
@@ -516,6 +521,17 @@ class TestRuleExamples:
         assert not Linter(builtin_registry(), config).run(raml)
 
 
+def run_rule(rule_id: str, source: str, tmp_path, **options):
+    config = Config(extends=(), rules=(RuleSetting(id=rule_id),))
+    raml = parse_from_string(
+        source,
+        file_name='api.raml',
+        base_dir=tmp_path,
+        options=ParseOptions(unwrap=True, validate=False, retain_source=True, **options),
+    )
+    return Linter(builtin_registry(), config).run(raml)
+
+
 #: `RuleMeta.references` entries: an OWASP category or document, an RFC clause, or a CWE.
 REFERENCE = re.compile(
     r'^(OWASP API(10|[1-9]):2023|OWASP [A-Z][A-Za-z ]+|RFC \d+( (§ [\d.]+|Appendix [A-Z]))?|CWE-\d+)$'
@@ -542,6 +558,95 @@ class TestStandardsRules:
         for category in STANDARD_CATEGORIES:
             expected = [rule.meta.id for rule in registry.all() if rule.meta.category is category]
             assert registry.ids_in(str(category)) == expected
+
+    @pytest.mark.parametrize(
+        ('pattern', 'anchored'),
+        [
+            ('^[a-z]+$', True),
+            (r'\A[a-z]+\Z', True),
+            ('^(?:a|b)$', True),
+            ('^a$|^b$', True),
+            ('(?i)^a$', True),
+            ('[a-z]+', False),
+            ('^a|b$', False),
+            ('(?m)^a$', False),
+            (r'^a\$', False),
+        ],
+    )
+    def test_unanchored_string_pattern_reads_alternation_and_line_mode(self, pattern, anchored, tmp_path):
+        source = f"#%RAML 1.0\ntitle: t\n/a:\n  get:\n    queryParameters:\n      q:\n        pattern: '{pattern}'\n"
+        findings = run_rule('unanchored-string-pattern', source, tmp_path)
+        assert bool(findings) is not anchored
+
+    def test_unanchored_string_pattern_ignores_response_only_shapes(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        body:\n'
+            "          application/json:\n            type: string\n            pattern: '[a-z]+'\n"
+        )
+        assert not run_rule('unanchored-string-pattern', source, tmp_path)
+
+    @pytest.mark.parametrize(
+        ('pattern', 'nested'),
+        [
+            ('^([a-z]+)+$', True),
+            (r'^(\w+\s?)*$', True),
+            ('^((a+))+$', True),
+            ('^(?:a+)+$', True),
+            ('^(a*){2,}$', True),
+            ('^[a-z]+(-[a-z]+)*$', False),
+            (r'^(\d+,)*$', False),
+            ('^(a+)?$', False),
+            ('^(ab)*$', False),
+            ('^a++$', False),
+        ],
+    )
+    def test_nested_quantifier_needs_a_repeated_group_without_a_separator(self, pattern, nested, tmp_path):
+        source = f"#%RAML 1.0\ntitle: t\n/a:\n  get:\n    queryParameters:\n      q:\n        pattern: '{pattern}'\n"
+        assert bool(run_rule('nested-quantifier-pattern', source, tmp_path)) is nested
+
+    def test_nested_quantifier_is_silent_under_re2(self, tmp_path):
+        pytest.importorskip('re2')
+        source = "#%RAML 1.0\ntitle: t\n/a:\n  get:\n    queryParameters:\n      q:\n        pattern: '^(a+)+$'\n"
+        assert not run_rule('nested-quantifier-pattern', source, tmp_path, regex_engine='re2')
+
+    def test_credential_in_query_reports_a_query_string_too(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  token:\n    type: Pass Through\n'
+            '    describedBy:\n      queryString:\n        properties:\n          key: string\n'
+        )
+        findings = run_rule('credential-in-query', source, tmp_path)
+        assert [finding.info for finding in findings] == [{'scheme': 'token', 'parameter': 'queryString'}]
+
+    def test_oauth2_insecure_grant_names_the_retiring_clause(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  oauth:\n    type: OAuth 2.0\n    settings:\n'
+            '      authorizationUri: https://example.test/authorize\n'
+            '      accessTokenUri: https://example.test/token\n'
+            '      authorizationGrants: [authorization_code, implicit, password]\n'
+        )
+        findings = run_rule('oauth2-insecure-grant', source, tmp_path)
+        assert [(finding.info['grant'], finding.info['clause']) for finding in findings] == [
+            ('implicit', 'RFC 9700 § 2.1.2'),
+            ('password', 'RFC 9700 § 2.4'),
+        ]
+
+    def test_oauth_endpoint_https_checks_oauth1_endpoints(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  oauth:\n    type: OAuth 1.0\n    settings:\n'
+            '      requestTokenUri: http://example.test/request\n'
+            '      authorizationUri: https://example.test/authorize\n'
+            '      tokenCredentialsUri: https://example.test/token\n'
+        )
+        findings = run_rule('oauth-endpoint-https', source, tmp_path)
+        assert [finding.info['setting'] for finding in findings] == ['requestTokenUri']
+
+    def test_restricted_file_types_treats_a_wildcard_as_unrestricted(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/octet-stream:\n'
+            "        type: file\n        fileTypes: ['*/*']\n"
+        )
+        findings = run_rule('restricted-file-types', source, tmp_path)
+        assert findings[0].info['fileTypes'] == '*/*'
 
 
 class TestConfiguration:

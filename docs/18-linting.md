@@ -28,9 +28,10 @@ rules rather than to compatibility rules, splits them into three:
    `schemas:` is explicitly deprecated in favour of `types:`; and a body whose
    media type cannot carry any value admitted by its shape gives consumers two
    contradictory decoding instructions. None of those is taste.
-2. **Derived from a published standard.** The OWASP API Security rules. Not one
-   organisation's house style, but not RAML's either, and each rule names its
-   source in `references` (§ 2.2).
+2. **Derived from a published standard.** OWASP API Security and the OAuth
+   RFCs. Not one organisation's house style, but not RAML's either: each rule
+   states a requirement the standard makes and the parser does not enforce,
+   and names the clause in `references` (§ 2.2).
 3. **Taste.** Kebab-case paths, notation preferences, declarations sorted,
    descriptions required. § 10.3's example lives here.
 
@@ -139,8 +140,8 @@ A rule derived from a published standard (§ 1 group 2) names it in
 The rationale explains *why* in prose and does not repeat the identifiers.
 Keeping them as data lets `--explain` list them, and lets a reader find every
 rule one clause produced without searching prose. The suite asserts that every
-`security` rule has at least one reference and
-that each matches the spellings above. RFC citations are to the current
+`security` rule has at least one reference and that each matches the spellings
+above. RFC citations are to the current
 document: RFC 9110, not the RFC 7231 it obsoletes.
 
 ## 3. Two rule shapes
@@ -304,8 +305,10 @@ configuration file. For one run, repeat `--rule ID` to enable a rule,
 These overrides run after the file configuration and duplicate IDs are rejected.
 `--severity` remains only a display threshold and does not reconfigure a rule.
 
-Rulesets: `spec` (group 1), `security` (group 2), `style` (group 3),
-`recommended` = `spec`, `all` = every built-in plus every enabled plugin.
+Rulesets: `spec` (group 1); `security` (group 2); `style` (group 3);
+`recommended` = `spec`; `all` = every built-in plus every enabled plugin. Each built-in ruleset has the category of the same name,
+so `categories: {security: {severity: error}}` grades exactly the rules
+`extends: [security]` enables.
 
 ### 5.1 Built-in policy
 
@@ -331,6 +334,34 @@ responses. The rationale then gives OWASP's own prevention advice, not a
 paraphrase of the ruleset. API1 asks for random identifiers only as an extra
 layer of defence, and `numeric-resource-id` says so, since only an authorization
 check on each access actually fixes API1.
+
+The security set also holds rules no OpenAPI catalogue supplied:
+
+- `credential-in-query` reads a security scheme's `describedBy` query
+  parameters and query string. Their placement makes them credentials, so this
+  is the one credential rule that needs no name guess (below), and it follows
+  RFC 6750 § 2.3's advice against tokens in the URI.
+- `oauth2-insecure-grant` reports the `password` grant (RFC 9700 § 2.4, MUST
+  NOT) and the `implicit` grant (§ 2.1.2, SHOULD NOT), naming the clause in
+  `info`. `oauth-endpoint-https` reports an `http:` authorization, token or
+  OAuth 1.0 endpoint (RFC 6749 §§ 3.1–3.2 require TLS); a relative URI is not
+  reported, since only an explicit `http:` states a cleartext endpoint.
+  `oauth1-scheme` reports OAuth 1.0, which RFC 6749 obsoletes.
+- `unanchored-string-pattern` exists because RAML matches `pattern:` with
+  `search` (docs/10 § 5.4): on input, `[a-z]+` accepts any value containing a
+  letter. Every top-level alternative must start at `^` or `\A` and end at `$`,
+  `\Z` or `\z`; a leading `(?m)` makes the anchors line anchors and is reported.
+  The pattern-property counterpart stays in `style`, because a property name is
+  not a value a client supplies.
+- `nested-quantifier-pattern` is the one heuristic in the set, which is why it
+  reports at `info`. It reports an unboundedly repeated group whose content
+  also repeats and has no separator — `(a+)+`, `(\w+\s?)*` — and accepts
+  `(-[a-z]+)*`, where the separator fixes each repetition's start. It is silent
+  under `regex_engine='re2'`, whose matching is linear. A tokenizer reads both
+  pattern rules' expressions, with a run of literals as one token (docs/12 § 12).
+- `bounded-number`, `bounded-file` and `restricted-file-types` extend the input
+  bounds to `number` and `file`; `fileTypes: ['*/*']` counts as no list.
+  `restricted-request-media-type` reports a wildcard request body media type.
 
 `json-ref-siblings` inspects parsed JSON Schema, which retains structure but not
 token positions. Each finding therefore names the schema document and an RFC

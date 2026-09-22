@@ -42,8 +42,11 @@ every finding.
 | Category | What it means | Default |
 | --- | --- | --- |
 | `spec` | Follows from RAML's own semantics | **enabled** |
-| `security` | Follows from OWASP API Security | disabled |
+| `security` | Follows from OWASP API Security and the OAuth RFCs | disabled |
 | `style` | Consistent RAML notation and documentation | disabled |
+
+Each category is also the ruleset that turns it on. `--explain RULE` lists the
+sources a standards rule cites, such as `RFC 9700 § 2.4` or `OWASP API4:2023`.
 
 `spec` rules are not style preferences. `json-ref-siblings` fires because a
 draft-07 resolver silently ignores keys beside a `$ref`. `optional-and-nil` is
@@ -93,7 +96,7 @@ lint:
 
   categories:
     security:
-      severity: error        # fail CI on anything OWASP flags
+      severity: error        # fail CI on any security finding
 
   rules:
     - id: explicit-uri-parameter  # enable this opt-in style rule

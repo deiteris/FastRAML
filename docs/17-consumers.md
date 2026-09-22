@@ -150,7 +150,7 @@ language, and fails the same test.
 
 ## 5. `contrib/`
 
-Six separate `uv` projects, each with its own lock, its own gate, and
+Seven separate `uv` projects, each with its own lock, its own gate, and
 `fastraml` as an editable path dependency. They are not packaged from this
 project's `pyproject.toml` and nothing in the root gate sees them.
 
@@ -158,6 +158,7 @@ project's `pyproject.toml` and nothing in the root gate sees them.
 |--------------|-----------|------------|
 | `raml-document` | — | A typed authoring model for a RAML document — `TypeDecl`, `Body`, `Response`, `Method`, `Resource`, `SecurityScheme`, `Document` — and a reader that builds one from pydantic models. Depends on no web framework. |
 | `fastapi-raml` | code → RAML | Renders a FastAPI app's routes as RAML, and serves it. |
+| `aiohttp-raml` | code → RAML | Code-first RAML for aiohttp — a view base, the four parameter nodes, RAML's six security schemes, and request *and* response validation. The second reader of `raml-document` (§ 5.4). |
 | `fastmcp-raml` | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
 | `raml-mock` | RAML → HTTP | Runs an in-process aiohttp mock, validates common HTTP representations, and returns examples or generated values. |
 | `fastraml-viewer` | — | The built `viewer/` bundle as static assets, a function that says where they are, and `serve(document)`, which runs them over stdlib HTTP for `fastraml serve` (§ 2). Depends on nothing, including `fastraml`. |
@@ -166,6 +167,7 @@ project's `pyproject.toml` and nothing in the root gate sees them.
 `fastapi-raml` and `fastmcp-raml` both need an authoring model, and one
 duplicated across two integrations is one that disagrees with itself — so
 `raml-document` holds the single copy and depends on neither of them.
+`aiohttp-raml` is the third to build on it.
 
 It is deliberately *not* `fastraml`'s model. The parse model describes a document
 that has been read, and after `unwrap` it refers to types by address. An author
@@ -221,13 +223,56 @@ with `multipleOf: 1.1` it accepts `3.3000000000000003`, which the exact decimal
 arithmetic of docs/10 rejects. Spelling the field `Decimal` to close the gap
 would let a facet decide the *type*. It stays documented.
 
+### 5.4 The second reader of `raml-document`
+
+`aiohttp-raml` is the same direction as `fastapi-raml` over a different
+framework, which makes it § 1's argument applied to a consumer rather than to
+the parser: a shared model with one reader is a model whose gaps nothing
+measures. Two were reachable from `fastapi-raml` and invisible until something
+else read it the same way.
+
+- **`Resource.at('/')` returned the document root.** An app answering on its
+  base URI put `get:` beside `title:`, where RAML has no method node and a
+  parser rejects the document. `/` is a relative URI like any other.
+- **An optional parameter rendered as a mandatory one.** `Walk.field` reads what
+  a value must look like; whether it has to be there is a property of the
+  *position*, and RAML's default in a property, a query parameter and a header
+  alike is `required: true`. That split is now `Walk.optional`.
+
+A third finding is a fidelity loss rather than a bug, and it took a question
+about extensibility to surface it. `Walk` flattened Python inheritance: `Car`
+extending `Vehicle` rendered as one object with both sets of properties, which
+validates identically and so passed every differential gate. It now emits
+`type: Vehicle` and declares only what the subclass adds, with several bases
+becoming RAML's `type: [A, B]`. The tagged-union path already synthesised a base
+and assigned `member.type`, which would have silently dropped a real supertype;
+the two are now combined.
+
+The second is the shape of error § 2.1 warns about, inverted: not a rule the
+language does not state, but a rule it *does* state and nobody transcribed.
+Nothing complains, because every request a test sends carries the parameter —
+the document is merely stricter than the code it describes.
+
+**It differs from `fastapi-raml` in what it reads.** FastAPI already holds
+pydantic models on a route, so that integration is a renderer over someone
+else's framework. aiohttp holds nothing — `app.router` has paths and callables
+— so this one owns its declaration surface: a view base, the four parameter
+nodes, and RAML's six security schemes as classes. Nothing is translated on the
+way out because nothing arrived in another format's vocabulary.
+
+That also lets it close a gap a renderer cannot. `web.json_response` takes
+`Any`, so no annotation can make a *response* statically checkable; since this
+package wraps the handler anyway, `check_responses` validates what comes back
+against what was declared. That is the § 1 argument once more — a consumer
+reaching a part of the contract nothing else measures.
+
 ## 6. The gate
 
 Each consumer carries its own, and CI runs all of them.
 
 Run this in each of `contrib/raml-document`, `contrib/fastapi-raml`,
-`contrib/fastmcp-raml`, `contrib/fastraml-viewer`, `contrib/raml-mock` and
-`contrib/raml-codegen`:
+`contrib/aiohttp-raml`, `contrib/fastmcp-raml`, `contrib/fastraml-viewer`,
+`contrib/raml-mock` and `contrib/raml-codegen`:
 
 ```bash
 uv run ruff check . && uv run ruff format --check . && uv run mypy <package>/ && uv run pytest -q
@@ -241,11 +286,13 @@ and capturing them on a runner nobody watches costs a browser download and
 proves nothing `smoke` has not already proved. Everything that can fail
 meaningfully is in both.
 
-The `contrib` job is a matrix over the six, and it is the job that notices
+The `contrib` job is a matrix over the seven, and it is the job that notices
 when a change to the model breaks a *consumer* of it rather than a test of it —
 which is the whole reason these are in the repository. `fastraml-viewer` gets a
 Node step first: its build hook vendors `viewer/dist`, so without a bundle
-`uv sync` fails at the install rather than later.
+`uv sync` fails at the install rather than later. The two framework
+integrations get it too — `--all-extras` pulls their `viewer` extra, which runs
+that same hook.
 
 The root's `serve` tests need the bundle the same way. The root carries
 `fastraml-viewer` as the `viewer` dependency group rather than in `dev`: a
@@ -256,7 +303,7 @@ step; locally it is `uv sync --group viewer`, and the gate for `serve` is
 
 ## 7. Publishing
 
-Six distributions, versioned independently, each published by a tag whose form
+Seven distributions, versioned independently, each published by a tag whose form
 names it — `v0.1.0` for the parser, `fastapi-raml-v0.1.0` for one consumer.
 `.github/workflows/publish.yml` re-runs that project's gate, checks the tag
 against the version it is about to publish, and uploads over Trusted Publishing,

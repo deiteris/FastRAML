@@ -9,10 +9,12 @@ cites its section in `references`.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, ClassVar, Final
 from urllib.parse import urlsplit
 
-from fastraml.parser.uritemplates import extract_uri_template_params, simple_parameter_segment
+from fastraml.parser.uritemplates import extract_uri_template_params
+from fastraml.positions import UNKNOWN
 from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 
@@ -39,6 +41,8 @@ __all__ = [
 #: accepts `trace` and `connect` as an extension (docs/01 § 3).
 _RAML_METHODS: Final = frozenset({'get', 'patch', 'put', 'post', 'delete', 'head', 'options'})
 _WEB_SCHEMES: Final = frozenset({'http', 'https'})
+#: A segment that is one simple expansion, `{name}`; the parser has validated the name.
+_PARAMETER_SEGMENT: Final = re.compile(r'\{([^{}+#][^{}]*)\}')
 
 
 def _prefix(endpoint: EndPoint) -> str:
@@ -48,14 +52,14 @@ def _prefix(endpoint: EndPoint) -> str:
 
 def _optional_segment_parameters(endpoint: EndPoint) -> list[str]:
     """The optional parameters that each fill one of this resource's own segments, `/{name}/`."""
-    names = []
-    for segment in endpoint.uri.split('/')[1:]:
-        if not simple_parameter_segment(segment) or segment.count('{') != 1:
-            continue
-        parameter = endpoint.uri_parameters.get(segment[1:-1])
-        if parameter is not None and not parameter.required:
-            names.append(parameter.name)
-    return names
+    matches = (_PARAMETER_SEGMENT.fullmatch(segment) for segment in endpoint.uri.split('/')[1:])
+    parameters = (endpoint.uri_parameters.get(match.group(1)) for match in matches if match is not None)
+    return [parameter.name for parameter in parameters if parameter is not None and not parameter.required]
+
+
+def _names_version(uri: str) -> bool:
+    """Whether a template the parser has already validated uses the reserved `version`."""
+    return any(expression.name == 'version' for expression in extract_uri_template_params(uri, '', UNKNOWN))
 
 
 class EmptyPathSegment:
@@ -185,19 +189,12 @@ class UndefinedVersion:
     )
 
     def api(self, ctx: Context, iri: str, api: APIFragment) -> Iterable[Finding]:
-        if api.version is not None or api.base_uri is None:
-            return ()
-        names = extract_uri_template_params(api.base_uri.value, api.location, api.base_uri.value_pos)
-        if not any(expression.name == 'version' for expression in names):
+        if api.version is not None or api.base_uri is None or not _names_version(api.base_uri.value):
             return ()
         return (ctx.on(self.meta, 'version is used but not defined', api.base_uri, iri=iri, uri=api.base_uri.value),)
 
     def endpoint(self, ctx: Context, iri: str, endpoint: EndPoint) -> Iterable[Finding]:
-        api = ctx.raml.entry_point
-        if getattr(api, 'version', None) is not None:
-            return ()
-        names = extract_uri_template_params(endpoint.uri, endpoint.location, endpoint.key_pos)
-        if not any(expression.name == 'version' for expression in names):
+        if getattr(ctx.raml.entry_point, 'version', None) is not None or not _names_version(endpoint.uri):
             return ()
         return (ctx.on(self.meta, 'version is used but not defined', endpoint, iri=iri, uri=endpoint.full_uri),)
 

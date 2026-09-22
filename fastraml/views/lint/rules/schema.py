@@ -67,6 +67,8 @@ class DeprecatedSchemas:
         authored = None if ctx.raml.source_info is None else ctx.raml.source_info.get(base.id)
         if authored is None or authored[1].kind is not NodeKind.MAPPING:
             return ()
+        # Keys only, sliced rather than paired: this runs once per type node,
+        # and most declarations have nothing to report.
         return [
             ctx.at(
                 self.meta,
@@ -76,7 +78,7 @@ class DeprecatedSchemas:
                 iri=iri,
                 field='schema',
             )
-            for key, _ in pairs(authored[1])
+            for key in authored[1].content[::2]
             if key.value == 'schema'
         ]
 

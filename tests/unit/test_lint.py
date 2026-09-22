@@ -729,6 +729,51 @@ class TestStandardsRules:
             {'scheme': 'token', 'status': '401', 'header': 'WWW-Authenticate'}
         ]
 
+    @pytest.mark.parametrize(
+        ('declaration', 'reported'),
+        [
+            ('datetime', True),
+            ('date-only', True),
+            ('datetime-only', True),
+            ('string', False),
+            ('\n            type: datetime\n            format: rfc2616', False),
+        ],
+    )
+    def test_http_date_header_accepts_only_an_rfc2616_datetime(self, declaration, reported, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  get:\n    headers:\n      If-Modified-Since: {declaration}\n'
+        findings = run_rule('http-date-header', source, tmp_path)
+        assert [finding.info['clause'] for finding in findings] == (['RFC 9110 § 13.1.3'] if reported else [])
+
+    def test_hop_by_hop_header_ignores_case(self, tmp_path):
+        source = '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    headers:\n      transfer-encoding: string\n'
+        assert [finding.info for finding in run_rule('hop-by-hop-header', source, tmp_path)] == [
+            {'header': 'transfer-encoding'}
+        ]
+
+    def test_duplicate_header_reads_a_described_by_map(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  token:\n    type: Pass Through\n    describedBy:\n'
+            '      headers:\n        Authorization: string\n        authorization: string\n'
+        )
+        findings = run_rule('duplicate-header', source, tmp_path)
+        assert [finding.info for finding in findings] == [
+            {'header': 'authorization', 'duplicates': 'Authorization', 'where': 'request'}
+        ]
+
+    @pytest.mark.parametrize(
+        ('body', 'enum', 'reported'),
+        [
+            ('application/json', '[application/json; charset=utf-8]', False),
+            ('application/json', '[application/json, text/plain]', True),
+            (None, '[application/json]', True),
+        ],
+    )
+    def test_content_type_header_must_agree_with_the_bodies(self, body, enum, reported, tmp_path):
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  post:\n    headers:\n      Content-Type:\n        enum: {enum}\n'
+        if body:
+            source += f'    body:\n      {body}: string\n'
+        assert bool(run_rule('content-type-header', source, tmp_path)) is reported
+
     def test_problem_media_type_accepts_the_xml_form(self, tmp_path):
         source = (
             '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      404:\n'

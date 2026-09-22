@@ -391,6 +391,25 @@ TRACE, whose client MUST NOT send content (§ 9.3.8) — and names the clause in
 fails with `unknown rule`, which says what changed rather than silently
 running a wider rule under the old name.
 
+The header-field rules live in `rules/headers.py`, in the same `http` set.
+`header-field-name` requires a field name to be a token (§§ 5.1, 5.6.2);
+`duplicate-header` reports two keys in one header map that differ only in
+case, since field names are case-insensitive and RAML keys are not; and
+`hop-by-hop-header` reports `Connection`, `Keep-Alive`, `Proxy-Connection`,
+`TE`, `Transfer-Encoding` and `Upgrade`, which intermediaries remove
+(§ 7.6.1). `http-date-header` requires `Date`, `Expires`, `Last-Modified`,
+`If-Modified-Since`, `If-Unmodified-Since` and `Sunset` to be `datetime` with
+`format: rfc2616`, the IMF-fixdate of § 5.6.7; RAML's default `datetime` is
+RFC 3339 and the `-only` types are not HTTP dates. A `string` is not reported,
+because it constrains nothing rather than contradicting the format, and
+`Retry-After`, which may be delta-seconds, keeps its own rule.
+`content-type-header` reports a declared `Content-Type` whose enumeration
+names a media type no body has, or one declared where there is no body
+(§ 8.3); media-type parameters are ignored in the comparison. The per-header
+rules visit the effective operations, so a header a trait adds is reported
+once for each operation the trait applies to, each finding naming its
+operation's IRI.
+
 The `problem-details` set is for APIs that adopt RFC 9457, which obsoletes RFC
 7807 and keeps its media types, so it judges documents written against either.
 Adopting the format is the author's choice, so the set is opt-in, but once it

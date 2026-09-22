@@ -5,6 +5,13 @@ from __future__ import annotations
 from fastraml.views.lint.engine import Registry, Rule
 from fastraml.views.lint.rules.content import NoAmbiguousPaths
 from fastraml.views.lint.rules.document import UnusedTrait, UnusedType
+from fastraml.views.lint.rules.headers import (
+    ContentTypeHeader,
+    DuplicateHeader,
+    HeaderFieldName,
+    HopByHopHeader,
+    HttpDateHeader,
+)
 from fastraml.views.lint.rules.http import (
     AllowHeader405,
     ContentRangeHeader,
@@ -119,6 +126,11 @@ def builtin_registry() -> Registry:
     http_rules: tuple[Rule, ...] = (
         AllowHeader405(),
         ContentRangeHeader(),
+        ContentTypeHeader(),
+        DuplicateHeader(),
+        HeaderFieldName(),
+        HopByHopHeader(),
+        HttpDateHeader(),
         NoContentBody(),
         ProxyAuthenticate407(),
         RedirectLocation(),

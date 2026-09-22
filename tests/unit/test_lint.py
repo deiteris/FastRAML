@@ -590,7 +590,7 @@ REFERENCE = re.compile(
 )
 
 #: The categories derived from a published standard (docs/18 § 1 group 2).
-STANDARD_CATEGORIES = (Category.SECURITY, Category.HTTP, Category.PROBLEM_DETAILS)
+STANDARD_CATEGORIES = (Category.SECURITY, Category.HTTP, Category.PROBLEM_DETAILS, Category.I_JSON)
 
 
 class TestStandardsRules:
@@ -844,6 +844,52 @@ class TestStandardsRules:
         )
         findings = run_rule('duplicate-media-type', source, tmp_path)
         assert [finding.info['mediaType'] for finding in findings] == ['Text/Plain; FORMAT=A']
+
+    @pytest.mark.parametrize(
+        ('facets', 'reported'),
+        [
+            ('format: int64', True),
+            ('format: long', True),
+            ('format: int', False),
+            ('maximum: 9007199254740991', False),
+            ('maximum: 9007199254740992', True),
+            ('minimum: -9007199254740992', True),
+        ],
+    )
+    def test_i_json_integer_range_reads_format_and_bounds(self, facets, reported, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/json:\n'
+            f'        properties:\n          n:\n            type: integer\n            {facets}\n'
+        )
+        assert bool(run_rule('i-json-integer-range', source, tmp_path)) is reported
+
+    def test_i_json_reports_a_shared_declaration_once(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n  Event:\n    properties:\n      at: datetime-only\n'
+            '/a:\n  post:\n    body:\n      application/json: Event\n'
+            '    responses:\n      200:\n        body:\n          application/vnd.example+json: Event\n'
+            '/b:\n  put:\n    body:\n      application/json: Event\n      application/xml: Event\n'
+        )
+        findings = run_rule('i-json-datetime', source, tmp_path)
+        assert [finding.info for finding in findings] == [{'type': 'at', 'reason': 'no UTC offset'}]
+
+    @pytest.mark.parametrize(
+        ('shape', 'reported'),
+        [('string', True), ('object | nil', False), ('string | object', True), ('string[]', False)],
+    )
+    def test_i_json_top_level_accepts_objects_arrays_and_null(self, shape, reported, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        body:\n'
+            f'          application/json: {shape}\n'
+        )
+        assert bool(run_rule('i-json-top-level', source, tmp_path)) is reported
+
+    def test_i_json_ignores_bodies_typed_by_json_schema(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/json:\n'
+            '        type: |\n          {"type":"object","properties":{"n":{"type":"integer","format":"int64"}}}\n'
+        )
+        assert not run_rule('i-json-integer-range', source, tmp_path)
 
     def test_problem_media_type_accepts_the_xml_form(self, tmp_path):
         source = (

@@ -23,6 +23,7 @@ from fastraml.views.lint.rules.http import (
     UnreachableStatus,
     WwwAuthenticate401,
 )
+from fastraml.views.lint.rules.ijson import IJsonBinary, IJsonDateTime, IJsonIntegerRange, IJsonTopLevel
 from fastraml.views.lint.rules.media import DuplicateMediaType, JsonCharset
 from fastraml.views.lint.rules.operations import MeaninglessRequestBody, UnsecuredOperation
 from fastraml.views.lint.rules.problems import ProblemMediaType, ProblemMemberTypes, ProblemStatus
@@ -154,6 +155,9 @@ def builtin_registry() -> Registry:
     problem_rules: tuple[Rule, ...] = (ProblemMediaType(), ProblemMemberTypes(), ProblemStatus())
     for rule in problem_rules:
         registry.add(rule, sets=('problem-details',))
+    ijson_rules: tuple[Rule, ...] = (IJsonBinary(), IJsonDateTime(), IJsonIntegerRange(), IJsonTopLevel())
+    for rule in ijson_rules:
+        registry.add(rule, sets=('i-json',))
     style_rules: tuple[Rule, ...] = (
         AvoidExplicitInferredType(),
         DiscriminatorWithoutSubtypes(),

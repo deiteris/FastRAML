@@ -37,7 +37,7 @@ the final `SUMMARY` record when text output is truncated. Use
 `--max-findings 0` or `--max-findings-per-rule 0` only when the task requires
 every finding.
 
-## Five categories, and only one is on by default
+## Six categories, and only one is on by default
 
 | Category | What it means | Default |
 | --- | --- | --- |
@@ -45,6 +45,7 @@ every finding.
 | `security` | Follows from OWASP API Security and the OAuth RFCs | disabled |
 | `http` | Follows from RFC 9110 HTTP semantics | disabled |
 | `problem-details` | Follows from RFC 9457, for APIs that use problem details | disabled |
+| `i-json` | Follows from RFC 7493, for APIs that adopt the I-JSON profile | disabled |
 | `style` | Consistent RAML notation and documentation | disabled |
 
 Each category is also the ruleset that turns it on. `--explain RULE` lists the
@@ -69,8 +70,8 @@ lint:
   extends: [recommended, security, style]
 ```
 
-Add `http` for HTTP-level contradictions, and `problem-details` only when the
-API has adopted RFC 9457 error bodies:
+Add `http` for HTTP-level contradictions, and `problem-details` or `i-json`
+only when the API has adopted RFC 9457 error bodies or the RFC 7493 profile:
 
 ```yaml
 lint:

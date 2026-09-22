@@ -62,8 +62,8 @@ the run.
   stdout stays parseable.
 
 Only the `spec` rules run by default. The `security`, `http`,
-`problem-details` and `style` sets and any plugin rules are opt-in through
-`--config`. See `fastraml skills get lint`.
+`problem-details`, `i-json` and `style` sets and any plugin rules are opt-in
+through `--config`. See `fastraml skills get lint`.
 
 Lints every file before exiting, rather than stopping at the first with
 findings.

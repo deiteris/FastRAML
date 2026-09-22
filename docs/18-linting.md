@@ -29,17 +29,17 @@ rules rather than to compatibility rules, splits them into three:
    media type cannot carry any value admitted by its shape gives consumers two
    contradictory decoding instructions. None of those is taste.
 2. **Derived from a published standard.** OWASP API Security and the OAuth
-   RFCs, RFC 9110 HTTP semantics, and RFC 9457 problem details. Not one
-   organisation's house style, but not RAML's either: each rule states a
-   requirement the standard makes and the parser does not enforce, and names
-   the clause in `references` (§ 2.2).
+   RFCs, RFC 9110 HTTP semantics, RFC 9457 problem details and the RFC 7493
+   I-JSON profile. Not one organisation's house style, but not RAML's either:
+   each rule states a requirement the standard makes and the parser does not
+   enforce, and names the clause in `references` (§ 2.2).
 3. **Taste.** Kebab-case paths, notation preferences, declarations sorted,
    descriptions required. § 10.3's example lives here.
 
 Group 1 ships in `fastraml/views/lint/` and is the default ruleset. Group 2
-ships beside it as the `security`, `http` and `problem-details` rulesets, and
-group 3 as `style`, all **off by default**. The built-in style set covers
-RAML-wide authoring conventions; § 6 remains the mechanism for
+ships beside it as the `security`, `http`, `problem-details` and `i-json`
+rulesets, and group 3 as `style`, all **off by default**. The built-in style
+set covers RAML-wide authoring conventions; § 6 remains the mechanism for
 organisation-specific policy.
 
 A company API guideline is group 3 however widely it is followed: it is one
@@ -145,11 +145,11 @@ JSON Schema clause it follows from. Six spellings are accepted:
 The rationale explains *why* in prose and does not repeat the identifiers.
 Keeping them as data lets `--explain` list them, and lets a reader find every
 rule one clause produced without searching prose. The suite asserts that every
-`security`, `http` and `problem-details` rule has at least one reference, and
-that every rule's references match the spellings above. `unused-type` and
-`unused-trait` cite nothing: they follow from the document's own reachability,
-not from a clause. RFC citations are to the current
-document: RFC 9110, not the RFC 7231 it obsoletes, and RFC 9457, not RFC 7807.
+`security`, `http`, `problem-details` and `i-json` rule has at least one
+reference, and that every rule's references match the spellings above.
+`unused-type` and `unused-trait` cite nothing: they follow from the document's
+own reachability, not from a clause. RFC citations are to the current document:
+RFC 9110, not the RFC 7231 it obsoletes, and RFC 9457, not RFC 7807.
 
 ## 3. Two rule shapes
 
@@ -312,8 +312,8 @@ configuration file. For one run, repeat `--rule ID` to enable a rule,
 These overrides run after the file configuration and duplicate IDs are rejected.
 `--severity` remains only a display threshold and does not reconfigure a rule.
 
-Rulesets: `spec` (group 1); `security`, `http` and `problem-details` (group
-2); `style` (group 3); `recommended` = `spec`; `all` = every built-in plus
+Rulesets: `spec` (group 1); `security`, `http`, `problem-details` and
+`i-json` (group 2); `style` (group 3); `recommended` = `spec`; `all` = every built-in plus
 every enabled plugin. Each built-in ruleset has the category of the same name,
 so `categories: {http: {severity: error}}` grades exactly the rules
 `extends: [http]` enables.
@@ -452,6 +452,21 @@ an included JSON Schema is skipped rather than half-checked. Extension members
 are unconstrained, so a problem details object is open by design and
 `require-closed-object` in `style` will disagree with it; a project using both
 disables one for those types.
+
+The `i-json` set is for APIs that adopt RFC 7493, a profile of JSON that every
+receiver can process exactly. It reads `application/json` and `+json` bodies,
+RAML-typed ones only, walking properties, pattern properties, array items and
+union members. `i-json-top-level` reports a body that is neither an object
+nor an array (§ 4.1); a union reports if any member is a scalar, and `nil`,
+`any` and a JSON Schema body are left alone. `i-json-integer-range` reports an
+`integer` with `format: int64` or `long`, or a bound beyond ±(2⁵³−1), which a
+receiver reading doubles cannot hold exactly (§ 2.2); RAML's `int` is 32-bit
+and is not reported. `i-json-datetime` reports `datetime-only`, which has no
+offset (RFC 3339 § 4.4), and `datetime` with `format: rfc2616` (§ 4.3).
+`i-json-binary` reports a `file` at `info`: RAML § File represents it as
+base64, and § 4.4 recommends base64url. The three rules that look inside a
+body are document rules keyed by source position, so a named type used by
+several JSON bodies is reported once, where it was written.
 
 `json-ref-siblings` inspects parsed JSON Schema, which retains structure but not
 token positions. Each finding therefore names the schema document and an RFC

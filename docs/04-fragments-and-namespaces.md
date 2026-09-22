@@ -1,321 +1,118 @@
-# 04 — Fragments and namespaces
+# 04 - Fragments and namespaces
 
-This document settles: what a fragment is, how names are looked up, and the rule
-that makes both cacheable — **anchor scoping**.
+This document defines fragment kinds, lexical name resolution, and the cache
+rule that makes typed fragments reusable: a fragment is decoded in its own
+namespace, never its includer's namespace.
 
 ## 1. Fragment kinds
 
-| Kind | Root shape | Declares | Also allows |
-|------|-----------|----------|-------------|
-| `API` (`#%RAML 1.0`) | mapping | everything | `/resources` |
-| `Library` | mapping | types, annotationTypes, resourceTypes, traits, securitySchemes | `usage`, `uses` |
-| `DataType` | a single type declaration | one shape | `uses` |
-| `AnnotationTypeDeclaration` | a single type declaration | one shape | `uses` — structurally identical to `DataType` |
-| `NamedExample` | mapping of name → example | examples | `uses` |
-| `DocumentationItem` | `{title, content}` | one doc item | `uses` |
-| `ResourceType` | a resource-type body | one RT definition | `uses` |
-| `Trait` | a trait body | one trait definition | `uses` |
-| `SecurityScheme` | a security-scheme body | one SS definition | `uses` |
-| `Overlay` / `Extension` | mapping + `extends` | v1.1 | |
+| Kind | Root form | Local declarations |
+|---|---|---|
+| `API` | mapping | API declarations and resources |
+| `Library` | mapping | types, annotation types, traits, resource types, security schemes |
+| `DataType` | type declaration | one type |
+| `AnnotationTypeDeclaration` | type declaration | one annotation type |
+| `NamedExample` | mapping | named examples |
+| `DocumentationItem` | `{title, content}` | one documentation item |
+| `ResourceType` | resource-type body | one resource type |
+| `Trait` | trait body | one trait |
+| `SecurityScheme` | security-scheme body | one security scheme |
+| `Overlay`, `Extension` | mapping | unsupported |
 
-Every non-API fragment may carry a root-level `uses:` (spec § Typed Fragments).
-The decoder therefore does the same thing everywhere: **strip `uses:` from the
-root mapping first, then hand the remainder to the kind-specific decoder.** That
-is one shared helper (`filter_fragment_uses`), not nine copies.
+Every fragment has a URI `location`; it can be `file://` or, with an enabled
+HTTP loader, `http(s)://`. Every supported fragment may have root-level `uses:`.
+Library and API decoders read it with their root declarations. Other typed
+fragment decoders remove it before decoding their kind-specific body.
 
-## 2. Fragment classes
+## 2. Resolver capabilities
+
+All supported fragments implement `ReferenceResolver`:
 
 ```python
-class Fragment(Protocol):
-    location: str  # file:// URI
-
-
 class ReferenceResolver(Fragment, Protocol):
     def reference_type(self, name: str) -> BaseShape: ...
     def reference_annotation_type(self, name: str) -> BaseShape: ...
     def resource_type_definition(self, name: str) -> ResourceTypeDefinition: ...
     def trait_definition(self, name: str) -> TraitDefinition: ...
-
-
-class SecuritySchemeResolver(Protocol):
-    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition: ...
+    def library_link(self, prefix: str) -> LibraryLink | None: ...
 ```
 
-`ReferenceResolver` is implemented by *all* typed fragments, because all of them
-can carry `uses:` and therefore all of them can resolve a qualified name.
-`SecuritySchemeResolver` is only `Library` and `APIFragment`, since only those
-declare schemes.
-
-Capability is discovered by protocol/`isinstance` check, not by a fat base class:
-a `NamedExample` genuinely has no traits, and modelling that as a method that
-always raises is honest and cheap.
+Only API and Library fragments implement `SecuritySchemeResolver`, because only
+they declare security schemes. Resolver capabilities are checked structurally;
+a fragment is not required to expose unsupported declaration kinds.
 
 ## 3. Name resolution
 
-Two functions cover every lookup that can fail. (A third, `library_link`, is a
-plain `uses:` lookup that returns `None` — it serves tooling, not resolution;
-see § 4.2.)
+`resolve_reference()` resolves declarations in a fragment with a local table.
+`resolve_library_reference()` resolves declarations in a typed fragment that has
+no local table. Both apply these rules:
 
-```python
-def resolve_reference(local: dict[str, T] | None,
-                      uses:  dict[str, LibraryLink] | None,
-                      name:  str,
-                      pick:  Callable[[Library, str], T | None]) -> T
-```
+1. Split a qualified reference on its last dot.
+2. An unqualified name resolves only in the local table. A typed fragment with
+   no local table rejects it.
+3. For a dotted name, first try the complete name in the local table. This
+   permits declaration names containing dots.
+4. Otherwise resolve the prefix in the fragment's `uses:` map, then resolve the
+   suffix in that library.
+5. A second library hop is not allowed. `files.file-type.File` is not a
+   namespace chain; its prefix must be one direct `uses:` key.
 
-1. Split on the **last** dot (`CutLast`). RAML type names may contain dots
-   (the RDT `IDENTIFIER` production includes `.`), so `a.b.c` means library `a.b`,
-   type `c` — splitting on the first dot would be wrong.
-2. No dot → look up `local[name]`. Miss is an error.
-3. Dot present → try `local[name]` first anyway (a fragment may legitimately
-   declare a key containing a dot), then `uses[prefix].link` and `pick(lib, suffix)`.
-4. Namespace chaining is **not** permitted: `files.file-type.File` fails. Spec
-   § Applying Libraries: "processors MUST NOT allow any composition of namespaces
-   using '.' across multiple libraries." Step 1's last-dot split combined with
-   step 3's single library hop enforces this naturally — `files.file-type` is not
-   a key in `uses`.
+Failed lookups distinguish `reference not found`, `library not found`, `library
+not resolved`, and `invalid reference`; callers attach source location and
+position to those errors.
 
-A miss raises `UnresolvedReferenceError(reason, name)` rather than returning a
-diagnostic. The reason is one of `reference not found`, `library not found`,
-`library not resolved`, `invalid reference`; the caller knows the location and
-the position and turns those parts into a positioned `RamlError`. Splitting it
-this way keeps the two resolvers free of location plumbing, and lets
-`reference_annotation_type` catch a miss and retry against `types` without
-manufacturing an error object on the way.
+Annotation-type resolution searches `annotationTypes` first and falls back to
+ordinary `types`. This permits an annotation type declaration to extend a data
+type.
 
-```python
-def resolve_library_reference(uses, name, pick) -> T
-```
+## 4. Anchor scoping
 
-The same, minus the local map: used by `DataType`, `NamedExample`,
-`DocumentationItem`, `Trait`, `ResourceType` and `SecurityScheme` fragments, which
-have no local declaration table of their own. An unqualified name there is an
-error by construction — which is deviation **D4** made mechanical.
+`Raml` keeps a stack of `ParseCtx` values. A fragment decode pushes its own
+context, whose `anchor` is that fragment's resolver. Every type-bearing or
+reference-bearing entity captures the active context when it is created.
 
-### 3.1 Annotation types fall back to types
+The captured anchor governs type references, template directive names, and
+annotation type names. It is retained even when a source node is merged into an
+endpoint authored by another file. A shape constructed outside fragment decoding
+may fall back to `Raml.resolver_at(location)`; parsed shapes carry an anchor.
 
-`reference_annotation_type(name)` looks in `annotationTypes` first and falls back
-to `types`. Spec § Declaring Annotation Types says an annotation type declaration
-"has the same syntax as a data type declaration" and may extend a data type, so
-`annotationTypes: {ConfigInstance: Config}` must find `Config` among the types.
-go-raml does the same fallback.
+Consequences:
 
-## 4. Anchor scoping (`ParseCtx`)
+- A typed fragment can reference only declarations it owns or libraries it
+  imports through its own `uses:` map.
+- A trait or resource type declared inline in an API uses the API namespace.
+- A trait or resource-type reference written inside a typed fragment resolves
+  through that fragment's local declarations and imports.
+- A resource-type reference written on an API endpoint resolves through the API
+  declarations and imports.
+- Template parameter values use the caller's context because their source text
+  is written by the caller. Provenance overlay rules for merged endpoint nodes
+  are defined in [08](08-templates-and-endpoints.md).
 
-### 4.1 The problem
+## 5. Fragment decoding
 
-A name written in a document must resolve in *that document's* namespace, even
-though the object it produces may end up attached somewhere else entirely — a
-trait's response body ends up on an operation in the API file, but the type name
-inside it belongs to the trait fragment.
+API decoding first collects global `mediaType`, `protocols`, and `securedBy`,
+then decodes remaining declarations in source order. It retains resource source
+nodes for endpoint construction.
 
-Storing `location` on the shape and looking the fragment up later is not enough,
-because after the structural merge a single operation's tree contains nodes from
-three different files.
+Libraries decode their declarations and root `uses:` map. A DataType or
+AnnotationTypeDeclaration fragment creates one shape named from its file base
+name. A `.json` DataType target creates a JSON Schema shape. NamedExample and
+DocumentationItem fragments decode their respective values. Trait, ResourceType,
+and SecurityScheme fragments use the same definition builders as inline
+declarations.
 
-### 4.2 The mechanism
+Every created shape is indexed in `Raml.fragment_typedefs` by authored location.
+Unwrap and validation use this index rather than discovering declarations by
+walking the model graph.
 
-```python
-@dataclass(slots=True, frozen=True)
-class ParseCtx:
-    anchor: ReferenceResolver | None
-```
+## 6. Fragment cache and `uses:` lifecycle
 
-`Raml` keeps a **stack** of these. Every fragment decoder pushes its own
-`ParseCtx` on entry and pops on exit:
+Fragments are cached by resolved URI. A fragment is registered before its body
+is decoded, allowing mutually importing libraries to terminate as a cyclic model
+graph. Its `uses:` entries are resolved after body decoding. Reference binding
+waits until P7, so unresolved links during body decoding do not prevent mutual
+imports.
 
-```python
-def decode_library(self, text, uri):
-    lib = Library(uri, self)
-    self.push_ctx(ParseCtx(anchor=lib))  # self-referential: a library
-    try:  # resolves names against itself
-        lib.decode(compose(text, uri=uri))
-    finally:
-        self.pop_ctx()
-```
-
-Every construct that can contain a name **captures the top of the stack at
-creation time**:
-
-| Entity | Field | Governs |
-|--------|-------|---------|
-| `BaseShape` | `anchor` | unqualified and qualified type references inside it |
-| `Trait` (the `is:` entry) | `anchor` | the trait *name* lookup |
-| `ResourceType` (the `type:` entry) | `anchor` | the resource-type name lookup |
-| `TraitDefinition` / `ResourceTypeDefinition` | `anchor` | names inside the template body |
-| `DomainExtension` | `anchor` | the annotation-type name |
-
-Resolution then uses the captured anchor, falling back to `Raml.resolver_at(location)`
-only for shapes built without a parse context (programmatic construction, tests).
-That index is filled by the fragment decoder, in the same line that decides
-whether a fragment can resolve names at all — so P7 needs a dict lookup rather
-than a capability check, and `types/` needs no runtime import of
-`parser/fragments.py` (doc 02 § 2). On a full TCK parse the fallback is never
-reached: every shape a parse produces carries an anchor.
-
-The `lib` half of a qualified name is reached the same way, through
-`ReferenceResolver.library_link(prefix)`, so that P7 can emit the library
-reference doc 06 § 3.2 requires without leaving the anchor it already holds.
-
-### 4.3 Consequences of anchor scoping
-
-**Typed fragments do not inherit the caller's scope.** When `traits: {paged:
-!include traits/paged.raml}` is decoded, the trait fragment's decoder pushes the
-*fragment's own* `ParseCtx`, not the API's. So:
-
-```yaml
-# traits/paged.raml
-#%RAML 1.0 Trait
-responses:
-  200:
-    body:
-      application/json:
-        type: PagedResult        # ✗ error — not declared in this fragment
-```
-
-```yaml
-# traits/paged.raml
-#%RAML 1.0 Trait
-uses: { models: ../models.raml }
-responses:
-  200:
-    body:
-      application/json:
-        type: models.PagedResult # ✓
-```
-
-Why this matters beyond purity: if a fragment could see its includer's namespace,
-the *same file* would mean different things at different inclusion sites, and
-`Raml.fragments` — one parse per file — would be wrong. The rule is what makes the
-cache sound.
-
-**Inline declarations follow the opposite rule.** A trait declared directly under
-the API's `traits:` key is decoded with the API's `ParseCtx` on top, so it resolves
-against the API's `types:`, both qualified and unqualified. Forward references
-work because shape resolution is deferred to pass P7.
-
-**Trait and resource-type *names* are lexically scoped too.** `is: [paged]`
-written inside a `ResourceType` fragment resolves against that fragment's
-`traits:`/`uses:` only — there is no fallback to the including API. To use an
-API-level trait from inside a fragment, import it and qualify it:
-
-```yaml
-#%RAML 1.0 ResourceType
-uses: { t: traits.raml }
-get:
-  is: [t.paged]
-```
-
-**Resource-type names on endpoints** resolve against the API's `resourceTypes:`
-plus the API's `uses:`, since that `type:` text is written in the API.
-
-## 5. What each decoder does
-
-### 5.1 API and Library
-
-Both decode a root mapping key by key. The API has a **pre-pass**
-(`preprocess`) that extracts three global settings before anything else, because
-later decoding depends on them:
-
-| Key | Stored as | Needed by |
-|-----|-----------|-----------|
-| `mediaType` | `Raml.global_media_types` | body decoding, to know the default media type |
-| `protocols` | `Raml.global_protocols` | operations |
-| `securedBy` | `Raml.global_secured_by` | every operation without its own |
-
-The remaining keys are decoded in document order. `types`/`schemas` and their
-library equivalents are mutually exclusive and produce a positioned error when
-both appear.
-
-Type declarations go through `unmarshal_types(node, location, is_annotation)`
-which, per name:
-
-- rejects redefinition of a built-in type name (`string`, `object`, …);
-- rejects a duplicate name in the same map;
-- builds the shape;
-- registers it in `fragment_types[location]` (or `fragment_annotations`), **and**
-  appends it to `fragment_typedefs[location]`.
-
-The `fragment_typedefs` list is the "everything declared in this file" index —
-it also receives body shapes, headers, query parameters, query strings, URI
-parameters and base-URI parameters, wherever they are created. Unwrap and
-validation iterate *that* list, which is why they need no traversal of the model
-graph at all. This is a real performance property, not bookkeeping: it turns
-"walk every reachable shape" into "iterate a flat list".
-
-Endpoints are **not** decoded here. `/foo` keys produce stage-1
-`SourceEndPoint` IR appended to `api.source_endpoints`
-(see [08](08-templates-and-endpoints.md)).
-
-### 5.2 DataType
-
-The whole remaining mapping (after `uses:` is stripped) *is* the type
-declaration. A synthetic key node carrying the file's base name is fabricated so
-the shape gets a sensible `name`, then the ordinary shape builder runs.
-
-A `.json` file is instead wrapped into a synthetic `{type: "<raw json>"}` mapping
-and takes the JSON-Schema path.
-
-### 5.3 NamedExample
-
-Each remaining key is an example name; each value goes through the shared example
-builder. Used by `examples: !include examples/paging.raml`.
-
-### 5.4 Trait / ResourceType / SecurityScheme fragments
-
-Each strips `uses:` and delegates to the same definition builder used for the
-inline form (`make_trait_definition(key_node=None, value_node=filtered, …)`).
-One code path for `traits: {x: {...}}` and for `traits: {x: !include x.raml}`.
-
-Note the deliberate asymmetry in when shapes get resolved: a SecurityScheme
-fragment does **not** resolve its own shapes eagerly, because its `describedBy`
-bodies get embedded into operations and must be resolved in the same global batch
-(P7). Resolving them at fragment-decode time races the parent's `uses:`
-resolution, which has not run yet. go-raml has a long comment about exactly this
-bug; the ordering is preserved here.
-
-## 6. Fragment cache lifecycle
-
-```python
-def parse_fragment(raml, uri: str, kind: FragmentKind) -> Fragment:
-    if (cached := raml.get_fragment(uri)) is not None:
-        return cached  # I3: decoded at most once
-    text = load_fragment_text(raml, uri)
-    check_fragment_kind(text, uri, kind)
-    frag = make_fragment(raml, kind, uri)
-    raml.put_fragment(uri, frag)  # BEFORE decoding — cycles resolve here
-    raml.push_ctx(ParseCtx(anchor=frag))
-    try:
-        frag.decode(compose(text, uri=uri))  # the header line is kept, so line numbers hold
-    finally:
-        raml.pop_ctx()
-    resolve_uses(raml, frag.uses, uri)  # recursive, after the body
-    return frag
-```
-
-`make_fragment` records the requested `FragmentKind` on the fragment. The class
-alone cannot preserve it because `DataType` and `AnnotationTypeDeclaration`
-share `DataTypeFragment`; compiled views therefore read `fragment.kind`, never
-derive the source kind from the Python class name.
-
-Two ordering details in this sequence control correctness:
-
-- The fragment is registered **before** its body is decoded. `a.raml` →
-  `b.raml` → `a.raml` therefore terminates, producing a cyclic object graph
-  instead of infinite recursion.
-- `uses:` is resolved **after** the body, in a separate stage. While the body is
-  decoding, each `LibraryLink` has `link is None`. Nothing dereferences the link,
-  because all name resolution is deferred to P7. Resolving `uses:` first would be
-  simpler, but it breaks mutual imports.
-
-`resolve_uses` accumulates rather than stopping at the first failure: an
-unreadable library is reported, and the remaining imports are still resolved. A
-`uses:` value resolves by the same three rules as an `!include` argument
-(`resolve_ref_uri`, [03](03-yaml-and-io.md) § 4.1).
-
-Six fragments declare nothing of their own — DataType, NamedExample,
-DocumentationItem, Trait, ResourceType, SecurityScheme. All six resolve all four
-reference kinds the same way, through `uses:` alone, so that implementation is
-written once and shared rather than copied six times. It is not a capability base
-class: what a fragment *can* do is still discovered by protocol check, and
-`Library` and `APIFragment` override all four methods with the local-table form.
+`uses:` resolution accumulates failures across entries. It uses the same URI
+rules as `!include`; see [03](03-yaml-and-io.md).

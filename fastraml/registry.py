@@ -36,9 +36,8 @@ if TYPE_CHECKING:
     from fastraml.types.jsonschema_ import SchemaRegistry
     from fastraml.yamlnode import Node
 
-    # Phase 2 onwards replace these aliases with the real classes. They are
-    # written out so that the field list below reads as its finished form and
-    # `grep` finds every seam.
+    # Written out so the field list below remains readable without runtime
+    # imports from parser or type modules.
     BaseShape = Any
     EndPoint = Any
     SecurityScheme = Any

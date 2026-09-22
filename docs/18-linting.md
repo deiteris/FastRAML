@@ -292,6 +292,18 @@ The additional security rules cover HTTPS-only operations; Basic authentication;
 typed `401`, `429`, `500` and `400`/`422` responses; numeric URI parameters;
 rate-limit headers; bounded arrays and integers; restricted strings; and closed
 or size-bounded objects.
+Each security rule's rationale opens with the OWASP API Security Top 10 (2023)
+category it follows from, using the assignments in Stoplight's
+`spectral-owasp-ruleset` (`https://github.com/stoplightio/spectral-owasp-ruleset`),
+the ruleset Speakeasy's rules came from. That ruleset places them as follows:
+API1 `numeric-resource-id`; API2 `unsecured-operation` and
+`insecure-basic-authentication`; API3 `no-additional-properties`; API3 and API4
+`bounded-additional-properties`; API4 the rate-limit, `429`, string, array and
+integer rules; API8 `https-only` and the `401`, `500` and validation-error
+responses. The rationale then gives OWASP's own prevention advice, not a
+paraphrase of the ruleset. API1 asks for random identifiers only as an extra
+layer of defence, and `numeric-resource-id` says so, since only an authorization
+check on each access actually fixes API1.
 `json-ref-siblings` inspects parsed JSON Schema, which retains structure but not
 token positions. Each finding therefore names the schema document and an RFC
 6901 `schemaPath` ending at the offending `$ref`. External schemas are reported

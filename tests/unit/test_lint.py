@@ -935,6 +935,106 @@ class TestSpecRules:
         source = '#%RAML 1.0\ntitle: t\ntypes:\n  A:\n    properties:\n      schema: string\n'
         assert not run_rule('deprecated-schemas', source, tmp_path)
 
+    @pytest.mark.parametrize(
+        ('resources', 'expected'),
+        [
+            ('/a//b:\n  get:\n', [('/a//b', None)]),
+            ('/users/:\n  /{id}:\n    get:\n', [('/users//{id}', None)]),
+            ('/items/{id}:\n  uriParameters:\n    id:\n      required: false\n', [('/items/{id}', 'id')]),
+            ('/users/:\n  get:\n', []),
+            ('/people/~{fields}:\n  uriParameters:\n    fields?: string\n', []),
+            ('/items/{id}:\n  uriParameters:\n    id?: string\n  /tags:\n    get:\n', [('/items/{id}', 'id')]),
+        ],
+    )
+    def test_empty_path_segment_reads_only_the_segments_a_resource_adds(self, resources, expected, tmp_path):
+        # RAML 1.0 § Template URIs: a parameter surrounded by slashes SHOULD be
+        # required, and optional only beside other text. A trailing slash is
+        # not an empty segment between two others, and a parent's optional
+        # parameter is reported on the parent, not again on each child.
+        findings = run_rule('empty-path-segment', '#%RAML 1.0\ntitle: t\n' + resources, tmp_path)
+        assert [(finding.info['path'], finding.info.get('parameter')) for finding in findings] == expected
+
+    @pytest.mark.parametrize(
+        ('resources', 'expected'),
+        [
+            ('/bom:\n  get:\n/bom/items:\n  get:\n', ['/bom']),
+            # `/b/c/d` extends `/a/b/c`, the longest match; the top-level
+            # `/a/b/c` extends the nested `/a/b` in turn.
+            ('/a:\n  /b:\n    get:\n  /b/c/d:\n    get:\n/a/b/c:\n  get:\n', ['/a/b/c', '/a/b']),
+            ('/bom/items:\n  get:\n', []),
+            ('/bom:\n  get:\n  /items:\n    get:\n', []),
+        ],
+    )
+    def test_unnested_resource_names_the_longest_resource_it_extends(self, resources, expected, tmp_path):
+        findings = run_rule('unnested-resource', '#%RAML 1.0\ntitle: t\n' + resources, tmp_path)
+        assert [finding.info['resource'] for finding in findings] == expected
+
+    @pytest.mark.parametrize(
+        ('root', 'reported'),
+        [
+            ('baseUri: https://x.test\nprotocols: [HTTP]\n', True),
+            ('baseUri: https://x.test\nprotocols: [http, https]\n', False),
+            ('baseUri: https://x.test\n', False),
+            ("baseUri: '{scheme}://x.test'\nprotocols: [HTTP]\n", False),
+            ('baseUri: x.test/api\nprotocols: [HTTP]\n', False),
+        ],
+    )
+    def test_base_uri_protocol_needs_an_explicit_web_scheme_and_protocols(self, root, reported, tmp_path):
+        findings = run_rule('base-uri-protocol', '#%RAML 1.0\ntitle: t\n' + root, tmp_path)
+        assert [finding.info for finding in findings] == (
+            [{'scheme': 'HTTPS', 'protocols': 'HTTP'}] if reported else []
+        )
+
+    @pytest.mark.parametrize(
+        ('document', 'uris'),
+        [
+            ('baseUri: https://x.test/{version}\n', ['https://x.test/{version}']),
+            ('/v{version}:\n  /items:\n    get:\n', ['/v{version}']),
+            ('version: v1\nbaseUri: https://x.test/{version}\n/v{version}:\n  get:\n', []),
+        ],
+    )
+    def test_undefined_version_reads_the_base_uri_and_resource_templates(self, document, uris, tmp_path):
+        findings = run_rule('undefined-version', '#%RAML 1.0\ntitle: t\n' + document, tmp_path)
+        assert [finding.info['uri'] for finding in findings] == uris
+
+    def test_undescribed_security_scheme_names_the_scheme_type(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  basic:\n    type: Basic Authentication\n'
+            '  described:\n    type: Basic Authentication\n    describedBy:\n      responses:\n        401: {}\n'
+        )
+        findings = run_rule('undescribed-security-scheme', source, tmp_path)
+        assert [finding.info for finding in findings] == [{'scheme': 'basic', 'type': 'Basic Authentication'}]
+
+    @pytest.mark.parametrize(
+        ('declaration', 'reason'),
+        [
+            ('queryParameters:\n      p:\n        properties:\n          a: string\n', 'object'),
+            ('headers:\n      p:\n        type: object\n', 'object'),
+            ('queryParameters:\n      p:\n        type: string | object\n', 'union of non-scalar types'),
+            ('queryParameters:\n      p:\n        type: array\n        items: object\n', 'array of objects'),
+            ('headers:\n      p:\n        type: array\n        items: string[]\n', 'array of arrays'),
+            ('queryParameters:\n      p:\n        type: array\n        items: string[]\n', None),
+            ('queryParameters:\n      p: string[]\n', None),
+            ('queryParameters:\n      p: string | integer\n', None),
+        ],
+    )
+    def test_non_scalar_parameter_follows_the_types_raml_leaves_undefined(self, declaration, reason, tmp_path):
+        # RAML 1.0 § Headers adds arrays of arrays to the list; § Query
+        # Parameters does not.
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  get:\n    {declaration}'
+        findings = run_rule('non-scalar-parameter', source, tmp_path)
+        assert [finding.info['reason'] for finding in findings] == ([reason] if reason else [])
+
+    def test_non_scalar_parameter_leaves_uri_parameters_to_json(self, tmp_path):
+        # RAML 1.0 § Template URIs defaults a non-scalar URI parameter to JSON.
+        source = '#%RAML 1.0\ntitle: t\n/a/{p}:\n  uriParameters:\n    p:\n      type: object\n  get:\n'
+        assert not run_rule('non-scalar-parameter', source, tmp_path)
+
+    @pytest.mark.parametrize('method', ['trace', 'connect'])
+    def test_non_standard_method_reports_the_methods_raml_does_not_define(self, method, tmp_path):
+        findings = run_rule('non-standard-method', f'#%RAML 1.0\ntitle: t\n/a:\n  {method}:\n  get:\n', tmp_path)
+        assert [finding.info for finding in findings] == [{'method': method}]
+
 
 class TestConfiguration:
     def test_source_spelling_rules_require_retained_source(self, tmp_path):

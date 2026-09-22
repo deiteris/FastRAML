@@ -52,7 +52,9 @@ Each category is also the ruleset that turns it on. `--explain RULE` lists the
 sources a standards rule cites, such as `RFC 9110 § 15.5.2` or `OWASP API4:2023`.
 
 `spec` rules are not style preferences. `json-ref-siblings` fires because a
-draft-07 resolver silently ignores keys beside a `$ref`. `optional-and-nil` is
+draft-07 resolver silently ignores keys beside a `$ref`; `empty-path-segment`,
+`unnested-resource` and `undescribed-security-scheme` follow a SHOULD in the RAML
+1.0 specification, and `--explain` names the section. `optional-and-nil` is
 instead opt-in style: omitted, present-null and present-with-value are distinct
 states, useful in PATCH-like contracts but worth reviewing elsewhere.
 

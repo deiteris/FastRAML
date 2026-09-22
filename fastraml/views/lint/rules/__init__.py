@@ -64,6 +64,15 @@ from fastraml.views.lint.rules.security import (
     UnboundedString,
     ValidationErrorResponse,
 )
+from fastraml.views.lint.rules.spec import (
+    BaseUriProtocol,
+    EmptyPathSegment,
+    NonScalarParameter,
+    NonStandardMethod,
+    UndefinedVersion,
+    UndescribedSecurityScheme,
+    UnnestedResource,
+)
 from fastraml.views.lint.rules.style import (
     AvoidExplicitInferredType,
     ExplicitUriParameter,
@@ -87,11 +96,18 @@ __all__ = ['builtin_registry']
 def builtin_registry() -> Registry:
     registry = Registry()
     spec_rules: tuple[Rule, ...] = (
+        BaseUriProtocol(),
         DeprecatedSchemas(),
+        EmptyPathSegment(),
         JsonRefSiblings(),
         MeaninglessMediaTypeSchema(),
         MeaninglessRequestBody(),
         NoAmbiguousPaths(),
+        NonScalarParameter(),
+        NonStandardMethod(),
+        UndefinedVersion(),
+        UndescribedSecurityScheme(),
+        UnnestedResource(),
         UntypedPayload(),
         UnusedTrait(),
         UnusedType(),

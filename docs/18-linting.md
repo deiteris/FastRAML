@@ -469,6 +469,30 @@ base64, and § 4.4 recommends base64url. The three rules that look inside a
 body are document rules keyed by source position, so a named type used by
 several JSON bodies is reported once, where it was written.
 
+The spec set also holds the RAML 1.0 SHOULDs the parser accepts, and the
+constructs the specification leaves without a meaning. They live in
+`rules/spec.py` and each cites its section. `empty-path-segment` reports an
+optional URI parameter that is a whole segment, `/{id}/`, which § Template URIs
+says should be required, and a path with an empty segment between two others,
+including a nested resource under a parent that ends in `/`; a trailing slash is
+not reported. `unnested-resource` reports `/bom/items` written beside `/bom`
+rather than nested in it (§ Resources and Nested Resources), naming the longest
+declared resource the key extends. `base-uri-protocol` reports an explicit
+`protocols` that omits the `http` or `https` scheme of `baseUri`, since
+`protocols` overrides it (§ Protocols). `undefined-version` reports `{version}` in
+`baseUri` or a resource with no root `version` to supply it.
+`undescribed-security-scheme` reports a scheme with no `describedBy`, which
+§ Security Scheme Declaration asks for "even for standard security schemes".
+`non-scalar-parameter` reports a header or query parameter typed as an object, a
+union with a non-scalar member, or an array of either, and for a header an array
+of arrays: § Headers and § Query Parameters say RAML defines no validation for
+them. URI parameters are not reported, because § Template URIs defaults them to
+JSON. `non-standard-method` reports `trace` and `connect`, which fastRAML accepts
+as an extension ([01](01-scope-and-coverage.md) § 3) and § Methods does not
+list. The MUSTs next to these (a `baseUri` that is not a URI, a
+`baseUriParameters` name the base URI does not use, and a `queryString` typed as
+an array) are parse or P10 errors, not rules (§ 1.1).
+
 `deprecated-schemas` reports the root `schemas:` key and the `schema:` facet of
 any type declaration, a body's included. The facet is read from
 `raml.source_info`, which indexes only type declarations, so a property named

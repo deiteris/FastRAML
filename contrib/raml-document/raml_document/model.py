@@ -246,9 +246,15 @@ class Resource:
 
         `/books/{isbn}` nests as RAML nests it, `/books:` then `/{isbn}:`, which
         is also how a reader finds it.
+
+        **`/` is a resource and not this node.** An API answering on its own
+        base URI writes `/:` in RAML, which is a relative URI like any other;
+        returning the document root instead would put `get:` beside `title:`,
+        where RAML has no method node at all and a parser rejects the document.
         """
-        node = self
-        for segment in (part for part in path.split('/') if part):
+        segments = [part for part in path.split('/') if part]
+        node = self if segments else self.children.setdefault('/', Resource())
+        for segment in segments:
             node = node.children.setdefault(f'/{segment}', Resource())
         return node
 

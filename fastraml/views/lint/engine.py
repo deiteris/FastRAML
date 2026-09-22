@@ -138,6 +138,11 @@ class RuleMeta:
     on the first and fire on the second (docs/18 § 2.1). That makes the
     documentation a test rather than a comment, which is the lesson docs/16
     § 6.2 paid for.
+
+    `references` names the published sources a rule follows from, one citation
+    per entry: `OWASP API4:2023`, `RFC 9110 § 15.5.2`, `CWE-770`. It is data
+    rather than prose so that a reader, or a tool, can find every rule one
+    clause produced (docs/18 § 2.2).
     """
 
     id: str
@@ -147,6 +152,7 @@ class RuleMeta:
     severity: Severity
     good: str = ''
     bad: str = ''
+    references: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

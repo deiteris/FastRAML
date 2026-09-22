@@ -95,11 +95,12 @@ class InsecureBasicAuthentication:
         Category.SECURITY,
         'Basic Authentication is declared',
         (
-            'OWASP API2:2023 Broken Authentication. Basic sends the long-lived password itself, base64-encoded '
+            'Basic sends the long-lived password itself, base64-encoded '
             'rather than encrypted, on every request, so each request exposes a reusable credential. Prefer a '
             'token-based scheme such as OAuth 2.0.'
         ),
         Severity.WARNING,
+        references=('OWASP API2:2023', 'CWE-522'),
         good=(
             '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  oauth:\n    type: OAuth 2.0\n    settings:\n'
             '      accessTokenUri: https://example.com/token\n      authorizationGrants: [client_credentials]\n'
@@ -121,10 +122,11 @@ class HttpsOnly:
         Category.SECURITY,
         'operations should be HTTPS-only',
         (
-            'OWASP API8:2023 Security Misconfiguration. Missing TLS is a listed misconfiguration, and OWASP asks '
+            'Missing TLS is a listed misconfiguration, and OWASP asks '
             'that all API communication use an encrypted channel, whether the API is internal or public.'
         ),
         Severity.WARNING,
+        references=('OWASP API8:2023', 'CWE-319'),
         good='#%RAML 1.0\ntitle: t\nprotocols: [HTTPS]\n/a:\n  get:\n',
         bad='#%RAML 1.0\ntitle: t\nprotocols: [HTTP]\n/a:\n  get:\n',
     )
@@ -172,11 +174,12 @@ class Required401Response(_RequiredResponse):
         Category.SECURITY,
         'operations should document a 401 body',
         (
-            'OWASP API8:2023 Security Misconfiguration. OWASP asks that every response payload schema be defined '
+            'OWASP asks that every response payload schema be defined '
             'and enforced, including error responses, so that exception traces and other internal details are '
             'not sent back to attackers. A 401 is the error every authenticated operation can return.'
         ),
         Severity.WARNING,
+        references=('OWASP API8:2023', 'CWE-209'),
         good=(
             '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  basic:\n    type: Basic Authentication\n'
             '/a:\n  get:\n    securedBy: [basic]\n    responses:\n      401:\n'
@@ -201,11 +204,12 @@ class Required429Response(_RequiredResponse):
         Category.SECURITY,
         'operations should document a 429 body',
         (
-            'OWASP API4:2023 Unrestricted Resource Consumption. OWASP asks for a limit on how often a client can '
+            'OWASP asks for a limit on how often a client can '
             'call the API. A typed 429 documents that the limit exists and lets clients recognise it and back '
             'off, instead of retrying at once.'
         ),
         Severity.WARNING,
+        references=('OWASP API4:2023', 'RFC 6585 § 4'),
         good='#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      429:\n        body:\n          application/json: string\n',
         bad='#%RAML 1.0\ntitle: t\n/a:\n  get:\n',
     )
@@ -218,11 +222,12 @@ class Required500Response(_RequiredResponse):
         Category.SECURITY,
         'operations should document a 500 body',
         (
-            'OWASP API8:2023 Security Misconfiguration. Error messages that include stack traces are a listed '
+            'Error messages that include stack traces are a listed '
             'misconfiguration. OWASP asks that error response schemas be defined and enforced. An unexpected '
             'server failure is where an undefined 500 most often leaks one.'
         ),
         Severity.WARNING,
+        references=('OWASP API8:2023', 'CWE-209'),
         good='#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      500:\n        body:\n          application/json: string\n',
         bad='#%RAML 1.0\ntitle: t\n/a:\n  get:\n',
     )
@@ -234,11 +239,12 @@ class ValidationErrorResponse:
         Category.SECURITY,
         'operations should document a 400 or 422 body',
         (
-            'OWASP API8:2023 Security Misconfiguration. OWASP asks that error response schemas be defined and '
+            'OWASP asks that error response schemas be defined and '
             'enforced. An operation that accepts input can reject it, and a typed 400 or 422 says what the '
             'rejection exposes instead of leaving it to the framework default.'
         ),
         Severity.WARNING,
+        references=('OWASP API8:2023', 'CWE-209'),
         good=(
             '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    queryParameters:\n      q: string\n'
             '    responses:\n      400:\n        body:\n          application/json: string\n'
@@ -278,11 +284,12 @@ class RateLimitHeaders:
         Category.SECURITY,
         'success and rate-limit responses should describe rate limits',
         (
-            'OWASP API4:2023 Unrestricted Resource Consumption. OWASP asks for a limit on how often a client can '
+            'OWASP asks for a limit on how often a client can '
             'call the API. Rate-limit headers document that limit and let well-behaved clients throttle '
             'themselves before they reach it.'
         ),
         Severity.WARNING,
+        references=('OWASP API4:2023', 'CWE-770'),
         good='#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        headers:\n          X-RateLimit-Limit: integer\n',
         bad='#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200: {}\n',
     )
@@ -305,10 +312,11 @@ class RetryAfter429:
         Category.SECURITY,
         '429 responses should declare Retry-After',
         (
-            'OWASP API4:2023 Unrestricted Resource Consumption. Retry-After tells a rate-limited client when to '
+            'Retry-After tells a rate-limited client when to '
             'retry, so clients do not poll immediately and add to the load that caused the limit.'
         ),
         Severity.WARNING,
+        references=('OWASP API4:2023', 'RFC 6585 § 4', 'RFC 9110 § 10.2.3'),
         good='#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      429:\n        headers:\n          Retry-After: integer\n',
         bad='#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      429: {}\n',
     )
@@ -340,11 +348,12 @@ class NumericResourceId:
         Category.SECURITY,
         'URI template parameters should not be numeric',
         (
-            'OWASP API1:2023 Broken Object Level Authorization. Sequential numeric IDs let an attacker enumerate '
+            'Sequential numeric IDs let an attacker enumerate '
             "other users' records, so OWASP prefers random, unpredictable values. This is an extra layer of "
             'defence: the fix OWASP requires is an authorization check on every record access.'
         ),
         Severity.WARNING,
+        references=('OWASP API1:2023', 'CWE-639'),
         good='#%RAML 1.0\ntitle: t\n/users/{userId}:\n  uriParameters:\n    userId: string\n',
         bad='#%RAML 1.0\ntitle: t\n/users/{userId}:\n  uriParameters:\n    userId: integer\n',
     )
@@ -379,11 +388,12 @@ class BoundedArray:
         Category.SECURITY,
         'arrays should have maxItems',
         (
-            'OWASP API4:2023 Unrestricted Resource Consumption. OWASP asks for a maximum number of elements in '
+            'OWASP asks for a maximum number of elements in '
             'every incoming array. `maxItems` limits the memory and processing an attacker-supplied array can '
             'demand. Constrain the `items` type as well.'
         ),
         Severity.WARNING,
+        references=('OWASP API4:2023', 'CWE-770'),
         good=_request_type('    type: array\n    items: string\n    maxItems: 10\n'),
         bad=_request_type('    type: array\n    items: string\n'),
     )
@@ -400,11 +410,12 @@ class RestrictedString:
         Category.SECURITY,
         'strings should constrain accepted values',
         (
-            'OWASP API4:2023 Unrestricted Resource Consumption. OWASP asks for server-side validation of query '
+            'OWASP asks for server-side validation of query '
             'and body parameters. A `pattern` or `enum` states which values are accepted, so arbitrary text is '
             'not accepted by default.'
         ),
         Severity.WARNING,
+        references=('OWASP API4:2023', 'CWE-20'),
         good=_request_type('    type: string\n    pattern: ^x+$\n'),
         bad=_request_type('    type: string\n    maxLength: 20\n'),
     )
@@ -428,13 +439,14 @@ class UnboundedString:
         category=Category.SECURITY,
         summary='a string with no maxLength, pattern or enum',
         rationale=(
-            'OWASP API4:2023 Unrestricted Resource Consumption. OWASP asks for a maximum length on every incoming '
+            'OWASP asks for a maximum length on every incoming '
             'string. A string with no size or value restriction allows unlimited memory use wherever the shape '
             'is used as input. Checking the shape rather than only its current use sites also '
             'covers named types before they are wired into an endpoint. `maxLength` supplies a direct bound; '
             '`pattern` and `enum` record an intentional accepted domain.'
         ),
         severity=Severity.WARNING,
+        references=('OWASP API4:2023', 'CWE-770'),
         good=(
             '#%RAML 1.0\ntitle: t\ntypes:\n  Input:\n    type: string\n    maxLength: 64\n'
             '/a:\n  post:\n    body:\n      text/plain: Input\n'
@@ -466,11 +478,12 @@ class IntegerFormat:
         Category.SECURITY,
         'integers should declare a storage width',
         (
-            'OWASP API4:2023 Unrestricted Resource Consumption. An explicit `format` fixes the range a server '
+            'An explicit `format` fixes the range a server '
             'must accept. Without it, generators and validators each choose a width, and an out-of-range value '
             'can overflow or be accepted by one and rejected by another.'
         ),
         Severity.WARNING,
+        references=('OWASP API4:2023', 'CWE-190'),
         good=_request_type('    type: integer\n    format: int32\n'),
         bad=_request_type('    type: integer\n'),
     )
@@ -487,11 +500,12 @@ class BoundedInteger:
         Category.SECURITY,
         'integers should have minimum and maximum',
         (
-            'OWASP API4:2023 Unrestricted Resource Consumption. OWASP asks for validation of parameters, '
+            'OWASP asks for validation of parameters, '
             'especially one that controls how many records are returned. `minimum` and `maximum` prevent a '
             'negative count or a request for a million iterations when ten were expected.'
         ),
         Severity.WARNING,
+        references=('OWASP API4:2023', 'CWE-1284'),
         good=_request_type('    type: integer\n    minimum: 0\n    maximum: 10\n'),
         bad=_request_type('    type: integer\n'),
     )
@@ -515,11 +529,12 @@ class NoAdditionalProperties:
         Category.SECURITY,
         'objects should not explicitly permit extras',
         (
-            'OWASP API3:2023 Broken Object Property Level Authorization. Accepting undeclared properties invites '
+            'Accepting undeclared properties invites '
             'mass assignment, where a client sets fields such as a role or a price that it should not '
             'control. OWASP asks that only client-updatable properties be accepted.'
         ),
         Severity.WARNING,
+        references=('OWASP API3:2023', 'CWE-915'),
         good=_request_type('    type: object\n    additionalProperties: false\n'),
         bad=_request_type('    type: object\n    additionalProperties: true\n'),
     )
@@ -551,12 +566,12 @@ class BoundedAdditionalProperties:
         Category.SECURITY,
         'open objects should limit their total property count',
         (
-            'OWASP API3:2023 Broken Object Property Level Authorization and API4:2023 Unrestricted Resource '
-            'Consumption. An open object accepts unlimited extra fields: a mass-assignment risk, and an unlimited '
+            'An open object accepts unlimited extra fields: a mass-assignment risk, and an unlimited '
             'payload. RAML has no separate bound on additional properties, so `maxProperties` limits the '
             "object's total property count."
         ),
         Severity.WARNING,
+        references=('OWASP API3:2023', 'OWASP API4:2023', 'CWE-915', 'CWE-770'),
         good=_request_type('    type: object\n    additionalProperties: true\n    maxProperties: 20\n'),
         bad=_request_type('    type: object\n    additionalProperties: true\n'),
     )

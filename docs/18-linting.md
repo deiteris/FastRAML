@@ -29,7 +29,8 @@ rules rather than to compatibility rules, splits them into three:
    media type cannot carry any value admitted by its shape gives consumers two
    contradictory decoding instructions. None of those is taste.
 2. **Derived from a published standard.** The OWASP API Security rules. Not one
-   organisation's house style, but not RAML's either.
+   organisation's house style, but not RAML's either, and each rule names its
+   source in `references` (§ 2.2).
 3. **Taste.** Kebab-case paths, notation preferences, declarations sorted,
    descriptions required. § 10.3's example lives here.
 
@@ -37,6 +38,12 @@ Group 1 ships in `fastraml/views/lint/` and is the default ruleset. Groups 2
 and 3 ship beside it as the named `security` and `style` rulesets, both **off
 by default**. The built-in style set covers RAML-wide authoring conventions;
 § 6 remains the mechanism for organisation-specific policy.
+
+A company API guideline is group 3 however widely it is followed: it is one
+organisation's choices, and it ships as a plugin. The linter is also not a
+security scanner. It judges the contract a document states, reports in its own
+formats (§ 7), and leaves exchange formats such as SARIF to a tool built for
+that job.
 
 That is an amendment to § 10.3 rather than a reinterpretation of it, and § 10.3
 is amended to say so — the same move § 10.3 itself performed on § 7.
@@ -75,6 +82,7 @@ class RuleMeta:
     severity: Severity    # the default; config overrides it
     good: str = ''        # RAML showing the rule satisfied
     bad: str = ''         # RAML showing it violated
+    references: tuple[str, ...] = ()   # the published sources it follows from
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +123,25 @@ reference page does not give:
   first and fires on the second**. A rule whose examples are wrong fails its own
   test. [16](16-graph.md) § 6.2 is why this is not optional: three catalogue
   queries were wrong, ran, and returned plausible rows.
+
+### 2.2 `references` name the source, not the rationale
+
+A rule derived from a published standard (§ 1 group 2) names it in
+`references`, one citation per entry, in one of four spellings:
+
+| Spelling | Example |
+|---|---|
+| OWASP API Security Top 10 category | `OWASP API4:2023` |
+| OWASP document, by title | `OWASP File Upload Cheat Sheet` |
+| RFC, or one of its clauses | `RFC 6749`, `RFC 9110 § 15.5.2` |
+| CWE weakness | `CWE-770` |
+
+The rationale explains *why* in prose and does not repeat the identifiers.
+Keeping them as data lets `--explain` list them, and lets a reader find every
+rule one clause produced without searching prose. The suite asserts that every
+`security` rule has at least one reference and
+that each matches the spellings above. RFC citations are to the current
+document: RFC 9110, not the RFC 7231 it obsoletes.
 
 ## 3. Two rule shapes
 
@@ -292,7 +319,7 @@ The additional security rules cover HTTPS-only operations; Basic authentication;
 typed `401`, `429`, `500` and `400`/`422` responses; numeric URI parameters;
 rate-limit headers; bounded arrays and integers; restricted strings; and closed
 or size-bounded objects.
-Each security rule's rationale opens with the OWASP API Security Top 10 (2023)
+Each security rule's `references` names the OWASP API Security Top 10 (2023)
 category it follows from, using the assignments in Stoplight's
 `spectral-owasp-ruleset` (`https://github.com/stoplightio/spectral-owasp-ruleset`),
 the ruleset Speakeasy's rules came from. That ruleset places them as follows:
@@ -304,6 +331,7 @@ responses. The rationale then gives OWASP's own prevention advice, not a
 paraphrase of the ruleset. API1 asks for random identifiers only as an extra
 layer of defence, and `numeric-resource-id` says so, since only an authorization
 check on each access actually fixes API1.
+
 `json-ref-siblings` inspects parsed JSON Schema, which retains structure but not
 token positions. Each finding therefore names the schema document and an RFC
 6901 `schemaPath` ending at the offending `$ref`. External schemas are reported

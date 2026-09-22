@@ -43,12 +43,13 @@ class UnsecuredOperation:
         category=Category.SECURITY,
         summary='an operation reachable without a security scheme',
         rationale=(
-            'OWASP API2:2023 Broken Authentication. After RAML security inheritance and an explicit '
+            'After RAML security inheritance and an explicit '
             '`securedBy: [null]` are applied, an operation with no scheme accepts requests without the '
             'authentication described by the API. OWASP counts a service that others can reach without '
             'authentication as vulnerable.'
         ),
         severity=Severity.WARNING,
+        references=('OWASP API2:2023', 'CWE-306'),
         good=(
             '#%RAML 1.0\ntitle: t\nsecuritySchemes:\n  basic:\n    type: Basic Authentication\n'
             'securedBy: [basic]\n/a:\n  get:\n'

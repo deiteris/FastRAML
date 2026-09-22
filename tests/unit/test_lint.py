@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 
 import pytest
@@ -515,6 +516,34 @@ class TestRuleExamples:
         assert not Linter(builtin_registry(), config).run(raml)
 
 
+#: `RuleMeta.references` entries: an OWASP category or document, an RFC clause, or a CWE.
+REFERENCE = re.compile(
+    r'^(OWASP API(10|[1-9]):2023|OWASP [A-Z][A-Za-z ]+|RFC \d+( (§ [\d.]+|Appendix [A-Z]))?|CWE-\d+)$'
+)
+
+#: The categories derived from a published standard (docs/18 § 1 group 2).
+STANDARD_CATEGORIES = (Category.SECURITY,)
+
+
+class TestStandardsRules:
+    """The rulesets derived from a published standard — docs/18 § 1 group 2, § 5.1."""
+
+    @pytest.mark.parametrize(
+        'rule',
+        [rule for rule in builtin_registry().all() if rule.meta.category in STANDARD_CATEGORIES],
+        ids=lambda rule: rule.meta.id,
+    )
+    def test_standard_derived_rules_cite_their_source(self, rule):
+        assert rule.meta.references
+        assert all(REFERENCE.fullmatch(reference) for reference in rule.meta.references), rule.meta.references
+
+    def test_each_standard_category_is_the_ruleset_that_enables_it(self):
+        registry = builtin_registry()
+        for category in STANDARD_CATEGORIES:
+            expected = [rule.meta.id for rule in registry.all() if rule.meta.category is category]
+            assert registry.ids_in(str(category)) == expected
+
+
 class TestConfiguration:
     def test_source_spelling_rules_require_retained_source(self, tmp_path):
         raml = parse_from_string(
@@ -638,6 +667,10 @@ class TestLintCli:
         assert 'optional-and-nil' in capsys.readouterr().out
         assert main(['lint', '--explain', 'optional-and-nil']) == EXIT_OK
         assert 'Good:' in capsys.readouterr().out
+
+    def test_explain_lists_a_rules_references(self, capsys):
+        assert main(['lint', '--explain', 'https-only']) == EXIT_OK
+        assert '- CWE-319\n' in capsys.readouterr().out
 
     def test_default_warnings_do_not_fail_the_run(self, workspace, capsys):
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})

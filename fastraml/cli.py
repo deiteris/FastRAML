@@ -425,7 +425,7 @@ def _info(args: argparse.Namespace) -> int:
 # -- lint ---------------------------------------------------------------------
 
 
-def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0915 - command failures return at their source
+def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 - command failures return at their source
     from pathlib import Path  # noqa: PLC0415 - lint's display root only
 
     import yaml  # noqa: PLC0415 - lint section handoff only
@@ -475,6 +475,8 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0915 - command 
             return EXIT_INVALID
         meta = rule.meta
         text = f'{meta.id} [{meta.category}, {meta.severity}]\n\n{meta.summary}\n\n{meta.rationale}\n'
+        if meta.references:
+            text += '\nReferences:\n\n' + ''.join(f'- {reference}\n' for reference in meta.references)
         if meta.good:
             text += f'\nGood:\n\n{meta.good}'
         if meta.bad:

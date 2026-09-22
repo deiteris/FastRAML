@@ -195,7 +195,8 @@ rulesets, and you choose which ones run:
 * **`style`** (16 rules, opt-in): authoring conventions such as descriptions,
   examples, display names, concise type spellings and closed objects.
 
-`all` enables every built-in rule plus every enabled plugin.
+`all` enables every built-in rule plus every enabled plugin. `fastraml lint
+--explain RULE` lists the OWASP category, RFC clause or CWE a rule follows from.
 
 ```bash
 fastraml lint api.raml                        # the recommended rules

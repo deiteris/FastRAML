@@ -126,6 +126,23 @@ class TestRuleExamples:
         findings = Linter(builtin_registry(), config).run(parsed('#%RAML 1.0\ntitle: t\n' + paths, tmp_path))
         assert [finding.rule for finding in findings] == ['no-ambiguous-paths']
 
+    @pytest.mark.parametrize(
+        ('paths', 'ambiguous'),
+        [
+            ('/users/me:\n  get:\n/users/{id}:\n  uriParameters:\n    id: integer\n  get:\n', False),
+            ('/users/me:\n  get:\n/users/{id}:\n  uriParameters:\n    id:\n      enum: [a, b]\n  get:\n', False),
+            ('/users/42:\n  get:\n/users/{id}:\n  uriParameters:\n    id: integer\n  get:\n', True),
+            ('/flags/true:\n  get:\n/flags/{on}:\n  uriParameters:\n    on: boolean\n  get:\n', True),
+            ('/files/{name}.json:\n  get:\n/files/{id}:\n  get:\n', True),
+            ('/files/{name}.json:\n  get:\n/files/{name}.xml:\n  get:\n', False),
+            ('/files/report.json:\n  get:\n/files/{name}.json:\n  get:\n', True),
+        ],
+    )
+    def test_ambiguous_paths_respect_parameter_types_and_mixed_segments(self, paths, ambiguous, tmp_path):
+        config = Config(extends=(), rules=(RuleSetting(id='no-ambiguous-paths'),))
+        findings = Linter(builtin_registry(), config).run(parsed('#%RAML 1.0\ntitle: t\n' + paths, tmp_path))
+        assert bool(findings) is ambiguous
+
     def test_disjoint_methods_do_not_make_overlapping_paths_ambiguous(self, tmp_path):
         source = '#%RAML 1.0\ntitle: t\n/users/me:\n  get:\n/users/{id}:\n  post:\n'
         config = Config(extends=(), rules=(RuleSetting(id='no-ambiguous-paths'),))

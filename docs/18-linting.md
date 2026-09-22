@@ -444,6 +444,19 @@ one named `year`, while numeric query parameters are not. The endpoint's own URI
 template selects the declarations to inspect, avoiding duplicate findings for
 parameters propagated to descendants.
 
+`no-ambiguous-paths` compares routes one segment at a time, which is sound
+because simple expansion percent-encodes `/` (RFC 6570 § 3.2.2). A literal
+segment overlaps a template only if every parameter's type accepts the text it
+would have to take: `/users/me` beside `/users/{id}` with `id: integer` or an
+`enum` without `me` is not reported, while `/users/42` is. The text is tried as a
+string, a number (through `Decimal`) and a boolean, because a path carries text
+that a typed parameter reads as its own kind. A segment mixing literals and
+parameters, such as `{name}.json`, is matched as a pattern against literals and
+compared with another template by its literal prefix and suffix, so
+`{name}.json` meets `{id}` but not `{name}.xml`. Two templates are otherwise
+assumed to overlap; their types are not intersected. Reserved and fragment
+expansions may span segments, so a route containing one is not compared.
+
 `meaningless-media-type-schema` uses only the response body model. JSON scalars
 are valid JSON and are accepted; file shapes are rejected for `application/json`
 and every structured `+json` subtype. XML has the corresponding file exclusion.

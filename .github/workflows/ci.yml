@@ -194,7 +194,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dist: [raml-document, fastapi-raml, fastmcp-raml, fastraml-viewer, raml-mock, raml-codegen]
+        dist: [raml-document, fastapi-raml, aiohttp-raml, fastmcp-raml, fastraml-viewer, raml-mock, raml-codegen]
     defaults:
       run:
         working-directory: contrib/${{ matrix.dist }}
@@ -206,17 +206,17 @@ jobs:
       # `fastraml-viewer` vendors `viewer/dist` in its build hook, so the
       # bundle has to exist before `uv sync` installs the project -- without it
       # the hook fails the install rather than shipping an empty package.
-      # `fastapi-raml` needs it too: `--all-extras` pulls its `viewer` extra,
-      # which depends on `fastraml-viewer` as an editable path, so the same hook
-      # runs during that project's install.
+      # `fastapi-raml` and `aiohttp-raml` need it too: `--all-extras` pulls
+      # their `viewer` extra, which depends on `fastraml-viewer` as an editable
+      # path, so the same hook runs during those projects' installs.
       - uses: actions/setup-node@v7
-        if: matrix.dist == 'fastraml-viewer' || matrix.dist == 'fastapi-raml'
+        if: contains(fromJSON('["fastraml-viewer", "fastapi-raml", "aiohttp-raml"]'), matrix.dist)
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: viewer/package-lock.json
       - name: Build the viewer bundle
-        if: matrix.dist == 'fastraml-viewer' || matrix.dist == 'fastapi-raml'
+        if: contains(fromJSON('["fastraml-viewer", "fastapi-raml", "aiohttp-raml"]'), matrix.dist)
         env:
           PUPPETEER_SKIP_DOWNLOAD: '1'
         run: npm ci && npm run build

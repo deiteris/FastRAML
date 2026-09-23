@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
-from fastraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
+from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_string_facet, scalar_str
 from fastraml.parser.includes import note_include_ref
 from fastraml.parser.source_decode import decode_responses
@@ -198,8 +198,7 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
                 elif name == FACET_SETTINGS:
                     settings_node = value
                 elif is_annotation_key(name):
-                    extension = unmarshal_domain_extension(raml, location, key, value)
-                    definition.annotations[extension.name] = extension
+                    add_domain_extension(raml, definition.annotations, location, key, value)
                 else:
                     raise node_error('unknown field', location, key, info={'field': name})
             except RamlError as err:
@@ -238,8 +237,7 @@ def _decode_described_by(raml: Raml, node: Node, location: str) -> SecuritySchem
             elif name == 'responses':
                 description.responses = decode_responses(raml, value, location)
             elif is_annotation_key(name):
-                extension = unmarshal_domain_extension(raml, location, key, value)
-                description.annotations[extension.name] = extension
+                add_domain_extension(raml, description.annotations, location, key, value)
             else:
                 raise node_error('unknown field in describedBy', location, key, info={'field': name})
         except RamlError as err:
@@ -290,8 +288,7 @@ def _decode_settings(
             name = key.value
             try:
                 if is_annotation_key(name):
-                    extension = unmarshal_domain_extension(raml, location, key, value)
-                    settings.annotations[extension.name] = extension
+                    add_domain_extension(raml, settings.annotations, location, key, value)
                 elif name not in allowed:
                     # A key the declared type does not define. Caught rather
                     # than ignored: `Basic Authentication` with an

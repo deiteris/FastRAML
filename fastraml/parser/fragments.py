@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, ErrorKind, RamlError
-from fastraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
+from fastraml.parser.annotations import DomainExtension, add_domain_extension, is_annotation_key
 from fastraml.parser.directives import decode_secured_by, make_security_schemes
 from fastraml.parser.documentation import DocumentationItem, decode_documentation_item
 from fastraml.parser.endpoints import VALID_PROTOCOLS
@@ -443,8 +443,7 @@ class Library(_BaseFragment):
                 elif name == FACET_SECURITY_SCHEMES:
                     self.security_schemes = decode_security_scheme_definitions(raml, value, self.location)
                 elif is_annotation_key(name):
-                    extension = unmarshal_domain_extension(raml, self.location, key, value)
-                    self.annotations[extension.name] = extension
+                    add_domain_extension(raml, self.annotations, self.location, key, value)
                 else:
                     raise node_error('unknown field', self.location, key, info={'field': name})
             except RamlError as err:
@@ -558,8 +557,7 @@ class APIFragment(_BaseFragment):
             return
         name = key.value
         if is_annotation_key(name):
-            extension = unmarshal_domain_extension(self._raml, self.location, key, value)
-            self.annotations[extension.name] = extension
+            add_domain_extension(self._raml, self.annotations, self.location, key, value)
         elif name.startswith('/'):
             # Endpoints are not decoded here: they become stage-1 IR in Phase 5,
             # because the trait and resource-type merge runs on the YAML tree.

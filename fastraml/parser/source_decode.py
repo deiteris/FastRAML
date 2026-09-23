@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Final
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
-from fastraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
+from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.directives import make_security_schemes
 from fastraml.parser.endpoints import VALID_PROTOCOLS, Body, EndPoint, Operation, Request, Response
 from fastraml.parser.facets import make_string_facet, scalar_str
@@ -37,7 +37,6 @@ from fastraml.yamlnode import NodeKind, is_null, node_error, pairs
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.directives import SecurityScheme
     from fastraml.parser.source_ir import SourceEndPoint, SourceOperation
     from fastraml.registry import Raml
@@ -88,11 +87,6 @@ def _secured_by(raml: Raml, source: SourceEndPoint | SourceOperation) -> list[Se
     if not source.explicit_secured_by:
         return raml.global_secured_by
     return make_security_schemes(raml, source.secured_by)
-
-
-def _annotation(raml: Raml, into: dict[str, DomainExtension], key: Node, value: Node, location: str) -> None:
-    extension = unmarshal_domain_extension(raml, location, key, value)
-    into[extension.name] = extension
 
 
 def _protocols(node: Node, location: str) -> list[str]:
@@ -219,7 +213,7 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str) -> Respo
                 elif name == FACET_BODY:
                     response.bodies = _decode_bodies(raml, child_value, location, DomainLocation.RESPONSE_BODY)
                 elif is_annotation_key(name):
-                    _annotation(raml, response.annotations, child_key, child_value, location)
+                    add_domain_extension(raml, response.annotations, location, child_key, child_value)
                 else:
                     raise node_error('unknown field', location, child_key, info={'field': name})
             except RamlError as err:
@@ -275,7 +269,7 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
     elif name == FACET_RESPONSES:
         operation.responses = decode_responses(raml, value, location)
     elif is_annotation_key(name):
-        _annotation(raml, operation.annotations, key, value, location)
+        add_domain_extension(raml, operation.annotations, location, key, value)
     else:
         raise node_error('unknown field', location, key, info={'field': name})
 
@@ -330,7 +324,7 @@ def _decode_endpoint_field(raml: Raml, endpoint: EndPoint, key: Node, value: Nod
     elif name == FACET_URI_PARAMETERS:
         endpoint.uri_parameters = make_parameter_map(raml, value, location, 'uri')
     elif is_annotation_key(name):
-        _annotation(raml, endpoint.annotations, key, value, location)
+        add_domain_extension(raml, endpoint.annotations, location, key, value)
     else:
         raise node_error('unknown field', location, key, info={'field': name})
 

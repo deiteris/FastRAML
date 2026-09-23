@@ -26,7 +26,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.datanode import parse_int
-from fastraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
+from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.includes import IncludeInfo, resolve_include
 from fastraml.positions import UNKNOWN
 from fastraml.types.base import ScalarFacet
@@ -173,8 +173,7 @@ def resolve_annotated_scalar(raml: Raml, node: Node, location: str) -> tuple[Nod
         if key.value == FACET_VALUE:
             value_node = value
         elif is_annotation_key(key.value):
-            extension = unmarshal_domain_extension(raml, location, key, value)
-            extensions[extension.name] = extension
+            add_domain_extension(raml, extensions, location, key, value)
         else:
             raise node_error('unknown field in annotated scalar', location, key, info={'field': key.value})
 

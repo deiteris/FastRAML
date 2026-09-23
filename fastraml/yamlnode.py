@@ -42,6 +42,8 @@ __all__ = [
     'node_error',
     'pairs',
     'read_head',
+    'with_content',
+    'with_value',
 ]
 
 try:  # pragma: no cover - depends on how PyYAML was built
@@ -271,6 +273,30 @@ class Node:
             return self.position
         leaf = last_leaf(self)
         return Position(self.line, self.column, leaf.end_line, leaf.end_column)
+
+
+def with_content(model: Node, content: list[Node]) -> Node:
+    """A fresh node with `model`'s kind, tag and span, holding `content`.
+
+    The one way a pass rebuilds a container: a filter, a merge or a
+    substitution never edits the tree it read, and every retained child keeps
+    its identity, so provenance lookups still find it.
+    """
+    return Node(
+        model.kind,
+        model.tag,
+        model.value,
+        content,
+        model.line,
+        model.column,
+        model.end_line,
+        model.end_column,
+    )
+
+
+def with_value(model: Node, value: str) -> Node:
+    """A fresh scalar with `model`'s tag and span, reading `value`."""
+    return Node(NodeKind.SCALAR, model.tag, value, None, model.line, model.column, model.end_line, model.end_column)
 
 
 def pairs(node: Node) -> Iterator[tuple[Node, Node]]:

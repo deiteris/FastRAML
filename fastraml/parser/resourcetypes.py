@@ -42,7 +42,7 @@ from fastraml.parser.traits import check_parameters
 from fastraml.parser.uritemplates import resource_path_name
 from fastraml.positions import UNKNOWN, Position
 from fastraml.registry import ParseCtx
-from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, is_null, node_error, pairs
+from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, is_null, node_error, pairs, with_content, with_value
 
 if TYPE_CHECKING:
     from fastraml.parser.directives import DirectiveRef
@@ -148,22 +148,11 @@ def _method_key(definition: ResourceTypeDefinition, key: Node, location: str) ->
     if not optional:
         return key
     definition.optional_methods.add(name)
-    return Node(NodeKind.SCALAR, key.tag, name, None, key.line, key.column, key.end_line, key.end_column)
+    return with_value(key, name)
 
 
 def _body(model: Node, content: list[Node]) -> Node | None:
-    if not content:
-        return None
-    return Node(
-        model.kind,
-        model.tag,
-        model.value,
-        content,
-        model.line,
-        model.column,
-        model.end_line,
-        model.end_column,
-    )
+    return with_content(model, content) if content else None
 
 
 # -- section 5.1: applying a resource type ------------------------------------
@@ -293,9 +282,7 @@ def _filter_optional_methods(definition: ResourceTypeDefinition, source: Node, e
         kept.append(value)
     if len(kept) == len(source.content):
         return source
-    return Node(
-        source.kind, source.tag, source.value, kept, source.line, source.column, source.end_line, source.end_column
-    )
+    return with_content(source, kept)
 
 
 def _distribute_overlay(endpoint: SourceEndPoint, overlay: ProvenanceOverlay) -> None:

@@ -41,7 +41,7 @@ from fastraml.parser.templates import (
 from fastraml.parser.uritemplates import resource_path_name
 from fastraml.positions import UNKNOWN, Position
 from fastraml.registry import ParseCtx
-from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind, is_null, node_error, pairs
+from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind, is_null, node_error, pairs, with_content
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -131,18 +131,7 @@ def _body(model: Node, content: list[Node]) -> Node | None:
     Fresh, so that a merge into it cannot reach the declaring document — the
     same reason stage 1 rebuilds an endpoint's body (`source_ir.py`).
     """
-    if not content:
-        return None
-    return Node(
-        model.kind,
-        model.tag,
-        model.value,
-        content,
-        model.line,
-        model.column,
-        model.end_line,
-        model.end_column,
-    )
+    return with_content(model, content) if content else None
 
 
 # -- section 5.2: applying traits ---------------------------------------------

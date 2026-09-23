@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from fastraml.yamlnode import Node, NodeKind, pairs
+from fastraml.yamlnode import Node, NodeKind, pairs, with_content
 
 if TYPE_CHECKING:
     from fastraml.registry import ParseCtx
@@ -80,20 +80,6 @@ def merge_structural(
     return target
 
 
-def _container(model: Node, content: list[Node]) -> Node:
-    """A fresh container with `model`'s tag and position, holding `content`."""
-    return Node(
-        model.kind,
-        model.tag,
-        model.value,
-        content,
-        model.line,
-        model.column,
-        model.end_line,
-        model.end_column,
-    )
-
-
 def _merge_mappings(
     target: Node,
     source: Node,
@@ -126,7 +112,7 @@ def _merge_mappings(
         mark_graft(overlay, value, source_scope)
         merged.append(key)
         merged.append(value)
-    return _container(target, merged)
+    return with_content(target, merged)
 
 
 def _merge_sequences(
@@ -148,7 +134,7 @@ def _merge_sequences(
             continue
         mark_graft(overlay, item, source_scope)
         merged.append(item)
-    return _container(target, merged)
+    return with_content(target, merged)
 
 
 def mark_graft(overlay: ProvenanceOverlay | None, node: Node | None, scope: ParseCtx | None) -> None:

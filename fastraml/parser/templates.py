@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from fastraml.errors import ErrorKind, RamlError
-from fastraml.yamlnode import TAG_STR, Node, NodeKind
+from fastraml.yamlnode import TAG_STR, Node, NodeKind, with_content, with_value
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -356,7 +356,7 @@ def compile_source_provenance(
         # A container is structural: it keeps the enclosing scope, and reusing
         # it keeps every mark already recorded against it reachable.
         return node
-    return Node(node.kind, node.tag, node.value, content, node.line, node.column, node.end_line, node.end_column)
+    return with_content(node, content)
 
 
 def _compile_scalar(
@@ -394,6 +394,6 @@ def _compile_scalar(
         # An unsubstituted scalar is static: it keeps the declaration scope.
         return node
 
-    compiled = Node(node.kind, node.tag, text, None, node.line, node.column, node.end_line, node.end_column)
+    compiled = with_value(node, text)
     overlay[compiled] = caller_scope
     return compiled

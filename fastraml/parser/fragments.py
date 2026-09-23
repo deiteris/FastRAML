@@ -59,6 +59,7 @@ from fastraml.yamlnode import (
     node_error,
     pairs,
     read_head,
+    with_content,
 )
 
 if TYPE_CHECKING:
@@ -272,8 +273,7 @@ def filter_fragment_uses(raml: Raml, node: Node, location: str) -> tuple[Node, d
             kept.append(key)
             kept.append(value)
 
-    filtered = Node(node.kind, node.tag, node.value, kept, node.line, node.column, node.end_line, node.end_column)
-    return filtered, uses
+    return with_content(node, kept), uses
 
 
 def resolve_uses(raml: Raml, uses: Mapping[str, LibraryLink], location: str) -> None:

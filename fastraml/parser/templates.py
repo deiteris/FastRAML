@@ -130,11 +130,14 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
     The body is a fresh mapping, so a merge into it cannot reach the declaring
     document — the same reason stage 1 rebuilds an endpoint's body.
     """
+    # A declaration an extension document added is that document's, body and
+    # all; one it only amended stays the declaring document's (docs/19 § 5.3).
+    location = raml.document_location(value_node, location)
     definition = cls(
         id=raml.next_id(),
         name=key_node.value if key_node is not None else '',
         location=location,
-        anchor=raml.current_ctx().anchor,
+        anchor=raml.document_anchor(value_node) or raml.current_ctx().anchor,
         key_pos=(key_node if key_node is not None else value_node).position,
         value_pos=value_node.full_position,
     )

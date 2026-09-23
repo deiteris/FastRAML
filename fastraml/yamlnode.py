@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import re
 import sys
+from contextvars import ContextVar
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 import yaml
 from yaml.nodes import ScalarNode
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
 __all__ = [
+    'AUTHORED_NODES',
     'DEFAULT_MAX_DEPTH',
     'MAX_NODES',
     'Node',
@@ -357,8 +359,28 @@ def node_error(
     to an `Accumulator` than raises it, and because a factory call keeps the
     message text out of the `raise` statement.
     """
-    position = node.full_position if node is not None else None
+    position = None
+    if node is not None:
+        position = node.full_position
+        authors = AUTHORED_NODES.get()
+        if authors:
+            author = authors.get(node)
+            if author is not None:
+                # The position is in the file that wrote the node, whatever
+                # document the caller was decoding (docs/19 § 5.3).
+                location = author.location
     return RamlError.new(message, location, position, kind=kind, info=info)
+
+
+class _Located(Protocol):
+    @property
+    def location(self) -> str: ...
+
+
+#: The nodes an extension document wrote, and which document wrote each. Set by
+#: `Raml.reporting_authorship` for the length of a parse; read only when a
+#: diagnostic is built.
+AUTHORED_NODES: ContextVar[Mapping[Node, _Located] | None] = ContextVar('AUTHORED_NODES', default=None)
 
 
 def read_head(text: str) -> str:

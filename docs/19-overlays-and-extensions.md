@@ -244,10 +244,18 @@ can use its masters' library prefixes without repeating `uses:`.
 
 ### 5.3 Document provenance
 
-The merge records every node it takes from an extension document in
+The merge records every node it takes from an extension document through
+`Raml.mark_authored`. The marks live in
 `Raml._document_provenance: dict[Node, ExtensionFragment]`, keyed by node
-identity. A grafted or replacing subtree is recorded whole, because `Node` has
-no parent pointer. Root API nodes are not recorded.
+identity.
+
+- A grafted or replacing subtree is recorded whole, because `Node` has no
+  parent pointer.
+- A pair the merge adds or replaces uses the extension document's key node as
+  well as its value, and both are recorded. A diagnostic on the key then names
+  the same file as one on the value.
+- Root API nodes are not recorded.
+- A mark is never replaced.
 
 Authorship does not depend on where a node is later grafted, so this map is
 parse-wide. The [08](08-templates-and-endpoints.md) § 4 overlay is per unit.
@@ -269,17 +277,37 @@ Checking the document mark first is sound for these reasons:
 - A complex parameter tree cannot mix authors, because `is:` and `type:`
   applications are replaced whole (§ 3.3).
 
-These sites consult document provenance, in addition to the readers in
-[08](08-templates-and-endpoints.md) § 4.2:
+The sites below consult document provenance directly, in addition to the
+readers in [08](08-templates-and-endpoints.md) § 4.2. Each decides by the
+**value** node it decodes. A value the merge recursed into is a new container,
+carries no mark, and stays with the enclosing document. These sites call
+`document_location` and `document_anchor`, which ignore template scopes: a
+substituted scalar keeps its template's positions, so only authorship may
+rename its file.
 
-- `make_scalar_facet`;
-- `resolve_include` and `note_include_ref`;
-- the `DataNode` builders;
-- `unmarshal_domain_extension`;
-- the documentation-item decoder;
-- the trait, resource-type, and security-scheme definition builders.
+- `make_scalar_facet`, for location;
+- `resolve_include` and `note_include_ref`, for the base of a relative path;
+- `make_data_node`, for location;
+- `unmarshal_domain_extension`, for location and anchor, keeping the enclosing
+  target;
+- `decode_documentation_item`, for location;
+- `make_template_definition`, for location and anchor;
+- `make_security_scheme_definition`, for location. Nested shapes find their
+  anchor through `scope_for`.
+- stage 1 (`make_source_endpoint`, `make_source_operation`), for an endpoint's
+  or operation's location and scope, and for each `type`, `is`, and `securedBy`
+  directive separately. A directive an extension document added to a root API
+  method resolves in the extension document's namespace.
 
-A diagnostic built for a marked node names the document that wrote it.
+During a parse, `Raml.reporting_authorship` makes the marks visible to
+`node_error` through a context variable. A diagnostic built for a marked node is
+then located in the document that wrote it ([11](11-diagnostics.md) § 4).
+Diagnostics built from a bare position rather than a node keep the location
+their caller passed.
+
+A `DataNode` records one location. In a multi-value sequence the merge extended,
+such as `enum`, an item an extension document appended keeps its own
+positions but is reported against the `DataNode`'s location.
 
 ### 5.4 Root annotations
 

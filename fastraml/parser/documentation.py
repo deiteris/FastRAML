@@ -60,6 +60,7 @@ def decode_documentation_item(raml: Raml, node: Node, location: str) -> Document
     `content` is usually `!include`d from a markdown file; the include machinery
     handles that, since a non-YAML include produces a string scalar.
     """
+    location = raml.document_location(node, location)
     if node.kind is not NodeKind.MAPPING:
         raise node_error('documentation item must be a mapping node', location, node)
 

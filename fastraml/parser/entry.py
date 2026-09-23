@@ -187,7 +187,13 @@ _FATAL: Final = frozenset(
 
 
 def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
-    """The pass driver. Each step's precondition is the previous step's result."""
+    """The pass driver, with diagnostics naming each node's authoring document."""
+    with raml.reporting_authorship():
+        return _run_passes(raml, uri, text, options)
+
+
+def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
+    """Each step's precondition is the previous step's result."""
     # P0 — identify the fragment kind from the first line. Fails fast: a
     # document with no recognised header is not RAML.
     head = read_head(text)

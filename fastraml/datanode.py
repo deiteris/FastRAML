@@ -158,6 +158,7 @@ def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location
     `type: '{"type":"object"}'` and inline JSON examples work; and ordinary
     YAML.
     """
+    location = raml.document_location(value_node, location)
     if value_node.tag == TAG_INCLUDE:
         target, content = resolve_include(raml, value_node, location)
         return DataNode(

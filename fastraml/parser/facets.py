@@ -193,6 +193,7 @@ def make_scalar_facet[T](
 
     `key_node` is `None` for a sequence item, which has no key of its own.
     """
+    location = raml.document_location(value_node, location)
     target, resolved = resolve_include(raml, value_node, location)
     resolved, extensions = resolve_annotated_scalar(raml, resolved, location)
     return ScalarFacet(

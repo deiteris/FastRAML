@@ -161,6 +161,7 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
     raml: Raml, key_node: Node | None, value_node: Node, location: str
 ) -> SecuritySchemeDefinition:
     """Decode one security-scheme declaration."""
+    location = raml.document_location(value_node, location)
     definition = SecuritySchemeDefinition(
         id=raml.next_id(),
         name=key_node.value if key_node is not None else '',

@@ -22,7 +22,7 @@ All four must pass before work is reported done. `mypy` is strict for `fastraml.
 lenient for tests.
 
 Benchmarks are a gate too: run `python -m bench compare` before and after any change
-to a hot path, and put the delta in the commit message (`docs/12` Part 4).
+to a hot path, and put the delta in the commit message (`docs/12` § 5).
 
 ## Layers and import boundaries
 
@@ -82,7 +82,7 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
   by `id()`.
 - `__slots__` on every model class; `@dataclass(slots=True, eq=False)` when a
   dataclass suits.
-- Never import `copy`. Use `clone(memo)` or `clone_detached()` (`docs/07` § 5); a
+- Never import `copy`. Use `clone(memo)` or `clone_detached()` (`docs/07` § 6); a
   test enforces this.
 - A `facets:` block declares what subtypes must supply. The P10 chain walk starts at
   `inherits[0]`, so the declaring type need not satisfy its own required facets, and
@@ -98,8 +98,7 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
   optional-method filtering removes subtrees between scan and use (`docs/08` § 5).
 - An alias shares its referent's containers on purpose (`docs/07` § 3); an
   inheritance merge sharing containers is a corruption (§ 4). Any traversal that
-  reaches a type must follow `aliasOf`, or `User[]` reports `User`'s supertypes
-  (`docs/16-graph.md` § 3).
+  reaches a type must follow `aliasOf`, or `User[]` reports `User`'s supertypes.
 - Accumulate errors; do not fail fast. `parse_lenient` re-raises an unreadable
   entry file, or an unknown/unsupported header, fragment-kind mismatch, or
   non-mapping root only when the outermost frame is located at the entry URI;
@@ -115,10 +114,13 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
 - Read `Examples.entries()`, never `Examples.values`, which is empty when
   `examples: !include ...` is used.
 - No per-character Python loops where a compiled regex or C-level string method will
-  do (`docs/12` § 12).
+  do (`docs/12` § 2).
 - Compile every RAML regex through `compile_pattern` / `regex_engine` in
   `parser/facets.py`, so `regex_engine='re2'` covers it. `re2` is an optional extra.
 - Single quotes. `docs/` is excluded from ruff.
+- Cite a document section as `docs/NN § S` or `docs/NN-name.md § S`, where `S` is
+  the heading's number (`4`, `3.1`, `B4`). `tests/unit/test_doc_refs.py` checks that
+  every such reference resolves, and rejects `section N` spellings.
 
 ## TCK
 
@@ -133,7 +135,7 @@ uv run pytest tests/tck -q
 
 `tests/tck/ratchet.json` records the expected outcome per fixture; CI fails on drift
 in either direction. Regenerate with `--update-ratchet` and read the diff before
-committing. A `fail` entry means outstanding work only (`docs/14` § 1.2): if a
+committing. A `fail` entry means outstanding work only (`docs/14` § 2): if a
 fixture is wrong, fix it in the suite (`deiteris/raml-tck`, the submodule's origin),
 recording go-raml's disagreement in its `KNOWN-ISSUES.md`. Never park it in the
 ratchet.
@@ -156,8 +158,8 @@ deleted afterwards. Its comments have been wrong about its own behaviour.
 ## Testing
 
 Pin decisions, not incidental behaviour. Assert on a diagnostic's message key and
-`info` dict, never on message text. Every corner case documented in `docs/14` § 2–3
-gets a test that names the rule it protects.
+`info` dict, never on message text. Every corner case a document records gets a test
+that names the rule it protects.
 
 Symlink-escape tests and `test_refuses_a_non_regular_file` skip on Windows. They are
 security-critical: trust CI's Linux job, not a local green run. When CI is not

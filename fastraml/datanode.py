@@ -11,7 +11,7 @@ construction: every stored value is validated at least once when validation is
 enabled, so laziness would only add a branch. Validation and serialization use
 `raw`; diagnostics use the position-bearing structure.
 
-See docs/03-yaml-and-io.md section 6.
+See docs/03-yaml-and-io.md § 6.
 """
 
 from __future__ import annotations
@@ -221,7 +221,7 @@ def _scalar_to_value(raml: Raml, node: Node, location: str, visited: set[str] | 
     target, content = resolve_include(raml, node, location)
     # A scalar include may itself include, so the chain is what needs cycle
     # detection; fragment-level cycles are legal and handled by the fragment
-    # cache instead. See docs/03-yaml-and-io.md section 4.3.
+    # cache instead. See docs/03-yaml-and-io.md § 4.3.
     if visited is None:
         visited = set()
     elif target in visited:
@@ -240,10 +240,9 @@ def scalar_value(node: Node) -> Any:
     literal form of a `date-only` example, and the type layer parses it. Numbers
     are converted from the text, never through an intermediate `float`.
 
-    A tag whose text will not convert keeps the raw text too, by the same rule
-    and never as a crash. That is how a YAML 1.1 sexagesimal — `12:30:00`, which
-    PyYAML tags `!!int` — reaches a `time-only` example as the string it was
-    written as.
+    A tag whose text will not convert also keeps the raw text rather than
+    raising: `08` resolves as `!!int` but has no octal reading, and an explicit
+    `!!int abc` has no reading at all.
     """
     tag = node.tag
     if tag == TAG_NULL:

@@ -109,13 +109,11 @@ def resolve_uri_ref(base: str, ref: str) -> str:
 
 
 def relative_to(location: str, root: str) -> str:
-    """`location` as a path a reader can act on, relative to `root` where it can.
+    """`location` relative to `root`, for display.
 
-    A plain `removeprefix` is not enough: a file in a sibling tree shares no
-    prefix with the entry document's directory, so it fell back to the whole
-    `file:///C:/...` URI — seventy characters in a column of fourteen, which
-    wrecks the alignment of any listing containing one. Walk up and spell the
-    ascent, which is what a person would write.
+    A location outside `root` is spelled with `../` ascents from the nearest
+    common ancestor rather than as a full URI; one with no common ancestor is
+    returned unchanged.
     """
     if location.startswith(root):
         return location.removeprefix(root) or location

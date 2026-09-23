@@ -1,14 +1,11 @@
-"""One class per node kind — `docs/16-graph.md` § 2.7.
+"""Graph node classes, one per node kind (`docs/16-graph.md` § 3).
 
-A node's kind is its class. `TypeNode` holds a `BaseShape`, `ResponseNode` holds
-a `Response`, and the entity's type is a parameter of the class rather than a
-value checked against it, so a node whose kind and entity disagree does not
-typecheck and cannot be built.
+A node's kind is its class, and the entity type is the class's type parameter,
+so a node whose kind and entity disagree does not typecheck.
 
-`attributes` is a method on each. Every key it yields is a name § 2 owns —
-`additionalProperties`, `statusCode`, `definedIn` — and the model spells each of
-them differently. Translating between the two is what this module is for: the
-projection owns the vocabulary, not the values, so nothing here is stored.
+`attributes` translates model fields into the graph vocabulary
+(`statusCode`, `definedIn`, `binding`, ...). It is computed from the entity on
+each call; nothing is stored on the node.
 """
 
 from __future__ import annotations
@@ -63,8 +60,7 @@ __all__ = [
 #: would be indistinguishable, and a comparison could not say which member left.
 type Literal_ = str | int | bool | tuple[str, ...]
 
-#: Everything a node can stand for. Every node holds one; a node standing for
-#: nothing would be something this layer invented (docs/16 § 1).
+#: Everything a node can stand for. Every node holds one model entity.
 type Entity = (
     BaseShape
     | Property
@@ -117,18 +113,11 @@ class GraphNode[E: Entity]:
     def name(self) -> str:
         """The node's authored name, or `''` where it has none.
 
-        Separate from `attributes` because looking a name up is the commonest
-        single-key read there is — `Graph.find` does it once per node and
-        `label` once per node pair — and `attributes` is far too expensive to
-        serve it. Building a `TypeNode`'s dictionary projects the shape, walks
-        every facet its kind declares and relativises its path, all of which is
-        discarded when the caller wanted one string: **12x slower than reading
-        the entity** over 36 510 nodes, 30.1 ms against 2.6 ms (docs/12 § 19e).
-
-        Each override is the same expression `attributes` uses for its `name`
-        key, and `attributes` reads this property rather than repeating it, so
-        the two cannot drift. `tests/unit/test_graph.py` asserts they agree for
-        every node kind.
+        Separate from `attributes` because `Graph.find` and `label` read it per
+        node, and building `attributes` (projecting the shape, walking its
+        facets) costs an order of magnitude more. `attributes` reads this
+        property for its `name` key; `tests/unit/test_graph.py` asserts they
+        agree for every node kind.
         """
         return ''
 
@@ -179,15 +168,13 @@ class TypeNode(GraphNode[BaseShape]):
             }
         )
         found.update(_where(base.location, base.key_pos, self.root))
-        # Facets come from the *projected* shape, so a type defined by a JSON
-        # schema has them rather than reading as a leaf (docs/16 § 2.6).
-        # `as_shape` caches, so asking twice costs one dictionary build.
+        # Facets come from the projected shape, so a JSON Schema type has them
+        # rather than reading as a leaf. `as_shape` caches the projection.
         view = projected(base)
         shape = view.shape
         if shape is not None:
-            # `facets_of` is shared with `render`, so the two views cannot
-            # disagree about what a kind constrains (docs/14 § 2). Only the
-            # conversion to a literal is this module's.
+            # `facets_of` is shared with `render`, so the two views agree on
+            # what a kind constrains.
             for name, facet in facets_of(shape):
                 literal = _facet_value(facet.value)
                 if literal is not None:
@@ -247,8 +234,8 @@ class EndPointNode(GraphNode[EndPoint]):
 class OperationNode(GraphNode[Operation]):
     """A method, and what its security amounts to.
 
-    No `path`: the endpoint holds it and `supportedOperation` reaches it, and a
-    fact reachable by following an edge is not an attribute (docs/16 § 2.8).
+    No `path`: the endpoint holds it and `supportedOperation` reaches it; a fact
+    reachable by following an edge is not repeated as an attribute.
     """
 
     kind: ClassVar[str] = 'Operation'
@@ -270,9 +257,9 @@ class OperationNode(GraphNode[Operation]):
         if scopes:
             found['scopes'] = scopes
         if any(scheme.is_null for scheme in operation.secured_by):
-            # `securedBy: [null]` *removes* inherited security (docs/09 § A3).
-            # It is a fact about the method, so it is recorded on the method
-            # rather than dropped for having no scheme to point at.
+            # `null` in `securedBy` permits unauthenticated calls (docs/09 § A3).
+            # Recorded on the method, since the null scheme has no declaration
+            # node to point at.
             found['unsecured'] = True
         return found
 
@@ -505,10 +492,7 @@ def _facet_value(value: object) -> str | int | bool | None:
     if isinstance(value, Fraction):
         return decimal_text(value)
     if isinstance(value, re.Pattern):
-        # The facet holds a *compiled* pattern. Without this a `pattern:` on a
-        # type reaches no node attribute at all, so every consumer of the
-        # projection is blind to one being tightened -- the § 2.6 failure in a
-        # different place.
+        # The facet holds a compiled pattern; report its source text.
         return str(value.pattern)
     if isinstance(value, (int, str)):
         return value

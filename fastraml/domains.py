@@ -1,16 +1,11 @@
-"""`DomainLocation` — the places an annotation can be applied.
+"""`DomainLocation`: the RAML targets an annotation can be applied to.
 
-Spec vocabulary rather than annotation machinery, which is why it is a leaf
-module of its own: `registry.py` carries the current location on its `ParseCtx`
-stack, and `parser/annotations.py` reads it when it builds a `DomainExtension`.
-Either module owning the enum would invert a layering direction
-(docs/02-architecture.md section 2).
+A leaf module because both `registry.py` (which carries the current target on
+`ParseCtx`) and `parser/annotations.py` (which records it on a
+`DomainExtension`) need it, and `registry.py` imports no parser module.
 
-The string values are the spec's own target names, because `allowedTargets:` is
-written in those terms and the comparison in P10 should be against the enum's
-value with no translation table in between.
-
-See docs/09-security-and-annotations.md section B5.
+The values are the spec's target names, so P10 compares `allowedTargets:`
+entries against them directly. See docs/09-security-and-annotations.md § B4.
 """
 
 from __future__ import annotations
@@ -24,10 +19,8 @@ class DomainLocation(StrEnum):
     """Where an annotation was written, recorded at the site that builds it.
 
     `allowedTargets:` on an annotation type names the subset of these that the
-    annotation may be applied to; P10 enforces it. Six of the seventeen are
-    reachable today — the rest belong to endpoints, templates and security
-    schemes, and are declared now so the phases that build those sites pass an
-    argument rather than extend an enum.
+    annotation may be applied to; P10 enforces it. `OVERLAY` and `EXTENSION`
+    exist for completeness: those fragment kinds are rejected before decoding.
     """
 
     API = 'API'

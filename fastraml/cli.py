@@ -1,27 +1,27 @@
-"""The `fastraml` console script — docs/13-public-api.md section 8.
+"""The `fastraml` console script (docs/13-public-api.md § 5).
 
 ```
-fastraml validate [-w ROOT] [--no-workspace-guard] [-r] [-v] [--json] FILE...
-fastraml info [-w ROOT] [-r] FILE
-fastraml graph [--format nt|turtle|dot|json] [-o FILE] FILE
-fastraml openapi [--format yaml|json] [-o FILE] FILE
-fastraml lint [--config FILE] [--format human|text|json|summary] FILE...
+fastraml validate [-v] [--json] FILE...
+fastraml info FILE
+fastraml graph [--format nt|turtle|dot|json] FILE
+fastraml openapi [--format yaml|json] FILE
+fastraml tree [--positions] FILE
 fastraml serve [--host H] [--port P] FILE
 fastraml list FILE [PATTERN]
-fastraml refs FILE NAME
-fastraml deps FILE NAME
-fastraml query FILE (-q SPARQL | -Q FILE.rq) [--json] [-o FILE]
-fastraml skills (list | get NAME...) [--full] [--json]
+fastraml refs|deps FILE NAME
+fastraml show [--depth N] FILE NAME
+fastraml compat [--types] [--json] OLD NEW
+fastraml query [FILE] (-q SPARQL | -Q FILE.rq | -n NAME | --list | --show NAME)
+fastraml lint [--config FILE] [--format human|text|json|summary] FILE...
+fastraml skills (list | get NAME... | install [NAME...])
 ```
 
-Mirrors go-raml's `raml` tool closely enough that the two
-can be diffed fixture by fixture (docs/14-testing.md section 1.3), which is why
-`--json` emits the same trace-chain shape `RamlError.to_dict()` produces and why
-`validate` keeps going after a failing file rather than stopping at it.
+Every parsing verb also takes `--config`, `-w ROOT`, `--no-workspace-guard`
+and `-r`; document-producing verbs take `-o FILE`.
 
-Everything here is presentation. No parsing rule lives in this module: it turns
-arguments into a `ParseOptions`, calls an entry point, and formats what comes
-back.
+Presentation only: this module turns arguments into `ParseOptions`, calls an
+entry point or a view, and formats the result. `validate --json` writes one
+`RamlError.to_dict()` record per file and continues past failing files.
 """
 
 from __future__ import annotations
@@ -49,16 +49,12 @@ __all__ = ['main']
 EXIT_OK = 0
 EXIT_INVALID = 1
 
-#: How many routes `refs`/`deps` print before saying there are more. One type at
-#: a real scale produces thousands -- `refs errorScheme` on a 149-endpoint API is
-#: 1902 lines -- which scrolls the answer off the screen as surely as printing
-#: nothing. The remainder goes to stderr, so a piped run is unaffected, and
-#: `--limit 0` still means all.
+#: How many routes `refs`/`deps` print by default. A widely used type can have
+#: thousands; the count of the rest goes to stderr. `--limit 0` prints all.
 _DEFAULT_LIMIT = 50
 
 
-#: One entry per subcommand. A table rather than a `match`, so adding a verb is
-#: one line here and one in `_parser` rather than a branch that lint counts.
+#: Subcommand name to handler, filled in by `_parser`.
 _COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {}
 
 
@@ -96,7 +92,7 @@ def _parser() -> argparse.ArgumentParser:
     info.add_argument('files', metavar='FILE', nargs=1)
     _add_common(info)
 
-    graph = commands.add_parser('graph', help='project the effective model as a graph (doc 16)')
+    graph = commands.add_parser('graph', help='project the effective model as a graph')
     graph.add_argument('files', metavar='FILE', nargs=1)
     graph.add_argument(
         '--format',
@@ -118,7 +114,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_output(openapi)
     _add_common(openapi)
 
-    tree = commands.add_parser('tree', help='the effective document as an addressed JSON tree (doc 16 section 11)')
+    tree = commands.add_parser('tree', help='the effective document as an addressed JSON tree')
     tree.add_argument('files', metavar='FILE', nargs=1)
     tree.add_argument('--positions', action='store_true', help='the span of every declaration instead of the document')
     _add_output(tree)
@@ -134,7 +130,7 @@ def _parser() -> argparse.ArgumentParser:
     source = query.add_mutually_exclusive_group()
     source.add_argument('-q', dest='sparql', help='the query text')
     source.add_argument('-Q', dest='query_file', help='a file holding the query')
-    source.add_argument('-n', dest='named', metavar='NAME', help='a query from the catalogue (docs/16 section 6)')
+    source.add_argument('-n', dest='named', metavar='NAME', help='a query from the catalogue (see --list)')
     query.add_argument('--list', dest='catalogue', action='store_true', help='list the catalogue and exit')
     query.add_argument('--show', metavar='NAME', help='print one catalogue query rather than running it')
     query.add_argument('--json', action='store_true', help='JSON rather than a table')
@@ -165,7 +161,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    lint = commands.add_parser('lint', help='check the effective document against lint rules (doc 18)')
+    lint = commands.add_parser('lint', help='check the effective document against lint rules')
     lint.add_argument('files', metavar='FILE', nargs='*')
     lint.add_argument(
         '--severity',
@@ -198,7 +194,7 @@ def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> 
     lint.add_argument(
         '--metrics',
         action='store_true',
-        help='report what each rule and provider cost, on stderr (doc 18 section 7.1)',
+        help='report what each rule and provider cost, on stderr',
     )
     lint.add_argument(
         '--max-findings',
@@ -249,16 +245,12 @@ def _add_compat(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
 
 
 def _add_output(parser: argparse.ArgumentParser) -> None:
-    """`-o` for a verb whose output is a document, plus lint's CI report.
+    """`-o` for every verb whose output is a document.
 
-    On every verb that emits one, not just `openapi`. The reason the flag exists
-    is that a shell redirect writes CRLF on Windows, which silently makes
-    committed output differ from what CI regenerates -- and `tree` is the verb
-    whose output this repository actually commits.
-
-    `compat` needs it for a second reason: it exits 1 by design when anything is
-    breaking, so `compat ... > report.md` leaves a shell with a failed command and
-    no way to tell a report it wrote from one it did not.
+    A shell redirect on Windows may write CRLF, so committed output (such as
+    `tree` JSON) would differ from what CI regenerates. For `compat`, which
+    exits 1 on breaking changes, `-o` also separates "report not written" (an
+    error message) from "report written, changes breaking".
     """
     parser.add_argument(
         '-o',
@@ -283,12 +275,7 @@ def _add_skills(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
 
 
 def _add_serve(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """The one verb that runs the document rather than printing it.
-
-    Split out of `_parser` for its statement count alone, the way
-    `_add_navigation` is: `PLR0915` objects the moment the budget is spent, and
-    this verb is the one that may grow, because it is the only one with a socket.
-    """
+    """`serve`: the tree projection over HTTP through the viewer bundle."""
     serve = commands.add_parser(
         'serve', help='the document in a browser, over the viewer bundle (needs fastraml-viewer)'
     )
@@ -299,12 +286,7 @@ def _add_serve(commands: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """The verbs that take you around a document rather than judging it.
-
-    Split out of `_parser` for its statement count alone, but the grouping is
-    real: `list` says what can be named, `refs`/`deps` say what reaches a name,
-    and `show` says what one name resolves to.
-    """
+    """`list` (what can be named), `refs`/`deps` (what reaches a name), `show`."""
     for name, direction in (('refs', 'uses'), ('deps', 'is made of')):
         walk = commands.add_parser(name, help=f'what {direction} a named type, with the route to it')
         walk.add_argument('files', metavar='FILE', nargs=1)
@@ -337,7 +319,7 @@ def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser
     )
     _add_common(catalogue)
 
-    show = commands.add_parser('show', help='the effective view of one type or resource, as RAML (doc 16 section 9)')
+    show = commands.add_parser('show', help='the effective view of one type or resource, as RAML')
     show.add_argument('files', metavar='FILE', nargs=1)
     show.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
     show.add_argument(
@@ -389,9 +371,7 @@ def _validate(args: argparse.Namespace) -> int:
             continue
 
         if error is not None:
-            # Flushed first, or the two streams interleave by buffer rather than
-            # by file once either is redirected, and a multi-file run reports
-            # the failures before the successes that preceded them.
+            # Flush stdout first so redirected streams keep per-file order.
             sys.stdout.flush()
             _invalid(path, error)
             sys.stderr.flush()
@@ -499,13 +479,10 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 -
         if not args.metrics:
             findings.extend(linter.run(raml))
             continue
-        # One block per file rather than a total: "which file is slow" is the
-        # question a directory run raises, and a sum cannot answer it. The
-        # verbosity is opt-in, which is what `--metrics` is.
+        # Metrics per file, on stderr, so stdout stays exactly the findings
+        # report (docs/18 § 5.2).
         run = linter.measure(raml)
         findings.extend(run.findings)
-        # stderr, so stdout stays exactly the findings report and a `--format
-        # json` run remains parseable when piped (docs/13 section 8).
         print(f'== {path}', file=sys.stderr)
         print(render_metrics(run.metrics, args.format), end='', file=sys.stderr)
     visible = at_least(parse_severity(args.severity))
@@ -575,8 +552,8 @@ def _report(raml: Raml, elapsed: float, *, path: str | None = None) -> None:
 
     rows = [] if path is None else [('file', path)]
     rows += [
-        # Semantic as well as diagnostic: the two YAML backends do not accept
-        # quite the same documents (docs/01 deviation D9).
+        # The two YAML backends do not accept quite the same documents
+        # (docs/01 § 4.4).
         ('backend', backend_name()),
         ('elapsed', f'{elapsed:.1f} ms'),
         ('fragments', str(len(raml.fragments))),
@@ -650,45 +627,30 @@ def _openapi(args: argparse.Namespace) -> int:
 
 
 def _tree(args: argparse.Namespace) -> int:
-    """The whole effective document, with every reference as an address.
+    """The effective document as a tree, every reference an address.
 
-    The counterpart to `graph`: the same walk assigns both, so an address
-    printed here names the node `graph` prints (docs/16 § 11). Unwrapped, so
-    what is printed is the effective document rather than the declared one.
+    The same walk assigns addresses for `graph`, so an address printed here
+    names the node `graph` prints (docs/16 § 6).
     """
     import json  # noqa: PLC0415 - only this verb needs the encoder
 
     from fastraml.views.tree import build_tree, positions_of  # noqa: PLC0415
 
-    # No graph: this verb needs none, and `build_tree` assigns the addresses it
-    # needs itself. A consumer that already holds a graph passes
-    # `addresses=graph.addresses` instead and skips the second assignment.
+    # No graph: `build_tree` assigns its own addresses.
     raml = _parsed(args)
     if raml is None:
         return EXIT_INVALID
     payload = positions_of(raml) if args.positions else build_tree(raml)
-    # Not `sort_keys`. Declaration order is an invariant everywhere the model is
-    # exposed (docs/02 § 4, docs/16 § 3.4), and sorting threw it away at the last
-    # step: properties, named examples, response codes and the keys of an
-    # example's own data all came out alphabetical, so a reader was shown an
-    # order no author wrote. Stable output is what the *sink* wanted; the
-    # golden suite sorts for itself.
+    # No `sort_keys`: declaration order is an invariant (docs/02 § 4).
     return _emit_document(args, json.dumps(payload, indent=2) + '\n')
 
 
 def _serve(args: argparse.Namespace) -> int:
     """The document in a browser: the `tree` projection, served as `api.json`.
 
-    The parse is the one `tree` uses — `validate` off, so a document with a bad
-    example still has a reading worth serving — and the only new work is handing
-    the projection to the `fastraml-viewer` bundle. The bundle reads `api.json`
-    beside itself and ships one (the worked sample), so `fastraml_viewer.serve`
-    routes that name to this document in front of the static files; without the
-    shadow it would answer with the sample instead, which is a convincing wrong
-    answer rather than a visible failure.
-
-    `fastraml_viewer` is imported inside the verb, the way `query` imports
-    `pyoxigraph`: a user who never serves a document never installs it.
+    Parses as `tree` does, without validation. `fastraml_viewer.serve` routes
+    `api.json` to this document ahead of the bundle's own sample file.
+    `fastraml_viewer` is an optional extra imported here only.
     """
     raml = _parsed(args)
     if raml is None:
@@ -720,9 +682,8 @@ def _serve(args: argparse.Namespace) -> int:
 def _show_type(args: argparse.Namespace) -> int:
     """The effective view: every inherited property in one place, with origins.
 
-    Renders from the **model**, not from the graph — the graph is only what
-    turns `NAME` into one declaration. The projection drops facet detail on
-    purpose, so rendering from it would show a lossy copy (docs/16 § 9).
+    Renders from the model; the graph only resolves `NAME`, and it omits
+    facet detail (docs/16 § 4).
     """
     from fastraml.views.render import (  # noqa: PLC0415 - graph commands only
         Sources,
@@ -748,10 +709,8 @@ def _show_type(args: argparse.Namespace) -> int:
     elif shape is not None:
         lines = render(shape, depth=depth, root=root)
     else:
-        # A trait, a resource type, a payload: a real node whose content is a
-        # template applied elsewhere rather than an effective form of its own.
-        # What *is* effective about it is where it landed, so say that and where
-        # it was written rather than only refusing.
+        # A trait, resource type, payload, ...: no standalone effective form.
+        # Report where it was written and how often it is applied instead.
         kind, where = graph.kind_of(iri), _position_of(graph, iri)
         applied = len(graph.into(iri, ('appliesTrait', 'appliesResourceType', 'securedBy', 'annotation')))
         print(f'{args.name}: a {kind}{" at " + where if where else ""} has no effective view', file=sys.stderr)
@@ -764,13 +723,7 @@ def _show_type(args: argparse.Namespace) -> int:
 
 
 def _list(args: argparse.Namespace) -> int:
-    """The inventory: what this document holds that can be named.
-
-    `refs`, `deps` and `show` all take a NAME, and until this verb existed the
-    only ways to learn one were `graph --format json` piped through a filter,
-    a SPARQL query needing an optional dependency, or guessing. Counting is what
-    `info` does; this names them.
-    """
+    """The inventory of names `refs`, `deps` and `show` accept."""
     built = _built(args)
     if built is None:
         return EXIT_INVALID
@@ -782,8 +735,6 @@ def _list(args: argparse.Namespace) -> int:
         entries = [entry for entry in entries if wanted in entry[1].casefold()]
 
     if not entries:
-        # No `flush` here, unlike `_walk`: nothing has been written to stdout on
-        # this path, so there is nothing for the note to arrive ahead of.
         detail = f' matching {args.pattern!r}' if args.pattern else ''
         print(f'nothing{detail}', file=sys.stderr)
         return EXIT_INVALID
@@ -801,11 +752,7 @@ def _list(args: argparse.Namespace) -> int:
 
 
 def _walk(args: argparse.Namespace) -> int:
-    """`refs` walks the edges backwards, `deps` forwards.
-
-    One function because they differ in exactly two values, and writing them
-    twice is how the two edge closures drift apart.
-    """
+    """`refs` walks the edges backwards, `deps` forwards."""
     from fastraml.views.graph import TYPE_EDGES, USE_EDGES  # noqa: PLC0415 - graph commands only
 
     built = _built(args)
@@ -817,11 +764,8 @@ def _walk(args: argparse.Namespace) -> int:
         return EXIT_INVALID
 
     reverse = args.command == 'refs'
-    # `deps` follows type structure, which is the whole answer for a type and
-    # none of it for a resource: an endpoint's own edges are `supportedOperation`,
-    # `parameter` and `securedBy`, so the type closure alone reported that every
-    # endpoint and every operation in the document is made of nothing. Forward
-    # from anything that is not a type, the *use* closure is the containment.
+    # `deps` follows type structure from a type, and use containment from
+    # anything else: an endpoint has no type-structure edges of its own.
     forward = TYPE_EDGES if graph.kind_of(origin) == 'Type' else USE_EDGES
     routes = graph.walk(origin, USE_EDGES if reverse else forward, reverse=reverse, max_depth=args.depth)
     if args.kind:
@@ -830,8 +774,7 @@ def _walk(args: argparse.Namespace) -> int:
     paths = routes[: args.limit] if args.limit else routes
 
     for path in paths:
-        # Rendered from whichever end is the *subject* of the first hop, so a
-        # route reads the way the edges point no matter which way it was walked.
+        # Printed in edge direction whichever way it was walked.
         nodes = tuple(reversed(path.nodes)) if reverse else path.nodes
         predicates = tuple(reversed(path.predicates)) if reverse else path.predicates
         where = _position_of(graph, path.target)
@@ -844,12 +787,10 @@ def _walk(args: argparse.Namespace) -> int:
         route = graph.label(nodes[0])
         for predicate, node in zip(predicates, nodes[1:], strict=True):
             route += f' -{predicate}-> {graph.label(node)}'
-        # Kind and position first: what was found and where to go. The route is
-        # why it was found, and is the part that varies in length.
+        # Fixed-width kind and position first; the variable-length route last.
         print(f'{graph.kind_of(path.target):<16} {where:<22} {route}')
     if len(paths) < len(routes):
-        # Flushed first, or the note arrives before the results it is about
-        # once either stream is redirected — the hazard `_validate` documents.
+        # Flush stdout first so redirected streams keep their order.
         sys.stdout.flush()
         print(f'... {len(routes) - len(paths)} more; raise --limit or narrow with --kind', file=sys.stderr)
     if not paths and not args.json:
@@ -860,9 +801,8 @@ def _walk(args: argparse.Namespace) -> int:
 def _compat(args: argparse.Namespace) -> int:
     """What changed, graded by whether it breaks a caller.
 
-    Exits 1 when anything is breaking, so it works as a CI gate. `--json` is
-    the whole change list with its grading, for a consumer that disagrees with
-    the built-in policy and wants only the facts (docs/16 § 10).
+    Exits 1 when anything is breaking, so it works as a CI gate. `--json`
+    writes one change record per line (docs/16 § 5).
     """
     from fastraml.views.backward import (  # noqa: PLC0415 - compat verb only
         IMPACTS,
@@ -898,8 +838,7 @@ def _compat(args: argparse.Namespace) -> int:
     else:
         text = render_markdown(shown) if shown else ''
 
-    # `-o` before the verdict: a report nobody could write is a failure of the
-    # command, and saying "22 breaking changes" over it would bury that.
+    # A failed `-o` write is reported instead of the breaking-change count.
     written = _emit_document(args, text)
     if written != EXIT_OK:
         return written
@@ -934,8 +873,7 @@ def _query(args: argparse.Namespace) -> int:
     """SPARQL over the graph: the catalogue, or a query of your own."""
     from fastraml.views.queries import QUERIES  # noqa: PLC0415 - query command only
 
-    # The catalogue is text, so `--list` and `--show` want neither a store nor a
-    # file. A user without pyoxigraph can still read a query and copy it out.
+    # `--list` and `--show` need neither a document nor pyoxigraph.
     if args.catalogue:
         width = max(len(name) for name in QUERIES)
         for query in QUERIES.values():
@@ -957,11 +895,7 @@ def _query(args: argparse.Namespace) -> int:
 def _run_sparql(args: argparse.Namespace, graph: Graph, text: str) -> int:
     """Load the graph into a store and print whatever the query returns.
 
-    `pyoxigraph` is optional the way `google-re2` and the HTTP client are: the
-    package never imports it at module scope, so a user who does not query never
-    installs it. It is used inline rather than behind a helper because the three
-    result classes are what the dispatch needs, and they are only in scope once
-    the import has succeeded.
+    `pyoxigraph` is an optional extra, imported here only.
     """
     import io  # noqa: PLC0415 - query execution only
     import json  # noqa: PLC0415 - query execution only
@@ -976,12 +910,9 @@ def _run_sparql(args: argparse.Namespace, graph: Graph, text: str) -> int:
     store.load(io.StringIO('\n'.join(graph.to_ntriples())), format=pyoxigraph.RdfFormat.N_TRIPLES)
     result = store.query(text)
 
-    # SPARQL has three result shapes and the store returns a different class for
-    # each: `QuerySolutions` for SELECT, `QueryTriples` for CONSTRUCT/DESCRIBE,
-    # `QueryBoolean` for ASK. Handling only the first turns a valid query into a
-    # traceback. The ASK result is *not* a `bool` — it is a wrapper that converts
-    # to one — which is why this dispatches on the class rather than on
-    # `isinstance` of `bool`.
+    # One result class per SPARQL form: `QuerySolutions` (SELECT),
+    # `QueryTriples` (CONSTRUCT/DESCRIBE), `QueryBoolean` (ASK). The ASK result
+    # is a wrapper convertible to `bool`, not a `bool`.
     json_lines = args.json
     if isinstance(result, pyoxigraph.QueryBoolean):
         answer = bool(result)
@@ -1011,10 +942,9 @@ def _invalid(path: str, error: RamlError) -> None:
 def _workspace_hint(error: RamlError) -> str:
     """The `-w` a refused read would have needed, if widening would have helped.
 
-    The root defaults to the *entry file's directory*, so an API whose libraries
-    sit beside it rather than beneath it fails on its first `!include` -- and the
-    refusal cannot say which flag widens the root, because that is this layer's
-    vocabulary and not `loaders.py`'s. It computes the value; this names the flag.
+    The root defaults to the entry file's directory, so libraries beside it
+    rather than beneath it are refused. `loaders.py` computes `suggested_root`;
+    this names the flag.
     """
     for chain in error.chains():
         for frame in chain:
@@ -1040,15 +970,10 @@ def _parsed(args: argparse.Namespace, path: str | None = None) -> Raml | None:
 
 
 def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Raml] | None:
-    """Parse and project, or report why not.
+    """Parse and project, or report why not. Returns the graph and the model.
 
-    Returns the model as well as the graph. The graph answers "which entity did
-    you mean"; several verbs then need the model to say anything detailed about
-    it, and re-parsing to get it back would be absurd.
-
-    `validate` is off here and on for `validate`/`info`: a document with a bad
-    example still has a graph worth reading, and refusing to draw one would make
-    the tool useless exactly where navigating is most wanted.
+    Validation is off, as for every reading verb, so a document with a bad
+    example remains navigable (docs/13 § 5).
     """
     from fastraml.errors import RamlError  # noqa: PLC0415 - graph commands only
     from fastraml.parser.entry import parse_from_path  # noqa: PLC0415
@@ -1066,10 +991,7 @@ def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Ra
 def _owning_path(graph: Graph, iri: str) -> str:
     """The resource an operation hangs off, as its URI.
 
-    Read back over the `supportedOperation` edge rather than off the operation
-    node, which carries no `path` of its own — reading one there produced an
-    empty key, so `show <operation>` emitted a bare `:` and the output stopped
-    being loadable YAML, which is the one thing docs/16 § 9.2 promises.
+    Read over the `supportedOperation` edge: the operation node has no `path`.
     """
     for edge in graph.into(iri, ('supportedOperation',)):
         return graph.label(edge.subject)
@@ -1077,12 +999,7 @@ def _owning_path(graph: Graph, iri: str) -> str:
 
 
 def _position_of(graph: Graph, iri: str) -> str:
-    """`path:line` for a node, so a result is somewhere you can go.
-
-    The graph already carries this on every node it positioned; the route
-    renderer used to drop it, which left `refs` telling you that something uses
-    a type without telling you where to look.
-    """
+    """`path:line` for a node, from its `definedIn` and `line` attributes."""
     node = graph.nodes.get(iri)
     if node is None:
         return ''
@@ -1096,9 +1013,8 @@ def _resolve(graph: Graph, name: str) -> str | None:
     found = graph.find(name)
     if not found:
         print(f'{name}: no such node', file=sys.stderr)
-        # A miss is still a miss — the nearest name is not run, because that
-        # answers a question the caller did not ask, exactly as the ambiguity
-        # branch below refuses to pick. But a dead end helps nobody.
+        # Suggest, never substitute: running the nearest name would answer a
+        # different question.
         near = graph.suggest(name)
         if near:
             print(f'did you mean: {", ".join(near)}?', file=sys.stderr)
@@ -1150,22 +1066,18 @@ def _show(name: str) -> int:
 def _term(term: Any) -> str | None:
     """One SPARQL solution binding as text.
 
-    `Any` because `pyoxigraph` is not a declared dependency, so its types are
-    genuinely unavailable to the checker. `.value` is not a guess: every term
-    class it can return — `NamedNode`, `Literal`, `BlankNode` — has one. `None`
-    is the unbound case an `OPTIONAL` produces.
+    `Any` because `pyoxigraph` is optional and untyped here. `NamedNode`,
+    `Literal` and `BlankNode` all have `.value`; `None` is an unbound
+    `OPTIONAL` variable.
     """
     return None if term is None else str(term.value)
 
 
 # -- skills -------------------------------------------------------------------
 
-#: The guides this CLI serves, as a directory of Markdown inside the package.
-#: An agent skill installed elsewhere is a *copy*, and a copy goes stale against
-#: the version that actually answers. Serving the text from here means
-#: `fastraml skills get core` always describes this build, so the installed skill
-#: can be a stub that fetches rather than a duplicate that rots
-#: (docs/13-public-api.md section 8.3).
+#: The guides this CLI serves, as Markdown inside the package, so `fastraml
+#: skills get` always describes the installed build. The installed skill is a
+#: stub that fetches them.
 _SKILLDATA: Final = 'skilldata'
 
 #: How much of a guide's description `skills list` shows before it truncates.
@@ -1173,17 +1085,12 @@ _SKILLDATA: Final = 'skilldata'
 _DESCRIPTION_WIDTH: Final = 96
 
 
-#: The guide `skills install` writes when given no name: the discovery stub whose
-#: whole body points back at `skills get`. It is `hidden:`, so it is the one
-#: guide `list` does not advertise -- a listing of documentation should not
-#: recommend the shim that fetches it.
+#: The guide `skills install` writes when given no name: the discovery stub
+#: that points back at `skills get`. `skills list` omits it.
 _STUB: Final = 'fastraml'
 
-#: Where an installed skill goes. `.agents/skills` rather than a client's own
-#: directory: the Agent Skills specification names it the cross-client path, and
-#: Claude Code, GitHub Copilot and VS Code all scan it, so one copy serves every
-#: agent instead of one copy per agent. `--dir` covers anything else
-#: (docs/13-public-api.md section 8.3).
+#: Where an installed skill goes: the Agent Skills cross-client directory, so
+#: one copy serves every agent that scans it. `--dir` overrides it.
 _SKILL_DIR: Final = '.agents/skills'
 
 
@@ -1210,16 +1117,10 @@ def _skills(args: argparse.Namespace) -> int:
 
 
 def _skills_install(guides: dict[str, _Guide], names: Sequence[str], args: argparse.Namespace) -> int:
-    """Write a guide into a skills directory, where an agent will discover it.
+    """Copy guides into a skills directory, where an agent will discover them.
 
-    Built in rather than delegated to `gh skill`, which is a separate tool, in
-    preview, and not guaranteed to be present. The install is a file copy into a
-    documented directory; needing a second CLI for that would be the only hard
-    dependency this package has.
-
-    Refuses to overwrite without `--force`. An installed skill is a file the user
-    may have edited, and silently replacing it is the one thing an installer must
-    not do.
+    Refuses to overwrite without `--force`: the user may have edited an
+    installed skill.
     """
     missing = [name for name in names if name not in guides]
     if missing:
@@ -1235,8 +1136,7 @@ def _skills_install(guides: dict[str, _Guide], names: Sequence[str], args: argpa
             return EXIT_INVALID
         written.append((destination, guides[name].path.read_text(encoding='utf-8')))
 
-    # Every read and every collision check first: a half-finished install across
-    # several names leaves the user to work out which ones landed.
+    # All collision checks and reads happen first, so a refusal writes nothing.
     for destination, text in written:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(text, encoding='utf-8')
@@ -1245,12 +1145,7 @@ def _skills_install(guides: dict[str, _Guide], names: Sequence[str], args: argpa
 
 
 def _install_root(args: argparse.Namespace) -> Path:
-    """Which skills directory to write into.
-
-    Project scope by default, matching what the ecosystem's installers do: the
-    skill then travels with the repository it was installed for, and can be
-    committed beside it.
-    """
+    """Which skills directory to write into: `--dir`, else home with `--user`, else the CWD."""
     from pathlib import Path  # noqa: PLC0415 - this verb only
 
     if args.dir:
@@ -1276,11 +1171,9 @@ def _guides() -> dict[str, _Guide]:
             continue
         front = _frontmatter(skill.read_text(encoding='utf-8'))
         name = str(front.get('name') or path.name)
-        # Hidden by *name*, not by a frontmatter flag. The stub is the file that
-        # gets installed, and `hidden` there is a word another client may act on
-        # -- agent-browser uses it to mean "keep this out of the agent's view",
-        # which is the one thing the stub must never be. Marking it in code
-        # instead keeps the installed copy byte-identical to `skills/fastraml/`.
+        # Hidden by name, not by a frontmatter flag: the stub is what gets
+        # installed, and another client may read `hidden:` as "keep this from
+        # the agent". This keeps it byte-identical to `skills/fastraml/`.
         found[name] = _Guide(name, str(front.get('description') or ''), skill, name == _STUB)
     return found
 
@@ -1288,9 +1181,8 @@ def _guides() -> dict[str, _Guide]:
 def _frontmatter(text: str) -> dict[str, Any]:
     """The YAML block a SKILL.md opens with, or an empty mapping.
 
-    Tolerant on purpose: a guide whose frontmatter will not parse is still worth
-    printing, so it falls back to the directory name rather than failing the
-    verb.
+    Tolerant: a guide whose frontmatter will not parse is still printed, named
+    after its directory.
     """
     import yaml  # noqa: PLC0415 - this verb only
 
@@ -1307,12 +1199,7 @@ def _frontmatter(text: str) -> dict[str, Any]:
 
 
 def _skills_list(guides: dict[str, _Guide], *, json_mode: bool) -> int:
-    """The guides worth reading. The stub is `hidden:`, so it is not one of them.
-
-    It stays `get`-able and `install`-able by name. Hiding it keeps a listing of
-    *documentation* from advertising the discovery shim whose only job is to
-    fetch that documentation.
-    """
+    """Every guide except the stub, which stays available to `get` and `install`."""
     listed = [guide for guide in guides.values() if not guide.hidden]
     if json_mode:
         import json  # noqa: PLC0415 - only JSON output needs the encoder
@@ -1325,12 +1212,10 @@ def _skills_list(guides: dict[str, _Guide], *, json_mode: bool) -> int:
     for guide in listed:
         summary = guide.description
         if len(summary) > _DESCRIPTION_WIDTH:
-            # ASCII, not an ellipsis character: this lands on a Windows console
-            # under cp1252 as often as on a UTF-8 one, and `...` survives both.
+            # ASCII `...`: a cp1252 Windows console cannot print an ellipsis.
             summary = summary[: _DESCRIPTION_WIDTH - 3].rstrip() + '...'
         print(f'{guide.name:<{width}}  {summary}')
-    # Flushed first, or the hint arrives ahead of the listing it is about once
-    # either stream is redirected -- the hazard `_validate` documents.
+    # Flush stdout first so redirected streams keep their order.
     sys.stdout.flush()
     print("\nRead one with 'fastraml skills get <name>'.", file=sys.stderr)
     return EXIT_OK
@@ -1342,8 +1227,7 @@ def _skills_get(guides: dict[str, _Guide], names: Sequence[str], *, full: bool, 
         return EXIT_INVALID
     missing = [name for name in names if name not in guides]
     if missing:
-        # Named, not guessed, for the same reason `_resolve` refuses to pick:
-        # printing the wrong guide answers a question nobody asked.
+        # Named, not guessed, as in `_resolve`.
         print(f'no such guide: {", ".join(missing)}; try {", ".join(guides)}', file=sys.stderr)
         return EXIT_INVALID
 
@@ -1403,11 +1287,9 @@ def _options(args: argparse.Namespace, *, validate: bool = True, retain_source: 
 
 
 def _http_client() -> Any:
-    """A client for `-r`, from whichever of the two usual libraries is installed.
+    """A client for `-r`: `httpx.Client` or `requests.Session`, whichever is installed.
 
-    fastRAML depends on neither — `HTTPLoader` duck-types `get(url)` — so the CLI
-    is where one has to be produced, and where a user who asked for remote
-    includes without a client gets told so.
+    fastRAML depends on neither; `HTTPLoader` duck-types `get(url)`.
     """
     for module_name, factory in (('httpx', 'Client'), ('requests', 'Session')):
         try:

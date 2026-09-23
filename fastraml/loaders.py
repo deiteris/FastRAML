@@ -5,8 +5,8 @@ above it works with URIs and bytes.
 
 The default file loader confines reads to a workspace root, because a RAML
 document may come from an untrusted source and `!include` takes an arbitrary
-path. See docs/03-yaml-and-io.md section 5 for the threat model and the limits
-of the protection.
+path. See docs/03-yaml-and-io.md § 5 for the threat model and the limits of the
+protection.
 """
 
 from __future__ import annotations
@@ -42,20 +42,13 @@ class LoaderError(OSError):
 class WorkspaceEscapeError(LoaderError):
     """A path resolved outside the workspace root.
 
-    `info` carries what a caller may want to *act* on rather than print, and in
-    particular `suggested_root`: the nearest directory holding both the root and
-    the path that was refused. Widening to it is the smallest change that would
-    let the parse through.
-
-    Computed here because this is the only layer holding both paths, and left as
-    a value because which flag widens the root is the CLI's vocabulary and not
-    this one's.
+    `info` holds `path`, `root` and `suggested_root`: the nearest directory
+    holding both, or `''` when that would be a filesystem or drive root. The CLI
+    turns `suggested_root` into advice about its own flag.
     """
 
-    #: Replaced per instance by `_escaped`. A class attribute and not a
-    #: constructor argument: `OSError` keeps every argument it is given in
-    #: `args` and renders all of them in `str()`, so a second one appends the
-    #: whole mapping to the message.
+    #: Set per instance by `_escaped`. Not a constructor argument, because
+    #: `OSError` renders every constructor argument in `str()`.
     info: Mapping[str, Any] = {}
 
 
@@ -107,20 +100,14 @@ class FileLoader:
             raise LoaderError(err.errno, str(err), path) from err
 
 
-#: What a platform offers, established once. `O_NOFOLLOW` is absent on Windows
-#: and `O_BINARY` everywhere else, so both are read through a default rather
-#: than named directly — but which ones exist is a property of the interpreter,
-#: not of the file being opened.
+#: Flags a platform lacks read as 0: `O_NOFOLLOW` and `O_NONBLOCK` are absent on
+#: Windows, `O_BINARY` everywhere else. `_ELOOP` is `None` where the errno does
+#: not exist, so comparing an `int` errno against it is simply false.
 #:
-#: `_ELOOP` is `None` where the platform has no such errno, and an `errno` is an
-#: `int`, so the comparison that reads it is false rather than wrong.
-#:
-#: **`O_NONBLOCK` is what makes the regular-file check reachable.** `os.open` on
-#: a FIFO blocks until a writer appears, so without it the `fstat` below never
-#: runs and a named pipe inside the workspace hangs the parse for as long as
-#: nobody writes to it — the sandbox refusing the file only after opening it is
-#: no refusal at all. On a regular file the flag does nothing, which is why it
-#: costs nothing to set. Windows has no such flag and no FIFOs to open.
+#: `O_NONBLOCK` makes the regular-file check reachable: without it `os.open` on
+#: a FIFO blocks until a writer appears, so a named pipe in the workspace would
+#: hang the parse before `fstat` could refuse it. It has no effect on a regular
+#: file.
 _OPEN_FLAGS: Final = (
     os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NONBLOCK', 0)
 )
@@ -130,9 +117,8 @@ _ELOOP: Final = getattr(errno, 'ELOOP', None)
 class SafeFileLoader:
     """Reads `file://` URIs, refusing anything outside `root`.
 
-    Go uses `safeopen.OpenBeneath` (`openat2` with `RESOLVE_BENEATH` on Linux,
-    `FILE_OPEN_REPARSE_POINT` on Windows). Python has no direct equivalent, so
-    this combines four checks:
+    Python has no portable `openat2(RESOLVE_BENEATH)`, so this combines four
+    checks:
 
     1. the path must be lexically beneath `root`;
     2. the file is opened with `O_NOFOLLOW` where the platform provides it, so a
@@ -201,16 +187,7 @@ class SafeFileLoader:
 
 
 def _escaped(reported: str, root: str) -> WorkspaceEscapeError:
-    """The refusal, with the root that would have worked carried beside it.
-
-    Paths go in `info` and not into the message, which is the house style
-    (docs/11 § 6) and here also the fix for an unusable one: the message
-    interpolated them with `!r`, and `!r` on a Windows path doubles every
-    separator, so the one thing a reader wants to copy came out broken.
-
-    `suggested_root` rides along rather than joining the sentence. Which flag
-    widens the root is the CLI's vocabulary, so the CLI writes that sentence.
-    """
+    """The refusal, with paths in `info` rather than the message (docs/11 § 6)."""
     error = WorkspaceEscapeError('path is outside the workspace root')
     error.info = {'path': reported, 'root': root, 'suggested_root': _common_root(root, reported)}
     return error
@@ -219,10 +196,9 @@ def _escaped(reported: str, root: str) -> WorkspaceEscapeError:
 def _common_root(root: str, path: str) -> str:
     """The nearest directory holding both, or `''` when suggesting one is no help.
 
-    A filesystem or drive root is not a suggestion -- widening to it hands the
-    parse every file the process can reach, which is the sandbox this refusal
-    exists to keep. Two Windows drives have no common directory at all, and
-    `commonpath` says so by raising.
+    A filesystem or drive root is never suggested: widening to it disables the
+    sandbox. Paths on two Windows drives have no common directory, and
+    `commonpath` raises.
     """
     try:
         shared = os.path.commonpath((root, os.path.dirname(path)))
@@ -231,13 +207,10 @@ def _common_root(root: str, path: str) -> str:
     return '' if shared == os.path.dirname(shared) else shared
 
 
-#: What a caller is told when they hand over an `httpx.AsyncClient`.
-#:
-#: A parse is one synchronous recursive descent — an `!include` is resolved
-#: where it is found, four dozen decoders deep — so there is no point at which
-#: this could await anything. Left to fail on its own, an async client produces
-#: `'coroutine' object has no attribute 'status_code'` and an un-awaited
-#: coroutine warning, neither of which names the mistake.
+#: The refusal for an asynchronous client. A parse resolves each `!include`
+#: synchronously where it is found, so there is nowhere to await; left alone,
+#: an async client fails with `'coroutine' object has no attribute
+#: 'status_code'`.
 _ASYNC_CLIENT = (
     'the HTTP client is asynchronous and a parse is synchronous. '
     'Pass a synchronous client (httpx.Client, requests.Session); '
@@ -253,10 +226,9 @@ class HTTPLoader:
     with `status_code` and `content`. Both `httpx.Client` and `requests.Session`
     satisfy that, so fastRAML depends on neither. `fastraml[http]` installs one.
 
-    **Synchronous, by the same decision that makes a parse single-threaded**
-    (docs/01 § 2, docs/13 § 6). An async client is refused rather than
-    mishandled — at construction where the client says what it is, and again
-    per call for one that only reveals it by returning an awaitable.
+    The client must be synchronous (docs/03 § 5). An async client is refused at
+    construction when its `get` is a coroutine function, and per call when
+    `get` returns an awaitable.
     """
 
     __slots__ = ('client',)
@@ -273,9 +245,8 @@ class HTTPLoader:
             msg = f'http get {uri}: {err}'
             raise LoaderError(msg) from err
 
-        # A wrapper whose `get` is an ordinary function returning a coroutine
-        # passes the check in `__init__`. Closed before raising, or the refusal
-        # arrives with an un-awaited coroutine warning stapled to it.
+        # A `get` that returns a coroutine passes the check in `__init__`. Close
+        # it before raising to avoid an un-awaited coroutine warning.
         if inspect.isawaitable(response):
             close = getattr(response, 'close', None)
             if close is not None:

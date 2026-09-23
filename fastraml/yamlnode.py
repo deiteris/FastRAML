@@ -113,19 +113,15 @@ class _RamlLoader(_Loader):  # type: ignore[valid-type, misc]
     """
 
     def resolve(self, kind: Any, value: str, implicit: Any) -> Any:
-        """`BaseResolver.resolve`, specialised to the two cases RAML uses.
+        """`BaseResolver.resolve`, specialised for implicit scalars.
 
-        This is a Python callback from libyaml, once per scalar — 208 000 times
-        on the validation benchmark, and the largest single item in its profile
-        after our own node conversion. The stock implementation does two dict
-        lookups and then `resolvers + wildcard_resolvers`, which allocates a new
-        list for every scalar in the document to concatenate a list that is
-        always empty here.
+        libyaml calls this once per scalar. The stock implementation
+        concatenates `resolvers + wildcard_resolvers` per call, allocating a
+        list to append one that is always empty here.
 
-        Two preconditions make the short path safe, and `_assert_resolver_shape`
-        checks both at import rather than trusting them: the table has no
-        wildcard (`None`) key, and no path resolvers are registered. Slicing
-        rather than indexing folds in the empty-string case for free.
+        The short path assumes the table has no wildcard (`None`) key and no
+        path resolvers are registered; `_assert_resolver_shape` checks both at
+        import. `value[:1]` also covers the empty string.
         """
         if kind is ScalarNode and implicit[0]:
             for tag, regexp in self.yaml_implicit_resolvers.get(value[:1], ()):
@@ -147,10 +143,9 @@ for _tag, _pattern, _first_chars in _YAML_1_2_RESOLVERS:
 def _assert_resolver_shape() -> None:
     """The two preconditions `_RamlLoader.resolve`'s short path relies on.
 
-    Checked once at import, not per scalar. If a future PyYAML registers a
-    wildcard resolver or a path resolver, the specialised `resolve` would
-    silently stop consulting it — a scalar resolving to the wrong tag, which is
-    the quietest possible failure. Better to refuse to import.
+    Checked once at import. If a future PyYAML registers a wildcard or path
+    resolver, the specialised `resolve` would silently ignore it and resolve
+    scalars to the wrong tag, so the import fails instead.
     """
     if None in _RamlLoader.yaml_implicit_resolvers:
         message = 'PyYAML registered a wildcard implicit resolver; yamlnode.resolve must handle it'
@@ -166,8 +161,8 @@ _assert_resolver_shape()
 def backend_name() -> str:
     """Which YAML backend is in use: `'libyaml'` or `'python'`.
 
-    Reported by the CLI so a user can tell why a parse is slow. libyaml is
-    roughly an order of magnitude faster; see docs/12-performance.md section 19.
+    Reported by `fastraml info`: libyaml is roughly an order of magnitude
+    faster, and benchmark baselines are fingerprinted by backend (docs/12 § 4).
     """
     return _BACKEND
 
@@ -193,19 +188,16 @@ TAG_INCLUDE: Final = '!include'
 _STANDARD_TAG_PREFIX: Final = 'tag:yaml.org,2002:'
 
 #: YAML 1.1 reads these as line breaks; YAML 1.2 says they are ordinary
-#: characters. PyYAML implements 1.1, so an unquoted scalar containing one is
-#: split across lines and then fails somewhere else entirely. Deviation D10.
+#: characters. PyYAML's scanner implements 1.1, so an unquoted scalar containing
+#: one is split and fails elsewhere (docs/03 § 2.1).
 _LINE_SEPARATORS: Final = ('\u2028', '\u2029')
 
-#: The ceiling on **every** recursive descent whose depth is bounded only by the
-#: input: document conversion here, unwrap and recursion-marking in P9, the
+#: The ceiling on every recursive descent whose depth is bounded only by the
+#: input: document conversion here, unwrap and recursion marking in P9, the
 #: discriminator and custom-facet walks in P10, and the JSON Schema walks. They
-#: all defend the same C stack, so they share one number, surfaced to a caller as
-#: `ParseOptions.max_depth` and carried on `Raml.max_depth`
-#: (docs/12-performance.md section 14).
-#:
-#: It lives here because `yamlnode` is the lowest layer that needs it and can
-#: import nothing above itself, not because nesting depth is a YAML idea.
+#: defend the same C stack, so they share one number, surfaced as
+#: `ParseOptions.max_depth` and carried on `Raml.max_depth` (docs/12 § 3).
+#: Defined here because `yamlnode` is the lowest layer that needs it.
 DEFAULT_MAX_DEPTH: Final = 200
 
 #: Maximum number of nodes one document may expand to. YAML aliases are expanded
@@ -226,7 +218,7 @@ class Node:
     semantics. That is a requirement, not an oversight: the provenance overlay
     is a `dict[Node, ParseCtx]` keyed by object identity, and the trait merge
     preserves node identity so those lookups stay valid.
-    See docs/08-templates-and-endpoints.md section 6.
+    See docs/08-templates-and-endpoints.md § 4.
     """
 
     __slots__ = ('column', 'content', 'end_column', 'end_line', 'kind', 'line', 'tag', 'value')
@@ -429,9 +421,8 @@ class _Converter:
                 info={'limit': self._max_nodes},
             )
 
-        # Inlined rather than `_mark_position(node)`: this is the hottest line
-        # in the parser, once per node, and the call plus the tuple it built and
-        # the caller unpacked cost more than the six additions.
+        # `_mark_position` inlined: this runs once per node, and the call and
+        # tuple cost more than the arithmetic.
         start = node.start_mark
         end = node.end_mark
         line = start.line + 1
@@ -470,9 +461,8 @@ class _Converter:
                 content: list[Node] = []
                 for key, value in node.value:
                     key_node = self.convert(key, depth + 1)
-                    # Mapping keys become dict keys millions of times over a
-                    # large corpus; interning turns those lookups into pointer
-                    # comparisons. See docs/12-performance.md section 17.
+                    # Decoders compare and hash mapping keys constantly;
+                    # interning makes equal keys share one object.
                     key_node.value = sys.intern(key_node.value)
                     content.append(key_node)
                     content.append(self.convert(value, depth + 1))
@@ -487,20 +477,14 @@ class _Converter:
         return Node(kind, tag, '', content, line, column, stop_line, stop_column)
 
     def _tag_of(self, tag: str, line: int, column: int, stop_line: int, stop_column: int) -> str:
-        """Shorten the tag and reject an unknown local one, in a single pass.
+        """Shorten the tag and reject an unknown local one.
 
         `tag:yaml.org,2002:str` becomes `!!str`; anything else passes through.
 
-        The rejection: `!include` is the only tag RAML defines (spec § Includes).
-        Without it, `!includeexample.json` — an `!include` missing its space — is
-        a perfectly good YAML local tag on an empty scalar, and the document
-        parses with an empty value where a file was meant. The failure is silent
-        and the typo invisible, which is why the TCK has a fixture for it.
-
-        The two were separate functions, and the common case paid three
-        `startswith` calls to answer a question the first one had settled: a tag
-        in the standard namespace can never be an unknown local tag. Folding
-        them removes two string scans and a method call per node.
+        `!include` is the only local tag RAML defines. Without the rejection,
+        `!includeexample.json` (a missing space) is a valid YAML local tag on an
+        empty scalar and silently parses as an empty value; the TCK has a
+        fixture for it.
         """
         if tag.startswith(_STANDARD_TAG_PREFIX):
             return '!!' + tag[len(_STANDARD_TAG_PREFIX) :]
@@ -522,11 +506,9 @@ def _empty_mapping() -> Node:
 def decode_source(data: bytes) -> str:
     """Bytes from a loader as text.
 
-    RAML is UTF-8 (spec section Markup Language). `utf-8-sig` additionally
-    strips a byte order mark, which would otherwise sit in front of `#%RAML`
-    and defeat the fragment-header check. This is the only place the parser
-    decides how bytes become text, so it is the only place to change if that
-    policy ever widens.
+    RAML is UTF-8. `utf-8-sig` also strips a byte order mark, which would
+    otherwise precede `#%RAML` and defeat the fragment-header check. This is
+    the parser's only bytes-to-text decision.
     """
     return data.decode('utf-8-sig')
 
@@ -565,16 +547,13 @@ def compose(
 def _line_separator_error(text: str, uri: str) -> RamlError | None:
     """The diagnostic for a U+2028/U+2029 that the scanner read as a line break.
 
-    Consulted only after composition has already failed, and reported only when
-    the separators are demonstrably the cause: they are replaced with spaces and
-    the document is composed again. If it now succeeds they were the obstacle;
-    if it still fails the real error is elsewhere and the caller's own
-    diagnostic is the better one. Without that second attempt this would hijack
-    every failure in a file that merely *contains* a separator, including the
-    quoted forms, which parse correctly.
+    Consulted only after composition has failed. The separators are replaced
+    with spaces and the document composed again: only if that succeeds were
+    they the cause. Otherwise the original diagnostic stands, so a file that
+    merely contains a quoted, valid separator keeps its real error.
 
-    Substituting one space per character keeps every offset, so the position
-    reported below is the character's real one. Deviation D10.
+    One space per character keeps every offset, so the reported position is
+    the character's own (docs/03 § 2.1).
     """
     if not any(separator in text for separator in _LINE_SEPARATORS):
         return None

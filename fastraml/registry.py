@@ -1,15 +1,14 @@
-"""`Raml` — the registry that owns one parse.
+"""`Raml`: the registry that owns one parse.
 
-Caches, ID generation and the cross-file indices live here rather than being
-threaded through every call. Two of those caches are load-bearing rather than
-merely fast: `fragments` makes a file decode at most once (invariant I3) and
-`include_nodes` makes it compose at most once (I2), which is what turns a
-mutually-importing pair of libraries into a cyclic object graph instead of an
-infinite recursion.
+Holds configuration, caches, entity IDs, cross-file indices, the P7 worklist,
+and the `ParseCtx` stack with the active provenance overlay. Two caches are
+correctness requirements, not optimisations: `include_nodes` composes a file at
+most once (invariant I2) and `fragments` decodes it at most once (I3). A
+fragment is registered before its body decodes, so mutually importing libraries
+become a cyclic model graph rather than infinite recursion.
 
-This module deliberately imports nothing from `fastraml.parser` or `fastraml.types`
-at runtime — the annotations are `TYPE_CHECKING`-only — so the import graph
-stays acyclic without runtime indirection. See docs/02-architecture.md section 3.
+Imports nothing from `fastraml.parser` or `fastraml.types` at runtime; the
+annotations are `TYPE_CHECKING`-only. See docs/02-architecture.md § 3.
 """
 
 from __future__ import annotations
@@ -43,9 +42,9 @@ if TYPE_CHECKING:
     SecurityScheme = Any
     SourceInfo = dict[int, tuple[Node | None, Node]]
 
-#: The two facets whose *value* names a type. `provenance_scope_for` consults
-#: them before the mapping that holds them, because a caller-substituted `type:`
-#: must beat the scope of the grafted body it now sits inside.
+#: The two facets whose *value* names a type. `scope_for` consults them before
+#: the mapping that holds them, because a caller-substituted `type:` must beat
+#: the scope of the grafted body it now sits inside.
 _TYPE_FACETS: Final = frozenset({'type', 'schema'})
 
 __all__ = [
@@ -65,7 +64,7 @@ class ParseCtx:
     Every construct that can contain a name captures the top of `Raml`'s stack
     at creation time, so a trait body grafted onto an operation in another file
     still resolves its type names in the trait's own namespace.
-    See docs/04-fragments-and-namespaces.md section 4.
+    See docs/04-fragments-and-namespaces.md § 4.
     """
 
     anchor: ReferenceResolver | None = None
@@ -73,7 +72,7 @@ class ParseCtx:
     #: rather than passed to `unmarshal_domain_extension`, because the answer is
     #: not always known at the decode site: an annotation inside a trait body
     #: records the site it is *materialised* at, not `Trait`
-    #: (docs/09-security-and-annotations.md section B5).
+    #: (docs/09-security-and-annotations.md § B4).
     target: DomainLocation = DomainLocation.API
 
 
@@ -84,11 +83,10 @@ class Raml:
     """Everything produced by one parse.
 
     A `Raml` instance is single-threaded and its contents are mutable; the model
-    it exposes may be cyclic. See docs/13-public-api.md section 7.
+    it exposes may be cyclic. See docs/13-public-api.md § 3.
     """
 
-    # The grouping, and the order within it, mirror the field list in
-    # docs/02-architecture.md section 3 so the two can be read side by side.
+    # Grouped by role, as in docs/02-architecture.md § 3.
     __slots__ = (  # noqa: RUF023 - grouped by role, not sorted
         # --- configuration ---------------------------------------------------
         'loader',
@@ -154,7 +152,7 @@ class Raml:
         # rather than on the expression parser so it dies with the parse.
         self.expr_cache: ExprCache = {}
         # Built on first use by `types/jsonschema_.py`: this module imports
-        # nothing from `types/` at runtime (docs/02 section 3).
+        # nothing from `types/` at runtime (docs/02 § 2).
         self.json_schema_registry: SchemaRegistry | None = None
 
         self.fragment_types: dict[str, dict[str, BaseShape]] = {}
@@ -178,8 +176,8 @@ class Raml:
         self.global_secured_by: list[SecurityScheme] = []
 
         self._parse_ctx_stack: list[ParseCtx] = []
-        # The overlay of the IR unit currently being materialized, or None
-        # outside stage 2 — which is where all but endpoint decoding happens.
+        # The overlay of the source unit being materialized in P4 stage 2;
+        # `None` at every other time.
         self._active_overlay: ProvenanceOverlay | None = None
         self._id_counter = itertools.count(1)
         self.entry_point: Fragment | None = None
@@ -194,7 +192,7 @@ class Raml:
     # -- identity -------------------------------------------------------------
 
     def next_id(self) -> int:
-        """The next entity id. One counter per parse; see docs/02 section 3.1."""
+        """The next entity id. One counter per parse; see docs/02 § 3."""
         return next(self._id_counter)
 
     # -- the parse-context stack ----------------------------------------------
@@ -227,7 +225,7 @@ class Raml:
         finally:
             self.pop_ctx()
 
-    # -- the provenance overlay (docs/08 section 6.3) --------------------------
+    # -- the provenance overlay (docs/08 § 4) ---------------------------------
 
     @contextmanager
     def active_overlay(self, overlay: ProvenanceOverlay) -> Iterator[None]:
@@ -281,12 +279,13 @@ class Raml:
         return overlay.get(node)
 
     def location_of(self, node: Node, default: str) -> str:
-        """Which file `node` was authored in.
+        """The location to report for `node`: its overlay scope's anchor, else `default`.
 
-        The single answer to that question, consulted by every entity
-        constructor: a diagnostic inside a trait-contributed response names the
-        trait's path, not the API's, even when the node sits below a
-        merge-synthesised container that carries no mark of its own.
+        Consulted by every stage-2 entity constructor, so a diagnostic inside a
+        trait-contributed response names the trait's file. The anchor is the
+        namespace the node resolves in, which can differ from where it was
+        authored (docs/08 § 4.2). Merge-created containers carry no mark, so
+        callers ask about the specific child node.
         """
         overlay = self._active_overlay
         if overlay is None:
@@ -311,7 +310,7 @@ class Raml:
         self.fragment_annotations.setdefault(location, {})[name] = shape
 
     def put_resolver(self, location: str, resolver: ReferenceResolver) -> None:
-        """Index a fragment by the names it can resolve (docs/04 section 4.2)."""
+        """Index a fragment by the names it can resolve (docs/04 § 2)."""
         self.fragment_resolvers[location] = resolver
 
     def resolver_at(self, location: str) -> ReferenceResolver | None:
@@ -345,7 +344,7 @@ class Raml:
         if self.source_info is not None:
             self.source_info[entity_id] = (key, value)
 
-    # -- read surface (docs/13-public-api.md section 3) -----------------------
+    # -- read surface (docs/13-public-api.md § 3) -----------------------------
 
     @property
     def location(self) -> str:

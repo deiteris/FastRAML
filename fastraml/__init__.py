@@ -9,25 +9,20 @@ api = raml.entry_point
 
 Pass `unwrap=True, validate=True` together unless you specifically want to
 inspect un-flattened declarations: `validate=True` alone has to unwrap a private
-copy of every type it checks, and measures slower for it.
+copy of every type it checks.
 
-`parse_lenient` returns `(model, error)` instead of raising, for an editor that
-needs a partial model on every keystroke.
+`parse_lenient` returns `(model, error)` instead of raising, for a caller that
+needs a partial model from an invalid document.
 
-**Four contracts a consumer must honour**, each detailed in
-`docs/13-public-api.md` section 7:
+Four contracts a consumer must honour (`docs/13-public-api.md` § 3):
 
-1. The model may be cyclic — track visited ids in any traversal.
+1. The model may be cyclic; track visited ids in any traversal.
 2. It is mutable and unguarded; the parser hands out its own objects.
 3. One `Raml` instance is single-threaded.
 4. Without `unwrap=True`, a shape shows only what its own declaration wrote.
 
-**The API is not stable.** Until 1.0 anything here may be renamed or removed.
-What is exported is what a consumer needs to walk and narrow the model; the
-rest is reachable through its own module and is listed in
-`docs/13-public-api.md` section 4.
-
-The design is settled in `docs/`, which is normative; start at `docs/README.md`.
+The API is not stable before 1.0. `__all__` is the supported surface; a name
+reachable only through its own module is internal (`docs/13-public-api.md` § 4).
 """
 
 from __future__ import annotations
@@ -36,9 +31,9 @@ from importlib import import_module
 
 __version__ = '0.1.0'
 
-# Importing the public package is intentionally cheap. Each value is loaded and
-# cached on first access; `fastraml/__init__.pyi` gives type checkers the same
-# surface without making those imports happen at runtime.
+# Importing the package imports nothing else. Each export is loaded and cached
+# on first access; `fastraml/__init__.pyi` declares the same surface eagerly for
+# type checkers.
 _EXPORTS = {
     'APIFragment': ('fastraml.parser.fragments', 'APIFragment'),
     'Accumulator': ('fastraml.errors', 'Accumulator'),
@@ -189,9 +184,8 @@ def __dir__() -> list[str]:
     return sorted(set(globals()) | set(__all__))
 
 
-#: Plain `sorted()`, which `tests/unit/test_public_api.py` asserts. Ruff would
-#: rather group SCREAMING_CASE first; one order for a list this long is worth
-#: more than either convention, and the test is the one a consumer can check.
+#: Plain `sorted()` order, asserted by `tests/unit/test_public_api.py`, rather
+#: than ruff's SCREAMING_CASE-first grouping.
 __all__ = [  # noqa: RUF022
     'APIFragment',
     'Accumulator',

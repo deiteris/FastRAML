@@ -1,4 +1,9 @@
-"""Common FastRAML configuration shared by every parsing CLI verb."""
+"""The configuration file shared by every parsing CLI verb.
+
+`parse_config` validates the YAML against `FastRamlConfig` in `config.raml`, then
+decodes the `parser:` and `compatibility:` sections into records. The `lint:`
+section is passed through as a mapping; `fastraml.views.lint.config` decodes it.
+"""
 
 from __future__ import annotations
 

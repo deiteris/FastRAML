@@ -79,6 +79,10 @@ The view boundary is also tested: parser and type modules do not import
 `fastraml.views`, and outside that package only the CLI may do so. Binding tests
 reject a projection key that is not declared in the shared tree contract.
 
+`tests/unit/test_doc_refs.py` checks that every `docs/NN § S` reference in a
+tracked file names an existing document and heading number, and that links
+between numbered documents name an existing heading anchor.
+
 ## 5. Benchmarks
 
 `bench/` is described in [12](12-performance.md). Small generated corpora are

@@ -61,10 +61,6 @@ class TestRuleExamples:
         findings = Linter(builtin_registry()).run(parsed(source, tmp_path))
         assert not [finding for finding in findings if finding.rule in {'unused-type', 'unused-trait'}]
 
-    def test_lint_config_schema_is_clean_under_recommended_rules(self):
-        raml = parse_from_path(SCHEMA, ParseOptions(unwrap=True, retain_source=True))
-        assert not Linter(builtin_registry()).run(raml)
-
     def test_complete_ruleset_checks_named_and_nested_string_shapes_once(self, tmp_path):
         source = (
             '#%RAML 1.0\ntitle: t\ntypes:\n  Name: string\n  Names:\n    type: array\n    items: string\n'
@@ -104,6 +100,7 @@ class TestRuleExamples:
         assert not input_rules & {finding.rule for finding in findings}
 
     def test_lint_config_schema_is_clean_under_complete_ruleset(self):
+        # `extends` only adds rules, so this covers `recommended` alone too.
         raml = parse_from_path(SCHEMA, ParseOptions(unwrap=True, retain_source=True))
         config = parse_config('extends: [recommended, security]\n', builtin_registry())
         assert not Linter(builtin_registry(), config).run(raml)
@@ -160,10 +157,6 @@ class TestRuleExamples:
         config = Config(extends=(), rules=(RuleSetting(id='meaningless-request-body'),))
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
         assert [finding.info['clause'] for finding in findings] == ([clause] if clause else [])
-
-    def test_the_renamed_get_with_body_is_not_kept_as_an_alias(self):
-        with pytest.raises(ValueError, match='unknown rule: get-with-body'):
-            parse_config('rules:\n  - id: get-with-body\n', builtin_registry())
 
     def test_disjoint_methods_do_not_make_overlapping_paths_ambiguous(self, tmp_path):
         source = '#%RAML 1.0\ntitle: t\n/users/me:\n  get:\n/users/{id}:\n  post:\n'

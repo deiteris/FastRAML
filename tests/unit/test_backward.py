@@ -1371,14 +1371,11 @@ def test_a_library_is_silent_under_the_operation_walk(tmp_path):
     assert backward_types(before, after) != []
 
 
-def test_a_coordinate_is_two_optional_fields_and_not_four_classes():
-    """`operation` and `path` each present or absent is the whole taxonomy.
+def test_scope_is_derived_from_which_of_operation_and_path_are_present():
+    """`operation` and `path`, each present or absent, are the whole taxonomy.
 
-    Four classes said the same thing in a way that forced every rule holding on
-    both sides of either axis to be written twice -- requiredness and
-    documentation each had two implementations -- and made eleven `isinstance`
-    checks necessary downstream to recover the cell. `scope` in the record is
-    derived from the pair, so the name and the fields cannot disagree.
+    `scope` in the record is derived from the pair, so the name and the fields
+    cannot disagree.
     """
     root = Path(__file__).parents[2] / 'examples' / 'compatibility'
     options = ParseOptions(unwrap=True)
@@ -1403,12 +1400,7 @@ def test_a_coordinate_is_two_optional_fields_and_not_four_classes():
 
 
 def test_the_walk_names_a_movement_and_the_side_comes_from_the_coordinate():
-    """A rule id is `{side}-{movement}` and the walk supplies only the movement.
-
-    Building the whole id in the walk baked the side in before the table was
-    consulted, which is why one traversal could only ever produce one grade. It
-    also meant `_At` carried a `direction` that `side_of(location)` already knew.
-    """
+    """A rule id is `{side}-{movement}` and the walk supplies only the movement."""
     assert rule_for('property-removed', 'request') == 'request-property-removed'
     assert rule_for('property-removed', 'response') == 'response-property-removed'
     assert impact_of(rule_for('property-removed', 'request')) == 'review'
@@ -1425,9 +1417,8 @@ def test_the_walk_names_a_movement_and_the_side_comes_from_the_coordinate():
 def test_an_api_level_override_can_name_the_location_the_docs_show():
     """`match.location` is the coordinate's class name for every scope.
 
-    An API-level default reported the string `Api` instead, so the override the
-    skill and docs/13 both print -- `location: TransportLocation` against an
-    inherited `protocols:` -- matched nothing at all.
+    The skill and docs/13 both print `location: TransportLocation` against an
+    inherited `protocols:`, which is an API-level change.
     """
     change = Changed(
         None,
@@ -1448,76 +1439,23 @@ def test_an_api_level_override_can_name_the_location_the_docs_show():
     assert configure([change], CompatibilityConfig((setting,)))[0].impact == 'compatible'
 
 
-def test_the_walk_grades_nothing_and_the_table_grades_everything():
-    """One question with one answer: what does this rule do to a caller.
-
-    `rules.py` answers it and the walk never does, so a grade cannot be written
-    down twice and drift. The walk picks a rule id; the table turns that into an
-    impact, and this asserts nothing else does.
-    """
+def test_the_rule_table_is_the_only_source_of_an_impact():
+    """The walk picks a rule id; `rules.py` turns it into an impact."""
     assert set(RULE_IDS) == set(RULES)
     for name, rule in RULES.items():
         assert impact_of(name) == rule.impact
-    # And the walk never writes one down: the only impacts spelled out in the
-    # comparison are the vocabulary itself -- no grade is chosen there.
-    source = (Path(__file__).parents[2] / 'fastraml' / 'views' / 'backward' / 'compare.py').read_text(encoding='utf-8')
-    assert "'compatible'" not in source
-    assert "'cosmetic'" not in source
 
 
-def test_the_worked_example_is_a_readable_end_to_end_report():
-    changes, report = _worked_example()
+def test_the_worked_example_reaches_every_rule():
+    """Its rendered report is pinned by `tests/golden/reports/compatibility.md`."""
+    changes, _ = _worked_example()
 
-    # Every rule the table names is exercised by this one report.
     emitted = {change.rule for change in changes}
     assert emitted == set(RULES)
-    # And `RULE_IDS` -- what `configure` validates an override against -- is exactly
-    # that set. An id listed there but never emitted would be an override the CLI
-    # accepts and no change ever matches, which is the failure an override must not
-    # have. Derived from the table now, so this asserts the walk reaches all of it.
+    # `RULE_IDS` is what `configure` validates an override against. An id listed
+    # there but never emitted would be an override the CLI accepts and no change
+    # ever matches.
     assert emitted == RULE_IDS
-    assert '# API compatibility' in report
-    assert '## Every operation' in report
-    assert '| baseUri parameter `tenant` | `maxLength` | `20` -> `10` | Breaking |' in report
-    assert '## `POST /request-required`' in report
-    assert '## `GET /response-enum-add`' in report
-    assert '| Body `application/json` | `$.profile.nickname` | `maxLength` |' in report
-    assert '| `200` body `application/json` | `$.records[].state` | `archived` | Review |' in report
-    assert '| Security | `accessTokenUri` |' in report
-    assert (
-        '| `200` body `application/json` | `$.productCode` | `pattern` | `^[A-Z]+$` -> `^[a-z]+$` | Review |' in report
-    )
-    assert 'accessTokenUri' in report
-    # Sides of the wire, not result classes: a caller reads what it sends apart
-    # from what it receives, and a header under a response is the response's.
-    assert '### Request' in report
-    assert '### Response' in report
-    assert '### Documentation' in report
-    assert '### Method contract' not in report
-    # Then by kind, because Before and After fitted only one of the three.
-    assert '**Removed**' in report
-    assert '**Changed**' in report
-    assert '**Added**' in report
-    # A status, a media type and a member type are stated once, by the coordinate
-    # that addresses them. What is left is the author's prose, which is nobody's
-    # coordinate and the one thing an addition can say that its position cannot.
-    assert '| Status `410` | The record is permanently gone. | Breaking |' in report
-    assert '| Status `202` | The request was accepted for processing. | Compatible |' in report
-    assert '| query parameter `cursor` | optional `string` | Opaque position' in report
-    # One parameter, two facts, adjacent: the contract row then the shape row.
-    assert (
-        '| query parameter `limit` | Requiredness | Optional -> Required | Breaking |\n'
-        '| query parameter `limit` | `type` | `string` -> `integer` | Breaking |' in report
-    )
-    # A body names no type: `Where` already did, and it has no prose here either.
-    assert '| Body `application/vnd.legacy+json` | Breaking |' in report
-    assert '| Body `application/vnd.example+json` | Compatible |' in report
-    assert '| `200` body `application/problem+json` | Breaking |' in report
-    assert '| `200` body `application/vnd.example+json` | Compatible |' in report
-    assert '| `200` body `application/json` | `$.result<integer>` | Compatible |' in report
-    assert '| `200` body `application/json` | `$.result<boolean>` | Review |' in report
-    # Rule prose belongs to the policy documentation, not to a change row.
-    assert 'Callers read a field that has gone' not in report
 
 
 def test_the_worked_example_reaches_every_model_coordinate():

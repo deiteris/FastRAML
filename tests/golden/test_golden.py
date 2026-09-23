@@ -22,9 +22,13 @@ from pathlib import Path
 import pytest
 
 from fastraml import ParseOptions, parse_from_path
+from fastraml.views.backward import backward_markdown
 from tests.golden.project import positions_of, project
 
 CASES_DIR = Path(__file__).parent / 'cases'
+#: Rendered reports, compared as text. Kept out of `cases/`, which holds only
+#: model cases.
+REPORTS_DIR = Path(__file__).parent / 'reports'
 
 #: Every case parses with both flags. A golden of an un-flattened model would
 #: pin the declaration rather than the type, and the declaration is what the
@@ -74,6 +78,25 @@ def test_model_matches_its_golden(case: Path, request):
     positions = case / 'expected.pos.json'
     if positions.exists() or (update and (case / 'positions').exists()):
         check(positions, positions_of(raml), update=update)
+
+
+def test_the_compatibility_report_matches_its_golden(request):
+    """The worked example in `examples/compatibility`, as the reader sees it.
+
+    `tests/unit/test_backward.py` asserts that this example reaches every rule
+    and every coordinate; this pins its wording and layout.
+    """
+    update = request.config.getoption('--update-golden')
+    root = Path(__file__).parents[2] / 'examples' / 'compatibility'
+    options = ParseOptions(unwrap=True)
+    report = backward_markdown(parse_from_path(root / 'v1.raml', options), parse_from_path(root / 'v2.raml', options))
+    path = REPORTS_DIR / 'compatibility.md'
+    if update:
+        path.write_text(report, encoding='utf-8', newline='\n')
+        return
+    if not path.exists():
+        pytest.fail(f'{path.name} missing; run pytest tests/golden --update-golden')
+    assert report == path.read_text(encoding='utf-8'), f'{path.name} drifted'
 
 
 def test_there_are_cases():

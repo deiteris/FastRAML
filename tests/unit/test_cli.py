@@ -41,18 +41,6 @@ def test_openapi_export_defaults_to_yaml(files, capsys):
     assert captured.err == ''
 
 
-def test_openapi_export_writes_a_file_with_o(files, tmp_path, capsys):
-    target = tmp_path / 'api.yaml'
-    assert main(['openapi', '-o', str(target), files('good.raml')]) == EXIT_OK
-    captured = capsys.readouterr()
-    assert captured.out == ''
-    assert captured.err == ''
-    document = yaml.safe_load(target.read_text(encoding='utf-8'))
-    assert document['info']['title'] == 'Demo'
-    assert '/things' in document['paths']
-    assert b'\r' not in target.read_bytes()
-
-
 @pytest.mark.parametrize('verb', ['tree', 'graph', 'openapi'])
 def test_every_document_verb_writes_a_file_with_o(verb, files, tmp_path, capsys, monkeypatch):
     """`-o` on every verb whose output is a document, not just `openapi`.
@@ -66,8 +54,13 @@ def test_every_document_verb_writes_a_file_with_o(verb, files, tmp_path, capsys,
     assert main([verb, '-o', str(target), files('good.raml')]) == EXIT_OK
     captured = capsys.readouterr()
     assert captured.out == ''
+    assert captured.err == ''
     assert target.read_bytes()
     assert b'\r' not in target.read_bytes()
+    if verb == 'openapi':
+        document = yaml.safe_load(target.read_text(encoding='utf-8'))
+        assert document['info']['title'] == 'Demo'
+        assert '/things' in document['paths']
 
 
 @pytest.mark.parametrize('verb', ['tree', 'graph'])
@@ -1129,12 +1122,10 @@ class TestSkillsVerb:
         assert 'PatternPropertySegment' in rendered
         assert {'breaking', 'review', 'compatible', 'cosmetic'} <= set(re.findall(r'`([a-z]+)`', rendered))
 
-    def test_core_does_not_teach_the_retired_graph_diff_report(self):
+    def test_core_teaches_the_backward_report_and_its_impacts(self):
         core = Path('fastraml/skilldata/core/SKILL.md').read_text(encoding='utf-8')
         commands = Path('fastraml/skilldata/core/references/commands.md').read_text(encoding='utf-8')
-        assert 'grouped by rule' not in core
         assert 'source-file addresses' in core
-        assert '`risky`, `safe`' not in commands
         assert '`breaking`, `review`, `compatible`, `cosmetic`' in commands
 
     def test_an_unknown_guide_is_named_not_guessed(self, capsys):

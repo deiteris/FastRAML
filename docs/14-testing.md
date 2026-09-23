@@ -54,14 +54,15 @@ the default root, the entry's own directory, would refuse
 |---|---|
 | Unit | Decoder, loader, resolver, type, validation, CLI, and view contracts. |
 | Property | Structural merge laws and generated inheritance/validation laws. |
-| Golden | Whole effective-model projections, including positions where relevant. |
+| Golden | Whole effective-model projections, including positions where relevant, and the rendered compatibility report for `examples/compatibility`. |
 | Corpus invariants | Cache canonicalization, positions, determinism, unwrap invariants, rendering, graph/tree validity, and binding contract coverage over the TCK. |
 | YAML conformance | YAML 1.2 scalar and structure agreement against `ruamel.yaml`. |
 | Bindings | TypeScript, Python, and Go tree-contract conformance. |
 | Benchmark tests | Generated corpus validity and the optional linearity assertion. |
 
-Golden cases live in `tests/golden/cases/`. Regenerate only with
-`pytest tests/golden --update-golden`, and review every resulting JSON diff.
+Golden cases live in `tests/golden/cases/`, and rendered reports in
+`tests/golden/reports/`. Regenerate only with
+`pytest tests/golden --update-golden`, and review every resulting diff.
 
 The YAML oracle is a development-only dependency. It compares composed node
 structure, tags, and scalar text, including TCK files when the submodule exists.

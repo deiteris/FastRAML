@@ -667,8 +667,7 @@ class TestEveryNodeIsBackedByTheModel:
     def test_no_node_stands_for_nothing(self, graph: Graph):
         assert [iri for iri, node in graph.nodes.items() if node.entity is None] == []
 
-    def test_the_kinds_that_used_to_go_unrecorded_are_recorded(self, graph: Graph):
-        """Types and endpoints were kept in two side maps; the rest were not."""
+    def test_every_node_kind_records_its_model_object(self, graph: Graph):
         by_kind = {node.kinds[0]: type(node.entity).__name__ for node in graph.nodes.values()}
         assert by_kind['Property'] == 'Property'
         assert by_kind['Parameter'] == 'Parameter'

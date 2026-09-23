@@ -45,6 +45,7 @@ import pytest
 from fastraml import ParseOptions, parse_from_path
 from fastraml.views import tree as tree_module
 from fastraml.views.bindings import golang, python, typescript
+from fastraml.views.bindings import main as bindings_main
 from fastraml.views.bindings.conformance import SOURCES
 from fastraml.views.bindings.golang import golang_runtime
 from fastraml.views.bindings.python import python_runtime
@@ -203,30 +204,6 @@ class TestTheCheckedInTypeScriptFileIsGenerated:
             f'-o {TYPESCRIPT_DESTINATION}` -- {TYPESCRIPT_DESTINATION} is stale'
         )
 
-    def test_the_module_writes_the_destination_its_caller_names(self, tmp_path):
-        # `python -m` is the documented way to regenerate, so it is worth one
-        # test: an entry point that raises on import is a broken instruction.
-        destination = tmp_path / 'tree.d.ts'
-        result = subprocess.run(  # noqa: S603 - executable and arguments are test-owned
-            [sys.executable, '-m', 'fastraml.views.bindings', 'typescript', '-o', str(destination)],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=ROOT,
-        )
-        assert str(destination.resolve()) in result.stdout
-        assert destination.read_text(encoding='utf-8') == typescript()
-
-    def test_the_module_can_write_stdout(self):
-        result = subprocess.run(
-            [sys.executable, '-m', 'fastraml.views.bindings', 'typescript', '-o', '-'],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=ROOT,
-        )
-        assert result.stdout == typescript()
-
     def test_nested_fixed_records_are_named(self):
         generated = typescript()
         assert 'documentation?: DocumentationItem[];' in generated
@@ -258,28 +235,6 @@ class TestTheCheckedInPythonFileIsGenerated:
         assert current == python(), (
             f'run `python -m fastraml.views.bindings python -o {PYTHON_DESTINATION}` -- {PYTHON_DESTINATION} is stale'
         )
-
-    def test_the_module_writes_the_destination_its_caller_names(self, tmp_path):
-        destination = tmp_path / 'tree.py'
-        result = subprocess.run(  # noqa: S603 - executable and arguments are test-owned
-            [sys.executable, '-m', 'fastraml.views.bindings', 'python', '-o', str(destination)],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=ROOT,
-        )
-        assert str(destination.resolve()) in result.stdout
-        assert destination.read_text(encoding='utf-8') == python()
-
-    def test_the_module_can_write_stdout(self):
-        result = subprocess.run(
-            [sys.executable, '-m', 'fastraml.views.bindings', 'python', '-o', '-'],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=ROOT,
-        )
-        assert result.stdout == python()
 
     def test_it_imports_and_reports_its_own_optional_keys(self, tmp_path):
         # Imported from a copy, not from `contrib`: the gate may read a
@@ -328,28 +283,6 @@ class TestTheGoBackendDeclaresTheContract:
     becomes, `,omitzero` on optional fields, and `*orderedmap.OrderedMap` on
     every map whose keys are data.
     """
-
-    def test_the_module_writes_the_destination_its_caller_names(self, tmp_path):
-        destination = tmp_path / 'tree.go'
-        result = subprocess.run(  # noqa: S603 - executable and arguments are test-owned
-            [sys.executable, '-m', 'fastraml.views.bindings', 'golang', '-o', str(destination)],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=ROOT,
-        )
-        assert str(destination.resolve()) in result.stdout
-        assert destination.read_text(encoding='utf-8') == golang()
-
-    def test_the_module_can_write_stdout(self):
-        result = subprocess.run(
-            [sys.executable, '-m', 'fastraml.views.bindings', 'golang', '-o', '-'],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=ROOT,
-        )
-        assert result.stdout == golang()
 
     def test_the_caller_names_the_package_too(self):
         # The one flag the other two backends do not have. A Go file cannot omit
@@ -742,6 +675,37 @@ def backend(name: str):
     """
     render = {'typescript': typescript, 'python': python, 'golang': golang}[name]
     return render, sys.modules[f'fastraml.views.bindings.{name}']
+
+
+class TestTheEntryPointWritesWhereItsCallerSays:
+    def test_python_m_runs(self, tmp_path):
+        # `python -m` is the documented way to regenerate, so it is worth one
+        # subprocess: an entry point that raises on import is a broken
+        # instruction. The dispatch is shared; one backend proves it.
+        destination = tmp_path / 'tree.d.ts'
+        result = subprocess.run(  # noqa: S603 - executable and arguments are test-owned
+            [sys.executable, '-m', 'fastraml.views.bindings', 'typescript', '-o', str(destination)],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+        )
+        assert str(destination.resolve()) in result.stdout
+        assert destination.read_text(encoding='utf-8') == typescript()
+
+    @pytest.mark.parametrize('name', BACKENDS)
+    def test_it_writes_the_destination_its_caller_names(self, name, tmp_path, capsys):
+        render, _ = backend(name)
+        destination = tmp_path / 'out'
+        bindings_main([name, '-o', str(destination)])
+        assert str(destination.resolve()) in capsys.readouterr().out
+        assert destination.read_text(encoding='utf-8') == render()
+
+    @pytest.mark.parametrize('name', BACKENDS)
+    def test_it_can_write_stdout(self, name, capsys):
+        render, _ = backend(name)
+        bindings_main([name, '-o', '-'])
+        assert capsys.readouterr().out == render()
 
 
 class TestTheHandWrittenHalvesAreFilesNotStrings:
@@ -1224,18 +1188,11 @@ class TestEveryKindLandsInTheContract:
         declared = declared_shape_members()
         assert not keys - declared, f'emitted but not in the contract: {sorted(keys - declared)}'
 
-    def test_every_key_that_arrives_is_declared_in_python_too(self, keys):
-        # Asked of each backend separately. The key *sets* come from one schema,
-        # but each backend decides which of them it writes, and a backend that
-        # silently drops one is the failure this whole file exists to catch.
-        declared = python_shape_members()
-        assert not keys - declared, f'emitted but not in the contract: {sorted(keys - declared)}'
-
-    def test_every_key_that_arrives_is_declared_in_go_too(self, keys):
-        declared = go_shape_members()
-        assert not keys - declared, f'emitted but not in the contract: {sorted(keys - declared)}'
-
-    def test_every_backend_declares_the_same_shape_fields(self, keys):
+    def test_every_backend_declares_the_same_shape_fields(self):
+        # With the test above, every backend declares every key that arrives.
+        # The key *sets* come from one schema, but each backend decides which of
+        # them it writes, and a backend that silently drops one is the failure
+        # this whole file exists to catch.
         assert declared_shape_members() == python_shape_members()
         assert declared_shape_members() == go_shape_members()
 
@@ -1246,8 +1203,8 @@ class TestEveryKindLandsInTheContract:
 
     def test_a_bound_arrives_as_an_exact_decimal_string(self, workspace):
         # The contract says so in a comment; this is what makes the comment
-        # true. It read `1/100` and `1/2` -- exact, and neither what the author
-        # wrote nor anything a consumer could show without long division.
+        # true. A fraction such as `1/100` is exact but is not what the author
+        # wrote.
         root = workspace({'api.raml': DOCUMENT})
         raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
         bounded = build_tree(raml)['types']['api.raml']['Bounded']

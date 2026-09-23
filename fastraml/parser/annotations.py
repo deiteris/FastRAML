@@ -78,7 +78,10 @@ def unmarshal_domain_extension(raml: Raml, location: str, key_node: Node, value_
     if not name:
         raise node_error('annotation name must not be empty', location, key_node)
 
+    # An application an extension document wrote names its annotation type in
+    # that document's namespace; the target is still the enclosing site's.
     ctx = raml.current_ctx()
+    location = raml.document_location(value_node, location)
     extension = DomainExtension(
         id=raml.next_id(),
         name=name,
@@ -86,7 +89,7 @@ def unmarshal_domain_extension(raml: Raml, location: str, key_node: Node, value_
         location=location,
         key_pos=key_node.position,
         value_pos=value_node.full_position,
-        anchor=ctx.anchor,
+        anchor=raml.document_anchor(value_node) or ctx.anchor,
         target=ctx.target,
     )
     raml.domain_extensions.append(extension)

@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 __all__ = [
     'BaseUriProtocol',
     'EmptyPathSegment',
+    'ExtensionRemovesProperty',
     'NonScalarParameter',
     'NonStandardMethod',
     'UndefinedVersion',
@@ -170,6 +171,42 @@ class BaseUriProtocol:
                 protocols=','.join(protocol.value.upper() for protocol in api.protocols),
             ),
         )
+
+
+class ExtensionRemovesProperty:
+    meta: ClassVar = RuleMeta(
+        'extension-removes-property',
+        Category.SPEC,
+        'an Extension key should not silently remove a property of its master',
+        (
+            'When an Extension adds a property the master lacks, the merge removes every property that cannot '
+            'coexist with it: `queryString` removes `queryParameters`, and `examples` removes `example`. The '
+            'removal is the only way an Extension can switch between the two, but nothing in the model records '
+            'it, so an author who did not know the master had the other property loses it unnoticed.'
+        ),
+        Severity.WARNING,
+        references=('RAML 1.0 § Merging Rules',),
+        files=(
+            (
+                'master.raml',
+                '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    queryParameters:\n      q: string\n/b:\n  get:\n',
+            ),
+        ),
+        good='#%RAML 1.0 Extension\nextends: master.raml\n/b:\n  get:\n    queryString:\n      type: object\n',
+        bad='#%RAML 1.0 Extension\nextends: master.raml\n/a:\n  get:\n    queryString:\n      type: object\n',
+    )
+
+    def run(self, ctx: Context) -> Iterable[Finding]:
+        for fragment in ctx.raml.extensions:
+            for removed in fragment.removed_properties:
+                yield ctx.at(
+                    self.meta,
+                    'extension removed a conflicting property',
+                    location=removed.location,
+                    position=removed.key_pos,
+                    field=removed.field,
+                    by=removed.by,
+                )
 
 
 class UndefinedVersion:

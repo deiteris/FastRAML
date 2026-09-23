@@ -42,6 +42,13 @@ fragment-kind mismatch, or a non-mapping root raises only when the outer frame's
 location is the entry URI; the same failure in an included fragment is returned
 with the partial model.
 
+An Overlay or Extension may be the entry document. The returned `Raml` holds
+the target tree of its `extends` chain: `entry_point` is the root API's
+`APIFragment`, `Raml.location` is the root API's URI, and `Raml.extensions`
+lists the applied documents in order ([19](19-overlays-and-extensions.md)
+§ 6). The default workspace root is the entry document's directory, so a chain
+that reaches above it (`extends: ../api.raml`) needs `workspace_root`.
+
 ## 2. Parse options
 
 | Option | Effect |
@@ -62,7 +69,7 @@ unflattened types. Validation alone must clone and unwrap declarations privately
 ## 3. Model contracts
 
 One `Raml` holds the result of one parse. Its public stores include the entry
-fragment, fragments by URI, shapes in creation order, endpoints by full URI,
+fragment, fragments by URI, the applied Overlays and Extensions, shapes in creation order, endpoints by full URI,
 domain extensions, include references, and retained source data when requested.
 Use its `types_in`, `annotation_types_in`, `typedefs_in`, `include_refs_in`, and
 `source_node` accessors for indexed lookups.

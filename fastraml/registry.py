@@ -21,16 +21,17 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from fastraml.domains import DomainLocation
 from fastraml.loaders import SchemeLoader
-from fastraml.yamlnode import DEFAULT_MAX_DEPTH, NodeKind
+from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, NodeKind
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
     from fastraml.loaders import ResourceLoader
     from fastraml.parser.annotations import DomainExtension
-    from fastraml.parser.fragments import Fragment, ReferenceResolver
+    from fastraml.parser.fragments import ExtensionFragment, Fragment, ReferenceResolver
     from fastraml.parser.includes import IncludeRef
     from fastraml.parser.structural_merge import ProvenanceOverlay
+    from fastraml.positions import Position
     from fastraml.types.expressions import ExprCache
     from fastraml.types.jsonschema_ import SchemaRegistry
     from fastraml.yamlnode import Node
@@ -118,9 +119,13 @@ class Raml:
         'global_secured_by',
         # --- transient parse state -------------------------------------------
         '_active_overlay',
+        '_document_provenance',
+        '_document_scopes',
         '_id_counter',
         '_parse_ctx_stack',
+        'annotation_type_changes',
         'entry_point',
+        'extensions',
         'source_info',
         'source_nodes',
         'source_texts',
@@ -179,8 +184,18 @@ class Raml:
         # The overlay of the source unit being materialized in P4 stage 2;
         # `None` at every other time.
         self._active_overlay: ProvenanceOverlay | None = None
+        # Which extension document authored a node of the target tree. Empty
+        # unless the entry is an Overlay or Extension (docs/19 § 5.3).
+        self._document_provenance: dict[Node, ReferenceResolver] = {}
+        self._document_scopes: dict[tuple[ReferenceResolver, DomainLocation], ParseCtx] = {}
         self._id_counter = itertools.count(1)
         self.entry_point: Fragment | None = None
+        #: The Overlays and Extensions applied to the root API, in application
+        #: order; empty unless the entry is one (docs/19 § 6).
+        self.extensions: list[ExtensionFragment] = []
+        #: Root annotation types an extension document changed: name ->
+        #: (document URI, position of the change) (docs/19 § 4.4).
+        self.annotation_type_changes: dict[str, tuple[str, Position]] = {}
         self.unwrapped = False
         self.source_nodes: dict[str, Node] = {}
         self.source_texts: dict[str, str] = {}
@@ -243,13 +258,12 @@ class Raml:
 
     @contextmanager
     def provenance_scope(self, node: Node) -> Iterator[None]:
-        """Push the scope the active overlay records for `node`, if it records one.
+        """Push the scope recorded for `node`, if one is recorded.
 
         A node with no mark is one the enclosing unit wrote itself, and the
         scope already in effect is the right one for it.
         """
-        overlay = self._active_overlay
-        scope = None if overlay is None else overlay.get(node)
+        scope = self._marked_scope(node)
         if scope is None:
             yield
             return
@@ -266,20 +280,19 @@ class Raml:
         a value the caller substituted is more specific than the grafted body it
         was substituted into.
         """
-        overlay = self._active_overlay
-        if overlay is None:
+        if self._active_overlay is None and not self._document_provenance:
             return None
         if node.kind is NodeKind.MAPPING:
             content = node.content
             for index in range(0, len(content) - 1, 2):
                 if content[index].value in _TYPE_FACETS:
-                    scope = overlay.get(content[index + 1])
+                    scope = self._marked_scope(content[index + 1])
                     if scope is not None:
                         return scope
-        return overlay.get(node)
+        return self._marked_scope(node)
 
     def location_of(self, node: Node, default: str) -> str:
-        """The location to report for `node`: its overlay scope's anchor, else `default`.
+        """The location to report for `node`: its recorded scope's anchor, else `default`.
 
         Consulted by every stage-2 entity constructor, so a diagnostic inside a
         trait-contributed response names the trait's file. The anchor is the
@@ -287,6 +300,11 @@ class Raml:
         authored (docs/08 § 4.2). Merge-created containers carry no mark, so
         callers ask about the specific child node.
         """
+        documents = self._document_provenance
+        if documents:
+            anchor = documents.get(node)
+            if anchor is not None:
+                return anchor.location
         overlay = self._active_overlay
         if overlay is None:
             return default
@@ -294,6 +312,94 @@ class Raml:
         if scope is not None and scope.anchor is not None:
             return scope.anchor.location
         return default
+
+    def _marked_scope(self, node: Node) -> ParseCtx | None:
+        """The document mark first, then the active unit's (docs/19 § 5.3)."""
+        if self._document_provenance:
+            scope = self.document_ctx(node)
+            if scope is not None:
+                return scope
+        overlay = self._active_overlay
+        return None if overlay is None else overlay.get(node)
+
+    # -- document provenance (docs/19 § 5.3) ----------------------------------
+
+    def mark_authored(self, node: Node, author: ReferenceResolver) -> None:
+        """Record `node` and its whole subtree as written by `author`.
+
+        The whole subtree, because `Node` has no parent pointer: a decoder asks
+        about the node in its hand, however deep. Authorship is a fact about the
+        node, so a mark is never replaced.
+        """
+        documents = self._document_provenance
+        stack = [node]
+        while stack:
+            current = stack.pop()
+            if current in documents:
+                continue
+            documents[current] = author
+            stack += current.content
+
+    def document_anchor(self, node: Node) -> ReferenceResolver | None:
+        """The extension document that wrote `node`, if one did."""
+        documents = self._document_provenance
+        return documents.get(node) if documents else None
+
+    def document_location(self, node: Node, default: str) -> str:
+        """The authoring document's URI for `node`, else `default`.
+
+        Unlike `location_of`, ignores template scopes: a substituted scalar
+        keeps the template's positions, so only authorship names its file.
+        """
+        documents = self._document_provenance
+        if documents:
+            anchor = documents.get(node)
+            if anchor is not None:
+                return anchor.location
+        return default
+
+    def document_ctx(self, node: Node) -> ParseCtx | None:
+        """The current scope re-anchored at `node`'s authoring document, if any.
+
+        A document mark names a namespace only; the annotation target stays the
+        one in effect (docs/19 § 5.3).
+        """
+        anchor = self.document_anchor(node)
+        if anchor is None:
+            return None
+        target = self.current_ctx().target
+        key = (anchor, target)
+        scope = self._document_scopes.get(key)
+        if scope is None:
+            scope = self._document_scopes[key] = ParseCtx(anchor=anchor, target=target)
+        return scope
+
+    @contextmanager
+    def document_scope(self, node: Node) -> Iterator[None]:
+        """Decode `node` in its authoring document's namespace, if it has one."""
+        scope = self.document_ctx(node)
+        if scope is None:
+            yield
+            return
+        self.push_ctx(scope)
+        try:
+            yield
+        finally:
+            self.pop_ctx()
+
+    @contextmanager
+    def reporting_authorship(self) -> Iterator[None]:
+        """Let `node_error` name a marked node's authoring document.
+
+        Diagnostics are built at a hundred sites that know only the location
+        they were handed; the lookup happens once a failure exists, so the
+        success path pays nothing (docs/11 § 8).
+        """
+        token = AUTHORED_NODES.set(self._document_provenance)
+        try:
+            yield
+        finally:
+            AUTHORED_NODES.reset(token)
 
     # -- stores ---------------------------------------------------------------
 

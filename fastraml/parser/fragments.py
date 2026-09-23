@@ -25,6 +25,7 @@ has yet to declare. Each is released after its consumer succeeds.
 
 from __future__ import annotations
 
+import collections.abc
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, runtime_checkable
 
@@ -62,8 +63,9 @@ from fastraml.yamlnode import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterator, Mapping
 
+    from fastraml.parser.extension_merge import RemovedProperty
     from fastraml.positions import Position
     from fastraml.registry import Raml
     from fastraml.types.base import BaseShape, Parameter, ScalarFacet
@@ -73,6 +75,7 @@ __all__ = [
     'APIFragment',
     'DataTypeFragment',
     'DocumentationItemFragment',
+    'ExtensionFragment',
     'Fragment',
     'FragmentKind',
     'Library',
@@ -83,6 +86,7 @@ __all__ = [
     'SecuritySchemeFragment',
     'SecuritySchemeResolver',
     'TraitFragment',
+    'VisibleTable',
     'decode_resource_type_definitions',
     'decode_security_scheme_definitions',
     'decode_trait_definitions',
@@ -402,22 +406,32 @@ class _DeclaringFragment(_BaseFragment):
     # -- ReferenceResolver / SecuritySchemeResolver ---------------------------
 
     def reference_type(self, name: str) -> BaseShape:
-        return resolve_reference(self.types, self.uses, name, _pick_type)
+        return resolve_reference(self._visible(self.types, 'types'), self.uses, name, _pick_type)
 
     def reference_annotation_type(self, name: str) -> BaseShape:
         try:
-            return resolve_reference(self.annotation_types, self.uses, name, _pick_annotation_type)
+            return resolve_reference(
+                self._visible(self.annotation_types, 'annotationTypes'), self.uses, name, _pick_annotation_type
+            )
         except LookupError:
-            return resolve_reference(self.types, self.uses, name, _pick_type)
+            return resolve_reference(self._visible(self.types, 'types'), self.uses, name, _pick_type)
 
     def resource_type_definition(self, name: str) -> ResourceTypeDefinition:
-        return resolve_reference(self.resource_types, self.uses, name, _pick_resource_type)
+        return resolve_reference(
+            self._visible(self.resource_types, 'resourceTypes'), self.uses, name, _pick_resource_type
+        )
 
     def trait_definition(self, name: str) -> TraitDefinition:
-        return resolve_reference(self.traits, self.uses, name, _pick_trait)
+        return resolve_reference(self._visible(self.traits, 'traits'), self.uses, name, _pick_trait)
 
     def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition:
-        return resolve_reference(self.security_schemes, self.uses, name, _pick_security_scheme)
+        return resolve_reference(
+            self._visible(self.security_schemes, 'securitySchemes'), self.uses, name, _pick_security_scheme
+        )
+
+    def _visible[T](self, table: Mapping[str, T], kind: str) -> Mapping[str, T]:  # noqa: ARG002 - overridden
+        """The declarations of `kind` this fragment's own nodes may name: all of them."""
+        return table
 
     # -- decoding -------------------------------------------------------------
 
@@ -480,6 +494,7 @@ class APIFragment(_DeclaringFragment):
         '_raw_secured_by',
         'base_uri',
         'base_uri_parameters',
+        'declared_by',
         'description',
         'documentation',
         'media_types',
@@ -504,6 +519,17 @@ class APIFragment(_DeclaringFragment):
         #: `(key, value)` pairs for every `/relativeUri` key, in document order.
         #: P4 turns them into the stage-1 endpoint IR.
         self._raw_endpoints: list[tuple[Node, Node]] = []
+        #: For the target tree of an `extends` chain: which chain position
+        #: declared each name an extension document added, per kind. `None`
+        #: for an API parsed on its own (docs/19 § 5.2).
+        self.declared_by: dict[str, dict[str, int]] | None = None
+
+    def _visible[T](self, table: Mapping[str, T], kind: str) -> Mapping[str, T]:
+        """The root API's own nodes see only the root API's declarations (docs/19 § 5.2)."""
+        declared_by = self.declared_by
+        if declared_by is None:
+            return table
+        return VisibleTable(table, declared_by.get(kind, {}), 0)
 
     def decode(self, node: Node) -> None:
         if node.kind is not NodeKind.MAPPING:
@@ -521,7 +547,12 @@ class APIFragment(_DeclaringFragment):
 
         if self._raw_secured_by is not None:
             try:
-                refs = decode_secured_by(self._raw_secured_by, self.location, ParseCtx(anchor=self))
+                raw = self._raw_secured_by
+                # A root `securedBy:` an extension document wrote names schemes
+                # in that document's namespace (docs/19 § 5.3).
+                scope = self._raml.document_ctx(raw) or ParseCtx(anchor=self)
+                location = self._raml.document_location(raw, self.location)
+                refs = decode_secured_by(raw, location, scope)
                 self._raml.global_secured_by = make_security_schemes(self._raml, refs)
             except RamlError as err:
                 accumulator.add(err)
@@ -540,6 +571,14 @@ class APIFragment(_DeclaringFragment):
         self._raw_secured_by = None
 
     def _decode_key(self, key: Node, value: Node, declarations: _Declarations) -> None:
+        if is_annotation_key(key.value):
+            author = self._raml.document_anchor(value)
+            if isinstance(author, ExtensionFragment) and author.kind is not None:
+                # Written at the root of an Overlay or Extension, which is a
+                # target location of its own (docs/19 § 5.4).
+                with self._raml.target_scope(FRAGMENT_TARGETS[author.kind]):
+                    add_domain_extension(self._raml, self.annotations, self.location, key, value)
+                return
         if self._decode_root_facet(key, value) or self._decode_declarations(key, value, declarations):
             return
         if key.value.startswith('/'):
@@ -636,6 +675,121 @@ class APIFragment(_DeclaringFragment):
             if not _is_valid_media_type(item.value):
                 raise node_error('invalid media type', self.location, node, info={'media type': item.value})
         return items
+
+
+class VisibleTable[T](collections.abc.Mapping[str, T]):
+    """A declaration table seen from one position of an `extends` chain.
+
+    A name an extension document added is visible only from that document's
+    chain position onward, so the root API cannot resolve a name only an
+    extension declares (docs/19 § 5.2). Absent from `origins` means the root
+    API declared it. `resolve_reference` reads tables through `get` alone.
+    """
+
+    __slots__ = ('_origins', '_position', '_table')
+
+    def __init__(self, table: Mapping[str, T], origins: Mapping[str, int], position: int) -> None:
+        self._table = table
+        self._origins = origins
+        self._position = position
+
+    def get(self, key: str, default: Any = None) -> Any:
+        found = self._table.get(key)
+        if found is None or self._origins.get(key, 0) > self._position:
+            return default
+        return found
+
+    def __getitem__(self, key: str) -> T:
+        found = self.get(key)
+        if found is None:
+            raise KeyError(key)
+        return found  # type: ignore[no-any-return]
+
+    def __iter__(self) -> Iterator[str]:
+        return (name for name in self._table if self._origins.get(name, 0) <= self._position)
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self)
+
+
+class ExtensionFragment(_BaseFragment):
+    """`#%RAML 1.0 Overlay` or `Extension` — one document of an `extends` chain.
+
+    Its body is merged into the target tree and decoded as part of the root
+    API's `APIFragment`; this object is the namespace the document's own nodes
+    resolve in (docs/19 § 5.1). Declarations come from the target tree, seen
+    from `position`; libraries from `visible_uses`, its own `uses:` combined
+    with its masters'.
+    """
+
+    __slots__ = ('api', 'extends', 'position', 'removed_properties', 'usage', 'visible_uses')
+
+    def __init__(self, raml: Raml, location: str) -> None:
+        super().__init__(raml, location)
+        self.api: APIFragment | None = None
+        #: The master's URI: an API, or another Overlay or Extension.
+        self.extends = ''
+        #: 1 for the document applied first to the root API, and so on.
+        self.position = 0
+        self.usage: ScalarFacet[str] | None = None
+        self.visible_uses: dict[str, LibraryLink] = {}
+        #: Target properties this document's keys displaced (docs/19 § 3.4).
+        self.removed_properties: list[RemovedProperty] = []
+
+    def decode(self, node: Node) -> None:  # pragma: no cover - the chain loader decodes the root
+        raise NotImplementedError
+
+    def library_link(self, prefix: str) -> LibraryLink | None:
+        return self.visible_uses.get(prefix)
+
+    def _table[T](self, kind: str, pick: Callable[[APIFragment], Mapping[str, T]]) -> Mapping[str, T] | None:
+        api = self.api
+        if api is None:
+            return None
+        declared_by = api.declared_by or {}
+        return VisibleTable(pick(api), declared_by.get(kind, {}), self.position)
+
+    def reference_type(self, name: str) -> BaseShape:
+        return resolve_reference(self._table('types', _types_of), self.visible_uses, name, _pick_type)
+
+    def reference_annotation_type(self, name: str) -> BaseShape:
+        try:
+            return resolve_reference(
+                self._table('annotationTypes', _annotation_types_of), self.visible_uses, name, _pick_annotation_type
+            )
+        except LookupError:
+            return self.reference_type(name)
+
+    def resource_type_definition(self, name: str) -> ResourceTypeDefinition:
+        table = self._table('resourceTypes', _resource_types_of)
+        return resolve_reference(table, self.visible_uses, name, _pick_resource_type)
+
+    def trait_definition(self, name: str) -> TraitDefinition:
+        return resolve_reference(self._table('traits', _traits_of), self.visible_uses, name, _pick_trait)
+
+    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition:
+        table = self._table('securitySchemes', _security_schemes_of)
+        return resolve_reference(table, self.visible_uses, name, _pick_security_scheme)
+
+
+def _types_of(api: APIFragment) -> Mapping[str, BaseShape]:
+    return api.types
+
+
+def _annotation_types_of(api: APIFragment) -> Mapping[str, BaseShape]:
+    return api.annotation_types
+
+
+def _resource_types_of(api: APIFragment) -> Mapping[str, ResourceTypeDefinition]:
+    return api.resource_types
+
+
+def _traits_of(api: APIFragment) -> Mapping[str, TraitDefinition]:
+    return api.traits
+
+
+def _security_schemes_of(api: APIFragment) -> Mapping[str, SecuritySchemeDefinition]:
+    return api.security_schemes
 
 
 class DataTypeFragment(_UsesOnlyFragment):
@@ -887,7 +1041,12 @@ _FRAGMENT_CLASSES: Final[Mapping[FragmentKind, Callable[[Raml, str], _BaseFragme
 
 
 def make_fragment(raml: Raml, kind: FragmentKind, uri: str) -> _BaseFragment:
-    """The empty fragment object for a kind. Overlay and Extension are unsupported."""
+    """The empty fragment object for a kind.
+
+    Overlay and Extension have no entry here: they are never decoded on their
+    own, only merged into their root API's tree (`extensions.py`), so one
+    reached through `!include` or `uses:` is not supported.
+    """
     factory = _FRAGMENT_CLASSES.get(kind)
     if factory is None:
         raise RamlError.new('fragment kind not supported', uri, info={'kind': str(kind)}, kind=ErrorKind.PARSING)

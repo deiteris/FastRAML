@@ -158,6 +158,10 @@ containing mapping. `Raml.location_of` uses the marked scope's anchor location
 for diagnostics. That namespace location is not necessarily the node's authored
 location.
 
+A node an Overlay or Extension wrote also carries a document mark. Every
+reader consults the document mark before the unit overlay
+([19](19-overlays-and-extensions.md) § 5.3).
+
 Therefore a shape may legitimately have different `location` and anchor
 locations: static template structure is located at its declaration, while a
 substituted type name resolves in the caller namespace.

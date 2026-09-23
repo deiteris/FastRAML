@@ -467,7 +467,9 @@ def _shape_keys(node: object, into: set[str]) -> int:
     """Every key of every shape below `node`, and how many shapes there were."""
     found = 0
     if isinstance(node, dict):
-        if {'id', 'name', 'type'} <= set(node) and not _is_scheme(node):
+        # A shape's `id` is its address string. A `properties` map can hold
+        # properties *named* `id`, `name` and `type`, whose values are shapes.
+        if {'id', 'name', 'type'} <= set(node) and isinstance(node['id'], str) and not _is_scheme(node):
             into.update(node)
             found += 1
         for key, value in node.items():

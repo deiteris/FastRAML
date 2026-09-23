@@ -25,7 +25,9 @@ and resolution without reimplementing those operations.
 ## 2. Rules and rulesets
 
 Every rule has `RuleMeta`: an ID, category, summary, rationale, default severity,
-optional good/bad RAML examples, and a tuple of published `references`.
+optional good/bad RAML examples, and a tuple of published `references`. `files`
+holds the documents an example references, such as an Extension's master. The
+test suite writes them beside the example, and `--explain` prints them.
 `fastraml lint --explain RULE` prints that metadata. Standards-based rules cite
 their RFC, OWASP, CWE, RAML, or JSON Schema source. `tests/unit/test_lint.py`
 parses every built-in example and verifies that the good example is silent and

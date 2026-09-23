@@ -134,7 +134,7 @@ def note_include_ref(raml: Raml, node: Node, location: str) -> str:
     """
     if node.tag != TAG_INCLUDE:
         return ''
-    return _append_include_ref(raml, node, location)
+    return _append_include_ref(raml, node, raml.document_location(node, location))
 
 
 def resolve_include(raml: Raml, node: Node, location: str) -> tuple[str, Node]:
@@ -150,6 +150,9 @@ def resolve_include(raml: Raml, node: Node, location: str) -> tuple[str, Node]:
     if node.tag != TAG_INCLUDE:
         return '', node
 
+    # Relative to the file that wrote the `!include`, which in a target tree
+    # need not be the document being decoded (docs/19 § 5.3).
+    location = raml.document_location(node, location)
     try:
         target = _append_include_ref(raml, node, location)
     except ValueError as err:  # a malformed location or argument

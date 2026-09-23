@@ -57,6 +57,7 @@ architecture. The implementation and these documents must agree.
 | 16 | [Views](16-graph.md) | Shared traversal, graph and tree projections, queries, rendering, compatibility, bindings, JSON Schema, and OpenAPI |
 | 17 | [Consumers](17-consumers.md) | Consumer boundaries, generated artifacts, fixtures, and independent gates |
 | 18 | [Linting](18-linting.md) | Rule engine, built-in policy, configuration, plugins, and output |
+| 19 | [Overlays and Extensions](19-overlays-and-extensions.md) | `extends` chains, the extension merge, overlay restrictions, and document provenance |
 
 ## Supporting material
 

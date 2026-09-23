@@ -160,6 +160,9 @@ class RuleMeta:
     good: str = ''
     bad: str = ''
     references: tuple[str, ...] = ()
+    #: Documents `good` and `bad` reference, as `(file name, text)` pairs
+    #: written beside them: an Overlay's master, say. Usually empty.
+    files: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

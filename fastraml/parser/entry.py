@@ -18,6 +18,7 @@ from fastraml.errors import ErrorKind, RamlError
 from fastraml.loaders import build_loader
 from fastraml.parser.annotations import resolve_domain_extensions
 from fastraml.parser.endpoint_build import build_endpoints
+from fastraml.parser.extensions import EXTENSION_KINDS, decode_extension_chain
 from fastraml.parser.fragments import decode_fragment, identify_fragment
 from fastraml.parser.security import apply_security_schemes
 from fastraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml
@@ -179,15 +180,25 @@ def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = N
 _FATAL: Final = frozenset(
     {
         'unknown fragment kind',  # no RAML header, or one nothing recognises
-        'fragment kind not supported',  # Overlay and Extension
+        'fragment kind not supported',  # a kind with no decoder
         'unexpected fragment kind',  # the header contradicts the context
         'must be map',  # the root is not a mapping
+        # The entry's `extends` chain could not be loaded: there is no root API.
+        'extends is required',
+        'extends must be a string',
+        'resolve extends',
     }
 )
 
 
 def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
-    """The pass driver. Each step's precondition is the previous step's result."""
+    """The pass driver, with diagnostics naming each node's authoring document."""
+    with raml.reporting_authorship():
+        return _run_passes(raml, uri, text, options)
+
+
+def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
+    """Each step's precondition is the previous step's result."""
     # P0 — identify the fragment kind from the first line. Fails fast: a
     # document with no recognised header is not RAML.
     head = read_head(text)
@@ -200,7 +211,13 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     #
     # `decode_fragment` registers the fragment before decoding its body, so
     # after a failure `parse_lenient` can still find it in `raml.fragments`.
-    raml.entry_point = decode_fragment(raml, uri, kind, text)
+    #
+    # An Overlay or Extension instead loads its `extends` chain, merges it into
+    # the root API's tree, and decodes that once (docs/19).
+    if kind in EXTENSION_KINDS:
+        raml.entry_point = decode_extension_chain(raml, uri, kind, text)
+    else:
+        raml.entry_point = decode_fragment(raml, uri, kind, text)
 
     # P4 — build endpoints from the API's resources, in two stages, and P6 —
     # propagate URI parameters down the tree. API only; a Library has none.

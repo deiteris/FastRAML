@@ -67,6 +67,7 @@ from fastraml.views.lint.rules.security import (
 from fastraml.views.lint.rules.spec import (
     BaseUriProtocol,
     EmptyPathSegment,
+    ExtensionRemovesProperty,
     NonScalarParameter,
     NonStandardMethod,
     UndefinedVersion,
@@ -99,6 +100,7 @@ def builtin_registry() -> Registry:
         BaseUriProtocol(),
         DeprecatedSchemas(),
         EmptyPathSegment(),
+        ExtensionRemovesProperty(),
         JsonRefSiblings(),
         MeaninglessMediaTypeSchema(),
         MeaninglessRequestBody(),

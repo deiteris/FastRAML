@@ -31,6 +31,7 @@ unwrapped copies.
 | YAML and arbitrary data | `yamlnode.py`, `datanode.py` | [03](03-yaml-and-io.md) |
 | Parse state | `registry.py`, `domains.py` | this document, [04](04-fragments-and-namespaces.md) |
 | Entry and RAML decoding | `parser/entry.py`, `parser/fragments.py`, `parser/includes.py`, `parser/references.py` | [03](03-yaml-and-io.md), [04](04-fragments-and-namespaces.md) |
+| Overlays and Extensions | `parser/extensions.py`, `parser/extension_merge.py` | [19](19-overlays-and-extensions.md) |
 | Endpoints and templates | `parser/source_ir.py`, `parser/structural_merge.py`, `parser/source_decode.py`, `parser/endpoint_build.py`, `parser/traits.py`, `parser/resourcetypes.py` | [08](08-templates-and-endpoints.md) |
 | Security and annotations | `parser/security.py`, `parser/annotations.py`, `parser/directives.py` | [09](09-security-and-annotations.md) |
 | Type system | `types/` | [05](05-type-model.md) through [10](10-validation.md) |

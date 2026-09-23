@@ -95,6 +95,8 @@ the entry URI as that frame's location:
 |---|---|
 | `unknown fragment kind` | The entry header is missing or unrecognized |
 | `fragment kind not supported` | The entry names an unsupported fragment kind |
+| `extends is required`, `extends must be a string` | The entry Overlay or Extension names no master |
+| `resolve extends` | The entry's `extends` chain could not be loaded; the frame is repeated once per document of the chain |
 | `unexpected fragment kind` | A fragment header conflicts with the context that loaded it |
 | `must be map` | The entry root is not a mapping |
 
@@ -135,6 +137,11 @@ which they must be decoded.
 
 ```python
 def location_of(self, node: Node, default: str) -> str:
+    documents = self._document_provenance
+    if documents:
+        anchor = documents.get(node)
+        if anchor is not None:
+            return anchor.location
     overlay = self._active_overlay
     if overlay is None:
         return default
@@ -145,10 +152,20 @@ def location_of(self, node: Node, default: str) -> str:
 ```
 
 Provenance-aware decoders call `Raml.location_of()` at the boundaries where a
-node can come from a merged source. The returned location is the overlay scope's
-anchor location when one exists, otherwise the decoder's default location. An
-anchor identifies the namespace used to resolve names and can differ from a
+node can come from a merged source. The returned location is one of these, in
+order:
+
+1. the authoring document's URI, when an Overlay or Extension wrote the node
+   ([19](19-overlays-and-extensions.md) § 5.3);
+2. the overlay scope's anchor location;
+3. the decoder's default location.
+
+An anchor identifies the namespace used to resolve names and can differ from a
 shape's authored `location`; callers must not assume they are interchangeable.
+
+`node_error` applies the first rule itself. During a parse, a diagnostic built
+for a node an extension document wrote is located in that document, whatever
+location the caller passed. The lookup runs only once a failure exists.
 
 Merge-created container nodes may have no overlay entry. Decoders therefore ask
 for the location of the specific child that produced an entity or diagnostic,

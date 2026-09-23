@@ -115,13 +115,26 @@ def _retained(kept: list[Node], source: Node) -> Node | None:
     return with_content(source, kept) if kept else None
 
 
+def _site(raml: Raml, node: Node, location: str, scope: ParseCtx | None) -> tuple[str, ParseCtx | None]:
+    """Where a directive resolves: its authoring document, if an extension wrote it.
+
+    `is: [paged]` added to a method the root API declares names `paged` in the
+    extension document's namespace (docs/19 § 5.3).
+    """
+    authored = raml.document_ctx(node)
+    if authored is None or authored.anchor is None:
+        return location, scope
+    return authored.anchor.location, authored
+
+
 def make_source_operation(raml: Raml, method: str, key: Node, value: Node, location: str) -> SourceOperation:
     """Decode one method into IR. Directives out, everything else retained."""
+    location = raml.document_location(value, location)
     operation = SourceOperation(
         id=raml.next_id(),
         method=method,
         location=location,
-        scope=raml.current_ctx(),
+        scope=raml.document_ctx(value) or raml.current_ctx(),
         key_pos=key.position,
         value_pos=value.full_position,
     )
@@ -135,9 +148,9 @@ def make_source_operation(raml: Raml, method: str, key: Node, value: Node, locat
     for child_key, child_value in pairs(value):
         # A method takes two of the three directives: `type:` is a resource's.
         if child_key.value == FACET_IS:
-            operation.traits = decode_trait_refs(child_value, location, operation.scope)
+            operation.traits = decode_trait_refs(child_value, *_site(raml, child_value, location, operation.scope))
         elif child_key.value == FACET_SECURED_BY:
-            operation.secured_by = decode_secured_by(child_value, location, operation.scope)
+            operation.secured_by = decode_secured_by(child_value, *_site(raml, child_value, location, operation.scope))
             operation.explicit_secured_by = True
         else:
             kept.append(child_key)
@@ -153,12 +166,13 @@ def make_source_endpoint(raml: Raml, key: Node, value: Node, location: str, *, p
     rest of the resource.
     """
     uri = key.value
+    location = raml.document_location(value, location)
     endpoint = SourceEndPoint(
         id=raml.next_id(),
         uri=uri,
         full_uri=parent_uri + uri,
         location=location,
-        scope=raml.current_ctx(),
+        scope=raml.document_ctx(value) or raml.current_ctx(),
         key_pos=key.position,
         value_pos=value.full_position,
     )
@@ -173,11 +187,15 @@ def make_source_endpoint(raml: Raml, key: Node, value: Node, location: str, *, p
         name = child_key.value
         try:
             if name == FACET_TYPE:
-                endpoint.resource_type = decode_type_ref(child_value, location, endpoint.scope)
+                endpoint.resource_type = decode_type_ref(
+                    child_value, *_site(raml, child_value, location, endpoint.scope)
+                )
             elif name == FACET_IS:
-                endpoint.traits = decode_trait_refs(child_value, location, endpoint.scope)
+                endpoint.traits = decode_trait_refs(child_value, *_site(raml, child_value, location, endpoint.scope))
             elif name == FACET_SECURED_BY:
-                endpoint.secured_by = decode_secured_by(child_value, location, endpoint.scope)
+                endpoint.secured_by = decode_secured_by(
+                    child_value, *_site(raml, child_value, location, endpoint.scope)
+                )
                 endpoint.explicit_secured_by = True
             elif name in METHODS:
                 if name in endpoint.operations:

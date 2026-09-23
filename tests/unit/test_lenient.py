@@ -156,11 +156,12 @@ class TestStillFatal:
             parse_lenient(root / 'api.raml')
         assert 'must be map' in messages(caught.value)
 
-    def test_an_unsupported_fragment_kind_raises(self, workspace):
+    def test_an_overlay_whose_master_cannot_be_loaded_raises(self, workspace):
+        # With no root API there is no model to hand back (docs/19 § 2).
         root = workspace({'api.raml': '#%RAML 1.0 Overlay\nextends: base.raml\ntitle: T\n'})
         with pytest.raises(RamlError) as caught:
             parse_lenient(root / 'api.raml')
-        assert 'fragment kind not supported' in messages(caught.value)
+        assert caught.value.head.message == 'resolve extends'
 
     def test_the_same_problem_in_an_included_file_is_not_fatal(self, workspace):
         """`_FATAL` matches the *head* of the error, and that is the point.

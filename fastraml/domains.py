@@ -20,7 +20,7 @@ class DomainLocation(StrEnum):
 
     `allowedTargets:` on an annotation type names the subset of these that the
     annotation may be applied to; P10 enforces it. `OVERLAY` and `EXTENSION`
-    exist for completeness: those fragment kinds are rejected before decoding.
+    are the root of an extension document (docs/19 § 5.4).
     """
 
     API = 'API'

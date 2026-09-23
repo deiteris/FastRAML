@@ -73,6 +73,7 @@ BENCHES: tuple[Bench, ...] = (
         lambda root, scale: corpus.write_large(root, type_count=_at(7000, scale), library_count=_at(150, scale)),
     ),
     Bench('endpoints', lambda root, scale: corpus.write_endpoints(root, resource_count=_at(500, scale))),
+    Bench('extensions', lambda root, scale: corpus.write_extensions(root, resource_count=_at(500, scale))),
     Bench('validate', lambda root, scale: corpus.write_validate(root, type_count=_at(1000, scale))),
     Bench('jsonschema', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
 )

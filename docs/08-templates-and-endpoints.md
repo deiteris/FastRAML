@@ -88,7 +88,9 @@ resource has no explicit `securedBy`, stage 2 selects API-global security and
 does not materialize those appended refs. This is current behavior and has no
 focused unit test.
 
-Code: `parser/resourcetypes.py`. Tests: `tests/unit/test_resourcetypes.py`.
+Code: `parser/resourcetypes.py`; the declaration decode, the lexical lookup and
+the parameter check it shares with traits are in `parser/templates.py`
+(`TemplateDefinition`). Tests: `tests/unit/test_resourcetypes.py`.
 
 ### 3.2 Traits
 

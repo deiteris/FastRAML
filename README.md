@@ -9,7 +9,7 @@
     <img src="https://github.com/deiteris/FastRAML/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI">
 </a>
 <a href="https://github.com/deiteris/FastRAML/blob/master/docs/14-testing.md">
-    <img src="https://img.shields.io/badge/RAML%20TCK-926%2F926-brightgreen" alt="RAML TCK">
+    <img src="https://img.shields.io/badge/RAML%20TCK-973%2F973-brightgreen" alt="RAML TCK">
 </a>
 <a href="https://github.com/deiteris/FastRAML/blob/master/LICENSE">
     <img src="https://img.shields.io/badge/licence-MIT-blue" alt="Licence">
@@ -36,12 +36,12 @@ validation, navigation, linting, and conversion.
 
 The key features are:
 
-* **Effective model**: resolves `!include`, `uses`, type expressions and inheritance, then applies traits, resource types and security schemes. Declaration order and source locations remain available on the typed Python model.
+* **Effective model**: resolves `!include`, `uses`, type expressions and inheritance, then applies traits, resource types and security schemes. An Overlay or Extension is merged into its master API first. Declaration order and source locations remain available on the typed Python model.
 * **Type and value validation**: implements RAML's built-in shapes and facets, custom facets, examples, defaults, annotations, recursive types, and JSON Schema external types. A shape can also validate an application value directly.
-* **Tested coverage with explicit boundaries**: all **926 evaluated fixtures in the RAML Test Compliance Kit (TCK)** produce their expected outcome. Overlay and Extension merging is deferred, and XML Schema external types are not supported; the [coverage matrix](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md) records the details.
+* **Tested coverage with explicit boundaries**: all **973 evaluated fixtures in the RAML Test Compliance Kit (TCK)** produce their expected outcome, Overlays and Extensions included. Applying several Overlays or Extensions to one master at once is deferred, and XML Schema external types are not supported; the [coverage matrix](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md) records the details.
 * **Structured diagnostics**: errors carry source locations and trace chains, including failures reached through includes and merged templates. Independent failures accumulate rather than stop the parse, wherever the parser can continue safely.
 * **Model navigation**: `list`, `show`, `refs` and `deps` inspect named entities and the routes between them. `graph` emits RDF, Graphviz or JSON, while `tree` emits an addressed containment view.
-* **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` checks the effective model against 84 built-in rules, with opt-in security (OWASP and OAuth), HTTP semantics (RFC 9110), problem details (RFC 9457), I-JSON (RFC 7493) and style rulesets, per-rule explanations and plugins ([Linting](#linting)).
+* **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` checks the effective model against 85 built-in rules, with opt-in security (OWASP and OAuth), HTTP semantics (RFC 9110), problem details (RFC 9457), I-JSON (RFC 7493) and style rulesets, per-rule explanations and plugins ([Linting](#linting)).
 * **Version comparison**: `compat` walks two effective API models in parallel and classifies compatibility impact by whether a value is sent in a request or received in a response ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md#5-compatibility-view)). It exits non-zero when the policy identifies a breaking change.
 * **OpenAPI and JSON Schema output**: convert an effective API to a typed OpenAPI 3.0.3 document, or a RAML shape to JSON Schema draft-07. Both conversion APIs report information the target format could not represent.
 * **Typed and measured**: ships `py.typed` and checks the package with strict mypy. CI gates linear scaling; the local benchmark harness measures time, allocations, and RSS under a machine fingerprint ([docs/12](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md)).
@@ -104,7 +104,8 @@ of every type it checks, and the benchmarks measure it slower for that.
 `parse_lenient(path)` returns `(model, error)` rather than raising, for an editor
 that needs a partial model on every keystroke. It still raises when there is no
 model to return: the entry file cannot be read, its RAML header is missing or
-unrecognised, it is an Overlay or Extension, or its root is not a mapping.
+unrecognised, the `extends` chain of an Overlay or Extension cannot be loaded,
+or its root is not a mapping.
 
 OpenAPI export stays typed until the serialization boundary:
 
@@ -119,10 +120,36 @@ if get_users is not None:
 payload = openapi.to_dict()  # JSON/YAML-ready only when you need it
 ```
 
+### Overlays and Extensions
+
+Parse the Overlay or Extension itself. The result is the effective API of its
+`extends` chain: `entry_point` is the root API with every document in the chain
+applied, and `raml.extensions` lists those documents in order. Entities keep the
+location of the file that wrote them, and an Overlay that changes more than the
+spec allows fails with `not allowed in an overlay`
+([docs/19](https://github.com/deiteris/FastRAML/blob/master/docs/19-overlays-and-extensions.md)).
+
+```python
+raml = parse_from_path('overlays/es.raml', ParseOptions(workspace_root='.'))
+print(raml.location)                              # the root API's URI
+print([doc.location for doc in raml.extensions])  # the chain, applied in order
+```
+
+The workspace root must contain the whole chain, so an `extends: ../api.raml`
+needs one above the entry file's directory, as in the example.
+
+### Garbage collection
+
+Parsing, `build_graph`, lint runs and `to_openapi` raise CPython's
+full-collection threshold while they run and restore it afterwards, which keeps
+large documents linear in time. The setting is process-wide, so call
+`fastraml.set_gc_tuning(False)` if your application manages the collector
+itself ([docs/12](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md#6-garbage-collection)).
+
 ### Files outside the entry file's directory
 
 The parser reads files only inside a *workspace root*, which defaults to the
-directory of the file you parse. An `!include`, `uses:` or JSON Schema `$ref`
+directory of the file you parse. An `!include`, `uses:`, `extends` or JSON Schema `$ref`
 that leaves that directory fails with `path is outside the workspace root`, and
 the error suggests a root that would contain it. Set the root to a directory
 that contains every file the document reaches:
@@ -176,16 +203,17 @@ Operation  api.raml:446  Add a book -request-> request -payload-> application/js
 
 `fastraml lint` checks whether a valid document is a *good* one. It runs on the
 effective model, after traits, resource types and inheritance are applied, so it
-sees what a client of the API sees. The 84 built-in rules are grouped into six
+sees what a client of the API sees. The 85 built-in rules are grouped into six
 categories. The default `recommended` ruleset enables `spec`; `all` enables every
 built-in rule and activated plugin:
 
-* **`spec`** (15 rules, the default `recommended` ruleset): problems the RAML and
+* **`spec`** (16 rules, the default `recommended` ruleset): problems the RAML and
   JSON Schema specifications themselves imply, such as a `$ref` whose sibling
   keywords are ignored, deprecated `schemas:` and `schema:`, a body whose media
   type cannot carry its declared type, an optional URI parameter that fills a
-  whole path segment, a `{version}` with no `version` to supply it, or a header
-  typed as an object, whose serialization RAML leaves undefined.
+  whole path segment, a `{version}` with no `version` to supply it, a header
+  typed as an object, whose serialization RAML leaves undefined, or an
+  Extension key that silently removes a conflicting property of its master.
 * **`security`** (28 rules, opt-in): derived from the
   [OWASP API Security Top 10 (2023)](https://api-security.owasp.org/editions/2023/en/0x11-t10)
   and the OAuth RFCs (6749, 6750 and 9700), for the categories a document can

@@ -141,6 +141,17 @@ class TestResultModel:
         files = {'api.raml': API, 'entry.raml': '#%RAML 1.0 Extension\nextends: api.raml\nhi: 1\n'}
         assert failure(tmp_path, files) == [('unknown field', {'field': 'hi'}, 'entry.raml')]
 
+    def test_the_document_marks_do_not_outlive_the_parse(self, tmp_path):
+        # docs/19 § 5.3: the marks reference every node an extension document
+        # wrote, so keeping them would hold those YAML trees for the model's life.
+        files = {
+            'api.raml': API + '/books:\n  get:\n',
+            'entry.raml': '#%RAML 1.0 Overlay\nextends: api.raml\n/books:\n  description: translated\n',
+        }
+        raml = parse(tmp_path, files)
+        assert raml.endpoints['/books'].description.location.endswith('/entry.raml')
+        assert not raml._document_provenance
+
 
 class TestOverlayRestrictions:
     def test_a_violation_fails_the_parse(self, tmp_path):
@@ -263,6 +274,8 @@ class TestLenient:
         assert error is not None
         assert error.head.message == 'not allowed in an overlay'
         assert isinstance(raml.entry_point, APIFragment)
+        # A failed parse releases the document marks too (docs/19 § 5.3).
+        assert not raml._document_provenance
 
 
 class TestAnnotationTypeChanges:

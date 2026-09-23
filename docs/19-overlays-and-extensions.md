@@ -329,6 +329,11 @@ then located in the document that wrote it ([11](11-diagnostics.md) § 4).
 Diagnostics built from a bare position rather than a node keep the location
 their caller passed.
 
+Only the passes read the marks. `Raml.release_document_provenance` clears them
+when the passes end, including after a failure. Kept, they would hold every
+extension document's YAML tree for as long as the model lives, which P4 avoids
+for the API's own tree.
+
 A `DataNode` records one location. In a multi-value sequence the merge extended,
 such as `enum`, an item an extension document appended keeps its own
 positions but is reported against the `DataNode`'s location.

@@ -401,6 +401,15 @@ class Raml:
         finally:
             AUTHORED_NODES.reset(token)
 
+    def release_document_provenance(self) -> None:
+        """Drop the marks once the passes have run (docs/19 § 5.3).
+
+        Only the passes read them, and they reference every node an extension
+        document wrote. Kept, they would hold those YAML trees for as long as
+        the model lives, which P4 avoids for the API's own tree.
+        """
+        self._document_provenance.clear()
+
     # -- stores ---------------------------------------------------------------
 
     def get_fragment(self, uri: str) -> Fragment | None:

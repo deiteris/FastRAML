@@ -9,7 +9,7 @@
     <img src="https://github.com/deiteris/FastRAML/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI">
 </a>
 <a href="https://github.com/deiteris/FastRAML/blob/master/docs/14-testing.md">
-    <img src="https://img.shields.io/badge/RAML%20TCK-973%2F973-brightgreen" alt="RAML TCK">
+    <img src="https://img.shields.io/badge/RAML%20TCK-984%2F984-brightgreen" alt="RAML TCK">
 </a>
 <a href="https://github.com/deiteris/FastRAML/blob/master/LICENSE">
     <img src="https://img.shields.io/badge/licence-MIT-blue" alt="Licence">
@@ -38,7 +38,7 @@ The key features are:
 
 * **Effective model**: resolves `!include`, `uses`, type expressions and inheritance, then applies traits, resource types and security schemes. An Overlay or Extension is merged into its master API first. Declaration order and source locations remain available on the typed Python model.
 * **Type and value validation**: implements RAML's built-in shapes and facets, custom facets, examples, defaults, annotations, recursive types, and JSON Schema external types. A shape can also validate an application value directly.
-* **Tested coverage with explicit boundaries**: all **973 evaluated fixtures in the RAML Test Compliance Kit (TCK)** produce their expected outcome, Overlays and Extensions included. Applying several Overlays or Extensions to one master at once is deferred, and XML Schema external types are not supported; the [coverage matrix](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md) records the details.
+* **Tested coverage with explicit boundaries**: all **984 evaluated fixtures in the RAML Test Compliance Kit (TCK)** produce their expected outcome, Overlays and Extensions included. Applying several Overlays or Extensions to one master at once is deferred, and XML Schema external types are not supported; the [coverage matrix](https://github.com/deiteris/FastRAML/blob/master/docs/01-scope-and-coverage.md) records the details.
 * **Structured diagnostics**: errors carry source locations and trace chains, including failures reached through includes and merged templates. Independent failures accumulate rather than stop the parse, wherever the parser can continue safely.
 * **Model navigation**: `list`, `show`, `refs` and `deps` inspect named entities and the routes between them. `graph` emits RDF, Graphviz or JSON, while `tree` emits an addressed containment view.
 * **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` checks the effective model against 85 built-in rules, with opt-in security (OWASP and OAuth), HTTP semantics (RFC 9110), problem details (RFC 9457), I-JSON (RFC 7493) and style rulesets, per-rule explanations and plugins ([Linting](#linting)).

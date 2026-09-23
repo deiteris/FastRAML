@@ -57,6 +57,12 @@ Use these operations to compose diagnostics:
 - `RamlError.chains()` returns the main chain followed by all sibling chains.
 - `RamlError.messages()` returns the rendered innermost message from each chain.
 
+A `RamlError` pickles, so an error raised in a worker process reaches its
+parent intact, and `copy` works on it. It is rebuilt from `head` and
+`siblings`, not from `args`: `args` is the rendered message, which is text
+and cannot rebuild a chain. Every value the parser puts in `info` pickles; a
+caller-built error with an unpicklable `info` value does not.
+
 ## 2. Accumulation and partial results
 
 `Accumulator` collects independent `RamlError` instances. `result()` returns

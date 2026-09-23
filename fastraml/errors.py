@@ -124,6 +124,15 @@ class RamlError(Exception):
     def __repr__(self) -> str:
         return f'{type(self).__name__}({self.head.rendered_message()!r})'
 
+    def __reduce__(self) -> tuple[type[Self], tuple[Trace, tuple[RamlError, ...]]]:
+        """Rebuild from the chain, not from `args`, which is text (docs/11 § 1).
+
+        `Exception`'s own reduce calls the class with `args`, which never fit
+        this constructor: an error raised in a worker process came back to
+        its parent as a `TypeError`.
+        """
+        return (type(self), (self.head, self.siblings))
+
     # -- construction ---------------------------------------------------------
 
     @classmethod

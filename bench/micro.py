@@ -64,6 +64,30 @@ def _unique(values: Callable[[int], list[Any]], size: int) -> Callable[[Callable
     return lambda function: lambda: function(items)
 
 
+def _membership(kind: str, size: int) -> Callable[[Callable[..., Any]], Callable[[], Any]]:
+    """`validate_at` on a declared enum, for its last value: a scan's far end."""
+
+    def build(function: Callable[..., Any]) -> Callable[[], Any]:
+        import tempfile  # noqa: PLC0415 - only when a membership case runs
+
+        from fastraml import ParseOptions, parse_from_string  # noqa: PLC0415 - the package under test
+
+        values: list[Any] = [f'code{index}' for index in range(size)] if kind == 'str' else list(range(size))
+        spelled = ', '.join(str(value) for value in values)
+        document = f'#%RAML 1.0 Library\ntypes:\n  T:\n    type: {_KIND_NAMES[kind]}\n    enum: [{spelled}]\n'
+        raml = parse_from_string(
+            document, file_name='lib.raml', base_dir=tempfile.gettempdir(), options=ParseOptions(unwrap=True)
+        )
+        shape = raml.types_in(raml.location)['T']
+        last = values[-1]
+        return lambda: function(shape, last, '$')
+
+    return build
+
+
+_KIND_NAMES: dict[str, str] = {'str': 'string', 'num': 'integer'}
+
+
 CASES: tuple[Case, ...] = (
     Case('same_value str', 'fastraml.types.values:same_value', lambda f: lambda: f('code1', 'code2')),
     Case('same_value int/float', 'fastraml.types.values:same_value', lambda f: lambda: f(1, 1.0)),
@@ -77,16 +101,25 @@ CASES: tuple[Case, ...] = (
         for kind, values in (('str', _strings), ('num', _numbers))
         for size in SIZES
     ),
+    *(
+        Case(f'enum membership {kind} n={size}', 'fastraml.types.base:BaseShape.validate_at', _membership(kind, size))
+        for kind in ('str', 'num')
+        for size in SIZES
+    ),
 )
 
 
 def _resolve(target: str) -> Callable[..., Any] | None:
-    module_name, _, attribute = target.partition(':')
+    module_name, _, path = target.partition(':')
     try:
-        module = importlib.import_module(module_name)
+        found: Any = importlib.import_module(module_name)
     except ImportError:
         return None
-    return getattr(module, attribute, None)
+    for attribute in path.split('.'):
+        found = getattr(found, attribute, None)
+        if found is None:
+            return None
+    return found
 
 
 def run_micro(pattern: str = '', *, repeat: int = 7) -> dict[str, float | None]:

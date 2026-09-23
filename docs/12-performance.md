@@ -56,7 +56,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures seven workloads:
+`bench/` generates deterministic corpora and measures nine workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -66,12 +66,18 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `extensions` | the `endpoints` corpus under an Overlay and an Extension: chain load, merge, overlay check, and document provenance |
 | `validate` | declaration and example validation |
 | `jsonschema` | shared JSON Schema references |
-| `enums` | enum narrowing at 5, 20, 100, and 1000 values, and `uniqueItems` examples at 10, 50, and 500 items, for string, integer, and number |
+| `enums` | enum narrowing and enum membership at 5, 20, 100, and 1000 values, and `uniqueItems` examples at 10, 50, and 500 items, for string, integer, and number |
+| `unions` | `properties` and `items` beside unions of 2, 4, and 8 members, flat and nested, with an enum each member narrows differently ([07](07-resolution-and-inheritance.md) § 5) |
+| `facets` | custom facets declared up every parent of types that inherit from 2, 4, and 8 parents, and a diamond ([10](10-validation.md) § 4) |
 
-The first six are general workloads. `enums` is a feature workload: it exists
-because no general workload runs the code it covers. Its test
-(`tests/bench/test_corpus.py`) counts calls and fails if the corpus stops
-reaching that code at every size it covers.
+The first six are general workloads. The last three are feature workloads:
+each exists because no general workload runs the code it covers. Their tests
+(`tests/bench/test_corpus.py`) count calls and fail if a corpus stops reaching
+that code at every size it covers.
+
+A feature added to the language has no baseline on `master`, where the corpus
+fails or skips the work. Measure it by linearity instead: at `--scale 0.5` the
+time should halve.
 
 Each workload supports `parse`, `unwrap`, `validate`, `unwrap+validate`,
 `unwrap+graph`, and `unwrap+lint`. Corpus generation is outside the timed region.
@@ -87,8 +93,8 @@ python -m bench startup
 python -m bench micro [PATTERN]
 ```
 
-`bench micro` times single leaf functions, such as `same_value`, the enum
-subset check, and `unique_items`, at sizes from 5 to 1000.
+`bench micro` times single leaf functions, such as `same_value`, enum
+membership, the enum subset check, and `unique_items`, at sizes from 5 to 1000.
 Use it when the question is a function's constant factor, which a corpus
 dilutes. It looks up each target by name when it runs, so the same cases can
 run against an older checkout. `tests/bench/test_micro.py` fails if a target

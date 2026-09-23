@@ -30,6 +30,8 @@ WRITERS = {
     'validate': lambda root: corpus.write_validate(root, type_count=3),
     'jsonschema': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
     'enums': lambda root: corpus.write_enums(root, family_count=1),
+    'unions': lambda root: corpus.write_unions(root, family_count=1),
+    'facets': lambda root: corpus.write_facets(root, family_count=1),
 }
 
 
@@ -72,6 +74,42 @@ class TestFeatureCorporaReachTheirCode:
         monkeypatch.setattr(complex_module, 'unique_items', counting)
         parse_from_path(corpus.write_enums(tmp_path, family_count=1), ParseOptions(unwrap=True, validate=True))
         assert set(lengths) >= set(corpus.UNIQUE_LENGTHS)
+
+    def test_unions_narrows_every_width_nested_and_items(self, tmp_path, monkeypatch):
+        import fastraml.types.unwrap as unwrap_module
+
+        widths: list[int] = []
+        facets: set[str] = set()
+        nested = []
+        original = unwrap_module._distribute
+
+        def counting(walk, base, depth):
+            shape = base.shape
+            if shape is not None and getattr(shape, 'pending_facets', None):
+                widths.append(len(shape.any_of or ()))
+                facets.update(node.value for node in shape.pending_facets[::2])
+                nested.append(depth)
+            return original(walk, base, depth)
+
+        monkeypatch.setattr(unwrap_module, '_distribute', counting)
+        parse_from_path(corpus.write_unions(tmp_path, family_count=1), ParseOptions(unwrap=True))
+        assert set(widths) >= set(corpus.UNION_WIDTHS)
+        assert facets >= {'properties', 'items'}
+        assert any(depth > 0 for depth in nested), 'a nested union must distribute in turn'
+
+    def test_facets_walks_every_parent_count(self, tmp_path, monkeypatch):
+        import fastraml.types.validate as validate_module
+
+        widths: list[int] = []
+        original = validate_module._facet_declarations
+
+        def counting(base, acc):
+            widths.append(len(base.inherits))
+            return original(base, acc)
+
+        monkeypatch.setattr(validate_module, '_facet_declarations', counting)
+        parse_from_path(corpus.write_facets(tmp_path, family_count=1), ParseOptions(unwrap=True, validate=True))
+        assert set(widths) >= set(corpus.FACET_PARENTS)
 
 
 @pytest.mark.parametrize('name', sorted(WRITERS))

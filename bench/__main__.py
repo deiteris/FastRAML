@@ -78,6 +78,8 @@ BENCHES: tuple[Bench, ...] = (
     Bench('validate', lambda root, scale: corpus.write_validate(root, type_count=_at(1000, scale))),
     Bench('jsonschema', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
     Bench('enums', lambda root, scale: corpus.write_enums(root, family_count=_at(40, scale))),
+    Bench('unions', lambda root, scale: corpus.write_unions(root, family_count=_at(60, scale))),
+    Bench('facets', lambda root, scale: corpus.write_facets(root, family_count=_at(150, scale))),
 )
 
 _BY_NAME = {bench.name: bench for bench in BENCHES}

@@ -185,6 +185,29 @@ class TestTargets:
             assert raml.current_ctx().target is DomainLocation.EXAMPLE
         assert raml.current_ctx().target is DomainLocation.LIBRARY
 
+    def test_a_scope_reads_the_anchor_on_entry(self):
+        # As the generator it replaced did: a scope created before another is
+        # pushed carries that one's anchor, not the anchor at creation.
+        from fastraml.registry import ParseCtx, Raml
+
+        raml = Raml(workspace_root_uri='file:///w')
+        pending = raml.target_scope(DomainLocation.EXAMPLE)
+        anchor = object()
+        raml.push_ctx(ParseCtx(anchor=anchor, target=DomainLocation.LIBRARY))
+        with pending:
+            assert raml.current_ctx().anchor is anchor
+
+    def test_one_scope_serves_each_anchor_and_target(self):
+        # docs/12 § 2: scopes are values, so a decoder pushing the same site
+        # thousands of times allocates it once.
+        from fastraml.registry import Raml
+
+        raml = Raml(workspace_root_uri='file:///w')
+        with raml.target_scope(DomainLocation.EXAMPLE):
+            first = raml.current_ctx()
+        with raml.target_scope(DomainLocation.EXAMPLE):
+            assert raml.current_ctx() is first
+
 
 class TestAllowedTargets:
     def test_a_single_target_is_accepted(self, workspace):

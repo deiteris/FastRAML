@@ -8,6 +8,8 @@ line of a file that does not contain it.
 
 from __future__ import annotations
 
+import pytest
+
 from fastraml.datanode import make_data_node
 from fastraml.domains import DomainLocation
 from fastraml.errors import RamlError
@@ -129,6 +131,25 @@ class TestReaderPrecedence:
 
     def test_no_marks_and_no_overlay_is_no_scope(self):
         assert Raml().scope_for(tree('a: 1\n')) is None
+
+    def test_a_marked_scope_pushes_only_for_a_marked_node_and_always_pops(self):
+        # A decoder that raises inside a document scope must not leave the
+        # extension's namespace behind for everything decoded after it.
+        raml = Raml()
+        marked, unmarked = tree('a: 1\n'), tree('b: 1\n')
+        raml.mark_authored(marked, Document(EXTENSION))
+        with raml.document_scope(unmarked):
+            assert raml.current_ctx().anchor is None
+        with raml.document_scope(marked):
+            assert raml.current_ctx().anchor.location == EXTENSION
+
+        def failing_decode() -> None:
+            with raml.document_scope(marked):
+                raise ValueError('decode failed')
+
+        with pytest.raises(ValueError, match='decode failed'):
+            failing_decode()
+        assert raml.current_ctx().anchor is None
 
 
 class TestDecodingSites:

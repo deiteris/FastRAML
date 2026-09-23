@@ -28,7 +28,9 @@ can duplicate declarations; copying a node can lose its provenance.
   index it directly instead of allocating tuples or temporary dictionaries.
 - Allocate per distinct value, not per use. A childless `Node` shares one
   empty `content` list, `Node.position` is built once per node, and the
-  composer takes short tags from a table. Template application shares a
+  composer takes short tags from a table. `Raml` keeps one `ParseCtx` per
+  anchor and target, and the scope managers decoders enter per construct are
+  small classes rather than generators. Template application shares a
   trait's nodes by pointer, so every entity decoded from them shares their
   `Position`. Long-lived objects are what the cyclic GC re-scans, so each one
   avoided also shortens every later collection.

@@ -42,20 +42,17 @@ if TYPE_CHECKING:
 
 BASELINE_PATH = Path(__file__).parent / 'baselines.json'
 
-#: The six configurations docs/12 Part 4 requires of every bench.
-#: `unwrap+graph` measures the whole consumer path: parse, unwrap, then project
-#: (docs/16). It is here rather than left to an ad-hoc script because a number
-#: worth publishing is a number the harness produced — two benches sharing one
-#: interpreter inflated the projection's cost by more than 2x, which is exactly
-#: what the fresh subprocess exists to prevent.
+#: The six configurations every bench runs (docs/12 § 4). `unwrap+graph` and
+#: `unwrap+lint` measure the consumer paths: parse, unwrap, then project or
+#: lint. Each runs in a fresh subprocess, so one bench cannot inflate another.
 CONFIGS: tuple[str, ...] = ('parse', 'unwrap', 'validate', 'unwrap+validate', 'unwrap+graph', 'unwrap+lint')
 
-#: docs/14 section 5. Generous on purpose: the gate is for a change that made
-#: something an order of magnitude slower, not for a noisy machine.
+#: For `compare`. Generous on purpose: it flags a change that made something
+#: much slower, not a noisy machine (docs/12 § 5).
 DEFAULT_TOLERANCE = 0.25
 
-#: docs/12 Part 4's hard requirement, and the only one that is a property of the
-#: parser rather than of the machine it ran on.
+#: The linearity bound CI asserts (docs/12 § 5): the only performance property
+#: of the parser rather than of the machine it ran on.
 LINEARITY_TOLERANCE = 0.15
 
 
@@ -223,7 +220,7 @@ def compare(results: Sequence[Measurement], tolerance: float) -> int:
 
 
 def linearity(repeat: int, scale: float) -> int:
-    """docs/12 Part 4's hard requirement, measured rather than asserted."""
+    """The linearity bound of docs/12 § 5, measured rather than asserted."""
     full = run_suite(['large'], ['parse'], scale=scale, repeat=repeat, keep=None)[0]
     half = run_suite(['large'], ['parse'], scale=scale / 2, repeat=repeat, keep=None)[0]
     ratio = full.seconds / (2 * half.seconds)

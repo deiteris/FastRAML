@@ -89,7 +89,7 @@ jobs:
   # one their tests skip everywhere and the options are tested only by reading
   # them: `regex_engine="re2"` is what a server parsing untrusted RAML selects,
   # and `pyoxigraph` is what makes the graph's RDF output checkable by something
-  # other than the code that wrote it (docs/16 section 5.1).
+  # other than the code that wrote it (docs/16 § 3.1).
   test-extras:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -134,13 +134,13 @@ jobs:
           enable-cache: true
       # 1.24 for `,omitzero`. Below it the tag is an unknown option that
       # `encoding/json` ignores, so an optional list encodes as an absent key
-      # and nothing says so (docs/16 section 11.11b).
+      # and nothing says so.
       - uses: actions/setup-go@v7
         with:
           go-version: '1.24'
       # The conformance corpus is answered in all three languages, so this job
       # needs Node as well: without it the TypeScript driver skips and the
-      # cross-language check silently does not run (docs/16 section 11.11e).
+      # cross-language check silently does not run (docs/16 § 7).
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
@@ -168,7 +168,7 @@ jobs:
           fi
 
   # Linearity is a property of the parser, not of the runner, so it is a gate.
-  # Absolute wall-clock is not asserted anywhere; see docs/14 section 5.
+  # Absolute wall-clock is not asserted anywhere; see docs/14 § 5.
   bench:
     runs-on: ubuntu-latest
     timeout-minutes: 20

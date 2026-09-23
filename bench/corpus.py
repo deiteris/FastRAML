@@ -1,10 +1,8 @@
 """Generators for the five benchmark corpora.
 
-Nothing here is vendored. docs/14-testing.md section 5 requires the corpora to be
-*generated*, for two reasons: 7000 types of RAML is megabytes of checked-in text
-that nobody will ever read, and — the load-bearing one — `bench_large` has to be
-regenerable at half size, because the linearity target needs two points and an
-asserted-from-one number is not a measurement.
+Nothing here is vendored. The corpora are generated (docs/12 § 4): 7000 types
+of RAML is megabytes of text nobody reads, and `bench_large` must be
+regenerable at half size, because the linearity check needs two points.
 
 Every generator is a pure function of its size arguments. No randomness, no
 clock, no environment: a corpus written on one machine is byte-identical to the
@@ -132,7 +130,7 @@ def _library(index: int, type_count: int, *, depth: int) -> str:
     `depth` is how many directory levels up `common.raml` sits, so the include
     path is relative like a real project's — and so every library reaches the
     *same* file through a different spelling of the path. That is the diamond
-    the compose cache exists for (docs/12 section 2); if canonicalisation ever
+    the compose cache exists for (docs/12 § 1); if canonicalisation ever
     regresses, this corpus goes quadratic and the linearity check catches it.
     """
     lines = ['#%RAML 1.0 Library', f'usage: generated library {index}', 'uses:']
@@ -173,8 +171,7 @@ def write_small(root: Path, *, type_count: int = 100) -> Path:
 def write_large(root: Path, *, type_count: int = 7000, library_count: int = 150) -> Path:
     """`type_count` types spread over `library_count` libraries.
 
-    Sized after go-raml's published corpus (7124 types, 148 libraries) so the
-    absolute-time goal in docs/12 Part 4 compares like with like. Halve
+    Sized after go-raml's published corpus (7124 types, 148 libraries). Halve
     `type_count` and `library_count` together for the linearity check.
     """
     per_library, remainder = divmod(type_count, library_count)
@@ -221,7 +218,7 @@ _METHODS = ('get', 'post', 'put', 'delete')
 def write_endpoints(root: Path, *, resource_count: int = 500) -> Path:
     """`resource_count` resources, four methods each, three traits on each method.
 
-    Measures the two-stage build (docs/12 section 1): 6000 method-level trait
+    Measures the two-stage build (docs/12 § 1): 6000 method-level trait
     applications, every one of them a tree merge rather than a model merge.
     """
     lines = [
@@ -278,7 +275,7 @@ def write_validate(root: Path, *, type_count: int = 1000) -> Path:
 def write_jsonschema(root: Path, *, schema_count: int = 200, shared_count: int = 20) -> Path:
     """`schema_count` schemas over `shared_count` shared `$ref` targets.
 
-    Measures the per-parse registry (docs/12 section 11). Without it each of the
+    Measures the per-parse registry (docs/10 § 7). Without it each of the
     200 schemas compiles its own copy of the definition it points at, and the
     curve against `shared_count` is flat instead of falling.
     """

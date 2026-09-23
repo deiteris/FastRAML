@@ -28,13 +28,12 @@ dependencies = [
     # wheel provides it; the pure-Python composer is the fallback.
     "pyyaml>=6.0",
     # External JSON Schema types (RAML spec "Using XML and JSON Schemas").
-    # Landed in Phase 8; declared now so the lockfile is stable.
     "jsonschema>=4.21",
     "referencing>=0.35",
     # The !singularize / !pluralize template actions. A port of the same
     # JavaScript library the reference implementation's Go port wraps, so the
     # two agree by construction rather than by a maintained override table.
-    # See docs/08 section 7.3.
+    # See docs/08 § 5.
     "pluralizer>=2.0",
 ]
 
@@ -45,14 +44,14 @@ dependencies = [
 # because the CLI tries it first and because its `Client` is thread-safe, which
 # `requests.Session` does not promise.
 http = ["httpx>=0.27"]
-# Linear-time regex engine for `pattern:` facets. See docs/01 deviation D3.
+# Linear-time regex engine for `pattern:` facets. See docs/01 § 4.2.
 re2 = ["google-re2"]
 # An RDF store for `fastraml query`. The graph itself needs nothing; only SPARQL
-# does. See docs/16 section 5.1.
+# does. See docs/16 § 3.1.
 graph = ["pyoxigraph>=0.4"]
 # The built viewer SPA, served by `fastraml serve`. Static assets and the code
 # that serves them -- no dependencies of its own, and imported only inside the
-# verb, the way `query` imports `pyoxigraph`. See docs/17 section 2.
+# verb, the way `query` imports `pyoxigraph`. See docs/17 § 1.
 serve = ["fastraml-viewer>=0.1,<0.2"]
 
 [project.scripts]
@@ -115,7 +114,7 @@ artifacts = ["fastraml/py.typed"]
 # accident.
 [tool.hatch.build.targets.sdist]
 # `tests/tck/raml-tck` is a submodule of fixtures that are not ours to
-# redistribute -- upstream is archived and states no licence (docs/14 § 1.1) --
+# redistribute -- upstream is archived and states no licence --
 # and it is 2.4 MB. `/tests` would otherwise sweep it in.
 exclude = ["/tests/tck/raml-tck"]
 include = [
@@ -154,9 +153,9 @@ line-length = 120
 # states its own, and would need their dependencies installed to do it.
 #
 # `fastraml/views/bindings/static/` holds the hand-written half of each binding
-# (docs/16 § 11.11d). Its style is the *contract's* rather than this project's:
-# `TypeAlias` over `type` is load-bearing there for the PEP 563 reason docs/16
-# § 11.11a gives, and it names types only the generated half declares.
+# (docs/16 § 7). Its style is the *contract's* rather than this project's:
+# `TypeAlias` over `type` is load-bearing there for the PEP 563 reason
+# `static/tree.pyi` gives, and it names types only the generated half declares.
 # `contrib/raml-codegen` already exempts the same bytes as its generated
 # `tree.py`; this is that exemption applied where they are written.
 exclude = ["docs", "contrib", "fastraml/views/bindings/static"]
@@ -196,7 +195,7 @@ ignore = [
     "E402",   # false positives for local imports
     "E501",   # line too long
     # EM101/EM102: a diagnostic's message is a stable *key* that tests and log
-    # grouping match on (docs/11-diagnostics.md section 6), and it is passed to
+    # grouping match on (docs/11-diagnostics.md § 6), and it is passed to
     # a factory (`node_error`, `RamlError.new`) rather than to an exception
     # constructor. Hoisting each one into a local named `message` would add a
     # line per diagnostic and hide the key from a reader of the raise.

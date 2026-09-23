@@ -370,10 +370,13 @@ def apply_security_schemes(raml: Raml) -> None:
     for endpoint in raml.endpoints.values():
         _inherit(endpoint)
     resolver = raml.resolver_at(raml.location)
+    # A scheme an Overlay or Extension applied binds in that document's view of
+    # the target tree, which includes the schemes it declared (docs/19 § 5.2).
+    extensions = {fragment.location: fragment for fragment in raml.extensions}
     accumulator = Accumulator()
     for scheme in _every_reference(raml):
         try:
-            _bind(raml, scheme, resolver)
+            _bind(raml, scheme, extensions.get(scheme.location, resolver))
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()

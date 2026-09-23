@@ -76,7 +76,9 @@ text so later source positions are unchanged. Supported headers are:
 #%RAML 1.0 SecurityScheme
 ```
 
-Overlay and Extension headers are recognized and reported as unsupported.
+An Overlay or Extension header is accepted only on the entry document, whose
+`extends` chain is loaded as described in [19](19-overlays-and-extensions.md)
+§ 2. `extends` resolves like an `!include` argument.
 When a DataType is expected, a `.json` file is treated as external JSON Schema
 and an `AnnotationTypeDeclaration` header is accepted as structurally
 equivalent.

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
     from fastraml.loaders import ResourceLoader
     from fastraml.parser.annotations import DomainExtension
-    from fastraml.parser.fragments import Fragment, ReferenceResolver
+    from fastraml.parser.fragments import ExtensionFragment, Fragment, ReferenceResolver
     from fastraml.parser.includes import IncludeRef
     from fastraml.parser.structural_merge import ProvenanceOverlay
     from fastraml.types.expressions import ExprCache
@@ -123,6 +123,7 @@ class Raml:
         '_id_counter',
         '_parse_ctx_stack',
         'entry_point',
+        'extensions',
         'source_info',
         'source_nodes',
         'source_texts',
@@ -187,6 +188,9 @@ class Raml:
         self._document_scopes: dict[tuple[ReferenceResolver, DomainLocation], ParseCtx] = {}
         self._id_counter = itertools.count(1)
         self.entry_point: Fragment | None = None
+        #: The Overlays and Extensions applied to the root API, in application
+        #: order; empty unless the entry is one (docs/19 § 6).
+        self.extensions: list[ExtensionFragment] = []
         self.unwrapped = False
         self.source_nodes: dict[str, Node] = {}
         self.source_texts: dict[str, str] = {}

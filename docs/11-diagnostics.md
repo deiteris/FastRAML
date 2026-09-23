@@ -95,6 +95,8 @@ the entry URI as that frame's location:
 |---|---|
 | `unknown fragment kind` | The entry header is missing or unrecognized |
 | `fragment kind not supported` | The entry names an unsupported fragment kind |
+| `extends is required`, `extends must be a string` | The entry Overlay or Extension names no master |
+| `resolve extends` | The entry's `extends` chain could not be loaded; the frame is repeated once per document of the chain |
 | `unexpected fragment kind` | A fragment header conflicts with the context that loaded it |
 | `must be map` | The entry root is not a mapping |
 

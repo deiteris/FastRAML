@@ -163,6 +163,9 @@ _OVERLAY_FACETS: Final = frozenset(
     {'title', 'displayName', 'description', 'usage', 'example', 'examples', 'documentation'}
 )
 
+#: The root keys whose entries are data types an Overlay may add.
+_TYPE_MAPS: Final = frozenset({'types', 'schemas'})
+
 #: The root declaration maps, by the name the visibility check uses (docs/19 § 5.2).
 _DECLARATION_KINDS: Final = {
     Site.TYPES: 'types',
@@ -410,7 +413,8 @@ class _Merger:
         """Record one difference from the target tree; an Overlay may make only some."""
         if not self.overlay or free or self._allowed_key(site, name):
             return
-        if site is Site.TYPES and change == 'added':
+        if change == 'added' and (site is Site.TYPES or (site is Site.ROOT and name in _TYPE_MAPS)):
+            # New data types, one at a time or as a whole map the target lacked.
             return
         self.violations.add(
             node_error('not allowed in an overlay', self.location, key, info={'field': name, 'change': change})

@@ -55,13 +55,18 @@ separate parse instances.
 - Supported typed fragments are `Library`, `DataType`,
   `AnnotationTypeDeclaration`, `NamedExample`, `DocumentationItem`,
   `ResourceType`, `Trait`, and `SecurityScheme`.
-- `Overlay` and `Extension` headers are recognized and rejected as unsupported.
+- `Overlay` and `Extension` documents, as the entry document. Their `extends`
+  chain is merged into the root API and decoded once; Overlays are checked
+  against the spec's allowed differences. See
+  [19](19-overlays-and-extensions.md), including its deliberate deviations
+  (§ 7).
 
 ## 3. Unsupported features
 
 - XML Schema external types. A `.xsd` target where a type fragment is expected
   reports `xml schema external types are not supported`.
-- Overlay and Extension merging.
+- Applying several Overlays or Extensions that each extend the same master.
+  Only the chain reached through the entry document is applied.
 - XML serialization output. The `xml:` facet is retained on the model.
 - Code generation, HTTP middleware, AMF conversion, and an LSP server. Views,
   bindings, and repository consumers are separate layers; see

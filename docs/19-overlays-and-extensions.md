@@ -4,8 +4,8 @@ This document owns Overlay and Extension documents: loading an `extends`
 chain, the extension merge, overlay restrictions, namespaces across the chain,
 and document provenance. Spec sections: Overlays and Extensions, Merging Rules.
 
-Status: implementation in progress. Until the entry-point change lands,
-[01](01-scope-and-coverage.md) § 3 still lists these documents as unsupported.
+Status: implemented for an entry document. The TCK fixtures for these
+documents are not yet in the ratchet ([14](14-testing.md) § 2).
 
 ## 1. Terms
 
@@ -37,8 +37,19 @@ header reports `unexpected fragment kind`.
 Loading reads `extends` from the entry document's root, then follows each
 master in turn to the root API. Each file is composed once (invariant I2). A
 document that appears twice in its own chain reports `extends cycle`, with the
-chain in `info`. The API root must have a `title`, because the target tree takes
-its title from there; see § 7.
+chain in `info`. The root API must have a `title` of its own, because the target
+tree takes its title from there; see § 7.
+
+A failure while loading a master is wrapped in a `resolve extends` frame at
+each referring document's `extends` value, so the outermost frame is always in
+the entry document. `parse_lenient` re-raises it: with no root API there is no
+model to return.
+
+`extends` is read through the same loader as `!include`, so the workspace
+sandbox applies ([03](03-yaml-and-io.md) § 5). The default workspace root is the
+entry document's directory. An entry document that extends `../api.raml`
+therefore needs `ParseOptions(workspace_root=...)` naming a directory that
+contains the whole chain.
 
 The chain is applied from the root API outward. `extends`, `usage`, and `uses`
 are removed from each extension document before the merge. They are the

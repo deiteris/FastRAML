@@ -343,3 +343,9 @@ class TestOverlayRestrictions:
     def test_an_extension_is_never_checked(self):
         result, _, _ = apply('/a:\n', '/b:\nversion: 2\n', overlay=False)
         assert result.error is None
+
+
+class TestOverlayTypeMaps:
+    def test_a_whole_types_map_the_target_lacked_is_allowed(self):
+        assert violations('title: A\n', 'types:\n  B: string\n') == []
+        assert violations('title: A\n', 'schemas:\n  B: string\n') == []

@@ -94,6 +94,11 @@ where `securedBy` was authored. This lets references inside applied traits and
 resource types resolve API-declared schemes. API `uses` entries remain available,
 so qualified library scheme names work normally.
 
+In a target tree, a scheme reference an Overlay or Extension wrote resolves
+against that document's resolver instead. The document's view of the target
+tree includes the schemes it declared ([19](19-overlays-and-extensions.md)
+§ 5.2).
+
 Code: `parser/directives.py`, `parser/security.py`, and
 `parser/source_decode.py`. Tests: `tests/unit/test_security.py` and
 `tests/unit/test_source_ir.py`.
@@ -161,9 +166,11 @@ annotation site uses `Raml.target_scope`, which preserves the anchor and restore
 the previous target afterward. An annotated scalar does not establish an
 independent target and therefore inherits its enclosing declaration site.
 
-The parser currently establishes these sites: API, Library, documentation item,
-type declaration, annotation type, example, resource, method, response, request
-body, response body, security scheme, and security scheme settings.
+The parser currently establishes these sites: API, Library, Overlay, Extension,
+documentation item, type declaration, annotation type, example, resource,
+method, response, request body, response body, security scheme, and security
+scheme settings. An application at the root of an Overlay or Extension targets
+that document kind, not API ([19](19-overlays-and-extensions.md) § 5.4).
 
 Template body annotations are decoded only when the template is materialized,
 so they receive `Method` or `Resource`. The parser does not establish `Trait` or

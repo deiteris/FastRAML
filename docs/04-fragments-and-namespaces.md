@@ -17,7 +17,7 @@ namespace, never its includer's namespace.
 | `ResourceType` | resource-type body | one resource type |
 | `Trait` | trait body | one trait |
 | `SecurityScheme` | security-scheme body | one security scheme |
-| `Overlay`, `Extension` | mapping | unsupported |
+| `Overlay`, `Extension` | mapping | none; merged into the root API ([19](19-overlays-and-extensions.md)) |
 
 Every fragment has a URI `location`; it can be `file://` or, with an enabled
 HTTP loader, `http(s)://`. Every supported fragment may have root-level `uses:`.

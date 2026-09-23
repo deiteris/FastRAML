@@ -108,14 +108,33 @@ YAML backend. A comparison across fingerprints is intentionally not a result.
 ## 5. Gates and local policy
 
 CI does not compare absolute benchmark times or committed baselines. Its `bench`
-job runs `tests/bench` with `FASTRAML_BENCH=1`, which asserts that `bench_large`
-is within 15 percent of linear against a half-size corpus. Linearity is portable;
+job runs `tests/bench` with `FASTRAML_BENCH=1`. For `large` and each feature
+workload, that test asserts that time and the allocation peak are both within
+15 percent of linear against a half-size corpus. Linearity is portable;
 absolute duration and RSS are not.
 
-Before and after a hot-path change, run `python -m bench compare` on the same
-machine and inspect the result. Record a meaningful measured delta in the commit
-message. Profile before optimizing: use `cProfile` for call counts, `tracemalloc`
-for allocation attribution, and a wall-clock profiler for elapsed-time evidence.
+A performance claim must rest on a measurement that runs the changed code. For
+a change to a hot path, or to any code a claim is made about:
+
+1. Name the workload that reaches the changed code. If no workload does, add a
+   feature workload and its reach test first. A general workload that never
+   calls the code shows only noise.
+2. Run `python -m bench ab BASE --bench NAME`. It alternates the base revision
+   and this tree over one corpus. A time delta counts only if it is larger than
+   the reported noise. Record the allocation delta whether or not the time
+   moved, because it is nearly deterministic. A field added to every shape
+   shows there and nowhere else.
+3. Where the question is a leaf function's constant factor, add or run a
+   `bench micro` case at sizes that cover the function's range.
+4. For a new feature, the base revision has no comparable number. Run
+   `python -m bench linearity --bench NAME` for time and memory instead.
+
+Include the workload, both deltas, and the noise in the commit message.
+`bench compare` against the committed baseline is only a coarse check for
+large regressions: the baseline and the comparison run at different times, and
+the machine drifts in between. Profile before optimizing: use `cProfile` for
+call counts, `tracemalloc` for allocation attribution, and a wall-clock
+profiler for elapsed-time evidence.
 
 ## 6. Garbage collection
 

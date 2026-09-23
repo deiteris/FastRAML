@@ -21,8 +21,11 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && 
 All four must pass before work is reported done. `mypy` is strict for `fastraml.*`,
 lenient for tests.
 
-Benchmarks are a gate too: run `python -m bench compare` before and after any change
-to a hot path, and put the delta in the commit message (`docs/12` § 5).
+Benchmarks are a gate too (`docs/12` § 5). A performance claim needs a workload that
+runs the changed code; if none does, add a feature workload and its reach test
+first. Measure with `python -m bench ab BASE --bench NAME`, and put the time delta
+(only if it exceeds the reported noise) and the allocation delta in the commit
+message. For a new feature with no base number, use `bench linearity --bench NAME`.
 
 ## Layers and import boundaries
 

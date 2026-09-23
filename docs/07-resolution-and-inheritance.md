@@ -102,6 +102,29 @@ place. A member that is itself a union passes the holders on to its own members.
 A member whose kind does not take the facet receives the YAML pair and reports
 it as an unknown facet.
 
+An `enum` inside such a declaration follows the spec's union rule: every value
+must meet all restrictions of at least one member (*spec section Union Type*).
+Each member's copy keeps only the values that its own declaration at the same
+place (the same property name, pattern, or `items`) validates. The subset rule
+of § 4 then holds for every member. Giving each member the whole list would
+break that rule for every member. Dropping the rule would let a member accept a
+value its own type rejects, because validation stops at enum membership. Where
+the member declares nothing at that place, it keeps every value.
+
+- A value that no remaining member keeps is reported as
+  `enum value matches no member of the union` with its `index`, at the value's
+  position.
+- A member left with no value in a non-empty `enum` is dropped from the union,
+  and the values it kept no longer count as placed. The spec gives an empty
+  `enum` no meaning. This also drops the member when the property is optional,
+  so an instance that omits the property no longer matches that member.
+- A member that is itself a union reports the values its own members kept to
+  the enclosing union rather than raising, because a value that fits no nested
+  member may still fit an enclosing one.
+
+An `enum` written directly beside `type: A | B` stays on the union and is
+validated against the union as a whole ([10](10-validation.md) § 3).
+
 ## 6. Recursion and cloning
 
 After flattening, `finish_unwrap()` replaces every child edge that closes a

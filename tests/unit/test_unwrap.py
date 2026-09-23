@@ -215,6 +215,90 @@ class TestUnionCollapse:
         )
 
 
+class TestEnumBesideAUnion:
+    """docs/07 § 5 — an `enum` inside a declaration distributed to union members.
+
+    Spec § Union Type: "every value of that `enum` MUST meet all restrictions
+    associated with at least one of the super types". Each member keeps the
+    values it admits; a value no member admits is an error; a member left with
+    none is dropped, because the spec gives an empty `enum` no meaning.
+    """
+
+    MEMBERS = (
+        '  Meeting:\n    properties:\n      day:\n        type: string\n        enum: [Monday12, Wednesday7]\n'
+        '  Vacation:\n    properties:\n      day:\n        type: string\n        enum: [Feb1, Feb22]\n'
+    )
+
+    def scheduled(self, workspace, enum: str, *, members: str = 'Meeting | Vacation'):
+        body = (
+            self.MEMBERS
+            + f'  Scheduled:\n    type: {members}\n    properties:\n'
+            + f'      day:\n        type: string\n        enum: {enum}\n'
+        )
+        _raml, types = unwrapped(workspace, body)
+        return types['Scheduled']
+
+    @staticmethod
+    def kept(union) -> list[list[str]]:
+        return [[node.raw for node in member.shape.properties['day'].base.enum] for member in union.shape.any_of]
+
+    def test_each_member_keeps_the_values_it_admits(self, workspace):
+        # The spec's VALID case: one value per member, neither a subset of the
+        # other member's enum, so handing both the whole list failed both.
+        assert self.kept(self.scheduled(workspace, '[Feb1, Monday12]')) == [['Monday12'], ['Feb1']]
+
+    def test_a_value_no_member_admits_is_reported_at_its_index(self, workspace):
+        # The spec's `Tuesday18` case: a string, but in neither member's enum.
+        with pytest.raises(RamlError) as caught:
+            self.scheduled(workspace, '[Feb1, Tuesday18]')
+        traces = [trace for chain in caught.value.chains() for trace in chain]
+        unplaced = [trace for trace in traces if trace.message == 'enum value matches no member of the union']
+        assert [trace.info for trace in unplaced] == [{'index': 1}]
+
+    def test_a_member_left_with_no_value_is_dropped(self, workspace):
+        # Vacation admits no value, so only Meeting's copy remains.
+        assert self.kept(self.scheduled(workspace, '[Monday12]')) == [['Monday12']]
+
+    def test_a_value_kept_only_by_a_dropped_member_is_unplaced(self, workspace):
+        # Vacation keeps `Feb1` for `day` but nothing for `note`; Other keeps
+        # `a` for `note` but nothing for `day`. Both are dropped, so neither
+        # value fits a member that remains.
+        body = self.MEMBERS.replace('enum: [Feb1, Feb22]\n', 'enum: [Feb1, Feb22]\n      note:\n        enum: [b]\n')
+        body += '  Other:\n    properties:\n      day:\n        type: string\n        enum: [x]\n'
+        body += '      note:\n        enum: [a]\n'
+        body += (
+            '  Scheduled:\n    type: Vacation | Other\n    properties:\n'
+            '      day:\n        type: string\n        enum: [Feb1]\n      note:\n        enum: [a]\n'
+        )
+        with pytest.raises(RamlError) as caught:
+            unwrapped(workspace, body)
+        traces = [trace for chain in caught.value.chains() for trace in chain]
+        unplaced = [trace for trace in traces if trace.message == 'enum value matches no member of the union']
+        assert len(unplaced) == 2
+
+    def test_a_nested_union_reports_to_the_enclosing_one(self, workspace):
+        # `Feb1` fits no member of `(Meeting | Other)`, but it fits Vacation.
+        body = self.MEMBERS + '  Other:\n    properties:\n      day:\n        type: string\n        enum: [x]\n'
+        body += (
+            '  Scheduled:\n    type: Vacation | (Meeting | Other)\n    properties:\n'
+            '      day:\n        type: string\n        enum: [Feb1, Monday12]\n'
+        )
+        _raml, types = unwrapped(workspace, body)
+        members = types['Scheduled'].shape.any_of
+        assert [node.raw for node in members[0].shape.properties['day'].base.enum] == ['Feb1']
+        inner = members[1].shape.any_of
+        assert [[node.raw for node in m.shape.properties['day'].base.enum] for m in inner] == [['Monday12']]
+
+    def test_the_declared_members_keep_their_own_enums(self, workspace):
+        body = self.MEMBERS + (
+            '  Scheduled:\n    type: Meeting | Vacation\n    properties:\n'
+            '      day:\n        type: string\n        enum: [Feb1, Monday12]\n'
+        )
+        _raml, types = unwrapped(workspace, body)
+        meeting = types['Meeting'].shape.properties['day'].base
+        assert [node.raw for node in meeting.enum] == ['Monday12', 'Wednesday7']
+
+
 class TestRecursionMarking:
     """docs/07 § 6 — where a cycle closes, and what closes it."""
 

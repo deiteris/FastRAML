@@ -20,8 +20,7 @@ that each extend the same master remains deferred (docs/19 § 7).
 Known limitations are documented beside the rules they affect:
 
 - custom-facet validation follows the first inheritance parent rather than a
-  complete multi-parent facet chain;
-- union `enum` semantics remain deferred; and
+  complete multi-parent facet chain; and
 - XML Schema external types are unsupported.
 
 ## 3. Potential future work

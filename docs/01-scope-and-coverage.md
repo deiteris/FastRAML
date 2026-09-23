@@ -41,8 +41,10 @@ separate parse instances.
   facets.
 - Examples, defaults, enums, XML serialization facets, discriminators, and
   declaration and instance validation.
-- Declaration facets beside a union type expression are applied to every union
-  member during unwrap. Union-plus-`enum` interaction is not supported.
+- Facets beside a union type expression, including `properties` and `items`,
+  are applied to every union member during unwrap. An `enum` beside the union
+  is checked against the union. An `enum` inside a distributed declaration is
+  narrowed per member ([07](07-resolution-and-inheritance.md) § 5).
 - External JSON Schema types, including JSON Pointer targets. Supported drafts
   are determined by the installed `jsonschema` package.
 

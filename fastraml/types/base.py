@@ -339,8 +339,7 @@ class BaseShape:
         clone.custom_facets = dict(self.custom_facets)
         clone.annotations = dict(self.annotations)
         clone.custom_facet_defs = {
-            name: Property(name=prop.name, base=prop.base.clone(memo), required=prop.required)
-            for name, prop in self.custom_facet_defs.items()
+            name: prop.with_base(prop.base.clone(memo)) for name, prop in self.custom_facet_defs.items()
         }
         clone.inherits = [parent.clone(memo) for parent in self.inherits]
         clone.alias = self.alias.clone(memo) if self.alias is not None else None
@@ -378,8 +377,13 @@ class BaseShape:
         """
         if self.shape is None:
             raise RamlError.new('declaration has no shape', self.location, self.key_pos, kind=ErrorKind.VALIDATING)
+        if not self.enum:
+            # The common case, and once per nested declaration: with nothing to
+            # accumulate beside the kind's own check, no accumulator is needed.
+            self.shape.check()
+            return
         accumulator = Accumulator()
-        for index, member in enumerate(self.enum or ()):
+        for index, member in enumerate(self.enum):
             try:
                 # `self.shape.validate`, not `self.validate_at`: the latter
                 # short-circuits on enum membership, which would make every
@@ -475,6 +479,17 @@ class Property:
 
     def __repr__(self) -> str:
         return f'Property({self.name!r}, required={self.required})'
+
+    def with_base(self, base: BaseShape) -> Property:
+        """The same property declaring `base`; itself when `base` already is its own.
+
+        A `Property` is never mutated, only replaced, so an unchanged one is
+        shared rather than rebuilt. Unwrap and recursion marking visit every
+        property of every declaration, and most come back unchanged.
+        """
+        if base is self.base:
+            return self
+        return Property(name=self.name, base=base, required=self.required)
 
 
 @dataclass(slots=True, eq=False)

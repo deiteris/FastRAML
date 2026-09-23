@@ -13,9 +13,9 @@ implemented. Current supported behavior and deliberate deviations are recorded i
 
 ## 2. Deferred work
 
-The current deferred language features are Overlays and Extensions. Their support
-requires their own merge rules and overlay-specific conformance checks; existing
-structural merge code is not itself a specification for them.
+Overlays and Extensions are in progress. [19](19-overlays-and-extensions.md)
+defines their design. Applying several extension documents that each extend
+the same master remains deferred (docs/19 § 7).
 
 Known limitations are documented beside the rules they affect:
 

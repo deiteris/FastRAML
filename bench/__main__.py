@@ -7,6 +7,7 @@ python -m bench baseline             # record bench/baselines.json
 python -m bench compare              # fail on a >25 % regression
 python -m bench linearity            # bench_large against a half-size corpus
 python -m bench startup              # cold process, package and CLI startup
+python -m bench micro [PATTERN]      # leaf functions, per call (bench/micro.py)
 ```
 
 Each measurement runs in a **fresh subprocess**. `harness.py` explains why in
@@ -76,6 +77,7 @@ BENCHES: tuple[Bench, ...] = (
     Bench('extensions', lambda root, scale: corpus.write_extensions(root, resource_count=_at(500, scale))),
     Bench('validate', lambda root, scale: corpus.write_validate(root, type_count=_at(1000, scale))),
     Bench('jsonschema', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
+    Bench('enums', lambda root, scale: corpus.write_enums(root, family_count=_at(40, scale))),
 )
 
 _BY_NAME = {bench.name: bench for bench in BENCHES}
@@ -263,12 +265,31 @@ def startup(repeat: int) -> int:
     return 0
 
 
+# -- micro --------------------------------------------------------------------
+
+
+def micro(pattern: str) -> int:
+    """Print each microbenchmark's time per call (docs/12 § 4)."""
+    from bench.micro import run_micro  # noqa: PLC0415 - imports the package under test
+
+    for name, seconds in run_micro(pattern).items():
+        shown = 'missing' if seconds is None else f'{seconds * 1e6:10.2f} us'
+        print(f'{name:<28} {shown}')
+    return 0
+
+
 # -- entry point --------------------------------------------------------------
+
+
+def _worker(rest: Sequence[str]) -> int:
+    bench, config, entry, repeat = rest
+    print(json.dumps(run_one(bench, config, Path(entry), int(repeat)).as_dict()))
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog='bench', description=__doc__)
-    parser.add_argument('command', choices=('run', 'baseline', 'compare', 'linearity', 'startup', 'worker'))
+    parser.add_argument('command', choices=('run', 'baseline', 'compare', 'linearity', 'startup', 'micro', 'worker'))
     parser.add_argument('rest', nargs='*')
     parser.add_argument('--bench', action='append', choices=[bench.name for bench in BENCHES])
     parser.add_argument('--config', action='append', choices=CONFIGS)
@@ -278,15 +299,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument('--keep', type=Path, default=None, help='write corpora here instead of a temp dir')
     args = parser.parse_args(argv)
 
-    if args.command == 'worker':
-        bench, config, entry, repeat = args.rest
-        print(json.dumps(run_one(bench, config, Path(entry), int(repeat)).as_dict()))
-        return 0
-
-    if args.command == 'linearity':
-        return linearity(args.repeat, args.scale)
-    if args.command == 'startup':
-        return startup(args.repeat)
+    # The commands that do not run the suite.
+    standalone: dict[str, Callable[[], int]] = {
+        'worker': lambda: _worker(args.rest),
+        'linearity': lambda: linearity(args.repeat, args.scale),
+        'startup': lambda: startup(args.repeat),
+        'micro': lambda: micro(args.rest[0] if args.rest else ''),
+    }
+    if args.command in standalone:
+        return standalone[args.command]()
 
     names = args.bench or [bench.name for bench in BENCHES]
     configs = args.config or list(CONFIGS)

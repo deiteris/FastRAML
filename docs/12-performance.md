@@ -66,6 +66,12 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `extensions` | the `endpoints` corpus under an Overlay and an Extension: chain load, merge, overlay check, and document provenance |
 | `validate` | declaration and example validation |
 | `jsonschema` | shared JSON Schema references |
+| `enums` | enum narrowing at 5, 20, 100, and 1000 values, and `uniqueItems` examples at 10, 50, and 500 items, for string, integer, and number |
+
+The first six are general workloads. `enums` is a feature workload: it exists
+because no general workload runs the code it covers. Its test
+(`tests/bench/test_corpus.py`) counts calls and fails if the corpus stops
+reaching that code at every size it covers.
 
 Each workload supports `parse`, `unwrap`, `validate`, `unwrap+validate`,
 `unwrap+graph`, and `unwrap+lint`. Corpus generation is outside the timed region.
@@ -78,7 +84,15 @@ python -m bench baseline
 python -m bench compare
 python -m bench linearity
 python -m bench startup
+python -m bench micro [PATTERN]
 ```
+
+`bench micro` times single leaf functions, such as `same_value`, the enum
+subset check, and `unique_items`, at sizes on both sides of `PAIRWISE_LIMIT`.
+Use it when the question is a function's constant factor, which a corpus
+dilutes. It looks up each target by name when it runs, so the same cases can
+run against an older checkout. `tests/bench/test_micro.py` fails if a target
+no longer exists in this tree.
 
 Measurements run in fresh subprocesses. Wall time is the best of repeated
 untraced runs; allocation tracing runs separately; RSS is a process high-water

@@ -1,4 +1,4 @@
-"""Generators for the five benchmark corpora.
+"""Generators for the benchmark corpora.
 
 Nothing here is vendored. The corpora are generated (docs/12 § 4): 7000 types
 of RAML is megabytes of text nobody reads, and `bench_large` must be
@@ -18,7 +18,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 __all__ = [
+    'ENUM_SIZES',
+    'UNIQUE_LENGTHS',
     'write_endpoints',
+    'write_enums',
     'write_jsonschema',
     'write_large',
     'write_small',
@@ -311,6 +314,60 @@ def write_validate(root: Path, *, type_count: int = 1000) -> Path:
         lines.append(properties)
         lines.append('    example:')
         lines.append(example)
+    _write(root, {'lib.raml': '\n'.join(lines) + '\n'})
+    return root / 'lib.raml'
+
+
+# -- enums --------------------------------------------------------------------
+
+#: Enum sizes on both sides of `PAIRWISE_LIMIT` (20) in `types/values.py`, where
+#: the membership strategy changes, and one large enough to show the curve.
+ENUM_SIZES: tuple[int, ...] = (5, 20, 100, 1000)
+
+#: `uniqueItems` example lengths, on both sides of the same limit.
+UNIQUE_LENGTHS: tuple[int, ...] = (10, 50, 500)
+
+
+#: One kind per family, in turn. Numbers are the case semantic equality exists
+#: for (`1` and `1.0` are one value, docs/10 § 5), so a corpus of strings
+#: alone would measure its cheapest path only.
+_ENUM_KINDS: tuple[str, ...] = ('string', 'integer', 'number')
+
+
+def _enum_values(kind: str, size: int, family: int) -> list[str]:
+    """`size` distinct values of `kind`, as their YAML spelling."""
+    match kind:
+        case 'string':
+            return [f'c{family}x{index}' for index in range(size)]
+        case 'integer':
+            return [str(family * 10000 + index) for index in range(size)]
+        case _:
+            return [f'{family}{index}.5' for index in range(size)]
+
+
+def write_enums(root: Path, *, family_count: int = 40) -> Path:
+    """Enum narrowing and `uniqueItems`, the two users of semantic equality.
+
+    Each family is a parent enum of every size in `ENUM_SIZES`, a child keeping
+    half of it and a grandchild keeping a quarter, so P9 runs the subset check
+    of docs/07 § 4 on two edges per size. Each family also declares one
+    `uniqueItems` array per length in `UNIQUE_LENGTHS`, whose example P10
+    checks. `tests/bench/test_corpus.py` pins that both paths are reached.
+    """
+    lines = ['#%RAML 1.0 Library', 'types:']
+    for family in range(family_count):
+        kind = _ENUM_KINDS[family % len(_ENUM_KINDS)]
+        for size in ENUM_SIZES:
+            values = _enum_values(kind, size, family)
+            stem = f'F{family}S{size}'
+            lines.append(f'  {stem}Parent:\n    type: {kind}\n    enum: [{", ".join(values)}]')
+            lines.append(f'  {stem}Child:\n    type: {stem}Parent\n    enum: [{", ".join(values[::2])}]')
+            lines.append(f'  {stem}Grandchild:\n    type: {stem}Child\n    enum: [{", ".join(values[::4])}]')
+        for length in UNIQUE_LENGTHS:
+            items = _enum_values(kind, length, family)
+            lines.append(
+                f'  F{family}U{length}:\n    type: {kind}[]\n    uniqueItems: true\n    example: [{", ".join(items)}]'
+            )
     _write(root, {'lib.raml': '\n'.join(lines) + '\n'})
     return root / 'lib.raml'
 

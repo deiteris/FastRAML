@@ -29,7 +29,49 @@ WRITERS = {
     'extensions': lambda root: corpus.write_extensions(root, resource_count=11),
     'validate': lambda root: corpus.write_validate(root, type_count=3),
     'jsonschema': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
+    'enums': lambda root: corpus.write_enums(root, family_count=1),
 }
+
+
+class TestFeatureCorporaReachTheirCode:
+    """A feature corpus that stops reaching its code measures nothing, silently.
+
+    The general corpora never called the enum subset check or `uniqueItems`,
+    so every delta reported for a change there was noise on unchanged code
+    (docs/12 § 4). Each feature corpus pins, by counting calls, that it runs the
+    code it was written for, at every size it was written to cover.
+    """
+
+    def test_enums_runs_the_subset_check_at_every_size(self, tmp_path, monkeypatch):
+        import fastraml.types.inherit as inherit_module
+
+        sizes: list[int] = []
+        original = inherit_module._is_subset
+
+        def counting(target, source):
+            sizes.append(len(source))
+            return original(target, source)
+
+        monkeypatch.setattr(inherit_module, '_is_subset', counting)
+        parse_from_path(corpus.write_enums(tmp_path, family_count=1), ParseOptions(unwrap=True))
+        # Parent to child at every size, then child to grandchild at every
+        # second value of it.
+        expected = {*corpus.ENUM_SIZES, *((size + 1) // 2 for size in corpus.ENUM_SIZES)}
+        assert set(sizes) >= expected
+
+    def test_enums_runs_unique_items_at_every_length(self, tmp_path, monkeypatch):
+        import fastraml.types.complex_ as complex_module
+
+        lengths: list[int] = []
+        original = complex_module.unique_items
+
+        def counting(items):
+            lengths.append(len(items))
+            return original(items)
+
+        monkeypatch.setattr(complex_module, 'unique_items', counting)
+        parse_from_path(corpus.write_enums(tmp_path, family_count=1), ParseOptions(unwrap=True, validate=True))
+        assert set(lengths) >= set(corpus.UNIQUE_LENGTHS)
 
 
 @pytest.mark.parametrize('name', sorted(WRITERS))

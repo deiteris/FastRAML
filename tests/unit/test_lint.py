@@ -43,6 +43,8 @@ class TestRuleExamples:
     def test_good_is_silent_and_bad_fires(self, rule, tmp_path):
         config = Config(extends=(), rules=(RuleSetting(id=rule.meta.id),))
         linter = Linter(builtin_registry(), config)
+        for name, source in rule.meta.files:
+            (tmp_path / name).write_text(source, encoding='utf-8')
         assert not linter.run(parsed(rule.meta.good, tmp_path))
         findings = linter.run(parsed(rule.meta.bad, tmp_path))
         assert [finding.rule for finding in findings] == [rule.meta.id]

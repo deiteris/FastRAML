@@ -65,6 +65,7 @@ from fastraml.yamlnode import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
 
+    from fastraml.parser.extension_merge import RemovedProperty
     from fastraml.positions import Position
     from fastraml.registry import Raml
     from fastraml.types.base import BaseShape, Parameter, ScalarFacet
@@ -721,7 +722,7 @@ class ExtensionFragment(_BaseFragment):
     with its masters'.
     """
 
-    __slots__ = ('api', 'extends', 'position', 'usage', 'visible_uses')
+    __slots__ = ('api', 'extends', 'position', 'removed_properties', 'usage', 'visible_uses')
 
     def __init__(self, raml: Raml, location: str) -> None:
         super().__init__(raml, location)
@@ -732,6 +733,8 @@ class ExtensionFragment(_BaseFragment):
         self.position = 0
         self.usage: ScalarFacet[str] | None = None
         self.visible_uses: dict[str, LibraryLink] = {}
+        #: Target properties this document's keys displaced (docs/19 § 3.4).
+        self.removed_properties: list[RemovedProperty] = []
 
     def decode(self, node: Node) -> None:  # pragma: no cover - the chain loader decodes the root
         raise NotImplementedError

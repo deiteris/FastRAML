@@ -33,9 +33,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from fastraml.errors import RamlError
+    from fastraml.positions import Position
 
 __all__ = [
     'ExtensionMergeResult',
+    'RemovedProperty',
     'Site',
     'merge_extension',
 ]
@@ -176,6 +178,22 @@ _DECLARATION_KINDS: Final = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class RemovedProperty:
+    """A target property an extension document's key displaced (docs/19 § 3.4).
+
+    Silent in the model by the spec's rule; kept so the lint rule
+    `extension-removes-property` can say so.
+    """
+
+    #: The removed key, e.g. `queryParameters`.
+    field: str
+    #: The extension document's key that displaced it, e.g. `queryString`.
+    by: str
+    location: str
+    key_pos: Position
+
+
 @dataclass(slots=True, eq=False)
 class ExtensionMergeResult:
     """The target tree after one extension document, and what it declared."""
@@ -187,6 +205,7 @@ class ExtensionMergeResult:
     #: Existing root annotation types the document changed, by name, with the
     #: key it changed them under; for the error frame of docs/19 § 4.4.
     changed_annotation_types: dict[str, Node] = field(default_factory=dict)
+    removed: list[RemovedProperty] = field(default_factory=list)
     #: Overlay violations, accumulated; `None` for an Extension or a clean Overlay.
     error: RamlError | None = None
 
@@ -210,6 +229,7 @@ def merge_extension(
         tree=tree,
         declared=merger.declared,
         changed_annotation_types=merger.changed_annotation_types,
+        removed=merger.removed,
         error=merger.violations.result(),
     )
 
@@ -254,7 +274,7 @@ def _facet_site(site: Site, name: str) -> Site:
 
 
 class _Merger:
-    __slots__ = ('changed_annotation_types', 'declared', 'location', 'mark', 'overlay', 'violations')
+    __slots__ = ('changed_annotation_types', 'declared', 'location', 'mark', 'overlay', 'removed', 'violations')
 
     def __init__(self, location: str, overlay: bool, mark: Callable[[Node], None]) -> None:  # noqa: FBT001 - private
         self.location = location
@@ -263,6 +283,7 @@ class _Merger:
         self.violations = Accumulator()
         self.declared: dict[str, list[str]] = {}
         self.changed_annotation_types: dict[str, Node] = {}
+        self.removed: list[RemovedProperty] = []
 
     # -- the recursion --------------------------------------------------------
 
@@ -405,6 +426,7 @@ class _Merger:
         if position is None or merged[position] is None:
             return
         self._change(site, other, key, 'removed', free=free)
+        self.removed.append(RemovedProperty(field=other, by=name, location=self.location, key_pos=key.position))
         merged[position] = merged[position + 1] = None
 
     def _declare(self, site: Site, name: str) -> None:

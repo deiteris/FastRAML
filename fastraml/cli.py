@@ -457,6 +457,8 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 -
         text = f'{meta.id} [{meta.category}, {meta.severity}]\n\n{meta.summary}\n\n{meta.rationale}\n'
         if meta.references:
             text += '\nReferences:\n\n' + ''.join(f'- {reference}\n' for reference in meta.references)
+        for name, source in meta.files:
+            text += f'\n{name}:\n\n{source}'
         if meta.good:
             text += f'\nGood:\n\n{meta.good}'
         if meta.bad:

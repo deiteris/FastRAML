@@ -78,7 +78,7 @@ grammar position:
 | Method | `headers`, `queryParameters` → type declaration; `responses` → response; `body` → body | `queryString` → type declaration; `is`, `securedBy` applications; facets |
 | Response | `headers` → type declaration; `body` → body | facets |
 | Body | media-type keys (containing `/`, [08](08-templates-and-endpoints.md) § 6.3) → type declaration | otherwise the body *is* a type declaration |
-| Type declaration | `properties`, `facets` → type declaration; `examples` → data | `type`, `items` → type declaration or expression; `example`, `default`, `enum` → data; facets |
+| Type declaration | `properties`, `facets` → type declaration; `examples` → data | `type`, `items` → type declaration or expression; `example`, `default` → data; facets, including `enum`, the spec's own example of a multi-value simple property |
 | Security scheme | none | `describedBy` → method; `settings` → generic |
 | Data | none; the value is user data | none |
 | Generic | none | keys recurse as generic |
@@ -107,6 +107,14 @@ spec treats as equivalent:
 `type` is not a sequence position. A scalar there is a type expression, and a
 sequence is multiple inheritance.
 
+The spec calls the deprecated `schemas` and `schema` "synonymous" with `types`
+and `type`. Each pair is one key to the merge, whatever the kinds:
+
+- `schemas:` in an extension document adds to the master's `types:` instead
+  of displacing it.
+- A replaced pair takes the extension document's key (§ 5.3), so its spelling
+  is the one that survives.
+
 Normalization is a deliberate deviation; see § 7.
 
 ### 3.3 Property kinds and rules
@@ -116,7 +124,7 @@ After normalization, each extension property has one kind:
 | Kind | Value | Merge when the target has the same key |
 |---|---|---|
 | Object | mapping | recurse |
-| Array | sequence containing a mapping | append the extension's items |
+| Array | sequence containing a mapping | append each object not already present (`node_value_equal`); see § 7 |
 | Multi-value simple | sequence of scalars | append each value not already present (`node_value_equal`) |
 | Single-value simple | scalar | replace |
 | Data | data position (§ 3.1) | replace |
@@ -139,18 +147,19 @@ Other rules:
 
 ### 3.4 Conflicting properties
 
-Only pairs the spec declares mutually exclusive count as conflicts:
+Only pairs the spec declares mutually exclusive, and that are not synonyms
+(§ 3.2), count as conflicts:
 
 | Position | Pair |
 |---|---|
-| API root | `types`, `schemas` |
 | Method | `queryString`, `queryParameters` |
-| Type declaration | `type`, `schema` |
-| Type declaration | `example`, `examples` |
+| Type declaration, including a body with no media-type keys | `example`, `examples` |
 
 A removal is silent in the model. The lint rule `extension-removes-property`
-reports it ([18](18-linting.md)). In an Overlay, a removal is a change
-and § 4 rejects it.
+reports it ([18](18-linting.md)).
+
+In an Overlay, a removal is a change. § 4 rejects it unless the removed key is
+itself allowed. Switching `example` to `examples` is therefore allowed.
 
 ## 4. Overlay restrictions
 
@@ -166,8 +175,9 @@ each point where the target tree changes:
 
 A value restated unchanged is not a difference, because the spec compares
 trees. Each violation reports `not allowed in an overlay`, located at the
-Overlay's node. `info` has `field` (the key) and `change` (`added`, `changed`,
-or `removed`). Violations accumulate across the document.
+Overlay's key. `info` has `field` (the key) and `change` (`added`, `changed`,
+or `removed`). For a removal, `field` is the removed key and the location is
+the key that displaced it. Violations accumulate across the document.
 
 Each Overlay in a chain is checked against the target tree it is applied to,
 not against the root API.
@@ -339,6 +349,7 @@ URI ([11](11-diagnostics.md) § 2).
 | Shorthand is normalized (§ 3.2) | Merging Rules: different Property Kind → replaced | kinds compared after normalization | The literal result depends on spellings the spec treats as equivalent. An overlay adding `description` to `name: string` would count as a behaviour change. |
 | Replaced root API values are not checked on their own | Merging Rules: "Master Tree … validated" | names are checked (§ 5.2); a value a later document replaces is never decoded | Checking those values would mean decoding the root API a second time |
 | `default` is data | Merging Rules lists examples and annotations as always simple | `default` is also replaced whole | It holds user data, as in the template merge ([08](08-templates-and-endpoints.md) § 1) |
+| An array adds only new objects | Merging Rules: an Array Property's objects "are added" | an object already present is skipped | Otherwise restating an array changes it, and an Overlay that restates one fails § 4.1 |
 | Applying sibling documents | Overlays and Extensions, steps 1 to 3 | only the chain from the entry document | Needs an API for several entry documents; not yet designed |
 
 Readings where the spec was followed although another implementation differs:

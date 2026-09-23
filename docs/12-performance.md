@@ -56,7 +56,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures nine workloads:
+`bench/` generates deterministic corpora and measures ten workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -69,8 +69,9 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `enums` | enum narrowing and enum membership at 5, 20, 100, and 1000 values, and `uniqueItems` examples at 10, 50, and 500 items, for string, integer, and number |
 | `unions` | `properties` and `items` beside unions of 2, 4, and 8 members, flat and nested, with an enum each member narrows differently ([07](07-resolution-and-inheritance.md) § 5) |
 | `facets` | custom facets declared up every parent of types that inherit from 2, 4, and 8 parents, and a diamond ([10](10-validation.md) § 4) |
+| `templates` | resource types and a trait with parameters and transforms: a collection per resource and an item child, applied as real APIs apply them ([08](08-templates-and-endpoints.md) § 5) |
 
-The first six are general workloads. The last three are feature workloads:
+The first six are general workloads. The last four are feature workloads:
 each exists because no general workload runs the code it covers. Their tests
 (`tests/bench/test_corpus.py`) count calls and fail if a corpus stops reaching
 that code at every size it covers.
@@ -95,8 +96,11 @@ python -m bench micro [PATTERN]
 
 `bench micro` times single leaf functions, such as `same_value`, enum
 membership, the enum subset check, and `unique_items`, at sizes from 5 to 1000.
-Use it when the question is a function's constant factor, which a corpus
-dilutes. It looks up each target by name when it runs, so the same cases can
+It also times public `validate()` per kind: string pattern, integer and number
+bounds, dates, objects, pattern properties, arrays of objects, and unions with
+and without a discriminator. No corpus validates such values, but a consumer
+validates one per request ([17](17-consumers.md)). Use it when the question is
+a function's constant factor, which a corpus dilutes. It looks up each target by name when it runs, so the same cases can
 run against an older checkout. `tests/bench/test_micro.py` fails if a target
 no longer exists in this tree.
 

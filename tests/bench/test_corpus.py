@@ -75,6 +75,36 @@ class TestFeatureCorporaReachTheirCode:
         parse_from_path(corpus.write_enums(tmp_path, family_count=1), ParseOptions(unwrap=True, validate=True))
         assert set(lengths) >= set(corpus.UNIQUE_LENGTHS)
 
+    def test_templates_applies_resource_types_and_every_transform_it_names(self, tmp_path, monkeypatch):
+        import fastraml.parser.endpoint_build as build_module
+        from fastraml.parser import templates
+
+        applied: list[str] = []
+        original_apply = build_module.apply_resource_type
+
+        def counting_apply(raml, endpoint, ref, visited):
+            applied.append(ref.name)
+            return original_apply(raml, endpoint, ref, visited)
+
+        transformed: dict[str, set[str]] = {}
+        for action in ('!singularize', '!pluralize', '!uppercamelcase', '!lowerhyphencase'):
+            original = templates.TEMPLATE_ACTIONS[action]
+
+            def counting(value, action=action, original=original):
+                transformed.setdefault(action, set()).add(value)
+                return original(value)
+
+            monkeypatch.setitem(templates.TEMPLATE_ACTIONS, action, counting)
+        monkeypatch.setattr(build_module, 'apply_resource_type', counting_apply)
+        count = 3
+        parse_from_path(corpus.write_templates(tmp_path, resource_count=count), ParseOptions(unwrap=True))
+        assert sorted(applied) == sorted(['collection', 'item'] * count)
+        # Every resource's own name reaches both dictionary transforms.
+        names = {f'w{index}widgets' for index in range(count)}
+        assert transformed['!singularize'] >= names
+        assert transformed['!pluralize'] >= names
+        assert transformed.keys() == {'!singularize', '!pluralize', '!uppercamelcase', '!lowerhyphencase'}
+
     def test_unions_narrows_every_width_nested_and_items(self, tmp_path, monkeypatch):
         import fastraml.types.unwrap as unwrap_module
 

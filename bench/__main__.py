@@ -81,6 +81,7 @@ BENCHES: tuple[Bench, ...] = (
     Bench('enums', lambda root, scale: corpus.write_enums(root, family_count=_at(40, scale))),
     Bench('unions', lambda root, scale: corpus.write_unions(root, family_count=_at(60, scale))),
     Bench('facets', lambda root, scale: corpus.write_facets(root, family_count=_at(150, scale))),
+    Bench('templates', lambda root, scale: corpus.write_templates(root, resource_count=_at(250, scale))),
 )
 
 _BY_NAME = {bench.name: bench for bench in BENCHES}
@@ -240,6 +241,7 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'enums': 'unwrap+validate',
     'unions': 'unwrap+validate',
     'facets': 'unwrap+validate',
+    'templates': 'unwrap+validate',
 }
 
 
@@ -340,9 +342,11 @@ def micro(pattern: str) -> int:
     """Print each microbenchmark's time per call (docs/12 § 4)."""
     from bench.micro import run_micro  # noqa: PLC0415 - imports the package under test
 
-    for name, seconds in run_micro(pattern).items():
+    results = run_micro(pattern)
+    width = max((len(name) for name in results), default=0)
+    for name, seconds in results.items():
         shown = 'missing' if seconds is None else f'{seconds * 1e6:10.2f} us'
-        print(f'{name:<28} {shown}')
+        print(f'{name:<{width}} {shown}')
     return 0
 
 

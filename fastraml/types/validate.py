@@ -39,7 +39,7 @@ __all__ = ['check_declared_discriminators', 'validate_shapes']
 type DiscriminatorIndex = dict[str, set[str]]
 
 
-# -- a rule that cannot wait for P10 (docs/05 section 9) -----------------------
+# -- a rule that cannot wait for P10 (docs/05 § 6) -----------------------------
 
 
 def check_declared_discriminators(raml: Raml) -> None:
@@ -173,7 +173,7 @@ def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) 
     and the copy is cached by the original's id. The declared model the caller
     sees keeps its `inherits` and its `link`.
 
-    It costs one deep copy per declared type, which is why doc 13 section 4
+    It costs one detached copy per declared type, which is why docs/13 § 2
     tells callers to pass both options together when they do not need the
     un-flattened view.
     """
@@ -226,7 +226,7 @@ def _validate_commons(base: BaseShape, known: DiscriminatorIndex, acc: Accumulat
         _validate_commons(prop.base, known, acc, seen)
 
 
-# -- discriminator values (docs/05 section 9) ----------------------------------
+# -- discriminator values (docs/05 § 6, docs/10 § 6) ---------------------------
 
 
 def _discriminator_values(raml: Raml, cache: dict[int, BaseShape]) -> DiscriminatorIndex:
@@ -292,7 +292,7 @@ def _walk_discriminators(  # noqa: PLR0913, PLR0917 - a data walk carries shape,
     path: str,
     depth: int,
 ) -> None:
-    if depth > base._raml.max_depth:  # noqa: SLF001 - the parse's ceiling (docs/12 § 14)
+    if depth > base._raml.max_depth:  # noqa: SLF001 - the parse's ceiling (docs/12 § 3)
         return
     shape = base.shape
     if isinstance(shape, RecursiveShape):
@@ -337,7 +337,7 @@ def _check_one(  # noqa: PLR0913, PLR0917 - as above
     )
 
 
-# -- examples, defaults, enums (docs/10 section 3) -----------------------------
+# -- examples, defaults, enums (docs/10 § 3) -----------------------------------
 
 
 def _each_example(base: BaseShape) -> Iterator[Example]:
@@ -351,8 +351,7 @@ def _validate_examples(base: BaseShape, known: DiscriminatorIndex, acc: Accumula
     examples = tuple(_each_example(base))
     for example in examples:
         # Before the `strict` gate, and outside it: naming a type that does not
-        # exist is not a conformance failure the author may waive (§ 9 of
-        # docs/05-type-model.md).
+        # exist is not a conformance failure the author may waive (docs/10 § 6).
         _check_discriminator_values(base, example.data, known, acc)
     for example in examples:
         _validate_example(base, example, acc)
@@ -393,7 +392,7 @@ def _validate_example(base: BaseShape, example: Example, acc: Accumulator) -> No
         )
 
 
-# -- custom facets (docs/10 section 4) -----------------------------------------
+# -- custom facets (docs/10 § 4) -----------------------------------------------
 
 
 def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property]:
@@ -404,11 +403,10 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
     own required facets nor may supply a value for one — go-raml calls that
     `unknown facet`, and both halves are measured behaviour, not inference.
 
-    **Known limitation, shared with go-raml:** the walk
-    follows `inherits[0]` only, so a facet declared on the second parent of a
-    multiply-inheriting type is not seen. Fixing it means walking all parents
-    with a visited set; it is tracked as a v1.1 item in doc 10 section 4, and a
-    test pins the current behaviour so the fix is visible when it lands.
+    Known limitation, shared with go-raml: the walk follows `inherits[0]` only,
+    so a facet declared on the second parent of a multiply-inheriting type is
+    not seen (docs/10 § 4). `test_a_facet_on_a_second_parent_is_not_seen` pins
+    the current behaviour.
     """
     declared: dict[str, Property] = {}
     current: BaseShape | None = base.inherits[0] if base.inherits else None
@@ -432,13 +430,9 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
 
 
 def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
-    # A union is checked like anything else. Until the distribution landed it
-    # was skipped, because a facet written beside `type: A|B` had no kind to be
-    # decoded against and reached `custom_facets` even when it was a built-in
-    # facet of the members — so `unknown facet` here would have rejected what
-    # the spec allows. P9 now hands each facet to the members instead, and what
-    # reaches this point on a union is a facet with nowhere to go
-    # (docs/07 section 3.4).
+    # A union is checked like anything else: P9 hands each facet written beside
+    # `type: A | B` to the members, so what reaches this point on a union is a
+    # facet no member accepts (docs/07 § 5).
     if not base.inherits and not base.custom_facets:
         # Nothing declared above to require, and nothing supplied to check.
         return
@@ -457,7 +451,7 @@ def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
         supplied = declared.get(name)
         if supplied is None:
             # This is what turns a typo into an error. An unrecognised facet key
-            # became a custom facet *value* during decoding (docs/05 section 4),
+            # became a custom facet *value* during decoding (docs/05 § 3),
             # and nothing before now could tell `maxLenght` from a real one.
             acc.add(failure('unknown facet', value.location, value.key_pos, info={'facet': name}))
             continue
@@ -476,7 +470,7 @@ def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
             )
 
 
-# -- annotations (docs/09 sections B4 and B5) ----------------------------------
+# -- annotations (docs/09 § B3 and § B4) ---------------------------------------
 
 
 def _validate_domain_extensions(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator) -> None:
@@ -511,7 +505,7 @@ def _check_target(extension: DomainExtension, declared: BaseShape, acc: Accumula
     """`allowedTargets`, which go-raml parses and ignores.
 
     `None` and `[]` mean different things and the difference is load-bearing:
-    absent allows every target, empty allows none (docs/09 section B5).
+    absent allows every target, empty allows none (docs/09 § B4).
     """
     allowed = declared.allowed_targets
     if allowed is None or extension.target in allowed:

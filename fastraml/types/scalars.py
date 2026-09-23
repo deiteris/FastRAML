@@ -1,18 +1,16 @@
 """The eleven scalar kinds.
 
-Each reads the facets doc 05 section 3 gives it and passes everything else up
-to `KindBase`, which files it as a custom facet value.
+Each reads the facets docs/05 § 2 gives it and passes everything else up to
+`KindBase`, which files it as a custom facet value.
 
 Numeric bounds never pass through `float`. Integer bounds are `int`, and a
 number's bounds and `multipleOf` are `Fraction`s built from the written text:
 `Fraction(1.1)` embeds the binary-float error, and `multipleOf: 1.1` would then
-reject `2.2` (docs/05 section 3.1).
+reject `2.2` (docs/05 § 2).
 
-`check` and `validate` are methods here rather than functions in
-`types/validate.py`, because dispatch on kind is what a method already is and
-doc 05's `Shape` protocol declares both. What they share lives in
-`types/values.py`, a leaf, so using it cannot close a cycle back through the
-pass driver (docs/02 section 2).
+`check` and `validate` are methods declared by the `Shape` protocol in
+`base.py`. What they share lives in `types/values.py`, a leaf, so using it
+cannot close a cycle back through the pass driver.
 """
 
 from __future__ import annotations
@@ -71,12 +69,11 @@ __all__ = [
     'TimeOnlyShape',
 ]
 
-#: The two `format` values a `datetime` may take (docs/05 section 3).
+#: The two `format` values a `datetime` may take (docs/05 § 2).
 DATETIME_FORMATS: Final = frozenset({'rfc3339', 'rfc2616'})
 
-#: `format` on an integer, and the size it stands for. Doubles as the
-#: inheritance compatibility check: a subtype's size may not exceed its
-#: parent's. Deviation D2 forbids crossing this table with the number one.
+#: `format` on an integer, and its width rank, which `compat` compares to grade
+#: a format change. The integer and number tables do not mix (docs/01 § 4.1).
 INTEGER_FORMATS: Final = {'int8': 0, 'int16': 1, 'int32': 2, 'int': 2, 'int64': 3, 'long': 3}
 
 #: `format` on a number.
@@ -89,9 +86,8 @@ _MEDIA_TYPE: Final = re.compile(r'\A[A-Za-z0-9][\w.+-]*/[A-Za-z0-9][\w.+-]*\Z')
 def _decode_base64(text: str) -> bytes:
     """The payload a base64 `file` value stands for.
 
-    Undecodable text falls back to its UTF-8 bytes rather than failing: doc 10
-    section 5 gives `file` no wellformedness rule, only length bounds, and
-    inventing one here would reject values the spec accepts.
+    Undecodable text falls back to its UTF-8 bytes rather than failing:
+    docs/10 § 5 gives `file` no wellformedness rule, only length bounds.
     """
     try:
         return base64.b64decode(text, validate=True)
@@ -119,7 +115,7 @@ def _bounds_error(base: BaseShape, message: str, low: ScalarFacet[Any], high: Sc
 
 
 def _check_lengths(base: BaseShape, low: ScalarFacet[int] | None, high: ScalarFacet[int] | None) -> None:
-    """`minLength`/`maxLength`: non-negative, and ordered (docs/10 section 2)."""
+    """`minLength`/`maxLength`: non-negative, and ordered (docs/10 § 2)."""
     accumulator = Accumulator()
     for name, facet in (('minLength', low), ('maxLength', high)):
         if facet is not None:
@@ -131,7 +127,7 @@ def _check_lengths(base: BaseShape, low: ScalarFacet[int] | None, high: ScalarFa
 
 
 def _check_format(base: BaseShape, declared: ScalarFacet[str] | None, allowed: Container[str], kind: str) -> None:
-    """Deviation D2: the two numeric format tables do not mix."""
+    """The two numeric format tables do not mix (docs/01 § 4.1)."""
     if declared is not None and declared.value not in allowed:
         raise failure(
             'unknown format', base.location, declared.value_pos, info={'format': declared.value, 'type': kind}
@@ -144,7 +140,7 @@ def _check_numeric(
     maximum: ScalarFacet[Any] | None,
     multiple_of: ScalarFacet[Fraction] | None,
 ) -> None:
-    """The two rules `number` and `integer` share (docs/10 section 2)."""
+    """The two rules `number` and `integer` share (docs/10 § 2)."""
     pair = _disordered(minimum, maximum)
     if pair is not None:
         raise _bounds_error(base, 'minimum exceeds maximum', *pair)
@@ -161,7 +157,7 @@ def _validate_numeric(  # noqa: PLR0913 - three facets, and each names itself at
     maximum: ScalarFacet[Any] | None,
     multiple_of: ScalarFacet[Fraction] | None,
 ) -> None:
-    """Bounds and `multipleOf`, compared exactly (docs/10 section 5.3).
+    """Bounds and `multipleOf`, compared exactly (docs/10 § 5).
 
     Every comparison is `Fraction` against `Fraction` or `int`. Nothing here
     goes through `float`, which is what lets `multipleOf: 1.1` accept `2.2`.
@@ -194,7 +190,7 @@ class ScalarKind(KindBase):
 
     `check` does nothing by default: most scalar kinds hold no facet that can
     contradict another. The four that do — string, number, integer, file —
-    override it (docs/10 section 2).
+    override it (docs/10 § 2).
     """
 
     __slots__ = ()
@@ -304,8 +300,8 @@ class DateTimeShape(ScalarKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             if key.value == 'format':
-                # The value is checked in P10, not here: doc 10 owns the rule and
-                # an inherited format has to be resolved first.
+                # The value is checked in P10 (docs/10 § 2), after an inherited
+                # format has been merged in.
                 self.format = make_string_facet(self.base._raml, key, value, self.base.location)  # noqa: SLF001
             else:
                 rest.append(key)
@@ -384,7 +380,7 @@ class StringShape(ScalarKind):
             # — `^.+@.+\..+$`, `^\d+\-\w+$`, `^\w{16}$`. Those anchors would be
             # noise under a full match. go-raml agrees: `regexp.Compile` on the
             # raw pattern and `MatchString`, which is Go's unanchored search
-            # (docs/10 § 5.4).
+            # (docs/10 § 5).
             raise failure(
                 'value does not match pattern',
                 self.base.location,
@@ -430,11 +426,11 @@ class NumberShape(ScalarKind):
 
     def validate(self, value: Any, path: str) -> None:
         # `bool` is a subclass of `int` in Python, so it reaches here as a
-        # number unless it is refused by identity first (docs/10 section 5).
+        # number unless it is refused by identity first (docs/10 § 5).
         number = None if value is True or value is False else as_fraction(value)
         if number is None or isinstance(value, str):
-            # A numeric string is a number for `integer`, per doc 10 section 5's
-            # number-preserving-decoder note, but not for `number`.
+            # A numeric string is accepted for `integer` but not for `number`
+            # (docs/10 § 5).
             raise self.wrong_type(value, path, 'number')
         _validate_numeric(
             self.base, number, path, minimum=self.minimum, maximum=self.maximum, multiple_of=self.multiple_of
@@ -484,7 +480,7 @@ class IntegerShape(ScalarKind):
         if number is None:
             raise self.wrong_type(value, path, 'integer')
         if number.denominator != 1:
-            # `4.0` is an integer and `4.5` is not: doc 10 section 5 accepts a
+            # `4.0` is an integer and `4.5` is not: docs/10 § 5 accepts a
             # float or Decimal whose value is integral.
             raise failure(
                 'value is not an integer',
@@ -547,18 +543,17 @@ class FileShape(ScalarKind):
                 )
 
     def validate(self, value: Any, path: str) -> None:
-        # `fileTypes` is deliberately not checked against the value: a base64
-        # blob carries no media type of its own. The facet's wellformedness is
-        # checked above, and enforcing it needs a content type, which only the
-        # body that transported the value has (Phase 5).
+        # `fileTypes` is not checked against the value: a base64 blob carries
+        # no media type of its own, and the parser has no transport content
+        # type to compare (docs/10 § 5). `check` validates the facet itself.
         if isinstance(value, bytes):
             size = len(value)
         elif isinstance(value, str):
             size = len(_decode_base64(value))
         else:
             raise self.wrong_type(value, path, 'file')
-        # In bytes, not characters: doc 10 section 5 is explicit about it, and
-        # for base64 the two differ by about a third.
+        # In bytes, not characters (docs/10 § 5); for base64 the two differ
+        # by about a third.
         if self.min_length is not None and size < self.min_length.value:
             raise failure(
                 'value is too short',

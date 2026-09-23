@@ -3,7 +3,7 @@
 Spec section Determine Default Types. A declaration with no `type:` and no
 `schema:` takes its kind from the facets it does write — `minItems` means array,
 `fileTypes` means file — and from the caller's default when it writes none that
-hint at anything. See docs/05-type-model.md section 4.2.
+hint at anything. See docs/05-type-model.md § 3.
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ _STRING_ONLY_FACET: Final = 'pattern'
 def identify_shape_type(facets: list[Node], default_type: str, location: str) -> str:
     """The kind implied by a flat `[k0, v0, k1, v1, …]` facet list.
 
-    Four rules, in the order docs/05 section 4.2 gives them: a facet unique to a
+    Four rules (docs/05 § 3): a facet unique to a
     type settles it; conflicting hints are an error; `string` and `file` are
     reconciled to `file`, because `minLength` and `maxLength` belong to both,
     unless a `pattern` has been seen; and a declaration that hints at nothing

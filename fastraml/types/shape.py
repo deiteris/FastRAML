@@ -2,14 +2,14 @@
 
 Every property, header, query parameter, body, URI parameter, type declaration
 and inline declaration goes through here. The walk is docs/05-type-model.md
-section 4: one pass over the mapping, common facets peeled off into the
+§ 3: one pass over the mapping, common facets peeled off into the
 `BaseShape`, everything else left in a flat `[k0, v0, k1, v1, …]` list for the
 kind to read.
 
 Kind dispatch lives here too, so this module imports the kind modules and they
 must not import it back. A kind that holds declarations publishes a
 `DECLARATION_FACETS` table; this module reads it, builds those children, and
-passes them to the constructor (docs/02-architecture.md section 2).
+passes them to the constructor.
 
 Nothing here resolves. A type expression, a named reference and multiple
 inheritance all leave an `UnknownShape` on `Raml.unresolved_shapes` for P7.
@@ -107,7 +107,7 @@ KIND_TO_CLASS: Final[dict[str, type[Shape]]] = {
 }
 
 #: Built-in facets every kind has. A `facets:` declaration may not shadow one
-#: (docs/05 section 7). `strict` and `value` are example-level keys, not type
+#: (docs/05 § 5). `strict` and `value` are example-level keys, not type
 #: facets, and are deliberately absent.
 COMMON_FACETS: Final = frozenset(
     {
@@ -159,7 +159,7 @@ def make_shape(
         return _make_shape(raml, key_node, value_node, raml.location_of(value_node, location), default_type)
     # A node produced by parameter substitution, or grafted from a trait or a
     # resource type, resolves its unqualified names in the namespace recorded
-    # for it — not the applying document's (docs/08 section 6.3). Pushed around
+    # for it — not the applying document's (docs/08 § 4.2). Pushed around
     # the whole build, so nested facets inherit it.
     raml.push_ctx(scope)
     try:
@@ -200,8 +200,8 @@ def _make_shape(
             return base
 
     # A mapping declaration narrows whatever its `type:` names; a bare scalar or
-    # sequence one has nothing to narrow with. That is the whole of docs/06
-    # section 3.1, and only an UnknownShape ever reads it.
+    # sequence one has nothing to narrow with. See docs/06 § 3;
+    # only an UnknownShape reads the flag.
     attach_kind(raml, base, kind, facets, from_mapping=value_node.kind is NodeKind.MAPPING)
     raml.put_shape(base)
     if isinstance(base.shape, UnknownShape):
@@ -215,7 +215,7 @@ def unmarshal_types(raml: Raml, node: Node, location: str, *, is_annotation: boo
 
     Per name: reject a built-in name, reject a duplicate in the same map, build
     the shape, register it under the file, and append it to the flat per-file
-    index that unwrap and validation iterate (docs/04 section 5.1).
+    index that unwrap and validation iterate (docs/04 § 5).
 
     Errors accumulate, so one bad declaration does not hide the rest.
     """
@@ -228,7 +228,7 @@ def unmarshal_types(raml: Raml, node: Node, location: str, *, is_annotation: boo
     declared: dict[str, BaseShape] = {}
     accumulator = Accumulator()
     # An annotation written on one of these declarations targets the
-    # declaration, not the file that holds it (docs/09 section B5).
+    # declaration, not the file that holds it (docs/09 § B4).
     target = DomainLocation.ANNOTATION_TYPE if is_annotation else DomainLocation.TYPE_DECLARATION
     with raml.target_scope(target):
         for key, value in pairs(node):
@@ -261,10 +261,10 @@ def make_body_shape(raml: Raml, key_node: Node | None, value_node: Node, locatio
     return make_shape(raml, key_node, value_node, location, TYPE_ANY)
 
 
-# -- the section 4 walk ------------------------------------------------------
+# -- the declaration walk (docs/05 § 3) ------------------------------------
 
 
-def _decode(  # noqa: PLR0912 - one pass over the sixteen-row table of docs/05 section 4
+def _decode(  # noqa: PLR0912 - one pass over the common-facet vocabulary (docs/05 § 3)
     raml: Raml, base: BaseShape, value_node: Node
 ) -> tuple[Node | None, list[Node]]:
     """One pass over a declaration, returning the type node and the leftovers."""
@@ -313,7 +313,7 @@ def _decode(  # noqa: PLR0912 - one pass over the sixteen-row table of docs/05 s
 
 
 def _decode_allowed_targets(value_node: Node, location: str) -> list[DomainLocation]:
-    """`allowedTargets:` — one target name or a sequence of them (docs/09 § B5).
+    """`allowedTargets:` — one target name or a sequence of them (docs/09 § B4).
 
     The result is a list either way, but an *absent* facet stays `None` on the
     base: absent means any target is allowed and empty means none is, and P10
@@ -377,7 +377,7 @@ def _decode_custom_facet_defs(raml: Raml, base: BaseShape, value_node: Node) -> 
         base.custom_facet_defs[prop.name] = prop
 
 
-# -- section 4.1: what type is this? -----------------------------------------
+# -- what type is this? (docs/05 § 3) --------------------------------------
 
 
 def _decode_type_node(
@@ -418,7 +418,7 @@ def _decode_type_node(
         return identify_shape_type(facets, default_type, location), None
     if text[0] == '{':
         # An inline JSON Schema. `decode_json_schema` has already wrapped an
-        # external .json file into this same form (docs/04 section 5.2).
+        # external .json file into this same form (docs/04 § 5).
         return TYPE_JSON, JsonShape(base, raw=text)
     return text, None
 
@@ -439,7 +439,7 @@ def attach_kind(raml: Raml, base: BaseShape, kind: str, facets: list[Node], *, f
     """Construct the kind object, giving it any children it holds.
 
     P7 calls this too, to swap the real kind in for an `UnknownShape` once the
-    type expression has been resolved (docs/07 section 1.1).
+    type expression has been resolved (docs/07 § 2).
     """
     base.type = kind
     cls: type[Shape] = KIND_TO_CLASS.get(kind, UnknownShape)
@@ -504,7 +504,7 @@ def _split_declarations(
 
 
 def _check_custom_facet_names(base: BaseShape) -> None:
-    """A `facets:` name may not shadow a built-in one (docs/05 section 7).
+    """A `facets:` name may not shadow a built-in one (docs/05 § 5).
 
     Checked once the kind is known, which is why it is not done where the
     declarations were read.
@@ -522,13 +522,13 @@ def _check_custom_facet_names(base: BaseShape) -> None:
             )
 
 
-# -- properties (docs/05 sections 5 and 5.1) ---------------------------------
+# -- properties (docs/05 § 4) ----------------------------------------------
 
 
 def chomp_optional(name: str) -> tuple[str, bool]:
     """Strip **one** trailing `?`, reporting whether there was one.
 
-    Exactly one: `name??` is the optional property `name?` (docs/05 § 5, rule 4).
+    Exactly one: `name??` is the optional property `name?` (docs/05 § 4).
     """
     if name.endswith('?'):
         return name[:-1], True
@@ -536,7 +536,7 @@ def chomp_optional(name: str) -> tuple[str, bool]:
 
 
 def is_pattern_key(name: str) -> bool:
-    """A `/regex/` key, including the empty `//` (docs/05 section 5.1)."""
+    """A `/regex/` key, including the empty `//` (docs/05 § 4)."""
     return len(name) > 1 and name[0] == '/' and name[-1] == '/'
 
 
@@ -567,11 +567,11 @@ def make_parameter_map(raml: Raml, value_node: Node, location: str, binding: Bin
 
     Headers, query parameters, URI parameters and base-URI parameters. Each one
     joins the flat per-file index, which is what unwrap and validation iterate
-    instead of walking the model graph (docs/04 section 5.1).
+    instead of walking the model graph (docs/04 § 5).
 
     The binding comes from the caller because only the caller knows it: one
     syntax declares all four, and which one it is is a fact about the map that
-    holds them (`Parameter` in docs/05 section 5).
+    holds them (`Parameter` in docs/05 § 4).
     """
     if is_null(value_node):
         return {}
@@ -599,7 +599,7 @@ def make_parameter_map(raml: Raml, value_node: Node, location: str, binding: Bin
 def make_property(raml: Raml, key_node: Node, value_node: Node, location: str) -> Property:
     """One property, header, query parameter, URI parameter or facet declaration.
 
-    The four optionality cases of docs/05 section 5 are all here. The two that
+    The four optionality cases of docs/05 § 4 are all here. The two that
     get mis-implemented: with an explicit `required:` the `?` is part of the
     name, and only one `?` is ever chomped.
     """
@@ -629,11 +629,8 @@ def make_pattern_property(raml: Raml, key_node: Node, value_node: Node, location
 def _parse_data_type(raml: Raml, type_node: Node, location: str) -> DataTypeFragment:
     """Parse the DataType fragment an `!include` at a type position names.
 
-    The import is deferred because the recursion is in the language, not in the
-    module layout: a type may be a file, and a file declares types. Every other
-    ordering of these two modules is the same cycle wearing a different hat, so
-    this is the one place `types/` reaches for `parser.fragments`.
-    See docs/02-architecture.md section 2.
+    The import is deferred because the recursion is in the language: a type
+    may be a file, and a file declares types (docs/02-architecture.md § 2).
     """
     from fastraml.parser.fragments import DataTypeFragment, FragmentKind, parse_fragment  # noqa: PLC0415
 

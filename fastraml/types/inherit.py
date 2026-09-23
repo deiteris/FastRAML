@@ -1,20 +1,16 @@
 """The merge: applying a parent's constraints to a child.
 
-docs/07-resolution-and-inheritance.md sections 3.4 to 3.6. The invariant across
-every rule here is that **a subtype may only narrow** — a child may tighten a
-bound its parent set, never loosen it.
+docs/07-resolution-and-inheritance.md § 3 to § 5. The invariant across every
+rule here is that a subtype may only narrow: a child may tighten a bound its
+parent set, never loosen it.
 
-Both halves live in this module rather than as methods on the kinds, which is
-where docs/05 section 1's protocol used to declare them. They are mutually
-recursive: merging two objects merges their like-named properties, which is a
-base-level merge again, which dispatches back to a kind. A method on the kind
-would therefore have to reach back into this driver — the shape docs/02
-section 2 rejects — and the union rules need to *construct* a `UnionShape`,
-which `base.py` cannot import. docs/02 section 2 already listed `inherit.py` as
-the home of the per-kind rules; this follows it.
+The per-kind rules live here rather than as methods on the kinds. They are
+mutually recursive with the driver (merging two objects merges their
+like-named properties, which dispatches back to a kind), and the union rules
+construct a `UnionShape`, which `base.py` cannot import.
 
-Nothing here flattens a chain. `unwrap` (docs/07 section 3.1) decides what to
-merge into what and calls `inherit` once per edge.
+Nothing here flattens a chain. `unwrap` (docs/07 § 4) decides what to merge
+into what and calls `inherit` once per edge.
 """
 
 from __future__ import annotations
@@ -53,7 +49,7 @@ __all__ = [
 ]
 
 #: Integer formats by width class: `int` is an alias for `int32` and `long` for
-#: `int64`, so those pairs are compatible (docs/05 section 3). A format outside
+#: `int64`, so those pairs are compatible (docs/05 § 2). A format outside
 #: this table is compared by name — go-raml maps it through a Go map whose zero
 #: value silently makes any unknown format equal to `int8`.
 _INTEGER_WIDTH: dict[str, int] = {
@@ -72,8 +68,7 @@ _INTEGER_WIDTH: dict[str, int] = {
 def _violation(target: BaseShape, message: str, source: Any, value: Any) -> RamlError:
     """A narrowing rule was broken. The position is the offending facet's own."""
     # `hasattr` and not a type test: what arrives is a `ScalarFacet` of any of
-    # eight parameters, or a bare value where the rule compared one. The
-    # `isinstance(value, object)` that stood beside this was true of everything.
+    # eight parameters, or a bare value where the rule compared one.
     position = target.key_pos
     if hasattr(value, 'value_pos'):
         position = value.value_pos
@@ -99,11 +94,11 @@ def inherit(target: BaseShape, source: BaseShape) -> BaseShape:
 
     **The return value may be a different object**, and callers must use it.
     That happens when a target inherits from a union and the result collapses
-    to one member (section 3.4); it is not a quirk to paper over.
+    to one member (docs/07 § 5).
     """
     if source._visiting:  # noqa: SLF001 - unwrap and this module co-own the flag
         # An inheritance chain that loops. Unlike resolution this is not an
-        # error here: the caller marks recursion afterwards (docs/07 § 4).
+        # error here: the caller marks recursion afterwards (docs/07 § 6).
         return source
     source._visiting = True  # noqa: SLF001 - see above
     try:
@@ -135,7 +130,7 @@ def _inherit(target: BaseShape, source: BaseShape) -> BaseShape:
 
 
 def _inherit_base_facets(target: BaseShape, source: BaseShape) -> None:
-    """The three facets that live on the base, not on the kind (docs/07 § 3.5)."""
+    """The three facets that live on the base, not on the kind (docs/07 § 4)."""
     if target.description is None:
         target.description = source.description
 
@@ -174,7 +169,7 @@ def _is_subset(target: list[DataNode], source: list[DataNode]) -> bool:
     return all(_hashable(node.raw) in allowed for node in target)
 
 
-# -- union interaction (docs/07 section 3.4) ----------------------------------
+# -- union interaction (docs/07 § 5) ------------------------------------------
 
 
 def _inherit_from_union(target: BaseShape, source: UnionShape) -> BaseShape:
@@ -247,7 +242,7 @@ def _inherit_into_union(target: BaseShape, target_shape: UnionShape, source: Bas
     return target
 
 
-# -- per-kind narrowing (docs/07 section 3.5) ---------------------------------
+# -- per-kind narrowing (docs/07 § 4) -----------------------------------------
 
 
 def _narrow(target: BaseShape, target_shape: Shape, source_shape: Shape) -> None:
@@ -283,10 +278,9 @@ def _narrow(target: BaseShape, target_shape: Shape, source_shape: Shape) -> None
     if rule is not None:
         rule(target, target_shape, source_shape)
     elif target.type == TYPE_JSON:
-        # Dispatched by kind name rather than by class, because `JsonShape` sits
-        # *above* this module (docs/02 § 3) — it needs the loader and, for the
-        # § 6.3 projection, this module. The rule copies the kind's slots by
-        # name, so no import is needed to run it.
+        # Dispatched by kind name rather than by class: `JsonShape` imports
+        # this module for its projection, so this module cannot import it. The
+        # rule copies the kind's slots by name.
         _narrow_json(target, target_shape, source_shape)
 
 
@@ -321,7 +315,7 @@ def _narrow_string(target: BaseShape, mine: StringShape, theirs: StringShape) ->
     # The child's pattern wins outright; the parent's only fills a gap. Whether
     # two patterns can *both* hold is a question about their languages, and the
     # spec's rule about conflicting patterns is scoped to multiple inheritance
-    # (docs/07 § 3.5).
+    # (docs/07 § 4).
     if mine.pattern is None:
         mine.pattern = theirs.pattern
 
@@ -472,13 +466,9 @@ def _narrow_json(target: BaseShape, mine: Any, theirs: Any) -> None:
             target.value_pos,
             kind=ErrorKind.UNWRAPPING,
         )
-    # Every slot the kind declares, not a list written here. The list was
-    # `raw` and `validator`; `_compiled` was added to the kind and not to the
-    # list, so `as_shape()` returned None on every *declared* schema type once
-    # P9 had run — the § 6.3 projection unreachable at exactly the shape a
-    # consumer holds. `copyable_slots` is what `clone` and `alias_to` already
-    # use so that a field added to a kind cannot be missed, and it needs no
-    # import of `JsonShape`, which this module may not have (docs/02 § 3).
+    # Every slot the kind declares, via `copyable_slots` as in `clone` and
+    # `alias_to`, so a field added to `JsonShape` cannot be missed (a missed
+    # `_compiled` would make `as_shape()` return `None` after P9).
     for slot in copyable_slots(type(mine)):
         setattr(mine, slot, getattr(theirs, slot))
 
@@ -498,7 +488,7 @@ _RULES: dict[type, Callable[[BaseShape, Any, Any], None]] = {
 }
 
 
-# -- aliasing (docs/07 section 3.6) -------------------------------------------
+# -- aliasing (docs/07 § 3) ---------------------------------------------------
 
 
 def alias_to(target: BaseShape, source: BaseShape) -> BaseShape:

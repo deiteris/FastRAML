@@ -3,13 +3,12 @@
 `object`, `array` and `union` hold declarations, so each publishes a
 `DECLARATION_FACETS` table naming the facets whose values are declarations.
 `make_shape` reads the table off the class, builds those children itself and
-passes them to the constructor; nothing here calls back into `shape.py`, which
-is what keeps `types/` pointing one way (docs/02-architecture.md section 2).
+passes them to the constructor; nothing here calls back into `shape.py`.
 
 `UnknownShape` and `RecursiveShape` are not names a document may write.
-`UnknownShape` is the one Phase 2 produces most: a declaration whose kind cannot
-be settled yet keeps its undigested facet list and goes on the worklist for P7
-(docs/07 section 1).
+`UnknownShape` is what a decoder produces for a declaration whose kind cannot
+be settled yet: it keeps its undigested facet list and goes on the worklist for
+P7 (docs/07 § 2).
 
 **`pending_facets` — one pattern, two users.** `make_shape` hands every kind the
 flat `[k0, v0, …]` list its declaration carried, and fourteen of them digest it
@@ -23,12 +22,12 @@ it properly:
   belong to the members, which are not settled until P9. Consumed by
   `_distribute_union_facets`.
 
-go-raml threads the same list through every shape and stores it in exactly one
-place, `UnknownShape.facets`; the union case is the gap it still has (docs/01 § 3.7).
+go-raml keeps such a list only on its `UnknownShape`; distributing union facets
+to members is fastRAML's own (docs/01 § 2.2).
 
 `JsonShape` is the fourth structured kind and lives in `jsonschema_.py`, which
-sits above this module: compiling a schema needs the loader, and the section 6.3
-projection builds object, array and union shapes from what it finds.
+sits above this module: compiling a schema needs the loader, and its RAML
+projection (docs/10 § 7) builds object, array and union shapes.
 """
 
 from __future__ import annotations
@@ -167,7 +166,7 @@ class ObjectShape(ComplexKind):
         super().__init__(base)
         self.properties = properties
         #: `/regex/` keys found inside `properties:`, in declaration order —
-        #: the first pattern that matches wins (docs/05 section 5.1).
+        #: the first pattern that matches wins (docs/05 § 4).
         self.pattern_properties = pattern_properties
         self.min_properties: ScalarFacet[int] | None = None
         self.max_properties: ScalarFacet[int] | None = None
@@ -190,7 +189,7 @@ class ObjectShape(ComplexKind):
                     self.additional_properties = make_bool_facet(raml, key, value, location)
                 case 'discriminator':
                     # Whether the named property exists is P10's question: it may
-                    # be inherited, and so invisible until unwrap (docs/05 § 9).
+                    # be inherited, and so invisible until unwrap (docs/05 § 6).
                     self.discriminator = make_string_facet(raml, key, value, location)
                     declares_discriminator = True
                 case 'discriminatorValue':
@@ -241,7 +240,7 @@ class ObjectShape(ComplexKind):
         accumulator.raise_if_any()
 
     def _check_discriminator(self) -> None:
-        """docs/05 section 9. Checked here because the property may be inherited."""
+        """docs/05 § 6. Checked here because the property may be inherited."""
         if self.discriminator is None:
             if self.discriminator_value is not None:
                 # A value with nothing to discriminate on says nothing.
@@ -269,7 +268,7 @@ class ObjectShape(ComplexKind):
             prop.base.validate_at(self.discriminator_value.raw, f'$.{name}')
 
     def validate(self, value: Any, path: str) -> None:
-        """docs/10 section 5.1's order, which is observable and therefore fixed."""
+        """The order of docs/10 § 5, which is observable and therefore fixed."""
         if not isinstance(value, dict):
             raise self.wrong_type(value, path, 'object')
         declared = self.properties or {}
@@ -333,7 +332,7 @@ class ObjectShape(ComplexKind):
     def _validate_extra(self, name: str, item: Any, path: str) -> None:
         """A key the declaration did not name: a pattern property, or refused."""
         for pattern in (self.pattern_properties or {}).values():
-            # Declaration order, first match wins (docs/05 section 5.1).
+            # Declaration order, first match wins (docs/05 § 4).
             if pattern.pattern.search(name) is not None:
                 pattern.base.validate_at(item, key_path(path, name))
                 return
@@ -343,7 +342,7 @@ class ObjectShape(ComplexKind):
             # additional properties", and `//` is how you "force all additional
             # properties to be a string". So declaring any pattern makes the
             # set of them exhaustive — a key matching none is refused whatever
-            # `additionalProperties` says (docs/05 section 5.1).
+            # `additionalProperties` says (docs/05 § 4).
             raise failure(
                 'property name matches no pattern property',
                 self.base.location,
@@ -536,7 +535,7 @@ def _declared_name(shape: BaseShape) -> str | None:
 
     `type: Cat | Dog` gives members that are *aliases* of `Cat` and `Dog`, and an
     alias carries no name of its own — it shares its referent's containers, so
-    the discriminator is visible on it but the name is not (docs/07 § 3.6).
+    the discriminator is visible on it but the name is not (docs/07 § 3).
 
     **One hop reaches it.** `alias_to` points an alias at a *declaration*, and a
     declaration is named. In `type: Moggy | Dog` the first member resolves to
@@ -636,7 +635,7 @@ class UnionShape(ComplexKind):
     def __init__(self, base: BaseShape, *, any_of: list[BaseShape] | None = None) -> None:
         super().__init__(base)
         self.any_of = any_of
-        #: The dispatch table (docs/05 section 9.1), filled by `build_dispatch`
+        #: The dispatch table (docs/05 § 6), filled by `build_dispatch`
         #: at the end of P9. `None` until then, and `None` afterwards for a union
         #: that does not discriminate: both mean the same thing to `_select`, so
         #: nothing needs to tell them apart.
@@ -645,7 +644,7 @@ class UnionShape(ComplexKind):
         #: beside `type: A | B`. A union recognises none of its own — every one
         #: of them belongs to the *members*, and which member decides whether
         #: `minimum` is a built-in facet or a custom one. P9 distributes them
-        #: once `any_of` is settled (docs/07 section 3.4).
+        #: once `any_of` is settled (docs/07 § 5).
         self.pending_facets: list[Node] = []
 
     def decode_facets(self, pairs: list[Node]) -> None:
@@ -654,7 +653,7 @@ class UnionShape(ComplexKind):
             key, value = pairs[index], pairs[index + 1]
             if key.value in ('discriminator', 'discriminatorValue'):
                 # The one discriminator rule checked at decode time: a union has
-                # no properties, so this can never become valid (docs/05 § 9).
+                # no properties, so this can never become valid (docs/05 § 6).
                 raise node_error(
                     'discriminator cannot be used with union type',
                     self.base.location,
@@ -718,7 +717,7 @@ class UnionShape(ComplexKind):
           state them precisely where this could only say the lookup missed.
 
         A tag that is present and scalar but names nothing raises instead. That is
-        the narrowing D12 records: the author said this property identifies the
+        the narrowing of docs/01 § 4.5: the author said this property identifies the
         type, so a value identifying none of them is wrong even where a member
         would have accepted the payload structurally.
         """
@@ -780,7 +779,7 @@ class UnionShape(ComplexKind):
 
         A scan reports *every* member's failure rather than the last one's,
         because a reader given one complaint cannot tell which member it was
-        meant to satisfy (docs/05 § 9.1 tabulates both paths).
+        meant to satisfy (docs/05 § 6).
         """
         selected = self._select(value, path)
         if selected is not None:
@@ -803,7 +802,7 @@ class UnionShape(ComplexKind):
         combined = accumulator.result()
         if combined is None:
             # No members at all — reachable only for a union that declared none
-            # and inherited none (docs/07 section 3.4).
+            # and inherited none (docs/07 § 5).
             raise failure(message, self.base.location, self.base.value_pos, info=info)
         raise RamlError.wrap(
             message, combined, self.base.location, self.base.value_pos, kind=ErrorKind.VALIDATING, info=info
@@ -816,7 +815,7 @@ class UnknownShape(ComplexKind):
     One of the two kinds that keep `pending_facets` (see the module docstring):
     here because which of these are facets *at all* depends on a kind nobody
     knows yet. P7 resolves the type, builds the real kind and hands it this list
-    (docs/07 section 1).
+    (docs/07 § 2).
     """
 
     __slots__ = ('from_mapping', 'pending_facets')
@@ -828,7 +827,7 @@ class UnknownShape(ComplexKind):
         #: scalar (`Foo: Bar`)? It is the only thing that tells P7 whether a
         #: reference is inheritance or an alias, so it is recorded rather than
         #: inferred from `pending_facets` being empty — a mapping carrying
-        #: nothing but `type:` also leaves this list empty (docs/06 section 3.1).
+        #: nothing but `type:` also leaves this list empty (docs/06 § 3).
         self.from_mapping = from_mapping
 
     def decode_facets(self, pairs: list[Node]) -> None:
@@ -836,7 +835,7 @@ class UnknownShape(ComplexKind):
 
     def check(self) -> None:
         # Always fails. Reaching it means P7 was skipped, and a silent pass here
-        # would hide invariant I5 breaking (docs/10 section 2).
+        # would hide invariant I5 breaking (docs/10 § 2).
         raise failure(
             'type could not be resolved',
             self.base.location,
@@ -851,7 +850,7 @@ class UnknownShape(ComplexKind):
 class RecursiveShape(ComplexKind):
     """A back-edge: the point where a type cycle returns to its head.
 
-    Produced by `finish_unwrap` in P9, never by decoding (docs/07 § 4).
+    Produced by `finish_unwrap` in P9, never by decoding (docs/07 § 6).
     """
 
     __slots__ = ('head',)

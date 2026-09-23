@@ -1,8 +1,7 @@
 """Tokenizer for RAML type expressions (RDT).
 
-See docs/06-type-expressions.md section 2.1. One compiled alternation drives a
-single `finditer` pass; there is no per-character Python loop, per
-docs/12-performance.md section 12.
+See docs/06-type-expressions.md § 2. One compiled alternation drives a single
+`finditer` pass, with no per-character Python loop (docs/12-performance.md § 2).
 """
 
 from __future__ import annotations
@@ -70,7 +69,7 @@ _KIND_BY_GROUP = {
 }
 
 #: The one message every RDT diagnostic uses. Per docs/11-diagnostics.md
-#: section 6, values that vary between occurrences (the column, the offending
+#: § 6, values that vary between occurrences (the column, the offending
 #: text) go in `info`, never interpolated into the message.
 _MESSAGE = 'invalid type expression'
 
@@ -79,13 +78,10 @@ def expression_error(col: int, **info: object) -> RamlError:
     """Build the one diagnostic every RDT failure raises.
 
     `col` is 0-based, matching every other column in this package. There is no
-    file `location` at this layer -- `parse_expression` is memoised on bare
-    text and knows nothing about which file, or how many files, an expression
-    came from (docs/06-type-expressions.md section 2.3). The caller that owns
-    a real position is expected to catch this error and rebuild one with its
-    own `location` and a column rebased by `base.type_expr.value_pos.column`;
-    until that caller exists (doc section 3, out of scope here) the raw error
-    still carries a usable 1-based `Position` for direct callers and tests.
+    file `location` at this layer: `parse_expression` is memoised on bare text
+    (docs/06-type-expressions.md § 2). P7 catches this error and rebuilds it
+    with the occurrence's location and a rebased column; the raw error's
+    1-based `Position` serves direct callers and tests.
     """
     return RamlError.new(
         _MESSAGE,

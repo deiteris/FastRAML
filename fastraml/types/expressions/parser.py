@@ -1,12 +1,11 @@
 r"""Recursive-descent parser for RAML type expressions (RDT).
 
-Implements docs/06-type-expressions.md sections 1-2: the grammar, the AST, and
-the memoised entry point. Section 3 (AST -> shapes) is **not** implemented
-here. It is mutually recursive with the resolution driver -- a reference's
-target may itself be unresolved -- so the two live together in
-`types/resolve.py` rather than one importing the other (docs/02 section 2).
+Implements docs/06-type-expressions.md § 1 and § 2: the grammar, the AST, and
+the memoised entry point. Building shapes from the AST (docs/06 § 3) is in
+`types/resolve.py`, because it is mutually recursive with resolution: a
+reference's target may itself be unresolved.
 
-Grammar (docs/06 section 1):
+Grammar (docs/06 § 1):
 
     entrypoint : expression EOF ;
     expression : union ;
@@ -16,14 +15,12 @@ Grammar (docs/06 section 1):
     primitive  : 'string' | 'integer' | 'number' | 'boolean' | 'datetime'
                | 'time-only' | 'datetime-only' | 'date-only' | 'file'
                | 'nil' | 'any' | 'array' | 'object' | 'union' ;
-    reference  : IDENTIFIER ( '.' IDENTIFIER )? ;
+    reference  : IDENTIFIER ;
     IDENTIFIER : [0-9a-zA-Z_.-]+ ;
     WS         : [ \t]+ -> hidden ;
 
-`IDENTIFIER` already includes `.`, so `reference`'s explicit dotted
-alternative reaches the same token as a plain `IDENTIFIER` -- the tokenizer
-never splits a dotted name, and this parser keeps the whole text. The
-resolver (out of scope here) is what splits on the last dot.
+`IDENTIFIER` includes `.`, so a qualified name is one token and this parser
+keeps its whole text. The resolver splits it on the last dot.
 """
 
 from __future__ import annotations
@@ -73,18 +70,12 @@ class Union:
     members: tuple[RdtNode, ...]
 
 
-#: The AST produced by `parse_expression`. Doc section 2.2 gives `col` only to
-#: `Primitive` and `Reference` -- `Array`, `Optional_` and `Union` carry none
-#: of their own, matching the dataclasses as written there. See this module's
-#: docstring in the report back to the caller for the discrepancy against the
-#: task description, which says every node carries a column.
+#: The AST produced by `parse_expression`. Only `Primitive` and `Reference`
+#: carry a column, because only names are referenceable (docs/06 § 2).
 RdtNode = Primitive | Reference | Array | Optional_ | Union
 
-# Primitive keywords (grammar `primitive`), matched by exact identifier text.
-# Doc section 1: "Primitive keywords are matched before IDENTIFIER" -- here
-# that happens one layer up from the lexer, once the full (longest-match)
-# identifier text is known, which is equivalent to ANTLR's priority-ordered
-# token rules for every input the grammar accepts (see lexer.py).
+# Primitive keywords (grammar `primitive`), classified by exact identifier text
+# after longest-match lexing, so `stringy` is a reference (docs/06 § 1).
 _PRIMITIVES = frozenset(
     {
         'string',
@@ -176,7 +167,7 @@ class _Parser:
         raise expression_error(token.col, expected='a type', found=token.text)
 
 
-#: What `Raml.expr_cache` holds (docs/06 section 2.3).
+#: What `Raml.expr_cache` holds (docs/06 § 2).
 ExprCache = dict[str, 'RdtNode | RamlError']
 
 
@@ -184,17 +175,12 @@ def parse_expression(text: str, cache: ExprCache) -> RdtNode:
     """Parse a RAML type expression (a `type:` scalar) to its AST.
 
     Memoised on the expression's exact text. The AST is immutable and carries
-    no file positions -- only intra-expression columns -- so one entry safely
-    serves every occurrence of the same text in a corpus. A failed parse is
-    cached as the `RamlError` instance itself and re-raised on every hit, so
-    500 occurrences of one malformed expression cost one parse and 500
-    dictionary hits, while each of the 500 diagnostics still gets its own file
-    position -- that comes from the caller, not from here.
+    only intra-expression columns, so one entry serves every occurrence of the
+    text. A failed parse is cached as the `RamlError` itself and re-raised on
+    every hit; each occurrence's file position comes from the caller.
 
-    The cache belongs to one parse and is passed in rather than held on this
-    module. A module-level dict would outlive every `Raml` and grow for the
-    life of the interpreter, and `Raml` already owns every other cache whose
-    lifetime is the parse (docs/02 section 3).
+    The cache is passed in because it belongs to one parse, like every other
+    cache on `Raml` (docs/02 § 3).
 
     Raises `RamlError` for a malformed expression, with the offending token's
     0-based column in `info['column']`. See `expression_error` for why the

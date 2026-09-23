@@ -1,18 +1,14 @@
 """Value machinery shared by declaration checking and instance validation.
 
-A leaf of `types/`: it imports `base.py` and nothing else from the package. That
-is deliberate. The per-kind `check`/`validate` methods live on the kinds, and
-the pass driver in `types/validate.py` reaches `types/unwrap.py` through
-`_ensure_unwrapped` — which reaches `complex_.py`. Helpers kept in the driver
-would close that loop, so they are here instead
-(docs/02-architecture.md section 2).
+A leaf of `types/`: it imports nothing else from the package. The per-kind
+`check`/`validate` methods live on the kinds, and `types/validate.py` reaches
+`complex_.py` through `types/unwrap.py`, so helpers kept in the driver would
+make an import cycle.
 
-Two rules from CLAUDE.md are enforced by what this module does *not* offer:
-there is no float comparison, because numeric facets never pass through
-`float`; and there is no per-character loop, because a compiled regex does the
-same work in C.
+No float comparison (numeric facets never pass through `float`) and no
+per-character loops (compiled regexes do that work).
 
-See docs/10-validation.md sections 5.2 and 5.3.
+See docs/10-validation.md § 5.
 """
 
 from __future__ import annotations
@@ -65,7 +61,7 @@ def failure(
 
 
 def check_non_negative(name: str, value: int, location: str, position: Position | None) -> RamlError | None:
-    """The six length and count facets are non-negative (docs/10 section 2).
+    """The six length and count facets are non-negative (docs/10 § 2).
 
     Spec, per facet: "Value MUST be equal to or greater than 0." A negative
     bound is not merely unsatisfiable — `minLength: -2` accepts everything and
@@ -79,7 +75,7 @@ def check_non_negative(name: str, value: int, location: str, position: Position 
 
 
 def key_path(path: str, key: str) -> str:
-    """`$.address.zip` — built eagerly on the way down (docs/10 section 3)."""
+    """`$.address.zip`, built eagerly on the way down (docs/10 § 3)."""
     return f'{path}.{key}'
 
 
@@ -97,10 +93,10 @@ def type_name(value: Any) -> str:
     return _TYPE_NAMES.get(type(value), type(value).__name__)
 
 
-# -- numbers (docs/10 section 5.3) ---------------------------------------------
+# -- numbers (docs/10 § 5) -----------------------------------------------------
 
-#: Inclusive bounds per `format` on an integer. Deviation D2: these are the only
-#: formats an integer accepts, and a number accepts none of them.
+#: Inclusive bounds per `format` on an integer. These are the only formats an
+#: integer accepts, and a number accepts none of them (docs/01 § 4.1).
 INTEGER_RANGES: Final[dict[str, tuple[int, int]]] = {
     'int8': (-128, 127),
     'int16': (-32768, 32767),
@@ -120,7 +116,7 @@ def as_fraction(value: Any) -> Fraction | None:  # noqa: PLR0911 - one return pe
     binary approximation `2476979795053773/1125899906842624` rather than `11/5`.
     Since `multipleOf: 1.1` is built from its own raw text as `11/10`, the two
     would never divide evenly and `multipleOf: 1.1` would reject `2.2` — the
-    exact failure the no-`float` rule exists to prevent (docs/10 section 5.3).
+    exact failure the no-`float` rule exists to prevent (docs/10 § 5).
 
     `repr` gives the shortest decimal that round-trips to the same float, which
     is the author's text in every case that matters. go-raml does the same thing
@@ -128,7 +124,7 @@ def as_fraction(value: Any) -> Fraction | None:  # noqa: PLR0911 - one return pe
 
     `bool` is not a number here even though Python says it is a subclass of
     `int`; callers reject it before asking, and this is the second line of
-    defence (docs/10 section 5).
+    defence (docs/10 § 5).
     """
     if value is True or value is False:
         return None
@@ -146,7 +142,7 @@ def as_fraction(value: Any) -> Fraction | None:  # noqa: PLR0911 - one return pe
             return None
     if isinstance(value, str):
         # A number-preserving decoder may hand a numeric string through, which
-        # doc 10 section 5 accepts for `integer`.
+        # docs/10 § 5 accepts for `integer`.
         try:
             return Fraction(value)
         except (ValueError, ZeroDivisionError):
@@ -166,7 +162,7 @@ def is_multiple_of(value: Fraction, multiple: Fraction) -> bool:
 def decimal_text(value: Fraction) -> str:
     """A `Fraction` as decimal text, without going through `float`.
 
-    Numbers never pass through `float` (docs/10 § 5.2), and a value shown to a
+    Numbers never pass through `float` (docs/10 § 5), and a value shown to a
     reader is no exception even though nothing compares it: `1.1` reaching a
     reader as `1.100000000000000088` would be a defect of the view, not of the
     parser. The graph, the renderer and the compatibility report all use this.
@@ -192,10 +188,9 @@ def decimal_text(value: Fraction) -> str:
     return f'{sign}{text[:-digits]}.{text[-digits:]}'
 
 
-# -- dates (docs/10 section 5) -------------------------------------------------
+# -- dates (docs/10 § 5) -------------------------------------------------------
 
-#: Strict, anchored, and compiled once. go-raml scans these by hand, which is
-#: correct in Go and slow here (CLAUDE.md, docs/12 section 12).
+#: Strict, anchored, and compiled once (docs/12 § 2).
 DATE_ONLY: Final = re.compile(r'\A(\d{4})-(\d{2})-(\d{2})\Z')
 TIME_ONLY: Final = re.compile(r'\A(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?\Z')
 DATETIME_ONLY: Final = re.compile(r'\A(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?\Z')
@@ -269,7 +264,7 @@ def parse_rfc2616(text: str) -> bool:
     return _valid_date(year, month, day) and _valid_time(hour, minute, second)
 
 
-# -- uniqueItems (docs/10 section 5.2) -----------------------------------------
+# -- uniqueItems (docs/10 § 5) -------------------------------------------------
 
 #: Below this many items, pairwise comparison beats hashing: it allocates
 #: nothing, and n² is small.

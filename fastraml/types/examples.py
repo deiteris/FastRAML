@@ -11,7 +11,7 @@ Spec section Single Example allows two forms, and they are ambiguous:
 
 The rule is that a mapping containing a `value` key is form B, and anything else
 is form A. A type whose example value has a property called `value` must use the
-wrapper form explicitly. See docs/05-type-model.md section 5.
+wrapper form explicitly. See docs/05-type-model.md § 5.
 """
 
 from __future__ import annotations
@@ -80,9 +80,8 @@ class Examples:
     def entries(self) -> dict[str, Example]:
         """The examples this facet holds, following an `!include` if there is one.
 
-        Every consumer wants both forms. Reading `values` directly is how a
-        linked NamedExample went unvalidated: the map is empty and the examples
-        are one hop away on the fragment.
+        Consumers must read this, not `values`, which is empty when the
+        examples are on a linked NamedExample fragment.
         """
         if self.link is not None:
             return self.link.examples
@@ -99,7 +98,7 @@ def make_example(raml: Raml, value_node: Node, name: str, location: str) -> Exam
         value_pos=value_node.full_position,
     )
     # An annotation inside an example targets the example, not the declaration
-    # the example belongs to (docs/09 section B5).
+    # the example belongs to (docs/09 § B4).
     with raml.target_scope(DomainLocation.EXAMPLE):
         if value_node.kind is NodeKind.MAPPING and _has_value_key(value_node):
             _fill_from_wrapper(raml, example, value_node, location)

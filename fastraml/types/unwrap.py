@@ -1,6 +1,6 @@
 """P9 — unwrap: flatten every inheritance chain, then settle what that decided.
 
-docs/07-resolution-and-inheritance.md sections 3.1 to 3.3 and section 4. Opt-in
+docs/07-resolution-and-inheritance.md § 4 and § 6. Opt-in
 (`ParseOptions(unwrap=True)`), because the un-flattened model is what a
 formatter or a documentation generator wants: flattening is lossy about which
 declaration a facet came from.
@@ -13,7 +13,7 @@ producing two things, both of which need the *settled* graph.
   `RecursiveShape`, turning the object graph into a DAG plus explicit back-edges.
   Without it a consumer walking the model naively recurses forever.
 - **Union dispatch tables** give a union whose members all discriminate the same
-  way a `{discriminatorValue: member}` lookup (docs/05 § 9.1).
+  way a `{discriminatorValue: member}` lookup (docs/05 § 6).
 
 The walk carries a collector for the second. Marking is the last writer of
 `any_of` and already visits every union, so the table is built from what that
@@ -59,7 +59,7 @@ class _Walk:
 
     `done` is what makes the pass idempotent *and* correct in the one case that
     replaces a shape: a target inheriting from a union can collapse to a single
-    member (docs/07 section 3.4), and every index that referenced the original
+    member (docs/07 § 5), and every index that referenced the original
     has to end up pointing at the replacement. Keyed on `BaseShape.id` — the
     model's own identity, not `id()`, which neither keeps the object alive nor
     stays unique.
@@ -70,14 +70,14 @@ class _Walk:
     def __init__(self, raml: Raml) -> None:
         self.raml = raml
         # Read once per pass rather than per level: the ceiling is one number
-        # for the whole parse (docs/12 section 14), and the guard is on a hot
+        # for the whole parse (docs/12 § 3), and the guard is on a hot
         # recursive path.
         self.max_depth = raml.max_depth
         self.done: dict[int, BaseShape] = {}
 
 
 def unwrap_shapes(raml: Raml) -> None:
-    """Flatten every declared type, then finish the pass (docs/07 sections 3-4).
+    """Flatten every declared type, then finish the pass (docs/07 § 4).
 
     `Raml.shapes` is rebuilt rather than appended to. After flattening, the old
     entries describe a model that no longer exists — a union member may have
@@ -105,7 +105,7 @@ def unwrap_shapes(raml: Raml) -> None:
 
     # P8 bound `defined_by` to the un-flattened declaration. Left alone, P10
     # would validate annotation values against a shape with no inherited
-    # constraints on it, and would do so silently (docs/09 section B4).
+    # constraints on it, and would do so silently (docs/09 § B3).
     for extension in raml.domain_extensions:
         if extension.defined_by is not None:
             extension.defined_by = walk.done.get(extension.defined_by.id, extension.defined_by)
@@ -121,7 +121,7 @@ def unwrap_shape(raml: Raml, base: BaseShape) -> BaseShape:
 
 
 def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
-    """docs/07 section 3.1's driver.
+    """The driver of docs/07 § 4.
 
     `_unwrapped` is set *before* recursing, which is what stops a type cycle
     from running away; the shape is incomplete while its children are being
@@ -146,7 +146,7 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
 
     if base.alias is not None:
         # An alias is not a source and is not merged into anything: it is
-        # resolved and returned as it stands (docs/07 section 3.6).
+        # resolved and returned as it stands (docs/07 § 3).
         result = alias_to(base, _unwrap(walk, base.alias, depth + 1))
         walk.done[base.id] = result
         walk.raml.put_shape(result)
@@ -159,7 +159,7 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
     result = inherit(base, source) if source is not None else base
     # After the merge, never before: the "both unions" branch adopts the
     # parent's `anyOf`, so a child that merely narrows a union has no members of
-    # its own until `inherit` has run (docs/07 section 3.4).
+    # its own until `inherit` has run (docs/07 § 5).
     _distribute_union_facets(walk, result, depth)
     walk.done[base.id] = result
     walk.raml.put_shape(result)
@@ -227,7 +227,7 @@ def _narrowed_member(walk: _Walk, base: BaseShape, member: BaseShape, pending: l
 
 def _link_to_inherits(base: BaseShape) -> None:
     """`type: !include` is not inheritance at parse time, but the linked shape
-    is the semantic parent (docs/07 section 2). Rewriting it here rather than
+    is the semantic parent (docs/07 § 1). Rewriting it here rather than
     earlier keeps the indirection visible to anyone who did not ask to unwrap.
     """
     if base.link is not None and base.link.shape is not None:
@@ -261,7 +261,7 @@ def _make_multiple_inheritance_shape(walk: _Walk, parents: list[BaseShape]) -> B
     parent's dict into the child; the second merge would then mutate that dict
     in place, corrupting the parent for every *other* subtype that inherits
     from it. Pre-initialising the collections to empty forces the merge loop to
-    run instead of taking the shortcut (docs/07 section 3.3).
+    run instead of taking the shortcut (docs/07 § 4).
     """
     first = parents[0]
     synthetic = BaseShape(
@@ -330,7 +330,7 @@ def _unwrap_custom_facet_defs(walk: _Walk, base: BaseShape, depth: int) -> None:
 
     Its own facet declarations are then cleared: a facet cannot itself declare
     facets, and leaving them would let a cycle close through a place recursion
-    marking deliberately does not look (docs/07 section 4).
+    marking deliberately does not look (docs/07 § 6).
     """
     for name, prop in base.custom_facet_defs.items():
         unwrapped = _unwrap(walk, prop.base, depth + 1)
@@ -338,7 +338,7 @@ def _unwrap_custom_facet_defs(walk: _Walk, base: BaseShape, depth: int) -> None:
         base.custom_facet_defs[name] = prop.with_base(unwrapped)
 
 
-# -- recursion marking (docs/07 section 4) ------------------------------------
+# -- recursion marking (docs/07 § 6) ------------------------------------------
 
 
 def finish_unwrap(raml: Raml, *, roots: Iterable[BaseShape] | None = None) -> None:
@@ -401,7 +401,7 @@ def _finish(raml: Raml, base: BaseShape, depth: int, max_depth: int, unions: lis
 
     # Cleared *before* the facet declarations, deliberately: a facet declaration
     # may reference the very type that declares it, and that is not a recursion
-    # worth marking — facets cannot nest (docs/07 section 4).
+    # worth marking — facets cannot nest (docs/07 § 6).
     base._visiting = False  # noqa: SLF001 - see above
     for name, prop in base.custom_facet_defs.items():
         marked = _finish(raml, prop.base, depth + 1, max_depth, unions)
@@ -411,7 +411,7 @@ def _finish(raml: Raml, base: BaseShape, depth: int, max_depth: int, unions: lis
 
 
 def _finish_children(raml: Raml, shape: Shape, depth: int, max_depth: int, unions: list[UnionShape]) -> None:
-    """The four slots a marker can be substituted into (docs/07 section 4).
+    """The four slots a marker can be substituted into (docs/07 § 6).
 
     Also where a union is collected, because this is the one place that already
     knows it is looking at one.

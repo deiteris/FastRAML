@@ -1,26 +1,18 @@
 """P7 — resolution: what kind is this, and which declaration does this name mean?
 
-Drains `Raml.unresolved_shapes`. Every entry carries an `UnknownShape`, left
-there by Phase 2 because the document alone could not settle its kind: a type
+Drains `Raml.unresolved_shapes`. Every entry carries an `UnknownShape`, left by
+a decoder because the document alone could not settle its kind: a type
 expression, a bare named reference, a `type:` sequence, or a `type: !include`.
-Resolution swaps the real kind in **on the same `BaseShape`**, so every
-reference already taken to it stays valid (docs/05 section 1).
+Resolution swaps the real kind in on the same `BaseShape`, so every reference
+already taken to it stays valid (docs/05 § 1).
 
-Doc 07 sections 1-2 write the driver as methods on `RAML`, transcribed from Go.
-They are free functions here: `registry.py` imports nothing from `types/` at
-runtime, which is what keeps the import graph acyclic without indirection
-(docs/02 section 3).
-
-The AST -> shape visitor of doc 06 section 3 lives here too rather than in a
-module of its own, because it and `resolve_shape` are mutually recursive: a
-reference's target may itself be unresolved. Both ways out of that recursion
-are ruled out by docs/02 section 2 — a callback parameter is the shape that
-section rejects, and a deferred import is the indirection it exists to prevent.
-go-raml splits them only because Go's ANTLR runtime wants a visitor struct.
+The AST -> shape visitor (docs/06 § 3) lives here because it and
+`resolve_shape` are mutually recursive: a reference's target may itself be
+unresolved.
 
 Nothing here flattens anything. `inherits` and `alias` edges are recorded;
-applying them is Phase 4's (docs/07 sections 3-5). A `link` is resolved but
-deliberately **not** rewritten to `inherits` — that is the first step of unwrap.
+applying them is P9's (docs/07 § 4). A `link` is resolved but not rewritten to
+`inherits`; that is the first step of unwrap.
 """
 
 from __future__ import annotations
@@ -63,7 +55,7 @@ __all__ = [
 
 
 def resolve_shapes(raml: Raml) -> None:
-    """Drain the worklist (docs/07 section 1).
+    """Drain the worklist (docs/07 § 2).
 
     The queue is read until empty rather than iterated, because resolving one
     shape can lengthen it: an expression allocates anonymous inner shapes, and
@@ -86,7 +78,7 @@ def resolve_shapes(raml: Raml) -> None:
 
 
 def resolve_shape(raml: Raml, base: BaseShape) -> None:
-    """Settle one declaration's kind, in place (docs/07 section 1.1).
+    """Settle one declaration's kind, in place (docs/07 § 2).
 
     Idempotent and re-entrant: the visitor calls this on a referent that may
     itself still be unknown, resolving it out of queue order, so the queue
@@ -102,7 +94,7 @@ def resolve_shape(raml: Raml, base: BaseShape) -> None:
         return
     if base._visiting:  # noqa: SLF001 - this pass is the field's declared owner
         # `A: B` / `B: A`. A cycle through a *property* is legal and is marked,
-        # not rejected, much later (docs/07 section 4).
+        # not rejected, in P9 (docs/07 § 6).
         raise RamlError.new(
             'cyclic type reference',
             base.location,
@@ -129,7 +121,7 @@ def _resolve_link(raml: Raml, base: BaseShape, target: UnknownShape) -> None:
     """`type: !include other.raml` — take the linked declaration's kind.
 
     `base.link` is left in place. Rewriting it to `inherits` is the first thing
-    unwrap does (docs/07 section 2), and doing it here would hide the
+    unwrap does (docs/07 § 1), and doing it here would hide the
     indirection from a consumer that has not asked for a flattened model.
     """
     linked = base.link.shape if base.link is not None else None
@@ -143,7 +135,7 @@ def _resolve_multiple_inheritance(raml: Raml, base: BaseShape, target: UnknownSh
     """`type: [Cat, Dog]` — resolve every parent, then take the first one's kind.
 
     Whether the parents are mutually compatible is not asked here: that needs
-    the merge, and belongs to unwrap (docs/07 section 3.3).
+    the merge, and belongs to unwrap (docs/07 § 4).
     """
     if not base.inherits:
         raise RamlError.new('type must name at least one parent', base.location, base.key_pos, kind=ErrorKind.RESOLVING)
@@ -156,9 +148,8 @@ def _parse(raml: Raml, base: BaseShape) -> RdtNode:
     """Parse `base.type` as an expression, rebasing the error onto this file.
 
     `parse_expression` is memoised on text alone, so it cannot know which file
-    it is reading and its diagnostic carries no location (docs/06 section 2.3).
-    Supplying both here is what lets one malformed expression written in 500
-    places cost one parse and still produce 500 correctly positioned errors.
+    it is reading and its diagnostic carries no location (docs/06 § 2). This
+    supplies the location and rebases the column for each occurrence.
     """
     try:
         return parse_expression(base.type, raml.expr_cache)
@@ -173,7 +164,7 @@ def _parse(raml: Raml, base: BaseShape) -> RdtNode:
         ) from err
 
 
-# -- the AST -> shape visitor (docs/06 section 3) -----------------------------
+# -- the AST -> shape visitor (docs/06 § 3) -----------------------------------
 
 
 def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
@@ -204,7 +195,7 @@ def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
             cast('ArrayShape', base.shape).items = items.base
 
         case Optional_():
-            # `T?` is sugar for `T | nil` (docs/06 section 1).
+            # `T?` is sugar for `T | nil` (docs/06 § 1).
             member = _anonymous(raml, base)
             _build(raml, member, node.inner)
             _attach_union(raml, base, facets, [member.base, _nil(raml, base)], from_mapping=from_mapping)
@@ -221,9 +212,8 @@ def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
 def _build_reference(raml: Raml, base: BaseShape, node: Reference, facets: list[Node], *, from_mapping: bool) -> None:
     """A name: bind it, take its kind, and record which edge this is.
 
-    The edge is the whole of docs/06 section 3.1. A mapping declaration narrows
-    the referent and so *inherits* from it; a bare scalar one is a pure
-    reference and so *aliases* it, borrowing its facets wholesale.
+    A mapping declaration narrows the referent and so inherits from it; a bare
+    scalar one aliases it, sharing its facets (docs/06 § 3).
     """
     resolver = base.anchor if base.anchor is not None else raml.resolver_at(base.location)
     ref = _lookup(base, node, resolver)
@@ -247,7 +237,7 @@ def _build_reference(raml: Raml, base: BaseShape, node: Reference, facets: list[
 
 
 def _lookup(base: BaseShape, node: Reference, resolver: ReferenceResolver | None) -> BaseShape:
-    """Bind one name in the scope the declaration captured (docs/04 section 4)."""
+    """Bind one name in the scope the declaration captured (docs/04 § 4)."""
     if resolver is None:
         raise RamlError.new(
             'no scope to resolve a type name in',
@@ -286,7 +276,7 @@ def _anonymous_base(raml: Raml, template: BaseShape) -> BaseShape:
 
     `string[]` is two declarations, not one. If the array and its item type
     shared a base, facets written beside the expression would leak onto the
-    item type. Exactly two fields carry over (docs/06 section 3): `anchor`, so
+    item type. Exactly two fields carry over (docs/06 § 3): `anchor`, so
     an inner reference resolves in the right namespace, and `type_expr`, so its
     column rebases onto the right scalar.
     """
@@ -323,7 +313,7 @@ def _nil(raml: Raml, template: BaseShape) -> BaseShape:
     return base
 
 
-# -- positions and tooling references (docs/06 sections 2.2 and 3.2) ----------
+# -- positions and tooling references (docs/06 § 2 and § 3) -------------------
 
 
 def _column(base: BaseShape, offset: int) -> Position:
@@ -349,7 +339,7 @@ def _note_reference(base: BaseShape, node: Reference, ref: BaseShape, resolver: 
     """Record a type name, so go-to-definition lands on the declaration.
 
     `lib.Type` emits two: the prefix navigates to the library file, the name to
-    the declaration inside it (docs/06 section 3.2).
+    the declaration inside it (docs/06 § 3).
     """
     if base.type_expr is None:
         return

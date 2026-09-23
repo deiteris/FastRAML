@@ -5,7 +5,7 @@ object. The split is load-bearing rather than tidy: the kind of a declaration is
 unknown when the object is created (`type: Foo` cannot be classified until `Foo`
 resolves), and it can change again during resolution, so the kind object has to
 be replaceable without invalidating any reference already taken to the
-`BaseShape`. See docs/05-type-model.md section 1.
+`BaseShape`. See docs/05-type-model.md § 1.
 
 `ScalarFacet` lives here too, because every facet of every shape is one, and a
 class that `types/` holds cannot live under `parser/` without inverting the
@@ -15,7 +15,7 @@ Nothing here has a runtime dependency on `fastraml.parser`: those names appear i
 annotations only, which `from __future__ import annotations` keeps as strings.
 Building a `ScalarFacet` from YAML does need the parser — an include has to be
 read, the annotated-scalar form unwrapped — so the builder stays in
-`fastraml.parser.facets`. See docs/02-architecture.md section 2.
+`fastraml.parser.facets`. See docs/02-architecture.md § 2.
 """
 
 from __future__ import annotations
@@ -102,7 +102,7 @@ TYPE_JSON: Final = 'json'
 TYPE_COMPOSITE: Final = 'composite'
 TYPE_RECURSIVE: Final = 'recursive'
 
-#: A declaration may not take one of these as its name (docs/04 section 5.1).
+#: A declaration may not take one of these as its name.
 BUILTIN_TYPES: Final = frozenset(
     {
         TYPE_ANY,
@@ -130,7 +130,7 @@ class ScalarFacet[T]:
 
     A facet is never a bare Python value, so `minLength must be <= maxLength`
     can point at the exact line that declared each. The companion rule
-    (docs/05 section 2): a facet holding a single scalar is a `ScalarFacet[T]`,
+    (docs/05 § 1): a facet holding a single scalar is a `ScalarFacet[T]`,
     one holding arbitrary user data is a `DataNode`.
     """
 
@@ -140,7 +140,7 @@ class ScalarFacet[T]:
     value_pos: Position = UNKNOWN
     #: Set when the value arrived through `!include`.
     include: IncludeInfo | None = None
-    #: Annotations collected from the annotated-scalar form (docs/03 section 7).
+    #: Annotations collected from the annotated-scalar form (docs/03 § 7).
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
 
     def __repr__(self) -> str:
@@ -158,7 +158,7 @@ class TypeExprRef:
 
     Nothing in the parser reads these. They cost one small object per name and
     are what lets a future LSP offer go-to-definition and hover without
-    re-lexing. See docs/06-type-expressions.md section 3.2.
+    re-lexing. See docs/06-type-expressions.md § 3.
     """
 
     #: 1-based, in the file that wrote the expression.
@@ -180,10 +180,10 @@ class BaseShape:
     Created before the kind is known, so `shape` starts as `None` and is filled
     by `make_shape` in the same breath — with an `UnknownShape` when the kind
     cannot be settled yet. `id` is unique within one parse, and is what the
-    clone operations key their memo on (docs/07 section 5).
+    clone operations key their memo on (docs/07 § 6).
     """
 
-    __slots__ = (  # noqa: RUF023 - grouped by role, as in docs/05 section 1
+    __slots__ = (  # noqa: RUF023 - grouped by role
         'id',
         'name',
         'type',
@@ -224,7 +224,7 @@ class BaseShape:
     def __init__(  # noqa: PLR0913 - a model constructor names its fields
         self,
         *,
-        id: int,  # noqa: A002 - the field is named `id` in docs/05 section 1
+        id: int,  # noqa: A002 - every model entity names its id field `id`
         raml: Raml,
         location: str,
         name: str | None = None,
@@ -250,7 +250,7 @@ class BaseShape:
         self.xml: XmlSerialization | None = None
         #: `allowedTargets:` on an annotation type. `None` and `[]` differ and
         #: the difference must survive to P10: absent means *any* target, empty
-        #: means none at all (docs/09 section B5).
+        #: means none at all (docs/09 § B4).
         self.allowed_targets: list[DomainLocation] | None = None
 
         # The containers are allocated eagerly: an empty dict costs less than a
@@ -281,7 +281,7 @@ class BaseShape:
     def __repr__(self) -> str:
         return f'BaseShape(id={self.id}, name={self.name!r}, type={self.type!r})'
 
-    # -- copying (docs/07-resolution-and-inheritance.md section 5) ------------
+    # -- copying (docs/07-resolution-and-inheritance.md § 6) -------------------
 
     def clone(self, memo: dict[int, BaseShape]) -> BaseShape:
         """A deep, **structure-preserving** copy.
@@ -346,7 +346,7 @@ class BaseShape:
 
         if self.link is not None and self.link.shape is not None:
             # A link is rewritten to inheritance at the start of unwrap
-            # (docs/07 section 2), and unwrap is the only thing that reads one.
+            # (docs/07 § 1), and unwrap is the only thing that reads one.
             # Doing it here rather than copying the fragment keeps a file to one
             # `DataTypeFragment` per parse, which invariant I3 depends on.
             clone.link = None
@@ -409,7 +409,7 @@ class BaseShape:
     def validate_at(self, value: Any, path: str) -> None:
         """Does `value` conform? The internal entry point; raises on failure.
 
-        **Enum first** (docs/10 section 5): when a shape has an `enum`,
+        **Enum first** (docs/10 § 3): when a shape has an `enum`,
         membership is the whole check, because `check()` already validated every
         member against the shape's facets.
         """
@@ -432,7 +432,7 @@ class BaseShape:
 
         An un-flattened shape shows only what its own declaration wrote, so it
         silently answers a different question: a child whose parent declared a
-        required property accepts a value that omits it (docs/13 § 7.4). P10
+        required property accepts a value that omits it (docs/13 § 3). P10
         unwraps a private copy for this reason, and a caller holding a shape from
         a `unwrap=False` parse has to do the same.
 
@@ -442,13 +442,13 @@ class BaseShape:
         value and is the hot path; the invariant covers the whole subtree once it
         holds at the root.
         """
-        assert self._unwrapped, (  # noqa: S101 - docs/02 section 4 invariant, not input validation
+        assert self._unwrapped, (  # noqa: S101 - invariant I12 (docs/02 § 4), not input validation
             'validate() needs an unwrapped shape: parse with ParseOptions(unwrap=True), '
             'or call unwrap_shape() on a detached clone'
         )
 
     def validate(self, value: Any) -> RamlError | None:
-        """The public data-validation entry point (docs/13 section 5).
+        """The public data-validation entry point (docs/13 § 3).
 
         Returns the failure rather than raising it: the common use is a
         boolean-ish check in a request handler, where an exception is the wrong
@@ -470,7 +470,7 @@ class BaseShape:
 @dataclass(slots=True, eq=False)
 class Property:
     """A named property, header, query parameter, URI parameter or facet
-    declaration — all six share one syntax (docs/05 section 5).
+    declaration — all share one syntax (docs/05 § 4).
     """
 
     name: str
@@ -497,7 +497,7 @@ class PatternProperty:
     """A `/regex/` key found inside `properties:`.
 
     Always optional by definition, and matched in declaration order — the first
-    pattern that matches wins (docs/05 section 5.1).
+    pattern that matches wins (docs/05 § 4).
     """
 
     pattern: re.Pattern[str]
@@ -508,7 +508,7 @@ class PatternProperty:
 
 
 #: Where a parameter is bound. `baseUriParameters` binds as `uri`: it declares
-#: the same thing about the same template variables (docs/08 section 8.2).
+#: the same thing about the same template variables (docs/08 § 6.2).
 type Binding = Literal['uri', 'query', 'header']
 
 
@@ -523,7 +523,7 @@ class Parameter:
     there — so a `Property` cannot say, and does not try to.
 
     That is also why it carries no id and no position: it is a record, and only
-    entities get ids (docs/02 section 3.1). A bound parameter is an entity. It
+    entities get ids (docs/02 § 3). A bound parameter is an entity. It
     holds the property rather than restating it, so the optionality rules of
     `make_property` stay in one place, and it adds the two facts the property
     has nowhere to put — the binding, and where the key was written.
@@ -562,15 +562,15 @@ class DeclarationFacet:
     A kind that has any publishes them in a class-level `DECLARATION_FACETS`
     table. `make_shape` reads the table off the class it is about to construct,
     builds the children itself, and passes them in under `fields`. The kind
-    never calls back into `shape.py`, which is what keeps `types/` pointing one
-    way (docs/02-architecture.md section 2).
+    never calls back into `shape.py`, so `shape.py` imports the kind modules
+    and never the reverse.
     """
 
     #: How to read the facet's value node.
     kind: Literal['shape', 'shape_list', 'properties']
     #: The constructor keywords the built children arrive under. `properties:`
     #: fills two, because `/regex/` keys inside it are routed to pattern
-    #: properties (docs/05 section 5.1).
+    #: properties (docs/05 § 4).
     fields: tuple[str, ...]
 
 
@@ -655,13 +655,11 @@ def _camel(name: str) -> str:
 class KindBase:
     """What every kind object shares: the back-pointer, and the unwritten half.
 
-    A shared base for the kind objects, not a facet hierarchy — doc 05 section 1
-    rules that out, and nothing here is a facet.
-    Keep it that way: a facet on this class would be a facet no `BaseShape`
-    knows about.
+    A shared base for the kind objects, not a facet hierarchy: a facet on this
+    class would be one no `BaseShape` knows about.
 
-    The default `decode_facets` is the last rule of doc 05 section 4: a key the
-    kind does not recognise is a custom facet value. Kinds with facets of their
+    The default `decode_facets` files a key the kind does not recognise as a
+    custom facet value (docs/05 § 3). Kinds with facets of their
     own handle those and pass the rest up.
     """
 
@@ -694,7 +692,7 @@ class KindBase:
         raise NotImplementedError
 
     def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> Shape:  # noqa: ARG002 - the four kinds that override this need `memo`
-        """Copy this kind onto an already-cloned `base` (docs/07 section 5).
+        """Copy this kind onto an already-cloned `base` (docs/07 § 6).
 
         Every facet a kind holds is a `ScalarFacet` or a list of them, and
         nothing ever mutates one in place — `inherit` only ever rebinds the
@@ -703,7 +701,7 @@ class KindBase:
 
         Driven off `__slots__` rather than written out seventeen times. That is
         sound here only because `__slots__` on every model class is a project
-        rule, not a convention (CLAUDE.md), so the field list cannot go stale.
+        rule (AGENTS.md), so the field list cannot go stale.
         """
         clone = type(self)(base)
         for name in copyable_slots(type(self)):
@@ -718,8 +716,7 @@ class Shape(Protocol):
     """The kind-specific half of a declaration.
 
     `inherit` and `alias_to` are deliberately *not* here — they are functions
-    over two `BaseShape`s in `types/inherit.py`, for the two reasons docs/05
-    section 1 gives. `check` and `validate` are, because they dispatch on kind
+    over two `BaseShape`s in `types/inherit.py` (see its docstring). `check` and `validate` are, because they dispatch on kind
     and recurse into their own children rather than through a driver.
     """
 

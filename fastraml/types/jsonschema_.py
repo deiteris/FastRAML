@@ -1,21 +1,20 @@
 """External JSON Schema types — `JsonShape` and the registry behind it.
 
-docs/10-validation.md section 6. A RAML type whose `type:` is a JSON document
+docs/10-validation.md § 7. A RAML type whose `type:` is a JSON document
 rather than a type name delegates both halves of validation to a compiled JSON
 Schema: `check()` is done at construction, and `validate()` runs the instance
 against the compiled validator.
 
 One `SchemaRegistry` per parse, so a `$ref` target shared by forty schemas is
-read and parsed once (section 6.1). Every read goes through `Raml.loader`, which
+read and parsed once. Every read goes through `Raml.loader`, which
 is what keeps the workspace sandbox and the remote-includes switch in force: a
 `$ref` to `http://json-schema.org/...` in an offline parse fails loudly rather
 than reaching the network.
 
 `JsonShape` lives here rather than beside the other structured kinds because
-compiling a schema needs `referencing` and the loader, and the section 6.3
-projection needs to *build* object, array and union shapes — so this module sits
-above `complex_.py` and `scalars.py` and is imported by `shape.py`
-(docs/02-architecture.md section 3).
+compiling a schema needs `referencing` and the loader, and the RAML projection
+needs to build object, array and union shapes, so this module sits above
+`complex_.py` and `scalars.py` and is imported by `shape.py`.
 """
 
 from __future__ import annotations
@@ -52,9 +51,8 @@ from fastraml.uris import uri_stem
 from fastraml.yamlnode import node_error
 
 if TYPE_CHECKING:
-    # Annotations only. Since Phase 9 this module compiles no pattern itself:
-    # every one goes through `regex_engine`, so the parse's choice applies here
-    # too (docs/01 deviation D3).
+    # Annotations only: every pattern is compiled through `regex_engine`, so
+    # the parse's engine applies to projected patterns too (docs/01 § 4.2).
     import re
 
     from referencing import Registry, Resource
@@ -89,7 +87,7 @@ _SCHEMA_MAPS: Final = frozenset(
 class CompiledSchema:
     """One compiled schema, and the two things the projection needs from it.
 
-    The validator alone would do for `validate()`, but § 6.3 walks the schema
+    The validator alone would do for `validate()`, but the projection walks the schema
     document itself and follows its `$ref`s, and both of those live behind
     private attributes of the validator.
     """
@@ -119,7 +117,7 @@ class _LoadFailure(Exception):  # noqa: N818 - not an error surface; a carrier
 
 
 class SchemaRegistry:
-    """The JSON Schema resources of one parse (docs/10 section 6.1).
+    """The JSON Schema resources of one parse (docs/10 § 7).
 
     Held on `Raml`, built on first use. The cache is what makes a shared `$ref`
     target linear rather than quadratic: `referencing`'s own registry is a
@@ -132,15 +130,12 @@ class SchemaRegistry:
     def __init__(self, raml: Raml) -> None:
         self._raml = raml
         self._resources: dict[str, Resource[Any]] = {}
-        #: Section 6.3 projections by the subschema's canonical URI, with the
-        #: named definitions a walk of the whole document collected.
+        #: Projections by the subschema's canonical URI, with the named
+        #: definitions a walk of the whole document collected.
         #:
-        #: One entry per URI, however the walk reached it. A schema file is
-        #: reached twice -- as the RAML type that `!include`d it, and as the
-        #: target of another schema's `$ref` -- and those are one subschema, so
-        #: they are one shape. Two tables made them two: `walk.py` addressed
-        #: both from the same `location` and `claim` split one document's
-        #: properties across two addresses rather than reporting a collision.
+        #: One entry per URI, however the walk reached it: a schema file reached
+        #: as the RAML type that `!include`d it and as another schema's `$ref`
+        #: target is one subschema, so it is one shape (and one view address).
         self._projections: dict[str, tuple[BaseShape, dict[str, BaseShape]]] = {}
 
     def projected(self, uri: str) -> tuple[BaseShape, dict[str, BaseShape]] | None:
@@ -214,11 +209,11 @@ class SchemaRegistry:
         """Refuse a schema nested past the parse's ceiling, before anything walks it.
 
         Three separate recursions run over a decoded schema — `check_schema`
-        inside the schema library, `_prefetch` here, and the § 6.3 projection —
+        inside the schema library, `_prefetch` here, and the RAML projection —
         and the first of them is not ours to guard from the inside. A 200-level
         schema exhausts CPython's stack inside `jsonschema`'s meta-schema
-        validation and surfaces as `RecursionError`, which docs/12 section 14
-        forbids outright. Measuring the depth first is one iterative pass over a
+        validation and surfaces as `RecursionError`, which docs/12 § 3
+        forbids. Measuring the depth first is one iterative pass over a
         document already in memory, and it makes all three safe at once.
         """
         limit = self._raml.max_depth
@@ -385,8 +380,7 @@ def schema_registry(raml: Raml) -> SchemaRegistry:
     """The parse's registry, built on first use.
 
     Not built in `Raml.__init__`: `registry.py` imports nothing from `types/` at
-    runtime, and that rule is what keeps the import graph acyclic
-    (docs/02-architecture.md section 3).
+    runtime (docs/02-architecture.md § 2).
     """
     existing = raml.json_schema_registry
     if existing is None:
@@ -400,7 +394,7 @@ class JsonShape(ComplexKind):
 
     RAML sibling facets that reach this kind are rejected. Common facets are
     removed by `shape.py` first and are currently accepted by the parser; see
-    docs/10-validation.md section 7 for the exact behavior. Inheritance can
+    docs/10-validation.md § 7 for the exact behavior. Inheritance can
     merge only an identical schema.
 
     The schema is compiled at construction, not at `check()`: malformed JSON in
@@ -462,7 +456,7 @@ class JsonShape(ComplexKind):
                 err, str(getattr(err, 'ref', '')), self.base.location, self.base.value_pos
             ) from err
 
-    # -- the projection (docs/10 section 6.3) ---------------------------------
+    # -- the projection (docs/10 § 7) -----------------------------------------
 
     def as_shape(self) -> BaseShape | None:
         """The nearest RAML shape to this schema, built once and cached.
@@ -556,7 +550,7 @@ class JsonShape(ComplexKind):
 def projected(base: BaseShape) -> BaseShape:
     """`base` as a consumer walking structure should see it.
 
-    A JSON-schema type through its § 6.3 projection, anything else unchanged.
+    A JSON-schema type through its RAML projection, anything else unchanged.
     One function rather than the same `isinstance(shape, JsonShape)` in every
     consumer, because a consumer that forgets it does not fail — it sees a leaf
     with no properties, no items and no facets, and reports that a schema type
@@ -576,7 +570,7 @@ def subschema_document(base: BaseShape) -> str | None:
     """The schema document `base` is a subschema of, or `None` if it is not one.
 
     A view shape's `location` is its canonical URI, document plus JSON Pointer
-    (docs/16 section 3.2b), so the fragment separator *is* the test. A shape the
+    so the fragment separator is the test. A shape the
     RAML document declared carries a plain file URI.
 
     This is what makes `BaseShape.name` readable. That field holds a property key
@@ -593,7 +587,7 @@ def subschema_document(base: BaseShape) -> str | None:
     return document if separator else None
 
 
-# -- section 6.3: JSON Schema -> the nearest RAML shape -------------------------
+# -- JSON Schema -> the nearest RAML shape (docs/10 § 7) -----------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -700,7 +694,7 @@ def _view_base(context: _Projection, name: str | None = None) -> BaseShape:
     document = _document_of(context.resolver)
     location = _subschema_uri(context, document)
     base = BaseShape(
-        id=context.parent._raml.next_id(),  # noqa: SLF001 - one counter per parse (docs/02 § 3.1)
+        id=context.parent._raml.next_id(),  # noqa: SLF001 - one counter per parse (docs/02 § 3)
         raml=context.parent._raml,  # noqa: SLF001 - as above
         location=location or context.parent.location,
         name=name or (_subschema_name(location) if location else None),
@@ -710,13 +704,13 @@ def _view_base(context: _Projection, name: str | None = None) -> BaseShape:
 
 
 def _project(context: _Projection, contents: Any, visiting: dict[int, BaseShape]) -> BaseShape:
-    """One schema node, as the table in docs/10 section 6.3 maps it."""
+    """One schema node, projected onto the nearest RAML shape (docs/10 § 7)."""
     # `visiting` holds one entry per level currently open — it is added to
     # before descending and removed in a `finally` — so its size *is* the depth,
     # and the guard costs a `len`. Each document was already bounded by
     # `_check_nesting`; what this catches is a chain of `$ref`s across many
     # shallow documents, which nests as deep as the chain is long.
-    if len(visiting) > context.parent._raml.max_depth:  # noqa: SLF001 - the parse's ceiling (docs/12 § 14)
+    if len(visiting) > context.parent._raml.max_depth:  # noqa: SLF001 - the parse's ceiling (docs/12 § 3)
         raise RamlError.new(
             'JSON schema nesting too deep',
             context.parent.location,
@@ -754,18 +748,16 @@ def _project_reference(context: _Projection, reference: str, visiting: dict[int,
     head = visiting.get(id(resolved.contents))
     if head is not None:
         # The back-edge of a cycle, which is exactly what P9 produces for a
-        # recursive RAML type (docs/07 section 4).
+        # recursive RAML type (docs/07 § 6).
         base = _view_base(context, head.name)
         base.type = TYPE_RECURSIVE
         base.shape = RecursiveShape(base, head)
         return base
 
     uri = f'{document}#{target}'
-    # By the rule `_view_base` names a shape by, so a target reached through a
-    # `$ref` and the same target reached by descent agree. The pointer's last
-    # segment alone named `#/properties/foo` `foo` one way and left it nameless
-    # the other. A reference with no pointer names the whole document, which
-    # `_view_base` already calls after its file.
+    # Named by the rule `_view_base` uses, so a target reached through a `$ref`
+    # and the same target reached by descent agree. A reference with no pointer
+    # names the whole document, which `_view_base` already calls after its file.
     name = _subschema_name(uri) if target else None
     if name is not None:
         existing = context.defs.get(name)
@@ -828,7 +820,7 @@ def _project_body(context: _Projection, contents: dict, base: BaseShape, visitin
         return _project_all_of(context, contents['allOf'], base, visiting)
     for keyword in ('oneOf', 'anyOf'):
         # `oneOf`'s exactly-one semantics is lost. RAML's union is "at least
-        # one" and there is nothing nearer; doc 10 § 6.3 records the loss.
+        # one" and there is nothing nearer; docs/10 § 7 records the loss.
         members = contents.get(keyword)
         if members:
             return _project_union(context, keyword, members, base, visiting)
@@ -892,7 +884,7 @@ def _inferred_type(contents: dict) -> str | None:
     validation here is unaffected — it goes to the real validator, which has
     those semantics.
 
-    The § 6.3 *projection* has to pick a kind, because RAML has no way to spell
+    The projection has to pick a kind, because RAML has no way to spell
     "a constraint that applies only to objects, and is silent otherwise". When
     every keyword present points at one kind, that kind is the least-lossy pick.
 
@@ -901,10 +893,9 @@ def _inferred_type(contents: dict) -> str | None:
     express — this returns `None` and the shape stays `any` rather than silently
     choosing. Losing the constraints is bad; claiming the wrong kind is worse.
 
-    Written for `allOf`, where a member almost never repeats `"type"`: the
-    enclosing schema already said it. Projecting such a member as `any` and then
-    merging it made `inherit` refuse — "cannot inherit from different type" —
-    which took down the projection of the whole schema.
+    Needed for `allOf`, where a member rarely repeats `"type"`: projected as
+    `any`, such a member would make `inherit` refuse the merge ("cannot inherit
+    from different type") and fail the projection of the whole schema.
     """
     implied = {_KEYWORD_TYPE[keyword] for keyword in contents if keyword in _KEYWORD_TYPE}
     return implied.pop() if len(implied) == 1 else None
@@ -937,7 +928,7 @@ def _project_union(
     return _kind(base, TYPE_UNION, UnionShape, any_of=projected)
 
 
-def _project_type(  # noqa: PLR0911 - one return per row of the table in docs/10 § 6.3
+def _project_type(  # noqa: PLR0911 - one return per projected kind
     context: _Projection, declared: str, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]
 ) -> BaseShape:
     match declared:
@@ -1056,7 +1047,7 @@ def _fraction_facet(base: BaseShape, value: Any) -> ScalarFacet[Fraction] | None
 
     `json.loads` already made a `float` of `1.1`, so the conversion goes through
     its decimal text: `Fraction(repr(v))` recovers `11/10`, while the binary
-    ratio would not divide evenly by anything the author wrote (docs/10 § 5.3).
+    ratio would not divide evenly by anything the author wrote (docs/10 § 5).
     """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -1069,7 +1060,7 @@ def _pattern_facet(base: BaseShape, value: Any) -> ScalarFacet[re.Pattern[str]] 
     if not isinstance(value, str):
         return None
     try:
-        compiled = regex_engine(base._raml).compile(value)  # noqa: SLF001 - the parse's engine (docs/01 D3)
+        compiled = regex_engine(base._raml).compile(value)  # noqa: SLF001 - the parse's engine (docs/01 § 4.2)
     except ImportError:
         raise
     except Exception:  # noqa: BLE001 - whatever the selected engine raises

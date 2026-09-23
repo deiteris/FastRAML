@@ -189,6 +189,20 @@ TAG_INCLUDE: Final = '!include'
 
 _STANDARD_TAG_PREFIX: Final = 'tag:yaml.org,2002:'
 
+#: The short form of each tag the resolver assigns, built once rather than per
+#: node: slicing a new string for every one of a document's nodes was the
+#: composer's third-largest allocation (docs/12 § 2).
+_SHORT_TAGS: Final = {
+    _STANDARD_TAG_PREFIX + name: '!!' + name
+    for name in ('str', 'int', 'float', 'bool', 'null', 'timestamp', 'map', 'seq', 'merge', 'binary', 'set', 'omap')
+}
+
+#: The `content` of every node created without children. Shared, so a scalar
+#: allocates no list; safe because no pass edits a node's `content` in place
+#: (`with_content` builds a new node instead). `tests/conftest.py` checks it
+#: is still empty after the whole suite.
+_NO_CONTENT: Final[list[Node]] = []
+
 #: YAML 1.1 reads these as line breaks; YAML 1.2 says they are ordinary
 #: characters. PyYAML's scanner implements 1.1, so an unquoted scalar containing
 #: one is split and fails elsewhere (docs/03 § 2.1).
@@ -221,9 +235,12 @@ class Node:
     is a `dict[Node, ParseCtx]` keyed by object identity, and the trait merge
     preserves node identity so those lookups stay valid.
     See docs/08-templates-and-endpoints.md § 4.
+
+    A node is never edited after it is built, which is what lets `content`
+    default to one shared empty list and `position` be built once.
     """
 
-    __slots__ = ('column', 'content', 'end_column', 'end_line', 'kind', 'line', 'tag', 'value')
+    __slots__ = ('_position', 'column', 'content', 'end_column', 'end_line', 'kind', 'line', 'tag', 'value')
 
     def __init__(  # noqa: PLR0913, PLR0917 - a node is eight fields of plain data
         self,
@@ -239,11 +256,12 @@ class Node:
         self.kind = kind
         self.tag = tag
         self.value = value
-        self.content: list[Node] = content if content is not None else []
+        self.content: list[Node] = content if content is not None else _NO_CONTENT
         self.line = line
         self.column = column
         self.end_line = end_line
         self.end_column = end_column
+        self._position: Position | None = None
 
     def __repr__(self) -> str:
         where = f'{self.line}:{self.column}'
@@ -253,8 +271,16 @@ class Node:
 
     @property
     def position(self) -> Position:
-        """The span of this node's own token."""
-        return Position(self.line, self.column, self.end_line, self.end_column)
+        """The span of this node's own token.
+
+        Built on first use and kept: template application shares a trait's
+        nodes by pointer, so every entity decoded from one node shares its
+        `Position` rather than holding a copy (docs/12 § 2).
+        """
+        position = self._position
+        if position is None:
+            position = self._position = Position(self.line, self.column, self.end_line, self.end_column)
+        return position
 
     @property
     def full_position(self) -> Position:
@@ -508,6 +534,9 @@ class _Converter:
         empty scalar and silently parses as an empty value; the TCK has a
         fixture for it.
         """
+        short = _SHORT_TAGS.get(tag)
+        if short is not None:
+            return short
         if tag.startswith(_STANDARD_TAG_PREFIX):
             return '!!' + tag[len(_STANDARD_TAG_PREFIX) :]
         if tag.startswith('!') and not tag.startswith('!!') and tag != TAG_INCLUDE:

@@ -26,6 +26,12 @@ can duplicate declarations; copying a node can lose its provenance.
   applicable; identity-based nodes must not acquire generated equality.
 - YAML mapping content is stored as a flat alternating list. Hot decoders should
   index it directly instead of allocating tuples or temporary dictionaries.
+- Allocate per distinct value, not per use. A childless `Node` shares one
+  empty `content` list, `Node.position` is built once per node, and the
+  composer takes short tags from a table. Template application shares a
+  trait's nodes by pointer, so every entity decoded from them shares their
+  `Position`. Long-lived objects are what the cyclic GC re-scans, so each one
+  avoided also shortens every later collection.
 - Prefer compiled regular expressions and C-level string operations to
   per-character Python loops.
 - Numeric validation keeps integer comparisons on the integer path and converts

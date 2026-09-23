@@ -63,6 +63,17 @@ class TestStructure:
         _, user = next(pairs(types))
         assert [n.value for n in user.content] == ['type', 'string']
 
+    def test_scalars_share_one_empty_content_list(self):
+        # docs/12 § 2: a scalar allocates no list of its own. Sound only
+        # because no pass edits `content` in place; tests/conftest.py checks
+        # the shared list is still empty after the whole suite.
+        root = parse('a: 1\nb: [x]\n')
+        one = root.content[1]
+        item = root.content[3].content[0]
+        assert one.content == []
+        assert one.content is item.content
+        assert root.content is not one.content
+
 
 class TestIdentity:
     def test_nodes_hash_by_identity(self):
@@ -113,6 +124,13 @@ class TestPositions:
         assert end_line(root) == 3
         assert end_column(root) == 13
 
+    def test_a_nodes_position_is_built_once(self):
+        # docs/12 § 2: every entity decoded from one node shares its
+        # `Position`; a trait applied a thousand times allocates one.
+        _, value = next(pairs(parse('title: My API\n')))
+        assert value.position is value.position
+        assert (value.position.line, value.position.end_column) == (1, 14)
+
 
 class TestTags:
     @pytest.mark.parametrize(
@@ -161,6 +179,11 @@ class TestTags:
     def test_yamls_own_tags_are_not_local_tags(self):
         _, value = next(pairs(parse('x: !!str 5\n')))
         assert value.tag == TAG_STR
+
+    def test_a_standard_tag_outside_the_table_is_still_shortened(self):
+        # The table of short tags is a cache, not a whitelist.
+        _, value = next(pairs(parse('x: !!python/none\n')))
+        assert value.tag == '!!python/none'
 
     def test_merge_keys_are_preserved_not_expanded(self):
         # RAML gives `<<` no meaning. Preserving it lets a decoder report

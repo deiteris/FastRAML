@@ -257,14 +257,17 @@ class Linearity:
         return self.full.seconds / (2 * self.half.seconds)
 
     @property
-    def memory_ratio(self) -> float:
+    def peak_ratio(self) -> float:
         return self.full.allocated_bytes / (2 * self.half.allocated_bytes)
 
+    @property
+    def retained_ratio(self) -> float:
+        return self.full.retained_bytes / (2 * self.half.retained_bytes)
+
     def failures(self) -> list[str]:
+        ratios = (('time', self.time_ratio), ('peak memory', self.peak_ratio), ('retained memory', self.retained_ratio))
         return [
-            f'{what} ratio to linear {ratio:.3f}'
-            for what, ratio in (('time', self.time_ratio), ('memory', self.memory_ratio))
-            if abs(ratio - 1.0) > LINEARITY_TOLERANCE
+            f'{what} ratio to linear {ratio:.3f}' for what, ratio in ratios if abs(ratio - 1.0) > LINEARITY_TOLERANCE
         ]
 
 
@@ -290,9 +293,11 @@ def linearity(names: Sequence[str], repeat: int, scale: float) -> int:
     for name in names:
         result = measure_linearity(name, scale=scale, repeat=repeat)
         print(
-            f'{name}/{result.config}: time {result.full.seconds * 1e3:.1f} / {result.half.seconds * 1e3:.1f} ms '
-            f'= {result.time_ratio:.3f}, memory {result.full.allocated_bytes / 1e6:.1f} / '
-            f'{result.half.allocated_bytes / 1e6:.1f} MB = {result.memory_ratio:.3f}'
+            f'{name}/{result.config}: time {result.time_ratio:.3f} '
+            f'({result.full.seconds * 1e3:.1f} / {result.half.seconds * 1e3:.1f} ms), '
+            f'peak {result.peak_ratio:.3f} ({result.full.allocated_bytes / 1e6:.1f} / '
+            f'{result.half.allocated_bytes / 1e6:.1f} MB), retained {result.retained_ratio:.3f} '
+            f'({result.full.retained_bytes / 1e6:.1f} / {result.half.retained_bytes / 1e6:.1f} MB)'
         )
         for failure in result.failures():
             print(f'  FAIL: {failure}, outside {LINEARITY_TOLERANCE * 100:.0f} %')

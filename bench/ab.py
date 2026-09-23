@@ -9,10 +9,11 @@ Each side reports the best of its rounds, and a *noise* figure: the spread of
 its own rounds, the larger of the two sides. A time delta inside the noise is
 reported as noise, not as a result.
 
-Memory is compared as well, through `tracemalloc`'s peak for one build. It
-barely varies between runs, so a small delta there is real, and it is the
-number that shows a field added to every shape, or a cache kept alive on the
-model. RSS is shown for information only: it includes the interpreter.
+Memory is compared twice, as `bench/harness.py` measures it: the traced peak
+of one build with the collector paused, and what the result retains. These
+show a field added to every shape, or a cache kept alive on the model, and
+they barely vary between runs; each still gets a noise figure and a verdict.
+RSS is shown for information only: it includes the interpreter.
 
 The revision is checked out as a detached worktree, and this tree's `bench/` is
 copied into it, so both sides read byte-identical corpora and differ only in
@@ -94,7 +95,8 @@ def run_ab(  # noqa: PLR0913 - the suite's own selectors, plus the revision and 
         print(f'A = {label} ({ref}), B = this tree; {rounds} rounds, best of {repeat} per round')
         print(
             f'{"bench/config":<26} {"A ms":>8} {"B ms":>8} {"time":>8} {"noise":>6}  '
-            f'{"A alloc":>9} {"B alloc":>9} {"alloc":>8}  {"A rss":>7} {"B rss":>7}'
+            f'{"A peak":>9} {"B peak":>9} {"peak":>8}  {"A kept":>9} {"B kept":>9} {"kept":>8}  '
+            f'{"A rss":>7} {"B rss":>7}'
         )
         for name in names:
             corpus_root = Path(tempfile.mkdtemp(prefix=f'fastraml-ab-{name}-'))
@@ -122,16 +124,27 @@ def run_ab(  # noqa: PLR0913 - the suite's own selectors, plus the revision and 
 
 def _row(key: str, a: Sequence[Measurement], b: Sequence[Measurement]) -> str:
     a_time, b_time = min(m.seconds for m in a), min(m.seconds for m in b)
-    noise = max(_spread([m.seconds for m in a]), _spread([m.seconds for m in b]))
-    delta = b_time / a_time - 1.0
-    verdict = f'{delta * 100:+7.1f}%' if abs(delta) > noise else '   noise'
-    a_alloc, b_alloc = min(m.allocated_bytes for m in a), min(m.allocated_bytes for m in b)
-    alloc_delta = b_alloc / a_alloc - 1.0 if a_alloc else 0.0
+    time_noise = max(_spread([m.seconds for m in a]), _spread([m.seconds for m in b]))
     return (
-        f'{key:<26} {a_time * 1e3:8.1f} {b_time * 1e3:8.1f} {verdict} {noise * 100:5.1f}%  '
-        f'{a_alloc / 1e6:7.2f}MB {b_alloc / 1e6:7.2f}MB {alloc_delta * 100:+7.1f}%  '
+        f'{key:<26} {a_time * 1e3:8.1f} {b_time * 1e3:8.1f} {_verdict(a_time, b_time, time_noise)} '
+        f'{time_noise * 100:5.1f}%  {_memory(a, b, "allocated_bytes")}  {_memory(a, b, "retained_bytes")}  '
         f'{_rss(a):>7} {_rss(b):>7}'
     )
+
+
+def _memory(a: Sequence[Measurement], b: Sequence[Measurement], field: str) -> str:
+    """One memory figure for both sides, and its verdict against their spread."""
+    a_values = [getattr(m, field) for m in a]
+    b_values = [getattr(m, field) for m in b]
+    a_bytes, b_bytes = min(a_values), min(b_values)
+    noise = max(_spread(a_values), _spread(b_values)) if a_bytes and b_bytes else 0.0
+    return f'{a_bytes / 1e6:7.3f}MB {b_bytes / 1e6:7.3f}MB {_verdict(a_bytes, b_bytes, noise)}'
+
+
+def _verdict(a: float, b: float, noise: float) -> str:
+    """The delta, or `noise` when it is no larger than either side's own spread."""
+    delta = b / a - 1.0 if a else 0.0
+    return f'{delta * 100:+7.1f}%' if abs(delta) > noise else '   noise'
 
 
 def _rss(side: Sequence[Measurement]) -> str:

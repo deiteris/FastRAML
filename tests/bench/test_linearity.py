@@ -45,14 +45,15 @@ ATTEMPTS = 3
 def test_linear_in_input_size_in_time_and_memory(name):
     """`large` for the general pipeline; each feature workload for its own code.
 
-    Memory is the `tracemalloc` peak of one build. A cache kept on the model, or
-    a copy per union member, grows it; superlinear growth there is the same bug
-    as in time, and it does not hide behind a noisy machine.
+    Memory is checked twice (`bench/harness.py`): the peak of one build with the
+    collector paused, and what the result retains. A cache kept on the model, or
+    a copy per union member, grows them; superlinear growth there is the same
+    bug as in time, and it does not hide behind a noisy machine.
     """
     result = measure_linearity(name, scale=SCALE, repeat=3, attempts=ATTEMPTS)
     assert not result.failures(), (
         f'{name}/{result.config}: {result.full.seconds * 1e3:.1f} ms and '
-        f'{result.full.allocated_bytes / 1e6:.1f} MB at full size against '
-        f'{result.half.seconds * 1e3:.1f} ms and {result.half.allocated_bytes / 1e6:.1f} MB at half: '
+        f'{result.full.retained_bytes / 1e6:.1f} MB retained at full size against '
+        f'{result.half.seconds * 1e3:.1f} ms and {result.half.retained_bytes / 1e6:.1f} MB at half: '
         f'{", ".join(result.failures())} (tolerance {LINEARITY_TOLERANCE}), best of {ATTEMPTS}'
     )

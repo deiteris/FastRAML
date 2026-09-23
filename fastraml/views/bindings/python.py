@@ -46,7 +46,8 @@ import tempfile
 from functools import cache
 from typing import TYPE_CHECKING, Final
 
-from .schema import PRODUCES, Container, ContractSchema, Holds, Structural, contract_schema
+from .output import write_rendered
+from .schema import JSON_ONLY, PRODUCES, Container, ContractSchema, Holds, Structural, contract_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -246,15 +247,8 @@ def _typed_dicts(schema: ContractSchema, behind: _Behind) -> list[str]:
     other, so declaring the earlier ones first would only move which are quoted.
     """
     written: dict[str, list[str]] = {}
-    for method, name in PRODUCES.items():
-        found = schema.projector.get(method)
-        if found is None:
-            raise LookupError(f'PRODUCES names `{method}`, which is not a _Projector method')
-        lines = written.setdefault(name, [])
-        for key in found.required:
-            lines.append(_field(schema, name, key, behind, optional=False))
-        for key in found.optional:
-            lines.append(_field(schema, name, key, behind, optional=True))
+    for name, key, optional in schema.produced_keys():
+        written.setdefault(name, []).append(_field(schema, name, key, behind, optional=optional))
 
     return [f'class {name}(TypedDict):\n' + '\n'.join(dict.fromkeys(lines)) for name, lines in written.items()]
 
@@ -276,17 +270,7 @@ def _annotation(spelling: str, behind: _Behind, *, optional: bool) -> str:
 
 def _shape(schema: ContractSchema, behind: _Behind) -> list[str]:
     """A common shape record and one discriminator-derived TypedDict per kind."""
-    found = schema.projector.get('shape')
-    if found is None:
-        raise LookupError('_Projector.shape not found')
-    # Including what it delegates to, for the reason the TypeScript backend
-    # gives: reading only `shape()` means a key added to a delegate reaches the
-    # tree and never reaches this file, silently.
-    delegated = schema.delegated_fields(found)
-    known = set(found.required) | set(found.optional) | set(delegated)
-    undeclared = sorted(known - set(schema.structural['ShapeBase']))
-    if undeclared:
-        raise LookupError(f"shape() emits {undeclared}, not declared under 'ShapeBase' in schema.py")
+    found, delegated = schema.shape_projection()
 
     # `type` is left off the base and declared on each variant: a TypedDict
     # subclass may not re-declare a key, so this is the only way the
@@ -296,14 +280,10 @@ def _shape(schema: ContractSchema, behind: _Behind) -> list[str]:
     # at all is the caller's condition, not the delegate's. JSON-schema fields
     # are the exception: they belong only to JsonShape below.
     base += [
-        _field(schema, 'ShapeBase', name, behind, optional=True)
-        for name in found.optional
-        if name not in {'json_schema', 'projection'}
+        _field(schema, 'ShapeBase', name, behind, optional=True) for name in found.optional if name not in JSON_ONLY
     ]
 
-    by_model: dict[str, list[str]] = {}
-    for kind in schema.shape_kinds:
-        by_model.setdefault(kind.model, []).append(kind.name)
+    by_model = schema.kinds_by_model()
 
     variants: list[str] = []
     for model, names in by_model.items():
@@ -316,9 +296,7 @@ def _shape(schema: ContractSchema, behind: _Behind) -> list[str]:
             lines.append(f'    {facet.name}: {_annotation(spelling, behind, optional=True)}{note}')
         if model == 'JsonShape':
             lines.extend(
-                _field(schema, 'ShapeBase', name, behind, optional=True)
-                for name in delegated
-                if name in {'json_schema', 'projection'}
+                _field(schema, 'ShapeBase', name, behind, optional=True) for name in delegated if name in JSON_ONLY
             )
         variants.append(f'class {model}(ShapeBase):\n' + '\n'.join(lines))
 
@@ -480,20 +458,11 @@ def main(arguments: Sequence[str] | None = None) -> None:
     )
     parser.add_argument('--conform', help='where to write the conformance driver; vendor it beside --runtime')
     options = parser.parse_args(arguments)
-    _write(options.output, python())
+    write_rendered(options.output, python())
     if options.runtime:
-        _write(options.runtime, python_runtime())
+        write_rendered(options.runtime, python_runtime())
     if options.conform:
-        _write(options.conform, python_conform())
-
-
-def _write(destination: str, rendered: str) -> None:
-    if destination == '-':
-        sys.stdout.write(rendered)
-        return
-    path = pathlib.Path(destination)
-    path.write_text(rendered, encoding='utf-8')
-    sys.stdout.write(f'wrote {path.resolve()}\n')
+        write_rendered(options.conform, python_conform())
 
 
 if __name__ == '__main__':

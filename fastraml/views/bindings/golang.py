@@ -45,10 +45,10 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
-import sys
 from typing import TYPE_CHECKING, Final
 
-from .schema import PRODUCES, Container, ContractSchema, Holds, Structural, contract_schema
+from .output import write_rendered
+from .schema import JSON_ONLY, Container, ContractSchema, Holds, Structural, contract_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -153,8 +153,6 @@ _DOC: Final = {
     'Example': 'Example is one example value and what the author said about it.',
 }
 
-#: Fields that only a `json` shape carries. Named once, read twice.
-_JSON_ONLY: Final = frozenset({'json_schema', 'projection'})
 
 #: The hand-written half of the binding, verbatim. It is a `.go` file because
 #: nothing in it varies with the schema: `gofmt` checks it, an editor highlights
@@ -389,15 +387,8 @@ def _vocabularies(schema: ContractSchema) -> str:
 def _structs(schema: ContractSchema) -> list[str]:
     """One struct per structural producer, keys checked against the source."""
     written: dict[str, list[tuple[str, str, str, str]]] = {}
-    for method, name in PRODUCES.items():
-        found = schema.projector.get(method)
-        if found is None:
-            raise LookupError(f'PRODUCES names `{method}`, which is not a _Projector method')
-        rows = written.setdefault(name, [])
-        for key in found.required:
-            rows.append(_row(schema, name, key, optional=False))
-        for key in found.optional:
-            rows.append(_row(schema, name, key, optional=True))
+    for name, key, optional in schema.produced_keys():
+        written.setdefault(name, []).append(_row(schema, name, key, optional=optional))
 
     return [_struct(name, _DOC.get(name, f'{name} is one node of the tree.'), rows) for name, rows in written.items()]
 
@@ -430,17 +421,7 @@ def _optional(spelling: str) -> str:
 
 def _shape(schema: ContractSchema) -> list[str]:
     """The Shape interface, its base, one struct per kind, and the dispatcher."""
-    found = schema.projector.get('shape')
-    if found is None:
-        raise LookupError('_Projector.shape not found')
-    # Including what it delegates to, for the reason the TypeScript backend
-    # gives: reading only `shape()` means a key added to a delegate reaches the
-    # tree and never reaches this file, silently.
-    delegated = schema.delegated_fields(found)
-    known = set(found.required) | set(found.optional) | set(delegated)
-    undeclared = sorted(known - set(schema.structural['ShapeBase']))
-    if undeclared:
-        raise LookupError(f"shape() emits {undeclared}, not declared under 'ShapeBase' in schema.py")
+    found, delegated = schema.shape_projection()
 
     # `type` is left off the base and declared on each variant: it is what the
     # union discriminates on, and it is what `ShapeKind` returns.
@@ -448,11 +429,9 @@ def _shape(schema: ContractSchema) -> list[str]:
     # A delegate's keys are optional whatever it says of them: whether it runs at
     # all is the caller's condition, not the delegate's. JSON-schema fields are
     # the exception: they belong only to JsonShape below.
-    base += [_row(schema, 'ShapeBase', name, optional=True) for name in found.optional if name not in _JSON_ONLY]
+    base += [_row(schema, 'ShapeBase', name, optional=True) for name in found.optional if name not in JSON_ONLY]
 
-    by_model: dict[str, list[str]] = {}
-    for kind in schema.shape_kinds:
-        by_model.setdefault(kind.model, []).append(kind.name)
+    by_model = schema.kinds_by_model()
 
     # No `Shape` interface here: it holds nothing derived, so it is hand-written
     # in `static/tree.go` beside the two functions that read it.
@@ -478,7 +457,7 @@ def _shape(schema: ContractSchema) -> list[str]:
             spelling = _spelling(schema.facet_structure(facet))
             rows.append(_field(facet.name, spelling, optional=True, note=note))
         if model == 'JsonShape':
-            rows += [_row(schema, 'ShapeBase', name, optional=True) for name in delegated if name in _JSON_ONLY]
+            rows += [_row(schema, 'ShapeBase', name, optional=True) for name in delegated if name in JSON_ONLY]
         spelled = ' or '.join(f'`{name}`' for name in names)
         blocks.append(_struct(model, f'{model} is the expanded form of a type whose kind is {spelled}.', rows))
         blocks.append(
@@ -606,20 +585,11 @@ def main(arguments: Sequence[str] | None = None) -> None:
     )
     parser.add_argument('--runtime', help='where to write the reading half; a second file in the same package')
     options = parser.parse_args(arguments)
-    _write(options.output, golang(options.package))
+    write_rendered(options.output, golang(options.package))
     if options.runtime:
-        _write(options.runtime, golang_runtime(options.package))
+        write_rendered(options.runtime, golang_runtime(options.package))
     if options.conform:
-        _write(options.conform, golang_conform(options.conform_import))
-
-
-def _write(destination: str, rendered: str) -> None:
-    if destination == '-':
-        sys.stdout.write(rendered)
-        return
-    path = pathlib.Path(destination)
-    path.write_text(rendered, encoding='utf-8')
-    sys.stdout.write(f'wrote {path.resolve()}\n')
+        write_rendered(options.conform, golang_conform(options.conform_import))
 
 
 if __name__ == '__main__':

@@ -170,6 +170,48 @@ class ContractSchema:
             )
         return found
 
+    def produced_keys(self) -> Iterator[tuple[str, str, bool]]:
+        """`(record, key, optional)` for every structural producer in `PRODUCES`.
+
+        Required keys first, then optional ones, producer by producer: the order
+        every backend declares them in.
+        """
+        for method, record in PRODUCES.items():
+            found = self.projector.get(method)
+            if found is None:
+                raise LookupError(f'PRODUCES names `{method}`, which is not a _Projector method')
+            for key in found.required:
+                yield record, key, False
+            for key in found.optional:
+                yield record, key, True
+
+    def shape_projection(self) -> tuple[Emitted, tuple[str, ...]]:
+        """`_Projector.shape` and the keys its delegates merge in, checked.
+
+        Including what it delegates to. `shape()` merges two methods' results
+        into its own: `kind_facets`, whose keys are the kinds' facets, and
+        `json_schema`, whose keys are literal. Reading only `shape()` meant a
+        key added to a delegate reached the tree and never reached a generated
+        file -- the one failure the generators exist to make impossible, and it
+        was silent, which is worse than the wrong type.
+        """
+        found = self.projector.get('shape')
+        if found is None:
+            raise LookupError('_Projector.shape not found')
+        delegated = self.delegated_fields(found)
+        known = set(found.required) | set(found.optional) | set(delegated)
+        undeclared = sorted(known - set(self.structural['ShapeBase']))
+        if undeclared:
+            raise LookupError(f"shape() emits {undeclared}, not declared under 'ShapeBase' in schema.py")
+        return found, delegated
+
+    def kinds_by_model(self) -> dict[str, list[str]]:
+        """Each model class, and the discriminator values it implements, in order."""
+        by_model: dict[str, list[str]] = {}
+        for kind in self.shape_kinds:
+            by_model.setdefault(kind.model, []).append(kind.name)
+        return by_model
+
     def facet_structure(self, facet: Facet) -> Structural:
         """What a kind-specific facet holds, from its model annotation.
 

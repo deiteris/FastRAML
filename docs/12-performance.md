@@ -56,7 +56,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures six workloads:
+`bench/` generates deterministic corpora and measures seven workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -88,7 +88,7 @@ python -m bench micro [PATTERN]
 ```
 
 `bench micro` times single leaf functions, such as `same_value`, the enum
-subset check, and `unique_items`, at sizes on both sides of `PAIRWISE_LIMIT`.
+subset check, and `unique_items`, at sizes from 5 to 1000.
 Use it when the question is a function's constant factor, which a corpus
 dilutes. It looks up each target by name when it runs, so the same cases can
 run against an older checkout. `tests/bench/test_micro.py` fails if a target

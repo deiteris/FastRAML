@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 __all__ = ['CASES', 'Case', 'run_micro']
 
-#: Sizes on both sides of `PAIRWISE_LIMIT` (20) in `types/values.py`.
+#: Sizes from a handful to a thousand, where a per-value constant shows.
 SIZES: tuple[int, ...] = (5, 20, 100, 1000)
 
 

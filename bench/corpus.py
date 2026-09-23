@@ -320,11 +320,11 @@ def write_validate(root: Path, *, type_count: int = 1000) -> Path:
 
 # -- enums --------------------------------------------------------------------
 
-#: Enum sizes on both sides of `PAIRWISE_LIMIT` (20) in `types/values.py`, where
-#: the membership strategy changes, and one large enough to show the curve.
+#: Enum sizes from a handful to a thousand, so a per-value constant in the
+#: subset check shows, and the curve with it.
 ENUM_SIZES: tuple[int, ...] = (5, 20, 100, 1000)
 
-#: `uniqueItems` example lengths, on both sides of the same limit.
+#: `uniqueItems` example lengths, on the same principle.
 UNIQUE_LENGTHS: tuple[int, ...] = (10, 50, 500)
 
 

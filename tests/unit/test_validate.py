@@ -17,7 +17,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from fastraml import ParseOptions, RamlError, parse_from_path
-from fastraml.types.values import ValueSet, same_value, unique_items
+from fastraml.types.values import ValueSet, is_subset, same_value, unique_items
 
 API = '#%RAML 1.0\ntitle: T\n'
 
@@ -205,17 +205,11 @@ class TestArray:
 
 
 class TestUniqueItems:
-    """docs/10 § 5 — two strategies, one meaning."""
+    """docs/10 § 5 — semantic equality, through a key or through `same_value`.
 
-    def test_the_two_strategies_agree_across_the_switch(self, workspace):
-        # The set hashes once it holds more than 20 members, so the duplicate
-        # at 22 is found by hash and the one at 21 pairwise. A difference here
-        # would be invisible in normal use and wrong in exactly one size range.
-        for size in (21, 22):
-            distinct = list(range(size))
-            assert unique_items(distinct) is None
-            duplicated = [*distinct[:-1], distinct[0]]
-            assert unique_items(duplicated) == size - 1
+    `tests/property/test_value_key.py` checks that the key agrees with
+    `same_value`; these pin the behaviour a reader would ask about.
+    """
 
     def test_equality_is_semantic_not_pythonic(self):
         assert same_value(1, 1.0)
@@ -228,18 +222,31 @@ class TestUniqueItems:
         assert same_value({'a': 1, 'b': 2}, {'b': 2, 'a': 1})
         assert not same_value([1, 2], [2, 1])
 
-    def test_semantic_duplicates_are_found_by_both_strategies(self):
+    def test_semantic_duplicates_are_found(self):
         assert unique_items([1, 1.0]) == 1
         assert unique_items([{'a': 1}, {'a': 1.0}]) == 1
         assert unique_items([*range(25), 1.0]) == 25
+        assert unique_items([1, True]) is None
 
-    @pytest.mark.parametrize('padding', [0, 25], ids=['pairwise', 'hashed'])
-    def test_value_set_membership_is_semantic_in_both_strategies(self, padding):
-        members = ValueSet([*(f'pad{index}' for index in range(padding)), 1, [1], {'a': 1, 'b': 2}])
+    def test_a_value_without_a_key_is_compared_by_same_value(self):
+        # NaN equals nothing, itself included, so it can never be a duplicate.
+        nan = float('nan')
+        assert unique_items([nan, nan]) is None
+        assert unique_items([nan, 1, 1.0]) == 2
+
+    def test_value_set_membership_is_semantic(self):
+        nan = float('nan')
+        members = ValueSet([1, [1], {'a': 1, 'b': 2}, nan])
         assert 1.0 in members
         assert [1.0] in members
         assert {'b': 2, 'a': 1} in members
         assert True not in members
+        assert nan not in members, 'NaN is not even the same value as itself'
+
+    def test_is_subset_uses_the_same_equality(self):
+        assert is_subset(['1', 1.0], [1])
+        assert not is_subset([True], [1])
+        assert is_subset([{'b': 2, 'a': 1}], [{'a': 1, 'b': 2}])
 
 
 class TestObject:

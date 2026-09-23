@@ -94,9 +94,20 @@ declaration order. With patterns present, an unmatched extra fails; without
 patterns, `additionalProperties: false` rejects extras.
 
 `uniqueItems` and enum matching use semantic equality: numeric spellings such as
-`1` and `1.0` are equal, but booleans do not equal integers. Small arrays use
-pairwise comparison; larger arrays use type-aware hash buckets followed by full
-comparison.
+`1` and `1.0` are equal, but booleans do not equal integers. Enum narrowing
+([07](07-resolution-and-inheritance.md) § 4) uses the same equality.
+`same_value` defines it. `value_key` gives each value a hashable key, and two
+keys are equal exactly when `same_value` calls the values equal:
+
+- a boolean gets a tag;
+- a number gets an exact numeric key, where a float goes through its `repr`;
+- a string gets the same number when it reads as a number;
+- a mapping gets a tagged `frozenset`, and a sequence a tagged tuple.
+
+`uniqueItems` and the subset check therefore look keys up in a set. A value
+with no key (NaN, or an unhashable type) is compared with `same_value`, against
+other such values only. `tests/property/test_value_key.py` checks that the key
+and `same_value` agree.
 
 Numeric values never compare through binary floating point. Bounds are exact
 fractions from source text; values use `as_fraction()`, which converts floats

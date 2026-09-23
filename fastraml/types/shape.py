@@ -28,8 +28,10 @@ from fastraml.parser.includes import note_include_ref
 from fastraml.types.base import (
     BUILTIN_TYPES,
     TYPE_ANY,
+    TYPE_ARRAY,
     TYPE_COMPOSITE,
     TYPE_JSON,
+    TYPE_OBJECT,
     TYPE_STRING,
     BaseShape,
     Binding,
@@ -455,7 +457,47 @@ def attach_kind(raml: Raml, base: BaseShape, kind: str, facets: list[Node], *, f
         shape = cls(base, **built)  # type: ignore[call-arg]
     base.shape = shape
     shape.decode_facets(rest)
+    if isinstance(shape, UnionShape):
+        _build_member_declarations(raml, shape)
     _check_custom_facet_names(base)
+
+
+#: The declaration facets a union's members may take from beside `type: A | B`,
+#: and the kind whose table defines each (docs/07 § 5).
+_MEMBER_DECLARATION_KINDS: Final[dict[str, tuple[str, type[Shape]]]] = {
+    'properties': (TYPE_OBJECT, ObjectShape),
+    'items': (TYPE_ARRAY, ArrayShape),
+}
+
+
+def _build_member_declarations(raml: Raml, union: UnionShape) -> None:
+    """Build the declarations written beside a union, once, for P9 to hand out.
+
+    A union recognises none of these itself, and which member takes one is not
+    known until P9. But they are declarations, so they are built here, with the
+    other declaration facets, where P7 still resolves the names they hold. Each
+    lands in a holder of the kind that defines the facet.
+    """
+    location = union.base.location
+    pending = union.pending_facets
+    for index in range(0, len(pending), 2):
+        key, value = pending[index], pending[index + 1]
+        entry = _MEMBER_DECLARATION_KINDS.get(key.value)
+        if entry is None:
+            continue
+        kind, cls = entry
+        holder = BaseShape(
+            id=raml.next_id(),
+            raml=raml,
+            location=location,
+            key_pos=key.position,
+            value_pos=value.full_position,
+            anchor=union.base.anchor,
+        )
+        holder.type = kind
+        _, built = _split_declarations(raml, cls, [key, value], location)
+        holder.shape = cls(holder, **built)  # type: ignore[call-arg]
+        union.member_declarations[key.value] = holder
 
 
 def _split_declarations(

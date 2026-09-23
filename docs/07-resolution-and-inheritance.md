@@ -93,6 +93,15 @@ subtype with its member. This avoids mutating parent union members and permits
 member-declared custom facets to validate the distributed value. A facet no
 member accepts remains an ordinary unknown custom facet error in P10.
 
+The declaration facets `properties` and `items` are also built when the union's
+kind is attached, so P7 resolves the names inside them. Each is held in a holder
+of the kind that defines it, and P9 unwraps the holder once. Every member whose
+kind takes the facet receives a detached copy, and each copied property or
+`items` shape gets a fresh id, because each member's merge narrows its copy in
+place. A member that is itself a union passes the holders on to its own members.
+A member whose kind does not take the facet receives the YAML pair and reports
+it as an unknown facet.
+
 ## 6. Recursion and cloning
 
 After flattening, `finish_unwrap()` replaces every child edge that closes a

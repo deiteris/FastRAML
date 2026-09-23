@@ -795,6 +795,70 @@ class TestUnionFacetsAreDistributed:
         assert parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
 
 
+class TestUnionDeclarationFacetsAreDistributed:
+    """`properties:` and `items:` beside `type: A | B` reach each member too.
+
+    docs/07 § 5. They hold declarations, so they are built with the union's
+    other declaration facets and each member takes its own copy; handed to a
+    member's `decode_facets` as YAML they were filed as unknown custom facets.
+    """
+
+    OBJECTS = '  A:\n    properties:\n      a: string\n  B:\n    properties:\n      b: string\n'
+
+    def test_properties_beside_a_union_of_objects_are_accepted(self, workspace):
+        body = self.OBJECTS + '  T:\n    type: A | B\n    properties:\n      c: integer\n    example: {a: x, c: 1}\n'
+        assert parse_validating(workspace, body) is None
+
+    def test_and_constrain_every_member(self, workspace):
+        body = self.OBJECTS + '  T:\n    type: A | B\n    properties:\n      c: integer\n    example: {a: x, c: no}\n'
+        error = parse_validating(workspace, body)
+        assert error is not None
+        paths = {trace.info.get('path') for chain in error.chains() for trace in chain if trace.info}
+        assert '$.c' in paths
+
+    def test_items_beside_a_union_of_arrays_constrain_every_member(self, workspace):
+        body = (
+            '  A:\n    type: array\n    items: string\n  B:\n    type: array\n    items: string\n'
+            '  T:\n    type: A | B\n    items:\n      maxLength: 3\n    example: [abcd]\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert 'invalid example' in messages(error)
+
+    def test_a_member_that_takes_no_properties_reports_an_unknown_facet(self, workspace):
+        body = '  A:\n    properties:\n      a: string\n  T:\n    type: A | string\n    properties:\n      c: integer\n'
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert 'unknown facet' in messages(error)
+
+    def test_a_name_in_a_distributed_property_resolves(self, workspace):
+        # Built with the union's other declarations, so P7 binds `N` as usual.
+        body = self.OBJECTS + '  T:\n    type: A | B\n    properties:\n      c: N\n    example: {b: x, c: -1}\n'
+        error = parse_validating(workspace, body + '  N:\n    type: integer\n    minimum: 0\n')
+        assert error is not None
+        assert 'invalid example' in messages(error)
+
+    def test_a_nested_union_passes_the_declarations_on(self, workspace):
+        body = (
+            self.OBJECTS
+            + '  C:\n    properties:\n      x: string\n'
+            + '  T:\n    type: A | (B | C)\n    properties:\n      c: integer\n    example: {x: y, c: no}\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert 'invalid example' in messages(error)
+
+    def test_members_take_separate_copies(self, workspace):
+        """Each member's merge narrows its copy in place, so a shared copy would
+        let one member's parent constrain the other's."""
+        _raml, union = declared_in(
+            workspace, self.OBJECTS + '  T:\n    type: A | B\n    properties:\n      c: integer\n'
+        )
+        first, second = (member.shape.properties['c'].base for member in union.shape.any_of)
+        assert first is not second
+        assert first.id != second.id
+
+
 class TestPublicSurface:
     """docs/13 § 3: `validate` returns, it does not raise."""
 

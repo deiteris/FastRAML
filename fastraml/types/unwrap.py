@@ -29,7 +29,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
-from fastraml.types.base import TYPE_RECURSIVE, BaseShape, KindBase
+from fastraml.types.base import TYPE_RECURSIVE, BaseShape, KindBase, declaration_facets
 from fastraml.types.complex_ import (
     ArrayShape,
     ObjectShape,
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from fastraml.registry import Raml
-    from fastraml.types.base import Shape
+    from fastraml.types.base import DeclarationFacet, Shape
     from fastraml.yamlnode import Node
 
 __all__ = [
@@ -187,16 +187,29 @@ def _distribute_union_facets(walk: _Walk, base: BaseShape, depth: int) -> None:
     if not isinstance(shape, UnionShape) or not shape.pending_facets:
         return
     pending, shape.pending_facets = shape.pending_facets, []
+    holders, shape.member_declarations = shape.member_declarations, {}
     if not shape.any_of:
         # No members to distribute to — a union that declared none and inherited
         # none. Keep the facets rather than dropping them, so P10 still reports
         # them as unknown instead of a constraint vanishing silently.
         KindBase.decode_facets(shape, pending)
         return
-    shape.any_of = [_narrowed_member(walk, base, member, pending, depth) for member in shape.any_of]
+    for holder in holders.values():
+        # Flattened once, before any member takes a copy.
+        if holder.shape is not None:
+            _unwrap_children(walk, holder.shape, depth)
+    shape.any_of = [_narrowed_member(walk, base, member, pending, holders, depth=depth) for member in shape.any_of]
 
 
-def _narrowed_member(walk: _Walk, base: BaseShape, member: BaseShape, pending: list[Node], depth: int) -> BaseShape:
+def _narrowed_member(  # noqa: PLR0913 - the member, and what the union hands it
+    walk: _Walk,
+    base: BaseShape,
+    member: BaseShape,
+    pending: list[Node],
+    holders: dict[str, BaseShape],
+    *,
+    depth: int,
+) -> BaseShape:
     """One member of a union, with the union's facets applied as a subtype."""
     narrowed = BaseShape(
         id=walk.raml.next_id(),
@@ -213,16 +226,57 @@ def _narrowed_member(walk: _Walk, base: BaseShape, member: BaseShape, pending: l
     # The `Shape` protocol declares no constructor, so the class has to be taken
     # dynamically; every kind's is `(base, **declaration_facets)`.
     kind_class = cast('Any', type(member.shape))
-    narrowed.shape = kind_class(narrowed) if member.shape is not None else None
+    table = declaration_facets(kind_class)
+    built: dict[str, Any] = {}
+    rest: list[Node] = []
+    for index in range(0, len(pending), 2):
+        key, value = pending[index], pending[index + 1]
+        holder = holders.get(key.value)
+        if holder is not None and key.value in table:
+            built.update(_detached_declarations(walk.raml, holder, table[key.value]))
+        else:
+            # Not a declaration, or one this member's kind does not take: left
+            # for the kind to decode, and to report as unknown (docs/07 § 5).
+            rest.append(key)
+            rest.append(value)
+    narrowed.shape = kind_class(narrowed, **built) if member.shape is not None else None
     narrowed.inherits = [member]
     narrowed._unwrapped = True  # noqa: SLF001 - built during P9, from parts P9 has already flattened
     if narrowed.shape is not None:
-        narrowed.shape.decode_facets(list(pending))
+        narrowed.shape.decode_facets(rest)
+    if isinstance(narrowed.shape, UnionShape):
+        # A member that is itself a union passes the declarations on, as it
+        # passes the YAML pairs on through `pending_facets`.
+        narrowed.shape.member_declarations = holders
     merged = inherit(narrowed, member)
     # A member that is itself a union has just stashed the facets in turn.
     _distribute_union_facets(walk, merged, depth + 1)
     walk.raml.put_shape(merged)
     return merged
+
+
+def _detached_declarations(raml: Raml, holder: BaseShape, facet: DeclarationFacet) -> dict[str, Any]:
+    """One member's own copy of a declaration written beside its union.
+
+    Detached because each member's merge narrows the copy in place, and two
+    members sharing one would narrow each other. The copied roots — each
+    property, each `items` — are new shapes and take new ids, as a union
+    member's merged copy does (docs/07 § 5).
+    """
+    shape = holder.clone_detached().shape
+    built = {field: getattr(shape, field) for field in facet.fields}
+    for field, value in built.items():
+        if isinstance(value, BaseShape):
+            value.id = raml.next_id()
+        elif isinstance(value, dict):
+            for declaration in value.values():
+                declaration.base.id = raml.next_id()
+        elif value is None:
+            continue
+        else:  # pragma: no cover - the three DeclarationFacet shapes are all above
+            msg = f'unexpected declaration field: {field}'
+            raise TypeError(msg)
+    return built
 
 
 def _link_to_inherits(base: BaseShape) -> None:

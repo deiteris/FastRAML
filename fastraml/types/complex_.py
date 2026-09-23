@@ -628,7 +628,7 @@ def _duplicates(claims: list[_Claim]) -> tuple[str, ...]:
 class UnionShape(ComplexKind):
     """`union`. Its members arrive built, one declaration each."""
 
-    __slots__ = ('_dispatch', 'any_of', 'pending_facets')
+    __slots__ = ('_dispatch', '_member_declarations', 'any_of', 'pending_facets')
 
     DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {'anyOf': SHAPE_LIST}
 
@@ -646,6 +646,13 @@ class UnionShape(ComplexKind):
         #: `minimum` is a built-in facet or a custom one. P9 distributes them
         #: once `any_of` is settled (docs/07 § 5).
         self.pending_facets: list[Node] = []
+        #: The declarations inside those facets — `properties:`, `items:` —
+        #: built once, when the kind is attached, so P7 resolves their names in
+        #: the usual way. Keyed by facet name; each value is a holder of the kind
+        #: that owns the facet. P9 hands every accepting member its own clone.
+        #: The YAML pair stays in `pending_facets` as well, for a member that
+        #: does not accept the facet.
+        self._member_declarations: dict[str, BaseShape] = {}
 
     def decode_facets(self, pairs: list[Node]) -> None:
         rest: list[Node] = []
@@ -675,7 +682,20 @@ class UnionShape(ComplexKind):
         # shapes. Carrying it over would dispatch into the original's graph. The
         # clone gets its own when P9 reaches it.
         clone._dispatch = None  # noqa: SLF001 - same class, and __slots__ has no other way
+        # Cloned, not shared: P9 unwraps the holders in place.
+        clone._member_declarations = {  # noqa: SLF001 - see above
+            name: holder.clone(memo) for name, holder in self._member_declarations.items()
+        }
         return clone
+
+    @property
+    def member_declarations(self) -> dict[str, BaseShape]:
+        """The declarations written beside the union for its members to take."""
+        return self._member_declarations
+
+    @member_declarations.setter
+    def member_declarations(self, holders: dict[str, BaseShape]) -> None:
+        self._member_declarations = holders
 
     def build_dispatch(self) -> None:
         """Settle the dispatch table. `finish_unwrap` calls this once per shape.

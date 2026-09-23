@@ -200,7 +200,10 @@ The supported actions are `!uppercase`, `!lowercase`, `!uppercamelcase`,
 `!upperhyphencase`, `!lowerhyphencase`, `!singularize`, and `!pluralize`.
 Pluralization uses a lazy `pluralizer` instance with the `medium`,
 `memorandum`, `vortex`, and `sms` irregular registrations. The parity table in
-`tests/unit/data/pluralize_parity.tsv` guards those two actions.
+`tests/unit/data/pluralize_parity.tsv` guards those two actions. Each keeps a
+bounded cache of the words it has seen: the engine tries its rules one regex
+at a time, and a resource type applies them to the same `resourcePathName`
+several times per resource ([12](12-performance.md) § 4, `templates`).
 
 Parameters are not substituted into `uses`, `extends`, or `!include` locations:
 `uses` is removed before a template body is captured and includes resolve before

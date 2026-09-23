@@ -17,7 +17,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from fastraml import ParseOptions, RamlError, parse_from_path
-from fastraml.types.values import same_value, unique_items
+from fastraml.types.values import ValueSet, same_value, unique_items
 
 API = '#%RAML 1.0\ntitle: T\n'
 
@@ -208,9 +208,10 @@ class TestUniqueItems:
     """docs/10 § 5 — two strategies, one meaning."""
 
     def test_the_two_strategies_agree_across_the_switch(self, workspace):
-        # 20 is pairwise, 21 hashes. A difference here would be invisible in
-        # normal use and wrong in exactly one size range.
-        for size in (20, 21):
+        # The set hashes once it holds more than 20 members, so the duplicate
+        # at 22 is found by hash and the one at 21 pairwise. A difference here
+        # would be invisible in normal use and wrong in exactly one size range.
+        for size in (21, 22):
             distinct = list(range(size))
             assert unique_items(distinct) is None
             duplicated = [*distinct[:-1], distinct[0]]
@@ -231,6 +232,14 @@ class TestUniqueItems:
         assert unique_items([1, 1.0]) == 1
         assert unique_items([{'a': 1}, {'a': 1.0}]) == 1
         assert unique_items([*range(25), 1.0]) == 25
+
+    @pytest.mark.parametrize('padding', [0, 25], ids=['pairwise', 'hashed'])
+    def test_value_set_membership_is_semantic_in_both_strategies(self, padding):
+        members = ValueSet([*(f'pad{index}' for index in range(padding)), 1, [1], {'a': 1, 'b': 2}])
+        assert 1.0 in members
+        assert [1.0] in members
+        assert {'b': 2, 'a': 1} in members
+        assert True not in members
 
 
 class TestObject:

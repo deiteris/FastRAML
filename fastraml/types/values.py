@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any, Final
 from fastraml.errors import ErrorKind, RamlError
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from fastraml.positions import Position
 
 __all__ = [
@@ -28,6 +30,7 @@ __all__ = [
     'DATE_ONLY',
     'INTEGER_RANGES',
     'TIME_ONLY',
+    'ValueSet',
     'as_fraction',
     'check_non_negative',
     'decimal_text',
@@ -313,23 +316,53 @@ def _hash(value: Any) -> int:
     return hash(('other', type(value).__name__, value))
 
 
-def unique_items(items: list[Any]) -> int | None:
-    """The index of the first duplicate, or `None` if every item is distinct.
+class ValueSet:
+    """A set of data values under `same_value`, so `1` and `1.0` are one member.
 
-    Two strategies by size, as in go-raml. The hashed path resolves collisions
-    by full comparison, so it never reports a duplicate that is not one.
+    Python's own `set` gets three things wrong for RAML data: `True` equals `1`,
+    and neither a mapping nor a sequence is hashable, so a fallback to text
+    would make `{a: 1, b: 2}` differ from `{b: 2, a: 1}` and `[1]` from `[1.0]`.
+    Every question of the form "is this value one of those" goes through here or
+    through `same_value`, so enum membership, enum narrowing and `uniqueItems`
+    agree.
+
+    Two strategies by size, as in go-raml. Up to `PAIRWISE_LIMIT` members it
+    compares pairwise and allocates nothing more; past that it buckets by a hash
+    agreeing with `same_value` and resolves collisions by full comparison.
     """
-    if len(items) <= PAIRWISE_LIMIT:
-        for index, item in enumerate(items):
-            for earlier_index in range(index):
-                if same_value(item, items[earlier_index]):
-                    return index
-        return None
 
-    buckets: dict[int, list[Any]] = {}
+    __slots__ = ('_buckets', '_members')
+
+    def __init__(self, values: Iterable[Any] = ()) -> None:
+        self._members: list[Any] = []
+        self._buckets: dict[int, list[Any]] | None = None
+        for value in values:
+            self.add(value)
+
+    def __contains__(self, value: Any) -> bool:
+        if self._buckets is None:
+            return any(same_value(value, member) for member in self._members)
+        return any(same_value(value, member) for member in self._buckets.get(_hash(value), ()))
+
+    def add(self, value: Any) -> bool:
+        """Add `value`; `False` if an equal member was already present."""
+        if value in self:
+            return False
+        self._members.append(value)
+        if self._buckets is not None:
+            self._buckets.setdefault(_hash(value), []).append(value)
+        elif len(self._members) > PAIRWISE_LIMIT:
+            buckets: dict[int, list[Any]] = {}
+            for member in self._members:
+                buckets.setdefault(_hash(member), []).append(member)
+            self._buckets = buckets
+        return True
+
+
+def unique_items(items: list[Any]) -> int | None:
+    """The index of the first duplicate, or `None` if every item is distinct."""
+    seen = ValueSet()
     for index, item in enumerate(items):
-        bucket = buckets.setdefault(_hash(item), [])
-        if any(same_value(item, earlier) for earlier in bucket):
+        if not seen.add(item):
             return index
-        bucket.append(item)
     return None

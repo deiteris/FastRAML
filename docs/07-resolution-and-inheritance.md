@@ -61,7 +61,7 @@ A subtype may only narrow:
 
 | Kind | Narrowing contract |
 |---|---|
-| common | inherit absent description; custom facets union with child values winning; enum is inherited or becomes a subset |
+| common | inherit absent description; custom facets union with child values winning; enum is inherited or becomes a subset, compared with the semantic equality of enum membership ([10](10-validation.md) § 5) |
 | string | increase `minLength`, decrease `maxLength`; child pattern replaces parent pattern |
 | number/integer | increase minimum, decrease maximum, use a compatible `multipleOf` and format |
 | datetime | format must agree |

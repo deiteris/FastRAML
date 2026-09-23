@@ -61,7 +61,7 @@ export function Overview({ document, index }: Props) {
       <Annotations applied={api.annotations} index={index} />
 
       {/* `{tenant}` in the base URI is a value every caller has to supply, so a
-          reader who cannot see it cannot build a request at all (docs/16 § 11.4). */}
+          reader who cannot see it cannot build a request at all (docs/16 § 6.2). */}
       <ParameterTable title="Base URI parameters" parameters={api.base_uri_parameters} index={index} />
 
       {/* Titles and links, not the prose. Each item has a page of its own now,

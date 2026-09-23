@@ -131,7 +131,7 @@ path nesting the model flattened.
 ## The one rule the renderer follows
 
 Three constructs, and telling the last two apart is the whole discipline
-(`docs/16-graph.md` § 11.10):
+(`docs/16-graph.md` § 6.1):
 
 | | means | what the UI does |
 |---|---|---|
@@ -150,8 +150,8 @@ item → Money` — one more click to reach what the line can say directly. The 
 says it: `priceHistory  Prices  Money[]`.
 
 **A description is never behind that control.** It is not an attribute. Where
-the type is a reference the prose belongs to the target, and reading it used to
-require opening the attribute list; the expanded body suppresses it so it
+the type is a reference the prose belongs to the target, and it is shown
+without opening the attribute list; the expanded body suppresses it so it
 appears once either way.
 
 **A supertype gets the link and no expander.** The projection is unwrapped, so
@@ -194,8 +194,9 @@ nesting happened.
 renders each page to static markup. `tsc` says the components type-check, which
 is not the same as saying they render: an index that misses, a facet whose value
 is an object where a string was assumed, and a recursion marker read as a link
-all compile. It is the JavaScript half of law 13 — every declared type and every
-endpoint has a view.
+all compile. It is the JavaScript half of `TestEveryTypeRenders` in
+`tests/tck/test_properties.py`: every declared type and every endpoint has a
+view.
 
 It then asks two things rendering cannot answer, because both produce a page
 that looks fine and says something untrue:
@@ -205,7 +206,8 @@ that looks fine and says something untrue:
   `string | number` from that one node — so each member carries the whole thing.
   Rendered as the member's own name, a two-member union reads `string | number`
   twice. Reintroducing the bug makes this exit 1, which is how it was checked.
-- **Every `$ref` resolves in the index** — the JavaScript form of law 15. One
+- **Every `$ref` resolves in the index** — the JavaScript form of
+  `TestEveryReferenceResolves` in `tests/unit/test_tree.py`. One
   that does not renders as `unresolved`, which a reader cannot tell from a
   document that genuinely pointed nowhere.
 

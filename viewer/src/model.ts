@@ -7,7 +7,7 @@
  * reader needs: which addresses have a page, what to call one, and the path
  * nesting the model flattened.
  *
- * The metamodel is three constructs (docs/16 § 11.10):
+ * The metamodel is three constructs (docs/16 § 6.1):
  *
  *   {"$ref": <address>}                          a link -- look the target up
  *   {"type": "recursive", "head": {"$ref": ...}} repeats from here, do not expand
@@ -52,7 +52,7 @@ export type {
  * These are rules the contract states, so a copy here was a second place for
  * them to be right: the Go binding tested a link by the absence of `type` where
  * this app tested its sole key, and nothing compared the two until the
- * conformance corpus did (docs/16 § 11.11e). `isRecursive` keeps the name this
+ * conformance corpus did (docs/16 § 7). `isRecursive` keeps the name this
  * app uses.
  */
 export { Tree, UnreadableTree, isRef, isShape } from './walk';
@@ -212,10 +212,9 @@ const NOT_A_FACET: ReadonlySet<string> = new Set([
  * The constraints a shape carries, in RAML spelling.
  *
  * The JSON uses the model's field names, which are `snake_case` (docs/16
- * § 11.9); RAML's are `lowerCamelCase` throughout, with no exceptions --
- * `fastraml/types/base.py` says so, and dropped an exception table for saying
- * nothing plain camel case did not. So this is a spelling change and not a
- * translation table that can go stale.
+ * § 6.2); RAML's are `lowerCamelCase` throughout, with no exceptions
+ * (`facet_slots` in `fastraml/types/base.py`). So this is a spelling change and
+ * not a translation table that can go stale.
  */
 export function facetsOf(shape: Shape): [string, Json][] {
   return Object.entries(shape)
@@ -226,7 +225,7 @@ export function facetsOf(shape: Shape): [string, Json][] {
 /**
  * A field name as a reader would say it: `accessTokenUri` -> `Access token URI`.
  *
- * The JSON carries the model field names (docs/16 section 11.9), which is right
+ * The JSON carries the model field names (docs/16 § 6.2), which is right
  * for a wire format and wrong for a label over a value. Derived rather than
  * tabulated so a settings key this app has never seen still reads as English --
  * a security scheme's settings are open-ended, and a table would show the raw
@@ -440,7 +439,7 @@ export interface FacetDeclaration {
  * reader is not looking at. Without it a custom facet is a name and a string
  * with nothing saying what it was allowed to be.
  *
- * **Up `inherits[0]` only, which is what P10 does** (docs/10 section 4). The
+ * **Up `inherits[0]` only, which is what P10 does** (docs/10 § 4). The
  * validator's chain walk follows the first parent and no other, so a facet
  * declared on a second parent is one it does not see; finding it here would
  * show a reader a declaration that nothing checked the value against. The

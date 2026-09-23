@@ -2,7 +2,7 @@
  * `/n/:address` -- resolve any address to the page that shows it.
  *
  * The addresses are the same ones `fastraml graph` prints, so an address copied
- * out of a query result opens here. That join is what docs/16 § 3.1 is for, and
+ * out of a query result opens here. That join is what docs/16 § 2 is for, and
  * it costs one route.
  */
 

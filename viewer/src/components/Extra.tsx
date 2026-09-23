@@ -123,7 +123,7 @@ function Facet({
       type={found ? labelOf(found.declared, index) : undefined}
       kind="facet"
       // Where the facet was declared, which is never this type: a `facets:`
-      // block declares what *subtypes* must supply (docs/10 section 4), so the
+      // block declares what *subtypes* must supply (docs/10 § 4), so the
       // rule that makes this value legal is written on a page the reader is
       // not on.
       from={by ? { label: by.name, href: by.href } : undefined}

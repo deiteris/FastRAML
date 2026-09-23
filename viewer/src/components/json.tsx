@@ -35,11 +35,9 @@ export function Labelled({ label, value }: { label: string; value: Json }) {
 /**
  * A value on one line: a string as itself, anything structured as compact JSON.
  *
- * The single way a value reaches a line of the page. It used to have a sibling,
- * `facetValue`, which turned the three bound facets from the exact ratios the
- * tree carried -- `multipleOf 1/100` -- into the decimals their authors wrote.
- * The emitter does that now, where the exact arithmetic already lived, so every
- * consumer gets a readable bound instead of each writing its own long division.
+ * The single way a value reaches a line of the page. Numeric bounds need no
+ * special case: the tree already carries them as exact decimal strings
+ * (docs/16 § 6.2).
  */
 export function oneLine(value: Json): string {
   if (typeof value === 'string') return value;

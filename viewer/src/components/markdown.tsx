@@ -76,8 +76,8 @@ export function Prose({ children }: { children?: string }) {
  * else: an attribute's gloss, a reference's, a row in a listing. A `<p>` there
  * breaks the row it is part of.
  *
- * The first paragraph and not the whole of it, for the reason docs/16 § 9.6
- * gives for the same decision in `render.py`: a description may run to pages
+ * The first paragraph and not the whole of it, for the reason `render.py`
+ * gives for the same decision: a description may run to pages
  * and the row is one line. Rendering the whole with `renderInline` is worse
  * than long -- it emits no block elements at all, so a list came out as its
  * source, asterisks and all, run together with the paragraph above it.

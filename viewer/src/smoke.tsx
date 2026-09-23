@@ -5,8 +5,9 @@
  * render: an index that misses, a facet whose value is an object where a string
  * was assumed, a recursion marker read as a link -- all compile.
  *
- * This is the JavaScript half of law 13 (docs/14 § 4): every declared type and
- * every endpoint has a view. It walks the document's own contents rather than a
+ * This is the JavaScript half of `TestEveryTypeRenders` in
+ * `tests/tck/test_properties.py`: every declared type and every endpoint has a
+ * view. It walks the document's own contents rather than a
  * fixed route list, so a construct the sample gains is covered without this file
  * changing.
  *
@@ -45,7 +46,8 @@ const index = new Index(Tree.of(document));
  * shape -- so a structural walk visits one and reports its `settings` and
  * `described_by` as facets of a type. Told apart by address rather than by
  * guessing from its keys, because the document lists them.
- * `tests/tck/test_properties.py` excludes them from law 19 for the same reason.
+ * `TestNothingArrivesUndeclared` in `tests/tck/test_properties.py` excludes
+ * them for the same reason.
  */
 const SCHEMES: ReadonlySet<string> = new Set(
   declarations(document.security_schemes)
@@ -132,7 +134,8 @@ walk(document, (shape) => {
     }
   }
 
-  // The JavaScript form of law 15. A `$ref` to something the index does not
+  // The JavaScript form of `TestEveryReferenceResolves` in
+  // `tests/unit/test_tree.py`. A `$ref` to something the index does not
   // hold renders as "unresolved", which a reader cannot tell from a document
   // that genuinely pointed nowhere.
   const contained = [

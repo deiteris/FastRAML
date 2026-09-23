@@ -780,7 +780,7 @@ h4 + .tabs > .tabs-bar,
 }
 
 /* Inline Markdown in a block slot: `renderInline` emits no `<p>`, so the
-   element it lands in has to supply the break the paragraph used to. */
+   element it lands in has to supply the break a paragraph would. */
 .attr-desc {
   display: block;
   color: var(--dim);

@@ -5,13 +5,11 @@
  * `fastraml tree` just printed. Both end at the same parsed value; nothing
  * downstream knows which was used.
  *
- * **There is deliberately no `?src=`.** It used to take any URL, which meant a
- * crafted link rendered someone else's document under this origin, convincingly
- * and with nothing on the page saying so — and it made every host that mounts
- * this bundle responsible for composing a query string, which is why
- * `fastapi-raml` grew an HTML page whose only job was to write one. A host that
- * wants its own document served here serves it at `api.json`; the file picker
- * covers the rest.
+ * **There is deliberately no `?src=`.** Accepting any URL would let a crafted
+ * link render someone else's document under this origin, with nothing on the
+ * page saying so, and would make every host that mounts this bundle compose a
+ * query string. A host that wants its own document served here serves it at
+ * `api.json`; the file picker covers the rest.
  *
  * Through `parse` and not `JSON.parse`, so an example carrying an integer
  * larger than a double reaches the page as the author wrote it (`numbers.ts`).

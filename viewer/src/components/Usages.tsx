@@ -3,7 +3,7 @@
  *
  * A tree carries containment and drops the reverse direction, so this is a
  * walk rather than a lookup -- the join the graph exists to make cheap
- * (docs/16 § 4). At the size a browser holds a document, a walk is the right
+ * (docs/16 § 3). At the size a browser holds a document, a walk is the right
  * trade; a consumer that wants it indexed reads `fastraml refs` instead.
  *
  * The walk follows the metamodel: descend containment, read a link, stop at a

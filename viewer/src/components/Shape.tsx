@@ -1,7 +1,7 @@
 /**
  * The type renderer -- the one component the rest of the app is arranged around.
  *
- * It implements the traversal law directly (docs/16 § 11.7): descend
+ * It implements the traversal law directly (docs/16 § 6.1): descend
  * containment, follow a link only when asked, stop at a recursion marker. There
  * is no ancestor set and no depth budget anywhere below, because the emitter
  * guarantees a cycle is always *marked* -- an unmarked one would hang this, and
@@ -346,7 +346,7 @@ function Body({
   // kinds. For a JSON-schema type they are the declaration and its projection:
   // the spec forbids a RAML facet beside a schema, so the declaration carries
   // the name, the description and the example, and everything else it says is
-  // in the projection (docs/10 § 6.3). Reading structure through one accessor
+  // in the projection (docs/10 § 7). Reading structure through one accessor
   // is what keeps that a fact about the contract rather than a branch in every
   // block below.
   const content = index.content(shape);
@@ -558,9 +558,9 @@ export function Attribute({
       </div>
       {/* A description is not an attribute, so it does not live behind the
           control that expands them. Where the type is a reference the prose
-          belongs to the target, and reading it used to require opening the
-          attribute list first. The expanded body suppresses it, so it appears
-          once either way. */}
+          belongs to the target and is shown without opening the attribute
+          list. The expanded body suppresses it, so it appears once either
+          way. */}
       <ProseInline className="attr-desc">{described}</ProseInline>
       {/* `hideInherits` where the head line is already a link to the one
           supertype: a query parameter typed `Search` read `Search` above
@@ -604,7 +604,7 @@ export function restates(shape: Shape, index: Index): boolean {
  * A union, as a selector over its members.
  *
  * **`anyOf`, not "one of".** That is the model's field name, which this view
- * uses throughout (docs/16 § 11.9), and the two do not mean the same thing: a
+ * uses throughout (docs/16 § 6.2), and the two do not mean the same thing: a
  * value satisfying more than one member is still valid, which "one of" denies.
  *
  * A selector rather than a stack because a union member is a whole type. Two

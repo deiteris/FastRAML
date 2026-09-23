@@ -27,7 +27,7 @@ export function SecuritySchemePage({ document, index }: Props) {
       <Annotations applied={scheme.annotations} index={index} />
 
       {/* The OAuth 2.0 URLs, grants and scopes. Without them a reader knows a
-          scheme is required and nothing about how to satisfy it (§ 11.4). */}
+          scheme is required and nothing about how to satisfy it. */}
       {scheme.settings && (
         <Section title="Settings">
           <KeyValues

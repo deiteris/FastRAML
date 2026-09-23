@@ -716,20 +716,70 @@ class TestCustomFacets:
         )
         assert error is None, messages(error)
 
-    def test_a_facet_on_a_second_parent_is_not_seen(self, workspace):
-        """The `inherits[0]`-only limitation, pinned so the fix is visible.
-
-        docs/10 § 4 and docs/15 § 2 record it. If this test starts
-        failing because the walk grew a visited set, that is the fix landing —
-        update the test, do not restore the behaviour.
-        """
-        assert (
-            parse_validating(
-                workspace,
-                '  A:\n    type: object\n  B:\n    type: object\n    facets:\n      extra: integer\n  C: [A, B]\n',
-            )
-            is None
+    def test_a_required_facet_on_a_second_parent_must_be_supplied(self, workspace):
+        # Spec § User-defined Facets: "any ancestor type". go-raml follows
+        # `inherits[0]` only and accepts this.
+        error = parse_validating(
+            workspace,
+            '  A:\n    type: object\n  B:\n    type: object\n    facets:\n      extra: integer\n  C: [A, B]\n',
         )
+        assert error is not None
+        assert 'required custom facet is missing' in messages(error)
+
+    def test_a_facet_on_a_second_parent_is_validated(self, workspace):
+        body = '  A:\n    type: object\n  B:\n    type: object\n    facets:\n      extra: integer\n'
+        assert parse_validating(workspace, body + '  C:\n    type: [A, B]\n    extra: 5\n') is None
+        error = parse_validating(workspace, body + '  C:\n    type: [A, B]\n    extra: no\n')
+        assert error is not None
+        assert 'invalid custom facet value' in messages(error)
+
+    def test_a_facet_on_a_grandparent_through_the_second_parent_is_seen(self, workspace):
+        # Only a walk that reaches G can validate `extra`; the first-parent walk
+        # called it an unknown facet.
+        body = (
+            '  A:\n    type: object\n  G:\n    type: object\n    facets:\n      extra: integer\n'
+            '  B:\n    type: G\n    extra: 1\n  C:\n    type: [A, B]\n    extra: no\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert messages(error) >= {'invalid custom facet value'}
+        assert 'unknown facet' not in messages(error)
+
+    def test_a_diamond_reaches_its_shared_ancestor_once(self, workspace):
+        # Two routes to one declaration are not two declarations.
+        body = (
+            '  G:\n    type: object\n    facets:\n      extra?: integer\n'
+            '  L:\n    type: G\n  R:\n    type: G\n  C:\n    type: [L, R]\n    extra: 5\n'
+        )
+        assert parse_validating(workspace, body) is None
+
+    def test_an_alias_and_its_referent_share_one_declaration(self, workspace):
+        body = (
+            '  G:\n    type: object\n    facets:\n      extra?: integer\n'
+            '  Same: G\n  C:\n    type: [G, Same]\n    extra: 5\n'
+        )
+        assert parse_validating(workspace, body) is None
+
+    def test_two_parents_declaring_one_name_is_a_duplicate(self, workspace):
+        # The spec forbids matching an ancestor's facet name, and says nothing
+        # of two unrelated parents; reported, as a chain duplicate always was.
+        body = (
+            '  A:\n    type: object\n    facets:\n      extra?: integer\n'
+            '  B:\n    type: object\n    facets:\n      extra?: integer\n'
+            '  C:\n    type: [A, B]\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert 'duplicate custom facet' in messages(error)
+
+    def test_a_facet_redeclared_below_its_ancestor_is_a_duplicate(self, workspace):
+        body = (
+            '  G:\n    type: object\n    facets:\n      extra?: integer\n'
+            '  P:\n    type: G\n    facets:\n      extra?: integer\n  C:\n    type: P\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert 'duplicate custom facet' in messages(error)
 
 
 class TestUnionFacetsAreDistributed:

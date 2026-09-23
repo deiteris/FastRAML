@@ -53,15 +53,20 @@ member need not be checked again.
 ## 4. Custom facets
 
 A `facets:` block declares values for subtypes, not for its declaring shape.
-P10 starts at `inherits[0]`: the declaring type neither supplies nor is required
-to supply its own declared facet. It reports duplicate declarations in that
-chain, missing required values, unknown supplied values, and values that fail
-their facet declaration.
+P10 starts at the shape's parents: the declaring type neither supplies nor is
+required to supply its own declared facet. It walks every parent, transitively,
+because *spec section User-defined Facets* names "any ancestor type in the
+inheritance chain". The walk is breadth-first in declaration order with a
+visited set, so a diamond reaches its shared ancestor once. It reports missing
+required values, unknown supplied values, values that fail their facet
+declaration, and duplicate declarations.
 
-The current implementation follows only the first parent chain. A custom facet
-declared solely on a second multiple-inheritance parent is not visible to this
-check. `tests/unit/test_validate.py::TestCustomFacets::test_a_facet_on_a_second_parent_is_not_seen`
-pins that current limitation.
+A duplicate is one facet name declared by two different ancestors. An alias
+shares its referent's declarations ([07](07-resolution-and-inheritance.md)
+§ 3), so reaching both is not a duplicate. The spec forbids a facet name that
+matches an ancestor's. It says nothing about two unrelated parents declaring
+the same name; that is reported as a duplicate too. go-raml follows only the
+first parent at each step.
 
 Recursion markers are traversal stops for these checks: the corresponding head
 is checked where it is declared.

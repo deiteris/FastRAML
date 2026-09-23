@@ -181,7 +181,7 @@ def _distribute_union_facets(walk: _Walk, base: BaseShape, depth: int) -> None:
     the merge adopts the parent's member objects by reference, so decoding in
     place would narrow the parent type for every other subtype of it; and a
     subtype is what makes the member's own `facets:` declarations visible to
-    P10, which walks from `inherits[0]`.
+    P10, which walks from the parents.
     """
     distributed = _distribute(walk, base, depth)
     if distributed is not None:

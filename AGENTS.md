@@ -88,9 +88,9 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
   dataclass suits.
 - Never import `copy`. Use `clone(memo)` or `clone_detached()` (`docs/07` § 6); a
   test enforces this.
-- A `facets:` block declares what subtypes must supply. The P10 chain walk starts at
-  `inherits[0]`, so the declaring type need not satisfy its own required facets, and
-  supplying a value for one is `unknown facet` (`docs/10` § 4).
+- A `facets:` block declares what subtypes must supply. The P10 walk starts at the
+  parents, all of them, so the declaring type need not satisfy its own required
+  facets, and supplying a value for one is `unknown facet` (`docs/10` § 4).
 - Where an annotation was applied rides `ParseCtx`, not a parameter. A decoder that
   establishes a new application site wraps itself in `Raml.target_scope(...)` and
   gets a test that names the site; a missing scope silently records the enclosing

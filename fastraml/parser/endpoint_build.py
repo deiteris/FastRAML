@@ -3,7 +3,7 @@
 P4 runs both stages over `APIFragment._raw_endpoints`: stage 1 decodes every
 resource into IR, directive resolution merges the templates in, then stage 2
 materializes every one of them. **Each loop runs over the whole tree before the
-next starts** (docs/08 section 3), because directive resolution grafts
+next starts** (docs/08 § 2.2), because directive resolution grafts
 type-bearing subtrees from templates and all of them must exist before the
 single decode pass — otherwise a shape a trait contributed never joins the P7
 worklist.
@@ -12,7 +12,7 @@ P6 then rewrites each endpoint's URI parameter map to ancestor-declared
 parameters first, so a nested resource exposes the full set needed to build its
 URL, in path order.
 
-See docs/08-templates-and-endpoints.md section 8.
+See docs/08-templates-and-endpoints.md § 6.
 """
 
 from __future__ import annotations
@@ -91,7 +91,7 @@ def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) ->
 
     Resource types first: they contribute `is:` entries of their own, which
     `apply_traits` then orders behind the resource's and the method's
-    (docs/08 section 5.2).
+    (docs/08 § 3.2).
     """
     if source.resource_type is not None:
         try:
@@ -118,7 +118,7 @@ def _walk(raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[s
     if endpoint.full_uri in raml.endpoints:
         # Comparison is on the template text, unexpanded, so `/users/{userId}`
         # and `/users/{username}` coexist while `/users: {/foo:}` and
-        # `/users/foo:` collide (docs/08 section 8.1).
+        # `/users/foo:` collide (docs/08 § 6.1).
         acc.add(
             RamlError.new(
                 'duplicate resource URI',
@@ -140,7 +140,7 @@ def _walk(raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[s
 
 
 def _resolve_uri_parameters(raml: Raml, endpoint: EndPoint, inherited: dict[str, Parameter]) -> None:
-    """docs/08 section 8.2: synthesise, check, and propagate.
+    """docs/08 § 6.2: synthesise, check, and propagate.
 
     The result is ancestors' parameters first, then this endpoint's, which is
     path order — the order a consumer needs to build the URL.

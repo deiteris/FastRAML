@@ -6,12 +6,12 @@ position they were written at — because all three are *applications* of a
 template-like declaration, and the differences are entirely in how the name
 resolves and what the application does.
 
-Stage 1 builds these and stores them; nothing applies them. Resolution is
-Phases 6 (`traits.py`, `resourcetypes.py`) and 7 (`security.py`), which own the
-*definitions* these point at. Keeping the references here rather than in those
-modules is what lets stage 1 exist before either phase does.
+Stage 1 builds and stores these; nothing here applies them. P4
+(`traits.py`, `resourcetypes.py`) and P5 (`security.py`) resolve them and own
+the definitions they name. Keeping the references here means stage 1 imports
+none of those modules.
 
-See docs/08-templates-and-endpoints.md sections 3 and 5.
+See docs/08-templates-and-endpoints.md § 2.1 and § 3.
 """
 
 from __future__ import annotations
@@ -53,18 +53,17 @@ class DirectiveRef:
     location: str = ''
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
-    #: `securedBy: [null]` — the explicit "no scheme" entry (docs/09 § A).
+    #: `securedBy: [null]`, the explicit "no scheme" entry (docs/09 § A3).
     is_null_scheme: bool = False
-    #: The namespace this *name* resolves in — the document the directive is
-    #: physically written in, not the one it is applied to. A resource type's
-    #: own `is:` entries resolve against the resource type's file even after the
-    #: merge has moved them onto an operation in another (docs/08 section 5.2).
+    #: The namespace this name resolves in: the document the directive is
+    #: written in, not the one it is applied to. A resource type's own `is:`
+    #: entries resolve against the resource type's file even after the merge
+    #: has moved them onto an operation in another (docs/04 § 4).
     scope: ParseCtx | None = None
-    #: The declaration this name resolved to, filled in by whichever of
-    #: `traits.py` and `resourcetypes.py` resolved it. A consumer asking what
-    #: was applied reads this rather than matching the name again: two libraries
-    #: may declare one name, and a lookup cannot tell them apart
-    #: (docs/16 § 2.2). `None` where the name matched nothing.
+    #: The declaration this name resolved to, set by `traits.py` or
+    #: `resourcetypes.py`. Consumers read this rather than looking the name up
+    #: again, since two libraries may declare one name. `None` where the name
+    #: matched nothing.
     resolved: TraitDefinition | ResourceTypeDefinition | None = None
 
     def __repr__(self) -> str:
@@ -127,8 +126,8 @@ def _ref_list(node: Node, location: str, scope: ParseCtx | None, *, what: str) -
 def decode_type_ref(node: Node, location: str, scope: ParseCtx | None = None) -> DirectiveRef:
     """`type:` on a resource — exactly one resource type, never a sequence.
 
-    A sequence in a `type:` position means multiple inheritance for a *type
-    declaration*; a resource has no such form (docs/08 section 5.1).
+    A sequence in a `type:` position means multiple inheritance for a type
+    declaration; a resource has no such form.
     """
     if node.kind is NodeKind.SEQUENCE:
         raise node_error('resource type must be a single reference', location, node)
@@ -174,14 +173,12 @@ NULL_SCHEME_NAME = 'null'
 class SecurityScheme:
     """One `securedBy:` entry, promoted for the model to carry.
 
-    The odd one out: applying a trait or a resource type produces a merged tree
-    and leaves nothing on the reference, but applying a security scheme produces
-    a *binding*, and a binding needs somewhere to live. So this sits beside
-    `DirectiveRef` rather than in `security.py` — same reason the three
-    references share this module, and it keeps `source_decode.py` (which builds
-    these in stage 2) from having to import the module that resolves them.
+    Applying a trait or resource type leaves a merged tree; applying a security
+    scheme leaves a binding, which lives here. Defined beside `DirectiveRef`
+    rather than in `security.py` so that `source_decode.py`, which builds these
+    in stage 2, need not import P5.
 
-    See docs/09-security-and-annotations.md sections A1, A3 and A5.
+    See docs/09-security-and-annotations.md § A1, § A3 and § A5.
     """
 
     id: int

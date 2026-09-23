@@ -1,20 +1,15 @@
 """Template variables: `<<name | !action | !action>>`.
 
-Implements docs/08-templates-and-endpoints.md section 7. A resource-type or
-trait body is scanned **once**, at declaration time, producing an index that
-substitution looks up without re-scanning the same strings at every application
-site — a resource type applied to 200 endpoints scans its body once.
+Implements docs/08-templates-and-endpoints.md § 5. A resource-type or trait
+body is scanned once, at declaration time, producing an index that
+substitution looks up at every application site without re-scanning.
 
-The index is keyed by **node identity**, not by position. An earlier design
-numbered the nodes in a preorder walk, which made every consumer depend on two
-walks agreeing; go-raml still does, and the walks do not agree, because step 3
-of section 5.1 filters optional methods out of the tree before step 4 re-reads
-the index. Identity keys survive that filtering by construction, and `Node`
-already hashes by identity for the provenance overlay's sake. See section 7.1.
+The index is keyed by node identity, not by position: optional-method
+filtering removes subtrees between the scan and its use (docs/08 § 3.1), and
+identity keys survive that by construction.
 
-See ../../CLAUDE.md and docs/12-performance.md section 12: no per-character
-Python loops. The recasing functions below use `str.split`/slicing and
-precompiled regexes instead of go-raml's byte loops.
+The recasing functions use `str.split`, slicing and precompiled regexes, not
+per-character loops (docs/12-performance.md § 2).
 """
 
 from __future__ import annotations
@@ -60,7 +55,7 @@ __all__ = [
 ]
 
 #: The three parameters the parser injects at every application site. They are
-#: always accepted and never required of the author (docs/08 sections 5.1, 5.2).
+#: always accepted and never required of the author (docs/08 § 3.1 and § 3.2).
 RESERVED_PARAMETERS: Final = frozenset({'resourcePath', 'resourcePathName', 'methodName'})
 
 
@@ -80,7 +75,7 @@ type VariableIndex = dict[Node, list[VariableInfo]]
 FACET_USAGE: Final = 'usage'
 
 
-# -- the two template declarations (docs/08 section 5) -------------------------
+# -- the two template declarations (docs/08 § 3) -------------------------------
 
 
 @dataclass(slots=True, eq=False)
@@ -100,8 +95,8 @@ class TemplateDefinition:
     source: Node | None = None
     declared_variables: set[str] = field(default_factory=set)
     variable_index: VariableIndex = field(default_factory=dict)
-    #: `traits: {paged: !include ...}` — the target's own definition, resolved by
-    #: `fragments.py`, which owns fragment parsing (docs/02 section 3).
+    #: `traits: {paged: !include ...}`: the target's own definition, filled in
+    #: by `fragments.py`, which owns fragment decoding.
     link: Self | None = None
     link_uri: str | None = None
     #: The namespace the *body* resolves its type names in: this template's
@@ -171,7 +166,7 @@ def find_template_definition[T: TemplateDefinition](
 
     Lexical, with no application-site fallback: a name written inside a fragment
     resolves against that fragment's own declarations and `uses:` only, which
-    is what keeps a typed fragment self-contained (docs/04 section 4).
+    is what keeps a typed fragment self-contained (docs/04 § 4).
     """
     anchor = ref.scope.anchor if ref.scope is not None else None
     if anchor is None:
@@ -198,7 +193,7 @@ def check_parameters(
     The two sets differ for a resource type. Everything the template mentions is
     accepted as a parameter, but only what survives optional-method filtering is
     *required* — otherwise `/queues` would have to supply the `<<TextAboutPost>>`
-    that only appears inside the `post?` it does not have (docs/08 section 5.1).
+    that only appears inside the `post?` it does not have (docs/08 § 3.1).
     For a trait the two coincide.
 
     Reserved parameters are always accepted and never required: the parser
@@ -219,7 +214,7 @@ class VariableInfo:
     """One `<<name | !action>>` occurrence, as found in a scalar's literal text.
 
     `substring` is the exact `<<...>>` text as written, so substitution is
-    `str.replace(substring, value, 1)` with no re-parsing (docs/08 section 7.1).
+    `str.replace(substring, value, 1)` with no re-parsing (docs/08 § 5).
     """
 
     name: str
@@ -227,7 +222,7 @@ class VariableInfo:
     actions: tuple[str, ...]
 
 
-# -- section 7.3: the ten transform functions --------------------------------
+# -- the ten transform functions (docs/08 § 5) --------------------------------
 
 # Splits on runs of space/underscore/hyphen; used by the two camelCase
 # functions to find word boundaries.
@@ -236,22 +231,18 @@ _WORD_SPLIT: Final = re.compile(r'[ _\-]+')
 # Zero-width match immediately before an internal capital letter: not at the
 # start of the string, and not already preceded by the target separator (so a
 # compound word that is already split is not split again). One compiled regex
-# per separator, per docs/12-performance.md section 12.
+# per separator (docs/12-performance.md § 2).
 _BEFORE_CAP_UNDERSCORE: Final = re.compile(r'(?<!^)(?<!_)(?=[A-Z])')
 _BEFORE_CAP_HYPHEN: Final = re.compile(r'(?<!^)(?<!-)(?=[A-Z])')
 
-# `!singularize` and `!pluralize` are the only two actions that need a
-# dictionary rather than a rule, and English gives no way to derive one. The
-# go-raml uses `go-pluralize`, a port of Blake Embrey's
-# JavaScript `pluralize`; `pluralizer` is a port of that same library, so the
-# two agree by construction. Pairing a *different* pluraliser with a hand-kept
-# override table does not and cannot: doing so diverged on 298 of 758 answers
-# over go-pluralize's own irregular and uncountable tables.
+# `!singularize` and `!pluralize` need a dictionary, not a rule. go-raml uses
+# `go-pluralize`, a port of Blake Embrey's JavaScript `pluralize`; `pluralizer`
+# ports the same library, so the two agree by construction.
 #
-# These four restore exact parity. The first three are what go-raml adds on top
-# of the library; `sms` is in go-pluralize's own irregular table
-# and absent from the Python port's, which tracks an earlier release of the
-# shared JavaScript source. See docs/08 section 7.3.
+# These four registrations restore exact parity: the first three are what
+# go-raml adds on top of the library, and `sms` is in go-pluralize's irregular
+# table but not the Python port's. `tests/unit/data/pluralize_parity.tsv`
+# guards the result (docs/08 § 5).
 _IRREGULAR: Final[tuple[tuple[str, str], ...]] = (
     ('medium', 'media'),
     ('memorandum', 'memoranda'),
@@ -325,8 +316,7 @@ def _pluralize(value: str) -> str:
     return _get_pluralizer().plural(value) if value else value
 
 
-#: Module-level dispatch table (docs/12-performance.md section 18): every
-#: dispatch that would otherwise be an `if action == "...":` chain is a table.
+#: Action name to transform.
 TEMPLATE_ACTIONS: Final[dict[str, Callable[[str], str]]] = {
     '!uppercase': str.upper,
     '!lowercase': str.lower,
@@ -347,24 +337,20 @@ def apply_template_action(value: str, action: str) -> str:
     """Apply one of the ten RAML transform functions to `value`.
 
     An unrecognised `action` returns `value` unchanged, as go-raml does. Every
-    action returns the empty string
-    unchanged on empty input (explicit for `!singularize`/`!pluralize`;
-    incidental but true for the other eight).
+    action maps `''` to `''`.
     """
     transform = TEMPLATE_ACTIONS.get(action)
     return value if transform is None else transform(value)
 
 
-# -- section 7.2: parsing `<<name | !action | !action>>` ---------------------
+# -- parsing `<<name | !action | !action>>` (docs/08 § 5) ---------------------
 
 
 def parse_template_variables(text: str, location: str) -> list[VariableInfo]:
     """Find every `<<...>>` placeholder in one scalar's literal text.
 
-    Scans with `str.find` rather than a regex on purpose (docs/12-performance
-    section 12): the `| !action` grammar inside the braces is easier to read
-    as an explicit split than as a single regex, and `<<`/`>>` scanning gains
-    nothing measurable from one.
+    Scans with `str.find`: the `| !action` grammar inside the braces reads more
+    clearly as an explicit split than as one regex.
     """
     variables: list[VariableInfo] = []
     pos = 0
@@ -411,15 +397,13 @@ def _parse_variable_content(content: str, location: str) -> tuple[str, list[str]
     return name, actions
 
 
-# -- section 7.1: the variable index ------------------------------------------
+# -- the variable index (docs/08 § 5) -----------------------------------------
 
 
 def iter_nodes(node: Node) -> Iterator[Node]:
     """`node` and every descendant, depth-first and left to right.
 
-    One helper rather than a copy of the traversal in each consumer. Iterative,
-    so template depth cannot reach CPython's recursion limit
-    (docs/12-performance.md section 14).
+    Iterative, so template depth cannot reach CPython's recursion limit.
     """
     stack = [node]
     while stack:
@@ -433,7 +417,7 @@ def collect_variables_index(node: Node, location: str) -> tuple[set[str], Variab
 
     Only `!!str` scalars are scanned. The result is keyed by the node itself,
     which `Node`'s identity hashing makes exact and which nothing downstream can
-    invalidate — including the optional-method filtering of section 5.1, which
+    invalidate, including the optional-method filtering of docs/08 § 3.1, which
     removes whole subtrees between this scan and its use.
     """
     declared_variables: set[str] = set()
@@ -457,7 +441,7 @@ def collect_required_variables(node: Node, index: VariableIndex) -> set[str]:
     """The variable names reachable from the subtree rooted at `node`.
 
     Which parameters an application must supply, asked *after* optional methods
-    have been filtered out of the tree (docs/08 section 5.1 step 4): the spec's
+    have been filtered out of the tree (docs/08 § 3.1, step 5): the spec's
     own `corpResource` declares `<<TextAboutPost>>` inside a `post?`, and
     `/queues` — which has no `post` — must not be required to supply it.
     """
@@ -469,7 +453,7 @@ def collect_required_variables(node: Node, index: VariableIndex) -> set[str]:
     return names
 
 
-# -- sections 6.2 and 7: substitution, recording where each value came from ----
+# -- substitution, recording where each value came from (docs/08 § 4.1) -------
 
 
 def compile_source_provenance(
@@ -484,7 +468,7 @@ def compile_source_provenance(
     Static content is left **unmarked** and therefore keeps the template's own
     declaration scope; only nodes that received a value are recorded, as
     `caller_scope`: static content resolves at its declaration and substituted
-    values resolve at their application site (docs/08 section 4.1).
+    values resolve at their application site (docs/08 § 4.1).
 
     Unchanged node pointers are shared with the input, so the result is still a
     valid key set for the overlay and for the merge that follows.

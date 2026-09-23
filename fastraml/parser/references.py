@@ -5,7 +5,7 @@ being looked up — a shape, a trait definition, a resource type, a security
 scheme — because the lookup rule is the same for all four and the differences
 live in the `pick` callback.
 
-See docs/04-fragments-and-namespaces.md section 3.
+See docs/04-fragments-and-namespaces.md § 3.
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ def resolve_library_reference[T](
     NamedExample, DocumentationItem, Trait, ResourceType, SecurityScheme. An
     unqualified name there cannot resolve, which is what makes a typed fragment
     self-contained: it sees its own `uses:` and nothing of its includer's
-    namespace (docs/04 section 4.3).
+    namespace (docs/04 § 4).
     """
     prefix, suffix, dotted = cut_last(name, '.')
     if not dotted:

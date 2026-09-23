@@ -13,7 +13,7 @@ the document's own order.
 
 Nothing here decodes. `source_decode.py` builds these from the stage-1 IR.
 
-See docs/08-templates-and-endpoints.md section 8 and docs/13-public-api.md § 4.
+See docs/08-templates-and-endpoints.md § 6 and docs/13-public-api.md § 3.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ class Body:
 
     A `body:` written without media-type keys is instantiated once per default
     media type, so several `Body` objects may share one declaration's position
-    (docs/08 section 8.3).
+    (docs/08 § 6.3).
     """
 
     id: int
@@ -122,10 +122,8 @@ class Operation:
     #: The schemes in force, once P5 has resolved inheritance: this method's own
     #: if it declared any, otherwise the resource's, otherwise the API's.
     secured_by: list[SecurityScheme] = field(default_factory=list)
-    #: Whether `securedBy:` was written on this method at all. `[]` from an
-    #: explicit empty sequence and `[]` from silence mean different things, and
-    #: it is what makes `securedBy: [null]` *remove* inherited security
-    #: (docs/09 section A4).
+    #: Whether `securedBy:` was written on this method at all, so an explicit
+    #: `[]` or `[null]` is distinguishable from omission (docs/09 § A4).
     explicit_secured_by: bool = False
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
@@ -142,13 +140,13 @@ class EndPoint:
     #: The key as written, `/users` or `/{userId}`.
     uri: str
     #: Ancestors' relative URIs concatenated, base URI *not* prepended
-    #: (docs/08 section 8.1). This is the key `Raml.endpoints` uses.
+    #: (docs/08 § 6.1). This is the key `Raml.endpoints` uses.
     full_uri: str
     location: str
     display_name: ScalarFacet[str] | None = None
     description: ScalarFacet[str] | None = None
     #: Ancestor-declared parameters first, then this endpoint's, in path order
-    #: (P6, docs/08 section 8.2). A template variable with no declaration gets a
+    #: (P6, docs/08 § 6.2). A template variable with no declaration gets a
     #: synthesised required `string`.
     uri_parameters: dict[str, Parameter] = field(default_factory=dict)
     operations: dict[str, Operation] = field(default_factory=dict)

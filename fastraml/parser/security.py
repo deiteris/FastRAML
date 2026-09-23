@@ -1,10 +1,6 @@
 """Security schemes: the declaration, the reference, and applying one.
 
-docs/09-security-and-annotations.md Part A. Decoding a scheme is the easy half;
-the half the fixtures exercise is rejection — every RAML document that fails
-here fails because it declared a scheme the spec has no shape for.
-
-Three things carry the design:
+See docs/09-security-and-annotations.md § A. Three rules carry the design:
 
 * **`describedBy:` reuses the operation decoders**, unchanged. Its headers,
   query parameters and responses are the same constructs, so the shapes it
@@ -346,7 +342,7 @@ def _is_absolute_uri(value: str) -> bool:
     return bool(parsed.scheme) and bool(parsed.netloc or parsed.path)
 
 
-# -- the null scheme (docs/09 section A3) -------------------------------------
+# -- the null scheme (docs/09 § A3) -------------------------------------------
 
 
 def null_definition(raml: Raml, location: str) -> SecuritySchemeDefinition:
@@ -360,15 +356,15 @@ def null_definition(raml: Raml, location: str) -> SecuritySchemeDefinition:
     )
 
 
-# -- P5: inheritance and application (docs/09 §§ A4, A5) ----------------------
+# -- P5: inheritance and application (docs/09 § A4 and § A5) ------------------
 
 
 def apply_security_schemes(raml: Raml) -> None:
     """Propagate `securedBy:` down one level, then bind every reference.
 
-    Three levels, each *replacing* the one above: API root, resource, method.
-    Replacing rather than appending is what makes `securedBy: [null]` on a method
-    remove inherited security instead of adding to it.
+    Three levels, each replacing the one above: API root, resource, method. So
+    `securedBy: [null]` on a method replaces the inherited list rather than
+    adding "no scheme" to it.
     """
     for endpoint in raml.endpoints.values():
         _inherit(endpoint)
@@ -403,10 +399,9 @@ def _inherit(endpoint: EndPoint) -> None:
 def _bind(raml: Raml, scheme: SecurityScheme, resolver: Any) -> None:
     """Resolve the name, then compile whatever the application supplied.
 
-    A scheme name resolves against the **API**, not lexically — the one place
-    this differs from a trait or a resource type. Only a `Library` and an
-    `APIFragment` declare `securitySchemes:`, so a `securedBy:` written inside a
-    trait fragment has no lexical namespace that could hold one.
+    A scheme name resolves against the API, not lexically, unlike a trait or
+    resource type name (docs/09 § A6): a `securedBy:` inside a trait fragment
+    has no lexical namespace that declares schemes.
     """
     if scheme.definition is not None:
         return

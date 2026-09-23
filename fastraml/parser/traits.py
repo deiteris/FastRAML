@@ -3,11 +3,11 @@
 A trait is an operation template. Its body is captured as YAML at declaration
 time and scanned once for `<<variables>>`; applying it means substituting the
 parameters and merging the result *underneath* the operation's own body, which
-therefore wins wherever the two disagree (docs/08 section 5.2).
+therefore wins wherever the two disagree (docs/08 § 3.2).
 
-The reference to a trait — the `is:` entry — is a `DirectiveRef` and lives in
-`directives.py`, because stage 1 decodes all three directive kinds before this
-module exists (docs/02 section 3).
+The reference to a trait (an `is:` entry) is a `DirectiveRef` in
+`directives.py`, because stage 1 decodes all three directive kinds
+(docs/08 § 2.1).
 
 Two things here are easy to get subtly wrong:
 
@@ -18,7 +18,7 @@ Two things here are easy to get subtly wrong:
 * **Which namespace the merged tree resolves in.** Static trait content resolves
   in the trait's declaration scope; a value the caller supplied resolves in the
   caller's. Both marks land in the operation's provenance overlay, and the
-  set-if-absent rule keeps the more specific one (docs/08 section 6.2).
+  set-if-absent rule keeps the more specific one (docs/08 § 4.1).
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def make_trait_definition(raml: Raml, key_node: Node | None, value_node: Node, l
     return make_template_definition(TraitDefinition, raml, key_node, value_node, location, what='trait')
 
 
-# -- section 5.2: applying traits ---------------------------------------------
+# -- applying traits (docs/08 § 3.2) ------------------------------------------
 
 
 def apply_traits(endpoint: SourceEndPoint) -> None:
@@ -116,7 +116,7 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
 
 
 def _in_priority_order(endpoint: SourceEndPoint, operation: SourceOperation) -> Iterator[DirectiveRef]:
-    """The four classes of docs/08 section 5.2, closest first.
+    """The four classes of docs/08 § 3.2, closest first.
 
     The `traits` / `rt_traits` split on the IR exists solely to keep these
     distinguishable after the resource-type merge has flattened everything else.

@@ -1,15 +1,14 @@
 """Domain extensions — the model behind `(annotation)` keys.
 
-The internal name comes from AMF, by way of go-raml, and is kept because
-"annotation" collides with Python's own vocabulary in a heavily typed codebase.
+The name comes from AMF by way of go-raml; "annotation" collides with Python's
+own vocabulary.
 
-Phase 1 builds and registers extensions; P8 (`resolve_domain_extensions`) binds
-each one to the annotation type it names, which needs the type system to have
-run. Every extension is appended to the flat `Raml.domain_extensions` list,
-which is what lets the later resolution and validation passes be single loops
-rather than a traversal of the model.
+Decoders build and register extensions; P8 (`resolve_domain_extensions`) binds
+each to the annotation type it names, after P7. Every extension is appended to
+the flat `Raml.domain_extensions` list, so P8 and P10 are single loops rather
+than model traversals.
 
-See docs/09-security-and-annotations.md part B.
+See docs/09-security-and-annotations.md § B.
 """
 
 from __future__ import annotations
@@ -105,8 +104,8 @@ def add_domain_extension(
 def resolve_domain_extensions(raml: Raml) -> None:
     """P8 — bind every application to the annotation type it names.
 
-    One loop over the flat list, which is why `Raml.domain_extensions` exists
-    (docs/09 section B3). Spec section Annotations: "All annotations used in an
+    One loop over the flat `Raml.domain_extensions` list (docs/09 § B3). Spec
+    section Annotations: "All annotations used in an
     API specification MUST be declared in its annotationTypes node", so a name
     that resolves nowhere is an error rather than a shrug.
 

@@ -11,7 +11,7 @@ matters:
   tree. Use it only for data.
 
 Calling `resolve_include` where `note_include_ref` suffices doubles the I/O for
-every typed-fragment include. See docs/03-yaml-and-io.md section 4.
+every typed-fragment include. See docs/03-yaml-and-io.md § 4.
 """
 
 from __future__ import annotations
@@ -55,10 +55,10 @@ class IncludeInfo:
 
 @dataclass(frozen=True, slots=True)
 class IncludeRef:
-    """One resolved `!include`, recorded for tooling.
+    """One resolved `!include`, recorded in `Raml.include_refs` for tooling.
 
-    Nothing in the parser reads these; they exist so an editor integration can
-    emit document links, and they cost one object per directive.
+    Nothing in the parser reads these; an editor integration can emit document
+    links from them.
     """
 
     source_uri: str
@@ -72,10 +72,9 @@ class IncludeRef:
 #: in the context of modularization, that is, any file location defined in the
 #: `!include` tag or as a value of any of the `uses` or `extends` nodes."
 #:
-#: The opening marker alone, rather than a call to `parse_template_variables`:
-#: that is P6 and this is P1, and the rule is about a parameter being *present*,
-#: not about its grammar. `<<` with no `>>` is not a filename anyone meant
-#: either.
+#: The opening marker alone, not `parse_template_variables`: the rule is about
+#: a parameter being present, not well-formed, and `<<` without `>>` is not a
+#: file name anyone meant either.
 _PARAMETER_OPENS: Final = '<<'
 
 
@@ -90,13 +89,9 @@ def resolve_ref_uri(raml: Raml, ref: str, location: str, position: Position | No
     two places the spec forbids a template parameter, so the check belongs here
     rather than at either call site.
 
-    **A file that happens not to exist is not this check.** Composition runs in
-    P1 and templates expand in P6, so `!include <<version>>.raml` reaches the
-    loader as a literal name: on Windows an illegal one, on POSIX a legal one
-    that is merely absent. Both report a missing file, which names the wrong
-    mistake — and where such a file does exist, the include resolves and the
-    document is accepted. go-raml has the same gap, and its own conformance run
-    records the same failure for this fixture.
+    Includes resolve before templates expand, so without this check
+    `!include <<version>>.raml` would reach the loader as a literal file name:
+    reported as missing, or accepted if such a file happened to exist.
     """
     if _PARAMETER_OPENS in ref:
         raise RamlError.new(

@@ -1,7 +1,7 @@
 """Stage 1 — the endpoint IR, which is a YAML tree with the directives taken off.
 
 Decoding a resource produces an *intermediate representation*, not a model. The
-reason is docs/08 section 2: applying a trait means putting the trait's branch of
+reason is docs/08 § 2: applying a trait means putting the trait's branch of
 the document underneath the method's branch, and that algorithm is defined on
 the YAML tree. A parser that built `Operation`, `Response` and `BaseShape`
 objects first would have to reimplement the merge over the model — separately
@@ -13,7 +13,7 @@ Stage 1 consumes the three directive keys, recognises methods and subresources,
 and leaves every other pair as YAML. Stage 2 (`source_decode.py`) turns what
 survives into the model once P4's directive merge has finished rearranging it.
 
-See docs/08-templates-and-endpoints.md section 3.
+See docs/08-templates-and-endpoints.md § 2.1.
 """
 
 from __future__ import annotations
@@ -56,12 +56,12 @@ class SourceOperation:
     location: str
     #: `is:` written here. `rt_traits` is filled by P4 with traits arriving
     #: through a resource type; the split is what keeps the four priority
-    #: classes of docs/08 section 5.2 distinguishable after the merge.
+    #: classes of docs/08 § 3.2 distinguishable after the merge.
     traits: list[DirectiveRef] = field(default_factory=list)
     rt_traits: list[DirectiveRef] = field(default_factory=list)
     secured_by: list[DirectiveRef] = field(default_factory=list)
     #: Whether `securedBy:` was written here at all. `[]` from an explicit empty
-    #: sequence and `[]` from silence mean different things (docs/09 part A).
+    #: sequence and `[]` from silence mean different things (docs/09 § A4).
     explicit_secured_by: bool = False
     #: Everything stage 1 did not consume, as a mapping node. `None` when the
     #: method was declared with no body at all (`get:`).
@@ -85,7 +85,7 @@ class SourceEndPoint:
     #: The key as written, `/users` or `/{userId}`.
     uri: str
     #: Ancestors' relative URIs concatenated. The base URI is *not* prepended —
-    #: it is exposed separately on the API (docs/08 section 8.1).
+    #: it is exposed separately on the API (docs/08 § 6.1).
     full_uri: str
     location: str
     resource_type: DirectiveRef | None = None
@@ -109,9 +109,8 @@ class SourceEndPoint:
 def _retained(kept: list[Node], source: Node) -> Node | None:
     """The leftover keys as a fresh mapping, carrying the original's position.
 
-    A new node rather than a filtered view of the old one: P4 merges into
-    this and must not reach the document's own tree, which invariant "structural
-    merge never mutates either input" depends on.
+    A new node rather than a filtered view of the old one, so P4's merges never
+    reach the document's own tree (invariant I9).
     """
     return with_content(source, kept) if kept else None
 

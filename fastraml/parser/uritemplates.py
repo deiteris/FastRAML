@@ -2,9 +2,9 @@
 
 An endpoint's URI is a template that may contain `{var}` (simple expansion),
 `{+var}` (reserved expansion) or `{#var}` (fragment expansion) expressions.
-This module only parses and validates the template text; it does not build or
-cross-check `uriParameters` shapes, because that needs a shape model that does
-not exist yet (`docs/08-templates-and-endpoints.md` section 8.2).
+This module parses and validates the template text. P6 (`endpoint_build.py`)
+matches declared `uriParameters` against the variables found here
+(`docs/08-templates-and-endpoints.md` § 6.2).
 
 Every diagnostic here points at the exact offending byte within the template,
 computed by shifting the scalar's own position (`Position.shifted`) rather than
@@ -41,10 +41,7 @@ __all__ = [
 # an invalid character.
 _LEVEL_2_OPERATORS = ('+', '#')
 
-# A segment that is nothing but a parameter must be at least "{x}" — three
-# characters — to be treated as one; this also keeps a malformed bare "{}"
-# (which extract_uri_template_params would already have rejected) from being
-# silently skipped here too.
+# A parameter-only segment is at least "{x}", so longer than two characters.
 _MIN_PARAMETER_SEGMENT_LEN = 2
 
 _ERR_UNCLOSED_BRACE = "unclosed '{'"
@@ -117,7 +114,7 @@ def extract_uri_template_params(uri: str, location: str, uri_pos: Position) -> l
     Raises `RamlError`, positioned at the offending character, for: an
     unclosed `{`, a nested `{`, an unexpected `}`, an empty expression `{}`,
     an invalid character in a variable name, and a malformed percent-encoded
-    sequence. See docs/08-templates-and-endpoints.md section 8.2.
+    sequence. See docs/08-templates-and-endpoints.md § 6.2.
     """
     expressions: list[UriTemplateExpression] = []
     length = len(uri)
@@ -207,7 +204,7 @@ def resource_path_name(full_uri: str) -> str:
     """The rightmost path segment of `full_uri` that is not a URI template parameter.
 
     Scans from the right over *segments* (`rstrip` + `rpartition`, not
-    characters — docs/12-performance.md section 12), skipping trailing slashes
+    characters; docs/12-performance.md § 2), skipping trailing slashes
     and any segment that is entirely template expressions (`{...}`, possibly
     several concatenated, e.g. `{itemId}{ext}`). Returns `''` when every
     segment is such a parameter, or when `full_uri` is empty.

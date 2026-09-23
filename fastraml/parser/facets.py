@@ -15,8 +15,8 @@ The builders live here rather than in `types/` because both of those features
 need the parser: an include has to be read through the cache, and an annotation
 has to become a `DomainExtension`. The `ScalarFacet` class itself belongs to the
 type model and lives in `fastraml.types.base`. This module is the one part of
-`parser/` that `types/` may import at runtime — see docs/02-architecture.md
-section 2 and docs/03-yaml-and-io.md section 7.
+`parser/` that `types/` may import at runtime; see docs/02-architecture.md § 2
+and docs/03-yaml-and-io.md § 7.
 """
 
 from __future__ import annotations
@@ -58,8 +58,8 @@ __all__ = [
 #: The key that carries the value in the annotated-scalar form.
 FACET_VALUE: Final = 'value'
 
-#: Everything YAML 1.1 spells as true. Composition has already resolved the tag,
-#: so reaching here with `!!bool` means one of these or its false counterpart.
+#: Implicit `!!bool` is only `true`/`false` in the YAML 1.2 table; the YAML 1.1
+#: spellings are still honoured under an explicit `!!bool` tag.
 _TRUE_SCALARS: Final = frozenset({'true', 'yes', 'on', 'y'})
 
 
@@ -115,7 +115,7 @@ def regex_engine(raml: Raml) -> Any:
 
     What it cannot cover: the regexes *inside* an external JSON Schema, at
     validation time. The schema library calls `re.search` directly and offers no
-    hook to replace it (docs/01 deviation D3).
+    hook to replace it (docs/01 § 4.2).
     """
     if raml.regex_engine != 're2':
         return re
@@ -129,7 +129,7 @@ def compile_pattern(raml: Raml, text: str, node: Node, location: str) -> re.Patt
 
     `re2` is linear-time and is what untrusted input should use; it is optional,
     so a parse that asks for it without the package installed says so rather
-    than quietly backtracking (docs/13-public-api.md section 2).
+    than quietly backtracking (docs/13-public-api.md § 2).
     """
     try:
         engine = regex_engine(raml)

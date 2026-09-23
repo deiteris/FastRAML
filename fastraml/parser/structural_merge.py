@@ -1,7 +1,7 @@
 """The spec's merging algorithm, and the provenance overlay that survives it.
 
 Spec section Algorithm of Merging Traits and Methods, restated in
-docs/08-templates-and-endpoints.md section 4: applying a trait to a method means
+docs/08-templates-and-endpoints.md § 1: applying a trait to a method means
 putting the trait's *branch of the document* underneath the method's branch.
 Properties only in one side survive; properties in both keep the target's scalar,
 union its collections, and recurse into its objects.
@@ -14,7 +14,7 @@ stage 1 keeps one. Two rules make it sound rather than merely plausible:
   recorded in the overlay keeps its identity and its mark stays reachable;
 * **marks are set-if-absent** — a node that already carries one defines its own
   scope domain, and `mark_graft` neither overwrites it nor descends beneath it.
-  That single rule is what resolves all three cases of docs/08 section 6.1.
+  That rule covers both writers in docs/08 § 4.1.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ __all__ = [
 
 #: Where a node was authored, for the nodes whose scope differs from the
 #: enclosing unit's default. Sparse, and keyed by **object identity** — `Node`
-#: defines no `__eq__`/`__hash__` for exactly this reason (docs/08 section 6.5).
+#: defines no `__eq__`/`__hash__` for exactly this reason (docs/08 § 4).
 type ProvenanceOverlay = dict[Node, ParseCtx]
 
 #: Facets holding user data rather than RAML declaration structure. The spec's
@@ -126,7 +126,7 @@ def _merge_sequences(
     This is the rule that produces the spec's `[mac, unix, win]`. It is also why
     `is: [{secured: {tokenName: token}}]` and the same trait with a different
     parameter both survive — they are not structurally equal. Traits are
-    deduplicated by *name* in a separate step (docs/08 section 5.2).
+    deduplicated by *name* in a separate step (docs/08 § 3.2).
     """
     merged = list(target.content)
     for item in source.content:

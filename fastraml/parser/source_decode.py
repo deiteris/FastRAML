@@ -1,22 +1,21 @@
 """Stage 2 — materialize the endpoint IR into the model.
 
-Each retained tree is decoded **exactly once**, which is the whole point of the
-two-stage split (docs/08 section 2). By the time this runs, P4's merge has
-finished rearranging the IR, so what arrives here is the final branch.
+Each retained tree is decoded exactly once, which is the point of the
+two-stage split (docs/08 § 2). By the time this runs, P4's merge has finished
+rearranging the IR, so what arrives here is the final branch.
 
 Every shape this creates is registered with `Raml.put_typedef`. That is the seam
 that makes P9 and P10 reach a body, a header or a query parameter without either
 pass knowing endpoints exist — `unwrap_shapes` and `validate_shapes` both
 iterate `fragment_typedefs` and nothing else.
 
-The other half of what runs here is the provenance overlay (docs/08 section
-6.3). A merged body holds nodes authored in up to three files, so the decode
-pushes a scope per boundary root, and every entity constructor asks
-`Raml.location_of` which file its node came from. Without that, a type name a
-trait contributed resolves in the applying document's namespace — and still
-parses, which is why this is the phase's characteristic silent failure.
+The decode also reads the provenance overlay (docs/08 § 4.2). A merged body
+can hold nodes authored in several files, so the decode pushes a scope per
+boundary root and every entity constructor asks `Raml.location_of` for its
+node. Without that, a type name a trait contributed would resolve in the
+applying document's namespace, often silently.
 
-See docs/08-templates-and-endpoints.md sections 3, 6 and 8.
+See docs/08-templates-and-endpoints.md § 2, § 4 and § 6.
 """
 
 from __future__ import annotations
@@ -83,7 +82,7 @@ def _secured_by(raml: Raml, source: SourceEndPoint | SourceOperation) -> list[Se
 
     The global list is shared rather than copied, as in go-raml: the
     entries carry no per-application parameters, so nothing can diverge
-    (docs/09 section A4).
+    (docs/09 § A4).
     """
     if not source.explicit_secured_by:
         return raml.global_secured_by
@@ -103,7 +102,7 @@ def _protocols(node: Node, location: str) -> list[str]:
     return protocols
 
 
-# -- bodies and media types (docs/08 section 8.3) ------------------------------
+# -- bodies and media types (docs/08 § 6.3) ------------------------------------
 
 
 def _is_media_type_map(node: Node) -> bool:
@@ -121,7 +120,7 @@ def _is_media_type_map(node: Node) -> bool:
 
 
 def _decode_bodies(raml: Raml, node: Node, location: str, target: DomainLocation) -> dict[str, Body]:
-    """`body:` in either spelling (docs/08 section 8.3)."""
+    """`body:` in either spelling (docs/08 § 6.3)."""
     if is_null(node):
         return {}
     location = raml.location_of(node, location)
@@ -359,9 +358,9 @@ def _decode_endpoint_field(raml: Raml, endpoint: EndPoint, key: Node, value: Nod
 def decode_source_endpoint(raml: Raml, source: SourceEndPoint) -> EndPoint:
     """One resource's retained tree into an `EndPoint`, recursing into children.
 
-    URI parameters are decoded here but *not* yet propagated: P6 rewrites each
-    map to ancestor-declared parameters first (docs/08 section 8.2), and that
-    needs the whole tree, so it runs after this.
+    URI parameters are decoded here but not yet propagated: P6 rewrites each
+    map to ancestor-declared parameters first (docs/08 § 6.2), after the whole
+    tree exists.
     """
     endpoint = EndPoint(
         id=raml.next_id(),

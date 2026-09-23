@@ -11,13 +11,13 @@ up, and with three differences that all come from methods being involved.
   declares `post`. Filtering runs **before** substitution, and the required
   variables are recollected from the filtered tree afterwards — the spec's own
   `corpResource` declares `<<TextAboutPost>>` inside a `post?`, and `/queues`,
-  which has no `post`, must not be asked to supply it (docs/08 section 5.1).
+  which has no `post`, must not be asked to supply it (docs/08 § 3.1).
 * **Chaining.** A resource type may itself have a `type:`. The parent is applied
   to the compiled child first, so the closer declaration still wins.
 
 Traits arriving through a resource type are routed into `rt_traits`, never
-`traits`. That split is the only thing that keeps the four priority classes of
-section 5.2 distinguishable once the merge has flattened everything else.
+`traits`. That split keeps the four priority classes of docs/08 § 3.2
+distinguishable once the merge has flattened everything else.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ __all__ = [
 
 #: The non-method keys a resource type may declare. `usage:` is consumed by the
 #: shared decoder; the rest are kept and flow into the compiled endpoint
-#: (docs/08 section 5.1).
+#: (docs/08 § 3.1).
 RESOURCE_TYPE_FACETS: Final = frozenset({'displayName', 'description', 'uriParameters', 'type', 'is', 'securedBy'})
 
 
@@ -109,7 +109,7 @@ def _method_key(definition: ResourceTypeDefinition, key: Node) -> Node:
     return with_value(key, name)
 
 
-# -- section 5.1: applying a resource type ------------------------------------
+# -- applying a resource type (docs/08 § 3.1) ---------------------------------
 
 
 def apply_resource_type(raml: Raml, endpoint: SourceEndPoint, ref: DirectiveRef, visited: set[str]) -> None:
@@ -164,7 +164,7 @@ def _definition_for(ref: DirectiveRef) -> ResourceTypeDefinition:
     return definition
 
 
-def compile_resource_type(  # noqa: PLR0913 - the six inputs of docs/08 section 5.1
+def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3.1
     raml: Raml,
     definition: ResourceTypeDefinition,
     params: dict[str, Node],
@@ -175,11 +175,11 @@ def compile_resource_type(  # noqa: PLR0913 - the six inputs of docs/08 section 
     uri: str,
     parent_uri: str,
 ) -> SourceEndPoint | None:
-    """The six steps of docs/08 section 5.1, in the order the spec forces."""
+    """Steps 2 and 4-7 of docs/08 § 3.1: filter, check, substitute, decode to IR."""
     if definition.link is not None:
-        # An `!include`d definition compiles in the *fragment's* own namespace,
-        # so type references in its body resolve against the fragment's `uses:`
-        # rather than the applying document's — deviation D4, self-containment.
+        # An `!include`d definition compiles in the fragment's own namespace, so
+        # type references in its body resolve against the fragment's `uses:`
+        # rather than the applying document's (docs/01 § 4.3).
         return compile_resource_type(
             raml,
             definition.link,
@@ -220,8 +220,8 @@ def compile_resource_type(  # noqa: PLR0913 - the six inputs of docs/08 section 
 def _filter_optional_methods(definition: ResourceTypeDefinition, source: Node, existing: set[str]) -> Node:
     """Drop the `post?` the target resource has no `post` for.
 
-    Before substitution, and therefore before the required variables are
-    recollected — which is the whole reason step 4 asks the *filtered* tree.
+    Runs before the parameter check, which collects required variables from
+    the filtered tree (docs/08 § 3.1, steps 4-5).
     """
     if not definition.optional_methods:
         return source

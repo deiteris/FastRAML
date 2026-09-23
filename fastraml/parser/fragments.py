@@ -2,8 +2,8 @@
 
 Every non-API fragment may carry a root-level `uses:`, so every decoder does the
 same two things first: strip `uses:`, then hand the remainder to the
-kind-specific decoder. Two ordering rules in `parse_fragment` carry the weight
-of this module (docs/04-fragments-and-namespaces.md section 6):
+kind-specific decoder. Two ordering rules in `decode_fragment` carry the weight
+of this module (docs/04-fragments-and-namespaces.md § 6):
 
 * the fragment is registered **before** its body is decoded, so `a.raml` →
   `b.raml` → `a.raml` terminates with a cyclic object graph instead of
@@ -17,11 +17,10 @@ A typed fragment's decoder pushes its **own** `ParseCtx`, never its caller's.
 That is what makes the fragment cache sound: without it the same file would mean
 different things at different inclusion sites.
 
-Every declaration is now decoded here. The two `_raw_*` attributes that remain
-are working buffers rather than seams: `_raw_endpoints` is handed to P4, which
-runs after every fragment is decoded, and `_raw_secured_by` is harvested before
-the main loop but decoded after it, because it names schemes the loop has yet to
-declare. Each is released after its consumer succeeds.
+`APIFragment` keeps two working buffers: `_raw_endpoints` is handed to P4,
+which runs after every fragment is decoded, and `_raw_secured_by` is harvested
+before the main loop but decoded after it, because it names schemes the loop
+has yet to declare. Each is released after its consumer succeeds.
 """
 
 from __future__ import annotations
@@ -111,7 +110,7 @@ class FragmentKind(StrEnum):
 
 
 #: The first line of a document identifies it. Matching is exact, after the
-#: line ending and trailing spaces are stripped. See docs/03 section 3.
+#: line ending and trailing spaces are stripped. See docs/03 § 3.
 HEADS: Final[Mapping[str, FragmentKind]] = {
     '#%RAML 1.0': FragmentKind.API,
     '#%RAML 1.0 Library': FragmentKind.LIBRARY,
@@ -136,7 +135,7 @@ def identify_fragment(head: str) -> FragmentKind | None:
 #: names that do not simply match are `DataType`, whose root *is* a type
 #: declaration, and `AnnotationTypeDeclaration`, whose root is an annotation
 #: type. Narrower sites push over this via `Raml.target_scope`.
-#: See docs/09-security-and-annotations.md section B5.
+#: See docs/09-security-and-annotations.md § B4.
 FRAGMENT_TARGETS: Final[Mapping[FragmentKind, DomainLocation]] = {
     FragmentKind.API: DomainLocation.API,
     FragmentKind.LIBRARY: DomainLocation.LIBRARY,
@@ -202,7 +201,7 @@ class ReferenceResolver(Fragment, Protocol):
 
         On the protocol rather than reached through a fragment's `uses` field
         so that P7 can emit the library half of a `lib.Type` reference
-        (docs/06 section 3.2) through the anchor it already holds, without
+        (docs/06 § 3) through the anchor it already holds, without
         `types/` importing this module at runtime.
         """
         ...
@@ -340,7 +339,7 @@ class _UsesOnlyFragment(_BaseFragment):
 
     def reference_annotation_type(self, name: str) -> BaseShape:
         # An annotation type declaration has the same syntax as a data type and
-        # may extend one, so the lookup falls back to `types`. docs/04 § 3.1.
+        # may extend one, so the lookup falls back to `types` (docs/04 § 3).
         try:
             return resolve_library_reference(self.uses, name, _pick_annotation_type)
         except LookupError:
@@ -499,11 +498,11 @@ class APIFragment(_DeclaringFragment):
         self.media_types: list[ScalarFacet[str]] = []
         self.documentation: list[DocumentationItem] = []
         self.base_uri_parameters: dict[str, Parameter] = {}
-        # A seam: `securedBy:` is harvested before the main loop but decoded
-        # after it, because it names schemes the loop has yet to declare.
+        # `securedBy:` is harvested before the main loop but decoded after it,
+        # because it names schemes the loop has yet to declare.
         self._raw_secured_by: Node | None = None
         #: `(key, value)` pairs for every `/relativeUri` key, in document order.
-        #: Phase 5 turns them into the stage-1 endpoint IR.
+        #: P4 turns them into the stage-1 endpoint IR.
         self._raw_endpoints: list[tuple[Node, Node]] = []
 
     def decode(self, node: Node) -> None:
@@ -531,7 +530,7 @@ class APIFragment(_DeclaringFragment):
             accumulator.add(node_error('title is required', self.location, node))
         # After the loop, since `baseUri` and `baseUriParameters` come in either
         # order. A `baseUri` that failed has reported already, and is not
-        # followed by one error per parameter (docs/08 section 8.2).
+        # followed by one error per parameter (docs/08 § 6.2).
         if self.base_uri is not None or not any(key.value == FACET_BASE_URI for key, _ in remainder):
             uri = '' if self.base_uri is None else self.base_uri.value
             variables = [expression.name for expression in extract_uri_template_params(uri, self.location, UNKNOWN)]
@@ -544,14 +543,14 @@ class APIFragment(_DeclaringFragment):
         if self._decode_root_facet(key, value) or self._decode_declarations(key, value, declarations):
             return
         if key.value.startswith('/'):
-            # Endpoints are not decoded here: they become stage-1 IR in Phase 5,
+            # Endpoints are not decoded here: they become stage-1 IR in P4,
             # because the trait and resource-type merge runs on the YAML tree.
             self._raw_endpoints.append((key, value))
         else:
             raise node_error('unknown field', self.location, key, info={'field': key.value})
 
     def _decode_root_facet(self, key: Node, value: Node) -> bool:
-        """The keys Phase 1 owns. Returns whether the key was one of them."""
+        """The API root's own facets. Returns whether the key was one of them."""
         raml = self._raml
         name = key.value
         if name == FACET_TITLE:
@@ -568,7 +567,7 @@ class APIFragment(_DeclaringFragment):
             # A base URI is a URI template like a resource's own, so it gets the
             # same parse: `http://{myapi.com` is an unclosed expression, not a
             # hostname. Around the expressions it must be a URI reference
-            # (docs/08 section 8.2).
+            # (docs/08 § 6.1).
             extract_uri_template_params(facet.value, self.location, facet.value_pos)
             check_uri_reference(facet.value, self.location, facet.value_pos)
             self.base_uri = facet
@@ -588,7 +587,7 @@ class APIFragment(_DeclaringFragment):
         `mediaType`, `protocols` and `securedBy` are needed by everything
         decoded afterwards — body media types, operation protocols, and the
         default security of every operation — so they are harvested before the
-        main loop rather than in document order. See docs/04 section 5.1.
+        main loop rather than in document order. See docs/04 § 5.
         """
         raml = self._raml
         remainder: list[tuple[Node, Node]] = []
@@ -658,7 +657,7 @@ class DataTypeFragment(_UsesOnlyFragment):
 
         That synthetic mapping is what the ordinary shape builder already
         understands, so an external schema needs no branch of its own
-        downstream. See docs/04 section 5.2.
+        downstream. See docs/04 § 5.
         """
         self._build(
             Node(
@@ -670,7 +669,7 @@ class DataTypeFragment(_UsesOnlyFragment):
         )
 
     def _build(self, declaration: Node) -> None:
-        """The whole remaining mapping is the declaration (docs/04 section 5.2).
+        """The whole remaining mapping is the declaration (docs/04 § 5).
 
         A synthetic key node carrying the file's base name gives the shape a
         sensible name; from there it is an ordinary declaration.
@@ -681,7 +680,7 @@ class DataTypeFragment(_UsesOnlyFragment):
 
     @property
     def declared_name(self) -> str:
-        """The name Phase 2 gives the shape: the file's base name."""
+        """The shape's name: the file's base name."""
         return uri_base(self.location)
 
 
@@ -756,11 +755,8 @@ class ResourceTypeFragment(_DefinitionFragment):
 class SecuritySchemeFragment(_DefinitionFragment):
     """`#%RAML 1.0 SecurityScheme` — the whole document is one scheme.
 
-    Its shapes are deliberately **not** resolved when the fragment is decoded.
-    A `describedBy` body gets embedded into an operation through `securedBy`, so
-    those shapes belong to the same global resolution batch as everything else;
-    resolving them here would race the including document's `uses:` resolution,
-    which has not run yet. See docs/04 section 5.4.
+    Its `describedBy` shapes join the P7 worklist like every other declaration;
+    nothing is resolved while the fragment decodes.
     """
 
     __slots__ = ()
@@ -769,10 +765,10 @@ class SecuritySchemeFragment(_DefinitionFragment):
 
 # -- traits: and resourceTypes: -----------------------------------------------
 #
-# The definitions live in `traits.py` and `resourcetypes.py`; only the two
-# functions below are here, because following a definition's `!include` means
-# parsing a fragment, which this module owns. docs/02 section 3 forbids the
-# reverse import and rules out a deferred one.
+# The definitions live in `traits.py`, `resourcetypes.py` and `security.py`;
+# the map decoders are here because following a definition's `!include` means
+# parsing a fragment, which this module owns. Those modules importing this one
+# would be a cycle (docs/02 § 2).
 
 
 #: The builder for each kind a definition fragment or declaration map holds.
@@ -891,7 +887,7 @@ _FRAGMENT_CLASSES: Final[Mapping[FragmentKind, Callable[[Raml, str], _BaseFragme
 
 
 def make_fragment(raml: Raml, kind: FragmentKind, uri: str) -> _BaseFragment:
-    """The empty fragment object for a kind. Overlay and Extension are v1.1."""
+    """The empty fragment object for a kind. Overlay and Extension are unsupported."""
     factory = _FRAGMENT_CLASSES.get(kind)
     if factory is None:
         raise RamlError.new('fragment kind not supported', uri, info={'kind': str(kind)}, kind=ErrorKind.PARSING)
@@ -915,11 +911,9 @@ def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> None:
     if kind is FragmentKind.DATA_TYPE and path.endswith('.json'):
         return
     if path.endswith('.xsd'):
-        # Deviation D1. Reported here rather than left to the header check,
-        # which would tell the author their XSD has an unrecognised RAML
-        # header — true, unhelpful, and the wrong thing to go and fix. Only
-        # `.xsd`: an `!include` of `.xml` is a scalar include and may well be a
-        # legitimate example.
+        # docs/01 § 3. Reported here rather than left to the header check,
+        # which would report an unrecognised RAML header instead. Only `.xsd`:
+        # an `!include` of `.xml` is a scalar include and may be an example.
         raise RamlError.new(
             'xml schema external types are not supported', uri, info={'path': uri}, kind=ErrorKind.PARSING
         )
@@ -973,7 +967,7 @@ def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Frag
     if anchor is not None:
         # Indexed here, where the capability check already happens, so that P7's
         # fallback for a shape built outside any parse context is a dict lookup
-        # rather than a second isinstance in `types/` (docs/04 section 4.2).
+        # rather than a second isinstance in `types/` (docs/04 § 2).
         raml.put_resolver(uri, anchor)
     raml.push_ctx(ParseCtx(anchor=anchor, target=FRAGMENT_TARGETS[kind]))
     try:

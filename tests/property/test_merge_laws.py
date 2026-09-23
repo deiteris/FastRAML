@@ -14,58 +14,20 @@ still has its own value.
 from __future__ import annotations
 
 from hypothesis import given, settings
-from hypothesis import strategies as st
 
 from fastraml.parser.structural_merge import merge_structural
+from fastraml.parser.templates import iter_nodes
 from fastraml.registry import ParseCtx
-from fastraml.yamlnode import TAG_MAP, TAG_SEQ, TAG_STR, Node, NodeKind, pairs
+from fastraml.yamlnode import Node, NodeKind, pairs
+from tests.trees import mapping_trees, snapshot
 
 SCOPE = ParseCtx()
 
 # A small alphabet on purpose: keys must collide often enough that the
 # in-both branch of the merge is exercised, and so must sequence items.
-_KEYS = st.sampled_from(['a', 'b', 'c', 'example', 'default', 'type'])
-_VALUES = st.sampled_from(['1', '2', 'x', 'y'])
-
-
-def _scalar(value: str) -> Node:
-    return Node(NodeKind.SCALAR, TAG_STR, value)
-
-
-def _mapping(entries: list[tuple[str, Node]]) -> Node:
-    content: list[Node] = []
-    seen: set[str] = set()
-    for key, value in entries:
-        if key in seen:
-            # YAML permits duplicate keys; RAML does not, and `compose` records
-            # them for a decoder to reject. The merge never sees a pair.
-            continue
-        seen.add(key)
-        content += (_scalar(key), value)
-    return Node(NodeKind.MAPPING, TAG_MAP, '', content)
-
-
-def _sequence(items: list[Node]) -> Node:
-    return Node(NodeKind.SEQUENCE, TAG_SEQ, '', items)
-
-
-nodes = st.recursive(
-    _VALUES.map(_scalar),
-    lambda children: st.one_of(
-        st.lists(st.tuples(_KEYS, children), max_size=4).map(_mapping),
-        st.lists(children, max_size=3).map(_sequence),
-    ),
-    max_leaves=12,
+mappings = mapping_trees(
+    ['a', 'b', 'c', 'example', 'default', 'type'], ['1', '2', 'x', 'y'], max_leaves=12, max_entries=4
 )
-
-#: The merge is only ever called on two branches of a declaration, so both
-#: sides are mappings at the top.
-mappings = st.lists(st.tuples(_KEYS, nodes), max_size=4).map(_mapping)
-
-
-def snapshot(node: Node):
-    """Everything about a tree the merge is forbidden to change."""
-    return (node.kind, node.tag, node.value, [snapshot(child) for child in node.content])
 
 
 class TestLaw2Identity:
@@ -121,15 +83,7 @@ class TestNodeIdentityIsPreserved:
     def test_every_merged_scalar_is_one_of_the_inputs_own(self, target: Node, source: Node):
         merged = merge_structural(target, source, SCOPE)
         assert merged is not None
-        originals = {id(node) for tree in (target, source) for node in _walk(tree)}
-        for node in _walk(merged):
+        originals = {id(node) for tree in (target, source) for node in iter_nodes(tree)}
+        for node in iter_nodes(merged):
             if node.kind is NodeKind.SCALAR:
                 assert id(node) in originals, 'a copied scalar would drop its provenance mark'
-
-
-def _walk(node: Node):
-    stack = [node]
-    while stack:
-        current = stack.pop()
-        yield current
-        stack.extend(current.content)

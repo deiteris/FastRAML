@@ -16,6 +16,7 @@ from fastraml.parser.structural_merge import (
 )
 from fastraml.registry import ParseCtx
 from fastraml.yamlnode import NodeKind, compose, pairs
+from tests.trees import snapshot
 
 LOCATION = 'file:///a.raml'
 SCOPE = ParseCtx()
@@ -27,11 +28,6 @@ def tree(text: str):
 
 def merge(target: str, source: str, overlay=None):
     return merge_structural(tree(target), tree(source), SCOPE, overlay)
-
-
-def snapshot(node):
-    """A structure the merge must not be able to change: kinds, tags, values."""
-    return (node.kind, node.tag, node.value, [snapshot(child) for child in node.content])
 
 
 def keys(node) -> list[str]:

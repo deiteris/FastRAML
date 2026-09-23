@@ -422,7 +422,7 @@ class _Located(Protocol):
 
 
 #: The nodes an extension document wrote, and which document wrote each. Set by
-#: `Raml.reporting_authorship` for the length of a parse; read only when a
+#: `Raml.authorship` for the length of a parse; read only when a
 #: diagnostic is built.
 AUTHORED_NODES: ContextVar[Mapping[Node, _Located] | None] = ContextVar('AUTHORED_NODES', default=None)
 

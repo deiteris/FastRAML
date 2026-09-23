@@ -24,7 +24,7 @@ from fastraml.loaders import SchemeLoader
 from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, NodeKind, mark_subtree
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from fastraml.loaders import ResourceLoader
     from fastraml.parser.annotations import DomainExtension
@@ -103,25 +103,25 @@ class _TargetScope:
 
 
 class _MarkedScope:
-    """Push the scope `reader` finds for `node`, if it finds one."""
+    """`Raml.provenance_scope`: push the scope recorded for a node, if any."""
 
-    __slots__ = ('_node', '_pushed', '_reader', '_stack')
+    __slots__ = ('_node', '_pushed', '_raml')
 
-    def __init__(self, stack: list[ParseCtx], reader: Callable[[Node], ParseCtx | None], node: Node) -> None:
-        self._stack = stack
-        self._reader = reader
+    def __init__(self, raml: Raml, node: Node) -> None:
+        self._raml = raml
         self._node = node
         self._pushed = False
 
     def __enter__(self) -> None:
-        scope = self._reader(self._node)
+        raml = self._raml
+        scope = raml._marked_scope(self._node)  # noqa: SLF001
         if scope is not None:
-            self._stack.append(scope)
+            raml._parse_ctx_stack.append(scope)  # noqa: SLF001
             self._pushed = True
 
     def __exit__(self, *exc: object) -> None:
         if self._pushed:
-            self._stack.pop()
+            self._raml._parse_ctx_stack.pop()  # noqa: SLF001
 
 
 class Raml:
@@ -311,7 +311,7 @@ class Raml:
         A node with no mark is one the enclosing unit wrote itself, and the
         scope already in effect is the right one for it.
         """
-        return _MarkedScope(self._parse_ctx_stack, self._marked_scope, node)
+        return _MarkedScope(self, node)
 
     def scope_for(self, node: Node) -> ParseCtx | None:
         """The scope a type-bearing node should be decoded under, most specific first.
@@ -340,25 +340,20 @@ class Raml:
         authored (docs/08 § 4.2). Merge-created containers carry no mark, so
         callers ask about the specific child node.
         """
-        documents = self._document_provenance
-        if documents:
-            anchor = documents.get(node)
-            if anchor is not None:
-                return anchor.location
+        anchor = self.document_anchor(node)
+        if anchor is not None:
+            return anchor.location
         overlay = self._active_overlay
-        if overlay is None:
-            return default
-        scope = overlay.get(node)
+        scope = None if overlay is None else overlay.get(node)
         if scope is not None and scope.anchor is not None:
             return scope.anchor.location
         return default
 
     def _marked_scope(self, node: Node) -> ParseCtx | None:
         """The document mark first, then the active unit's (docs/19 § 5.3)."""
-        if self._document_provenance:
-            scope = self.document_ctx(node)
-            if scope is not None:
-                return scope
+        authored = self.document_ctx(node)
+        if authored is not None:
+            return authored
         overlay = self._active_overlay
         return None if overlay is None else overlay.get(node)
 
@@ -382,12 +377,8 @@ class Raml:
         Unlike `location_of`, ignores template scopes: a substituted scalar
         keeps the template's positions, so only authorship names its file.
         """
-        documents = self._document_provenance
-        if documents:
-            anchor = documents.get(node)
-            if anchor is not None:
-                return anchor.location
-        return default
+        anchor = self.document_anchor(node)
+        return default if anchor is None else anchor.location
 
     def document_ctx(self, node: Node) -> ParseCtx | None:
         """The current scope re-anchored at `node`'s authoring document, if any.
@@ -400,32 +391,38 @@ class Raml:
             return None
         return self._scope(anchor, self.current_ctx().target)
 
-    def document_scope(self, node: Node) -> _MarkedScope:
-        """Decode `node` in its authoring document's namespace, if it has one."""
-        return _MarkedScope(self._parse_ctx_stack, self.document_ctx, node)
+    def document_site[S: ParseCtx | None](self, node: Node, location: str, scope: S) -> tuple[str, S | ParseCtx]:
+        """The location and scope to decode `node` under.
+
+        Its authoring document's, if an extension document wrote it, else the
+        ones given: `is: [paged]` added to a method the root API declares
+        names `paged` in the extension document's namespace (docs/19 § 5.3).
+        """
+        anchor = self.document_anchor(node)
+        if anchor is None:
+            return location, scope
+        return anchor.location, self._scope(anchor, self.current_ctx().target)
 
     @contextmanager
-    def reporting_authorship(self) -> Iterator[None]:
-        """Let `node_error` name a marked node's authoring document.
+    def authorship(self) -> Iterator[None]:
+        """Run the passes with the document marks in force, then drop them.
 
+        Inside, `node_error` names a marked node's authoring document.
         Diagnostics are built at a hundred sites that know only the location
         they were handed; the lookup happens once a failure exists, so the
         success path pays nothing (docs/11 § 8).
+
+        On the way out, success or failure, the marks are cleared. Only the
+        passes read them, and they reference every node an extension document
+        wrote: kept, they would hold those YAML trees for as long as the model
+        lives, which P4 avoids for the API's own tree (docs/19 § 5.3).
         """
         token = AUTHORED_NODES.set(self._document_provenance)
         try:
             yield
         finally:
             AUTHORED_NODES.reset(token)
-
-    def release_document_provenance(self) -> None:
-        """Drop the marks once the passes have run (docs/19 § 5.3).
-
-        Only the passes read them, and they reference every node an extension
-        document wrote. Kept, they would hold those YAML trees for as long as
-        the model lives, which P4 avoids for the API's own tree.
-        """
-        self._document_provenance.clear()
+            self._document_provenance.clear()
 
     # -- stores ---------------------------------------------------------------
 

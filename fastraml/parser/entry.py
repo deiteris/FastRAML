@@ -195,11 +195,8 @@ _FATAL: Final = frozenset(
 @tuned_gc()
 def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     """The pass driver, with diagnostics naming each node's authoring document."""
-    try:
-        with raml.reporting_authorship():
-            return _run_passes(raml, uri, text, options)
-    finally:
-        raml.release_document_provenance()
+    with raml.authorship():
+        return _run_passes(raml, uri, text, options)
 
 
 def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:

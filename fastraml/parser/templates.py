@@ -132,12 +132,12 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
     """
     # A declaration an extension document added is that document's, body and
     # all; one it only amended stays the declaring document's (docs/19 § 5.3).
-    location = raml.document_location(value_node, location)
+    location, scope = raml.document_site(value_node, location, raml.current_ctx())
     definition = cls(
         id=raml.next_id(),
         name=key_node.value if key_node is not None else '',
         location=location,
-        anchor=raml.document_anchor(value_node) or raml.current_ctx().anchor,
+        anchor=scope.anchor,
         key_pos=(key_node if key_node is not None else value_node).position,
         value_pos=value_node.full_position,
     )

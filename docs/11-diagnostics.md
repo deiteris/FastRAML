@@ -137,15 +137,11 @@ which they must be decoded.
 
 ```python
 def location_of(self, node: Node, default: str) -> str:
-    documents = self._document_provenance
-    if documents:
-        anchor = documents.get(node)
-        if anchor is not None:
-            return anchor.location
+    anchor = self.document_anchor(node)
+    if anchor is not None:
+        return anchor.location
     overlay = self._active_overlay
-    if overlay is None:
-        return default
-    scope = overlay.get(node)
+    scope = None if overlay is None else overlay.get(node)
     if scope is not None and scope.anchor is not None:
         return scope.anchor.location
     return default

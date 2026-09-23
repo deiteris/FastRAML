@@ -550,9 +550,7 @@ class APIFragment(_DeclaringFragment):
                 raw = self._raw_secured_by
                 # A root `securedBy:` an extension document wrote names schemes
                 # in that document's namespace (docs/19 § 5.3).
-                scope = self._raml.document_ctx(raw) or ParseCtx(anchor=self)
-                location = self._raml.document_location(raw, self.location)
-                refs = decode_secured_by(raw, location, scope)
+                refs = decode_secured_by(raw, *self._raml.document_site(raw, self.location, ParseCtx(anchor=self)))
                 self._raml.global_secured_by = make_security_schemes(self._raml, refs)
             except RamlError as err:
                 accumulator.add(err)

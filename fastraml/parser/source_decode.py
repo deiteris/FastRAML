@@ -23,11 +23,11 @@ from __future__ import annotations
 
 import re
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
-from fastraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
+from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.directives import make_security_schemes
 from fastraml.parser.endpoints import VALID_PROTOCOLS, Body, EndPoint, Operation, Request, Response
 from fastraml.parser.facets import make_string_facet, scalar_str
@@ -37,13 +37,13 @@ from fastraml.yamlnode import NodeKind, is_null, node_error, pairs
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.directives import SecurityScheme
     from fastraml.parser.source_ir import SourceEndPoint, SourceOperation
     from fastraml.registry import Raml
+    from fastraml.types.base import BaseShape, Parameter
     from fastraml.yamlnode import Node
 
-__all__ = ['decode_responses', 'decode_source_endpoint']
+__all__ = ['decode_request_facet', 'decode_responses', 'decode_source_endpoint', 'query_exclusion_error']
 
 FACET_DISPLAY_NAME: Final = 'displayName'
 FACET_DESCRIPTION: Final = 'description'
@@ -88,11 +88,6 @@ def _secured_by(raml: Raml, source: SourceEndPoint | SourceOperation) -> list[Se
     if not source.explicit_secured_by:
         return raml.global_secured_by
     return make_security_schemes(raml, source.secured_by)
-
-
-def _annotation(raml: Raml, into: dict[str, DomainExtension], key: Node, value: Node, location: str) -> None:
-    extension = unmarshal_domain_extension(raml, location, key, value)
-    into[extension.name] = extension
 
 
 def _protocols(node: Node, location: str) -> list[str]:
@@ -219,7 +214,7 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str) -> Respo
                 elif name == FACET_BODY:
                     response.bodies = _decode_bodies(raml, child_value, location, DomainLocation.RESPONSE_BODY)
                 elif is_annotation_key(name):
-                    _annotation(raml, response.annotations, child_key, child_value, location)
+                    add_domain_extension(raml, response.annotations, location, child_key, child_value)
                 else:
                     raise node_error('unknown field', location, child_key, info={'field': name})
             except RamlError as err:
@@ -250,12 +245,47 @@ def decode_responses(raml: Raml, node: Node, location: str) -> dict[str, Respons
     return responses
 
 
+# -- the request half, shared with `describedBy:` --------------------------------
+
+
+class RequestFacets(Protocol):
+    """What a method's request and a security scheme's `describedBy:` share."""
+
+    headers: dict[str, Parameter]
+    query_parameters: dict[str, Parameter]
+    query_string: BaseShape | None
+
+
+def decode_request_facet(raml: Raml, into: RequestFacets, key: Node, value: Node, location: str) -> bool:
+    """`headers`, `queryParameters` or `queryString`. Returns whether it was one."""
+    name = key.value
+    if name == FACET_HEADERS:
+        into.headers = make_parameter_map(raml, value, location, 'header')
+    elif name == FACET_QUERY_PARAMETERS:
+        into.query_parameters = make_parameter_map(raml, value, location, 'query')
+    elif name == FACET_QUERY_STRING:
+        into.query_string = make_shape(raml, key, value, location)
+        raml.put_typedef(into.query_string.location, into.query_string)
+    else:
+        return False
+    return True
+
+
+def query_exclusion_error(facets: RequestFacets, location: str, node: Node) -> RamlError | None:
+    """Spec section Methods: `queryString` is "mutually exclusive with queryParameters"."""
+    if facets.query_string is not None and facets.query_parameters:
+        return node_error('queryString and queryParameters are mutually exclusive', location, node)
+    return None
+
+
 # -- operations ----------------------------------------------------------------
 
 
 def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the method's key vocabulary
     raml: Raml, operation: Operation, request: Request, key: Node, value: Node, location: str
 ) -> None:
+    if decode_request_facet(raml, request, key, value, location):
+        return
     name = key.value
     if name == FACET_DISPLAY_NAME:
         operation.display_name = make_string_facet(raml, key, value, location)
@@ -263,19 +293,12 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
         operation.description = make_string_facet(raml, key, value, location)
     elif name == FACET_PROTOCOLS:
         operation.protocols = _protocols(value, location)
-    elif name == FACET_HEADERS:
-        request.headers = make_parameter_map(raml, value, location, 'header')
-    elif name == FACET_QUERY_PARAMETERS:
-        request.query_parameters = make_parameter_map(raml, value, location, 'query')
-    elif name == FACET_QUERY_STRING:
-        request.query_string = make_shape(raml, key, value, location)
-        raml.put_typedef(request.query_string.location, request.query_string)
     elif name == FACET_BODY:
         request.bodies = _decode_bodies(raml, value, location, DomainLocation.REQUEST_BODY)
     elif name == FACET_RESPONSES:
         operation.responses = decode_responses(raml, value, location)
     elif is_annotation_key(name):
-        _annotation(raml, operation.annotations, key, value, location)
+        add_domain_extension(raml, operation.annotations, location, key, value)
     else:
         raise node_error('unknown field', location, key, info={'field': name})
 
@@ -310,9 +333,7 @@ def decode_source_operation(raml: Raml, source: SourceOperation) -> Operation:
             except RamlError as err:
                 accumulator.add(err)
 
-    if request.query_string is not None and request.query_parameters:
-        # Spec section Methods: "Mutually exclusive with queryString."
-        accumulator.add(node_error('queryString and queryParameters are mutually exclusive', location, source.body))
+    accumulator.add(query_exclusion_error(request, location, source.body))
     operation.request = request
     accumulator.raise_if_any()
     return operation
@@ -330,7 +351,7 @@ def _decode_endpoint_field(raml: Raml, endpoint: EndPoint, key: Node, value: Nod
     elif name == FACET_URI_PARAMETERS:
         endpoint.uri_parameters = make_parameter_map(raml, value, location, 'uri')
     elif is_annotation_key(name):
-        _annotation(raml, endpoint.annotations, key, value, location)
+        add_domain_extension(raml, endpoint.annotations, location, key, value)
     else:
         raise node_error('unknown field', location, key, info={'field': name})
 

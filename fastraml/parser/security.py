@@ -25,14 +25,15 @@ from urllib.parse import urlparse
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
-from fastraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
+from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_string_facet, scalar_str
 from fastraml.parser.includes import note_include_ref
-from fastraml.parser.source_decode import decode_responses
-from fastraml.types.shape import make_parameter_map, make_shape
+from fastraml.parser.source_decode import decode_request_facet, decode_responses, query_exclusion_error
 from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.directives import SecurityScheme
     from fastraml.parser.endpoints import EndPoint, Response
@@ -198,8 +199,7 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
                 elif name == FACET_SETTINGS:
                     settings_node = value
                 elif is_annotation_key(name):
-                    extension = unmarshal_domain_extension(raml, location, key, value)
-                    definition.annotations[extension.name] = extension
+                    add_domain_extension(raml, definition.annotations, location, key, value)
                 else:
                     raise node_error('unknown field', location, key, info={'field': name})
             except RamlError as err:
@@ -228,25 +228,18 @@ def _decode_described_by(raml: Raml, node: Node, location: str) -> SecuritySchem
     for key, value in pairs(node):
         name = key.value
         try:
-            if name == 'headers':
-                description.headers = make_parameter_map(raml, value, location, 'header')
-            elif name == 'queryParameters':
-                description.query_parameters = make_parameter_map(raml, value, location, 'query')
-            elif name == 'queryString':
-                description.query_string = make_shape(raml, key, value, location)
-                raml.put_typedef(description.query_string.location, description.query_string)
-            elif name == 'responses':
+            if decode_request_facet(raml, description, key, value, location):
+                continue
+            if name == 'responses':
                 description.responses = decode_responses(raml, value, location)
             elif is_annotation_key(name):
-                extension = unmarshal_domain_extension(raml, location, key, value)
-                description.annotations[extension.name] = extension
+                add_domain_extension(raml, description.annotations, location, key, value)
             else:
                 raise node_error('unknown field in describedBy', location, key, info={'field': name})
         except RamlError as err:
             accumulator.add(err)
 
-    if description.query_string is not None and description.query_parameters:
-        accumulator.add(node_error('queryString and queryParameters are mutually exclusive', location, node))
+    accumulator.add(query_exclusion_error(description, location, node))
     accumulator.raise_if_any()
     return description
 
@@ -290,8 +283,7 @@ def _decode_settings(
             name = key.value
             try:
                 if is_annotation_key(name):
-                    extension = unmarshal_domain_extension(raml, location, key, value)
-                    settings.annotations[extension.name] = extension
+                    add_domain_extension(raml, settings.annotations, location, key, value)
                 elif name not in allowed:
                     # A key the declared type does not define. Caught rather
                     # than ignored: `Basic Authentication` with an
@@ -378,27 +370,25 @@ def apply_security_schemes(raml: Raml) -> None:
     Replacing rather than appending is what makes `securedBy: [null]` on a method
     remove inherited security instead of adding to it.
     """
-    resolver = raml.resolver_at(raml.location)
-    accumulator = Accumulator()
     for endpoint in raml.endpoints.values():
         _inherit(endpoint)
-        for operation in endpoint.operations.values():
-            for scheme in operation.secured_by:
-                try:
-                    _bind(raml, scheme, resolver)
-                except RamlError as err:
-                    accumulator.add(err)
-        for scheme in endpoint.secured_by:
-            try:
-                _bind(raml, scheme, resolver)
-            except RamlError as err:
-                accumulator.add(err)
-    for scheme in raml.global_secured_by:
+    resolver = raml.resolver_at(raml.location)
+    accumulator = Accumulator()
+    for scheme in _every_reference(raml):
         try:
             _bind(raml, scheme, resolver)
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()
+
+
+def _every_reference(raml: Raml) -> Iterator[SecurityScheme]:
+    """Each resource's methods' schemes, then its own, then the API's."""
+    for endpoint in raml.endpoints.values():
+        for operation in endpoint.operations.values():
+            yield from operation.secured_by
+        yield from endpoint.secured_by
+    yield from raml.global_secured_by
 
 
 def _inherit(endpoint: EndPoint) -> None:

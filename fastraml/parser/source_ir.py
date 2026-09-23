@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Final
 from fastraml.errors import Accumulator, RamlError
 from fastraml.parser.directives import DirectiveRef, decode_secured_by, decode_trait_refs, decode_type_ref
 from fastraml.positions import UNKNOWN, Position
-from fastraml.yamlnode import Node, NodeKind, is_null, node_error, pairs
+from fastraml.yamlnode import Node, NodeKind, is_null, node_error, pairs, with_content
 
 if TYPE_CHECKING:
     from fastraml.registry import ParseCtx, Raml
@@ -113,18 +113,7 @@ def _retained(kept: list[Node], source: Node) -> Node | None:
     this and must not reach the document's own tree, which invariant "structural
     merge never mutates either input" depends on.
     """
-    if not kept:
-        return None
-    return Node(
-        NodeKind.MAPPING,
-        source.tag,
-        source.value,
-        kept,
-        source.line,
-        source.column,
-        source.end_line,
-        source.end_column,
-    )
+    return with_content(source, kept) if kept else None
 
 
 def make_source_operation(raml: Raml, method: str, key: Node, value: Node, location: str) -> SourceOperation:

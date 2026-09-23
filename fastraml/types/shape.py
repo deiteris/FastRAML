@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Final
 from fastraml.datanode import make_data_node
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
-from fastraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
+from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import compile_pattern, make_bool_facet, make_string_facet, scalar_str
 from fastraml.parser.includes import note_include_ref
 from fastraml.types.base import (
@@ -305,8 +305,7 @@ def _decode(  # noqa: PLR0912 - one pass over the sixteen-row table of docs/05 s
             case 'allowedTargets':
                 base.allowed_targets = _decode_allowed_targets(value, location)
             case name if is_annotation_key(name):
-                extension = unmarshal_domain_extension(raml, location, key, value)
-                base.annotations[extension.name] = extension
+                add_domain_extension(raml, base.annotations, location, key, value)
             case _:
                 facets.append(key)
                 facets.append(value)

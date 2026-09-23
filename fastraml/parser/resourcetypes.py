@@ -26,32 +26,27 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
 from fastraml.domains import DomainLocation
-from fastraml.errors import RamlError
 from fastraml.parser.annotations import is_annotation_key
-from fastraml.parser.facets import make_string_facet
-from fastraml.parser.includes import note_include_ref
 from fastraml.parser.source_ir import METHODS, make_source_endpoint
 from fastraml.parser.structural_merge import copy_overlay, merge_structural
 from fastraml.parser.templates import (
+    TemplateDefinition,
+    check_parameters,
     collect_required_variables,
-    collect_variables_index,
     compile_source_provenance,
+    find_template_definition,
+    make_template_definition,
     parameter_node,
 )
-from fastraml.parser.traits import check_parameters
 from fastraml.parser.uritemplates import resource_path_name
-from fastraml.positions import UNKNOWN, Position
 from fastraml.registry import ParseCtx
-from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, is_null, node_error, pairs
+from fastraml.yamlnode import TAG_STR, Node, NodeKind, node_error, pairs, with_content, with_value
 
 if TYPE_CHECKING:
     from fastraml.parser.directives import DirectiveRef
-    from fastraml.parser.fragments import ReferenceResolver
     from fastraml.parser.source_ir import SourceEndPoint
     from fastraml.parser.structural_merge import ProvenanceOverlay
-    from fastraml.parser.templates import VariableIndex
     from fastraml.registry import Raml
-    from fastraml.types.base import ScalarFacet
 
 __all__ = [
     'ResourceTypeDefinition',
@@ -61,79 +56,40 @@ __all__ = [
     'merge_resource_type_into',
 ]
 
-FACET_USAGE: Final = 'usage'
-
-#: The non-method keys a resource type may declare. `usage:` is consumed here;
-#: the rest are kept and flow into the compiled endpoint (docs/08 section 5.1).
+#: The non-method keys a resource type may declare. `usage:` is consumed by the
+#: shared decoder; the rest are kept and flow into the compiled endpoint
+#: (docs/08 section 5.1).
 RESOURCE_TYPE_FACETS: Final = frozenset({'displayName', 'description', 'uriParameters', 'type', 'is', 'securedBy'})
 
 
 @dataclass(slots=True, eq=False)
-class ResourceTypeDefinition:
-    """One entry of a `resourceTypes:` map, or the whole of a ResourceType fragment."""
+class ResourceTypeDefinition(TemplateDefinition):
+    """One entry of a `resourceTypes:` map, or the whole of a ResourceType fragment.
 
-    id: int
-    name: str
-    location: str
-    usage: ScalarFacet[str] | None = None
-    #: The body as written, minus `usage:`, with `?` chomped off method keys.
-    source: Node | None = None
-    declared_variables: set[str] = field(default_factory=set)
-    variable_index: VariableIndex = field(default_factory=dict)
+    Its `source` has the `?` chomped off every optional method key.
+    """
+
     #: The methods written `get?`, by their plain name.
     optional_methods: set[str] = field(default_factory=set)
-    link: ResourceTypeDefinition | None = None
-    link_uri: str | None = None
-    anchor: ReferenceResolver | None = None
-    key_pos: Position = UNKNOWN
-    value_pos: Position = UNKNOWN
-
-    def __repr__(self) -> str:
-        return f'ResourceTypeDefinition({self.name!r})'
-
-    def resolved(self) -> ResourceTypeDefinition:
-        """Itself, or the definition an `!include` pointed at."""
-        return self if self.link is None else self.link
 
 
 def make_resource_type_definition(
     raml: Raml, key_node: Node | None, value_node: Node, location: str
 ) -> ResourceTypeDefinition:
     """Decode one resource-type declaration, checking the keys it may carry."""
-    definition = ResourceTypeDefinition(
-        id=raml.next_id(),
-        name=key_node.value if key_node is not None else '',
-        location=location,
-        anchor=raml.current_ctx().anchor,
-        key_pos=(key_node if key_node is not None else value_node).position,
-        value_pos=value_node.full_position,
+    return make_template_definition(
+        ResourceTypeDefinition, raml, key_node, value_node, location, what='resource type', retain=_retained_key
     )
-    if is_null(value_node):
-        return definition
-    if value_node.tag == TAG_INCLUDE:
-        definition.link_uri = note_include_ref(raml, value_node, location)
-        return definition
-    if value_node.kind is not NodeKind.MAPPING:
-        raise node_error('resource type definition must be a mapping', location, value_node)
-
-    kept: list[Node] = []
-    for key, value in pairs(value_node):
-        name = key.value
-        if name == FACET_USAGE:
-            definition.usage = make_string_facet(raml, key, value, location)
-        elif name in RESOURCE_TYPE_FACETS or is_annotation_key(name):
-            kept.append(key)
-            kept.append(value)
-        else:
-            kept.append(_method_key(definition, key, location))
-            kept.append(value)
-    definition.source = _body(value_node, kept)
-    if definition.source is not None:
-        definition.declared_variables, definition.variable_index = collect_variables_index(definition.source, location)
-    return definition
 
 
-def _method_key(definition: ResourceTypeDefinition, key: Node, location: str) -> Node:
+def _retained_key(definition: ResourceTypeDefinition, key: Node) -> Node:
+    """A facet or an annotation as written; anything else must be a method."""
+    if key.value in RESOURCE_TYPE_FACETS or is_annotation_key(key.value):
+        return key
+    return _method_key(definition, key)
+
+
+def _method_key(definition: ResourceTypeDefinition, key: Node) -> Node:
     """Validate an HTTP-method key, recording and chomping a trailing `?`.
 
     The key is normalised so that nothing downstream has to rename it: the
@@ -144,26 +100,13 @@ def _method_key(definition: ResourceTypeDefinition, key: Node, location: str) ->
     if optional:
         name = name[:-1]
     if name not in METHODS:
-        raise node_error('resource type method must be an HTTP method', location, key, info={'key': key.value})
+        raise node_error(
+            'resource type method must be an HTTP method', definition.location, key, info={'key': key.value}
+        )
     if not optional:
         return key
     definition.optional_methods.add(name)
-    return Node(NodeKind.SCALAR, key.tag, name, None, key.line, key.column, key.end_line, key.end_column)
-
-
-def _body(model: Node, content: list[Node]) -> Node | None:
-    if not content:
-        return None
-    return Node(
-        model.kind,
-        model.tag,
-        model.value,
-        content,
-        model.line,
-        model.column,
-        model.end_line,
-        model.end_column,
-    )
+    return with_value(key, name)
 
 
 # -- section 5.1: applying a resource type ------------------------------------
@@ -205,21 +148,18 @@ def apply_resource_type(raml: Raml, endpoint: SourceEndPoint, ref: DirectiveRef,
 
 
 def _definition_for(ref: DirectiveRef) -> ResourceTypeDefinition:
-    """Resolve a resource-type name in the namespace of the document that wrote it.
+    """The resource type `ref` names, recorded on the reference for consumers.
 
-    Lexical and with no application-site fallback, exactly as for a trait: a
-    `type:` written inside a ResourceType fragment resolves against that
-    fragment's own `uses:`, which keeps RT-to-RT inheritance self-contained.
+    Resolved exactly as a trait name is: a `type:` written inside a
+    ResourceType fragment resolves against that fragment's own `uses:`, which
+    keeps RT-to-RT inheritance self-contained.
     """
-    anchor = ref.scope.anchor if ref.scope is not None else None
-    if anchor is None:
-        raise RamlError.new('no scope to resolve a resource type name in', ref.location, ref.value_pos)
-    try:
-        definition = anchor.resource_type_definition(ref.name)
-    except LookupError as err:
-        raise RamlError.wrap('get resource type definition', err, ref.location, ref.value_pos) from err
-    if definition is None:
-        raise RamlError.new('resource type not found', ref.location, ref.value_pos, info={'resourceType': ref.name})
+    definition = find_template_definition(
+        ref,
+        lambda anchor, name: anchor.resource_type_definition(name),
+        what='resource type',
+        info_key='resourceType',
+    )
     ref.resolved = definition
     return definition
 
@@ -293,9 +233,7 @@ def _filter_optional_methods(definition: ResourceTypeDefinition, source: Node, e
         kept.append(value)
     if len(kept) == len(source.content):
         return source
-    return Node(
-        source.kind, source.tag, source.value, kept, source.line, source.column, source.end_line, source.end_column
-    )
+    return with_content(source, kept)
 
 
 def _distribute_overlay(endpoint: SourceEndPoint, overlay: ProvenanceOverlay) -> None:

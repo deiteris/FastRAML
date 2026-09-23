@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     'DomainExtension',
+    'add_domain_extension',
     'is_annotation_key',
     'resolve_domain_extensions',
     'unmarshal_domain_extension',
@@ -91,6 +92,14 @@ def unmarshal_domain_extension(raml: Raml, location: str, key_node: Node, value_
     )
     raml.domain_extensions.append(extension)
     return extension
+
+
+def add_domain_extension(
+    raml: Raml, into: dict[str, DomainExtension], location: str, key_node: Node, value_node: Node
+) -> None:
+    """`unmarshal_domain_extension`, attached under its name to `into`."""
+    extension = unmarshal_domain_extension(raml, location, key_node, value_node)
+    into[extension.name] = extension
 
 
 def resolve_domain_extensions(raml: Raml) -> None:

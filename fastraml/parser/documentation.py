@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.domains import DomainLocation
-from fastraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
+from fastraml.parser.annotations import DomainExtension, add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_string_facet
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import NodeKind, node_error, pairs
@@ -71,8 +71,7 @@ def decode_documentation_item(raml: Raml, node: Node, location: str) -> Document
             elif key.value == FACET_CONTENT:
                 item.content = _required_text(raml, key, value, location)
             elif is_annotation_key(key.value):
-                extension = unmarshal_domain_extension(raml, location, key, value)
-                item.annotations[extension.name] = extension
+                add_domain_extension(raml, item.annotations, location, key, value)
             else:
                 raise node_error('unknown field', location, key, info={'field': key.value})
 

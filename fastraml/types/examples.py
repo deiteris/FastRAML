@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Final
 
 from fastraml.datanode import make_data_node
 from fastraml.domains import DomainLocation
-from fastraml.parser.annotations import is_annotation_key, unmarshal_domain_extension
+from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_bool_facet, make_string_facet
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import NodeKind, node_error, pairs
@@ -125,7 +125,6 @@ def _fill_from_wrapper(raml: Raml, example: Example, value_node: Node, location:
             case 'description':
                 example.description = make_string_facet(raml, key, value, location)
             case name if is_annotation_key(name):
-                extension = unmarshal_domain_extension(raml, location, key, value)
-                example.annotations[extension.name] = extension
+                add_domain_extension(raml, example.annotations, location, key, value)
             case _:
                 raise node_error('unknown field', location, key, info={'field': key.value})

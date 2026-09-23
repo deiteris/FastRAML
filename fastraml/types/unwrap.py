@@ -29,7 +29,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
-from fastraml.types.base import TYPE_RECURSIVE, BaseShape, KindBase, Property
+from fastraml.types.base import TYPE_RECURSIVE, BaseShape, KindBase
 from fastraml.types.complex_ import (
     ArrayShape,
     ObjectShape,
@@ -319,9 +319,7 @@ def _unwrap_children(walk: _Walk, shape: Shape, depth: int) -> None:
             shape.any_of = [_unwrap(walk, member, depth + 1) for member in shape.any_of]
     elif isinstance(shape, ObjectShape) and shape.properties is not None:
         for name, prop in shape.properties.items():
-            shape.properties[name] = Property(
-                name=prop.name, base=_unwrap(walk, prop.base, depth + 1), required=prop.required
-            )
+            shape.properties[name] = prop.with_base(_unwrap(walk, prop.base, depth + 1))
     if isinstance(shape, ObjectShape):
         for pattern_prop in (shape.pattern_properties or {}).values():
             pattern_prop.base = _unwrap(walk, pattern_prop.base, depth + 1)
@@ -337,7 +335,7 @@ def _unwrap_custom_facet_defs(walk: _Walk, base: BaseShape, depth: int) -> None:
     for name, prop in base.custom_facet_defs.items():
         unwrapped = _unwrap(walk, prop.base, depth + 1)
         unwrapped.custom_facet_defs = {}
-        base.custom_facet_defs[name] = Property(name=prop.name, base=unwrapped, required=prop.required)
+        base.custom_facet_defs[name] = prop.with_base(unwrapped)
 
 
 # -- recursion marking (docs/07 section 4) ------------------------------------
@@ -408,7 +406,7 @@ def _finish(raml: Raml, base: BaseShape, depth: int, max_depth: int, unions: lis
     for name, prop in base.custom_facet_defs.items():
         marked = _finish(raml, prop.base, depth + 1, max_depth, unions)
         if marked is not None:
-            base.custom_facet_defs[name] = Property(name=prop.name, base=marked, required=prop.required)
+            base.custom_facet_defs[name] = prop.with_base(marked)
     return None
 
 
@@ -431,7 +429,7 @@ def _finish_children(raml: Raml, shape: Shape, depth: int, max_depth: int, union
         for name, prop in (shape.properties or {}).items():
             marked = _finish(raml, prop.base, depth + 1, max_depth, unions)
             if marked is not None and shape.properties is not None:
-                shape.properties[name] = Property(name=prop.name, base=marked, required=prop.required)
+                shape.properties[name] = prop.with_base(marked)
         for pattern_prop in (shape.pattern_properties or {}).values():
             marked = _finish(raml, pattern_prop.base, depth + 1, max_depth, unions)
             if marked is not None:

@@ -127,10 +127,7 @@ def _count_bounds(
 def _clone_properties(properties: dict[str, Property] | None, memo: dict[int, BaseShape]) -> dict[str, Property] | None:
     if properties is None:
         return None
-    return {
-        name: Property(name=prop.name, base=prop.base.clone(memo), required=prop.required)
-        for name, prop in properties.items()
-    }
+    return {name: prop.with_base(prop.base.clone(memo)) for name, prop in properties.items()}
 
 
 def _clone_pattern_properties(

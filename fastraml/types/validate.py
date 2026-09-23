@@ -348,16 +348,14 @@ def _each_example(base: BaseShape) -> Iterator[Example]:
 
 
 def _validate_examples(base: BaseShape, known: DiscriminatorIndex, acc: Accumulator) -> None:
-    for example in _each_example(base):
+    examples = tuple(_each_example(base))
+    for example in examples:
         # Before the `strict` gate, and outside it: naming a type that does not
         # exist is not a conformance failure the author may waive (§ 9 of
         # docs/05-type-model.md).
         _check_discriminator_values(base, example.data, known, acc)
-    if base.example is not None:
-        _validate_example(base, base.example, acc)
-    if base.examples is not None:
-        for example in base.examples.entries().values():
-            _validate_example(base, example, acc)
+    for example in examples:
+        _validate_example(base, example, acc)
     if base.default is not None:
         # No `strict` for a default: an unusable default is always a defect,
         # whereas an example may deliberately show a malformed payload.
@@ -441,6 +439,9 @@ def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
     # the spec allows. P9 now hands each facet to the members instead, and what
     # reaches this point on a union is a facet with nowhere to go
     # (docs/07 section 3.4).
+    if not base.inherits and not base.custom_facets:
+        # Nothing declared above to require, and nothing supplied to check.
+        return
     declared = _facet_declarations(base, acc)
     for name, prop in declared.items():
         if prop.required and name not in base.custom_facets:

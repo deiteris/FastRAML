@@ -20,31 +20,41 @@ precompiled regexes instead of go-raml's byte loops.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Final, Self
 
-from fastraml.errors import ErrorKind, RamlError
-from fastraml.yamlnode import TAG_STR, Node, NodeKind
+from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.parser.facets import make_string_facet
+from fastraml.parser.includes import note_include_ref
+from fastraml.positions import UNKNOWN, Position
+from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, is_null, node_error, pairs, with_content, with_value
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from pluralizer import Pluralizer
 
+    from fastraml.parser.directives import DirectiveRef
+    from fastraml.parser.fragments import ReferenceResolver
     from fastraml.parser.structural_merge import ProvenanceOverlay
-    from fastraml.registry import ParseCtx
+    from fastraml.registry import ParseCtx, Raml
+    from fastraml.types.base import ScalarFacet
 
 __all__ = [
     'KNOWN_ACTIONS',
     'RESERVED_PARAMETERS',
     'TEMPLATE_ACTIONS',
+    'TemplateDefinition',
     'VariableIndex',
     'VariableInfo',
     'apply_template_action',
+    'check_parameters',
     'collect_required_variables',
     'collect_variables_index',
     'compile_source_provenance',
+    'find_template_definition',
     'iter_nodes',
+    'make_template_definition',
     'parameter_node',
     'parse_template_variables',
 ]
@@ -66,6 +76,142 @@ def parameter_node(value: str) -> Node:
 #: What one scan of a template body produces: every `<<...>>` bearing scalar,
 #: keyed by the node itself.
 type VariableIndex = dict[Node, list[VariableInfo]]
+
+FACET_USAGE: Final = 'usage'
+
+
+# -- the two template declarations (docs/08 section 5) -------------------------
+
+
+@dataclass(slots=True, eq=False)
+class TemplateDefinition:
+    """What a trait and a resource type share: a body kept as YAML, scanned once.
+
+    One entry of a `traits:` or `resourceTypes:` map, or the whole of a Trait
+    or ResourceType fragment. The two differ in which keys the body may carry
+    and in how it is applied, not in how it is stored.
+    """
+
+    id: int
+    name: str
+    location: str
+    usage: ScalarFacet[str] | None = None
+    #: The body as written, minus `usage:`. `None` for an empty or linked one.
+    source: Node | None = None
+    declared_variables: set[str] = field(default_factory=set)
+    variable_index: VariableIndex = field(default_factory=dict)
+    #: `traits: {paged: !include ...}` — the target's own definition, resolved by
+    #: `fragments.py`, which owns fragment parsing (docs/02 section 3).
+    link: Self | None = None
+    link_uri: str | None = None
+    #: The namespace the *body* resolves its type names in: this template's
+    #: declaration site, never the site it is applied at.
+    anchor: ReferenceResolver | None = None
+    key_pos: Position = UNKNOWN
+    value_pos: Position = UNKNOWN
+
+    def __repr__(self) -> str:
+        return f'{type(self).__name__}({self.name!r})'
+
+    def resolved(self) -> Self:
+        """Itself, or the definition an `!include` pointed at."""
+        return self if self.link is None else self.link
+
+
+def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the declaration, plus what differs per kind
+    cls: type[T],
+    raml: Raml,
+    key_node: Node | None,
+    value_node: Node,
+    location: str,
+    *,
+    what: str,
+    retain: Callable[[T, Node], Node] | None = None,
+) -> T:
+    """Decode one template declaration. Everything but `usage:` is kept as YAML.
+
+    `retain` sees every other key and returns the node to keep for it, which is
+    where a resource type checks its keys and chomps `?` off an optional method.
+    The body is a fresh mapping, so a merge into it cannot reach the declaring
+    document — the same reason stage 1 rebuilds an endpoint's body.
+    """
+    definition = cls(
+        id=raml.next_id(),
+        name=key_node.value if key_node is not None else '',
+        location=location,
+        anchor=raml.current_ctx().anchor,
+        key_pos=(key_node if key_node is not None else value_node).position,
+        value_pos=value_node.full_position,
+    )
+    if is_null(value_node):
+        return definition
+    if value_node.tag == TAG_INCLUDE:
+        definition.link_uri = note_include_ref(raml, value_node, location)
+        return definition
+    if value_node.kind is not NodeKind.MAPPING:
+        raise node_error(f'{what} definition must be a mapping', location, value_node)
+
+    kept: list[Node] = []
+    for key, value in pairs(value_node):
+        if key.value == FACET_USAGE:
+            definition.usage = make_string_facet(raml, key, value, location)
+        else:
+            kept.append(key if retain is None else retain(definition, key))
+            kept.append(value)
+    if kept:
+        definition.source = with_content(value_node, kept)
+        definition.declared_variables, definition.variable_index = collect_variables_index(definition.source, location)
+    return definition
+
+
+def find_template_definition[T: TemplateDefinition](
+    ref: DirectiveRef, lookup: Callable[[ReferenceResolver, str], T | None], *, what: str, info_key: str
+) -> T:
+    """Resolve a template name in the namespace of the document that wrote it.
+
+    Lexical, with no application-site fallback: a name written inside a fragment
+    resolves against that fragment's own declarations and `uses:` only, which
+    is what keeps a typed fragment self-contained (docs/04 section 4).
+    """
+    anchor = ref.scope.anchor if ref.scope is not None else None
+    if anchor is None:
+        raise RamlError.new(f'no scope to resolve a {what} name in', ref.location, ref.value_pos)
+    try:
+        definition = lookup(anchor, ref.name)
+    except LookupError as err:
+        raise RamlError.wrap(f'get {what} definition', err, ref.location, ref.value_pos) from err
+    if definition is None:
+        raise RamlError.new(f'{what} not found', ref.location, ref.value_pos, info={info_key: ref.name})
+    return definition
+
+
+def check_parameters(
+    declared: set[str],
+    params: dict[str, Node],
+    location: str,
+    position: Position,
+    *,
+    required: set[str] | None = None,
+) -> None:
+    """Both directions: nothing supplied undeclared, nothing required unsupplied.
+
+    The two sets differ for a resource type. Everything the template mentions is
+    accepted as a parameter, but only what survives optional-method filtering is
+    *required* — otherwise `/queues` would have to supply the `<<TextAboutPost>>`
+    that only appears inside the `post?` it does not have (docs/08 section 5.1).
+    For a trait the two coincide.
+
+    Reserved parameters are always accepted and never required: the parser
+    injects them at every application site.
+    """
+    accumulator = Accumulator()
+    for name in params:
+        if name not in RESERVED_PARAMETERS and name not in declared:
+            accumulator.add(RamlError.new('unexpected parameter', location, position, info={'parameter': name}))
+    for name in declared if required is None else required:
+        if name not in RESERVED_PARAMETERS and name not in params:
+            accumulator.add(RamlError.new('missing required parameter', location, position, info={'parameter': name}))
+    accumulator.raise_if_any()
 
 
 @dataclass(frozen=True, slots=True)
@@ -356,7 +502,7 @@ def compile_source_provenance(
         # A container is structural: it keeps the enclosing scope, and reusing
         # it keeps every mark already recorded against it reachable.
         return node
-    return Node(node.kind, node.tag, node.value, content, node.line, node.column, node.end_line, node.end_column)
+    return with_content(node, content)
 
 
 def _compile_scalar(
@@ -394,6 +540,6 @@ def _compile_scalar(
         # An unsubstituted scalar is static: it keeps the declaration scope.
         return node
 
-    compiled = Node(node.kind, node.tag, text, None, node.line, node.column, node.end_line, node.end_column)
+    compiled = with_value(node, text)
     overlay[compiled] = caller_scope
     return compiled

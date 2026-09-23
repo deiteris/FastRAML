@@ -27,11 +27,11 @@ declare. Each is released after its consumer succeeds.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, runtime_checkable
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, ErrorKind, RamlError
-from fastraml.parser.annotations import DomainExtension, is_annotation_key, unmarshal_domain_extension
+from fastraml.parser.annotations import DomainExtension, add_domain_extension, is_annotation_key
 from fastraml.parser.directives import decode_secured_by, make_security_schemes
 from fastraml.parser.documentation import DocumentationItem, decode_documentation_item
 from fastraml.parser.endpoints import VALID_PROTOCOLS
@@ -59,6 +59,7 @@ from fastraml.yamlnode import (
     node_error,
     pairs,
     read_head,
+    with_content,
 )
 
 if TYPE_CHECKING:
@@ -272,8 +273,7 @@ def filter_fragment_uses(raml: Raml, node: Node, location: str) -> tuple[Node, d
             kept.append(key)
             kept.append(value)
 
-    filtered = Node(node.kind, node.tag, node.value, kept, node.line, node.column, node.end_line, node.end_column)
-    return filtered, uses
+    return with_content(node, kept), uses
 
 
 def resolve_uses(raml: Raml, uses: Mapping[str, LibraryLink], location: str) -> None:
@@ -373,8 +373,14 @@ def _pick_security_scheme(library: Library, name: str) -> SecuritySchemeDefiniti
     return library.security_schemes.get(name)
 
 
-class Library(_BaseFragment):
-    """`#%RAML 1.0 Library` — the only fragment that declares all five kinds."""
+class _DeclaringFragment(_BaseFragment):
+    """A fragment with declarations of its own: `Library` and `APIFragment`.
+
+    The two declare the same five kinds under the same keys and resolve names
+    the same way — local declarations first, then `uses:` — so both halves are
+    written once here. Like `_UsesOnlyFragment`, this shares code only; what a
+    fragment can do is still discovered by protocol check.
+    """
 
     __slots__ = (
         'annotation_types',
@@ -383,12 +389,10 @@ class Library(_BaseFragment):
         'security_schemes',
         'traits',
         'types',
-        'usage',
     )
 
     def __init__(self, raml: Raml, location: str) -> None:
         super().__init__(raml, location)
-        self.usage: ScalarFacet[str] | None = None
         self.types: dict[str, BaseShape] = {}
         self.annotation_types: dict[str, BaseShape] = {}
         self.traits: dict[str, TraitDefinition] = {}
@@ -417,6 +421,36 @@ class Library(_BaseFragment):
         return resolve_reference(self.security_schemes, self.uses, name, _pick_security_scheme)
 
     # -- decoding -------------------------------------------------------------
+
+    def _decode_declarations(self, key: Node, value: Node, declarations: _Declarations) -> bool:
+        """The five declaration maps. Returns whether the key was one of them."""
+        raml = self._raml
+        name = key.value
+        if name in (FACET_TYPES, FACET_SCHEMAS):
+            self.types = unmarshal_types(raml, declarations.types(key, value), self.location)
+        elif name == FACET_ANNOTATION_TYPES:
+            self.annotation_types = unmarshal_types(raml, value, self.location, is_annotation=True)
+        elif name == FACET_TRAITS:
+            self.traits = decode_trait_definitions(raml, value, self.location)
+        elif name == FACET_RESOURCE_TYPES:
+            self.resource_types = decode_resource_type_definitions(raml, value, self.location)
+        elif name == FACET_SECURITY_SCHEMES:
+            self.security_schemes = decode_security_scheme_definitions(raml, value, self.location)
+        elif is_annotation_key(name):
+            add_domain_extension(raml, self.annotations, self.location, key, value)
+        else:
+            return False
+        return True
+
+
+class Library(_DeclaringFragment):
+    """`#%RAML 1.0 Library` — the only fragment that declares all five kinds."""
+
+    __slots__ = ('usage',)
+
+    def __init__(self, raml: Raml, location: str) -> None:
+        super().__init__(raml, location)
+        self.usage: ScalarFacet[str] | None = None
 
     def decode(self, node: Node) -> None:
         if node.kind is not NodeKind.MAPPING:
@@ -432,45 +466,26 @@ class Library(_BaseFragment):
                     self.uses = unmarshal_uses(raml, value, self.location)
                 elif name == FACET_USAGE:
                     self.usage = make_string_facet(raml, key, value, self.location)
-                elif name in (FACET_TYPES, FACET_SCHEMAS):
-                    self.types = unmarshal_types(raml, declarations.types(key, value), self.location)
-                elif name == FACET_ANNOTATION_TYPES:
-                    self.annotation_types = unmarshal_types(raml, value, self.location, is_annotation=True)
-                elif name == FACET_TRAITS:
-                    self.traits = decode_trait_definitions(raml, value, self.location)
-                elif name == FACET_RESOURCE_TYPES:
-                    self.resource_types = decode_resource_type_definitions(raml, value, self.location)
-                elif name == FACET_SECURITY_SCHEMES:
-                    self.security_schemes = decode_security_scheme_definitions(raml, value, self.location)
-                elif is_annotation_key(name):
-                    extension = unmarshal_domain_extension(raml, self.location, key, value)
-                    self.annotations[extension.name] = extension
-                else:
+                elif not self._decode_declarations(key, value, declarations):
                     raise node_error('unknown field', self.location, key, info={'field': name})
             except RamlError as err:
                 accumulator.add(err)
         accumulator.raise_if_any()
 
 
-class APIFragment(_BaseFragment):
+class APIFragment(_DeclaringFragment):
     """`#%RAML 1.0` — the root document."""
 
     __slots__ = (
         '_raw_endpoints',
         '_raw_secured_by',
-        'annotation_types',
-        'annotations',
         'base_uri',
         'base_uri_parameters',
         'description',
         'documentation',
         'media_types',
         'protocols',
-        'resource_types',
-        'security_schemes',
         'title',
-        'traits',
-        'types',
         'version',
     )
 
@@ -483,12 +498,6 @@ class APIFragment(_BaseFragment):
         self.protocols: list[ScalarFacet[str]] = []
         self.media_types: list[ScalarFacet[str]] = []
         self.documentation: list[DocumentationItem] = []
-        self.types: dict[str, BaseShape] = {}
-        self.annotation_types: dict[str, BaseShape] = {}
-        self.traits: dict[str, TraitDefinition] = {}
-        self.resource_types: dict[str, ResourceTypeDefinition] = {}
-        self.security_schemes: dict[str, SecuritySchemeDefinition] = {}
-        self.annotations: dict[str, DomainExtension] = {}
         self.base_uri_parameters: dict[str, Parameter] = {}
         # A seam: `securedBy:` is harvested before the main loop but decoded
         # after it, because it names schemes the loop has yet to declare.
@@ -496,28 +505,6 @@ class APIFragment(_BaseFragment):
         #: `(key, value)` pairs for every `/relativeUri` key, in document order.
         #: Phase 5 turns them into the stage-1 endpoint IR.
         self._raw_endpoints: list[tuple[Node, Node]] = []
-
-    # -- ReferenceResolver / SecuritySchemeResolver ---------------------------
-
-    def reference_type(self, name: str) -> BaseShape:
-        return resolve_reference(self.types, self.uses, name, _pick_type)
-
-    def reference_annotation_type(self, name: str) -> BaseShape:
-        try:
-            return resolve_reference(self.annotation_types, self.uses, name, _pick_annotation_type)
-        except LookupError:
-            return resolve_reference(self.types, self.uses, name, _pick_type)
-
-    def resource_type_definition(self, name: str) -> ResourceTypeDefinition:
-        return resolve_reference(self.resource_types, self.uses, name, _pick_resource_type)
-
-    def trait_definition(self, name: str) -> TraitDefinition:
-        return resolve_reference(self.traits, self.uses, name, _pick_trait)
-
-    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition:
-        return resolve_reference(self.security_schemes, self.uses, name, _pick_security_scheme)
-
-    # -- decoding -------------------------------------------------------------
 
     def decode(self, node: Node) -> None:
         if node.kind is not NodeKind.MAPPING:
@@ -554,18 +541,14 @@ class APIFragment(_BaseFragment):
         self._raw_secured_by = None
 
     def _decode_key(self, key: Node, value: Node, declarations: _Declarations) -> None:
-        if self._decode_root_facet(key, value) or self._retain_declarations(key, value, declarations):
+        if self._decode_root_facet(key, value) or self._decode_declarations(key, value, declarations):
             return
-        name = key.value
-        if is_annotation_key(name):
-            extension = unmarshal_domain_extension(self._raml, self.location, key, value)
-            self.annotations[extension.name] = extension
-        elif name.startswith('/'):
+        if key.value.startswith('/'):
             # Endpoints are not decoded here: they become stage-1 IR in Phase 5,
             # because the trait and resource-type merge runs on the YAML tree.
             self._raw_endpoints.append((key, value))
         else:
-            raise node_error('unknown field', self.location, key, info={'field': name})
+            raise node_error('unknown field', self.location, key, info={'field': key.value})
 
     def _decode_root_facet(self, key: Node, value: Node) -> bool:
         """The keys Phase 1 owns. Returns whether the key was one of them."""
@@ -589,29 +572,12 @@ class APIFragment(_BaseFragment):
             extract_uri_template_params(facet.value, self.location, facet.value_pos)
             check_uri_reference(facet.value, self.location, facet.value_pos)
             self.base_uri = facet
+        elif name == FACET_BASE_URI_PARAMETERS:
+            self.base_uri_parameters = make_parameter_map(raml, value, self.location, 'uri')
         elif name == FACET_DOCUMENTATION:
             self.documentation = unmarshal_documentation_items(raml, key, value, self.location)
         elif name == FACET_USES:
             self.uses = unmarshal_uses(raml, value, self.location)
-        else:
-            return False
-        return True
-
-    def _retain_declarations(self, key: Node, value: Node, declarations: _Declarations) -> bool:
-        """The seams: kept as written for Phase 2 (types), 6 (templates), 7 (security)."""
-        name = key.value
-        if name in (FACET_TYPES, FACET_SCHEMAS):
-            self.types = unmarshal_types(self._raml, declarations.types(key, value), self.location)
-        elif name == FACET_ANNOTATION_TYPES:
-            self.annotation_types = unmarshal_types(self._raml, value, self.location, is_annotation=True)
-        elif name == FACET_BASE_URI_PARAMETERS:
-            self.base_uri_parameters = make_parameter_map(self._raml, value, self.location, 'uri')
-        elif name == FACET_TRAITS:
-            self.traits = decode_trait_definitions(self._raml, value, self.location)
-        elif name == FACET_RESOURCE_TYPES:
-            self.resource_types = decode_resource_type_definitions(self._raml, value, self.location)
-        elif name == FACET_SECURITY_SCHEMES:
-            self.security_schemes = decode_security_scheme_definitions(self._raml, value, self.location)
         else:
             return False
         return True
@@ -756,52 +722,35 @@ class _DefinitionFragment(_UsesOnlyFragment):
     """A fragment whose body is one template or scheme definition.
 
     Trait, ResourceType and SecurityScheme differ only in which builder the body
-    goes to, so stripping `uses:` is shared. The first two override `decode` to
-    build their definition; SecurityScheme keeps the deferred-definition seam.
+    goes to, which `_KIND` selects. The definition is named after the file.
     """
 
-    __slots__ = ('_raw_definition', 'definition')
+    __slots__ = ('definition',)
+
+    _KIND: ClassVar[FragmentKind]
 
     def __init__(self, raml: Raml, location: str) -> None:
         super().__init__(raml, location)
         self.definition: Any = None
-        self._raw_definition: Node | None = None
 
     def decode(self, node: Node) -> None:
-        filtered, uses = filter_fragment_uses(self._raml, node, self.location)
-        self.uses = uses
-        self._raw_definition = filtered
+        filtered, self.uses = filter_fragment_uses(self._raml, node, self.location)
+        self.definition = _one_definition(self._raml, None, filtered, self.location, self._KIND)
+        self.definition.name = uri_base(self.location)
 
 
 class TraitFragment(_DefinitionFragment):
     """`#%RAML 1.0 Trait` — the whole document is one trait definition."""
 
     __slots__ = ()
-
-    def decode(self, node: Node) -> None:
-        super().decode(node)
-        self.definition = _one_definition(
-            self._raml, None, self._raw_definition, self.location, make_trait_definition, FragmentKind.TRAIT
-        )
-        self.definition.name = uri_base(self.location)
+    _KIND = FragmentKind.TRAIT
 
 
 class ResourceTypeFragment(_DefinitionFragment):
     """`#%RAML 1.0 ResourceType` — the whole document is one definition."""
 
     __slots__ = ()
-
-    def decode(self, node: Node) -> None:
-        super().decode(node)
-        self.definition = _one_definition(
-            self._raml,
-            None,
-            self._raw_definition,
-            self.location,
-            make_resource_type_definition,
-            FragmentKind.RESOURCE_TYPE,
-        )
-        self.definition.name = uri_base(self.location)
+    _KIND = FragmentKind.RESOURCE_TYPE
 
 
 class SecuritySchemeFragment(_DefinitionFragment):
@@ -815,18 +764,7 @@ class SecuritySchemeFragment(_DefinitionFragment):
     """
 
     __slots__ = ()
-
-    def decode(self, node: Node) -> None:
-        super().decode(node)
-        self.definition = _one_definition(
-            self._raml,
-            None,
-            self._raw_definition,
-            self.location,
-            make_security_scheme_definition,
-            FragmentKind.SECURITY_SCHEME,
-        )
-        self.definition.name = uri_base(self.location)
+    _KIND = FragmentKind.SECURITY_SCHEME
 
 
 # -- traits: and resourceTypes: -----------------------------------------------
@@ -837,32 +775,25 @@ class SecuritySchemeFragment(_DefinitionFragment):
 # reverse import and rules out a deferred one.
 
 
-def _one_definition(  # noqa: PLR0913, PLR0917 - `make` and `kind` are what let one function serve two
-    raml: Raml,
-    key: Node | None,
-    value: Node | None,
-    location: str,
-    make: Callable[[Raml, Node | None, Node, str], Any],
-    kind: FragmentKind,
-) -> Any:
+#: The builder for each kind a definition fragment or declaration map holds.
+_DEFINITION_BUILDERS: Final[Mapping[FragmentKind, Callable[[Raml, Node | None, Node, str], Any]]] = {
+    FragmentKind.TRAIT: make_trait_definition,
+    FragmentKind.RESOURCE_TYPE: make_resource_type_definition,
+    FragmentKind.SECURITY_SCHEME: make_security_scheme_definition,
+}
+
+
+def _one_definition(raml: Raml, key: Node | None, value: Node, location: str, kind: FragmentKind) -> Any:
     """Build one definition, following an `!include` to the linked fragment's."""
-    if value is None:
-        value = Node(NodeKind.SCALAR, TAG_NULL)
-    definition = make(raml, key, value, location)
+    definition = _DEFINITION_BUILDERS[kind](raml, key, value, location)
     if definition.link_uri:
         fragment = parse_fragment(raml, definition.link_uri, kind)
         definition.link = getattr(fragment, 'definition', None)
     return definition
 
 
-def _definitions(
-    raml: Raml,
-    node: Node,
-    location: str,
-    make: Callable[[Raml, Node | None, Node, str], Any],
-    kind: FragmentKind,
-) -> dict[str, Any]:
-    """Decode a `traits:` or `resourceTypes:` map, one definition per name."""
+def _definitions(raml: Raml, node: Node, location: str, kind: FragmentKind) -> dict[str, Any]:
+    """Decode a `traits:`, `resourceTypes:` or `securitySchemes:` map, one definition per name."""
     if node.tag == TAG_NULL:
         return {}
     if node.kind is not NodeKind.MAPPING:
@@ -871,7 +802,7 @@ def _definitions(
     accumulator = Accumulator()
     for key, value in pairs(node):
         try:
-            declared[key.value] = _one_definition(raml, key, value, location, make, kind)
+            declared[key.value] = _one_definition(raml, key, value, location, kind)
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()
@@ -879,15 +810,15 @@ def _definitions(
 
 
 def decode_trait_definitions(raml: Raml, node: Node, location: str) -> dict[str, TraitDefinition]:
-    return _definitions(raml, node, location, make_trait_definition, FragmentKind.TRAIT)
+    return _definitions(raml, node, location, FragmentKind.TRAIT)
 
 
 def decode_resource_type_definitions(raml: Raml, node: Node, location: str) -> dict[str, ResourceTypeDefinition]:
-    return _definitions(raml, node, location, make_resource_type_definition, FragmentKind.RESOURCE_TYPE)
+    return _definitions(raml, node, location, FragmentKind.RESOURCE_TYPE)
 
 
 def decode_security_scheme_definitions(raml: Raml, node: Node, location: str) -> dict[str, SecuritySchemeDefinition]:
-    return _definitions(raml, node, location, make_security_scheme_definition, FragmentKind.SECURITY_SCHEME)
+    return _definitions(raml, node, location, FragmentKind.SECURITY_SCHEME)
 
 
 class _Declarations:

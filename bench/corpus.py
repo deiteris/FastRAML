@@ -248,6 +248,52 @@ def write_endpoints(root: Path, *, resource_count: int = 500) -> Path:
     return root / 'api.raml'
 
 
+# -- extensions ---------------------------------------------------------------
+
+
+def write_extensions(root: Path, *, resource_count: int = 500) -> Path:
+    """The endpoints corpus as a root API, under an Overlay and then an Extension.
+
+    The Overlay translates every resource and method, which is its common use,
+    and applies an annotation it declares to every method; the Extension on top
+    adds a `patch` to every tenth resource and one type. Measures the chain
+    load, both merges, the overlay check, and document provenance on a target
+    tree whose every method carries nodes from three files (docs/19 § 8).
+    """
+    write_endpoints(root, resource_count=resource_count)
+    overlay = [
+        '#%RAML 1.0 Overlay',
+        'extends: api.raml',
+        'annotationTypes:',
+        '  reviewed: boolean',
+    ]
+    extension = [
+        '#%RAML 1.0 Extension',
+        'extends: overlay.raml',
+        'types:',
+        '  Patch:',
+        '    type: Item',
+        '    properties:',
+        '      reason?: string',
+    ]
+    for index in range(resource_count):
+        overlay.append(f'/res{index}:')
+        overlay.append(f'  description: Recurso {index}')
+        for method in _METHODS:
+            overlay.append(f'  {method}:')
+            overlay.append(f'    description: Operación {method} sobre el recurso {index}')
+            overlay.append('    (reviewed): true')
+        if index % 10 == 0:
+            extension.append(f'/res{index}:')
+            extension.append('  patch:')
+            extension.append('    is: [paged]')
+            extension.append('    body:')
+            extension.append('      application/json:')
+            extension.append('        type: Patch')
+    _write(root, {'overlay.raml': '\n'.join(overlay) + '\n', 'extension.raml': '\n'.join(extension) + '\n'})
+    return root / 'extension.raml'
+
+
 # -- validation ---------------------------------------------------------------
 
 _EXAMPLE_KEYS = 50

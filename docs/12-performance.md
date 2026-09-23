@@ -48,13 +48,14 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures five workloads:
+`bench/` generates deterministic corpora and measures six workloads:
 
 | Bench | Primary coverage |
 |---|---|
 | `small` | fixed parser overhead |
 | `large` | large type/library graph and cache canonicalization |
 | `endpoints` | template and endpoint construction |
+| `extensions` | the `endpoints` corpus under an Overlay and an Extension: chain load, merge, overlay check, and document provenance |
 | `validate` | declaration and example validation |
 | `jsonschema` | shared JSON Schema references |
 

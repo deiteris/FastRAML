@@ -26,6 +26,7 @@ WRITERS = {
     'small': lambda root: corpus.write_small(root, type_count=12),
     'large': lambda root: corpus.write_large(root, type_count=24, library_count=4),
     'endpoints': lambda root: corpus.write_endpoints(root, resource_count=3),
+    'extensions': lambda root: corpus.write_extensions(root, resource_count=11),
     'validate': lambda root: corpus.write_validate(root, type_count=3),
     'jsonschema': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
 }

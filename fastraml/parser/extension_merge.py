@@ -151,6 +151,10 @@ _SYNONYMS: Final[dict[Site, dict[str, str]]] = {
     Site.TYPE: {'schema': 'type'},
 }
 
+#: Where a key can have a synonym: the two positions above, and a body that is
+#: itself a type declaration.
+_SYNONYM_SITES: Final = frozenset({Site.ROOT, Site.TYPE, Site.BODY})
+
 #: Keys that accept one scalar or a sequence of them; a lone scalar is merged
 #: as a one-item sequence (docs/19 § 3.2). `type` is not one of them: a scalar
 #: there is a type expression, a sequence is multiple inheritance.
@@ -294,7 +298,9 @@ class _Merger:
         index = {own[i].value: i for i in range(0, len(own), 2)}
         # A synonym finds its partner only when the exact spelling is absent, so
         # a target that wrote both (which its decode rejects) still merges pairwise.
-        synonyms = {_canonical(site, own[i].value): i for i in range(len(own) - 2, -1, -2)}
+        synonyms = (
+            {_canonical(site, own[i].value): i for i in range(len(own) - 2, -1, -2)} if site in _SYNONYM_SITES else None
+        )
         added: list[Node] = []
         changed = False
         content = extension.content
@@ -304,7 +310,7 @@ class _Merger:
             if site is Site.ROOT and name in _IGNORED_AT_ROOT:
                 continue
             position = index.get(name)
-            if position is None:
+            if position is None and synonyms is not None:
                 position = synonyms.get(_canonical(site, name))
             if position is None or merged[position] is None:
                 self._remove_conflicts(merged, index, site, name, key, free=free)

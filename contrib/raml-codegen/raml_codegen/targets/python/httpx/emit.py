@@ -15,17 +15,18 @@ import pathlib
 from dataclasses import replace
 from typing import TYPE_CHECKING, Final
 
-import jinja2
-
 from ....targets import Generated, Settings
 from ..shared import docs
 from ..shared.annotate import fill
 from ..shared.imports import Needs, Source, imports_for
 from ..shared.plan import plan
+from ..shared.templating import template_environment
 from .annotate import make_annotator
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+
+    import jinja2
 
     from ....reader import Tree
     from ..shared.annotate import Annotation
@@ -141,17 +142,7 @@ def _client_type(endpoint: Endpoint) -> str:
 
 
 def _environment() -> jinja2.Environment:
-    environment = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(_TEMPLATES),
-        autoescape=False,  # noqa: S701 - the output is Python, not HTML
-        trim_blocks=True,
-        lstrip_blocks=True,
-        keep_trailing_newline=True,
-    )
-    environment.filters['repr'] = repr
-    environment.filters['one_line'] = docs.one_line
-    environment.filters['summary'] = docs.summary
-    environment.filters['details'] = docs.details
+    environment = template_environment(_TEMPLATES)
     environment.filters['format_with'] = fill
     environment.filters['attribute'] = docs.attribute
     return environment

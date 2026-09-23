@@ -145,14 +145,6 @@ class Structural:
     #: decides its own literal syntax instead of parsing one out of `of`.
     constant: str | int | None = None
 
-    def bears_shapes(self) -> bool:
-        """Whether descending this key can reach a shape.
-
-        `REF` is excluded on purpose: a link is followed by choice, never by a
-        containment walk (docs/16 § 11.7).
-        """
-        return self.holds in {Holds.SHAPE_NODE, Holds.SHAPE, Holds.RECORD}
-
 
 @dataclass(frozen=True, slots=True)
 class ContractSchema:

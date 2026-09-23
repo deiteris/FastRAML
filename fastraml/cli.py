@@ -930,46 +930,6 @@ def _compatibility_rule_overrides(config: Any, values: Sequence[str]) -> Any:
     return CompatibilityConfig(rules=tuple(rules))
 
 
-#: IRI segments that introduce something, and how to show it. The IRI is
-#: structural (docs/16 § 3) precisely so a reader-facing path can be recovered
-#: from it without consulting the model again.
-_SEGMENTS = {
-    'endpoint': '{}',
-    'supportedOperation': '{}',
-    'returns': '-> {}',
-    'payload': '{}',
-    'property': '.{}',
-    'patternProperty': '.{}',
-    'parameter': '?{}',
-    'anyOf': '|{}',
-    'types': 'types/{}',
-    'traits': 'trait {}',
-    'resourceTypes': 'resourceType {}',
-    'securitySchemes': 'scheme {}',
-    'annotations': 'annotation {}',
-}
-
-
-def _pretty(iri: str) -> str:
-    """One node IRI as something a person can find in the document."""
-    from urllib.parse import unquote  # noqa: PLC0415 - presentation only
-
-    parts = [unquote(part) for part in (iri.partition('#/')[2] or iri).split('/')]
-    out, index = [], 0
-    while index < len(parts):
-        head = parts[index]
-        template = _SEGMENTS.get(head)
-        if template and index + 1 < len(parts):
-            out.append(template.format(parts[index + 1]))
-            index += 2
-        elif head in ('items', 'schema', 'web-api', 'declarations', 'request'):
-            index += 1
-        else:
-            out.append(head)
-            index += 1
-    return ' '.join(out) or iri
-
-
 def _query(args: argparse.Namespace) -> int:
     """SPARQL over the graph: the catalogue, or a query of your own."""
     from fastraml.views.queries import QUERIES  # noqa: PLC0415 - query command only

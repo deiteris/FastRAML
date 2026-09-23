@@ -63,6 +63,7 @@ from fastraml.types.scalars import (
     StringShape,
     TimeOnlyShape,
 )
+from fastraml.types.values import EnumValues
 from fastraml.types.xml import decode_xml_serialization
 from fastraml.yamlnode import TAG_INCLUDE, TAG_NULL, TAG_STR, NodeKind, is_null, node_error, pairs
 
@@ -338,7 +339,7 @@ def _decode_allowed_targets(value_node: Node, location: str) -> list[DomainLocat
 def _decode_enum(raml: Raml, value_node: Node, location: str) -> list:
     if value_node.kind is not NodeKind.SEQUENCE:
         raise node_error('enum must be a sequence', location, value_node)
-    return [make_data_node(raml, None, item, location) for item in value_node.content]
+    return EnumValues(make_data_node(raml, None, item, location) for item in value_node.content)
 
 
 def _decode_example(raml: Raml, base: BaseShape, value_node: Node) -> None:
@@ -480,6 +481,7 @@ def _build_member_declarations(raml: Raml, union: UnionShape) -> None:
     """
     location = union.base.location
     pending = union.pending_facets
+    holders: dict[str, BaseShape] = {}
     for index in range(0, len(pending), 2):
         key, value = pending[index], pending[index + 1]
         entry = _MEMBER_DECLARATION_KINDS.get(key.value)
@@ -497,7 +499,8 @@ def _build_member_declarations(raml: Raml, union: UnionShape) -> None:
         holder.type = kind
         _, built = _split_declarations(raml, cls, [key, value], location)
         holder.shape = cls(holder, **built)  # type: ignore[call-arg]
-        union.member_declarations[key.value] = holder
+        holders[key.value] = holder
+    union.member_declarations = holders
 
 
 def _split_declarations(

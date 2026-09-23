@@ -38,9 +38,10 @@ from fastraml.types.complex_ import (
 )
 from fastraml.types.inherit import alias_to, inherit
 from fastraml.types.shape import KIND_TO_CLASS
+from fastraml.types.values import EnumValues
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
     from typing import Any
 
     from fastraml.registry import Raml
@@ -193,7 +194,7 @@ def _distribute_union_facets(walk: _Walk, base: BaseShape, depth: int) -> None:
 _Kept = dict[int, set[int]]
 
 
-def _distribute(walk: _Walk, base: BaseShape, depth: int) -> tuple[dict[str, BaseShape], _Kept] | None:
+def _distribute(walk: _Walk, base: BaseShape, depth: int) -> tuple[Mapping[str, BaseShape], _Kept] | None:
     """Give each member its facets; return what the enum intersection kept.
 
     Returned rather than reported, because a member that is itself a union
@@ -205,7 +206,7 @@ def _distribute(walk: _Walk, base: BaseShape, depth: int) -> tuple[dict[str, Bas
     if not isinstance(shape, UnionShape) or not shape.pending_facets:
         return None
     pending, shape.pending_facets = shape.pending_facets, []
-    holders, shape.member_declarations = shape.member_declarations, {}
+    holders, shape.member_declarations = shape.member_declarations, {}  # the setter stores `None`
     if not shape.any_of:
         # No members to distribute to — a union that declared none and inherited
         # none. Keep the facets rather than dropping them, so P10 still reports
@@ -234,7 +235,7 @@ def _narrowed_member(  # noqa: PLR0913 - the member, and what the union hands it
     base: BaseShape,
     member: BaseShape,
     pending: list[Node],
-    holders: dict[str, BaseShape],
+    holders: Mapping[str, BaseShape],
     *,
     depth: int,
 ) -> tuple[BaseShape | None, _Kept]:
@@ -327,7 +328,7 @@ def _intersect_enums(holder: BaseShape, member: BaseShape, memo: dict[int, BaseS
             indices = {index for index in indices if _admits(counterpart, values[index].raw)}
             if values and not indices:
                 return False
-            memo[site.id].enum = [values[index] for index in sorted(indices)]
+            memo[site.id].enum = EnumValues(values[index] for index in sorted(indices))
         kept.setdefault(site.id, set()).update(indices)
     return True
 
@@ -380,7 +381,7 @@ def _paired_children(shape: BaseShape, counterpart: BaseShape | None) -> list[tu
     return pairs
 
 
-def _report_unplaced_enum_values(holders: dict[str, BaseShape], kept: _Kept) -> None:
+def _report_unplaced_enum_values(holders: Mapping[str, BaseShape], kept: _Kept) -> None:
     """A distributed `enum` value that no member admits (docs/07 § 5)."""
     accumulator = Accumulator()
     for holder in holders.values():

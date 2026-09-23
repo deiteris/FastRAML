@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
 from fastraml.datanode import make_data_node
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.positions import UNKNOWN, Position
-from fastraml.types.values import ValueSet
+from fastraml.types.values import EnumValues, ValueSet
 
 if TYPE_CHECKING:
     import re
@@ -174,6 +174,16 @@ class TypeExprRef:
     builtin: str | None = None
 
 
+def _enum_contains(enum: list[DataNode], value: Any) -> bool:
+    """Membership under `same_value`; indexed when the list is an `EnumValues`.
+
+    A plain list, which only a caller outside the parser builds, is scanned.
+    """
+    if isinstance(enum, EnumValues):
+        return enum.contains(value)
+    return value in ValueSet(member.raw for member in enum)
+
+
 class BaseShape:
     """The half of a declaration that every kind has in common.
 
@@ -219,7 +229,6 @@ class BaseShape:
         '_unwrapped',
         '_visiting',
         '_raml',
-        '_enum_index',
     )
 
     def __init__(  # noqa: PLR0913 - a model constructor names its fields
@@ -278,9 +287,6 @@ class BaseShape:
         self._unwrapped = False
         self._visiting = False
         self._raml = raml
-        #: `enum` as a `ValueSet`, and the list it was built from. Rebuilt when
-        #: `enum` is rebound; nothing mutates the list in place (docs/07 § 4).
-        self._enum_index: tuple[list[DataNode], ValueSet] | None = None
 
     def __repr__(self) -> str:
         return f'BaseShape(id={self.id}, name={self.name!r}, type={self.type!r})'
@@ -420,7 +426,7 @@ class BaseShape:
         if self.shape is None:
             raise RamlError.new('declaration has no shape', self.location, self.key_pos, kind=ErrorKind.VALIDATING)
         if self.enum:
-            if value not in self._enum_members():
+            if not _enum_contains(self.enum, value):
                 raise RamlError.new(
                     'value is not one of the allowed values',
                     self.location,
@@ -430,14 +436,6 @@ class BaseShape:
                 )
             return
         self.shape.validate(value, path)
-
-    def _enum_members(self) -> ValueSet:
-        """`enum` indexed by semantic equality, built on first use (docs/10 § 5)."""
-        enum = self.enum or []
-        cached = self._enum_index
-        if cached is None or cached[0] is not enum:
-            cached = self._enum_index = (enum, ValueSet(member.raw for member in enum))
-        return cached[1]
 
     def _assert_unwrapped(self) -> None:
         """Invariant I12: data is validated against a *flattened* declaration.

@@ -32,6 +32,7 @@ projection (docs/10 § 7) builds object, array and union shapes.
 
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, NamedTuple, cast
 
 from fastraml.datanode import make_data_node
@@ -625,6 +626,11 @@ def _duplicates(claims: list[_Claim]) -> tuple[str, ...]:
     return tuple(sorted(repeated))
 
 
+#: What `UnionShape.member_declarations` reads when none were built. Read-only,
+#: so no caller can fill the one instance every union shares.
+_NO_MEMBER_DECLARATIONS: Final[Mapping[str, BaseShape]] = MappingProxyType({})
+
+
 class UnionShape(ComplexKind):
     """`union`. Its members arrive built, one declaration each."""
 
@@ -651,8 +657,9 @@ class UnionShape(ComplexKind):
         #: the usual way. Keyed by facet name; each value is a holder of the kind
         #: that owns the facet. P9 hands every accepting member its own clone.
         #: The YAML pair stays in `pending_facets` as well, for a member that
-        #: does not accept the facet.
-        self._member_declarations: dict[str, BaseShape] = {}
+        #: does not accept the facet. `None` until one is built: almost no
+        #: union has any, and an empty dict on each would cost every document.
+        self._member_declarations: dict[str, BaseShape] | None = None
 
     def decode_facets(self, pairs: list[Node]) -> None:
         rest: list[Node] = []
@@ -683,19 +690,20 @@ class UnionShape(ComplexKind):
         # clone gets its own when P9 reaches it.
         clone._dispatch = None  # noqa: SLF001 - same class, and __slots__ has no other way
         # Cloned, not shared: P9 unwraps the holders in place.
-        clone._member_declarations = {  # noqa: SLF001 - see above
-            name: holder.clone(memo) for name, holder in self._member_declarations.items()
-        }
+        if self._member_declarations is not None:
+            clone._member_declarations = {  # noqa: SLF001 - see above
+                name: holder.clone(memo) for name, holder in self._member_declarations.items()
+            }
         return clone
 
     @property
-    def member_declarations(self) -> dict[str, BaseShape]:
+    def member_declarations(self) -> Mapping[str, BaseShape]:
         """The declarations written beside the union for its members to take."""
-        return self._member_declarations
+        return self._member_declarations or _NO_MEMBER_DECLARATIONS
 
     @member_declarations.setter
-    def member_declarations(self, holders: dict[str, BaseShape]) -> None:
-        self._member_declarations = holders
+    def member_declarations(self, holders: Mapping[str, BaseShape]) -> None:
+        self._member_declarations = dict(holders) if holders else None
 
     def build_dispatch(self) -> None:
         """Settle the dispatch table. `finish_unwrap` calls this once per shape.

@@ -31,6 +31,7 @@ __all__ = [
     'DATE_ONLY',
     'INTEGER_RANGES',
     'TIME_ONLY',
+    'EnumValues',
     'ValueSet',
     'as_fraction',
     'check_non_negative',
@@ -400,6 +401,29 @@ class ValueSet:
             return False
         self._keys.add(key)
         return True
+
+
+class EnumValues(list[Any]):
+    """An `enum` facet's members, which build their own `ValueSet` on first use.
+
+    The index lives on the list rather than on the shape, so a shape without
+    an `enum` carries nothing for it. Built once, it serves every membership
+    test (docs/10 § 5). Valid because an enum is never edited in place:
+    inheritance and the union intersection bind a new list (docs/07 § 4, § 5).
+    """
+
+    __slots__ = ('_index',)
+
+    def __init__(self, members: Iterable[Any] = ()) -> None:
+        super().__init__(members)
+        self._index: ValueSet | None = None
+
+    def contains(self, value: Any) -> bool:
+        """Is `value` one of these members' raw values, under `same_value`?"""
+        index = self._index
+        if index is None:
+            index = self._index = ValueSet(member.raw for member in self)
+        return value in index
 
 
 def unique_items(items: list[Any]) -> int | None:

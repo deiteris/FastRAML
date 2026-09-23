@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastraml.parser.extension_merge import merge_extension
 from fastraml.yamlnode import NodeKind, compose, pairs
+from tests.trees import snapshot
 
 MASTER = 'file:///api/master.raml'
 OVERLAY = 'file:///api/overlay.raml'
@@ -57,10 +58,6 @@ def violations(master: str, overlay: str) -> list[dict[str, object]]:
     assert all(head.message == 'not allowed in an overlay' for head in heads)
     assert all(head.location == OVERLAY for head in heads)
     return [dict(head.info) for head in heads]
-
-
-def snapshot(node):
-    return (node.kind, node.tag, node.value, [snapshot(child) for child in node.content])
 
 
 class TestPropertyKinds:

@@ -10,6 +10,7 @@ from fastraml.errors import Accumulator as Accumulator
 from fastraml.errors import ErrorKind as ErrorKind
 from fastraml.errors import RamlError as RamlError
 from fastraml.errors import Trace as Trace
+from fastraml.gctuning import set_gc_tuning as set_gc_tuning
 from fastraml.loaders import FileLoader as FileLoader
 from fastraml.loaders import HTTPLoader as HTTPLoader
 from fastraml.loaders import LoaderError as LoaderError
@@ -262,6 +263,7 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'resolve_uri_ref',
     'rule_for',
     'same_value',
+    'set_gc_tuning',
     'side_of',
     'side_of_rule',
     'to_json_schema',

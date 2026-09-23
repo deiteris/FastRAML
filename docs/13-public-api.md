@@ -84,6 +84,18 @@ Consumers must honor these contracts:
 4. Without unwrap, a shape exposes only its own declaration. Direct
    `BaseShape.validate()` and `validate_or_raise()` require an unwrapped shape.
 
+Parsing, `build_graph`, `Linter` runs, and `to_openapi` raise the garbage
+collector's full-collection threshold while they run and restore it afterwards
+([12](12-performance.md) § 6). Thresholds are process-wide, so other threads
+also skip full collections during that time. Young collections run as usual.
+`set_gc_tuning(False)` turns this off for the whole process:
+
+```python
+import fastraml
+
+fastraml.set_gc_tuning(False)
+```
+
 For direct value validation, `validate(value)` returns `None` or `RamlError`.
 `validate_or_raise(value)` raises the same error. Use concrete exported shape
 classes with `isinstance` for type narrowing.

@@ -11,6 +11,7 @@ from fractions import Fraction
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, Final
 
+from fastraml.gctuning import tuned_gc
 from fastraml.parser.security import (
     TYPE_BASIC,
     TYPE_DIGEST,
@@ -988,6 +989,7 @@ def _status_text(code: str) -> str:
         return 'Response'
 
 
+@tuned_gc()
 def to_openapi(raml: Raml) -> tuple[OAS3Document, list[str]]:
     """Return a typed OpenAPI 3.0.3 document and the RAML information it dropped."""
     conversion = OpenAPIConversion()

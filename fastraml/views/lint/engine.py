@@ -22,6 +22,7 @@ from enum import StrEnum
 from time import perf_counter_ns
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, cast
 
+from fastraml.gctuning import tuned_gc
 from fastraml.nodes import (
     ApiNode,
     EndPointNode,
@@ -919,6 +920,7 @@ class Linter:
             max_findings_per_rule=max_findings_per_rule,
         )
 
+    @tuned_gc()
     def _execute(
         self,
         raml: Raml,

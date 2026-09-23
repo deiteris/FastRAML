@@ -80,6 +80,10 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
 - `Node` defines no `__eq__`/`__hash__`: the provenance overlay is
   `dict[Node, ParseCtx]` keyed by identity. Do not add equality; do not key overlays
   by `id()`.
+- A `Node` is never edited after it is built: every childless node shares one
+  empty `content` list, and `position` is cached. Build a new node with
+  `with_content`/`with_value` instead (`docs/03` § 1); `tests/conftest.py`
+  fails the session if the shared list is ever filled.
 - `__slots__` on every model class; `@dataclass(slots=True, eq=False)` when a
   dataclass suits.
 - Never import `copy`. Use `clone(memo)` or `clone_detached()` (`docs/07` § 6); a

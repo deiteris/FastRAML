@@ -14,10 +14,14 @@ class NodeKind(IntEnum):
 
 
 class Node:
-    __slots__ = ('kind', 'tag', 'value', 'content', 'line', 'column', 'end_line', 'end_column')
+    __slots__ = ('kind', 'tag', 'value', 'content', 'line', 'column', 'end_line', 'end_column', '_position')
 ```
 
 - Mapping `content` is flat: `[key0, value0, key1, value1, ...]`.
+- A node is not edited after it is built; a pass that changes a tree builds
+  new containers with `with_content`. Every node without children therefore
+  shares one empty `content` list, and `position` is built on first use and
+  kept ([12](12-performance.md) § 2).
 - Tags use short YAML names such as `!!str`, `!!int`, `!!null`, and
   `!!timestamp`; `!include` is the only RAML local tag.
 - Positions are 1-based and include token end positions. `full_position`

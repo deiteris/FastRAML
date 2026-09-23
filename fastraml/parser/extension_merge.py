@@ -21,13 +21,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal
 
 from fastraml.errors import Accumulator
 from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.source_ir import METHODS
 from fastraml.parser.structural_merge import node_value_equal
-from fastraml.yamlnode import TAG_MAP, TAG_SEQ, Node, NodeKind, is_null, node_error, with_content
+from fastraml.yamlnode import TAG_MAP, TAG_SEQ, TAG_STR, Node, NodeKind, is_null, node_error, with_content
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -72,6 +72,9 @@ class Site(Enum):
     RESPONSES = auto()
     EXAMPLES = auto()
 
+
+#: What an Overlay did to the target tree, as `info['change']` reports it.
+type _Change = Literal['added', 'changed', 'removed']
 
 #: Where each name in a name map leads.
 _NAME_MAPS: Final = {
@@ -448,7 +451,7 @@ class _Merger:
 
     # -- the overlay check (docs/19 § 4) --------------------------------------
 
-    def _change(self, site: Site, name: str, key: Node, change: str, *, free: bool) -> None:
+    def _change(self, site: Site, name: str, key: Node, change: _Change, *, free: bool) -> None:
         """Record one difference from the target tree; an Overlay may make only some."""
         if not self.overlay or free or self._allowed_key(site, name):
             return
@@ -471,11 +474,9 @@ class _Merger:
         return site is Site.ROOT and name == 'annotationTypes'
 
 
-def _scalars(node: Node) -> bool:
-    """A scalar, or a sequence holding only scalars: a simple property's value."""
-    if node.kind is NodeKind.SCALAR:
-        return True
-    return node.kind is NodeKind.SEQUENCE and all(item.kind is NodeKind.SCALAR for item in node.content)
+def _scalars(sequence: Node) -> bool:
+    """Whether a sequence holds only scalars: a list of names, not of applications."""
+    return all(item.kind is NodeKind.SCALAR for item in sequence.content)
 
 
 def _normalize(old: Node, new: Node, site: Site, name: str) -> tuple[Node, Node]:  # noqa: PLR0911 - one return per spelling pair
@@ -504,12 +505,12 @@ def _normalize(old: Node, new: Node, site: Site, name: str) -> tuple[Node, Node]
 
 
 def _empty_mapping(at: Node) -> Node:
-    return Node(NodeKind.MAPPING, TAG_MAP, '', [], at.line, at.column, at.end_line, at.end_column)
+    return Node(NodeKind.MAPPING, TAG_MAP, '', None, at.line, at.column, at.end_line, at.end_column)
 
 
 def _type_mapping(scalar: Node) -> Node:
     """`string` as `{type: string}`, positioned at the scalar."""
-    key = Node(NodeKind.SCALAR, '!!str', 'type', [], scalar.line, scalar.column, scalar.line, scalar.column)
+    key = Node(NodeKind.SCALAR, TAG_STR, 'type', None, scalar.line, scalar.column, scalar.line, scalar.column)
     return Node(
         NodeKind.MAPPING, TAG_MAP, '', [key, scalar], scalar.line, scalar.column, scalar.end_line, scalar.end_column
     )

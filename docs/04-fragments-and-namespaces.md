@@ -38,8 +38,12 @@ class ReferenceResolver(Fragment, Protocol):
 ```
 
 Only API and Library fragments implement `SecuritySchemeResolver`, because only
-they declare security schemes. Resolver capabilities are checked structurally;
-a fragment is not required to expose unsupported declaration kinds.
+they declare security schemes, and so does an Overlay or Extension, which
+resolves in its target tree's declarations ([19](19-overlays-and-extensions.md)
+§ 5.1). The three share one implementation of the five resolvers over two
+hooks: the table an unqualified name resolves in, and the `uses:` map.
+Resolver capabilities are checked structurally; a fragment is not required to
+expose unsupported declaration kinds.
 
 ## 3. Name resolution
 

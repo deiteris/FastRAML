@@ -305,15 +305,15 @@ The sites below consult document provenance directly, in addition to the
 readers in [08](08-templates-and-endpoints.md) § 4.2. Each decides by the
 **value** node it decodes. A value the merge recursed into is a new container,
 carries no mark, and stays with the enclosing document. These sites call
-`document_location` and `document_anchor`, which ignore template scopes: a
-substituted scalar keeps its template's positions, so only authorship may
-rename its file.
+`document_location`, or `document_site` where they also need the scope. Both
+ignore template scopes: a substituted scalar keeps its template's positions, so
+only authorship may rename its file. `document_site` keeps the annotation
+target in effect.
 
 - `make_scalar_facet`, for location;
 - `resolve_include` and `note_include_ref`, for the base of a relative path;
 - `make_data_node`, for location;
-- `unmarshal_domain_extension`, for location and anchor, keeping the enclosing
-  target;
+- `unmarshal_domain_extension`, for location and anchor;
 - `decode_documentation_item`, for location;
 - `make_template_definition`, for location and anchor;
 - `make_security_scheme_definition`, for location. Nested shapes find their
@@ -321,13 +321,19 @@ rename its file.
 - stage 1 (`make_source_endpoint`, `make_source_operation`), for an endpoint's
   or operation's location and scope, and for each `type`, `is`, and `securedBy`
   directive separately. A directive an extension document added to a root API
-  method resolves in the extension document's namespace.
+  method resolves in the extension document's namespace;
+- the root `securedBy` of the target tree, for location and scope.
 
-During a parse, `Raml.reporting_authorship` makes the marks visible to
+The passes run inside `Raml.authorship`, which makes the marks visible to
 `node_error` through a context variable. A diagnostic built for a marked node is
 then located in the document that wrote it ([11](11-diagnostics.md) § 4).
 Diagnostics built from a bare position rather than a node keep the location
 their caller passed.
+
+Only the passes read the marks, so `Raml.authorship` clears them when the passes
+end, including after a failure. Kept, they would hold every extension
+document's YAML tree for as long as the model lives, which P4 avoids for the
+API's own tree.
 
 A `DataNode` records one location. In a multi-value sequence the merge extended,
 such as `enum`, an item an extension document appended keeps its own

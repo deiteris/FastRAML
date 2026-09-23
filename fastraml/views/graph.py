@@ -26,6 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, NamedTuple
 
+from fastraml.gctuning import tuned_gc
 from fastraml.nodes import (
     ApiNode,
     EndPointNode,
@@ -615,6 +616,7 @@ def _dot(value: str) -> str:
     return value.replace('\\', '\\\\').replace('"', '\\"')
 
 
+@tuned_gc()
 def build_graph(raml: Raml, *, base: str = DEFAULT_BASE) -> Graph:
     """Project a parsed model. Use `ParseOptions(unwrap=True)` — see the module docstring."""
     sink = _GraphSink(workspace_of(raml))

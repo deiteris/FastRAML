@@ -15,6 +15,7 @@ inside it is read in the right file.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Final
 
 from fastraml.domains import DomainLocation
@@ -27,6 +28,7 @@ from fastraml.parser.fragments import (
     ExtensionFragment,
     FragmentKind,
     LibraryLink,
+    ReferenceResolver,
     identify_fragment,
     load_fragment_text,
     resolve_uses,
@@ -69,9 +71,7 @@ def decode_extension_chain(raml: Raml, uri: str, kind: FragmentKind, text: str) 
 
     api = APIFragment(raml, root_api.uri)
     api.kind = FragmentKind.API
-    raml.put_fragment(root_api.uri, api)
-    raml.put_resolver(root_api.uri, api)
-    raml.entry_point = api
+    raml.entry_point = _register(raml, api)
 
     accumulator = Accumulator()
     if not any(key.value == 'title' for key, _ in pairs(root_api.root)):
@@ -82,15 +82,19 @@ def decode_extension_chain(raml: Raml, uri: str, kind: FragmentKind, text: str) 
     declared_by: dict[str, dict[str, int]] = {}
     fragments: list[ExtensionFragment] = []
     for position, document in enumerate(documents, start=1):
-        fragment = _register(raml, document, position, api)
-        fragments.append(fragment)
-        _decode_own_keys(raml, fragment, document.root, accumulator)
+        fragment = ExtensionFragment(raml, document.uri)
+        fragment.kind = document.kind
+        fragment.position = position
+        fragment.extends = document.extends
+        fragment.api = api
+        fragments.append(_register(raml, fragment))
+        _decode_own_keys(raml, fragment, document, accumulator)
         result = merge_extension(
             target,
             document.root,
             location=document.uri,
             overlay=document.kind is FragmentKind.OVERLAY,
-            mark=_Marker(raml, fragment),
+            mark=partial(raml.mark_authored, author=fragment),
         )
         if result.error is not None:
             accumulator.add(result.error)
@@ -172,35 +176,18 @@ def _extends_node(uri: str, root: Node) -> Node:
 # -- applying it --------------------------------------------------------------
 
 
-def _register(raml: Raml, document: _Document, position: int, api: APIFragment) -> ExtensionFragment:
-    fragment = ExtensionFragment(raml, document.uri)
-    fragment.kind = document.kind
-    fragment.position = position
-    fragment.extends = document.extends
-    fragment.api = api
-    raml.put_fragment(document.uri, fragment)
-    raml.put_resolver(document.uri, fragment)
+def _register[F: ReferenceResolver](raml: Raml, fragment: F) -> F:
+    """Index a chain document by its URI, as a fragment and as a namespace."""
+    raml.put_fragment(fragment.location, fragment)
+    raml.put_resolver(fragment.location, fragment)
     return fragment
 
 
-class _Marker:
-    """`mark` for one document: records every node it is handed as that document's."""
-
-    __slots__ = ('_fragment', '_raml')
-
-    def __init__(self, raml: Raml, fragment: ExtensionFragment) -> None:
-        self._raml = raml
-        self._fragment = fragment
-
-    def __call__(self, node: Node) -> None:
-        self._raml.mark_authored(node, self._fragment)
-
-
-def _decode_own_keys(raml: Raml, fragment: ExtensionFragment, root: Node, accumulator: Accumulator) -> None:
+def _decode_own_keys(raml: Raml, fragment: ExtensionFragment, document: _Document, accumulator: Accumulator) -> None:
     """`usage` and `uses`, the two keys the merge ignores (docs/19 § 2)."""
-    raml.push_ctx(ParseCtx(anchor=fragment, target=FRAGMENT_TARGETS[document_kind(fragment)]))
+    raml.push_ctx(ParseCtx(anchor=fragment, target=FRAGMENT_TARGETS[document.kind]))
     try:
-        for key, value in pairs(root):
+        for key, value in pairs(document.root):
             try:
                 if key.value == 'usage':
                     fragment.usage = make_string_facet(raml, key, value, fragment.location)
@@ -210,11 +197,6 @@ def _decode_own_keys(raml: Raml, fragment: ExtensionFragment, root: Node, accumu
                 accumulator.add(err)
     finally:
         raml.pop_ctx()
-
-
-def document_kind(fragment: ExtensionFragment) -> FragmentKind:
-    """An extension document's kind; set by `_register` before anything asks."""
-    return fragment.kind or FragmentKind.EXTENSION
 
 
 def _resolve_libraries(

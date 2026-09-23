@@ -26,6 +26,14 @@ can duplicate declarations; copying a node can lose its provenance.
   applicable; identity-based nodes must not acquire generated equality.
 - YAML mapping content is stored as a flat alternating list. Hot decoders should
   index it directly instead of allocating tuples or temporary dictionaries.
+- Allocate per distinct value, not per use. A childless `Node` shares one
+  empty `content` list, `Node.position` is built once per node, and the
+  composer takes short tags from a table. `Raml` keeps one `ParseCtx` per
+  anchor and target, and the scope managers decoders enter per construct are
+  small classes rather than generators. Template application shares a
+  trait's nodes by pointer, so every entity decoded from them shares their
+  `Position`. Long-lived objects are what the cyclic GC re-scans, so each one
+  avoided also shortens every later collection.
 - Prefer compiled regular expressions and C-level string operations to
   per-character Python loops.
 - Numeric validation keeps integer comparisons on the integer path and converts
@@ -88,3 +96,46 @@ Before and after a hot-path change, run `python -m bench compare` on the same
 machine and inspect the result. Record a meaningful measured delta in the commit
 message. Profile before optimizing: use `cProfile` for call counts, `tracemalloc`
 for allocation attribution, and a wall-clock profiler for elapsed-time evidence.
+
+## 6. Garbage collection
+
+A parse, a graph, a lint run and an OpenAPI export each build a large set of
+long-lived objects, and none of them creates cyclic garbage: at 2000
+resources no collection during a parse freed anything. CPython's young
+collections scan only new objects, so their cost is linear. A full collection
+re-scans every tracked object, and the heap grows throughout the operation,
+so repeated full collections make the operation superlinear. At the default
+thresholds they took 1.0 s of a 2.2 s `endpoints` parse at 2000 resources.
+
+`fastraml.gctuning.tuned_gc` wraps each of those operations. It raises the
+generation-2 threshold to 1000 and leaves the young thresholds alone, so
+cyclic garbage is still collected promptly and nothing accumulates. The
+alternatives measured worse:
+
+| Setting, 2000 resources | Parse | GC time |
+|---|---|---|
+| default `700, 10, 10` | 2201 ms | 994 ms |
+| `50000, 10, 10` | 1445 ms | 248 ms |
+| `700, 10, 1000` | 1336 ms | 136 ms |
+| collector disabled | 1198 ms | 0 ms |
+
+A large generation-0 threshold promotes survivors to generation 1 in large
+batches, which are expensive to scan, and still allows full collections.
+Disabling the collector, or `gc.freeze()`, would stop the host's own cyclic
+garbage from being collected. Python 3.14 measured the same. The free-threaded
+build has no generations and ignores the setting.
+
+The collector's thresholds are process-wide, so `tuned_gc` follows these rules:
+
+- It only raises the threshold. A host threshold already at 1000 or above is
+  kept.
+- It does nothing while the host has disabled the collector.
+- Nested and concurrent operations share one change. The first to enter
+  saves the host's thresholds, and the last to leave restores them.
+- A threshold the host changed in the meantime is left as the host set it.
+- `fastraml.set_gc_tuning(False)` turns tuning off for the process
+  ([13](13-public-api.md) § 3).
+
+The tuning is applied only where it measured a gain. The tree projection and
+`backward` build little and are not tuned. Import-time or CLI-wide settings
+are not used, because the host application owns its process.

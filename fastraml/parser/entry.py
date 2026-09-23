@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from fastraml.errors import ErrorKind, RamlError
+from fastraml.gctuning import tuned_gc
 from fastraml.loaders import build_loader
 from fastraml.parser.annotations import resolve_domain_extensions
 from fastraml.parser.endpoint_build import build_endpoints
@@ -191,9 +192,10 @@ _FATAL: Final = frozenset(
 )
 
 
+@tuned_gc()
 def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     """The pass driver, with diagnostics naming each node's authoring document."""
-    with raml.reporting_authorship():
+    with raml.authorship():
         return _run_passes(raml, uri, text, options)
 
 

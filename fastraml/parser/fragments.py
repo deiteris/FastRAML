@@ -376,12 +376,66 @@ def _pick_security_scheme(library: Library, name: str) -> SecuritySchemeDefiniti
     return library.security_schemes.get(name)
 
 
-class _DeclaringFragment(_BaseFragment):
+#: Each declaration kind by its RAML key, and the fragment attribute holding it.
+_DECLARATION_TABLES: Final = {
+    FACET_TYPES: 'types',
+    FACET_ANNOTATION_TYPES: 'annotation_types',
+    FACET_TRAITS: 'traits',
+    FACET_RESOURCE_TYPES: 'resource_types',
+    FACET_SECURITY_SCHEMES: 'security_schemes',
+}
+
+
+class _NameResolver:
+    """The five name resolvers, written once over two hooks.
+
+    `_declared(kind)` is the table an unqualified name resolves in, and
+    `_libraries()` the `uses:` map a qualified one resolves through. `Library`
+    and `APIFragment` read their own; an `ExtensionFragment` reads the target
+    tree's, seen from its chain position (docs/19 § 5.2).
+    """
+
+    __slots__ = ()
+
+    def _declared(self, kind: str) -> Mapping[str, Any] | None:
+        raise NotImplementedError
+
+    def _libraries(self) -> Mapping[str, LibraryLink]:
+        raise NotImplementedError
+
+    def _resolve[T](self, kind: str, name: str, pick: Callable[[Library, str], T | None]) -> T:
+        local: Mapping[str, T] | None = self._declared(kind)
+        return resolve_reference(local, self._libraries(), name, pick)
+
+    def library_link(self, prefix: str) -> LibraryLink | None:
+        return self._libraries().get(prefix)
+
+    def reference_type(self, name: str) -> BaseShape:
+        return self._resolve(FACET_TYPES, name, _pick_type)
+
+    def reference_annotation_type(self, name: str) -> BaseShape:
+        # An annotation type may extend a data type (docs/04 § 3).
+        try:
+            return self._resolve(FACET_ANNOTATION_TYPES, name, _pick_annotation_type)
+        except LookupError:
+            return self.reference_type(name)
+
+    def resource_type_definition(self, name: str) -> ResourceTypeDefinition:
+        return self._resolve(FACET_RESOURCE_TYPES, name, _pick_resource_type)
+
+    def trait_definition(self, name: str) -> TraitDefinition:
+        return self._resolve(FACET_TRAITS, name, _pick_trait)
+
+    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition:
+        return self._resolve(FACET_SECURITY_SCHEMES, name, _pick_security_scheme)
+
+
+class _DeclaringFragment(_NameResolver, _BaseFragment):
     """A fragment with declarations of its own: `Library` and `APIFragment`.
 
-    The two declare the same five kinds under the same keys and resolve names
-    the same way — local declarations first, then `uses:` — so both halves are
-    written once here. Like `_UsesOnlyFragment`, this shares code only; what a
+    The two declare the same five kinds under the same keys, so decoding them is
+    written once here, and `_NameResolver` resolves names against these tables
+    and `uses:`. Like `_UsesOnlyFragment`, this shares code only; what a
     fragment can do is still discovered by protocol check.
     """
 
@@ -405,33 +459,12 @@ class _DeclaringFragment(_BaseFragment):
 
     # -- ReferenceResolver / SecuritySchemeResolver ---------------------------
 
-    def reference_type(self, name: str) -> BaseShape:
-        return resolve_reference(self._visible(self.types, 'types'), self.uses, name, _pick_type)
-
-    def reference_annotation_type(self, name: str) -> BaseShape:
-        try:
-            return resolve_reference(
-                self._visible(self.annotation_types, 'annotationTypes'), self.uses, name, _pick_annotation_type
-            )
-        except LookupError:
-            return resolve_reference(self._visible(self.types, 'types'), self.uses, name, _pick_type)
-
-    def resource_type_definition(self, name: str) -> ResourceTypeDefinition:
-        return resolve_reference(
-            self._visible(self.resource_types, 'resourceTypes'), self.uses, name, _pick_resource_type
-        )
-
-    def trait_definition(self, name: str) -> TraitDefinition:
-        return resolve_reference(self._visible(self.traits, 'traits'), self.uses, name, _pick_trait)
-
-    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition:
-        return resolve_reference(
-            self._visible(self.security_schemes, 'securitySchemes'), self.uses, name, _pick_security_scheme
-        )
-
-    def _visible[T](self, table: Mapping[str, T], kind: str) -> Mapping[str, T]:  # noqa: ARG002 - overridden
-        """The declarations of `kind` this fragment's own nodes may name: all of them."""
+    def _declared(self, kind: str) -> Mapping[str, Any] | None:
+        table: Mapping[str, Any] = getattr(self, _DECLARATION_TABLES[kind])
         return table
+
+    def _libraries(self) -> Mapping[str, LibraryLink]:
+        return self.uses
 
     # -- decoding -------------------------------------------------------------
 
@@ -524,12 +557,9 @@ class APIFragment(_DeclaringFragment):
         #: for an API parsed on its own (docs/19 § 5.2).
         self.declared_by: dict[str, dict[str, int]] | None = None
 
-    def _visible[T](self, table: Mapping[str, T], kind: str) -> Mapping[str, T]:
+    def _declared(self, kind: str) -> Mapping[str, Any] | None:
         """The root API's own nodes see only the root API's declarations (docs/19 § 5.2)."""
-        declared_by = self.declared_by
-        if declared_by is None:
-            return table
-        return VisibleTable(table, declared_by.get(kind, {}), 0)
+        return _seen_from(self, kind, 0)
 
     def decode(self, node: Node) -> None:
         if node.kind is not NodeKind.MAPPING:
@@ -550,9 +580,7 @@ class APIFragment(_DeclaringFragment):
                 raw = self._raw_secured_by
                 # A root `securedBy:` an extension document wrote names schemes
                 # in that document's namespace (docs/19 § 5.3).
-                scope = self._raml.document_ctx(raw) or ParseCtx(anchor=self)
-                location = self._raml.document_location(raw, self.location)
-                refs = decode_secured_by(raw, location, scope)
+                refs = decode_secured_by(raw, *self._raml.document_site(raw, self.location, ParseCtx(anchor=self)))
                 self._raml.global_secured_by = make_security_schemes(self._raml, refs)
             except RamlError as err:
                 accumulator.add(err)
@@ -712,7 +740,7 @@ class VisibleTable[T](collections.abc.Mapping[str, T]):
         return sum(1 for _ in self)
 
 
-class ExtensionFragment(_BaseFragment):
+class ExtensionFragment(_NameResolver, _BaseFragment):
     """`#%RAML 1.0 Overlay` or `Extension` — one document of an `extends` chain.
 
     Its body is merged into the target tree and decoded as part of the root
@@ -736,60 +764,24 @@ class ExtensionFragment(_BaseFragment):
         #: Target properties this document's keys displaced (docs/19 § 3.4).
         self.removed_properties: list[RemovedProperty] = []
 
-    def decode(self, node: Node) -> None:  # pragma: no cover - the chain loader decodes the root
-        raise NotImplementedError
+    def _declared(self, kind: str) -> Mapping[str, Any] | None:
+        return None if self.api is None else _seen_from(self.api, kind, self.position)
 
-    def library_link(self, prefix: str) -> LibraryLink | None:
-        return self.visible_uses.get(prefix)
-
-    def _table[T](self, kind: str, pick: Callable[[APIFragment], Mapping[str, T]]) -> Mapping[str, T] | None:
-        api = self.api
-        if api is None:
-            return None
-        declared_by = api.declared_by or {}
-        return VisibleTable(pick(api), declared_by.get(kind, {}), self.position)
-
-    def reference_type(self, name: str) -> BaseShape:
-        return resolve_reference(self._table('types', _types_of), self.visible_uses, name, _pick_type)
-
-    def reference_annotation_type(self, name: str) -> BaseShape:
-        try:
-            return resolve_reference(
-                self._table('annotationTypes', _annotation_types_of), self.visible_uses, name, _pick_annotation_type
-            )
-        except LookupError:
-            return self.reference_type(name)
-
-    def resource_type_definition(self, name: str) -> ResourceTypeDefinition:
-        table = self._table('resourceTypes', _resource_types_of)
-        return resolve_reference(table, self.visible_uses, name, _pick_resource_type)
-
-    def trait_definition(self, name: str) -> TraitDefinition:
-        return resolve_reference(self._table('traits', _traits_of), self.visible_uses, name, _pick_trait)
-
-    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition:
-        table = self._table('securitySchemes', _security_schemes_of)
-        return resolve_reference(table, self.visible_uses, name, _pick_security_scheme)
+    def _libraries(self) -> Mapping[str, LibraryLink]:
+        return self.visible_uses
 
 
-def _types_of(api: APIFragment) -> Mapping[str, BaseShape]:
-    return api.types
+def _seen_from(api: APIFragment, kind: str, position: int) -> Mapping[str, Any]:
+    """`api`'s declarations of `kind` as chain position `position` sees them.
 
-
-def _annotation_types_of(api: APIFragment) -> Mapping[str, BaseShape]:
-    return api.annotation_types
-
-
-def _resource_types_of(api: APIFragment) -> Mapping[str, ResourceTypeDefinition]:
-    return api.resource_types
-
-
-def _traits_of(api: APIFragment) -> Mapping[str, TraitDefinition]:
-    return api.traits
-
-
-def _security_schemes_of(api: APIFragment) -> Mapping[str, SecuritySchemeDefinition]:
-    return api.security_schemes
+    An API parsed on its own sees everything; so does every position when no
+    extension document declared a name of that kind (docs/19 § 5.2).
+    """
+    table: Mapping[str, Any] = getattr(api, _DECLARATION_TABLES[kind])
+    declared_by = api.declared_by
+    if declared_by is None or kind not in declared_by:
+        return table
+    return VisibleTable(table, declared_by[kind], position)
 
 
 class DataTypeFragment(_UsesOnlyFragment):

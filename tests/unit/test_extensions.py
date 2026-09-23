@@ -13,6 +13,7 @@ import pytest
 from fastraml import ParseOptions, RamlError, parse_from_path, parse_lenient
 from fastraml.domains import DomainLocation
 from fastraml.parser.fragments import APIFragment, ExtensionFragment, FragmentKind
+from tests.unit.conftest import write_files
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -21,15 +22,8 @@ API = '#%RAML 1.0\ntitle: Books\n'
 VALIDATE = ParseOptions(unwrap=True, validate=True)
 
 
-def write(root: Path, files: dict[str, str]) -> None:
-    for name, text in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding='utf-8')
-
-
 def parse(root: Path, files: dict[str, str], entry: str = 'entry.raml', options: ParseOptions = VALIDATE):
-    write(root, files)
+    write_files(root, files)
     return parse_from_path(root / entry, options)
 
 
@@ -53,7 +47,7 @@ class TestLoadingTheChain:
         assert head == [('extends must be a string', {}, 'entry.raml')]
 
     def test_a_missing_master_is_reported_at_the_entrys_extends(self, tmp_path):
-        write(tmp_path, {'entry.raml': '#%RAML 1.0 Extension\nextends: missing.raml\n'})
+        write_files(tmp_path, {'entry.raml': '#%RAML 1.0 Extension\nextends: missing.raml\n'})
         with pytest.raises(RamlError) as caught:
             parse_from_path(tmp_path / 'entry.raml')
         head = caught.value.head
@@ -140,6 +134,17 @@ class TestResultModel:
     def test_an_unknown_root_key_is_reported_in_the_extension(self, tmp_path):
         files = {'api.raml': API, 'entry.raml': '#%RAML 1.0 Extension\nextends: api.raml\nhi: 1\n'}
         assert failure(tmp_path, files) == [('unknown field', {'field': 'hi'}, 'entry.raml')]
+
+    def test_the_document_marks_do_not_outlive_the_parse(self, tmp_path):
+        # docs/19 § 5.3: the marks reference every node an extension document
+        # wrote, so keeping them would hold those YAML trees for the model's life.
+        files = {
+            'api.raml': API + '/books:\n  get:\n',
+            'entry.raml': '#%RAML 1.0 Overlay\nextends: api.raml\n/books:\n  description: translated\n',
+        }
+        raml = parse(tmp_path, files)
+        assert raml.endpoints['/books'].description.location.endswith('/entry.raml')
+        assert not raml._document_provenance
 
 
 class TestOverlayRestrictions:
@@ -253,16 +258,18 @@ class TestRootAnnotations:
 
 class TestLenient:
     def test_an_unloadable_chain_raises(self, tmp_path):
-        write(tmp_path, {'entry.raml': '#%RAML 1.0 Overlay\nextends: missing.raml\n'})
+        write_files(tmp_path, {'entry.raml': '#%RAML 1.0 Overlay\nextends: missing.raml\n'})
         with pytest.raises(RamlError):
             parse_lenient(tmp_path / 'entry.raml')
 
     def test_a_violation_returns_the_partial_api(self, tmp_path):
-        write(tmp_path, {'api.raml': API + '/a:\n', 'entry.raml': '#%RAML 1.0 Overlay\nextends: api.raml\n/b:\n'})
+        write_files(tmp_path, {'api.raml': API + '/a:\n', 'entry.raml': '#%RAML 1.0 Overlay\nextends: api.raml\n/b:\n'})
         raml, error = parse_lenient(tmp_path / 'entry.raml')
         assert error is not None
         assert error.head.message == 'not allowed in an overlay'
         assert isinstance(raml.entry_point, APIFragment)
+        # A failed parse releases the document marks too (docs/19 § 5.3).
+        assert not raml._document_provenance
 
 
 class TestAnnotationTypeChanges:
@@ -272,7 +279,7 @@ class TestAnnotationTypeChanges:
             'api.raml': API + 'annotationTypes:\n  note: string\n/a:\n  (note): hi\n',
             'entry.raml': '#%RAML 1.0 Overlay\nextends: api.raml\nannotationTypes:\n  note: integer\n',
         }
-        write(tmp_path, files)
+        write_files(tmp_path, files)
         with pytest.raises(RamlError) as caught:
             parse_from_path(tmp_path / 'entry.raml', VALIDATE)
         frames = caught.value.frames()

@@ -16,12 +16,12 @@ from __future__ import annotations
 import itertools
 from collections import deque
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from fastraml.domains import DomainLocation
 from fastraml.loaders import SchemeLoader
-from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, NodeKind
+from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, NodeKind, mark_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
@@ -80,6 +80,50 @@ class ParseCtx:
 _EMPTY_CTX: Final = ParseCtx()
 
 
+class _TargetScope:
+    """`Raml.target_scope`: push the current anchor at another target.
+
+    A class rather than `@contextmanager`: a decoder enters one per construct,
+    and a generator per use cost more than the push it guards (docs/12 § 2).
+    The scope is read on entry, as the generator did.
+    """
+
+    __slots__ = ('_raml', '_target')
+
+    def __init__(self, raml: Raml, target: DomainLocation) -> None:
+        self._raml = raml
+        self._target = target
+
+    def __enter__(self) -> None:
+        raml = self._raml
+        raml._parse_ctx_stack.append(raml._scope(raml.current_ctx().anchor, self._target))  # noqa: SLF001
+
+    def __exit__(self, *exc: object) -> None:
+        self._raml._parse_ctx_stack.pop()  # noqa: SLF001
+
+
+class _MarkedScope:
+    """`Raml.provenance_scope`: push the scope recorded for a node, if any."""
+
+    __slots__ = ('_node', '_pushed', '_raml')
+
+    def __init__(self, raml: Raml, node: Node) -> None:
+        self._raml = raml
+        self._node = node
+        self._pushed = False
+
+    def __enter__(self) -> None:
+        raml = self._raml
+        scope = raml._marked_scope(self._node)  # noqa: SLF001
+        if scope is not None:
+            raml._parse_ctx_stack.append(scope)  # noqa: SLF001
+            self._pushed = True
+
+    def __exit__(self, *exc: object) -> None:
+        if self._pushed:
+            self._raml._parse_ctx_stack.pop()  # noqa: SLF001
+
+
 class Raml:
     """Everything produced by one parse.
 
@@ -120,7 +164,7 @@ class Raml:
         # --- transient parse state -------------------------------------------
         '_active_overlay',
         '_document_provenance',
-        '_document_scopes',
+        '_scopes',
         '_id_counter',
         '_parse_ctx_stack',
         'annotation_type_changes',
@@ -187,7 +231,9 @@ class Raml:
         # Which extension document authored a node of the target tree. Empty
         # unless the entry is an Overlay or Extension (docs/19 § 5.3).
         self._document_provenance: dict[Node, ReferenceResolver] = {}
-        self._document_scopes: dict[tuple[ReferenceResolver, DomainLocation], ParseCtx] = {}
+        # One `ParseCtx` per (anchor, target) pair: a scope is a value, and the
+        # decoders push the same few thousands of times.
+        self._scopes: dict[tuple[ReferenceResolver | None, DomainLocation], ParseCtx] = {}
         self._id_counter = itertools.count(1)
         self.entry_point: Fragment | None = None
         #: The Overlays and Extensions applied to the root API, in application
@@ -225,8 +271,7 @@ class Raml:
             return _EMPTY_CTX
         return self._parse_ctx_stack[-1]
 
-    @contextmanager
-    def target_scope(self, target: DomainLocation) -> Iterator[None]:
+    def target_scope(self, target: DomainLocation) -> _TargetScope:
         """Decode a construct that annotations attach to a different thing.
 
         The anchor is carried over unchanged — this narrows where an annotation
@@ -234,11 +279,15 @@ class Raml:
         manager rather than a push/pop pair because a decoder that raises
         mid-construct must not leave the site behind on the stack.
         """
-        self.push_ctx(replace(self.current_ctx(), target=target))
-        try:
-            yield
-        finally:
-            self.pop_ctx()
+        return _TargetScope(self, target)
+
+    def _scope(self, anchor: ReferenceResolver | None, target: DomainLocation) -> ParseCtx:
+        """The one `ParseCtx` for this anchor and target."""
+        key = (anchor, target)
+        scope = self._scopes.get(key)
+        if scope is None:
+            scope = self._scopes[key] = ParseCtx(anchor=anchor, target=target)
+        return scope
 
     # -- the provenance overlay (docs/08 § 4) ---------------------------------
 
@@ -256,22 +305,13 @@ class Raml:
         finally:
             self._active_overlay = previous
 
-    @contextmanager
-    def provenance_scope(self, node: Node) -> Iterator[None]:
+    def provenance_scope(self, node: Node) -> _MarkedScope:
         """Push the scope recorded for `node`, if one is recorded.
 
         A node with no mark is one the enclosing unit wrote itself, and the
         scope already in effect is the right one for it.
         """
-        scope = self._marked_scope(node)
-        if scope is None:
-            yield
-            return
-        self.push_ctx(scope)
-        try:
-            yield
-        finally:
-            self.pop_ctx()
+        return _MarkedScope(self, node)
 
     def scope_for(self, node: Node) -> ParseCtx | None:
         """The scope a type-bearing node should be decoded under, most specific first.
@@ -300,25 +340,22 @@ class Raml:
         authored (docs/08 § 4.2). Merge-created containers carry no mark, so
         callers ask about the specific child node.
         """
-        documents = self._document_provenance
-        if documents:
-            anchor = documents.get(node)
+        if self._document_provenance:  # checked here: every stage-2 constructor asks
+            anchor = self.document_anchor(node)
             if anchor is not None:
                 return anchor.location
         overlay = self._active_overlay
-        if overlay is None:
-            return default
-        scope = overlay.get(node)
+        scope = None if overlay is None else overlay.get(node)
         if scope is not None and scope.anchor is not None:
             return scope.anchor.location
         return default
 
     def _marked_scope(self, node: Node) -> ParseCtx | None:
         """The document mark first, then the active unit's (docs/19 § 5.3)."""
-        if self._document_provenance:
-            scope = self.document_ctx(node)
-            if scope is not None:
-                return scope
+        if self._document_provenance:  # checked here: stage 2 asks for every value it decodes
+            authored = self.document_ctx(node)
+            if authored is not None:
+                return authored
         overlay = self._active_overlay
         return None if overlay is None else overlay.get(node)
 
@@ -327,18 +364,9 @@ class Raml:
     def mark_authored(self, node: Node, author: ReferenceResolver) -> None:
         """Record `node` and its whole subtree as written by `author`.
 
-        The whole subtree, because `Node` has no parent pointer: a decoder asks
-        about the node in its hand, however deep. Authorship is a fact about the
-        node, so a mark is never replaced.
+        Authorship is a fact about the node, so a mark is never replaced.
         """
-        documents = self._document_provenance
-        stack = [node]
-        while stack:
-            current = stack.pop()
-            if current in documents:
-                continue
-            documents[current] = author
-            stack += current.content
+        mark_subtree(self._document_provenance, node, author)
 
     def document_anchor(self, node: Node) -> ReferenceResolver | None:
         """The extension document that wrote `node`, if one did."""
@@ -351,12 +379,8 @@ class Raml:
         Unlike `location_of`, ignores template scopes: a substituted scalar
         keeps the template's positions, so only authorship names its file.
         """
-        documents = self._document_provenance
-        if documents:
-            anchor = documents.get(node)
-            if anchor is not None:
-                return anchor.location
-        return default
+        anchor = self.document_anchor(node)
+        return default if anchor is None else anchor.location
 
     def document_ctx(self, node: Node) -> ParseCtx | None:
         """The current scope re-anchored at `node`'s authoring document, if any.
@@ -367,39 +391,40 @@ class Raml:
         anchor = self.document_anchor(node)
         if anchor is None:
             return None
-        target = self.current_ctx().target
-        key = (anchor, target)
-        scope = self._document_scopes.get(key)
-        if scope is None:
-            scope = self._document_scopes[key] = ParseCtx(anchor=anchor, target=target)
-        return scope
+        return self._scope(anchor, self.current_ctx().target)
+
+    def document_site[S: ParseCtx | None](self, node: Node, location: str, scope: S) -> tuple[str, S | ParseCtx]:
+        """The location and scope to decode `node` under.
+
+        Its authoring document's, if an extension document wrote it, else the
+        ones given: `is: [paged]` added to a method the root API declares
+        names `paged` in the extension document's namespace (docs/19 § 5.3).
+        """
+        anchor = self.document_anchor(node)
+        if anchor is None:
+            return location, scope
+        return anchor.location, self._scope(anchor, self.current_ctx().target)
 
     @contextmanager
-    def document_scope(self, node: Node) -> Iterator[None]:
-        """Decode `node` in its authoring document's namespace, if it has one."""
-        scope = self.document_ctx(node)
-        if scope is None:
-            yield
-            return
-        self.push_ctx(scope)
-        try:
-            yield
-        finally:
-            self.pop_ctx()
+    def authorship(self) -> Iterator[None]:
+        """Run the passes with the document marks in force, then drop them.
 
-    @contextmanager
-    def reporting_authorship(self) -> Iterator[None]:
-        """Let `node_error` name a marked node's authoring document.
-
+        Inside, `node_error` names a marked node's authoring document.
         Diagnostics are built at a hundred sites that know only the location
         they were handed; the lookup happens once a failure exists, so the
         success path pays nothing (docs/11 § 8).
+
+        On the way out, success or failure, the marks are cleared. Only the
+        passes read them, and they reference every node an extension document
+        wrote: kept, they would hold those YAML trees for as long as the model
+        lives, which P4 avoids for the API's own tree (docs/19 § 5.3).
         """
         token = AUTHORED_NODES.set(self._document_provenance)
         try:
             yield
         finally:
             AUTHORED_NODES.reset(token)
+            self._document_provenance.clear()
 
     # -- stores ---------------------------------------------------------------
 

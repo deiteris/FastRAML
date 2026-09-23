@@ -38,11 +38,15 @@ intentional change with `uv run pytest tests/tck --update-ratchet`, then inspect
 the ratchet diff. A `fail` outcome is reserved for work outstanding, not a suite
 disagreement.
 
-The current ratchet has 926 evaluated fixtures, all passing. Explicit skips cover
-Overlays, Extensions, two fixtures that require network access, and one fixture
-that conflicts with the documented JSON Schema expression policy. The skip logic
-checks both fixture location and RAML header so an Overlay or Extension filed
-outside its category is not misclassified as coverage.
+The current ratchet has 973 evaluated fixtures, all passing, Overlays and
+Extensions included. Three named fixtures are skipped: two that require
+network access, and one that conflicts with the documented JSON Schema
+expression policy.
+
+Each fixture is parsed with its case directory, `<category>/<case>/`, as the
+workspace root. An Overlay in a subdirectory may extend `../base.raml`, which
+the default root, the entry's own directory, would refuse
+([19](19-overlays-and-extensions.md) § 2).
 
 ## 3. Test layers
 

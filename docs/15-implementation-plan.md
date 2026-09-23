@@ -13,9 +13,9 @@ implemented. Current supported behavior and deliberate deviations are recorded i
 
 ## 2. Deferred work
 
-Overlays and Extensions are in progress. [19](19-overlays-and-extensions.md)
-defines their design. Applying several extension documents that each extend
-the same master remains deferred (docs/19 § 7).
+Overlays and Extensions are implemented for an entry document
+([19](19-overlays-and-extensions.md)). Applying several extension documents
+that each extend the same master remains deferred (docs/19 § 7).
 
 Known limitations are documented beside the rules they affect:
 

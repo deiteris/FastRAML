@@ -3,7 +3,7 @@
 A RAML 1.0 parser for Python 3.12+. `docs/` is normative: start at `docs/README.md`;
 `docs/02-architecture.md` maps each area to its document and modules.
 
-Status: the parser pipeline is complete and the TCK passes 926 of 926. Current
+Status: the parser pipeline is complete and the TCK passes 973 of 973. Current
 deferred work is listed in `docs/15-implementation-plan.md`.
 
 ## Before changing anything

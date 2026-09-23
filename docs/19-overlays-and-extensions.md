@@ -4,8 +4,8 @@ This document owns Overlay and Extension documents: loading an `extends`
 chain, the extension merge, overlay restrictions, namespaces across the chain,
 and document provenance. Spec sections: Overlays and Extensions, Merging Rules.
 
-Status: implemented for an entry document. The TCK fixtures for these
-documents are not yet in the ratchet ([14](14-testing.md) § 2).
+Status: implemented for an entry document. The TCK's Overlay and Extension
+fixtures are in the ratchet ([14](14-testing.md) § 2).
 
 ## 1. Terms
 

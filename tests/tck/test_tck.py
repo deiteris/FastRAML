@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.tck.conftest import collect_fixtures, fixture_id, skip_reason, tck_root
+from tests.tck.conftest import case_directory, collect_fixtures, fixture_id, skip_reason, tck_root
 
 RATCHET_PATH = Path(__file__).with_name('ratchet.json')
 
@@ -65,12 +65,12 @@ def _run_fixture(path: Path, root: Path, *, expect_error: bool) -> str:
     """
     from fastraml import ParseOptions, RamlError, parse_from_path
 
-    key = skip_reason(fixture_id(root, path), path)
+    key = skip_reason(fixture_id(root, path))
     if key is not None:
         pytest.skip(key)
 
     try:
-        parse_from_path(path, ParseOptions(validate=True, unwrap=True))
+        parse_from_path(path, ParseOptions(validate=True, unwrap=True, workspace_root=case_directory(root, path)))
     except RamlError:
         return 'pass' if expect_error else 'fail'
     return 'fail' if expect_error else 'pass'
@@ -124,20 +124,16 @@ class TestDiscovery:
             assert '\\' not in key
             assert not key.startswith('/')
 
-    def test_skip_list_matches_by_category_prefix(self):
-        assert skip_reason('Overlays/basic/valid.raml') is not None
-        assert skip_reason('Types/array-types/valid.raml') is None
+    def test_only_named_fixtures_are_skipped(self):
+        # Overlays and Extensions are supported (docs/19), so no category is.
+        assert skip_reason('Overlays/basic/valid.raml') is None
+        assert skip_reason('Root/include-02/valid-https.raml') is not None
 
-    def test_an_overlay_outside_its_category_is_skipped_by_its_header(self, tmp_path):
-        # `EdgeCases/overlay-overrides-resources/valid.raml` is an Overlay filed
-        # elsewhere. Matching on the path alone read it as missing coverage.
-        overlay = tmp_path / 'valid.raml'
-        overlay.write_text('#%RAML 1.0 Overlay\ntitle: T\nextends: base.raml\n', encoding='utf-8')
-        assert skip_reason('EdgeCases/somewhere/valid.raml', overlay) is not None
-
-        api = tmp_path / 'api.raml'
-        api.write_text('#%RAML 1.0\ntitle: T\n', encoding='utf-8')
-        assert skip_reason('EdgeCases/somewhere/api.raml', api) is None
+    def test_a_fixture_shares_its_case_directory(self, tmp_path):
+        # `extends: ../base.raml` from `overlays/` stays inside the workspace.
+        nested = tmp_path / 'Overlays' / 'case' / 'overlays' / 'valid.raml'
+        assert case_directory(tmp_path, nested) == tmp_path / 'Overlays' / 'case'
+        assert case_directory(tmp_path, tmp_path / 'Root' / 'valid.raml') == tmp_path / 'Root'
 
 
 class TestRatchetFile:

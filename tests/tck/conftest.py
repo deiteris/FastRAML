@@ -35,21 +35,6 @@ from pathlib import Path
 
 import pytest
 
-#: Fixture categories skipped wholesale, each with the documented reason.
-SKIPPED_CATEGORIES: dict[str, str] = {
-    'Overlays/': 'overlays are unsupported (docs/01 § 3)',
-    'Extensions/': 'extensions are unsupported (docs/01 § 3)',
-}
-
-#: The same two kinds, identified by what a document *is* rather than where it
-#: sits. `EdgeCases/overlay-overrides-resources/valid.raml` is an Overlay filed
-#: outside `Overlays/`, and matching on the path alone let it through as a
-#: failure that read like missing coverage.
-SKIPPED_HEADS: dict[str, str] = {
-    '#%RAML 1.0 Overlay': SKIPPED_CATEGORIES['Overlays/'],
-    '#%RAML 1.0 Extension': SKIPPED_CATEGORIES['Extensions/'],
-}
-
 #: Individual fixtures skipped, with the reason. Not a coverage gap: `http(s)`
 #: includes work when `ParseOptions.http_client` supplies a client, and these
 #: two `!include` a gist. Running them would make the suite depend on the
@@ -119,21 +104,21 @@ def collect_fixtures(kind: str) -> list[Path]:
     return sorted(matches)
 
 
-def skip_reason(fixture_key: str, path: Path | None = None) -> str | None:
-    """Why this fixture is skipped, by name, by directory, or by its RAML header."""
-    named = SKIPPED_FIXTURES.get(fixture_key)
-    if named is not None:
-        return named
-    for prefix, reason in SKIPPED_CATEGORIES.items():
-        if fixture_key.startswith(prefix):
-            return reason
-    if path is not None:
-        try:
-            head = path.read_text(encoding='utf-8', errors='replace').partition('\n')[0].strip()
-        except OSError:
-            return None
-        return SKIPPED_HEADS.get(head)
-    return None
+def skip_reason(fixture_key: str) -> str | None:
+    """Why this fixture is skipped. Only named fixtures are; no category is."""
+    return SKIPPED_FIXTURES.get(fixture_key)
+
+
+def case_directory(root: Path, path: Path) -> Path:
+    """`<category>/<case>/`: the directory one test case's documents share.
+
+    The fixture's workspace root. An Overlay in `overlays/` may extend
+    `../base.raml`, which the default root, the entry's own directory, would
+    refuse (docs/19 § 2). A fixture filed directly in its category gets the
+    category.
+    """
+    parts = path.relative_to(root).parts
+    return root.joinpath(*parts[: min(2, len(parts) - 1)])
 
 
 @pytest.fixture(scope='session')

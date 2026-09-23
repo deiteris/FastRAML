@@ -1,11 +1,11 @@
-"""The merge laws of docs/14-testing.md section 4, over generated trees.
+"""The merge laws of docs/14-testing.md § 4, over generated trees.
 
-Laws 2 to 4: identity, target-wins, and purity. A hand-written example proves a
-merge handles the case someone thought of; these prove it handles the shapes
-nobody did — a key present at three depths, a sequence of mappings, an opaque
-facet holding a mapping that looks like RAML structure.
+Three laws: identity, target-wins, and purity (docs/08 § 1). A hand-written
+example proves a merge handles the case someone thought of; these prove it
+handles the shapes nobody did — a key present at three depths, a sequence of
+mappings, an opaque facet holding a mapping that looks like RAML structure.
 
-Law 3 is the one worth stating carefully. "Target wins" does not mean the target
+Target-wins is the one worth stating carefully. "Target wins" does not mean the target
 value survives unchanged: a mapping recurses and a sequence unions. What must
 hold is that **every target key is still present**, and that a target scalar
 still has its own value.

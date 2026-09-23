@@ -1,9 +1,8 @@
-"""External JSON Schema types — docs/10-validation.md section 6.
+"""External JSON Schema types — docs/10-validation.md § 7.
 
-Three things are being pinned here, in the order the document states them:
-compilation and the shared registry (section 6.1), the restrictions on a
-JSON-schema-typed declaration (section 6.2), and the projection to a RAML shape
-(section 6.3).
+Three things are being pinned here, in the order docs/10 § 7 states them:
+compilation and the shared registry, the restrictions on a JSON-schema-typed
+declaration, and the projection to a RAML shape.
 
 The two security-relevant rules have a test each, because both are silent when
 broken: a relative `$ref` must resolve against the RAML file that held the
@@ -268,7 +267,7 @@ class TestRestrictions:
         'expression', ['Person[]', 'Person?', 'Person | string'], ids=['array', 'optional', 'union']
     )
     def test_a_schema_type_may_appear_in_a_type_expression(self, workspace, expression):
-        """Deviation D11. The spec refuses all three; fastRAML builds them.
+        """docs/01 § 4.5. The spec refuses all three; fastRAML builds them.
 
         Nothing here asks the schema for more than `validate(value)`, which it
         answers. A union is a list of types to validate against, and the union
@@ -291,7 +290,7 @@ class TestRestrictions:
         assert parse(workspace, {'api.raml': API + body}) is None
 
     def test_inheriting_from_a_schema_type_is_still_refused(self, workspace):
-        """The boundary of D11. Inheritance asks for a RAML facet to be merged
+        """The boundary of docs/01 § 4.5. Inheritance asks for a RAML facet to be merged
         into a compiled schema, and there is no such operation.
         """
         body = 'types:\n  Person: |\n' + indent(PERSON) + '  Boss:\n    type: Person\n    minLength: 3\n'
@@ -303,10 +302,10 @@ SCALAR_SCHEMA = json.dumps({'type': 'string', 'minLength': 4})
 
 
 class TestParameterDeclarations:
-    """Deviation D11: a schema type *is* a type, including in a parameter.
+    """A schema type *is* a type, including in a parameter.
 
     The spec forbids one outright in a query parameter, query string, URI
-    parameter or header. fastRAML permits it — `docs/01` § 4 D11 — because a
+    parameter or header. fastRAML permits it (`docs/01` § 4.5) because a
     `JsonShape` is asked for nothing here but `validate(value)`, which it does.
     """
 
@@ -400,7 +399,7 @@ class TestProjection:
 
     def test_a_numeric_bound_never_passes_through_float(self, workspace):
         # `1.1` decoded by `json` is a binary approximation. The bound is built
-        # from its decimal text, so it is exactly 11/10 (docs/10 § 5.3).
+        # from its decimal text, so it is exactly 11/10 (docs/10 § 5).
         number = project(workspace, {'type': 'number', 'multipleOf': 1.1})
         assert number.shape.multiple_of.value == Fraction(11, 10)
 
@@ -496,7 +495,7 @@ class TestProjection:
 
 
 class TestTwoInlineSchemasStayApart:
-    """A projection is shared on the subschema's canonical URI (docs/16 § 3.2b).
+    """A projection is shared on the subschema's canonical URI (docs/16 § 2).
 
     An inline schema has none: it compiles under the RAML file's own URI, which
     every other inline schema in that file shares. Keying on it made the second
@@ -523,7 +522,7 @@ types:
 
 
 class TestARecursiveSchemaSharedByTwoTypes:
-    """Cycle detection and projection sharing meet here (docs/16 section 3.2b).
+    """Cycle detection and projection sharing meet here (docs/16 § 2).
 
     A cycle is closed on the identity of the schema node being re-entered, which
     is per walk; a projection is shared on the subschema's canonical URI, which

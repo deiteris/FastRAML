@@ -1,4 +1,4 @@
-"""The spec's merging algorithm (docs/08 section 4).
+"""The spec's merging algorithm (docs/08 § 1).
 
 What is pinned here is the four things a merge can silently get wrong: it can
 mutate an input, it can allocate a fresh child and break a provenance key, it
@@ -161,7 +161,7 @@ class TestSequenceEquality:
         assert not node_value_equal(tree('a: [1, 2]\n').content[1], tree('a: [2, 1]\n').content[1])
 
     def test_two_applications_of_one_trait_with_different_parameters_both_survive(self):
-        # docs/08 section 4.2: they are not structurally equal, so the sequence
+        # docs/08 § 1: they are not structurally equal, so the sequence
         # merge keeps both. Deduplication by *name* happens later.
         merged = merge('is: [{secured: {tokenName: token}}]\n', 'is: [{secured: {tokenName: access_token}}]\n')
         assert len(merged.content[1].content) == 2

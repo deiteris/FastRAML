@@ -1,8 +1,8 @@
 """RAML type expressions (RDT): tokenizer, parser, AST, and the expression cache.
 
-See docs/06-type-expressions.md sections 1-2. Only the grammar and the AST are
-in scope here -- section 3 (AST -> shapes) depends on a type model that does
-not exist yet.
+See docs/06-type-expressions.md § 1 and § 2. Only the grammar and the AST are
+in scope here; building shapes from the AST (docs/06 § 3) is tested in
+`test_resolve.py`.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from fastraml.types.expressions.lexer import Token, TokenKind, tokenize
 def parse_expression(text: str, cache: ExprCache | None = None):
     """Parse with a cache of this call's own unless one is supplied.
 
-    The real cache belongs to a `Raml` (docs/06 section 2.3), so there is no
+    The real cache belongs to a `Raml` (docs/06 § 2), so there is no
     global to clear between tests. A test that is about the memoisation passes
     its own dict and is the only thing that shares one.
     """
@@ -37,7 +37,7 @@ def parse_expression(text: str, cache: ExprCache | None = None):
 
 
 # -- The reference corpus -----------------------------------------------------
-# Adopted verbatim from go-raml's expression corpus (docs/06 section 1). Kept
+# Adopted verbatim from go-raml's expression corpus (docs/06 § 1). Kept
 # inline rather than read from the sibling checkout so this test runs without
 # it.
 
@@ -82,7 +82,7 @@ class TestExamplesCorpus:
 class TestPrecedence:
     def test_array_binds_tighter_than_union(self):
         # `Person | Animal[]` is `Person | (Animal[])`: grouping is required
-        # to say otherwise. docs/06 section 1.
+        # to say otherwise. docs/06 § 1.
         assert parse_expression('Person | Animal[]') == Union((Reference('Person', 0), Array(Reference('Animal', 9))))
 
     def test_grouping_reverses_the_default_precedence(self):
@@ -113,14 +113,14 @@ class TestSingleMemberUnionCollapses:
 class TestDottedReferences:
     def test_a_dotted_name_is_kept_whole(self):
         # IDENTIFIER already includes '.'; the resolver (out of scope here)
-        # splits on the *last* dot, not this parser. docs/06 section 1.
+        # splits on the *last* dot, not this parser. docs/06 § 1.
         assert parse_expression('lib.Thing') == Reference('lib.Thing', 0)
 
     def test_a_double_dot_is_syntactically_valid(self):
         # Judgment call: `Foo..Bar` matches IDENTIFIER's `[0-9a-zA-Z_.-]+`
         # verbatim -- there is no rule in the grammar that rejects a repeated
         # or trailing '.'. Whether "Foo." or "Foo..Bar" denotes a resolvable
-        # type is a resolver-level question (docs/04 section 3), not a
+        # type is a resolver-level question (docs/04 § 3), not a
         # grammar-level one, so this parser accepts it and keeps the name
         # whole, exactly as it would keep any other IDENTIFIER.
         assert parse_expression('Foo..Bar') == Reference('Foo..Bar', 0)
@@ -237,7 +237,7 @@ class TestTokenizer:
 
 
 class TestAstShape:
-    # Pins the exact field set from docs/06-type-expressions.md section 2.2:
+    # Pins the exact field set from docs/06-type-expressions.md § 2:
     # only `Primitive` and `Reference` carry a `col`. This is a documented
     # decision worth protecting from a "make it consistent" refactor -- see
     # the discrepancy noted in this feature's commit message / report.

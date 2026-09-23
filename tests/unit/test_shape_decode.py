@@ -1,6 +1,6 @@
 """Decoding a declaration: the walk, the kinds, and the facets.
 
-See docs/05-type-model.md section 4. `test_shapes.py` covers the model classes
+See docs/05-type-model.md § 3. `test_shapes.py` covers the model classes
 themselves; this file covers `make_shape`.
 """
 
@@ -242,7 +242,7 @@ class TestJsonSchemaTypes:
 class TestUnionDiscriminator:
     def test_a_discriminator_on_a_union_is_rejected_at_decode_time(self):
         # The one discriminator rule not deferred to P10: a union has no
-        # properties, so this can never become valid (docs/05 section 9).
+        # properties, so this can never become valid (docs/05 § 6).
         with pytest.raises(RamlError) as caught:
             shape('T:\n  type: union\n  anyOf: [string]\n  discriminator: kind\n')
         assert first_trace(caught).message == 'discriminator cannot be used with union type'
@@ -266,7 +266,7 @@ class TestMultipleInheritance:
 
 
 class TestAliasVersusInheritance:
-    """docs/06 section 3.1 — the form of the declaration, not its facet count.
+    """docs/06 § 3 — the form of the declaration, not its facet count.
 
     P7 reads `from_mapping` and nothing else to decide whether a reference makes
     the new shape an alias of the referent or a subtype of it. It is recorded

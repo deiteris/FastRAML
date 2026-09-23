@@ -1,6 +1,6 @@
 """Resource loading, and the workspace sandbox in particular.
 
-The three escape vectors of docs/03-yaml-and-io.md section 5 each get a test:
+The three escape vectors of docs/03-yaml-and-io.md § 5 each get a test:
 lexical traversal, a symlink at the final path component, and a symlink at an
 intermediate component. A fourth test covers non-regular files.
 """

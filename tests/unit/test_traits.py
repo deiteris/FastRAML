@@ -1,6 +1,6 @@
 """Traits: the four priority classes, and which file a merged node came from.
 
-docs/08-templates-and-endpoints.md sections 5.2 and 6. The priority tests are
+docs/08-templates-and-endpoints.md § 3.2 and § 4. The priority tests are
 the obvious half. The provenance tests are the half that matters more, because
 resolving a trait-contributed type name in the wrong namespace *still parses* —
 it is the one failure in this parser that produces a model rather than an error.
@@ -141,9 +141,9 @@ class TestParameters:
 
 
 class TestProvenance:
-    """Which namespace a merged node's type names resolve in (docs/08 § 6.1)."""
+    """Which namespace a merged node's type names resolve in (docs/08 § 4.2)."""
 
-    #: The example docs/08 § 6.1 is written around: one merged operation whose
+    #: The example docs/08 § 4.2 is written around: one merged operation whose
     #: tree holds nodes authored in three files.
     THREE_WAY: ClassVar[dict[str, str]] = {
         'api.raml': API
@@ -175,7 +175,7 @@ class TestProvenance:
         # fragment's `uses:`; `types.PagedResult` was substituted by the caller
         # and must resolve through api.raml's. A single "current file" is wrong
         # for at least one of them, whichever one it is. A bare name is an alias
-        # rather than an inheritance (docs/07 § 3.6), hence the two spellings.
+        # rather than an inheritance (docs/07 § 3), hence the two spellings.
         assert [inherited.name for inherited in three_way_body.shape.inherits] == ['PagedResult']
         total = three_way_body.shape.shape.properties['total'].base
         assert total.alias.name == 'Count'

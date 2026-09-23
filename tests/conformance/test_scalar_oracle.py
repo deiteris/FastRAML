@@ -17,7 +17,7 @@ carries a pre-0.2.2 libyaml scanner that rejects `[ http://example.com ]`, which
 is valid YAML 1.2 and appears in real RAML.
 
 Divergences that are known and accepted are listed in `KNOWN_DIVERGENCES` with
-the reason. Anything else fails. See docs/03-yaml-and-io.md section 2.
+the reason. Anything else fails. See docs/03-yaml-and-io.md § 2.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ class Divergence(NamedTuple):
 
 #: Scalar forms where YAML 1.1 and 1.2 disagree, plus the neighbours that must
 #: not move. The oracle decides what each should be; this list decides what gets
-#: asked. See docs/05-type-model.md section 3.1 for why exactness matters.
+#: asked. See docs/05-type-model.md § 2 for why exactness matters.
 SCALAR_FORMS = [
     # YAML 1.1 booleans that YAML 1.2 reads as strings.
     'yes',
@@ -139,9 +139,8 @@ KNOWN_DIVERGENCES: dict[str, str] = {}
 #: would otherwise look like a pass.
 #:
 #: The seventh is `EdgeCases/include-no-whitespace/invalid-include-no-whitespace.raml`.
-#: Phase 8b made an unrecognised local tag an error, and `!includeexample.json`
-#: is one; both YAML libraries still compose it, so it is this parser that now
-#: refuses, deliberately.
+#: An unrecognised local tag is an error here, and `!includeexample.json` is
+#: one; both YAML libraries compose it, so this parser refuses it deliberately.
 MAX_UNCOMPARABLE = 7
 
 
@@ -212,7 +211,7 @@ def diverge(text: str) -> list[Divergence]:
     theirs = _oracle_shape(_oracle_compose(text))
     if not theirs:
         # An empty document: we synthesise an empty mapping, the oracle gives
-        # nothing. That difference is ours by design (docs/03 section 3).
+        # nothing. That difference is ours by design (docs/03 § 3).
         return []
     found: list[Divergence] = []
     for path in sorted(set(ours) | set(theirs)):

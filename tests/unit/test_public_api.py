@@ -1,10 +1,10 @@
-"""What `fastraml` exports — docs/13-public-api.md section 4.
+"""What `fastraml` exports — docs/13-public-api.md § 4.
 
 The surface is not stable before 1.0, so this file does not pin it exhaustively.
 It pins the two properties that would be defects at any version: every name in
 `__all__` resolves, and every concrete shape class is reachable from the top
 level, because `isinstance` against them is the documented way to narrow a shape
-(§ 6). Missing one means a consumer has to import `fastraml.types.complex_` for
+(docs/13 § 3). Missing one means a consumer has to import `fastraml.types.complex_` for
 that kind alone and will not guess it.
 """
 
@@ -97,7 +97,7 @@ class TestNarrowing:
         assert fastraml.RAML_NS == RAML_NS
 
     def test_narrowing_reads_the_way_the_doc_writes_it(self, workspace):
-        """docs/13 § 6's example, run rather than quoted."""
+        """docs/13 § 1's example, run rather than quoted."""
         root = workspace({'lib.raml': '#%RAML 1.0 Library\ntypes:\n  T:\n    properties:\n      a: string\n'})
         raml = fastraml.parse_from_path(root / 'lib.raml', fastraml.ParseOptions(unwrap=True))
         shape = raml.entry_point.types['T'].shape

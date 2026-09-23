@@ -1,6 +1,6 @@
 """P9: flattening an inheritance chain, and closing the cycles afterwards.
 
-See docs/07-resolution-and-inheritance.md sections 3.1 to 3.3 and section 4.
+See docs/07-resolution-and-inheritance.md § 4 and § 6.
 `test_inherit.py` covers one merge in isolation; this covers the walk that
 decides what gets merged into what, and what the model looks like afterwards.
 """
@@ -68,7 +68,7 @@ class TestSingleInheritance:
 
 
 class TestParentIsNotMutated:
-    """docs/07 § 3.3 — the corruption the synthetic shape exists to prevent."""
+    """docs/07 § 4 — the corruption the synthetic shape exists to prevent."""
 
     def test_two_children_do_not_corrupt_their_shared_parent(self, workspace):
         _raml, types = unwrapped(
@@ -140,7 +140,7 @@ class TestMultipleInheritance:
 
 
 class TestAliases:
-    """docs/07 § 3.6 — a second name for one type: own identity, shared content."""
+    """docs/07 § 3 — a second name for one type: own identity, shared content."""
 
     def test_an_alias_takes_the_referents_facets(self, workspace):
         _raml, types = unwrapped(workspace, '  Source:\n    type: string\n    minLength: 4\n  Named: Source\n')
@@ -185,7 +185,7 @@ class TestLinks:
 
 class TestUnionCollapse:
     def test_a_child_of_a_union_is_itself_a_union(self, workspace):
-        # Not docs/07 § 3.4's "source is a union, target is not": P7 gives the
+        # Not docs/07 § 5's "source is a union, target is not": P7 gives the
         # child the referent's kind, so both sides are unions here. `minLength`
         # is not a union facet and survives only as a custom facet value.
         raml, types = unwrapped(
@@ -216,7 +216,7 @@ class TestUnionCollapse:
 
 
 class TestRecursionMarking:
-    """docs/07 § 4 — where a cycle closes, and what closes it."""
+    """docs/07 § 6 — where a cycle closes, and what closes it."""
 
     def test_a_self_referential_property_becomes_a_marker(self, workspace):
         _raml, types = unwrapped(workspace, '  Node:\n    properties:\n      next: Node\n')
@@ -289,7 +289,7 @@ class TestInvariantI6:
     def test_the_shape_index_is_rebuilt_rather_than_appended_to(self, workspace):
         # After flattening, an entry from before describes a model that no
         # longer exists — a union member may have been replaced by a merged
-        # copy (docs/07 § 3.2).
+        # copy (docs/07 § 4).
         raml, _types = unwrapped(
             workspace,
             '  Either:\n    type: string | integer\n  Narrowed:\n    type: Either\n    minLength: 2\n',

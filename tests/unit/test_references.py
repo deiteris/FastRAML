@@ -1,4 +1,4 @@
-"""Name resolution rules. See docs/04-fragments-and-namespaces.md section 3."""
+"""Name resolution rules. See docs/04-fragments-and-namespaces.md § 3."""
 
 from __future__ import annotations
 
@@ -95,7 +95,7 @@ class TestResolveReference:
 class TestResolveLibraryReference:
     def test_an_unqualified_name_cannot_resolve(self):
         # This is what makes a typed fragment self-contained: it never sees its
-        # includer's namespace (deviation D4).
+        # includer's namespace (docs/01 § 4.3).
         with pytest.raises(UnresolvedReferenceError) as caught:
             resolve_library_reference({}, 'User', pick_type)
         assert caught.value.reason == 'invalid reference'
@@ -109,7 +109,7 @@ class TestResolveLibraryReference:
 class TestAnnotationTypeFallback:
     def test_an_annotation_type_reference_falls_back_to_types(self, workspace):
         # `annotationTypes: {ConfigInstance: Config}` must find Config among the
-        # types of the library it was imported from. docs/04 section 3.1.
+        # types of the library it was imported from. docs/04 § 3.
         root = workspace(
             {'api.raml': '#%RAML 1.0\ntitle: T\nuses:\n  l: lib.raml\n', 'lib.raml': '#%RAML 1.0 Library\n'}
         )

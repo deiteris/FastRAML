@@ -1,7 +1,7 @@
 """URI template parsing and validation.
 
-The rules under test come from docs/08-templates-and-endpoints.md section 8.2
-(RFC 6570 Levels 1 and 2 only) and section 5.3 (`resourcePathName`). Malformed
+The rules under test come from docs/08-templates-and-endpoints.md § 6.2
+(RFC 6570 Levels 1 and 2 only) and § 3.3 (`resourcePathName`). Malformed
 templates must report the exact offending byte, so every error test asserts a
 column rather than merely the presence of an error. See docs/14-testing.md.
 """

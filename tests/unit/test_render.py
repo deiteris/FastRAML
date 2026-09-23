@@ -1,4 +1,4 @@
-"""The effective view — docs/16-graph.md § 9.
+"""The effective view — docs/16-graph.md § 4.
 
 What is worth pinning is what a reader would be misled by, not the layout:
 
@@ -7,7 +7,7 @@ What is worth pinning is what a reader would be misled by, not the layout:
 - **each one is attributed to the right declaration** — the furthest ancestor
   that declares it, unless a subtype narrowed it, in which case the subtype;
 - **a referenced type is named**, not flattened to `object`;
-- **the output is valid YAML**, because § 9 claims it pastes back.
+- **the output is valid YAML**, because docs/16 § 4 calls it RAML-shaped.
 
 Layout is deliberately not asserted beyond that. A test that pins column
 alignment fails on every wording change and protects nothing.
@@ -212,7 +212,7 @@ class TestOutputContract:
         assert 'max_length' not in shown('Entity')
 
     def test_a_decimal_facet_does_not_pass_through_float(self, shown):
-        """docs/10 § 5.2 is about comparison, but `1.100000000000000088`
+        """docs/10 § 5 is about comparison, but `1.100000000000000088`
         reaching a reader would be this module's defect all the same.
         """
         assert 'multipleOf: 1.1' in shown('Priced')
@@ -391,7 +391,7 @@ UUID_JSON = '{"type": "string", "minLength": 36, "maxLength": 36}'
 
 
 class TestJsonSchemaTypesExpand:
-    """docs/16 § 9.6. `--depth` could never open a `JsonShape`.
+    """docs/16 § 4. `--depth` could never open a `JsonShape`.
 
     `_has_structure` tested for Object/Array/Union and fell through to `False`,
     so on a schema-heavy document — where that is *every* type — `show` printed
@@ -489,7 +489,7 @@ def _typed(rendered):
 
 
 class TestSchemaDefinitionsKeepTheirName:
-    """docs/16 § 9.7. A `definitions` entry rendered as its structural word.
+    """docs/16 § 4. A `definitions` entry rendered as its structural word.
 
     `#/definitions/uuid` printed `string` and `#/definitions/contact` printed
     `object` — true, and useless: neither says whether a field reuses a shared
@@ -623,14 +623,15 @@ types:
 
 
 class TestScalarsAreQuotedWhenPlainWouldNotParse:
-    """Emitted by PyYAML, not by a rule written here — docs/16 § 9.2.
+    """Emitted by PyYAML, not by a rule written here — docs/16 § 4.
 
     A first attempt owned the rule: a denylist of `': '`, `' #'` and a few
     leading characters. It was right about punctuation and silently wrong about
     every string that merely *reads* as another type, on both sides of the
     colon. These pin the cases that denylist got wrong.
 
-    The `: ` case itself was caught by corpus law 12, not by any fixture here.
+    The `: ` case itself was caught by the corpus graph check in
+    `tests/tck/test_properties.py`, not by any fixture here.
     """
 
     @pytest.fixture
@@ -738,7 +739,7 @@ class TestAUnionNamesItsMembers:
 
 
 class TestSecuritySchemesContribute:
-    """docs/16 § 9.8. `describedBy` reached the view not at all.
+    """docs/16 § 4. `describedBy` reached the view not at all.
 
     A scheme's headers, query parameters and responses are what a caller using
     it must send and expect -- the `Authorization` header above all -- and none
@@ -856,15 +857,13 @@ class TestExtensionsAreShown:
 
 
 class TestOneFacetVocabularyForEveryEmitter:
-    """docs/14 § 2, law 14. `facets_of` is the only enumeration of a kind's
+    """`facets_of` is the only enumeration of a kind's
     constraints, so a facet added to a kind reaches every view without any
     emitter being edited.
 
     Asserted as agreement rather than by inspecting the helper: the failure this
     guards against is one emitter growing its own list and drifting, which no
-    test of either emitter alone can see. Two copies of the walk once existed,
-    and the exception table one of them carried was dead — every name in it was
-    already what plain camel case produced.
+    test of either emitter alone can see.
     """
 
     FACETED = """#%RAML 1.0

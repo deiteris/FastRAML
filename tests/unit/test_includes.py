@@ -1,6 +1,6 @@
 """`!include`: resolution, caching, limits and cycles.
 
-See docs/03-yaml-and-io.md section 4.
+See docs/03-yaml-and-io.md § 4.
 """
 
 from __future__ import annotations

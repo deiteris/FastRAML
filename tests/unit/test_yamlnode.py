@@ -1,6 +1,6 @@
 """The YAML node model.
 
-These tests pin the decisions of docs/03-yaml-and-io.md section 2 — flat mapping
+These tests pin the decisions of docs/03-yaml-and-io.md § 1 and § 2 — flat mapping
 content, identity hashing, 1-based positions, raw timestamp text, alias
 expansion — because every layer above depends on them and a plausible-looking
 refactor can break any one silently.
@@ -42,7 +42,7 @@ def parse(text: str, **kwargs) -> Node:
 class TestStructure:
     def test_mapping_content_is_flat(self):
         # [k0, v0, k1, v1], not a list of pairs: decoders step by two and
-        # allocate no tuples. See docs/12-performance.md section 5.
+        # allocate no tuples. See docs/12-performance.md § 2.
         root = parse('a: 1\nb: 2\n')
         assert root.kind is NodeKind.MAPPING
         assert [n.value for n in root.content] == ['a', '1', 'b', '2']
@@ -67,7 +67,7 @@ class TestStructure:
 class TestIdentity:
     def test_nodes_hash_by_identity(self):
         # Required: the provenance overlay is dict[Node, ParseCtx] keyed by
-        # object identity. See docs/08-templates-and-endpoints.md section 6.5.
+        # object identity. See docs/08-templates-and-endpoints.md § 4.
         a = Node(NodeKind.SCALAR, TAG_STR, 'same')
         b = Node(NodeKind.SCALAR, TAG_STR, 'same')
         assert a != b
@@ -219,7 +219,7 @@ class TestEmptyDocuments:
     @pytest.mark.parametrize('source', ['', '\n', '# only a comment\n', '#%RAML 1.0 Trait\n'])
     def test_empty_documents_compose_to_an_empty_mapping(self, source):
         # Each fragment decoder decides whether an empty body is valid for its
-        # kind; composition does not pre-empt that. See docs/03 section 2.2.
+        # kind; composition does not pre-empt that. See docs/03 § 2.2.
         root = parse(source)
         assert root.kind is NodeKind.MAPPING
         assert root.content == []
@@ -305,7 +305,7 @@ def test_backend_is_reported():
 
 
 class TestLineSeparators:
-    """U+2028 and U+2029 (docs/01 section 4, D10).
+    """U+2028 and U+2029 (docs/01 § 4.4, docs/03 § 2.1).
 
     YAML 1.1 reads them as line breaks and YAML 1.2 does not, so PyYAML silently
     splits an unquoted scalar that contains one and then fails somewhere else.
@@ -358,7 +358,7 @@ class TestLineSeparators:
 class TestSpecialisedResolver:
     """`_RamlLoader.resolve` replaces PyYAML's, so it has to agree with it.
 
-    The specialisation is a performance change (docs/12 § 19a) on the hottest
+    The specialisation is a performance change (docs/12) on the hottest
     callback in the parser, and its failure mode is the quietest one there is: a
     scalar silently resolving to the wrong tag. `tests/conformance` would catch
     that across the corpus; this catches it at the function, which is where it

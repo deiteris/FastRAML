@@ -154,7 +154,7 @@ class TestApiDecoding:
         assert traces(caught.value)[0].info == {'field': 'nonsense'}
 
     def test_independent_root_errors_are_all_reported(self, workspace):
-        # One broken key does not discard its siblings (docs/02 section 5).
+        # One broken key does not discard its siblings (docs/02 § 5).
         root = workspace({'api.raml': API + 'nonsense: 1\nrubbish: 2\n'})
         with pytest.raises(RamlError) as caught:
             parse_from_path(root / 'api.raml')
@@ -178,7 +178,7 @@ class TestApiDecoding:
             parse_from_path(root / 'api.raml')
         assert traces(caught.value)[0].message == 'types and schemas are mutually exclusive'
 
-    def test_declarations_are_retained_for_later_phases(self, workspace):
+    def test_every_declaration_kind_is_decoded_with_the_fragment(self, workspace):
         root = workspace(
             {
                 'api.raml': API
@@ -189,11 +189,9 @@ class TestApiDecoding:
             }
         )
         api = parse_from_path(root / 'api.raml').entry_point
-        # Phase 2 decodes the three type-shaped declarations.
         assert list(api.types) == ['A']
         assert list(api.annotation_types) == ['B']
         assert list(api.base_uri_parameters) == ['p']
-        # Phase 6 decodes the two templates, Phase 7 the schemes.
         assert list(api.traits) == ['t']
         assert list(api.resource_types) == ['r']
         assert list(api.security_schemes) == ['s']
@@ -473,7 +471,7 @@ class TestProtocolConformance:
 
 
 class TestLibraryLinkLookup:
-    """docs/06 section 3.2 — the library half of a `lib.Type` reference.
+    """docs/06 § 3 — the library half of a `lib.Type` reference.
 
     On the resolver protocol rather than reached through `uses` so that P7 can
     emit it through the anchor it already holds.
@@ -497,7 +495,7 @@ class TestLibraryLinkLookup:
 
 
 class TestResolverIndex:
-    """docs/04 section 4.2 — P7's fallback for a shape with no anchor."""
+    """docs/04 § 2 — P7's fallback for a shape with no anchor."""
 
     def test_every_decoded_fragment_is_indexed_by_its_location(self, workspace):
         root = workspace({'api.raml': API + 'uses:\n  l: lib.raml\n', 'lib.raml': '#%RAML 1.0 Library\n'})

@@ -1,13 +1,12 @@
-"""The law a consumer of the projection may rely on — docs/16 § 11.7.
+"""The law a consumer of the projection may rely on — docs/16 § 6.1.
 
 **A consumer descends containment, follows a link, and stops at a recursion
 marker. It maintains no ancestor set.**
 
-That last clause is the whole point of `unwrap=True`. Nine passes of RAML logic
-— includes, `uses:`, type expressions, inheritance merge, traits and resource
-types, overlays, security binding, annotation binding, default propagation —
-happen before this, so a consumer implements none of them. What is left is two
-operations, and this file is the executable statement of that.
+That last clause is the whole point of `unwrap=True`. Includes, `uses:`, type
+expressions, inheritance, traits and resource types, security and annotation
+binding all happen in the parser, so a consumer implements none of them. What
+is left is two operations, and this file is the executable statement of that.
 
 The walker below is deliberately naive: it has no `seen` set and no depth
 budget beyond a runaway ceiling. Anything it gets wrong is a leak in the
@@ -27,7 +26,7 @@ RUNAWAY = 60
 
 #: Keys the walker skips. `id` is an address rather than content, and
 #: `type_expr` is the source expression, kept as data but not traversed
-#: (docs/16 § 11.8). `kind`, `link` and `is_annotation_type` were here too,
+#: (docs/16 § 6.1). `kind`, `link` and `is_annotation_type` were here too,
 #: until the projection stopped emitting them.
 PARSER_STATE = frozenset({'id', 'type_expr'})
 
@@ -132,7 +131,7 @@ class TestALinkIsNotARecursionMarker:
 
 class TestAnAliasReadsAsItsReferent:
     """`Prices: Price[]` puts an *alias* of `Price` under `items`, and the alias
-    is a parser mechanism with no RAML meaning (docs/07 § 3.6).
+    is a parser mechanism with no RAML meaning (docs/07 § 3).
 
     A consumer reading the tree honestly sees an anonymous object whose
     `inherits` names `Money` — `Price`'s supertype — and concludes "an array of
@@ -162,7 +161,8 @@ class TestAnAliasReadsAsItsReferent:
 class TestEveryReferenceResolvesInsideTheTree:
     """A tree consumer has only the tree.
 
-    Law 15 checks addresses against the *graph*, which is a different output. It
+    `test_tree.py::TestEveryReferenceResolves` checks addresses against the
+    *graph*, which is a different output. It
     passed while every annotation application in the corpus — 318 of 318 —
     pointed at an address the tree did not contain, because annotation types had
     no section of their own. A reference a consumer cannot follow with what it

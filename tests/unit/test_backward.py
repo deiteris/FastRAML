@@ -1,4 +1,4 @@
-"""Model-native backward compatibility -- docs/16-graph.md section 10."""
+"""Model-native backward compatibility -- docs/16-graph.md § 5."""
 
 from __future__ import annotations
 

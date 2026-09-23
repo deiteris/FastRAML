@@ -1,7 +1,7 @@
 """P7: settling a declaration's kind, and binding the names inside it.
 
-See docs/06-type-expressions.md section 3 and docs/07-resolution-and-inheritance.md
-sections 1-2. `test_expressions.py` covers the grammar; this file covers what
+See docs/06-type-expressions.md § 3 and docs/07-resolution-and-inheritance.md
+§ 2. `test_expressions.py` covers the grammar; this file covers what
 the AST is turned into.
 """
 
@@ -95,7 +95,7 @@ CORPUS_LIBRARY = {'ext.raml': LIB + 'types:\n  Ref: file\n'}
 
 
 class TestExamplesCorpus:
-    """docs/15 Phase 3: every line of the expression corpus builds its shape."""
+    """Every line of the expression corpus builds its shape."""
 
     @pytest.mark.parametrize(('expression', 'expected'), EXAMPLES_CORPUS, ids=[line for line, _ in EXAMPLES_CORPUS])
     def test_a_corpus_line_builds_its_shape(self, workspace, expression, expected):
@@ -114,7 +114,7 @@ class TestExamplesCorpus:
 
 
 class TestExpressionStructure:
-    """docs/06 section 3 — one row of the visitor's table each."""
+    """docs/06 § 3 — one row of the visitor's table each."""
 
     @pytest.mark.parametrize(
         ('expression', 'expected'),
@@ -145,7 +145,7 @@ class TestExpressionStructure:
 
 
 class TestFacetIsolation:
-    """docs/06 section 3 — anonymous inner shapes exist to keep facets apart."""
+    """docs/06 § 3 — anonymous inner shapes exist to keep facets apart."""
 
     def test_facets_beside_an_expression_land_on_the_outermost_shape(self, workspace):
         base = library(workspace, '  T:\n    type: string[]\n    minItems: 1\n')['T']
@@ -163,7 +163,7 @@ class TestFacetIsolation:
 
 
 class TestAliasVersusInheritance:
-    """docs/06 section 3.1 — the resolution half; the decode half is in
+    """docs/06 § 3 — the resolution half; the decode half is in
     `test_shape_decode.py`."""
 
     def test_a_bare_scalar_reference_aliases(self, workspace):
@@ -193,7 +193,7 @@ class TestAliasVersusInheritance:
 
 class TestForwardAndOutOfOrder:
     def test_a_type_may_be_used_before_it_is_declared(self, workspace):
-        # Resolution is deferred to P7 precisely so that this works (docs/04 § 4.3).
+        # Resolution is deferred to P7 precisely so that this works (docs/04 § 4).
         types = library(workspace, '  Uses: Later\n  Later:\n    properties:\n      a: string\n')
         assert types['Uses'].type == 'object'
 
@@ -216,7 +216,7 @@ class TestMultipleInheritance:
         # Each sequence entry is a declaration in its own right — a bare
         # reference, so it *aliases* the type it names rather than being it.
         # `Both.inherits` therefore holds two reference shapes, not the two
-        # declarations. Phase 4 follows the alias when it merges.
+        # declarations. P9 follows the alias when it merges.
         assert [parent.name for parent in both.inherits] == ['Cat', 'Dog']
         assert [parent.alias for parent in both.inherits] == [types['Cat'], types['Dog']]
         assert types['Cat'] not in both.inherits
@@ -238,7 +238,7 @@ class TestLinkedFragments:
         assert types['T'].type == 'object'
 
     def test_the_link_is_not_rewritten_to_inheritance(self, workspace):
-        # That rewrite is the first step of unwrap (docs/07 § 2). Doing it here
+        # That rewrite is the first step of unwrap (docs/07 § 1). Doing it here
         # would hide the indirection from a consumer that did not ask for it.
         types = library(
             workspace,
@@ -271,7 +271,7 @@ class TestDiagnostics:
 
     def test_a_property_cycle_is_legal(self, workspace):
         # Only cycles *through resolution* are errors; a cycle through a
-        # property is marked, not rejected, and not until P9 (docs/07 § 4).
+        # property is marked, not rejected, and not until P9 (docs/07 § 6).
         types = library(workspace, '  Node:\n    properties:\n      next: Node\n')
         assert types['Node'].shape.properties['next'].base.alias is types['Node']
 
@@ -285,7 +285,7 @@ class TestErrorPositions:
         assert (trace.position.line, trace.position.column) == (3, 6), 'the column of `Nope`, not of `A`'
 
     def test_one_cached_parse_still_yields_two_located_diagnostics(self, workspace):
-        # docs/06 § 2.3: the AST is memoised on text alone, so the location and
+        # docs/06 § 2: the AST is memoised on text alone, so the location and
         # the rebased column have to come from the caller. Two files, one parse.
         root = workspace(
             {
@@ -305,7 +305,7 @@ class TestErrorPositions:
 
 
 class TestTypeExprRefs:
-    """docs/06 section 3.2 — one record per name, for tooling."""
+    """docs/06 § 3 — one record per name, for tooling."""
 
     def test_a_primitive_records_its_keyword(self, workspace):
         # The outer shape of `string[]` is the array; the keyword is on the item.
@@ -350,7 +350,7 @@ class TestAnnotationTypes:
 
     def test_an_annotation_type_falls_back_to_types(self, workspace):
         # Spec § Declaring Annotation Types: the syntax is a data type's, and it
-        # may extend one (docs/04 § 3.1).
+        # may extend one (docs/04 § 3).
         root = workspace(
             {'lib.raml': LIB + 'types:\n  Config:\n    properties:\n      a: string\nannotationTypes:\n  Use: Config\n'}
         )

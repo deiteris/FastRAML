@@ -1,10 +1,10 @@
-"""The effective document as an addressed tree — docs/16 § 11, docs/14 law 15.
+"""The effective document as an addressed tree (docs/16 § 6).
 
 The projection is pinned whole by the golden layer. What is asserted here is the
 property the goldens cannot see: that every reference it emits **resolves**, and
 resolves to the node the graph put at the same address.
 
-That is the check on Phase A's addressable set. A reference to something the
+That is the check on the addressable set. A reference to something the
 walk never reached would come out as `null`, which reads exactly like "there was
 nothing to point at" — the silent failure the whole addressing scheme exists to
 remove.
@@ -147,7 +147,7 @@ class TestEveryReferenceResolves:
         assert parent['id'].endswith('/inherits/anonymous')
 
     def test_an_alias_reads_as_the_type_it_aliases(self, both):
-        """`Named[]` puts an *alias* of `Named` under `items` (docs/07 § 3.6),
+        """`Named[]` puts an *alias* of `Named` under `items` (docs/07 § 3),
         and the alias never reaches the output: `items` is a link to `Named`.
 
         `Person[]` inside `Person` is a cycle instead and comes out as a
@@ -180,7 +180,7 @@ class TestATypedFragmentIsADeclaration:
     block need mention it. Read only from `fragment_types`, such a document
     projected as having no types at all — silently, because an empty map is
     exactly what a document with no types looks like. The graph carries the same
-    branch (docs/16 § 2.9).
+    branch (docs/16 § 6.1).
     """
 
     FRAGMENT = '#%RAML 1.0 DataType\ntype: object\nproperties:\n  id: string\n'
@@ -274,7 +274,7 @@ annotationTypes:
 
 
 class TestWhatADocumentationViewNeeds:
-    """docs/16 § 11.4. A renderer reads this, so what a reader has to see has to
+    """docs/16 § 6.2. A renderer reads this, so what a reader has to see has to
     be in it. Each of these reached no view at all and the omission was
     invisible: an absent key looks exactly like a document that did not say it.
     """
@@ -393,7 +393,7 @@ types:
 
 
 class TestABoundSurvivesTheTripToAConsumer:
-    """docs/16 § 11.4a: a bound is an exact decimal string, on every kind.
+    """docs/16 § 6.2: a bound is an exact decimal string, on every kind.
 
     Both halves matter and neither is the other. **Exact**, because JSON's
     number is a double in every consumer that matters, so `9223372036854775807`
@@ -467,7 +467,7 @@ types:
 
 
 class TestAPathIsRelativeToTheWorkspaceRoot:
-    """docs/16 § 3: no absolute filesystem path enters a view.
+    """docs/16 § 2: no absolute filesystem path enters a view.
 
     The rule held for a library *beneath* the entry document and nowhere else,
     because it was a prefix strip against the entry's own directory. A sibling
@@ -543,7 +543,7 @@ types:
 
 
 class TestASchemaArrivesSelfContained:
-    """docs/16 § 11: `json_schema` is the resolved document.
+    """docs/16 § 6: `json_schema` is the resolved document.
 
     A `$ref` naming another file names nothing a reader of the tree has, so a
     schema carrying one describes a type only to someone holding the directory
@@ -629,7 +629,7 @@ settings:
 
 
 class TestAnIncludedSchemeSaysWhatItIs:
-    """docs/16 § 11.4: a scheme is projected through the link it holds.
+    """docs/16 § 6.2: a scheme is projected through the link it holds.
 
     `included: !include scheme.raml` decodes to a definition carrying a link and
     nothing else, and the SecurityScheme fragment it points at is one scheme
@@ -732,7 +732,7 @@ def annotation_types(metadata_tree):
 
 
 class TestAnExampleCarriesWhatWasWrittenBesideIt:
-    """docs/16 § 11.4: form B's metadata is data, and it was being dropped.
+    """docs/16 § 6.2: form B's metadata is data, and it was being dropped.
 
     `displayName`, `description`, `strict` and an example's own annotations all
     reached the model and none reached a consumer — silently, since an example

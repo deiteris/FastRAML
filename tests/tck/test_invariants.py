@@ -2,7 +2,7 @@
 
 A unit test pins an invariant on an example someone chose. These run the same
 checks over every fixture the parser accepts, which is where the case nobody
-thought of lives. See docs/02-architecture.md section 4.
+thought of lives. See docs/02-architecture.md § 4.
 """
 
 from __future__ import annotations
@@ -260,11 +260,11 @@ class TestEndpointShapesAreRegistered:
 class TestTemplateProvenance:
     """A shape a template contributed knows which file it came from.
 
-    The phase's characteristic failure: a type name resolved in the applying
+    The characteristic failure of template merging: a type name resolved in the applying
     document's namespace instead of the template's *still parses*, and produces
     a model that looks right. What is checkable over the corpus is the two
     things that failure destroys — an anchor, and a location naming a file this
-    parse actually read (docs/08 section 6.3).
+    parse actually read (docs/08 § 4.2).
     """
 
     def test_every_endpoint_shape_has_an_anchor(self, corpus: list):
@@ -324,7 +324,7 @@ class TestDomainExtensions:
 
     def test_a_binding_survives_unwrap(self, unwrapped_corpus: list):
         # A stale `defined_by` points at the pre-merge object, which unwrap
-        # dropped when it rebuilt `raml.shapes` (docs/09 section B4).
+        # dropped when it rebuilt `raml.shapes` (docs/09 § B4).
         offenders: list[str] = []
         checked = 0
         for name, raml in unwrapped_corpus:

@@ -87,7 +87,7 @@ class TestFacets:
 
     def test_an_exact_multiple_of_is_not_rounded(self, workspace):
         # The facet is a `Fraction` built from the raw text, so this is 1.1 and
-        # not the binary approximation of it (docs/10 section 5.3).
+        # not the binary approximation of it (docs/10 § 5).
         schema, _ = converted(workspace, '  T:\n    type: number\n    multipleOf: 1.1\n')
         assert schema['definitions']['T']['multipleOf'] == 1.1
 

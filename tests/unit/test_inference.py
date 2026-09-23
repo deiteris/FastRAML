@@ -1,6 +1,6 @@
 """Default-type inference.
 
-Each test names the rule from docs/05-type-model.md section 4.2 that it
+Each test names the rule from docs/05-type-model.md § 3 that it
 protects.
 """
 
@@ -101,5 +101,5 @@ class TestRule4NothingInferredTakesTheCallersDefault:
 
     def test_facets_that_hint_at_nothing_are_ignored(self):
         # discriminatorValue is object-only in practice but is not a hint: the
-        # table in docs/05 section 4.2 does not list it.
+        # table in docs/05 § 3 does not list it.
         assert detect('discriminatorValue: cat\ndescription: d\n', default='any') == 'any'

@@ -1,6 +1,6 @@
 """Copying a shape without `copy.deepcopy`.
 
-See docs/07-resolution-and-inheritance.md section 5. Unwrap and validation are
+See docs/07-resolution-and-inheritance.md § 6. Unwrap and validation are
 both defined in terms of these, and picking the wrong one is a correctness bug
 in one direction and a performance bug in the other.
 """
@@ -79,7 +79,7 @@ class TestDetachment:
 
 
 class TestSharedByDesign:
-    """What a clone deliberately does *not* copy (docs/07 § 5)."""
+    """What a clone deliberately does *not* copy (docs/07 § 6)."""
 
     def test_scalar_facets_are_shared(self, workspace):
         # Nothing mutates a ScalarFacet in place; `inherit` only rebinds the
@@ -139,7 +139,7 @@ class TestPerKind:
 
 class TestLinkedShapes:
     def test_a_link_becomes_inheritance_in_the_clone(self, workspace):
-        # docs/07 § 2 rewrites a link to inheritance at the start of unwrap, and
+        # docs/07 § 1: P9 rewrites a link to inheritance at the start of unwrap, and
         # unwrap is the only reader. Doing it here keeps one DataTypeFragment
         # per file (invariant I3) instead of copying the fragment.
         types = library(

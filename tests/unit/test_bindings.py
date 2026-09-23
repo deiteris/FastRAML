@@ -1,4 +1,4 @@
-"""The generated contracts — docs/16-graph.md § 11.11.
+"""The generated contracts — docs/16-graph.md § 7.
 
 Each backend is asked three things.
 
@@ -8,15 +8,16 @@ only: Go has no checked-in consumer.
 
 **Does the generator agree with the emitter?** A generator reads source and can
 be wrong about what running it does, so a document declaring every kind is
-projected and its keys are checked against each backend's declarations. Law 19
-in `tests/tck/test_properties.py` asks the same of the corpus.
+projected and its keys are checked against each backend's declarations.
+`TestNothingArrivesUndeclared` in `tests/tck/test_properties.py` asks the same
+of the corpus.
 
 **Does the hand-written half reach the output unchanged?** Each backend copies
 `static/<file>` verbatim apart from Go's package clause, and each static file is
 checked by the tools of the language it is written in.
 
 Both golden destinations sit inside a consumer, `viewer/` and
-`contrib/raml-codegen`, and both are read as *text*. docs/17 § 2 states that
+`contrib/raml-codegen`, and both are read as *text*. docs/17 § 1 states that
 direction: the gate may read a consumer's committed output and may not import
 one.
 
@@ -57,14 +58,14 @@ PYTHON_DESTINATION = 'contrib/raml-codegen/raml_codegen/tree.py'
 #: The reading halves, vendored beside the types they read. A stale one is the
 #: same hazard as a stale declaration and a quieter one: the types still
 #: typecheck, and the walk silently stops descending a key that now holds a
-#: shape (docs/16 § 11.11e).
+#: shape (docs/16 § 7).
 TYPESCRIPT_RUNTIME = 'viewer/src/walk.ts'
 PYTHON_RUNTIME = 'contrib/raml-codegen/raml_codegen/walk.py'
 
 
 #: Generated records that carry shape fields but are not named `*Shape`.
 #: `Recursion` is one: P9 builds a `RecursiveShape` and `shape()` projects
-#: it down the generic path, so a marker is a shape (docs/16 § 11.11c).
+#: it down the generic path, so a marker is a shape (docs/16 § 6.1).
 SHAPE_RECORDS = frozenset({'ShapeBase', 'Recursion'})
 
 
@@ -283,7 +284,7 @@ class TestTheCheckedInPythonFileIsGenerated:
     def test_it_imports_and_reports_its_own_optional_keys(self, tmp_path):
         # Imported from a copy, not from `contrib`: the gate may read a
         # consumer's committed output and may not import the consumer
-        # (docs/17 § 2). What is imported here is a file this test wrote.
+        # (docs/17 § 1). What is imported here is a file this test wrote.
         (tmp_path / 'generated_tree.py').write_text(python(), encoding='utf-8')
         sys.path.insert(0, str(tmp_path))
         try:
@@ -877,7 +878,7 @@ class TestTheRecursionGuardTerminatesAnUnmarkedCycle:
     This splices a cycle none of the three covers, which is the state a
     regression in any of them produces. With the guard the document projects and
     carries one extra marker; without it the projection does not terminate
-    (docs/16 § 11.11c).
+    (docs/16 § 6.1).
     """
 
     #: An anonymous inner type whose only property is spliced back onto its
@@ -985,12 +986,12 @@ class TestEveryProjectorMethodTheGeneratorReadsActuallyRuns:
         silent = {name for name, count in ran.items() if count == 0}
         assert silent == {'recursion'}, (
             f'{sorted(silent)} never ran. A method the generator reads and the emitter never calls is '
-            'what docs/16 § 11.11c is about -- declare its record by hand, or find out why it is dead.'
+            'what docs/16 § 6.1 is about -- declare its record by hand, or find out why it is dead.'
         )
 
 
 class TestARecursionMarkerIsDeclaredAsAShape:
-    """A marker is a shape, and the contract now says so. docs/16 § 11.11c.
+    """A marker is a shape, and the contract now says so. docs/16 § 6.1.
 
     It was declared as a standalone `{type, name, head}` record, generated from
     `_Projector.recursion()` -- which never runs, because P9 marks recursion
@@ -999,7 +1000,8 @@ class TestARecursionMarkerIsDeclaredAsAShape:
     whatever `ShapeBase` fields the type it stands for had. A consumer holding
     the old record saw a marker's `description` and `annotations` as absent.
 
-    Neither `declared_shape_members()` nor law 19 could catch that: both ask
+    Neither `declared_shape_members()` nor the corpus contract check could
+    catch that: both ask
     whether a key is declared *somewhere* among the shape members, and all of
     them are on `ShapeBase`. Only writing a decoded document back found it.
 
@@ -1036,7 +1038,7 @@ class TestARecursionMarkerIsDeclaredAsAShape:
 
         Asserted rather than commented, because the assumption has been made
         twice. If this ever fails, `recursion()` has become live and docs/16
-        § 11.11c is the thing to reread -- not a line to delete.
+        § 6.1 is the thing to reread -- not a line to delete.
         """
         calls: list[str] = []
         original = tree_module._Projector.recursion
@@ -1205,8 +1207,8 @@ DOCUMENT = SOURCES.joinpath('every-kind.raml').read_text(encoding='utf-8')
 class TestEveryKindLandsInTheContract:
     """One document declaring every kind, checked key by key against the file.
 
-    The corpus form of this is law 19 in `tests/tck/test_properties.py`, which
-    needs a checkout. This one always runs, so a facet added to a kind fails
+    The corpus form of this is `TestNothingArrivesUndeclared` in
+    `tests/tck/test_properties.py`, which needs a checkout. This one always runs, so a facet added to a kind fails
     here on any machine.
     """
 

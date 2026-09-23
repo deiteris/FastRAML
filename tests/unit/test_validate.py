@@ -1,7 +1,7 @@
 """`validate(value)` — does *data* conform to a declaration?
 
-docs/10-validation.md sections 3 to 5. One test per row of section 5's table,
-plus the three hazards doc 14 section 3 names by hand: `bool` must not pass as
+docs/10-validation.md § 3 to § 5. One test per row of the § 5 table, plus
+three hazards worth naming: `bool` must not pass as
 `integer`, `multipleOf: 1.1` must be exact, and `uniqueItems` must behave the
 same either side of the n=20 strategy switch.
 
@@ -99,7 +99,7 @@ class TestBooleanIsNotAnInteger:
 
 
 class TestNumericExactness:
-    """docs/10 section 5.3: nothing goes through `float`."""
+    """docs/10 § 5: nothing goes through `float`."""
 
     def test_multiple_of_a_decimal_is_exact(self, workspace):
         # Both sides go through decimal text. `2.2` as an exact binary ratio is
@@ -137,7 +137,7 @@ class TestNumericExactness:
         ],
     )
     def test_a_bound_is_shown_as_its_exact_decimal(self, value, text):
-        # docs/10 section 5.2: a view shows `1.1`, never `1.100000000000000088`,
+        # docs/10 § 5: a view shows `1.1`, never `1.100000000000000088`,
         # and a ratio with no terminating decimal as the ratio it is.
         from fastraml.types.values import decimal_text
 
@@ -162,7 +162,7 @@ class TestString:
         The spec never says `pattern:` is anchored, and writes `^...$` itself
         wherever it means anchored — `^.+@.+\\..+$`, `^\\d+\\-\\w+$`,
         `^\\w{16}$` — which would be noise if it were. go-raml agrees, using
-        Go's unanchored `MatchString` (docs/10 § 5.4).
+        Go's unanchored `MatchString` (docs/10 § 5).
         """
         assert declared(workspace, '  T:\n    type: string\n    pattern: b\n').validate('abc') is None
         assert declared(workspace, '  T:\n    type: string\n    pattern: a.c\n').validate('abc') is None
@@ -176,7 +176,7 @@ class TestString:
     def test_a_pattern_property_name_is_still_matched_unanchored(self, workspace):
         # The other direction, and the reason the change is not global: a
         # `/regex/` key is matched *against* a property name rather than
-        # describing one, and `/^x/` is how they are written (docs/05 § 5.1).
+        # describing one, and `/^x/` is how they are written (docs/05 § 4).
         shape = declared(workspace, '  T:\n    properties:\n      /^x/: integer\n')
         assert shape.validate({'xylophone': 1}) is None
         assert shape.validate({'xylophone': 'no'}) is not None
@@ -205,7 +205,7 @@ class TestArray:
 
 
 class TestUniqueItems:
-    """docs/10 section 5.2 — two strategies, one meaning."""
+    """docs/10 § 5 — two strategies, one meaning."""
 
     def test_the_two_strategies_agree_across_the_switch(self, workspace):
         # 20 is pairwise, 21 hashes. A difference here would be invisible in
@@ -240,7 +240,7 @@ class TestObject:
         assert shape.validate({'b': 'x'}) is not None
 
     def test_every_missing_property_is_named_in_one_message(self, workspace):
-        # docs/10 section 5.1: one message listing all of them, not one each.
+        # docs/10 § 5: one message listing all of them, not one each.
         shape = declared(workspace, '  T:\n    properties:\n      a: string\n      b: string\n      c: string\n')
         error = shape.validate({})
         missing = [
@@ -334,11 +334,11 @@ TAGGED = (
 
 
 class TestUnionDispatchesOnADiscriminator:
-    """docs/05 section 9.1 — a union of types that discriminate the same way.
+    """docs/05 § 6 — a union of types that discriminate the same way.
 
     The spec makes this a MAY (`raml-10.md:762`): a processor "MAY provide an
     implementation that automatically selects a concrete type from a set of
-    possible types". Deviation D12 takes it up, and it narrows — a payload whose
+    possible types". fastRAML takes it up (docs/01 § 4.5), and it narrows — a payload whose
     tag names no member is refused even where a member accepts it structurally.
     """
 
@@ -364,7 +364,7 @@ class TestUnionDispatchesOnADiscriminator:
         assert 'invalid type' in messages(error)
 
     def test_a_tag_belonging_to_another_member_does_not_pass(self, workspace):
-        # The narrowing D12 makes: `Cat` has no required property `Dog` lacks, so
+        # The narrowing dispatch makes: `Cat` has no required property `Dog` lacks, so
         # a linear scan accepts this payload against `Cat`.
         assert declared(workspace, TAGGED).validate({'kind': 'Dog', 'meows': True}) is not None
 
@@ -542,7 +542,7 @@ class TestUnionDispatchesOnADiscriminator:
             assert member is not table.members[name]
 
     def test_validating_an_unflattened_shape_is_refused(self, workspace):
-        # docs/02 section 4, invariant I12. Without unwrap a child shows only
+        # docs/02 § 4, invariant I12. Without unwrap a child shows only
         # what its own declaration wrote, so it accepts a value missing the
         # property its parent made required — silently, which is the hazard.
         root = workspace({'api.raml': API + 'types:\n' + TAGGED})
@@ -561,7 +561,7 @@ class TestRecursive:
 
 
 class TestEnumFirst:
-    """docs/10 section 5: a non-empty `enum` is the whole check."""
+    """docs/10 § 5: a non-empty `enum` is the whole check."""
 
     def test_membership_decides(self, workspace):
         shape = declared(workspace, '  T:\n    type: string\n    enum: [red, green]\n')
@@ -624,7 +624,7 @@ class TestExamplesAndDefaults:
 
 
 class TestCustomFacets:
-    """docs/10 section 4."""
+    """docs/10 § 4."""
 
     def test_a_typo_becomes_an_unknown_facet(self, workspace):
         # The rule that earns its keep: `maxLenght` decoded as a custom facet
@@ -710,7 +710,7 @@ class TestCustomFacets:
     def test_a_facet_on_a_second_parent_is_not_seen(self, workspace):
         """The `inherits[0]`-only limitation, pinned so the fix is visible.
 
-        docs/10 section 4 tracks this as a v1.1 item. If this test starts
+        docs/10 § 4 and docs/15 § 2 record it. If this test starts
         failing because the walk grew a visited set, that is the fix landing —
         update the test, do not restore the behaviour.
         """
@@ -787,7 +787,7 @@ class TestUnionFacetsAreDistributed:
 
 
 class TestPublicSurface:
-    """docs/13 section 5: `validate` returns, it does not raise."""
+    """docs/13 § 3: `validate` returns, it does not raise."""
 
     def test_success_returns_none(self, workspace):
         assert declared(workspace, '  T: string\n').validate('x') is None
@@ -835,7 +835,7 @@ class TestPrivateUnwrap:
             parse_from_path(root / 'api.raml', ParseOptions(validate=True))
 
 
-# -- property-based (docs/14 section 4, law 7) ---------------------------------
+# -- property-based: inheritance narrows ----------------------------------
 
 #: `(parent facets, child facets, values)`. The child narrows the parent in each
 #: pair, which is what makes the law meaningful rather than vacuous.
@@ -851,7 +851,7 @@ NARROWING = [
 @settings(max_examples=len(NARROWING), deadline=None)
 @given(case=st.sampled_from(NARROWING))
 def test_a_value_valid_for_a_child_is_valid_for_its_parent(tmp_path_factory, case):
-    """docs/14 section 4, law 7: inheritance narrows.
+    """Inheritance narrows (docs/07 § 4).
 
     If `child` inherits `parent`, every value the child accepts the parent must
     accept too. A per-kind rule that widened instead of narrowing would satisfy

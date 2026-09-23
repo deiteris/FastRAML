@@ -1,10 +1,9 @@
-"""The `fastraml` console script — docs/13-public-api.md section 8.
+"""The `fastraml` console script — docs/13-public-api.md § 5.
 
 Exit codes and output shape, not parsing. Nothing in `cli.py` decides what is
 valid, so the assertions here are about the contract a shell script or a CI job
-depends on: what the exit code means, which stream each thing goes to, and that
-`--json` stays diffable against go-raml's output
-(docs/14 section 1.3).
+depends on: what the exit code means, which stream each thing goes to, and the
+shape of each `--json` record.
 """
 
 from __future__ import annotations
@@ -148,7 +147,7 @@ class TestJson:
         assert records[0]['error'] is None
 
     def test_the_error_keeps_the_reference_trace_shape(self, files, capsys):
-        """`docs/14` § 1.3 diffs this against `raml validate --json`."""
+        """`docs/14` diffs this against `raml validate --json`."""
         main(['validate', '--json', files('bad.raml')])
         record = json.loads(capsys.readouterr().out.strip())
         stack = record['error']['traces'][0]['stack']
@@ -272,7 +271,7 @@ def graphed(workspace):
 
 
 class TestGraphVerbs:
-    """docs/13 section 8.1. Presentation and exit codes, as above — what the
+    """docs/13 § 5. Presentation and exit codes, as above — what the
     graph *means* is `tests/unit/test_graph.py`'s subject, not this file's.
     """
 
@@ -296,7 +295,7 @@ class TestGraphVerbs:
         assert user['inherits'] == [{'$ref': 'fastraml://id#/declarations/types/Entity'}]
 
     def test_tree_prints_declarations_in_the_order_they_were_written(self, graphed, capsys):
-        # docs/02 section 4: declaration order is preserved everywhere the model
+        # docs/02 § 4: declaration order is preserved everywhere the model
         # is exposed. `build_tree` preserved it and the verb sorted the keys on
         # the way out, which is the same loss one step later -- and invisible to
         # a test of `build_tree`.
@@ -305,7 +304,7 @@ class TestGraphVerbs:
         assert list(tree['types']['g.raml']['User']['properties']) == ['name', 'id']
 
     def test_tree_addresses_agree_with_the_ones_graph_prints(self, graphed, capsys):
-        # The counterpart claim in docs/16 § 11: one walk assigns both, so an
+        # The counterpart claim in docs/16 § 6: one walk assigns both, so an
         # address read from a tree names a node in the graph. Only a test across
         # the two verbs catches them drifting apart.
         tree = json.loads(self._tree(graphed, capsys))
@@ -385,7 +384,7 @@ class TestGraphVerbs:
 
 
 class TestServe:
-    """docs/13 section 8. `serve` hands the `tree` projection to the viewer.
+    """docs/13 § 5. `serve` hands the `tree` projection to the viewer.
 
     The HTTP side is `contrib/fastraml-viewer`'s subject, with its own gate;
     what is pinned here is the wiring — the right document on the right socket —
@@ -408,7 +407,7 @@ class TestServe:
         assert 'viewer:' not in err
 
     def test_it_passes_the_tree_projection_to_the_viewer(self, files, capsys, monkeypatch):
-        pytest.importorskip('fastraml_viewer', reason='serve is an optional extra (docs/17 section 2)')
+        pytest.importorskip('fastraml_viewer', reason='serve is an optional extra (docs/17 § 1)')
         import fastraml_viewer
 
         captured: dict[str, object] = {}
@@ -458,7 +457,7 @@ class TestServe:
 
 
 class TestListVerb:
-    """docs/13 § 8.1. The inventory — what `refs`, `deps` and `show` accept.
+    """docs/13 § 5. The inventory — what `refs`, `deps` and `show` accept.
 
     Before it existed, learning a name meant `graph --format json` piped through
     a filter, a SPARQL query needing an optional dependency, or guessing.
@@ -562,7 +561,7 @@ class TestQueryVerb:
         assert 'install pyoxigraph' in capsys.readouterr().err
 
     def test_a_select_prints_a_row_per_solution(self, graphed, capsys):
-        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
+        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 § 3.1)')
         from fastraml.views.graph import RAML_NS
 
         query = f'PREFIX raml: <{RAML_NS}> SELECT ?m WHERE {{ ?o a raml:Operation ; raml:method ?m }}'
@@ -570,14 +569,14 @@ class TestQueryVerb:
         assert capsys.readouterr().out.strip() == 'get'
 
     def test_an_ask_prints_a_boolean(self, graphed, capsys):
-        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
+        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 § 3.1)')
         from fastraml.views.graph import RAML_NS
 
         assert main(['query', graphed, '-q', f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Operation }}']) == EXIT_OK
         assert capsys.readouterr().out.strip() == 'true'
 
     def test_a_query_can_come_from_a_file(self, graphed, workspace, capsys):
-        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
+        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 § 3.1)')
         from fastraml.views.graph import RAML_NS
 
         path = workspace({'q.rq': f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Api }}'}) / 'q.rq'
@@ -591,7 +590,7 @@ class TestQueryVerb:
 
 
 class TestQueryCatalogue:
-    """docs/13 § 8.1 — `--list` and `--show` are text, so neither needs a store
+    """docs/13 § 5 — `--list` and `--show` are text, so neither needs a store
     nor a file. That is the point of them: a user who has not installed
     `pyoxigraph` can still find out what the tool would ask.
     """
@@ -616,7 +615,7 @@ class TestQueryCatalogue:
         assert 'try --list' in capsys.readouterr().err
 
     def test_a_named_query_runs(self, graphed, capsys):
-        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 section 5.1)')
+        pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 § 3.1)')
         assert main(['query', graphed, '-n', 'endpoint-tree']) == EXIT_OK
         assert '/users' in capsys.readouterr().out
 
@@ -744,7 +743,7 @@ class TestCompat:
         assert {r['location']['kind'] for r in records} == {'TypeDeclaration'}
         assert len({(r['location']['name'], tuple(s['name'] for s in r['path'])) for r in records}) == 1
 
-    """docs/13 § 8.2. The exit code is the contract a CI job depends on."""
+    """docs/13 § 5. The exit code is the contract a CI job depends on."""
 
     def test_a_breaking_change_exits_one(self, versions, capsys):
         assert main(['compat', *versions]) == EXIT_INVALID
@@ -809,7 +808,7 @@ class TestCompat:
         assert '| `$.note` | optional `string` |' not in out
 
     def test_severity_is_a_threshold_not_a_membership_test(self, workspace, capsys):
-        """docs/13 § 8: `--severity S` means S *and everything worse*, on every
+        """docs/13 § 5: `--severity S` means S *and everything worse*, on every
         verb that has it. This took a repeatable exact set until `lint` arrived
         with a threshold and one flag name meant two things in one tool.
         """
@@ -997,7 +996,7 @@ class TestResultsAreBounded:
 
 
 class TestSkillsVerb:
-    """The served agent guides (docs/13 section 8.3).
+    """The served agent guides (docs/13 § 5).
 
     The point of the verb is that an installed skill can be a *stub*: the guide
     an agent reads ships with the build that answers it, so it cannot go stale.
@@ -1177,7 +1176,7 @@ class TestSkillsVerb:
 
 
 class TestSkillsInstall:
-    """Installing a guide into a skills directory (docs/13 section 8.3).
+    """Installing a guide into a skills directory (docs/13 § 5).
 
     Built in rather than delegated to `gh skill`: that tool is third-party, in
     preview, and not guaranteed present, and the operation is a file copy into a

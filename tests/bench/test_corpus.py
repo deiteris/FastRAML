@@ -2,9 +2,8 @@
 
 This runs in the ordinary suite, at a scale small enough to be free, because a
 benchmark corpus that only parses with `validate=False` measures the wrong
-thing and says nothing while doing it. The first draft of `write_small` had a
-required property its own example omitted; `parse` and `unwrap` were happy, and
-the two configurations that matter for P10 were measuring an exception.
+thing silently: an invalid example makes the `validate` configurations time an
+exception.
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ def test_generation_is_deterministic(tmp_path):
 
 
 def test_large_reaches_common_by_two_spellings(tmp_path):
-    """The diamond `bench_large` exists to exercise (docs/12 section 2).
+    """The diamond `bench_large` exists to exercise (docs/12 § 1).
 
     Every library reaches one `common.raml` through a relative path spelt from
     its own directory. If the compose cache ever stops canonicalising, this

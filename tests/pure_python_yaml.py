@@ -7,8 +7,7 @@ collection starts.
 
 **Reinstalling PyYAML from source does not do this.** `--no-binary :all:` forces
 a source build; that build still links libyaml wherever the headers are present,
-which is everywhere CI runs. The job spent a minute compiling and then asserted
-on `libyaml` and failed.
+which is everywhere CI runs.
 
 Blocking the extension costs nothing and cannot silently stop working: this
 module checks the backend itself, so the job fails here rather than passing

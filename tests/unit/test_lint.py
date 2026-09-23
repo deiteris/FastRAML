@@ -502,7 +502,7 @@ class TestRuleExamples:
         assert [finding.info['property'] for finding in findings] == ['ignored']
 
     def test_every_directive_in_a_source_covers_its_own_next_line(self, tmp_path):
-        """docs/18 § 5.2: directives are indexed per line, not only the first."""
+        """docs/18 § 4: directives are indexed per line, not only the first."""
         source = (
             '#%RAML 1.0\ntitle: t\ntypes:\n  T:\n    properties:\n'
             '      # fastraml: ignore optional-and-nil\n'
@@ -583,18 +583,18 @@ def run_rule(rule_id: str, source: str, tmp_path, **options):
 
 
 #: `RuleMeta.references` entries: an OWASP category or document, an RFC clause, a CWE,
-#: a RAML 1.0 section or a JSON Schema draft-07 section (docs/18 § 2.2).
+#: a RAML 1.0 section or a JSON Schema draft-07 section (docs/18 § 2).
 REFERENCE = re.compile(
     r'^(OWASP API(10|[1-9]):2023|OWASP [A-Z][A-Za-z ]+|RFC \d+( (§ [\d.]+|Appendix [A-Z]))?|CWE-\d+'
     r'|RAML 1\.0 § .+|JSON Schema draft-07 § [\d.]+)$'
 )
 
-#: The categories derived from a published standard (docs/18 § 1 group 2).
+#: The categories derived from a published standard (docs/18 § 1).
 STANDARD_CATEGORIES = (Category.SECURITY, Category.HTTP, Category.PROBLEM_DETAILS, Category.I_JSON)
 
 
 class TestStandardsRules:
-    """The rulesets derived from a published standard — docs/18 § 1 group 2, § 5.1."""
+    """The rulesets derived from a published standard — docs/18 § 1 and § 2."""
 
     @pytest.mark.parametrize(
         'rule',
@@ -915,7 +915,7 @@ class TestStandardsRules:
 
 
 class TestSpecRules:
-    """The rules derived from RAML 1.0 itself — docs/18 § 1 group 1, § 5.1."""
+    """The rules derived from RAML 1.0 itself — docs/18 § 1 and § 2."""
 
     def test_deprecated_schemas_reads_the_schema_facet_wherever_a_type_is_declared(self, tmp_path):
         # RAML 1.0 § Type Declarations deprecates `schema:` beside `schemas:`.
@@ -1309,7 +1309,7 @@ class TestLintCli:
         assert output['omittedByRule'] == {'unused-type': 2}
 
     def test_cli_truncation_never_hides_an_error_behind_info(self, workspace, capsys):
-        """docs/18 § 7: the error exits 1, so it must also be among those shown."""
+        """docs/18 § 5.1: the error exits 1, so it must also be among those shown."""
         declarations = ''.join(f'  T{index}: string\n' for index in range(5))
         source = f'#%RAML 1.0\ntitle: t\ntypes:\n{declarations}/a:\n  get:\n    body:\n      application/json: string\n'
         root = workspace({'api.raml': source})
@@ -1330,7 +1330,7 @@ class TestLintCli:
         assert capsys.readouterr().out.splitlines()[-1].startswith(f'{status} 0 errors, 1 warning')
 
     def test_status_word_fails_when_the_failing_findings_are_hidden(self, workspace, capsys):
-        """docs/18 § 7: `--severity` hides the warning, `--fail-on` still fails on it."""
+        """docs/18 § 5.1: `--severity` hides the warning, `--fail-on` still fails on it."""
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
         arguments = ['lint', '--no-color', '--severity', 'error', '--fail-on', 'warning', str(root / 'api.raml')]
         assert main(arguments) == EXIT_INVALID
@@ -1431,7 +1431,7 @@ class TestLintCli:
 
 
 class TestMetrics:
-    """`Linter.measure` and `--metrics` — docs/18 § 7.1."""
+    """`Linter.measure` and `--metrics` — docs/18 § 5.2."""
 
     #: Two unused types, so a document rule has real work and real output.
     UNUSED = '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n'
@@ -1463,7 +1463,7 @@ class TestMetrics:
         assert report.rule_counts == {'noisy': 2, 'other': 1}
 
     def test_bound_selects_worst_severity_first_and_keeps_reading_order(self):
-        """docs/18 § 7: a bound never shows info in place of an error or warning."""
+        """docs/18 § 5.1: a bound never shows info in place of an error or warning."""
         findings = [
             *(Finding(f'info-{i}', Severity.INFO, 'test', 'file:///a.raml', Position(i + 1, 1)) for i in range(5)),
             Finding('late-warning', Severity.WARNING, 'test', 'file:///a.raml', Position(10, 1)),
@@ -1474,7 +1474,7 @@ class TestMetrics:
         assert report.severity_counts[Severity.INFO] == 5
 
     def test_per_rule_bound_counts_per_source_file(self):
-        """docs/18 § 7: one file cannot spend a rule's allowance for every other file."""
+        """docs/18 § 5.1: one file cannot spend a rule's allowance for every other file."""
         findings = [
             Finding('noisy', Severity.WARNING, 'test', 'file:///a.raml', Position(1, 1)),
             Finding('noisy', Severity.WARNING, 'test', 'file:///a.raml', Position(2, 1)),

@@ -1,9 +1,9 @@
 """The merge: what a subtype may and may not do to its parent's constraints.
 
-See docs/07-resolution-and-inheritance.md sections 3.4 to 3.6. Every row of
-section 3.5's table gets a test that names the rule it protects. Unwrap is not
+See docs/07-resolution-and-inheritance.md § 3 to § 5. Every row of the § 4
+narrowing table gets a test that names the rule it protects. Unwrap is not
 involved here — `inherit` is called directly on two resolved shapes, which is
-what P9 will do once per inheritance edge.
+what P9 does once per inheritance edge.
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ class TestKindCheck:
 
 
 class TestBaseFacets:
-    """docs/07 § 3.5 — the three that live on the base, before kind dispatch."""
+    """docs/07 § 4 — the three that live on the base, before kind dispatch."""
 
     def test_a_description_is_inherited_when_absent(self, workspace):
         child = merge(workspace, '    type: string\n', '    type: string\n    description: from the parent\n')
@@ -177,7 +177,7 @@ class TestNumericRules:
         )
 
     def test_int_and_int32_name_one_width(self, workspace):
-        # `int` is an alias for `int32` and `long` for `int64` (docs/05 § 3).
+        # `int` is an alias for `int32` and `long` for `int64` (docs/05 § 2).
         child = merge(workspace, '    type: integer\n    format: int\n', '    type: integer\n    format: int32\n')
         assert child.shape.format.value == 'int'
 
@@ -337,7 +337,7 @@ class TestAnyAbsorbs:
 
 
 class TestUnionRules:
-    """docs/07 § 3.4 — the combinatorics that break naive implementations."""
+    """docs/07 § 5 — the combinatorics that break naive implementations."""
 
     def test_a_source_union_keeps_only_compatible_members(self, workspace):
         # string narrows to the string member; the integer member is not a
@@ -405,7 +405,7 @@ class TestUnionRules:
 
 
 class TestAliasing:
-    """docs/07 § 3.6 — an alias takes facets wholesale and keeps its identity."""
+    """docs/07 § 3 — an alias takes facets wholesale and keeps its identity."""
 
     def test_facets_are_taken_wholesale(self, workspace):
         declared = shapes(workspace, '  Named:\n    type: string\n  Source:\n    type: string\n    minLength: 4\n')
@@ -441,7 +441,7 @@ class TestAliasing:
 class TestCycleGuard:
     def test_a_loop_in_the_chain_returns_rather_than_recursing(self, workspace):
         # Unlike resolution, a loop here is not an error: recursion is marked
-        # after unwrap, not rejected during it (docs/07 § 4).
+        # after unwrap, not rejected during it (docs/07 § 6).
         declared = shapes(workspace, '  Node:\n    properties:\n      next: Node\n')
         node = declared['Node']
         assert inherit(node, node) is node

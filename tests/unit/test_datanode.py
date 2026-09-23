@@ -1,6 +1,6 @@
 """`DataNode` and the annotated-scalar form.
 
-See docs/03-yaml-and-io.md sections 6 and 7.
+See docs/03-yaml-and-io.md § 6 and § 7.
 """
 
 from __future__ import annotations

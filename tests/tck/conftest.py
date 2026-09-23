@@ -9,7 +9,7 @@ clone, or afterwards:
 
 They are a submodule rather than vendored because they are not ours: the suite
 comes from the archived `raml-org/raml-tck` and carries no licence, so it is
-referenced at a commit rather than copied into this tree (docs/14 section 1.1).
+referenced at a commit rather than copied into this tree (docs/14 § 2).
 
 `FASTRAML_TCK_DIR` still overrides, for running against a different checkout —
 upstream, or a branch with a fixture fix under review:
@@ -24,7 +24,7 @@ The kit's naming convention (from its README):
 * ``*valid*.raml``   — must parse, unwrap and validate without error
 * ``*invalid*.raml`` — must produce at least one error
 
-See docs/14-testing.md section 1.
+See docs/14-testing.md § 2.
 """
 
 from __future__ import annotations
@@ -37,8 +37,8 @@ import pytest
 
 #: Fixture categories skipped wholesale, each with the documented reason.
 SKIPPED_CATEGORIES: dict[str, str] = {
-    'Overlays/': 'overlays are unsupported (docs/01 section 3)',
-    'Extensions/': 'extensions are unsupported (docs/01 section 3)',
+    'Overlays/': 'overlays are unsupported (docs/01 § 3)',
+    'Extensions/': 'extensions are unsupported (docs/01 § 3)',
 }
 
 #: The same two kinds, identified by what a document *is* rather than where it
@@ -60,9 +60,9 @@ _NO_NETWORK = 'fetches an https include; the suite must not touch the network'
 
 #: The one fixture the JSON Schema expression policy contradicts. The fixture is
 #: the spec's example of `members: Person[]` over a JSON-schema type, which
-#: fastRAML accepts (docs/01 section 4.5). Skipped rather than
+#: fastRAML accepts (docs/01 § 4.5). Skipped rather than
 #: ratcheted to `fail`, because a `fail` entry means work outstanding
-#: (docs/14 section 2) and this is a supported policy, not a gap.
+#: (docs/14 § 3) and this is a supported policy, not a gap.
 _JSON_SCHEMA_EXPRESSION_POLICY = 'JSON schema types may be used in type expressions'
 SKIPPED_FIXTURES: dict[str, str] = {
     'Root/include-02/valid-https.raml': _NO_NETWORK,

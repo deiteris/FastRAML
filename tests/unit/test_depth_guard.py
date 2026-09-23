@@ -1,7 +1,7 @@
 """One ceiling, four recursions, and never a `RecursionError`.
 
-docs/12-performance.md section 14. `ParseOptions.max_depth` governs every
-descent whose depth is bounded only by the input — document conversion in P0,
+docs/12-performance.md § 3. `ParseOptions.max_depth` governs every
+descent whose depth is bounded only by the input — document conversion in P1,
 unwrap and recursion-marking in P9, and the JSON Schema walks — because they all
 defend the same C stack. These live in one file rather than beside each pass
 because the point being pinned is that they are *one* rule.

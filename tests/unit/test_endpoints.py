@@ -1,6 +1,6 @@
 """Stage 2, media types, URI parameters and propagation.
 
-docs/08-templates-and-endpoints.md section 8. `test_source_ir.py` covers the
+docs/08-templates-and-endpoints.md § 6. `test_source_ir.py` covers the
 stage-1 split; this covers what stage 2 makes of what survives it, and the
 P4/P6 driver around it.
 """
@@ -53,7 +53,7 @@ class TestStructure:
         assert 'duplicate resource URI' in messages(error)
 
     def test_templates_with_different_names_coexist(self, workspace):
-        # Comparison is on the template text, unexpanded (docs/08 § 8.1).
+        # Comparison is on the template text, unexpanded (docs/08 § 6.1).
         raml = parse(workspace, '/users/{userId}:\n/users/{username}:\n/users/me:\n')
         assert len(raml.endpoints) == 3
 
@@ -342,7 +342,7 @@ class TestRegisteredForLaterPasses:
 
 
 class TestAnnotationTargets:
-    """The five sites this phase creates (docs/09 § B5).
+    """The five annotation sites endpoint decoding establishes (docs/09 § B4).
 
     A missing `target_scope` is silent — the annotation records the enclosing
     site — so each one needs a test that names it.
@@ -390,7 +390,7 @@ class TestNonApiFragments:
 
 
 class TestParameterEntity:
-    """docs/05 section 5: a bound parameter is an entity, a property is a record."""
+    """docs/05 § 4: a bound parameter is an entity, a property is a record."""
 
     def test_each_map_records_the_binding_it_was_declared_under(self, workspace):
         raml = parse(
@@ -427,11 +427,11 @@ class TestParameterEntity:
         param = raml.endpoints['/items'].operations['get'].request.query_parameters['page']
         assert param.key_pos.is_known
         # The property it holds has nowhere to put this, which is why the
-        # parameter exists (docs/05 section 5).
+        # parameter exists (docs/05 § 4).
         assert not hasattr(param.declaration, 'key_pos')
 
     def test_an_inherited_uri_parameter_is_one_object_not_a_copy(self, workspace):
-        """docs/08 section 8.2: the rewrite is `{**inherited, **own}`."""
+        """docs/08 § 6.2: the rewrite is `{**inherited, **own}`."""
         raml = parse(workspace, '\n/items/{itemId}:\n  /reviews/{reviewId}:\n    get:\n')
         parent = raml.endpoints['/items/{itemId}']
         child = parent.endpoints['/reviews/{reviewId}']

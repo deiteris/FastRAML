@@ -1,4 +1,4 @@
-"""The analysis query catalogue — docs/16-graph.md § 6.
+"""The analysis query catalogue — docs/16-graph.md § 3.1.
 
 Two things are checked, and the second is the one that matters.
 
@@ -149,7 +149,7 @@ securedBy: [oauth]
 @pytest.fixture(scope='module')
 def store(tmp_path_factory):
     """The fixture document, projected and loaded into an RDF store."""
-    oxigraph = pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 § 5.1)')
+    oxigraph = pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 § 3.1)')
     root = tmp_path_factory.mktemp('queries')
     (root / 'api.raml').write_text(API, encoding='utf-8')
     graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
@@ -164,7 +164,7 @@ def rows(store, name: str) -> list:
 
 class TestTheCatalogueIsWellFormed:
     def test_it_is_not_empty(self):
-        assert len(QUERIES) == 9, 'judgements belong in lint; the catalogue keeps reports only (docs/18 § 4.1)'
+        assert len(QUERIES) == 9, 'judgements belong in lint; the catalogue keeps reports only (docs/18 § 1)'
 
     def test_names_are_the_keys(self):
         assert all(name == query.name for name, query in QUERIES.items())
@@ -192,7 +192,7 @@ class TestTheCatalogueIsWellFormed:
         The two spell the same closure — one for a property path, one for
         `Graph.walk` — and a query that quietly stopped following `aliasOf`
         would report a plausible wrong answer, which is the defect docs/16
-        § 2.4 already records once.
+        § 3 already records once.
         """
         assert {term.removeprefix('raml:') for term in REACHES.split('|')} == set(TYPE_EDGES)
 
@@ -226,7 +226,7 @@ class TestTheAnswersAreRight:
     def test_type_fan_in_counts_through_inheritance_and_arrays(self, store):
         """`Entity` is named by no body. It is reached through `User`, which is
         reached through `UserList`'s `items`, which is an *alias* — the hop
-        docs/16 § 2.4 records as the one that is easy to miss.
+        docs/16 § 3 records as the one that is easy to miss.
         """
         counts = {row['name'].value: int(row['operations'].value) for row in rows(store, 'type-fan-in')}
         assert counts['Entity'] >= 3

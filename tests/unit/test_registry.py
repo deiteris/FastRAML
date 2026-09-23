@@ -1,6 +1,6 @@
 """The registry: ids, the parse-context stack, and the stores.
 
-Each test names the rule it protects; see docs/02-architecture.md section 3.
+Each test names the rule it protects; see docs/02-architecture.md § 3.
 """
 
 from __future__ import annotations

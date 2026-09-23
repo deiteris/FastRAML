@@ -57,7 +57,7 @@ class TestAppendIsImmutable:
 class TestInfo:
     def test_info_is_rendered_after_the_message(self):
         # Variable values stay out of `message` so diagnostics group cleanly and
-        # tests can match on the message alone. See docs/11 section 6.
+        # tests can match on the message alone. See docs/11 § 6.
         err = RamlError.new('cannot redefine built-in type', LOC, POS, info={'type': 'string'})
         assert err.head.message == 'cannot redefine built-in type'
         assert err.head.rendered_message() == 'cannot redefine built-in type: type: string'
@@ -86,7 +86,7 @@ class TestRendering:
 
     def test_to_dict_matches_the_reference_shape(self):
         # The shape mirrors go-raml's JSON so fixtures can be diffed between the
-        # two implementations. See docs/14-testing.md section 1.3.
+        # two implementations. See docs/14-testing.md.
         err = RamlError.wrap(
             'unwrap shapes',
             RamlError.new('cannot inherit from different type', LOC, POS, kind=ErrorKind.UNWRAPPING),

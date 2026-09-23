@@ -1,8 +1,8 @@
-"""The view layer's boundary — docs/02-architecture.md section 3, docs/16-graph.md.
+"""The view layer's boundary (docs/02-architecture.md § 2, docs/16-graph.md § 1).
 
 `fastraml/views/` runs after P10 on a finished model. It decides no RAML rule, and
-the model does not know it exists. That was prose until the package existed; the
-tests below are what makes it a boundary rather than an intention.
+the model does not know it exists. The tests below are what make that a boundary
+rather than an intention.
 
 The direction is the whole content of the rule. A view importing the model is
 the point of a view. The model importing a view is how a rule that belongs to
@@ -91,7 +91,7 @@ class TestThePackageCostsNothingToImport:
     def test_only_the_substrates_are_shared_between_views(self):
         """A view importing another *view* would mean a second traversal or a
         second vocabulary. Three modules are substrate rather than view and may
-        be shared: `walk` (one addressing traversal, docs/16 § 4), `graph`
+        be shared: `walk` (one addressing traversal, docs/16 § 2), `graph`
         (what the later views read), and `severity` (the ranking arithmetic
         `backward` and `lint` both need, docs/18 § 1 — they grade on different
         axes and share only the comparisons).

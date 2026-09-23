@@ -1,8 +1,8 @@
 """Stage 1 — the endpoint IR.
 
-docs/08-templates-and-endpoints.md section 3. What this pins is the *split*:
+docs/08-templates-and-endpoints.md § 2.1. What this pins is the *split*:
 exactly four kinds of key are consumed and everything else survives untouched,
-because Phase 6's merge is defined on the YAML tree and needs one to merge into.
+because P4's merge is defined on the YAML tree and needs one to merge into.
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ class TestStructure:
         assert endpoint.endpoints['/{id}'].endpoints['/photos'].full_uri == '/users/{id}/photos'
 
     def test_the_base_uri_is_not_prepended(self):
-        # docs/08 § 8.1: the base is exposed separately on the API.
+        # docs/08 § 6.1: the base is exposed separately on the API.
         assert source('/users:\n', parent_uri='').full_uri == '/users'
 
     def test_declaration_order_is_preserved(self):
@@ -127,7 +127,7 @@ class TestStructure:
 
 class TestRetainedBody:
     def test_the_retained_node_is_not_the_document_s_own(self):
-        # Phase 6 merges into this, and the merge must not reach the document.
+        # P4 merges into this, and the merge must not reach the document.
         text = '/users:\n  description: d\n'
         key, value = next(iter(pairs(compose(text, uri=LOCATION))))
         endpoint = make_source_endpoint(Raml(workspace_root_uri='file:///'), key, value, LOCATION)

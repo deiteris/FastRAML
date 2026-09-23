@@ -1,4 +1,4 @@
-"""Whole-model regression — docs/14-testing.md section 2.
+"""Whole-model regression — docs/14-testing.md § 3.
 
 For inputs where "no error" is too weak an assertion. The TCK scores whether a
 document parses; a unit test asserts the one thing it names. A golden asserts
@@ -78,4 +78,4 @@ def test_model_matches_its_golden(case: Path, request):
 
 def test_there_are_cases():
     """A parametrised test over an empty directory passes and means nothing."""
-    assert len(cases()) >= 10, 'docs/14 § 2 lists the cases worth pinning'
+    assert len(cases()) >= 10, 'docs/14 § 3 lists the cases worth pinning'

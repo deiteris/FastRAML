@@ -1,7 +1,6 @@
 """Property declarations, optionality and pattern properties.
 
-Each test names the rule from docs/05-type-model.md sections 5 and 5.1 that it
-protects.
+Each test names the rule from docs/05-type-model.md § 4 that it protects.
 """
 
 from __future__ import annotations
@@ -71,7 +70,7 @@ class TestPatternProperties:
         assert list(patterns) == ['^a.*']
 
     def test_the_empty_pattern_is_a_pattern_property(self):
-        # docs/05 section 5.1 names this case explicitly.
+        # docs/05 § 4 names this case explicitly.
         _properties, patterns = declarations('properties:\n  //: string\n')
         assert list(patterns) == ['']
 

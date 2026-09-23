@@ -1,7 +1,7 @@
-"""Resource types: the six compile steps, and the priority split they create.
+"""Resource types: the compile steps, and the priority split they create.
 
-docs/08-templates-and-endpoints.md section 5.1. Two of these encode decisions
-that cost a session each: optional methods are filtered *before* the required
+docs/08-templates-and-endpoints.md § 3.1. Two of these encode easy-to-miss
+decisions: optional methods are filtered *before* the required
 variables are recollected, and a resource type's own `is:` entries become
 `rt_traits` rather than `traits`, which is what keeps them behind the
 resource's own.
@@ -137,7 +137,7 @@ class TestOptionalMethods:
 
 
 class TestTraitPriority:
-    """The `traits` / `rt_traits` split (docs/08 sections 5.1 and 5.2)."""
+    """The `traits` / `rt_traits` split (docs/08 § 3.1 and § 3.2)."""
 
     FOUR_CLASSES = API + (
         'traits:\n'
@@ -174,7 +174,7 @@ class TestTraitPriority:
 
 class TestProvenance:
     def test_a_fragment_resource_type_resolves_in_its_own_namespace(self, workspace):
-        # Deviation D4: an `!include`d template is self-contained. Its `Thing`
+        # docs/01 § 4.3: an `!include`d template is self-contained. Its `Thing`
         # is the library it imports, not the identically named type the
         # applying document happens to declare.
         root = workspace(

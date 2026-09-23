@@ -1,6 +1,6 @@
 """`example:` and its two forms.
 
-See docs/05-type-model.md section 6.
+See docs/05-type-model.md § 5.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""`ParseOptions(regex_engine='re2')` — deviation D3.
+"""`ParseOptions(regex_engine='re2')` (docs/01 § 4.2).
 
 `re` is the default because it is closer to ECMA-262, which is what the spec
 means by a regular expression. `re2` is linear-time and is what a server parsing
@@ -110,7 +110,7 @@ class TestJsonSchemaPatterns:
         assert shape.as_shape().shape.pattern is None
 
     def test_validation_inside_a_schema_is_not_covered(self, workspace):
-        """The documented limit of D3, as a test so it cannot rot silently.
+        """The documented limit of docs/01 § 4.2, as a test so it cannot rot silently.
 
         `jsonschema` calls `re.search` directly for `pattern`, so a backreference
         inside a schema still works under `regex_engine='re2'`. There is no hook

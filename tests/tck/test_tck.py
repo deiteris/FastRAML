@@ -11,7 +11,7 @@ Regenerate after intentional change:
 
     FASTRAML_TCK_DIR=... uv run pytest tests/tck --update-ratchet
 
-See docs/14-testing.md section 1.
+See docs/14-testing.md § 2.
 """
 
 from __future__ import annotations

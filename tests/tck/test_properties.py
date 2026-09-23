@@ -1,11 +1,11 @@
-"""docs/14-testing.md section 4's laws, checked over the corpus.
+"""docs/14-testing.md § 4's laws, checked over the corpus.
 
 `test_invariants.py` next door checks the *architectural* invariants of
 docs/02 § 4 — what a `Raml` looks like after a successful parse. This file
 checks the *behavioural* laws: run the parser twice, or two ways, and compare.
 
-Several of these are listed in doc 14 § 4 as hypothesis properties and are
-realised here against the TCK instead. That is deliberate. A generator writes
+Some of these could be hypothesis properties and are realised here against
+the TCK instead. That is deliberate. A generator writes
 the documents someone thought to describe; the corpus contains the ones people
 actually wrote, including the awkward ones nobody would generate. Where a law
 genuinely needs generated input — the merge laws — it lives in
@@ -145,7 +145,7 @@ class TestValidationPathsAgree:
 
 
 class TestDeterminism:
-    """Law 9. Two parses of one input produce the same model.
+    """Two parses of one input produce the same model.
 
     The only check that would catch a pass reading iteration order off a set, or
     state surviving on a class attribute between parses.
@@ -176,7 +176,7 @@ def _projection(raml) -> list:
 
 
 class TestI2AndI3:
-    """Law 6. One compose per file, one decode per fragment.
+    """Invariants I2 and I3: one compose per file, one decode per fragment.
 
     Checked as **canonicalisation**, which is the half that fails silently.
     `./a/../b.raml` and `b.raml` reaching two cache entries decodes the file
@@ -205,7 +205,7 @@ class TestI2AndI3:
 
 
 class TestPositionSanity:
-    """Law 8. Every position lies inside the file it names, and is ordered.
+    """Every position lies inside the file it names, and is ordered.
 
     Positions are not decoration — they are what lets the model back a linter or
     an LSP (docs/11 § 3) — and a merely *plausible* position is invisible to the
@@ -256,7 +256,7 @@ class TestPositionSanity:
 
 
 class TestTheGraphProjectsTheWholeCorpus:
-    """Law 12 — every model that parses has a graph (docs/16 § 1).
+    """Every model that parses has a graph (docs/16 § 1).
 
     The unit fixtures in `tests/unit/test_graph.py` are written to exercise one
     rule each; the corpus is where the shapes nobody thought of live. A
@@ -339,7 +339,7 @@ class TestTheGraphProjectsTheWholeCorpus:
 
 
 class TestEveryTypeRenders:
-    """Law 13 — every declared type has an effective view (docs/16 § 9).
+    """Every declared type has an effective view (docs/16 § 4).
 
     Two claims, and the second is the one that can rot quietly. `render` must
     not raise on anything the corpus declares, and its output must **parse as
@@ -424,7 +424,7 @@ class TestEveryTypeRenders:
 
 
 class TestNothingArrivesUndeclared:
-    """Law 19 — the generated contract covers what the projection emits.
+    """The generated contract covers what the projection emits (docs/16 § 7).
 
     `fastraml/views/bindings/` reads source: `tree.py`'s AST for the key sets
     and the kind classes' annotations for the facets. Reading source is a

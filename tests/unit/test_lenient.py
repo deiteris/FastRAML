@@ -1,4 +1,4 @@
-"""`parse_lenient` — docs/13-public-api.md section 1.
+"""`parse_lenient` — docs/13-public-api.md § 1.
 
 Two properties, and they pull against each other. It must return a model useful
 enough for an editor to keep working on a document mid-edit, and it must not

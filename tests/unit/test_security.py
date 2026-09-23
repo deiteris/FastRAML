@@ -1,9 +1,10 @@
-"""Security schemes: docs/09-security-and-annotations.md Part A.
+"""Security schemes: docs/09-security-and-annotations.md § A.
 
 Almost every test here is a rejection, because almost everything the spec says
 about security schemes is a constraint on the declaration. The exceptions are
-the four that matter most: `securedBy: [null]` on a method *removing* inherited
-security, scope narrowing, and `describedBy:` shapes reaching the later passes.
+the ones that matter most: `securedBy: [null]` on a method *replacing*
+inherited security, scope narrowing, and `describedBy:` shapes reaching the
+later passes.
 """
 
 from __future__ import annotations
@@ -302,7 +303,7 @@ class TestScopeNarrowing:
 
 
 class TestAnnotationTargets:
-    """The two sites this phase creates (docs/09 § B5).
+    """The two annotation sites security-scheme decoding establishes (docs/09 § B4).
 
     A missing `target_scope` is silent — the annotation records the enclosing
     site instead — so each new site needs a test that names it.

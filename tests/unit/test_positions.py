@@ -1,4 +1,4 @@
-"""Source positions. See docs/11-diagnostics.md section 3."""
+"""Source positions. See docs/11-diagnostics.md § 3."""
 
 from __future__ import annotations
 

@@ -1,14 +1,13 @@
-"""The conformance corpus, answered in all three languages — docs/16 § 11.11e.
+"""The conformance corpus, answered in all three languages — docs/16 § 7.
 
 One set of questions, one set of expected answers, and a driver per language
 that reads the first and prints its own. This file does the comparing; the
 drivers hold no expectations.
 
 What it exists to catch is the failure the per-backend suites structurally
-cannot: three readings of § 11.10 that are each locally correct and not the same
-rule. Before this, a link was "sole key is `$ref`" in Python and TypeScript and
-"no `type` key" in Go — two predicates, three tests, and nothing asking whether
-they agreed.
+cannot: three readings of the traversal contract (docs/16 § 6.1) that are each
+locally correct and not the same rule, such as a link recognised as "sole key
+is `$ref`" in one language and "no `type` key" in another.
 
 Go's driver needs a toolchain and TypeScript's needs the viewer's
 `node_modules`, so both skip where those are absent. CI's `bindings` job

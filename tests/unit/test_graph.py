@@ -3,7 +3,7 @@
 Three things are worth pinning here and nothing else is:
 
 - **the IRI scheme**, because every consumer and every cached query result
-  depends on an IRI meaning the same thing twice (§ 3);
+  depends on an IRI meaning the same thing twice (docs/16 § 2);
 - **the edges that answer the questions the projection exists for**, walked in
   both directions, because a projection that builds without error and links
   nothing still builds without error;
@@ -94,7 +94,7 @@ def iris(graph: Graph, kind: str) -> list[str]:
 
 
 class TestIris:
-    """docs/16 § 3. An IRI is a promise that the same entity gets the same name."""
+    """docs/16 § 2. An IRI is a promise that the same entity gets the same name."""
 
     def test_a_declared_type_lands_at_its_declaration_iri(self, graph):
         assert graph.find('User') == [f'{DEFAULT_BASE}/lib.raml#/declarations/types/User']
@@ -132,7 +132,7 @@ class TestIris:
             assert 'file:' not in iri
 
     def test_a_subschema_is_addressed_by_its_own_document(self, workspace):
-        """docs/16 § 3.3. A `$ref` target is one thing however many RAML types
+        """docs/16 § 3. A `$ref` target is one thing however many RAML types
         reach it, so its address comes from its document and JSON Pointer — the
         way `unit()` makes a library type independent of who imports it.
 
@@ -231,7 +231,7 @@ class TestIris:
         ]
 
     def test_a_resource_with_a_display_name_is_found_by_its_path_too(self, workspace):
-        """docs/16 § 3.3: `show api.raml /books` answered `no such node` when
+        """docs/16 § 3: `show api.raml /books` answered `no such node` when
         `/books` declared `displayName: Books`, the name it is listed under."""
         root = workspace(
             {'api.raml': '#%RAML 1.0\ntitle: D\n/books:\n  displayName: Books\n  get:\n  /{isbn}:\n    get:\n'}
@@ -285,7 +285,7 @@ class TestTheEdgesThatAnswerQuestions:
         assert {graph.kind_of(path.target) for path in found} >= {'Operation', 'EndPoint', 'Api'}
 
     def test_a_route_names_the_nodes_between(self, graph):
-        """The thing a SPARQL property path cannot return (docs/16 § 5)."""
+        """The thing a SPARQL property path cannot return (docs/16 § 3)."""
         route = graph.route(iris(graph, 'Operation')[0], graph.find('User')[0], USE_EDGES)
         assert route is not None
         assert len(route.predicates) == len(route.nodes) - 1
@@ -293,7 +293,7 @@ class TestTheEdgesThatAnswerQuestions:
         assert 'items' in route.predicates, 'UserList is an array of User'
 
     def test_inheritance_survives_unwrap(self, graph):
-        """docs/16 § 1.1: this edge is why there is one graph and not two."""
+        """docs/16 § 3: this edge is why there is one graph and not two."""
         parents = graph.out(graph.find('User')[0], ['inherits'])
         assert [graph.label(edge.object) for edge in parents] == ['Entity']
 
@@ -303,7 +303,7 @@ class TestTheEdgesThatAnswerQuestions:
         assert len({path.target for path in reached}) == len(reached), 'each node reached once'
 
     def test_a_parameter_carries_the_facts_that_belong_to_the_use(self, graph):
-        """docs/16 § 2.3 — `required` is a fact about the use, not the type."""
+        """docs/16 § 3 — `required` is a fact about the use, not the type."""
         parameter = next(iri for iri in iris(graph, 'Parameter') if graph.label(iri) == 'limit')
         attributes = graph.nodes[parameter].attributes
         assert attributes['binding'] == 'query'
@@ -336,7 +336,7 @@ class TestTheEdgesThatAnswerQuestions:
         """A `refs` that answers this only for types would be half a tool.
 
         `oauth2.0` is also the corpus's reminder that a dot in a name is not
-        always a namespace separator (docs/16 § 2.2).
+        always a namespace separator (docs/16 § 3).
         """
         root = workspace(
             {
@@ -361,7 +361,7 @@ class TestTheEdgesThatAnswerQuestions:
 
 class TestFacetLiterals:
     def test_a_decimal_facet_does_not_pass_through_float(self, workspace):
-        """docs/16 § 2.5. `1.1` reaching a reader as `1.100000000000000088`
+        """docs/16 § 3. `1.1` reaching a reader as `1.100000000000000088`
         would be a defect of the projection even though nothing compares it.
         """
         root = workspace(
@@ -380,7 +380,7 @@ class TestSerialisation:
 
     @staticmethod
     def loaded(graph: Graph, form: str):
-        oxigraph = pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 § 5.1)')
+        oxigraph = pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 § 3.1)')
         formats = {'ntriples': oxigraph.RdfFormat.N_TRIPLES, 'turtle': oxigraph.RdfFormat.TURTLE}
         store = oxigraph.Store()
         store.load(io.StringIO('\n'.join(getattr(graph, f'to_{form}')())), format=formats[form])
@@ -430,7 +430,7 @@ class TestSerialisation:
 
 
 class TestTheInventory:
-    """`entries` and `suggest` — docs/16 § 3.5. What a reader can name.
+    """`entries` and `suggest` — docs/16 § 3. What a reader can name.
 
     `find` turns a name into a node; these two answer the question that comes
     first, which is what names there are.
@@ -491,7 +491,7 @@ class TestTheInventory:
 
 
 class TestFindDoesNotSplitOneEntity:
-    """docs/16 § 3.3. A node passes its name to what it contains."""
+    """docs/16 § 3. A node passes its name to what it contains."""
 
     QUERY = """#%RAML 1.0
 title: T
@@ -582,7 +582,7 @@ ERR = """{
 
 
 class TestSchemaTypesAreNotLeaves:
-    """docs/16 § 2.6. The graph walked the unprojected shape.
+    """docs/16 § 3. The graph walked the unprojected shape.
 
     A `JsonShape` holds no `ScalarFacet` slots and no properties, so a schema
     type had no children and no attributes: `deps` reported it was made of
@@ -656,7 +656,7 @@ class TestDeclarationsArePositioned:
 
 
 class TestEveryNodeIsBackedByTheModel:
-    """docs/16 section 1: a projection holds references, and invents nothing.
+    """docs/16 § 1: a projection holds references, and invents nothing.
 
     A node with no model object behind it would be something this layer made
     up. The type checker is what enforces that at the fifteen places a node is
@@ -690,7 +690,7 @@ class TestEveryNodeIsBackedByTheModel:
 
 
 class TestNameIsTheCheapPathToTheSameAnswer:
-    """docs/12 § 19e: `GraphNode.name` exists so `find` and `label` need not
+    """docs/12: `GraphNode.name` exists so `find` and `label` need not
     build a whole attribute dictionary to read one key.
 
     It is a second expression of something `attributes` already says, which is
@@ -759,7 +759,7 @@ class TestNameIsTheCheapPathToTheSameAnswer:
 
 
 class TestAttributesAreDerivedNotStored:
-    """docs/16 section 2.8: this layer owns the vocabulary, not the values."""
+    """docs/16 § 3: this layer owns the vocabulary, not the values."""
 
     def test_a_node_stores_no_attribute_dict(self, graph: Graph):
         node = graph.nodes[graph.find('User')[0]]
@@ -821,7 +821,7 @@ securitySchemes:
 
 
 class TestAKindAndItsEntityCannotDiverge:
-    """docs/16 section 2.7: a node's kind is its class.
+    """docs/16 § 3: a node's kind is its class.
 
     `TypeNode` holds a `BaseShape`, `ResponseNode` holds a `Response`. The
     entity's type is a parameter of the class, so a mismatched pair does not
@@ -880,7 +880,7 @@ uses:
 
 
 class TestAReferenceThroughALibraryReachesTheDeclaration:
-    """docs/16 section 2.2: `appliesTrait`, `appliesResourceType`, `securedBy`
+    """docs/16 § 3: `appliesTrait`, `appliesResourceType`, `securedBy`
     and `annotation` point at the declaration, not at a stand-in for it.
 
     A qualified name is the case that matters. `shared.paged` names one trait in
@@ -936,7 +936,7 @@ class TestAReferenceThroughALibraryReachesTheDeclaration:
 
 
 class TestOneNameInTwoLibraries:
-    """docs/16 section 2.2: an application points at what was applied.
+    """docs/16 § 3: an application points at what was applied.
 
     `a.paged` and `b.paged` are one name in two libraries. Matching the name
     cannot tell them apart and returns whichever was declared first, so the
@@ -971,7 +971,7 @@ class TestOneNameInTwoLibraries:
 
 
 class TestTheProjectionRules:
-    """docs/16 section 1: what "a projection" forbids, one test per clause.
+    """docs/16 § 1: what "a projection" forbids, one test per clause.
 
     The rules are here rather than spread across the classes above because each
     is a property of the whole layer, and each was stated as prose long enough
@@ -1010,7 +1010,7 @@ class TestTheProjectionRules:
 
 
 class TestEveryFileThatDeclaresSomethingHasANode:
-    """docs/16 section 2.2: `definedIn` names a file, and that file is a node.
+    """docs/16 § 3: `definedIn` names a file, and that file is a node.
 
     A typed fragment is one declaration and has no `types:` map, so walking the
     maps never reaches it — it is reached as a parent of whatever `types:` entry

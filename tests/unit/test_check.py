@@ -1,7 +1,7 @@
 """`check()` — is a *declaration* self-consistent?
 
-docs/10-validation.md section 2, one test per row of its table, plus the
-discriminator rules of docs/05 section 9 which are checked here rather than at
+docs/10-validation.md § 2, one test per row of its table, plus the
+discriminator rules of docs/05 § 6 which are checked here rather than at
 decode time because the property named may be inherited.
 
 This asks nothing about data. `tests/unit/test_validate.py` is the other half.
@@ -107,8 +107,8 @@ class TestNumeric:
         assert parse(workspace, f'  T:\n    type: integer\n    format: {declared}\n') is None
 
     def test_an_integer_rejects_a_number_format(self, workspace):
-        # Deviation D2: the spec's literal reading allows it, go-raml does not,
-        # and neither do we.
+        # docs/01 § 4.1: the spec's literal reading allows it, go-raml does
+        # not, and neither do we.
         error = parse(workspace, '  T:\n    type: integer\n    format: float\n')
         assert error is not None
         assert traces(error)[0].info == {'format': 'float', 'type': 'integer'}
@@ -235,7 +235,7 @@ class TestEnum:
 
 
 class TestDiscriminator:
-    """docs/05 section 9."""
+    """docs/05 § 6."""
 
     def test_the_named_property_must_exist(self, workspace):
         error = parse(workspace, '  T:\n    properties:\n      a: string\n    discriminator: kind\n')
@@ -343,14 +343,14 @@ class TestDiscriminator:
 
     def test_a_union_refuses_a_discriminator_at_decode_time(self, workspace):
         # The one discriminator rule that is *not* P10's: a union has no
-        # properties, so it can never become valid later (docs/05 § 9).
+        # properties, so it can never become valid later (docs/05 § 6).
         error = parse(workspace, '  T:\n    type: string | integer\n    discriminator: kind\n')
         assert error is not None
         assert 'discriminator cannot be used with union type' in messages(error)
 
 
 class TestDiscriminatorValuesInExamples:
-    """A discriminator value must name a type that exists (docs/05 § 9).
+    """A discriminator value must name a type that exists (docs/05 § 6).
 
     The declaration graph, not conformance — which is why `strict: false` does
     not waive it.

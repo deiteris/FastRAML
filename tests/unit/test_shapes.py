@@ -1,6 +1,6 @@
 """The shape model's foundations.
 
-See docs/05-type-model.md section 1.
+See docs/05-type-model.md § 1.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def make_base(raml: Raml | None = None, **kwargs) -> BaseShape:
 
 class TestBaseShape:
     def test_the_kind_is_unset_until_make_shape_attaches_one(self):
-        # docs/05 section 1: the kind is not known when the object is created.
+        # docs/05 § 1: the kind is not known when the object is created.
         base = make_base(name='Foo')
         assert (base.type, base.shape) == ('', None)
 
@@ -70,7 +70,7 @@ class TestBaseShape:
 
 
 class TestTypeExprRef:
-    """docs/06 section 3.2 — one record per name inside a type expression.
+    """docs/06 § 3 — one record per name inside a type expression.
 
     Nothing in the parser reads these; P7 emits them so a future LSP can offer
     go-to-definition without re-lexing.
@@ -116,7 +116,7 @@ class TestDeclarationFacets:
 
     def test_properties_fills_two_constructor_keywords(self):
         # `/regex/` keys inside `properties:` are routed to pattern properties,
-        # so one facet yields two (docs/05 section 5.1).
+        # so one facet yields two (docs/05 § 4).
         assert PROPERTIES.fields == ('properties', 'pattern_properties')
         assert SHAPE_LIST.fields == ('any_of',)
 

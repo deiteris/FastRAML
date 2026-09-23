@@ -1,6 +1,6 @@
 """Path and URI handling.
 
-The rules under test come from docs/03-yaml-and-io.md section 8. Windows is the
+The rules under test come from docs/03-yaml-and-io.md § 8. Windows is the
 platform that breaks these, so its cases are exercised on every platform where
 the behaviour is platform-independent and marked where it is not.
 """
@@ -101,7 +101,7 @@ class TestResolveUriRef:
 
     def test_absolute_reference_replaces_the_path(self):
         # RFC 3986 resolution. RAML-absolute includes are rewritten against the
-        # workspace root *before* reaching this function; see docs/03 section 4.1.
+        # workspace root *before* reaching this function; see docs/03 § 4.1.
         assert resolve_uri_ref('file:///a/b/api.raml', '/x.raml') == 'file:///x.raml'
 
     def test_url_reference_wins_outright(self):

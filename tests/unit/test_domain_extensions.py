@@ -1,6 +1,6 @@
 """P8 — binding an `(annotation)` application to the type it names.
 
-See docs/09-security-and-annotations.md sections B4 and B5. The two halves are
+See docs/09-security-and-annotations.md § B3 and § B4. The two halves are
 separate on purpose: this pass records *where* an annotation was applied and
 *what* it was declared as. Comparing the two against `allowedTargets` is P10's,
 and lives with the rest of validation.
@@ -16,7 +16,7 @@ from fastraml.domains import DomainLocation
 API = '#%RAML 1.0\ntitle: T\n'
 LIB = '#%RAML 1.0 Library\n'
 #: Declared as `any` throughout: P8 binds the name, and nothing here is about
-#: the value. Instance validation against the declaration is Phase 8's.
+#: the value. Instance validation against the declaration is P10's.
 DECLARE = 'annotationTypes:\n  ann: any\n'
 
 
@@ -57,7 +57,7 @@ class TestBinding:
         assert extensions(raml)['a.b.ann'].defined_by is not None
 
     def test_the_lookup_falls_back_to_data_types(self, workspace):
-        # docs/04 § 3.1: an annotation type may extend a data type, so a name
+        # docs/04 § 3: an annotation type may extend a data type, so a name
         # found only under `types:` still binds.
         raml = parse(workspace, {'api.raml': API + 'types:\n  ann: string\n(ann): x\n'})
         assert extensions(raml)['ann'].defined_by is raml.types_in(raml.location)['ann']
@@ -145,7 +145,7 @@ class TestTargets:
 
     def test_a_facet_annotation_inherits_the_enclosing_declaration(self, workspace):
         # The annotated-scalar form. The spec's target vocabulary has no member
-        # for a facet, so the site is what the facet belongs to (docs/09 § B5).
+        # for a facet, so the site is what the facet belongs to (docs/09 § B4).
         raml = parse(
             workspace,
             {

@@ -1,14 +1,14 @@
-"""docs/12-performance.md Part 4's one hard requirement, measured.
+"""The linearity bound of docs/12-performance.md § 5, measured.
 
 Skipped unless `FASTRAML_BENCH=1`, the same way the TCK skips without its fixture
 directory: it costs seconds, not milliseconds, and a developer running the unit
 suite in a loop should not pay for it.
 
 Only *linearity* is asserted. Absolute time is a property of the machine and is
-recorded in `bench/baselines.json` against a fingerprint, not gated here — a
-wall-clock assertion in a test suite is a flake generator, and docs/12 Part 4
-already calls the absolute number a goal rather than a gate. Superlinearity is
-different: it means a cache is being missed, which is a bug on any machine.
+recorded in `bench/baselines.json` against a fingerprint, not gated here: a
+wall-clock assertion in a test suite is a flake generator (docs/12 § 5).
+Superlinearity is different: it means a cache is being missed, which is a bug
+on any machine.
 """
 
 from __future__ import annotations

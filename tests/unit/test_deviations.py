@@ -1,15 +1,14 @@
-"""The deliberate deviations — docs/01-scope-and-coverage.md section 4.
+"""The deliberate deviations: docs/01-scope-and-coverage.md § 3 and § 4.
 
 Each is a decision, not an accident, and each is supposed to be visible to a
 user. That second half is the part that rots: a deviation can stay true in
-behaviour while the message that was meant to explain it drifts or never
-existed. D1 spent nine phases documented and unimplemented, rejecting `.xsd`
-with `unknown fragment kind` — correct, and pointing the author at the wrong
-thing to fix.
+behaviour while the message that was meant to explain it drifts, as rejecting
+`.xsd` with `unknown fragment kind` would point the author at the wrong thing
+to fix.
 
-Deviations with a natural home elsewhere are tested there and named here so the
-list can be read as a whole: D3 in `test_regex_engine.py`, D4 in
-`test_references.py`, D5 in `test_loaders.py`, D9 and D10 in `test_yamlnode.py`.
+Deviations with a natural home elsewhere are tested there: regex engines in
+`test_regex_engine.py`, fragment namespaces in `test_references.py`, loading in
+`test_loaders.py`, and the YAML scanner limits in `test_yamlnode.py`.
 """
 
 from __future__ import annotations
@@ -36,7 +35,7 @@ class TestD1NoXsd:
         assert 'xml schema external types are not supported' in messages(caught.value)
 
     def test_it_is_not_the_generic_header_diagnostic(self, workspace):
-        """What the behaviour was before Phase 9, and why it was not enough."""
+        """The generic header diagnostic would point the author at the wrong fix."""
         root = workspace({'lib.raml': LIB + 'types:\n  S: !include s.xsd\n', 's.xsd': XSD})
         with pytest.raises(RamlError) as caught:
             parse_from_path(root / 'lib.raml')

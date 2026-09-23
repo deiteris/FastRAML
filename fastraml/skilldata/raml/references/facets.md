@@ -170,6 +170,7 @@ Rules:
 - A facet name may not collide with a built-in facet of that type, nor with any
   facet an ancestor declared.
 - Two parents declaring the same user-defined facet makes the subtype invalid.
+  fastraml does not report this.
 
 ## Type inference
 

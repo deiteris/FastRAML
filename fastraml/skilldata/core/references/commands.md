@@ -5,9 +5,13 @@ covers what each flag does.
 
 ## Flags shared by every command
 
-These work on every command that takes a FILE (`skills` parses no RAML, so it
-ignores them):
+Every command that takes a FILE accepts these; `skills` parses no RAML and has
+none of them:
 
+- `--config FILE` — the fastraml configuration file, in YAML. Its `parser:`
+  section sets parse options (`workspaceRoot`, `maxIncludeSize`, `maxDepth`,
+  `regexEngine`, `remote`), `lint:` configures `lint`, and `compatibility:`
+  configures `compat`. A flag on the command line wins over the file.
 - `-w ROOT`, `--workspace-root ROOT` — confine file reads to this directory.
   Defaults to the folder holding the file you named, which is why an `!include`
   pointing at a parent folder fails until you set this.
@@ -34,8 +38,8 @@ Check the effective document against named rules. Exits 1 when any finding is at
 the `--fail-on` severity or worse; by default `warning` and `info` do not fail
 the run.
 
-- `--config FILE` — lint configuration in YAML: which rulesets, categories and
-  rules are enabled, and at what severity.
+- `--config FILE` — the shared configuration file; its `lint:` section chooses
+  which rulesets, categories and rules are enabled, and at what severity.
 - `--severity S` — show this severity **and everything worse**. Values: `error`,
   `warning`, `info`. Default `info`, which shows everything. Filters the report;
   does not change the exit code.
@@ -60,6 +64,8 @@ the run.
   then exit. Needs no document.
 - `--metrics` — what each rule and provider cost, written to **stderr** so
   stdout stays parseable.
+- `-o FILE`, `--output FILE` — write the report to a file, UTF-8 with LF
+  newlines.
 
 Only the `spec` rules run by default. The `security`, `http`,
 `problem-details`, `i-json` and `style` sets and any plugin rules are opt-in
@@ -139,6 +145,7 @@ Print the whole effective document as addressed JSON.
 
 - `--positions` — print the source span of every declaration instead of the
   document.
+- `-o FILE`, `--output FILE` — write to a file, UTF-8 with LF newlines.
 
 ## `fastraml serve FILE`
 
@@ -157,6 +164,7 @@ Project the model as a graph.
 
 - `--format nt|turtle|dot|json` — N-Triples, Turtle, Graphviz DOT, or plain
   JSON. Default: `turtle`.
+- `-o FILE`, `--output FILE` — write to a file, UTF-8 with LF newlines.
 
 ## `fastraml openapi FILE`
 
@@ -186,20 +194,28 @@ Other flags:
 - `--list` — list the catalogue and exit. Needs no document and no `pyoxigraph`.
 - `--show NAME` — print one catalogue query rather than running it. Same.
 - `--json` — JSON Lines rather than a table.
+- `-o FILE`, `--output FILE` — write to a file, UTF-8 with LF newlines.
 
 `SELECT` prints TSV, `ASK` prints `true` or `false`, and `CONSTRUCT` and
 `DESCRIBE` print N-Triples.
 
 ## `fastraml skills ACTION [NAME ...]`
 
-Print the agent guides this CLI ships with.
+Print or install the agent guides this CLI ships with.
 
 - `fastraml skills list` — the available guides and what each covers.
 - `fastraml skills get NAME` — print one guide. Accepts several names.
-- `--full` — also print each guide's reference files.
-- `--json` — structured output rather than Markdown.
+  - `--full` — also print each guide's reference files.
+  - `--json` — structured output rather than Markdown.
+- `fastraml skills install [NAME ...]` — copy guides into a skills directory.
+  With no name it installs `fastraml`, the stub that loads the rest from the
+  CLI. The default directory is `./.agents/skills`.
+  - `--user` — install under `~/.agents/skills` instead.
+  - `--dir PATH` — install into this directory; overrides `--user`.
+  - `--force` — replace a guide that is already installed. Without it, an
+    existing file makes the command exit 1 and write nothing.
 
-Parses no RAML, so it ignores the shared flags.
+Parses no RAML, so it takes none of the shared flags.
 
 ## `fastraml --version`
 

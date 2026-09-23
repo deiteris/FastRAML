@@ -130,8 +130,10 @@ the wire:
   response bodies, and the schemas below them.
 - **Documentation**: prose that changed on neither side.
 
-Each side is split again into **Removed**, **Changed** and **Added**, worst kind
-first, and a report opens with a **How to read this** legend defining them.
+Each side is split again into **Removed**, **Changed** and **Added**. The table
+holding the most severe row comes first, so the order varies; `Removed` before
+`Changed` before `Added` only breaks ties. A report opens with a **How to read
+this** legend defining them.
 
 Columns vary by table. Always present are `Where` and `Compatibility`. A
 `Changed` table adds `Change` and states its transition in one `Detail` cell as

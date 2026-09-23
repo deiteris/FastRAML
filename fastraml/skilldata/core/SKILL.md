@@ -1,6 +1,6 @@
 ---
 name: core
-description: Core fastraml usage guide. Read this before running any fastraml command. Covers validating a RAML document, listing what it declares, reading one type or endpoint with inheritance and traits merged in, tracing what uses a type, comparing two versions for breaking changes, exporting the model, and the workspace-root error that catches everyone first. Use when a .raml file is involved and you need to check it for errors, find out what an API declares, work out what a change breaks, or audit a spec.
+description: Core fastraml usage guide. Read this before running any fastraml command. Covers validating a RAML document, listing what it declares, reading one type or endpoint with inheritance and traits merged in, tracing what uses a type, comparing two versions for breaking changes, exporting the model, and the workspace-root error that catches everyone first. Use when a .raml file is involved and you need to check it for errors, find out what an API declares, work out what a change breaks, or audit a spec. For writing RAML itself, load the raml guide instead.
 license: MIT
 allowed-tools: Bash(fastraml:*) Read
 ---
@@ -31,10 +31,11 @@ uv tool install git+https://github.com/deiteris/FastRAML
 Inside a checkout of that repository you can instead prefix every command with
 `uv run`, as in `uv run fastraml --version`.
 
-Two features need an extra package. Everything else needs nothing:
+Three features need an extra package. Everything else needs nothing:
 
 - `fastraml query` needs `pyoxigraph`. Without it, the command tells you so and
   exits 1.
+- `fastraml serve` needs `fastraml-viewer`, the `fastraml[serve]` extra.
 - The `-r` flag, which allows `!include` over HTTP, needs `httpx` or `requests`.
 
 ## Other guides
@@ -174,7 +175,7 @@ with a type, so it appears as a `Type`.
 a declaration, such as individual properties, because those outnumber the
 declarations roughly twenty to one. Reach those with `deps` instead.
 
-If nothing matches, `list` prints `nothing` to stderr and exits 1.
+If nothing matches, `list` prints `nothing matching ...` to stderr and exits 1.
 
 ## Read one type or endpoint
 
@@ -279,16 +280,18 @@ fastraml compat --no-workspace-guard old/api.raml new/api.raml
 
 **Removed**
 
-| Where | Path | Detail | Compatibility |
+| Where | Path | Type | Compatibility |
 |---|---|---|---|
-| `200` body `application/json` | `$.title` | optional string | Breaking |
+| `200` body `application/json` | `$.discount` | optional `number` | Breaking |
 ```
 
 `compat` exits 1 when any change is breaking, so it gates CI without you parsing
 the output. Results are grouped by operation, then by side of the wire (Request
-for what a caller sends, Response for what it receives), then by kind. Added and
-removed operations, and anything the API root declares for every operation,
-appear once at the top. Each report opens with a legend for its sections.
+for what a caller sends, Response for what it receives), then by kind: Removed,
+Changed or Added. Changes the API root makes for every operation, added and
+removed operations, and edits that reach several operations each appear once,
+above the per-operation sections. Each report opens with a legend for its
+sections.
 
 Omit `-w` when each version is self-contained below its own folder. Use one
 common `-w` when both versions intentionally share a trusted workspace, or
@@ -298,8 +301,9 @@ source-file addresses.
 
 Narrow the output with `--breaking-only`, or with `--severity`, which is a
 threshold: it shows that impact and everything worse, so `--severity review`
-hides compatible and cosmetic rows. Neither flag changes the exit code. Use `--json` to regrade the changes under your own
-policy. For CI, impact policy, JSON fields and project overrides, run:
+hides compatible and cosmetic rows. Neither flag changes the exit code. Use
+`--json` when a program reads the result. For CI, impact policy, JSON fields and
+project overrides, run:
 
 ```bash
 fastraml skills get backward
@@ -320,12 +324,12 @@ fastraml openapi -w . api.raml -o api.yaml   # To a file, UTF-8 with LF newlines
 fastraml serve -w . api.raml                 # In a browser (needs fastraml-viewer)
 ```
 
-Use these to feed another tool, not to read — `serve` is the reading one: it
-runs the same projection in a browser, on loopback by default. It needs
-`fastraml-viewer` (the `fastraml[serve]` extra); without it the command says so
-and exits 1. Choose `tree` when you need the
-contents, because it inlines examples, defaults and every container. Choose
-`graph` when you need identity and references, which is what it carries instead.
+`tree`, `graph` and `openapi` feed another tool. `serve` is for a person to
+read: it shows the `tree` output in a browser, on loopback by default, and exits
+1 naming the package when `fastraml-viewer` is missing. Choose `tree` when you
+need the contents, because it inlines examples, defaults and every container.
+Choose `graph` when you need identity and references, which is what it carries
+instead.
 
 Both assign the same addresses to the same nodes, so an address from one names
 the same thing in the other.
@@ -360,10 +364,9 @@ fastraml lint --list-rules                    # what is available
 fastraml lint --explain unused-type           # one rule, with good and bad RAML
 ```
 
-Only the `spec` rules run by default; the `security`, `http`,
-`problem-details`, `i-json` and `style` sets are opt-in, and house style is
-yours to add.
-Both need a config file:
+Only the `spec` rules run by default. The `security`, `http`,
+`problem-details`, `i-json` and `style` sets are opt-in, and house rules come
+from a plugin; both are enabled in a config file:
 
 ```bash
 fastraml skills get lint

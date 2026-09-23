@@ -1,6 +1,6 @@
 ---
 name: sparql
-description: Write your own SPARQL query against a RAML model with fastraml query. Covers the built-in catalogue, the urn:fastraml:ns:raml# namespace, all 14 node kinds and 22 edges, the three traps that produce plausible wrong answers (the range hop, aliasOf, and JSON Schema types), and the four SPARQL result shapes. Use when auditing a whole API document and no catalogue query fits the question.
+description: Write your own SPARQL query against a RAML model with fastraml query. Covers the built-in catalogue, the urn:fastraml:ns:raml# namespace, all 14 node kinds and 22 edges, the three traps that produce plausible wrong answers (the range hop, aliasOf, and JSON Schema types), and the four SPARQL result shapes. Use when auditing a whole API document and no catalogue query fits the question. Not for one named type or endpoint (fastraml refs, deps, show) or for defects with a severity (fastraml lint).
 license: MIT
 allowed-tools: Bash(fastraml:*) Read
 ---
@@ -76,10 +76,11 @@ long-lived in Python, read `RAML_NS` from the package instead of hard-coding it.
 `Parameter`, `Property`, `PatternProperty`, `Type`, `SecurityScheme`, `Trait`,
 `ResourceType`.
 
-A `Type` node carries a second kind that names its shape class, such as
-`ObjectShape`, `ArrayShape`, `UnionShape`, `StringShape` or `RecursiveShape`.
-The kinds run most specific first: `kinds[0]` is the category and `kinds[1]` is
-the RAML type kind.
+A `Type` node carries a second `rdf:type` that names its shape class, such as
+`ObjectShape`, `ArrayShape`, `UnionShape`, `StringShape`, `JsonShape` or
+`RecursiveShape`, so `?t a raml:ObjectShape` selects object types. In
+`fastraml graph --format json` the same pair is the node's `kinds`: `kinds[0]`
+is `Type` and `kinds[1]` the shape class.
 
 ## Edges
 
@@ -140,7 +141,7 @@ ones a query reaches for:
 | `mediaType` | `Payload` | e.g. `application/json` |
 | `isAnnotationType` | `Type` | `true` on annotation types |
 | `scopes` | `Operation` | the scopes in force after `securedBy`, when any; one triple per scope |
-| `unsecured` | `Operation` | `true` when `securedBy: [null]` removed the security |
+| `unsecured` | `Operation` | `true` when a `null` entry in `securedBy` lets the operation be called with no scheme |
 | `version`, `baseUri` | `Api` | the API's version and base URI |
 | `description` | `EndPoint`, `Operation`, `Response`, `Type`, `Api` | text, when present |
 | `displayName` | `Type` | text, when present — a separate attribute from `name` |
@@ -159,8 +160,8 @@ depend on the shape:
 - strings: `minLength`, `maxLength`, `pattern`; files: `minLength`, `maxLength`, `fileTypes`
 - numbers and integers: `minimum`, `maximum`, `multipleOf`, `format`; date-time: `format`
 - arrays: `minItems`, `maxItems`, `uniqueItems`
-- objects: `minProperties`, `maxProperties`, `additionalProperties` — the parser
-  also accepts a non-standard `discriminator`
+- objects: `minProperties`, `maxProperties`, `additionalProperties`,
+  `discriminator`; `discriminatorValue` is not projected
 
 Structure is not a facet: `properties`, `items`, `anyOf`, pattern properties
 and a recursive type's head are edges (`property`, `items`, `anyOf`,
@@ -249,7 +250,7 @@ program to parse `SELECT` or `ASK` results.
 
 ## What the vocabulary is not
 
-The vocabulary holds about thirty terms, and fastraml adds one only when it makes
-a real question easier to ask. There are no `rdfs:subClassOf` axioms, no
+The vocabulary is the node kinds, edges and literals above; fastraml adds a
+term only when it makes a real question easier to ask. There are no `rdfs:subClassOf` axioms, no
 `owl:Restriction` and no inference. Nothing here needs a reasoner, so write your
 alternations out in full.

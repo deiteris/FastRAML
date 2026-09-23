@@ -90,8 +90,8 @@ body:
 body:
   application/json:
     type: User
-  text/xml:
-    type: !include user.xsd
+  application/xml:
+    type: User
 ```
 
 ## Response

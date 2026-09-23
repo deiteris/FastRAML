@@ -118,9 +118,9 @@ properties:
   extra?:     string?    # optional, and may be null when present
 ```
 
-`T?` expands to `nil | T`. It works on a scalar type and on a reference to a
-user-defined type, and **not** inside a type expression — write `nil | Person`
-there, not `Person?`.
+`T?` expands to `T | nil`. It is a postfix like `[]` and applies after every
+`[]`: `string[]?` is a nullable array, and `string?[]` is invalid — write
+`(string | nil)[]` for an array of nullable strings.
 
 **A trailing `?` in a property name is the optional marker only while
 `required:` is absent.** State `required:` and the `?` becomes part of the
@@ -169,9 +169,12 @@ types:
 
 The subtype keeps every restriction from every parent, so multiple inheritance
 narrows, and an impossible narrowing is an error rather than last-writer-wins.
-Two parents that each declare `pattern`, or that declare the same user-defined
-facet, are likewise an error. Inheriting from two primitives —
-`[ number, string ]` — is invalid.
+Inheriting from two primitives — `[ number, string ]` — is invalid.
+
+The specification also makes a subtype invalid when two parents give a
+same-named property a `pattern` each, or declare the same user-defined facet.
+fastraml does not report either, and keeps only the first parent's `pattern`.
+Do not write it.
 
 A subtype may narrow a property it inherits and may not widen one: a required
 property cannot become optional, and a property's type can only move to a
@@ -292,11 +295,17 @@ types:
   Person: !include person.json
 ```
 
-A type defined by an external schema is a leaf. It **cannot** take part in
-inheritance or in any type expression, so `Person[]`, `type: Person`, and a
-property typed `Person` are all invalid once `Person` came from an include.
-Wrapping it to add a `description`, `displayName`, examples or annotations is
-allowed, and nothing else is. Reach an inner element with a fragment:
+The specification makes a type defined by an external schema a leaf: no
+inheritance, no type expression, so `Person[]`, `Person | Address` and a
+property typed `Person` are all invalid, and wrapping it may add only a
+`description`, `displayName`, examples or annotations.
+
+fastraml is more permissive. It accepts a schema type in a property, an array,
+a union and a parameter. It allows inheritance only between identical schemas,
+and never adds RAML facets to one. Write the strict form when another RAML tool
+has to read the document.
+
+Reach an inner element with a fragment:
 `!include person.json#/definitions/Address`.
 
 ## Resources and methods
@@ -552,12 +561,12 @@ invalid here; import the inner library under its own name.
 ## Five ways to write RAML that is wrong
 
 Each is stated in full above. Check for them before you call a document done —
-the first three are accepted and read differently from how you meant them.
+the first four are accepted and read differently from how you meant them.
 
 1. An unanchored `pattern`, where you meant `^...$`.
 2. A trailing `?` on a property name beside an explicit `required:`.
 3. An `enum` in a trait, written to narrow the method's.
-4. An external JSON Schema type used in a type expression.
+4. Two parents that each give one property a `pattern`.
 5. A `facets:` entry given a value in the declaration that declares it.
 
 ## What fastraml does not parse

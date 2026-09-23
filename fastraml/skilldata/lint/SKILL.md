@@ -1,6 +1,6 @@
 ---
 name: lint
-description: Check a RAML document against named lint rules with fastraml lint, configure which run and how severely, and write your own rules as a plugin. Covers the rule catalogue and its three categories, the config file, suppressing one finding without disabling its rule, the CI gate and exit codes, --metrics, and the two rule shapes a plugin implements. Use when auditing a document for style or security problems, wiring a lint gate into CI, silencing a noisy rule, or adding a house rule.
+description: Check a RAML document against named lint rules with fastraml lint, configure which run and how severely, and write your own rules as a plugin. Covers the rule catalogue and its six categories, the config file, suppressing one finding without disabling its rule, the CI gate and exit codes, --metrics, and the two rule shapes a plugin implements. Use when auditing a document for style, security or HTTP problems, wiring a lint gate into CI, silencing a noisy rule, or adding a house rule. Not for whether a document is valid (fastraml validate) or for reports with no severity (fastraml query).
 license: MIT
 allowed-tools: Bash(fastraml:*) Read Write
 ---
@@ -11,9 +11,10 @@ allowed-tools: Bash(fastraml:*) Read Write
 `fastraml validate` answers "is this legal RAML"; `lint` answers "is this a good
 one".
 
-Run `validate` first. A document that fails to parse produces no findings at
-all, because there is nothing to lint and a rule saying so would only be noise
-beside the parse error.
+Run `validate` first. `lint` does not validate: a document with an invalid
+example or a contradictory facet is linted like any other and can come back
+clean. A document that cannot be parsed at all produces no findings; `lint`
+reports the parse failure and exits 1.
 
 When running lint, pass `--format text`. Use another format only when the task
 requires that representation.
@@ -294,7 +295,9 @@ invalid document to trigger, it is the wrong rule.
   or check `--severity` is not filtering (`info` is the default and shows
   everything).
 - **`lint needs an unwrapped model`** — you are calling the Python API directly.
-  Parse with `ParseOptions(unwrap=True, retain_source=True)`.
+  Parse with `ParseOptions(unwrap=True)`.
+- **`enabled lint rules need retained source`** — the same, with a rule enabled
+  that reads the source text. Also pass `retain_source=True`.
 - **A plugin's rules never run** — discovery is not activation. Name the plugin
   under `plugins:` in the config.
 - **`duplicate rule id`** — two rules claim one name and registration refuses

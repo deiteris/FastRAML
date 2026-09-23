@@ -237,15 +237,9 @@ class _Backward:
         """Only where the operation states its own -- `api_protocols` said the rest.
 
         `protocols:` is an API-level default a method may override, so an edit at
-        the root is one change that reaches every method, not one change per
-        method. Reported per method it was 33 of this catalogue's 34 operations
-        carrying an identical row, and 33 of its 54 breaking changes: a reader
-        counting the damage would have put it at two and a half times its size.
-
-        This is [docs/16] section 10.1's argument for `baseUri`, which has no
-        method-level override at all. `protocols:` has one, so the rule is
-        conditional rather than absolute -- an operation that declares its own is
-        making its own statement and is compared here.
+        the root is one change that reaches every method, reported once by
+        `api_protocols` rather than once per method. An operation that declares
+        its own protocols makes its own statement and is compared here.
         """
         old_declared, new_declared = tuple(old_operation.protocols), tuple(new_operation.protocols)
         if not old_declared and not new_declared:
@@ -312,10 +306,7 @@ class _Backward:
     def documentation(self, at: _At, old: _Described, new: _Described) -> None:
         """`displayName` and `description`, wherever anything carries both.
 
-        An operation, a response and a shape all do, and the pair used to be
-        written out at each -- nine lines apiece, identical but for the
-        attribute name, and the shape's copy went through a second emitter for
-        no reason but that it had a path.
+        An operation, a response and a shape all do.
         """
         for attribute, before, after in (
             ('displayName', _facet(old.display_name), _facet(new.display_name)),

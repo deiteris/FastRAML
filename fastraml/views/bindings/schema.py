@@ -98,7 +98,7 @@ class Holds(enum.StrEnum):
     SCALAR = 'scalar'
     VOCABULARY = 'vocabulary'
     JSON = 'json'
-    #: Any of the metamodel's three constructs (docs/16 § 11.10).
+    #: Any of the metamodel's three constructs (docs/16 § 6.1).
     SHAPE_NODE = 'shape_node'
     #: An expanded shape and nothing else -- `projection`.
     SHAPE = 'shape'
@@ -122,9 +122,8 @@ class Container(enum.StrEnum):
 class Structural:
     """What one structural key holds, in no particular language.
 
-    No source read produces this -- `out['operations']` is an expression, and
-    § 11.11d is right that nothing recovers its type. What changes is that it is
-    *declared once* instead of three times: a backend turns this into a spelling,
+    No source read produces this: `out['operations']` is an expression, and
+    nothing recovers its type. It is declared once instead of three times: a backend turns this into a spelling,
     and the walk generator reads the same record to find where shapes live.
     """
 
@@ -493,7 +492,7 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
         'type_expr': _STR,
         #: Both only on a `json` shape, and both about the same schema: the
         #: schema itself with every reference out of it resolved, and the
-        #: nearest RAML shape to it (docs/10 § 6.3).
+        #: nearest RAML shape to it (docs/10 § 7).
         'json_schema': _JSON,
         'projection': Structural(Holds.SHAPE),
         #: A recursion marker's back pointer. Written through a loop over

@@ -203,7 +203,7 @@ def _object(conv: Conversion, node: dict[str, Any], shape: ObjectShape, at: str)
             node['required'] = required
     if shape.pattern_properties:
         # Already the bare regex: the `/…/` delimiters are RAML syntax marking a
-        # name as a pattern, and P2 strips them at decode. go-raml slices them
+        # name as a pattern, and the decoder strips them. go-raml slices them
         # off here because its own model keeps them.
         node['patternProperties'] = {
             key: conv.inline(prop.base, f'{at}.{key}') for key, prop in shape.pattern_properties.items()

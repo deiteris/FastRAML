@@ -1,4 +1,4 @@
-"""The rule engine — docs/18-linting.md §§ 2, 3, 5, 7.1.
+"""The rule engine (docs/18-linting.md § 2, § 3 and § 5).
 
 Spec-agnostic in the sense that matters: nothing here knows a RAML rule, or any
 rule at all. It holds the vocabulary a judgement is stated in (`RuleMeta`,
@@ -8,7 +8,7 @@ one loop over the completed graph's nodes out to every visitor.
 
 The rules themselves are in `rules/`. That boundary is load-bearing: a rule is
 data plus a small function, and everything about *running* rules is here, so a
-plugin (§ 6) is on exactly the same footing as a built-in.
+plugin (docs/18 § 3.1) is on exactly the same footing as a built-in.
 
 Nothing here decides a RAML rule. It runs after P10 and imports the model
 rather than being imported by it.
@@ -115,7 +115,7 @@ def parse_severity(value: str) -> Severity:
 
 
 class Category(StrEnum):
-    """What kind of judgement a rule makes — docs/18 § 1.
+    """What kind of judgement a rule makes (docs/18 § 1).
 
     Not a taxonomy of subject matter. `SPEC` is RAML's own semantics;
     `SECURITY`, `HTTP`, `PROBLEM_DETAILS` and `I_JSON` each follow from a
@@ -124,17 +124,17 @@ class Category(StrEnum):
     under one name.
     """
 
-    #: Derived from RAML's own semantics (§ 1 group 1).
+    #: Derived from RAML's own semantics.
     SPEC = 'spec'
-    #: Derived from OWASP and the OAuth RFCs, off by default (§ 1 group 2).
+    #: Derived from OWASP and the OAuth RFCs, off by default.
     SECURITY = 'security'
-    #: Derived from RFC 9110 HTTP semantics, off by default (§ 1 group 2).
+    #: Derived from RFC 9110 HTTP semantics, off by default.
     HTTP = 'http'
-    #: Derived from RFC 9457 problem details, off by default (§ 1 group 2).
+    #: Derived from RFC 9457 problem details, off by default.
     PROBLEM_DETAILS = 'problem-details'
-    #: Derived from the RFC 7493 I-JSON profile, off by default (§ 1 group 2).
+    #: Derived from the RFC 7493 I-JSON profile, off by default.
     I_JSON = 'i-json'
-    #: Taste, off by default (§ 1 group 3).
+    #: Taste, off by default.
     STYLE = 'style'
 
 
@@ -143,14 +143,13 @@ class RuleMeta:
     """One rule's identity and its documentation, in one object.
 
     `good` and `bad` are RAML the suite actually parses: a rule must be silent
-    on the first and fire on the second (docs/18 § 2.1). That makes the
-    documentation a test rather than a comment, which is the lesson docs/16
-    § 6.2 paid for.
+    on the first and fire on the second (docs/18 § 2), so the documentation
+    is a test rather than a comment.
 
     `references` names the published sources a rule follows from, one citation
     per entry: `OWASP API4:2023`, `RFC 9110 § 15.5.2`, `CWE-770`. It is data
     rather than prose so that a reader, or a tool, can find every rule one
-    clause produced (docs/18 § 2.2).
+    clause produced (docs/18 § 2).
     """
 
     id: str
@@ -168,7 +167,7 @@ class Finding:
     """One judgement at one place.
 
     Not a `RamlError`: no chain, no exception, and a severity that is not
-    always `error` (docs/18 § 2). `info` carries the variables, so a test
+    always `error` (docs/18 § 2.1). `info` carries the variables, so a test
     asserts on the rule and the dict rather than on assembled text
     (docs/11 § 6).
     """
@@ -266,13 +265,11 @@ class RuleMetric:
 
 @dataclass(frozen=True, slots=True)
 class PluginMetric:
-    """One provider's rules, totalled — docs/18 § 7.1.
+    """One provider's rules, totalled (docs/18 § 5.2).
 
-    The question this answers is the one an entry-point mechanism creates: a
-    plugin is installed by a package a project may not have chosen directly
-    (§ 6), so when a lint run gets slow, "which distribution is it" has to be
-    answerable without reading anyone's source. Built-ins aggregate under
-    `fastraml` like any other provider, so the comparison is like for like.
+    A plugin may be installed by a package a project did not choose directly
+    (docs/18 § 3.1), so a slow run must be attributable to a distribution.
+    Built-ins aggregate under `fastraml` like any other provider.
     """
 
     name: str
@@ -298,11 +295,9 @@ class GraphMetric:
     """Building the projection every rule reads.
 
     `nanoseconds` is `None` when the caller supplied a graph rather than
-    letting the run build one — the CLI does, so that `lint` and another verb
-    share one. Reporting `0` there would read as "free" when the true answer is
-    "not measured here", and the graph is the single largest cost in the run
-    (docs/18 § 4): 545 ms of the `bench_endpoints` pipeline against single-digit
-    milliseconds for every rule put together.
+    letting the run build one. Reporting `0` there would read as "free" when
+    the answer is "not measured here", and the graph is normally the largest
+    cost of a run by far.
     """
 
     source: str
@@ -321,7 +316,7 @@ class GraphMetric:
 
 @dataclass(frozen=True, slots=True)
 class LintMetrics:
-    """One measured run — docs/18 § 7.1.
+    """One measured run (docs/18 § 5.2).
 
     `engine_nanoseconds` is what the run cost *minus* the graph and every rule:
     the fan-out dispatch, the severity overrides, the `match:` filters and the
@@ -382,7 +377,7 @@ def limit_findings(
     Selection is worst severity first, so a bound can never show an info finding
     in place of an error or warning; the survivors keep their input order. The
     per-rule bound counts per source file, so one file cannot spend a rule's
-    whole allowance and hide it in the rest (docs/18 § 7).
+    whole allowance and hide it in the rest (docs/18 § 5.1).
     """
     for name, value in (('max_findings', max_findings), ('max_findings_per_rule', max_findings_per_rule)):
         if value is not None and value < 1:
@@ -431,7 +426,7 @@ class LintRun(LintReport):
     """What `Linter.measure` returns: the report, and what it cost to produce.
 
     `Linter.run` returns the findings alone, because that is what every caller
-    but a profiler wants and because measuring is not free (§ 7.1).
+    but a profiler wants and because measuring is not free (docs/18 § 5.2).
     """
 
     metrics: LintMetrics
@@ -592,7 +587,7 @@ VISITS: Final = tuple(_NODE_ROLES.values())
 
 @dataclass(frozen=True, slots=True)
 class RuleSetting:
-    """One `rules:` entry — docs/18 § 5.
+    """One `rules:` entry (docs/18 § 3).
 
     `match` is a regex over the finding's rendered message. With it, the entry
     filters findings; without it, the entry configures the rule itself. That is
@@ -727,9 +722,7 @@ class _FanOut:
     """Forward each projected node to the rules implementing its role.
 
     Built once per run. The per-role lists are resolved up front so the hot
-    path is a list iteration rather than a `getattr` per node per rule — the
-    same reason `nodes.py` binds `attributes` to a local before reading it
-    seven times (docs/16 § 2.8).
+    path is a list iteration rather than a `getattr` per node per rule.
     """
 
     __slots__ = ('_by_role', 'ctx', 'findings', 'tallies')
@@ -757,8 +750,7 @@ class _FanOut:
         Wrapped **once, at construction**, so the unmeasured path pays nothing
         at all: `_fan` below calls whatever is in the list and has no branch of
         its own. Instrumenting inside `_fan` would put a test per rule per node
-        on the hot loop of every ordinary run, which is the shape docs/12 § 12
-        rules out.
+        on the hot loop of every ordinary run (docs/12 § 2).
         """
         tallies = self.tallies
         assert tallies is not None  # noqa: S101 - only called when measuring; narrows for mypy
@@ -877,7 +869,7 @@ class Linter:
         `graph` is accepted so a caller already holding one — the CLI running
         several verbs, a test — does not build it twice.
 
-        Unmeasured. `measure` is the same run with the clocks on (§ 7.1); this
+        Unmeasured. `measure` is the same run with the clocks on; this
         one pays nothing for them, which is why the two are separate entry
         points rather than one with a flag defaulting to off.
         """
@@ -913,9 +905,8 @@ class Linter:
         Instrumenting is not free — every rule's output is materialised inside
         its timed region so that a generator rule is measured for its work
         rather than for building a generator — so the timings describe a
-        *measured* run and are a guide to proportions, not a benchmark. The
-        proportion is the useful part, and it is stable: the graph dominates
-        (§ 4).
+        *measured* run and are a guide to proportions, not a benchmark
+        (docs/18 § 5.2).
         """
         return self._execute(
             raml,

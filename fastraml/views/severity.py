@@ -8,11 +8,8 @@ is not `info`, and `backward` reports non-problems on purpose because its output
 is a complete description of what changed, where a lint report is a list of
 defects (docs/18 § 1).
 
-What they do share is the arithmetic. Both need *worst first*, both need "this
-one and everything worse", and both had their own copy — a tuple with `.index()`
-in one and a dict in the other. A `Ranking` is that arithmetic, given the
-vocabulary as data, so a third grading view inherits it and the two that exist
-cannot drift.
+What they share is the arithmetic: worst first, and "this one and everything
+worse". A `Ranking` is that arithmetic, given the vocabulary as data.
 
 Nothing here decides a RAML rule, and nothing here knows what any particular
 severity *means*.
@@ -69,9 +66,8 @@ class Ranking[S: str]:
     def at_least(self, severity: S) -> frozenset[S]:
         """`severity` and everything worse — what a `--severity` flag selects.
 
-        A **threshold**, not a membership test — on every verb that filters by
-        severity, so one flag name cannot mean opposite things across two verbs
-        of one tool (docs/13 § 8).
+        A threshold, not a membership test, on every verb that filters by
+        severity (docs/18 § 3).
         """
         limit = self._rank[severity]
         return frozenset(value for value, rank in self._rank.items() if rank <= limit)

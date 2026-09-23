@@ -1,4 +1,4 @@
-"""The tree contract, as Python type declarations — docs/16-graph.md § 11.11.
+"""The tree contract, as Python type declarations (docs/16-graph.md § 7).
 
 Run `python -m fastraml.views.bindings python -o FILE`. The caller names the
 destination; `-o -` writes stdout. `tests/unit/test_bindings.py` asserts that
@@ -328,7 +328,7 @@ def _recursion(schema: ContractSchema) -> str:
     Hand-declared. `schema.py` derives records by reading a `_Projector`
     method's AST, and `_Projector.recursion()` is a literal three-key dict that
     never runs, so generating from it declares three keys where seven ship
-    (docs/16 section 11.11c). `head` is hand-declared for a second reason:
+    (docs/16 § 6.1). `head` is hand-declared for a second reason:
     `shape()` writes it through a loop over `_BACK_POINTERS`, which no AST read
     resolves.
     `name` is not re-declared: a TypedDict subclass may not, and `ShapeBase`
@@ -360,7 +360,7 @@ def _envelope(schema: ContractSchema) -> str:
 
     Declared as `Literal` types above, which a consumer cannot compare against.
     The envelope exists so a reader can refuse a representation it does not
-    know (docs/16 § 11.9), and refusing needs the value.
+    know (docs/16 § 6), and refusing needs the value.
     """
     names = {'format': 'FORMAT', 'format_version': 'FORMAT_VERSION', 'view': 'VIEW'}
     return '\n'.join(

@@ -1,4 +1,4 @@
-"""The tree contract, as TypeScript declarations — docs/16-graph.md § 11.11.
+"""The tree contract, as TypeScript declarations (docs/16-graph.md § 7).
 
 Run `python -m fastraml.views.bindings typescript -o FILE`. The caller names the
 destination; `-o -` writes stdout. `tests/unit/test_bindings.py` asserts that
@@ -7,8 +7,7 @@ the viewer's checked-in copy is what generation produces.
 A consumer of `fastraml tree` has to know what the JSON holds. A hand-written
 list goes stale the first time a facet is added to a kind, and it goes stale
 *quietly*: a key the declarations omit still arrives, and a consumer that does
-not read it looks exactly like a document that did not say it. That is law 14's
-argument (docs/14 § 4), applied across a boundary no type checker spans.
+not read it looks exactly like a document that did not say it.
 
 The output has two halves. `static/tree.d.ts` is hand-written and copied
 verbatim: the metamodel aliases, `Ref` and the fixed records. Everything from
@@ -138,7 +137,7 @@ def _envelope(schema: ContractSchema) -> str:
 
     Declared as literal *types* in `tree.d.ts`, which a consumer cannot compare
     against. The envelope exists so a reader can refuse a representation it does
-    not know (docs/16 section 11.9), and refusing needs the value.
+    not know (docs/16 § 6), and refusing needs the value.
     """
     names = {'format': 'FORMAT', 'format_version': 'FORMAT_VERSION', 'view': 'VIEW'}
     lines = [
@@ -273,7 +272,7 @@ def _recursion(schema: ContractSchema) -> str:
     Hand-declared. `schema.py` derives records by reading a `_Projector`
     method's AST, and `_Projector.recursion()` is a literal three-key dict that
     never runs, so generating from it declares three keys where seven ship
-    (docs/16 § 11.11c). `head` is hand-declared for a second reason:
+    (docs/16 § 6.1). `head` is hand-declared for a second reason:
     `shape()` writes it through a loop over `_BACK_POINTERS`, which no AST read
     resolves.
     """

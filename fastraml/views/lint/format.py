@@ -187,7 +187,7 @@ def _ms(nanoseconds: int | None) -> str:
 
 
 def render_metrics(metrics: LintMetrics, format_: str) -> str:
-    """What the run cost, per rule and per provider — docs/18 § 7.1.
+    """What the run cost, per rule and per provider (docs/18 § 5.2).
 
     Read top-down: the graph line first, because it is normally the largest
     single cost in the run and a reader who skips it will draw the wrong

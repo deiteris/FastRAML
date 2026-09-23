@@ -1,14 +1,9 @@
-"""A catalogue of analysis queries over the graph — docs/16-graph.md § 6.
-
-These exist to answer a question about the projection itself: **do real
-analysis queries become materially simpler than the equivalent code against the
-model?** That was the test the graph was built to be judged by, and a catalogue
-that runs is the only honest way to run it.
+"""The named SPARQL queries behind `fastraml query -n` (docs/16-graph.md § 3.1).
 
 Every entry is a whole-document question. Parameterised navigation — *what uses
 `User`*, *what is `User` made of* — is `refs` and `deps`, which return a route
 rather than a hit and are not expressible as a property path at all
-(docs/16 § 5). The division is deliberate: a query here takes no arguments, so
+(docs/16 § 3). The division is deliberate: a query here takes no arguments, so
 `fastraml query -n <name>` needs nothing but a file.
 
 Importing this module does **not** require `pyoxigraph`. The queries are text;

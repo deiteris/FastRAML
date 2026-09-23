@@ -429,7 +429,7 @@ class _SchemaConversion:
         """One type where it is used: a `$ref` if it is named, its body if not."""
         base._assert_unwrapped()  # noqa: SLF001 - the view requires the finished model
         # Through the alias, because `items` under `User[]` holds the alias and
-        # stopping there names `User`'s supertype instead of `User` (docs/16 § 2.4).
+        # stopping there names `User`'s supertype instead of `User` (docs/07 § 3).
         referent = base.alias or (base.inherits[0] if len(base.inherits) == 1 else None)
         if referent is not None and (name := self._component(referent)):
             schema = _subtract(self._common(base), self._common(referent))

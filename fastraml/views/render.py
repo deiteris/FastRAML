@@ -1,4 +1,4 @@
-"""The effective view of one declaration — docs/16-graph.md § 9.
+"""The effective view of one declaration (docs/16-graph.md § 4).
 
 Answers the question a reader asks most often and that nothing else here
 answers: **what is this type, actually?** Every inherited property in one place,
@@ -10,7 +10,7 @@ it pastes back into a document, and two versions of it diff. Origin rides in
 trailing comments so the result stays valid YAML.
 
 This walks the **model**, not the graph. The projection carries what a traversal
-needs and deliberately drops facet detail (docs/16 § 2.5), so rendering from it
+needs and deliberately drops facet detail, so rendering from it
 would be rendering from a lossy copy. `Graph.find` locates the declaration and
 `Graph.shape_at` hands back the shape; everything below reads that shape.
 
@@ -78,7 +78,7 @@ class _Level:
     root: str
     indent: str
     #: Shapes already open further up. A type cycle is a cycle in the model by
-    #: design (docs/07 § 4), so the walk has to be finite by construction.
+    #: design (docs/07 § 6), so the walk has to be finite by construction.
     seen: frozenset[int]
 
     def inside(self, base: BaseShape, *, extra: str = '  ') -> _Level:
@@ -105,10 +105,7 @@ class Sources:
     it back into a name needs the span the line falls in.
 
     The span is exact, not inferred: `key_pos.line` to `value_pos.end_line`,
-    both of which the parser records. An earlier version guessed the end as
-    "until the next declaration in the same file" and mis-attributed a method's
-    own query parameter to the resource type declared above it, because the
-    last declaration in a file has no next one to stop at.
+    both of which the parser records.
 
     The narrowest containing span wins, so a nested declaration beats the
     enclosing one. Attribution is *also* gated on the site having applied the
@@ -281,12 +278,8 @@ def _one(name: str, base: BaseShape, origin: str | None, level: _Level) -> Itera
 def _key(name: str) -> str:
     """A property name as a YAML key, quoted when it would not parse plain.
 
-    Emitted by PyYAML for the reason `_dumped` gives. The allowlist this used
-    instead was safe against punctuation — pattern properties are why it exists,
-    since `//` strips to an empty key, which broke three corpus fixtures — and
-    silently wrong against a name that merely *reads* as another type: a
-    property called `yes`, `no`, `on` or `null` matched the allowlist, emitted
-    bare, and loaded back as a bool or a null. A key is a value too.
+    Emitted by PyYAML for the reason `_dumped` gives: a property called `yes`,
+    `null` or `//` must be quoted to load back as the same string.
     """
     return _dumped(name)
 
@@ -319,7 +312,7 @@ def _type_name(base: BaseShape, *, nested: bool = False) -> str:  # noqa: PLR091
 
     `alias` first, and that is not a detail: `address: Address` and
     `UserList: User[]` both put an *alias* of the referenced type in place
-    rather than the declaration (docs/07 § 3.6). Reading `type` instead prints
+    rather than the declaration (docs/07 § 3). Reading `type` instead prints
     `object` for both — true, and useless.
 
     A recursion marker names the type it closes back to. Its own `type` is
@@ -419,13 +412,10 @@ def _facets(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]:
     """Every constraint the kind holds, in RAML spelling.
 
     `facets_of` is shared with the graph's projection so the two cannot disagree
-    about what a kind constrains (docs/14 § 2). Only the formatting is this
-    module's: a facet value spelled the way RAML would write it.
+    about what a kind constrains. Only the formatting is this module's.
 
-    Through the projection, so a scalar JSON schema shows its bounds. A
-    `JsonShape` holds no facet slots of its own — the constraints are inside the
-    compiled schema — so without this a `uuid` defined as
-    `{"type": "string", "minLength": 36}` rendered as bare `string`.
+    Through the projection, so a scalar JSON schema shows its bounds: a
+    `JsonShape` holds no facet slots of its own.
     """
     shape = projected(base).shape
     if shape is not None:
@@ -444,10 +434,9 @@ def _facets(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]:
 def _extensions(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]:
     """`facets:`, the values supplied for them, and applied annotations.
 
-    All three were absent, and all three are things a reader cannot recover by
-    looking at the declaration: a custom facet's *value* is usually supplied by
-    a subtype far from where the facet was declared, and an annotation is the
-    main extension point RAML has — one real document here applies 187 of them.
+    None of these is recoverable from the declaration alone: a custom facet's
+    value is usually supplied by a subtype far from where the facet was
+    declared.
 
     Declared facets come from the chain, so a subtype shows what it must supply
     as well as what it did. The declaring type's own block is included because
@@ -487,7 +476,7 @@ def _scalar(value: Any) -> str:
     """A facet value as RAML would spell it.
 
     A `Fraction` is expanded exactly rather than divided: numbers never pass
-    through `float` here either (docs/10 § 5.2), and `1.1` reaching a reader as
+    through `float` here either (docs/10 § 5), and `1.1` reaching a reader as
     `1.100000000000000088` would be this module's defect, not the parser's.
     """
     if value is True or value is False:
@@ -495,11 +484,7 @@ def _scalar(value: Any) -> str:
     if isinstance(value, Fraction):
         return decimal_text(value)
     if isinstance(value, re.Pattern):
-        # The facet holds a *compiled* pattern, and `str()` of one is
-        # `re.compile('…')` — Python's repr where the author's regex belongs.
-        # Invisible until schema types began rendering their facets, because
-        # `pattern:` reaches a reader through `uuid` far more often than
-        # through a RAML declaration.
+        # The facet holds a compiled pattern; show the author's regex.
         value = value.pattern
     # Not `str(value)` first: that turns `maxLength: 36` into the *string* "36",
     # which PyYAML then quotes to preserve — correctly, and uselessly.
@@ -509,23 +494,16 @@ def _scalar(value: Any) -> str:
 def _dumped(value: Any) -> str:
     """One value as YAML, emitted by PyYAML rather than by a rule written here.
 
-    Deciding when a scalar needs quoting is not a short rule and this module has
-    no business owning one. A first attempt did — a denylist of `': '`, `' #'`
-    and a few leading characters — and it was wrong for every string that merely
-    *looks* like something else: `yes`, `null` and `1.0` all round-tripped as a
-    bool, a null and a float. PyYAML is already a hard dependency and gets all of
-    those, plus tabs and the flow-context comma, right by construction.
+    Deciding when a scalar needs quoting is not a short rule: strings such as
+    `yes`, `null` and `1.0` must be quoted to stay strings. PyYAML gets that
+    right by construction.
 
-    Only the values go through it. The document's *shape* is still written by
-    hand, because the whole point of this view is the aligned `# origin` column
-    and an emitter cannot produce comments (§ 9.2).
+    Only the values go through it. The document's shape is written by hand,
+    because an emitter cannot produce the aligned `# origin` comments.
 
-    A scalar is memoised, because `safe_dump` builds an emitter, a serialiser
-    and a resolver per call — 13.7 µs against the 0.15 µs of the rule it
-    replaced — and the inputs repeat almost perfectly: property names, `string`,
-    `true`, the same bounds and media types over and over. Rendering the whole
-    benchmark corpus measured 664 ms down to 254 ms off a thirteen-entry cache.
-    Lists — `enum` is the only one — are not hashable and fall through.
+    A scalar is memoised: `safe_dump` builds an emitter per call, and the
+    inputs (property names, `string`, `true`, common bounds) repeat heavily.
+    Lists (`enum`) are not hashable and fall through.
     """
     if type(value) in (str, int, float):
         return _dumped_scalar(value)
@@ -579,13 +557,8 @@ def render_operation(
 def _prose(owner: Any, indent: str) -> Iterator[_Line]:
     """`displayName` and `description`, wherever the model carries them.
 
-    Omitted until now, and they are half of why a reader opens an endpoint at
-    all: a resource's `description` says what it is for, and a response's says
-    what the status code *means*, which no other line here conveys. A trait
-    supplies most of them on a real document, so they are exactly the kind of
-    thing this view exists to gather up.
-
-    First line only, as everywhere else here: a description may be a paragraph,
+    A resource's `description` says what it is for, and a response's says what
+    the status code means. First line only, as everywhere else here: a description may be a paragraph,
     and the view is meant to fit a screen.
     """
     for facet, spelling in (('display_name', 'displayName'), ('description', 'description')):
@@ -635,9 +608,7 @@ def _message(owner: Any, level: _Level, sources: Sources | None, applied: frozen
     """What a caller sends: headers, query and body.
 
     Shared because a `Request` and a security scheme's `describedBy` carry the
-    same four fields — `SecuritySchemeDescription`'s own docstring calls it "the
-    same node vocabulary as an operation", so this follows the model rather than
-    a coincidence.
+    same fields (docs/09 § A1).
     """
     yield from _parameters(owner.headers, 'headers', level, sources, applied)
     yield from _parameters(owner.query_parameters, 'queryParameters', level, sources, applied)
@@ -651,10 +622,7 @@ def _responses(
 ) -> Iterator[_Line]:
     """Every response, for an operation and for a scheme's `describedBy` alike.
 
-    One function because the two were written twice and had already started to
-    drift: `_prose` had to be added to both copies by hand, and a third addition
-    reaching only one of them would be invisible — the output stays loadable
-    RAML, just missing a line, so corpus law 13 would not catch it either.
+    One function so the two cannot drift apart.
     """
     if not responses:
         return
@@ -704,8 +672,8 @@ def _parameters(
 def _label(scheme: SecurityScheme) -> str:
     """One scheme as it is written, with any narrowed OAuth scopes."""
     if scheme.is_null:
-        # `securedBy: [null]` *removes* inherited security (docs/09 § A3), and
-        # `null` is how RAML spells that — so it round-trips as itself.
+        # A `null` entry permits calls with no scheme (docs/09 § A3); `null`
+        # is how RAML spells it, so it round-trips as itself.
         return 'null'
     if scheme.compiled_params:
         return f'{scheme.name} ({", ".join(scheme.compiled_params)})'
@@ -716,9 +684,7 @@ def _secured(schemes: list[SecurityScheme], level: _Level) -> Iterator[_Line]:
     """`securedBy:`, and what each scheme adds to the request.
 
     A scheme's `describedBy` declares headers, query parameters and responses
-    that a caller using it must supply or expect, and none of it was rendered —
-    so an operation's `Authorization` header, the one thing every caller needs,
-    appeared nowhere in the view.
+    that a caller using it must supply or expect, such as `Authorization`.
 
     **One block per scheme, never merged into the operation.** Spec § Applying
     Security Schemes: a method "can be authenticated by *any* of the specified

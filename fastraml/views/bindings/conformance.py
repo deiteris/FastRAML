@@ -40,7 +40,7 @@ SOURCES: Final = CORPUS / 'sources'
 
 #: Envelopes a reader must refuse. The first is the mistake worth catching by
 #: name — pointing a tree consumer at `fastraml graph --format json`, which is
-#: also JSON and also has nodes (docs/16 § 11.9).
+#: also JSON and also has nodes (docs/16 § 6).
 REFUSE: Final[tuple[dict[str, Any], ...]] = (
     {'format': 'fastraml-graph', 'format_version': 1, 'view': 'effective'},
     {'format': 'fastraml-tree', 'format_version': 2, 'view': 'effective'},

@@ -105,7 +105,7 @@ def _is_input(ctx: Context, iri: str, base: BaseShape) -> bool:
 # Both pattern rules need the expression's structure, not its behaviour: where
 # its anchors sit, and whether a quantified group holds another unbounded
 # quantifier. One tokenizer serves both. A run of literals is one token, so the
-# loops below step over structure rather than over characters (docs/12 § 12).
+# loops below step over structure rather than over characters (docs/12 § 2).
 
 _REGEX_TOKEN: Final = re.compile(
     r'\\.'  # an escape

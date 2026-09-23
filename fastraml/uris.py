@@ -9,7 +9,7 @@ happens only in `fastraml.loaders`. Two consequences:
 * local and remote fragments share one namespace, so `uses:` may point at a URL
   with no special-casing downstream.
 
-See docs/03-yaml-and-io.md section 8.
+See docs/03-yaml-and-io.md § 8.
 """
 
 from __future__ import annotations

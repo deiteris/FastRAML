@@ -230,9 +230,8 @@ class MultipleInheritance:
 
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002 - Sink's signature
         # Declarations only. A use site carries its declaration's parents, so an
-        # unrestricted rule reports one finding per *use* of a problem rather
-        # than one per problem — the mistake docs/16 § 6.2 records for three
-        # catalogue queries, which ran and returned plausible rows.
+        # unrestricted rule would report one finding per use of a problem rather
+        # than one per problem.
         if len(base.inherits) < 2 or not is_declaration(iri):  # noqa: PLR2004 - "more than one parent" is the rule
             return ()
         return (

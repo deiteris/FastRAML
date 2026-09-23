@@ -1,31 +1,24 @@
-"""The model as containment: an addressed JSON tree — docs/16-graph.md § 11.
+"""The model as containment: an addressed JSON tree (docs/16-graph.md § 6).
 
-Named for its shape rather than its input. Every module in this package is a
-view of the effective model, so the word that tells them apart is the one that
-says how the output is arranged: `graph` is a node set, this is a tree.
+The graph answers *what points at what*; this answers *what is here*. Neither
+is a filter of the other: the graph carries identity and reference and drops
+leaf data nothing points at, and the tree carries the data and collapses
+identity into nesting.
 
-The graph answers *what points at what*; this answers *what is here*. Both are
-views of the same model and neither is a filter of the other: the graph carries
-identity and reference and drops leaf data nothing points at, and a tree carries
-the data and collapses identity into nesting. They are lossy on orthogonal axes
-(§ 4).
-
-**Which is why references here are addresses, not names.** A tree hits a
+References are addresses, not names. A tree hits a
 cross-reference at four places — recursion, `inherits`, an alias, an applied
 annotation — and a name is not an identity: two libraries may each declare
 `paged`, and an anonymous shape has no name to write. Every reference below is
 an address from the same `Walk` the graph used, so a node in one output and the
 same entity in the other are joinable (`fastraml.views.walk`).
 
-Positions are projected separately by `positions_of`. A one-line edit to a
-document shifts every position after it, and a view that churned on every edit
-would be read as noise (docs/14 § 2).
+Positions are projected separately by `positions_of`, so a one-line edit that
+shifts every later position does not churn the tree.
 
-Requires `ParseOptions(unwrap=True)`: this is the effective document, so the
-addresses and the contents are both of the unwrapped model. P9 has therefore
-replaced every back-edge with a `RecursiveShape` before this module runs, and
-`_Projector.recursion()` is a backstop for the case that does not arise
-(docs/16 § 11.11c).
+Requires `ParseOptions(unwrap=True)`: this is the effective document. P9 has
+therefore replaced every back-edge with a `RecursiveShape` before this module
+runs, and `_Projector.recursion()` is a backstop for a cycle it did not mark.
+The wire contract is `bindings/schema.py` (docs/16 § 6.2 and § 7).
 """
 
 from __future__ import annotations
@@ -64,14 +57,14 @@ TREE_VIEW: Final = 'effective'
 #: through `json.dumps` without an encoder and through any consumer without one.
 type Json = str | int | float | bool | list[Json] | dict[str, Json] | None
 
-#: Fields carrying a source position, an object identity or a back-pointer.
-#: None of them is stable across an edit, and none describes what the model
-#: *means*. `id` is here because it is a per-parse counter: the address that
-#: replaces it is structural and so survives a re-parse.
-#: Slots that point *back* at something the walk is already inside, rather than
+#: Slots that point back at something the walk is already inside, rather than
 #: down into containment. `RecursiveShape.head` is the cycle's head.
 _BACK_POINTERS = frozenset({'head'})
 
+#: Kind slots never emitted: source positions, per-parse identity, back-pointers
+#: to the registry, pass state, and a `JsonShape`'s compiled validator. None is
+#: stable across an edit or describes what the model means. `id` is replaced by
+#: the structural address.
 _SKIP = frozenset(
     {
         'anchor',
@@ -83,11 +76,8 @@ _SKIP = frozenset(
         '_unwrapped',
         '_visiting',
         'type_expr_refs',
-        # A `JsonShape` holds a compiled validator and the caches around it. The
-        # validator's `repr` carries an absolute path and a registry object, so
-        # emitting it leaked the machine into the view as well as the parser.
-        # `raw` is the schema text and is emitted by `json_schema` under a name
-        # a consumer can read, beside the projection of the same schema.
+        # A `JsonShape`'s validator `repr` carries an absolute path. `raw` is
+        # emitted by `json_schema` instead, resolved, beside the projection.
         'raw',
         'validator',
     }
@@ -95,7 +85,7 @@ _SKIP = frozenset(
 
 #: Facets whose value is a *bound on a number* rather than a count of things.
 #:
-#: Emitted as an exact decimal string, always (docs/16 § 11.4a). JSON's number
+#: Emitted as an exact decimal string, always (docs/16 § 6.2). JSON's number
 #: is arbitrary precision on paper and a double in every consumer that matters,
 #: so a bound written as one is rounded on the way in: `9223372036854775807`
 #: reads back as ...808. A count -- `minLength`, `maxItems` -- is bounded by
@@ -126,10 +116,7 @@ def _typed_fragment(raml: Raml) -> tuple[str, str, BaseShape] | None:
     """The `#%RAML 1.0 DataType` entry document, if that is what was parsed.
 
     A typed fragment is one declaration, and `fragment_types` lists it only when
-    some document's `types:` included it. As the *entry point* nothing lists it,
-    so reading only `fragment_types` projected a document whose entire content
-    is a type as having none — silently, since an empty map is what a document
-    with no types looks like.
+    some document's `types:` included it. As the entry point nothing lists it.
 
     The entry point alone, because that is the only case nothing else covers.
     An included fragment is already listed under the name that included it, and
@@ -266,13 +253,12 @@ class _Projector:
 
         `None` rather than a synthesised address: an entity the walk did not
         reach is one nothing can point at, and inventing an address for it would
-        produce a reference that resolves nowhere — the failure this module
-        exists to remove.
+        produce a reference that resolves nowhere.
         """
         return self.addresses.of.get(entity_id)
 
     def recursion(self, base: BaseShape) -> Json:
-        """The marker for a cycle P9 did not already mark (docs/16 § 11.11c).
+        """The marker for a cycle P9 did not already mark (docs/16 § 6.1).
 
         Not the spelling that reaches the wire. The tree requires
         `unwrap=True`, so every back-edge is already a `RecursiveShape`; the
@@ -327,7 +313,7 @@ class _Projector:
 
         A section of its own rather than repeated at each `securedBy:`. The
         settings and `describedBy` belong to the declaration, and a use site
-        already points at it by address — the rule § 11.3 applies to a supertype.
+        already points at it by address, as a supertype reference does.
         """
         out: dict[str, Json] = {}
         for location, fragment in raml.fragments.items():
@@ -346,15 +332,11 @@ class _Projector:
         must carry on the other. Without them a reader knows a scheme is
         required and nothing about how to satisfy it.
 
-        **Identity from the declaration, content through `resolved()`.**
-        `oauth2: !include scheme.raml` decodes to a definition holding a link
-        and nothing else — no type, no settings, no `describedBy` — and the
-        SecurityScheme fragment it points at is not a `securitySchemes:` map, so
-        nothing above reaches it. Read directly, the scheme arrives empty while
-        every use site says it is bound, because P5 applies what `resolved()`
-        gives. The name and the address stay the declaration's: `included` is
-        what `securedBy:` writes and what the use site's `declaration` points
-        at, and the link target is named for its file.
+        Identity from the declaration, content through `resolved()`:
+        `oauth2: !include scheme.raml` decodes to a definition holding only a
+        link, and the SecurityScheme fragment it points at is in no
+        `securitySchemes:` map. The name and address stay the declaration's,
+        which is what `securedBy:` names and use sites point at.
         """
         declared = definition.resolved()
         out: dict[str, Json] = {
@@ -410,9 +392,8 @@ class _Projector:
         """One declaration map, by the file each entry was written in.
 
         `annotationTypes:` is a section of its own rather than a flag on a
-        shape. Without it every `(name):` application pointed at an address the
-        tree did not contain — 318 of 318 across the corpus — so a consumer
-        that only has the tree could not say what an annotation *is*.
+        shape, so every `(name):` application's `type` address resolves within
+        the tree.
         """
         out: dict[str, Json] = {}
         for uri, declared in declarations.items():
@@ -425,21 +406,13 @@ class _Projector:
     def shape(self, base: BaseShape | None, seen: frozenset[int] = frozenset()) -> Json:  # noqa: PLR0912 - one branch per optional facet
         """One declaration, with its kind's own facets inlined.
 
-        `seen` closes a cycle P9 did not mark. A self-referential type is a
-        cycle in the model by design (docs/07 § 4), so this has to be finite by
-        construction rather than by hoping the input is a tree.
+        `seen` closes a cycle P9 did not mark (docs/07 § 6), with a recursion
+        marker rather than a bare `{'$ref': …}`: a consumer expands links and
+        stops only at markers (docs/16 § 6.1).
 
-        It closes it with a **recursion marker**, spelled exactly as P9's, not
-        with a bare `{'$ref': …}`. A bare reference is indistinguishable from
-        an ordinary link, so a consumer that expands links would re-enter and
-        loop — the ancestor set the traversal law exists to make unnecessary
-        (docs/16 § 11.7). Two spellings for one meaning would be two rules for
-        a consumer to learn, so there is one.
-
-        An **alias is transparent**. `Price[]` puts an alias of `Price` under
-        `items` (docs/07 § 3.6); the alias holds no facets of its own, so
-        emitting it showed an anonymous node whose `inherits` named `Price`'s
-        supertype — a wrong answer rather than a missing one (§ 11.8).
+        An alias is transparent (docs/16 § 6.1). `Price[]` puts an alias of
+        `Price` under `items` (docs/07 § 3); emitting the alias itself would show
+        an anonymous node whose `inherits` names `Price`'s supertype.
         """
         if base is None:
             return None
@@ -449,10 +422,8 @@ class _Projector:
             return self.reference(base.alias, seen)
         seen = seen | {base.id}
 
-        # No `kind`: the concrete shape class is 1:1 with `type` across all
-        # sixteen kinds over the corpus, with no ambiguous pair, so it added a
-        # Python class name and no information. No `link` either — which
-        # fragment a declaration came through is parser state (§ 11.8).
+        # No `kind`: the shape class is 1:1 with `type`. No `link`: which
+        # fragment a declaration came through is parser state.
         out: dict[str, Json] = {'id': self.at(base.id), 'name': base.name, 'type': base.type}
         for field in ('display_name', 'description', 'required'):
             value = getattr(base, field, None)
@@ -471,15 +442,9 @@ class _Projector:
         if base.custom_facets:
             out['custom_facets'] = {name: self.value(node, seen) for name, node in base.custom_facets.items()}
         if base.custom_facet_defs:
-            # What a subtype must supply, spelled as `properties` is -- a
-            # `facets:` entry *is* a `Property`, with a name, a required flag and
-            # a type. The names alone were what this emitted, so a consumer could
-            # say that `Nameable` demands `onlyIn` and not that it demands a
-            # string, nor that `onlyIn?` is optional: 19 of the corpus's 82
-            # declarations name a non-string type and 7 are optional.
-            #
-            # In declaration order, which sorting them broke -- an invariant the
-            # model holds everywhere it is exposed (docs/02 § 4).
+            # What a subtype must supply, spelled as `properties` is: a
+            # `facets:` entry is a `Property` with a name, a required flag and a
+            # type. In declaration order (docs/02 § 4).
             out['declared_facets'] = {name: self.value(prop, seen) for name, prop in base.custom_facet_defs.items()}
         if base.annotations:
             applied: list[Json] = [self.applied(name, extension) for name, extension in base.annotations.items()]
@@ -495,14 +460,9 @@ class _Projector:
     def json_schema(self, shape: JsonShape, seen: frozenset[int]) -> dict[str, Json]:
         """A JSON-schema type in both of the forms a reader needs.
 
-        `json_schema` is the schema as written, and `projection` is the nearest
-        RAML shape to it (docs/10 § 6.3) — the same one `projected()` exists to
-        hand a consumer, and which this view was not calling. Without it a
-        schema type reaches a consumer as a leaf with no properties, no items
-        and no facets, so a reading view reports that it is made of nothing;
-        with only the raw text, every `$ref` in a schema of any size is opaque,
-        because resolving `#/definitions/line` is the parser's job and it has
-        already done it.
+        `json_schema` is the schema, and `projection` is the nearest RAML shape
+        to it (docs/10 § 7), so a consumer reads uniform shape structure
+        without resolving `$ref`s itself (docs/16 § 6.2).
 
         Nested rather than merged onto this shape. A schema carries its own
         `description` and `example` and so does the RAML declaration wrapping
@@ -514,11 +474,8 @@ class _Projector:
         carrying one describes a type only to someone holding the directory it
         was written in. `as_schema` pulls those in, so what arrives validates
         the same documents and needs nothing else to read. A pointer within the
-        document stays a pointer, being followable where it stands.
-
-        It is a JSON value rather than a string, because that is what it is.
-        Emitting the source text made a consumer parse a document this one had
-        already parsed in order to show it.
+        document stays a pointer, being followable where it stands. It is a
+        JSON value, not source text.
         """
         out: dict[str, Json] = {}
         resolved = shape.as_schema()
@@ -536,12 +493,9 @@ class _Projector:
     def kind_facets(self, shape: object, seen: frozenset[int]) -> dict[str, Json]:
         """Every field the concrete kind declares, skipping the unset ones.
 
-        Driven off `__slots__`, using the same `copyable_slots` walk `clone`
-        uses, for the reason docs/05 § 1 gives there: `__slots__` on every model
-        class is a project rule rather than a convention, so the field list
-        cannot go stale. A facet added to a kind and not wired in here would
-        otherwise be invisible — the failure a complete view exists to prevent,
-        so the view must not have it.
+        Driven off `__slots__` via `copyable_slots`, as `clone` is, so a facet
+        added to a kind reaches the tree without an edit here. `bindings/schema.py`
+        must still declare the key; generation fails otherwise (docs/16 § 7).
 
         Wider than `facets_of`, which yields only the `ScalarFacet` constraints:
         this also has to carry the containers — `properties`, `items`, `any_of`
@@ -578,17 +532,11 @@ class _Projector:
     def example(self, example: Example, seen: frozenset[int]) -> Json:
         """One example: its value, and the metadata form B carried.
 
-        A record rather than the bare value, on both `example:` and every entry
-        of `examples:`. RAML's form B writes the value under `value:` beside a
-        `displayName`, a `description`, a `strict` flag and annotations of its
-        own, and all four reached no consumer — 15 across the corpus, silently,
-        since an example with no metadata and one whose metadata was dropped
-        project identically.
-
-        Always a record, never only where metadata exists. A consumer that has
-        to test which form arrived is the thing § 11.4a exists to prevent, and
-        `strict: false` in particular is *why* an example is there — it marks
-        one that deliberately does not validate.
+        Always a record, on `example:` and on every entry of `examples:`, even
+        without metadata, so a consumer never tests which form arrived. Form B's
+        `displayName`, `description`, `strict` and annotations ride beside
+        `value`; `strict: false` marks an example that deliberately does not
+        validate.
         """
         out: dict[str, Json] = {'value': self.value(example.data, seen)}
         for field in ('display_name', 'description', 'strict'):
@@ -677,9 +625,7 @@ class _Projector:
             'operations': {method: self.operation(op) for method, op in (endpoint.operations or {}).items()},
             'secured_by': self.schemes(endpoint.secured_by),
         }
-        # A resource carries the prose a navigation pane is built from, and it
-        # reached no view here at all: an operation had both, its resource had
-        # neither.
+        # The prose a navigation pane is built from.
         for field in ('display_name', 'description'):
             value = getattr(endpoint, field, None)
             if value is not None:
@@ -693,13 +639,11 @@ class _Projector:
         return out
 
     def operation(self, operation: Operation) -> Json:
-        """A method, with its parameters' **shapes** and not merely their names.
+        """A method, with its parameters' shapes and not merely their names.
 
-        The names alone were what the first draft projected, and it made the
-        `collection-merge-enum` case — which exists to pin the spec's own
-        `[mac, unix, win]` — assert nothing at all: the merged `enum` lives on
-        the query parameter's shape. A view that omits the thing its case is
-        named after is worse than none, because it looks like cover.
+        A merged constraint such as the spec's `[mac, unix, win]` enum lives on
+        the parameter's shape, which is what the `collection-merge-enum` golden
+        case pins.
         """
         out: dict[str, Json] = {
             'id': self.at(operation.id),
@@ -753,16 +697,11 @@ class _Projector:
     def schemes(self, schemes: list[SecurityScheme] | None) -> Json:
         """A `securedBy:` list, with the fields that carry its meaning.
 
-        `is_null` is `securedBy: [null]` — how an author *removes* an inherited
-        scheme (docs/09 § A3). It binds to a real definition of type `null`
-        rather than to nothing, so a view that only kept names would render it
-        as a scheme called "null" and lose the distinction from one actually
-        named that.
+        `is_null` marks a `null` entry: calls may use no scheme (docs/09 § A3).
+        It binds to a synthesised definition of type `null`, so without the flag
+        it would be indistinguishable from a scheme named "null".
 
-        `scopes` is OAuth 2.0's narrowed scope list. An earlier draft read a
-        `scopes` attribute that does not exist, so every narrowing projected as
-        `[]` — `getattr` with a default turning a wrong field name into a
-        plausible empty answer.
+        `scopes` is OAuth 2.0's narrowed scope list (docs/09 § A5).
         """
         return [
             {
@@ -793,16 +732,11 @@ class _Projector:
         return [self.applied(name, extension) for name, extension in annotations.items()]
 
     def applied(self, name: str, extension: DomainExtension) -> Json:
-        """One applied annotation: its type, and **what it says**.
+        """One applied annotation: its type by address, and its value.
 
-        The name alone was what this held, and a name cannot say which of two
-        libraries declaring `deprecated` was meant.
-
-        The value belongs here and not only in the document-wide list, whose
-        `target` is a *kind* — `Method` — so two methods carrying the same
-        annotation are two entries a reader cannot tell apart. Without it a view
-        can say a thing is deprecated and not what to use instead, which is the
-        whole content of `(deprecated): use PUT`.
+        The address, because a name cannot say which of two libraries declaring
+        `deprecated` was meant. The value here as well as in the document-wide
+        list, whose `target` is only a kind such as `Method`.
         """
         defined_by = extension.defined_by
         return {
@@ -854,10 +788,8 @@ def _plain(value: object) -> Json:  # noqa: PLR0911 - one arm per leaf type
         # YAML null — so the mapping and sequence are tested first rather than
         # falling back on `scalar` being None.
         #
-        # Through `entries` and `items`, which are what those containers hold. A
-        # `MappingValue` is not a mapping and a `SequenceValue` is not iterable;
-        # treating them as though they were raised on the first structured
-        # annotation value to reach here, and nothing had.
+        # Through `entries` and `items`: a `MappingValue` is not a mapping and a
+        # `SequenceValue` is not iterable.
         if value.mapping is not None:
             return {entry.key: _plain(entry.value) for entry in value.mapping.entries}
         if value.sequence is not None:

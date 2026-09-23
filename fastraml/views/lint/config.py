@@ -1,4 +1,4 @@
-"""Lint configuration decoding — docs/18-linting.md § 5.
+"""Lint configuration decoding (docs/18-linting.md § 3).
 
 **Structure is validated by a RAML type, not by hand.** `config.raml` beside
 this module declares the shape — which fields exist, what each holds, which
@@ -8,9 +8,7 @@ express: whether a rule, ruleset, plugin or category *exists* depends on what is
 registered at run time, and whether a `match:` string compiles depends on the
 regex engine.
 
-That split is the point. The alternative is fifty lines of `isinstance` checks
-re-deriving what a schema states declaratively, and the schema doubles as the
-thing an editor can be handed to check a `lint.yaml` before it is ever run.
+The schema doubles as something an editor can check a configuration against.
 """
 
 from __future__ import annotations

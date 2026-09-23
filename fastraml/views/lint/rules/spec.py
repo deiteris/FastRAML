@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 #: RAML 1.0 § Methods: the methods a resource may declare. fastRAML also
-#: accepts `trace` and `connect` as an extension (docs/01 § 3).
+#: accepts `trace` and `connect` as an extension (`parser/source_ir.METHODS`).
 _RAML_METHODS: Final = frozenset({'get', 'patch', 'put', 'post', 'delete', 'head', 'options'})
 _WEB_SCHEMES: Final = frozenset({'http', 'https'})
 #: A segment that is one simple expansion, `{name}`; the parser has validated the name.

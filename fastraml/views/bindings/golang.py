@@ -1,4 +1,4 @@
-"""The tree contract, as Go declarations — docs/16-graph.md § 11.11b.
+"""The tree contract, as Go declarations (docs/16-graph.md § 7).
 
 Run `python -m fastraml.views.bindings golang -o FILE`. The caller names the
 destination; `-o -` writes stdout, and `-p NAME` sets the package clause.
@@ -30,7 +30,8 @@ How Go spells what the other two backends get from their type systems:
   list and the tree emits those — see `_field`.
 * **A map's order.** Go maps discard it, so every map whose keys are data is
   `*orderedmap.OrderedMap`. That is the only dependency beyond the standard
-  library, and the reason is in `docs/16` § 11.11b.
+  library, and it exists because the tree preserves declaration order
+  (invariant I8, docs/02 § 4).
 * **Arbitrary JSON.** `Json` is raw bytes, not `any`, which keeps the author's
   key order and keeps an absent key distinct from a null one. It carries
   `Decode`, `Object` and `IsNull`.
@@ -401,7 +402,7 @@ def _field(key: str, spelling: str, *, optional: bool, note: str = '') -> tuple[
     # `omitzero` and not `omitempty`: the two differ on an empty list, which the
     # tree does emit -- `annotations`, `media_types`, `protocols` and
     # `secured_by` arrive as `[]` over the corpus. `omitempty` would write each
-    # of them back as an absent key (docs/16 § 11.11b).
+    # of them back as an absent key.
     tag = f'`json:"{key},omitzero"`' if optional else f'`json:"{key}"`'
     return _go_name(key), _optional(spelling) if optional else spelling, tag, note
 
@@ -482,7 +483,7 @@ def _recursion(schema: ContractSchema) -> str:
     Hand-declared. `schema.py` derives records by reading a `_Projector`
     method's AST, and `_Projector.recursion()` is a literal three-key dict that
     never runs, so generating from it declares three keys where seven ship
-    (docs/16 section 11.11c). `head` is hand-declared for a second reason:
+    (docs/16 § 6.1). `head` is hand-declared for a second reason:
     `shape()` writes it through a loop over `_BACK_POINTERS`, which no AST read
     resolves.
     """

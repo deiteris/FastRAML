@@ -6,7 +6,7 @@ more than one consumer needs it and because they must agree: a reference is
 followable only when the emitter that wrote it and the emitter that reads it
 address the entity identically.
 
-**An address is not an identity** (`docs/16` § 3.1). `Addresses.of` is keyed on
+**An address is not an identity** (`docs/16` § 2). `Addresses.of` is keyed on
 the model's `id` and is many-to-one on purpose — a linked declaration and its
 link target share one address, so a `securedBy:` bound to either finds the one
 declaration. It is not a pure function of structure either: RAML does not
@@ -17,7 +17,7 @@ is why assignment is one walk rather than a formula each emitter applies.
 **Everything referenceable gets an address, and nothing else does.** A thing
 needs one exactly when something can point at it; examples, defaults and
 documentation prose are pointed at by nothing and are placed by containment
-instead (`docs/16` § 4).
+instead (`docs/16` § 6.1).
 
 Nothing here decides a RAML rule. It runs after P10 and imports the model
 rather than being imported by it.
@@ -44,7 +44,7 @@ def workspace_of(raml: Raml) -> str:
     The workspace root, which is the boundary `SafeFileLoader` enforces: every
     file a parse can read is at or beneath it, so a path relative to it never
     ascends, and a library beside the entry document rather than beneath it is
-    `shared/money.raml` (docs/16 § 3). It falls back to the entry's directory,
+    `shared/money.raml` (docs/16 § 2). It falls back to the entry's directory,
     which is what the root defaults to without `--workspace-root`.
     """
     root = raml.workspace_root_uri
@@ -76,7 +76,7 @@ __all__ = [
 #: The default root of every address. `fastraml://id` mirrors AMF's `amf://id`,
 #: for the same reason: an address is structural and document-local, and rooting
 #: it at a real file URI would make every one of them machine-specific
-#: (docs/16 § 3).
+#: (docs/16 § 2).
 DEFAULT_BASE: Final = 'fastraml://id'
 
 #: The infix every declaration's address carries, so a reader can tell a
@@ -101,9 +101,7 @@ class Sink(Protocol):
     """What a `Walk` reports, one method per role it can reach.
 
     One method per role rather than one taking a kind, so an emitter maps a role
-    to its own vocabulary statically. A single `visit(entity, kind)` would put
-    that mapping back at runtime, which is the divergence `nodes.py` exists to
-    make impossible (`docs/16` § 2.7).
+    to its own vocabulary statically, as `nodes.py` does with one class per kind.
 
     Every method is given an address already assigned. A sink that wants only
     the addresses implements them all as `...` — see `_NullSink`.
@@ -131,7 +129,7 @@ class Addresses:
     """Every entity a walk reached, at the address it was given.
 
     `of` is keyed on the model's own `id` and never on `id()`, which is neither
-    stable nor unique once an object is freed (`docs/16` § 3.1). It is
+    stable nor unique once an object is freed (`docs/16` § 2). It is
     many-to-one: a linked declaration and its link target share one address, so
     a `securedBy:` bound to either finds the one declaration.
     """
@@ -210,7 +208,7 @@ class Walk:
         self.sink = sink
         #: Model entity id -> the IRI of the node projecting it. One map for
         #: every kind, because ids come from one counter per parse (docs/02
-        #: § 3.1) and so are unique across kinds. Keyed on the model's own id,
+        #: § 3) and so are unique across kinds. Keyed on the model's own id,
         #: never `id()`, which is neither stable nor unique once freed.
         self.iris: dict[int, str] = {}
         #: IRI -> the entity id holding it. Two shapes given the same structural
@@ -257,16 +255,9 @@ class Walk:
     def claim(self, fallback: str, shape_id: int) -> str:
         """`fallback`, or the first free variation of it, claimed for `shape_id`.
 
-        A structural IRI is derived from *names*, and RAML does not promise the
+        A structural IRI is derived from names, and RAML does not promise the
         names are distinct: `type1: [string, string]` gives two parents the same
-        one. Without this the second silently merges into the first — the node
-        count is plausible, no error is raised, and two types have become one.
-
-        go-raml's converter has a test for exactly this hazard
-        (`TestJSONLD_NoDuplicateIDs`, "a regression net for intermediate
-        BaseShape objects that bypass shapeIDs registration and accidentally
-        claim a contextID already in use"). It cost one corpus fixture to
-        confirm the same hole was here.
+        one. Without this the second would silently merge into the first.
 
         The suffix begins with `!`, which `_segment` always percent-escapes, so
         a disambiguated IRI can never collide with a name that produced one.
@@ -424,11 +415,9 @@ class Walk:
     ) -> None:
         """A `type:`, `is:` or `securedBy:` reference, pointed at what it named.
 
-        The declaration comes off the reference, which the pass that resolved it
-        recorded. Matching the name again would re-run P4's work and get a
-        different answer: `a.paged` and `b.paged` are one name in two libraries,
-        and a lookup cannot tell them apart — it returns whichever was declared
-        first, so `refs a.paged` reports a use that is not there.
+        The declaration comes off the reference, where the resolving pass
+        recorded it. A second lookup by name could pick the wrong one of two
+        libraries declaring the same name.
 
         A reference that resolved to nothing still gets an edge, to a node
         holding the name, so an application is never invisible and no edge
@@ -512,19 +501,15 @@ class Walk:
     def secured(self, subject: str, schemes: list[SecurityScheme]) -> None:
         """One `securedBy` edge per scheme in force.
 
-        `securedBy: [null]` removes inherited security rather than naming a
-        scheme, so it produces no edge. The subject records it — as `unsecured`,
-        alongside the scopes the schemes narrowed to — and both are read off
-        `Operation.secured_by` when the attributes are asked for.
+        A `null` entry (calls may use no scheme) names no declaration, so it
+        produces no edge; `OperationNode` reports it as `unsecured`, beside the
+        narrowed scopes, from `Operation.secured_by`.
         """
         for scheme in schemes:
             if scheme.is_null:
                 continue
-            # P5 already bound this reference to its declaration, so the IRI is
-            # computed from the definition rather than matched by name. Matching
-            # re-derived work the model had done, and did it worse: two libraries
-            # declaring one scheme name are indistinguishable to a name lookup
-            # and are two different objects here.
+            # P5 bound this reference to its declaration; use that rather than
+            # a name lookup, which cannot tell two libraries' schemes apart.
             target = self.iris.get(scheme.definition.id) if scheme.definition is not None else None
             if target is not None:
                 self.edge(subject, 'securedBy', target)
@@ -573,7 +558,7 @@ class Walk:
         and emits nothing, which is what closes a type cycle and what makes a
         declared type one node rather than one per use site.
 
-        `in_schema` marks the walk as being *inside* a § 6.3 projection, where a
+        `in_schema` marks the walk as being inside a JSON Schema projection, where a
         shape is a subschema and addresses itself (`schema_iri`). It is not a
         property of the shape: a RAML type declared from
         `schema.json#/definitions/User` has the same kind of `location` and must
@@ -591,12 +576,8 @@ class Walk:
 
         kind = type(base.shape).__name__ if base.shape is not None else 'UnknownShape'
         self.sink.type_(iri, base, kind)
-        # Structure and facets come from the *projected* shape, so a type defined
-        # by a JSON schema has members here rather than being a leaf. Without it
-        # `deps errorScheme` reported that it is made of nothing, every SPARQL
-        # query walking `raml:property` skipped those types, and nothing reading
-        # the projection saw any change when a whole schema was replaced
-        # (docs/16 § 2.6).
+        # Structure and facets come from the projected shape, so a JSON Schema
+        # type has members here rather than being a leaf.
         view = projected(base)
 
         for parent in base.inherits:
@@ -613,7 +594,7 @@ class Walk:
     def children(self, iri: str, shape: Shape | None, *, in_schema: bool = False) -> None:
         """The declarations a kind contains. One branch per container facet.
 
-        `in_schema` travels down unchanged: everything beneath a § 6.3
+        `in_schema` travels down unchanged: everything beneath a JSON Schema
         projection is a subschema, and nothing beneath a RAML type is.
         """
         if isinstance(shape, ObjectShape):

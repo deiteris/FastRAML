@@ -5,7 +5,7 @@ not edit the copy. Edit `fastraml/views/bindings/static/walk.py`, which is this
 file; it holds no generated character, and reads its one table out of `tree.py`
 beside it. `tests/unit/test_bindings.py` fails when the two disagree.
 
-The metamodel is three constructs (docs/16-graph.md section 11.10):
+The metamodel is three constructs (docs/16-graph.md § 6.1):
 
     {"$ref": <address>}                            a link -- look the target up
     {"type": "recursive", "head": {"$ref": ...}}   repeats here, do not expand
@@ -82,7 +82,7 @@ class Tree:
         A tree from a later format version may have renamed a field a consumer
         reads. Reading it anyway produces output that is wrong rather than
         absent, so refuse anything the three envelope fields do not match
-        (docs/16 section 11.9). A later format version may have renamed a field.
+        (docs/16 § 6).
         """
         return cls(cls.check(document))
 
@@ -128,9 +128,8 @@ class Tree:
 
         A `json` shape carries its schema twice: `json_schema` in JSON Schema's
         own vocabulary, and `projection` as the nearest RAML shape. The
-        projection is the type (docs/16 section 11.10). The `json` shape itself
-        has no properties and no facets, because the spec forbids a
-        JSON-schema type from taking part in inheritance.
+        projection is the type (docs/16 § 6.2); the `json` shape itself carries
+        no RAML properties or facets.
         """
         if shape['type'] != 'json':
             return shape

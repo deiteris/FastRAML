@@ -34,8 +34,8 @@ class Rule:
 
 
 #: Every rule the comparison can return, so a consumer can enumerate them
-#: without reading the walk. docs/16 § 10.2 is this table in prose, and
-#: `model.RULE_IDS` is its keys — what a project override is validated against.
+#: without reading the walk (docs/16 § 5). `model.RULE_IDS` is its keys, which
+#: a project override is validated against.
 RULES: Final[dict[str, Rule]] = {
     rule.name: rule
     for rule in (

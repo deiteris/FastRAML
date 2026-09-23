@@ -159,11 +159,9 @@ def _operation_of(change: Change) -> str | None:
 def _match_fields(change: Change) -> tuple[str, str | None, str, str | None, object, object]:
     """What an override matches on, in the spelling a project writes.
 
-    `location` is the coordinate's class name for every change that has one --
-    including an API-level default, which used to report the string `Api` and so
-    matched no `location:` a reader could have guessed. `docs/13` and the
-    `backward` skill both show `location: TransportLocation` against exactly that
-    case.
+    `location` is the coordinate's class name for every change that has one,
+    including an API-level default: `location: TransportLocation` matches a
+    root `protocols:` or `baseUri` change.
     """
     if isinstance(change, (OperationAdded, OperationRemoved)):
         # No `attribute` and no values. An operation that arrived or left has no

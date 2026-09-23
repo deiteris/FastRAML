@@ -7,7 +7,7 @@ aliases and the fixed records; everything from `ShapeType` on is generated from
 added to a kind arrives without either half being edited.
 `tests/unit/test_bindings.py` fails when they disagree.
 
-The metamodel is three constructs (docs/16-graph.md section 11.10):
+The metamodel is three constructs (docs/16-graph.md § 6.1):
 
     {"$ref": <address>}                            a link -- look the target up
     {"type": "recursive", "head": {"$ref": ...}}   repeats here, do not expand

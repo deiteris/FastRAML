@@ -1,4 +1,4 @@
-"""The effective model as a labelled directed graph — docs/16-graph.md.
+"""The effective model as a labelled directed graph (docs/16-graph.md § 3).
 
 RAML's syntax is a tree and its semantics are a graph: types inherit from types,
 properties reference types, resources instantiate resource types, methods apply
@@ -78,7 +78,7 @@ __all__ = [
 
 #: The vocabulary namespace. A URN rather than an `http(s)` IRI on purpose: this
 #: project claims no domain name, and a prefix that 404s is worse than one that
-#: never promised to resolve. Provisional until 1.0 — see docs/16 § 2.
+#: never promised to resolve. Provisional until 1.0; see docs/16 § 3.
 RAML_NS: Final = 'urn:fastraml:ns:raml#'
 
 #: The edges to follow when asking what a type is *made of*. This is the closure
@@ -92,7 +92,7 @@ TYPE_EDGES: Final = (
     'property',
     'patternProperty',
     # Both look optional and are not. `User[]` does not put the *declaration* of
-    # `User` under `items`: it puts an alias of it there (docs/07 § 3.6), so a
+    # `User` under `items`: it puts an alias of it there (docs/07 § 3), so a
     # closure without `aliasOf` stops one hop short of every array member type
     # and reports the member's supertypes instead of the member. `recursionHead`
     # is the same argument for a cyclic type — the walk's own `seen` set is what
@@ -103,10 +103,8 @@ TYPE_EDGES: Final = (
 
 #: `TYPE_EDGES` plus containment and application, which is what a *use* question
 #: needs: walked in reverse from a type it arrives at the operations and
-#: resources that can carry it, which is the query the whole projection exists
-#: for. The application edges are here for the same reason — reversed from a
-#: trait, a security scheme or an annotation type, they name every site that
-#: uses it, and a `refs` that could not answer that would be half a tool.
+#: resources that can carry it, and reversed from a trait, security scheme or
+#: annotation type it names every site that applies it (`fastraml refs`).
 USE_EDGES: Final = (
     *TYPE_EDGES,
     'queryString',
@@ -126,17 +124,13 @@ _REQUEST_EDGES: Final = (*TYPE_EDGES, 'parameter', 'queryString', 'payload')
 
 _XSD: Final = 'http://www.w3.org/2001/XMLSchema#'
 
-#: Opens the tail of every declaration IRI (§ 3).
-
 
 def is_declaration(iri: str) -> bool:
     """Whether `iri` names a declaration rather than a node inside one.
 
-    Exported because more than one view has to agree about it: a rule that
-    judges *declared* types and a query that does the same must draw the line
-    in one place, which is the mistake docs/16 § 6.2 records — three catalogue
-    queries matched every `Type` node instead of every declared one, and
-    returned one row per use of a problem instead of one row per problem.
+    Exported because every view that judges declared types must draw the line
+    in one place; matching every `Type` node instead reports one row per use
+    of a problem rather than one per problem.
 
     Told apart by depth. A declaration's tail is `<bucket>/<name>` and nothing
     more — `types/User` — while a node beneath it keeps going:
@@ -165,10 +159,8 @@ def _outermost(matched: Sequence[str]) -> list[str]:
     and that ambiguity is real.
 
     Walks each IRI's own ancestors against a set rather than comparing every
-    pair. The pairwise form is quadratic *and* builds a string per comparison,
-    which a common property name reaches the cliff of immediately: `id` matches
-    4800 nodes on the benchmark corpus, and the walk answers in 3 ms where the
-    scan took two seconds.
+    pair: a common property name such as `id` can match thousands of nodes, and
+    the pairwise form is quadratic.
     """
     have = set(matched)
     outermost = []
@@ -213,7 +205,7 @@ class Route:
     cannot do. `?a (p|q)* ?b` answers *whether* `b` is reachable; it cannot bind
     what lay between, because a path expression introduces no variables. For a
     navigation tool "why does this endpoint expose `User`" is the question, and
-    the answer is the intermediate nodes (docs/16 § 5).
+    the answer is the intermediate nodes (docs/16 § 3).
     """
 
     #: Every node from the origin to the target, inclusive. Length >= 1.
@@ -260,9 +252,7 @@ class Graph:
         #: `location` back into the path a person typed.
         self.root = root
         #: Every node carries the model object it was projected from, so the
-        #: way back to the model is the node itself. Two side maps used to hold
-        #: that for types and for endpoints — 60% of the nodes — and nothing
-        #: recorded it for the rest (docs/16 § 2.7).
+        #: way back to the model is the node itself.
         self.nodes = nodes
         self.edges = edges
         self._request_shape_iris: frozenset[str] | None = None
@@ -328,7 +318,7 @@ class Graph:
         The graph keeps every entity's *structure*; the model keeps its detail.
         A caller that has located something here and now wants its facets asks
         for the shape rather than reading the projection, which deliberately
-        carries only what a traversal needs (§ 2.5).
+        carries only what a traversal needs.
         """
         found = self.entity_at(iri)
         return found if isinstance(found, BaseShape) else None
@@ -378,15 +368,13 @@ class Graph:
         if node is None:
             return iri.rsplit('/', 1)[-1] or iri
         segment = iri.rsplit('/', 1)[-1]
-        # `name` is the first key the loop below would try, and it is the answer
-        # for all but anonymous shapes — so read it directly and skip building
-        # the dictionary entirely. The structural test has to run first: a Type
-        # whose name only repeats its own IRI segment is exactly the case the
-        # loop exists to fall through (docs/12 § 19e).
+        # `name` answers for all but anonymous shapes, so read it directly and
+        # skip building the attribute dictionary. A Type whose name only
+        # repeats its own IRI segment falls through to the loop below.
         name = node.name
         if name and not (name == segment and node.kinds[0] == 'Type' and not is_declaration(iri)):
             return name
-        # Bound once: derived per read, and this asks up to seven times (§ 2.8).
+        # Bound once: `attributes` is rebuilt on every read.
         attributes = node.attributes
         keys: tuple[str, ...] = ('name', 'path', 'method', 'statusCode', 'mediaType', 'type')
         # Only a `Type`: an operation's name defaults to its method, which also
@@ -408,16 +396,14 @@ class Graph:
         makes `Entity` match both its own declaration and
         `…/types/Admin/inherits/Entity`. Reporting that pair as an ambiguity is
         useless: they are the same type, and only one of them is somewhere an
-        author can go. Without this rule `refs Entity` fails on a two-type
-        document, which is how the rule was found.
+        author can go.
 
         Two *declarations* of one name — the same type declared in two libraries
         — stay ambiguous. That one the caller has to resolve, and the whole IRI
         is accepted here so that it can.
         """
-        # `node.name`, not `node.attributes['name']`: the dictionary a `TypeNode`
-        # builds projects the shape and walks every facet its kind declares, all
-        # of it discarded here (docs/12 § 19e).
+        # `node.name`, not `node.attributes['name']`, which would project the
+        # shape and walk its facets for every node.
         matched = [iri for iri, node in self.nodes.items() if node.name == name]
         if not matched and name.startswith('/'):
             # An endpoint is named by its `displayName` when it has one, but its
@@ -649,8 +635,8 @@ class _GraphSink:
     """The `Sink` that builds nodes and edges.
 
     Every method turns one role into the node class that owns it. The mapping is
-    static — `endpoint` can only make an `EndPointNode` — which is what keeps a
-    node's kind and its entity from disagreeing (`docs/16` § 2.7).
+    static (`endpoint` can only make an `EndPointNode`), so a node's kind and
+    its entity cannot disagree.
 
     First reach wins, so a declared type is one node rather than one per use
     site and a type cycle closes (`docs/16` § 3).
@@ -719,17 +705,9 @@ class _GraphSink:
         """One relationship, appended to the list and to both adjacency indices.
 
         Written as a `get`/branch rather than `setdefault(key, []).append(...)`
-        to **right-size the singleton lists**, which is what nearly every entry
-        in both indices is: on `bench_endpoints`, 100% of `incoming` and 73% of
-        `outgoing` hold exactly one edge. A list built as `[]` and then appended
-        to over-allocates to capacity 4 and costs 88 bytes; built as `[edge]` it
-        is exact and costs 64. At 54 505 singletons that is 1.3 MB, and the
-        measured saving is 1.23 MB of peak — about 5% of the projection.
-
-        It is **not** faster, and the discarded empty lists `setdefault` builds
-        eagerly are not why. Those come off CPython's list freelist and cost
-        effectively nothing; an A/B of `build_graph` alone is 77.1 ms against
-        77.2 ms. Only the memory moves.
+        to right-size the singleton lists, which most entries in both indices
+        are: `[edge]` is allocated exactly, while `[]` then `append` reserves
+        room for four. This saves memory, not time.
         """
         edge = Edge(subject, predicate, obj)
         self.edges.append(edge)

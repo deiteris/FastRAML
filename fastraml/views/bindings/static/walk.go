@@ -7,7 +7,7 @@
 // shape starts being descended without either half being edited.
 // `tests/unit/test_bindings.py` fails when they disagree.
 //
-// The metamodel is three constructs (docs/16-graph.md section 11.10):
+// The metamodel is three constructs (docs/16-graph.md § 6.1):
 //
 //	{"$ref": <address>}                            a link -- look the target up
 //	{"type": "recursive", "head": {"$ref": ...}}   repeats here, do not expand
@@ -51,8 +51,7 @@ type Tree struct {
 //
 // A tree from a later format version may have renamed a field a consumer reads.
 // Reading it anyway produces output that is wrong rather than absent, so refuse
-// anything the three envelope fields do not match (docs/16 section 11.9).
-// A later format version may have renamed a field.
+// anything the three envelope fields do not match (docs/16 § 6).
 func Of(document *Document) (*Tree, error) {
 	if err := Check(document); err != nil {
 		return nil, err
@@ -108,9 +107,8 @@ func (t *Tree) Resolve(node *ShapeNode) (Shape, *Recursion) {
 //
 // A `json` shape carries its schema twice: JsonSchema in JSON Schema's own
 // vocabulary, and Projection as the nearest RAML shape. The projection is the
-// type (docs/16 section 11.10). The `json` shape itself has no properties and no
-// facets, because the spec forbids a JSON-schema type from taking part in
-// inheritance.
+// type (docs/16 § 6.2); the `json` shape itself carries no RAML properties or
+// facets.
 func (t *Tree) Content(shape Shape) Shape {
 	schema, ok := shape.(*JsonShape)
 	if !ok || schema.Projection == nil || schema.Projection.Shape == nil {

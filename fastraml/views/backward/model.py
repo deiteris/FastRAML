@@ -1,4 +1,4 @@
-"""The vocabulary, the coordinates and the results — docs/16-graph.md section 10.
+"""The vocabulary, the coordinates and the results (docs/16-graph.md § 5).
 
 What a comparison can say, with nothing that says it. A coordinate names where a
 change is, a result pairs that with what changed there, and `impact_of` grades a
@@ -54,14 +54,10 @@ type Direction = Literal['request', 'response']
 type ChangeKind = Literal['added', 'removed', 'changed']
 
 #: What a change is *about*, as a closed vocabulary. `attribute` names the field
-#: within it and may be absent; `subject` never is.
-#:
-#: The two were one axis until a report read `additionalProperties: true -> false`
-#: as "Required -> Optional". Nothing was wrong with the record: `before` and
-#: `after` are `object`, so the renderer sniffed the Python type, found a `bool`,
-#: and guessed the only meaning a bare boolean used to have. A closed subject is
-#: what lets a reader -- and `_value` below -- ask what a value *is* instead of
-#: inferring it from how Python happens to store it.
+#: within it and may be absent; `subject` never is. A closed subject lets a
+#: reader, and the Markdown renderer, ask what a value is instead of inferring
+#: it from its Python type: `additionalProperties: true -> false` and a
+#: requiredness change are both booleans.
 type Subject = Literal[
     'base-uri',
     'body',
@@ -94,9 +90,8 @@ SUBJECTS: Final = frozenset(get_args(Subject.__value__))
 #: produce, which is the one failure an override must not have.
 RULE_IDS: Final = frozenset(RULES)
 
-#: Worst first, and the only ordering this view has. `severity.Ranking` is the
-#: arithmetic every grading view shares; a private tuple-plus-dict copy of it
-#: here is exactly what that module was written to stop.
+#: Worst first, and the only ordering this view has; the arithmetic is the
+#: shared `severity.Ranking`.
 IMPACTS: Final = Ranking[Impact](('breaking', 'review', 'compatible', 'cosmetic'))
 
 
@@ -144,12 +139,9 @@ def side_of_rule(rule: str) -> Direction | None:
 def rule_for(movement: str, direction: Direction | None) -> str:
     """The rule id for `movement` seen from `direction`.
 
-    The walk used to build these itself, as `f'{direction}-property-removed'` at
-    each site, which is why a change could only ever carry one grade: the side
-    was baked in before the table was consulted. Naming the movement instead
-    leaves the side a question this answers, and a coordinate with no side --
-    a type declaration, which is neither sent nor received until someone uses
-    it -- can be asked twice.
+    The walk names the movement and this supplies the side, so a coordinate
+    with no side (a type declaration, neither sent nor received until someone
+    uses it) can be graded for both.
     """
     if movement not in _SIDED:
         return movement

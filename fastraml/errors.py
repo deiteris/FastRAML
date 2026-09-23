@@ -48,7 +48,7 @@ class Trace:
 
     `info` holds the values that vary between occurrences of the same message.
     Keeping them out of `message` means diagnostics group cleanly and tests can
-    match on the message alone. See docs/11-diagnostics.md section 6.
+    match on the message alone. See docs/11-diagnostics.md § 6.
     """
 
     __slots__ = ('cause', 'info', 'kind', 'location', 'message', 'position')
@@ -201,7 +201,7 @@ class Accumulator:
     """Collects independent failures so a pass can report all of them.
 
     Used by every pass that tolerates a local error. See docs/11-diagnostics.md
-    section 2 for which passes those are and at what granularity.
+    § 2 for which passes those are and at what granularity.
     """
 
     __slots__ = ('_errors',)

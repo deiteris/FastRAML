@@ -349,3 +349,11 @@ class TestOverlayTypeMaps:
     def test_a_whole_types_map_the_target_lacked_is_allowed(self):
         assert violations('title: A\n', 'types:\n  B: string\n') == []
         assert violations('title: A\n', 'schemas:\n  B: string\n') == []
+
+
+class TestAnnotationTypeChanges:
+    def test_changed_annotation_types_are_reported_and_new_ones_are_not(self):
+        result, _, _ = apply(
+            'annotationTypes:\n  a: string\n  b: string\n', 'annotationTypes:\n  a: integer\n  b: string\n  c: string\n'
+        )
+        assert list(result.changed_annotation_types) == ['a']

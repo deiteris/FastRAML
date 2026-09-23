@@ -184,6 +184,9 @@ class ExtensionMergeResult:
     #: Root declaration names the document added, per kind (`types`, `traits`,
     #: ...), in document order. `schemas` entries count as `types`.
     declared: dict[str, list[str]] = field(default_factory=dict)
+    #: Existing root annotation types the document changed, by name, with the
+    #: key it changed them under; for the error frame of docs/19 § 4.4.
+    changed_annotation_types: dict[str, Node] = field(default_factory=dict)
     #: Overlay violations, accumulated; `None` for an Extension or a clean Overlay.
     error: RamlError | None = None
 
@@ -203,7 +206,12 @@ def merge_extension(
     """
     merger = _Merger(location, overlay, mark)
     tree = merger.mapping(target, extension, Site.ROOT, free=False)
-    return ExtensionMergeResult(tree=tree, declared=merger.declared, error=merger.violations.result())
+    return ExtensionMergeResult(
+        tree=tree,
+        declared=merger.declared,
+        changed_annotation_types=merger.changed_annotation_types,
+        error=merger.violations.result(),
+    )
 
 
 def _child_site(site: Site, name: str) -> Site:  # noqa: PLR0911 - one return per grammar rule
@@ -246,7 +254,7 @@ def _facet_site(site: Site, name: str) -> Site:
 
 
 class _Merger:
-    __slots__ = ('declared', 'location', 'mark', 'overlay', 'violations')
+    __slots__ = ('changed_annotation_types', 'declared', 'location', 'mark', 'overlay', 'violations')
 
     def __init__(self, location: str, overlay: bool, mark: Callable[[Node], None]) -> None:  # noqa: FBT001 - private
         self.location = location
@@ -254,6 +262,7 @@ class _Merger:
         self.mark = mark
         self.violations = Accumulator()
         self.declared: dict[str, list[str]] = {}
+        self.changed_annotation_types: dict[str, Node] = {}
 
     # -- the recursion --------------------------------------------------------
 
@@ -295,6 +304,8 @@ class _Merger:
                 continue
             changed = True
             merged[position + 1] = new
+            if site is Site.ANNOTATION_TYPES:
+                self.changed_annotation_types[name] = key
             if replaced:
                 # The pair is the extension document's now, key and all, so a
                 # diagnostic on either names one file (docs/19 § 5.3).

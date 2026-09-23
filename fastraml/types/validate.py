@@ -489,16 +489,39 @@ def _validate_domain_extensions(raml: Raml, cache: dict[int, BaseShape], acc: Ac
         try:
             declared.validate_at(extension.value.raw, '$')
         except RamlError as err:
-            acc.add(
-                RamlError.wrap(
-                    'invalid annotation value',
-                    err,
-                    extension.location,
-                    extension.value_pos,
-                    kind=ErrorKind.VALIDATING,
-                    info={'annotation': extension.name},
-                )
+            invalid = RamlError.wrap(
+                'invalid annotation value',
+                err,
+                extension.location,
+                extension.value_pos,
+                kind=ErrorKind.VALIDATING,
+                info={'annotation': extension.name},
             )
+            acc.add(_name_the_change(raml, extension, invalid))
+
+
+def _name_the_change(raml: Raml, extension: DomainExtension, error: RamlError) -> RamlError:
+    """Point at the Overlay or Extension that changed the annotation type, if one did.
+
+    Without this the failure is reported only where the annotation was
+    applied, in a file nobody changed (docs/19 § 4.4).
+    """
+    changes = raml.annotation_type_changes
+    declared = extension.defined_by
+    if not changes or declared is None:
+        return error
+    change = changes.get(declared.name)
+    if change is None or declared.location not in {raml.location, *(e.location for e in raml.extensions)}:
+        return error
+    location, position = change
+    return RamlError.wrap(
+        'annotation type changed by an extension document',
+        error,
+        location,
+        position,
+        kind=ErrorKind.VALIDATING,
+        info={'annotation': declared.name},
+    )
 
 
 def _check_target(extension: DomainExtension, declared: BaseShape, acc: Accumulator) -> None:

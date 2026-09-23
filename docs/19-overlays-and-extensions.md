@@ -228,8 +228,11 @@ annotation still validates against the merged declaration. That condition is
 ordinary annotation validation in P10 ([09](09-security-and-annotations.md)
 § B3), so it applies only when validation is requested, as for any document.
 When a value fails against an annotation type that an extension document
-changed, the error gets an extra frame. The frame names the extension document
-and the position of the change.
+changed, the `invalid annotation value` error gets an outer frame,
+`annotation type changed by an extension document`. The frame is located at the
+key of the change and has the annotation name in `info`. The merge reports the
+existing root annotation types each document changed. A newly added annotation
+type is not a change, and the latest document to change a type is the one named.
 
 ## 5. Namespaces and provenance
 

@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from fastraml.parser.fragments import ExtensionFragment, Fragment, ReferenceResolver
     from fastraml.parser.includes import IncludeRef
     from fastraml.parser.structural_merge import ProvenanceOverlay
+    from fastraml.positions import Position
     from fastraml.types.expressions import ExprCache
     from fastraml.types.jsonschema_ import SchemaRegistry
     from fastraml.yamlnode import Node
@@ -122,6 +123,7 @@ class Raml:
         '_document_scopes',
         '_id_counter',
         '_parse_ctx_stack',
+        'annotation_type_changes',
         'entry_point',
         'extensions',
         'source_info',
@@ -191,6 +193,9 @@ class Raml:
         #: The Overlays and Extensions applied to the root API, in application
         #: order; empty unless the entry is one (docs/19 § 6).
         self.extensions: list[ExtensionFragment] = []
+        #: Root annotation types an extension document changed: name ->
+        #: (document URI, position of the change) (docs/19 § 4.4).
+        self.annotation_type_changes: dict[str, tuple[str, Position]] = {}
         self.unwrapped = False
         self.source_nodes: dict[str, Node] = {}
         self.source_texts: dict[str, str] = {}

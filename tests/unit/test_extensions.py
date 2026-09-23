@@ -263,3 +263,28 @@ class TestLenient:
         assert error is not None
         assert error.head.message == 'not allowed in an overlay'
         assert isinstance(raml.entry_point, APIFragment)
+
+
+class TestAnnotationTypeChanges:
+    def test_a_change_that_breaks_an_application_names_the_extension(self, tmp_path):
+        # docs/19 § 4.4: the failure is at the application, the cause is here.
+        files = {
+            'api.raml': API + 'annotationTypes:\n  note: string\n/a:\n  (note): hi\n',
+            'entry.raml': '#%RAML 1.0 Overlay\nextends: api.raml\nannotationTypes:\n  note: integer\n',
+        }
+        write(tmp_path, files)
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(tmp_path / 'entry.raml', VALIDATE)
+        frames = caught.value.frames()
+        assert frames[0].message == 'annotation type changed by an extension document'
+        assert dict(frames[0].info) == {'annotation': 'note'}
+        assert frames[0].location.endswith('/entry.raml')
+        assert frames[1].message == 'invalid annotation value'
+        assert frames[1].location.endswith('/api.raml')
+
+    def test_a_compatible_change_is_accepted(self, tmp_path):
+        files = {
+            'api.raml': API + 'annotationTypes:\n  note: string\n/a:\n  (note): hi\n',
+            'entry.raml': '#%RAML 1.0 Overlay\nextends: api.raml\nannotationTypes:\n  note: string | integer\n',
+        }
+        assert parse(tmp_path, files).endpoints['/a'].annotations['note'].value.raw == 'hi'

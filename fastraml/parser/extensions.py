@@ -94,6 +94,8 @@ def decode_extension_chain(raml: Raml, uri: str, kind: FragmentKind, text: str) 
         )
         if result.error is not None:
             accumulator.add(result.error)
+        for name, key in result.changed_annotation_types.items():
+            raml.annotation_type_changes[name] = (document.uri, key.position)
         for declaration_kind, names in result.declared.items():
             origins = declared_by.setdefault(declaration_kind, {})
             for name in names:

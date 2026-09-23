@@ -131,7 +131,7 @@ spec allows fails with `not allowed in an overlay`
 
 ```python
 raml = parse_from_path('overlays/es.raml', ParseOptions(workspace_root='.'))
-print(raml.location)                              # the root API's URI
+print(raml.location)  # the root API's URI
 print([doc.location for doc in raml.extensions])  # the chain, applied in order
 ```
 

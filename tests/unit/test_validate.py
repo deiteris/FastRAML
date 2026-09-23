@@ -148,6 +148,43 @@ class TestNumericExactness:
         assert shape.validate(127) is None
         assert shape.validate(128) is not None
 
+    @settings(max_examples=300)
+    @given(st.floats(allow_nan=True, allow_infinity=True))
+    def test_a_float_is_read_through_its_repr(self, value):
+        # `as_fraction` reads the text through `Decimal` for speed (docs/12
+        # § 2); the number it reads must be the one `Fraction` reads.
+        from math import isfinite
+
+        from fastraml.types.values import as_fraction
+
+        assert as_fraction(value) == (Fraction(repr(value)) if isfinite(value) else None)
+
+    @settings(max_examples=300)
+    @given(
+        st.one_of(st.integers(-(10**6), 10**6), st.fractions(max_denominator=1000)),
+        st.fractions(max_denominator=1000).filter(bool),
+    )
+    def test_multiple_of_agrees_with_dividing(self, value, multiple):
+        # Cross-multiplied rather than divided; a negative on either side too.
+        from fastraml.types.values import is_multiple_of
+
+        assert is_multiple_of(value, multiple) is ((Fraction(value) / multiple).denominator == 1)
+
+    def test_an_int_is_validated_as_an_int(self, workspace):
+        # docs/12 § 2: an `int` value is not turned into a `Fraction`, against an
+        # `integer` bound or a `number` one, and reports the same text.
+        from fastraml.types.values import as_exact
+
+        assert type(as_exact(7)) is int
+        assert as_exact(True) is None
+        number = declared(workspace, '  T:\n    type: number\n    minimum: 0.5\n    multipleOf: 0.5\n')
+        assert number.validate(1) is None
+        assert number.validate(0) is not None
+        integer = declared(workspace, '  T:\n    type: integer\n    maximum: 10\n')
+        error = integer.validate(11)
+        assert error is not None
+        assert error.head.info == {'path': '$', 'value': '11', 'maximum': '10'}
+
 
 class TestString:
     def test_length_bounds(self, workspace):

@@ -307,28 +307,16 @@ class ObjectShape(ComplexKind):
                 accumulator.add(err)
 
         count = len(value)
-        for bound, message, ok in (
-            (
-                self.min_properties,
-                'too few properties',
-                count >= (self.min_properties.value if self.min_properties else 0),
-            ),
-            (
-                self.max_properties,
-                'too many properties',
-                count <= (self.max_properties.value if self.max_properties else count),
-            ),
-        ):
-            if bound is not None and not ok:
-                accumulator.add(
-                    failure(
-                        message,
-                        self.base.location,
-                        self.base.value_pos,
-                        info={'path': path, 'count': count, 'bound': bound.value},
-                    )
-                )
+        if self.min_properties is not None and count < self.min_properties.value:
+            accumulator.add(self._count_failure('too few properties', path, count, self.min_properties.value))
+        if self.max_properties is not None and count > self.max_properties.value:
+            accumulator.add(self._count_failure('too many properties', path, count, self.max_properties.value))
         accumulator.raise_if_any()
+
+    def _count_failure(self, message: str, path: str, count: int, bound: int) -> RamlError:
+        return failure(
+            message, self.base.location, self.base.value_pos, info={'path': path, 'count': count, 'bound': bound}
+        )
 
     def _validate_extra(self, name: str, item: Any, path: str) -> None:
         """A key the declaration did not name: a pattern property, or refused."""

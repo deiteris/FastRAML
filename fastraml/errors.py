@@ -109,9 +109,20 @@ class RamlError(Exception):
     __slots__ = ('head', 'siblings')
 
     def __init__(self, head: Trace, siblings: Sequence[RamlError] = ()) -> None:
-        super().__init__(head.rendered_message())
+        # No message is passed up: rendering one formats every `info` value,
+        # and a union scan builds, then discards, one error per member that
+        # fails (`bench micro 'validate union'`). `args` renders on demand.
+        super().__init__()
         self.head = head
         self.siblings: tuple[RamlError, ...] = tuple(siblings)
+
+    @property
+    def args(self) -> tuple[str]:  # type: ignore[override]  # read-only: nothing assigns it
+        """`(message,)`, the head's rendered message, as `Exception.args` would hold it."""
+        return (self.head.rendered_message(),)
+
+    def __repr__(self) -> str:
+        return f'{type(self).__name__}({self.head.rendered_message()!r})'
 
     # -- construction ---------------------------------------------------------
 

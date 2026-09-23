@@ -36,8 +36,13 @@ can duplicate declarations; copying a node can lose its provenance.
   avoided also shortens every later collection.
 - Prefer compiled regular expressions and C-level string operations to
   per-character Python loops.
-- Numeric validation keeps integer comparisons on the integer path and converts
-  decimal values through text before using `Fraction`.
+- Numeric validation keeps an `int` value an `int` (`as_exact`), so comparing
+  it with an integer bound is one C operation. A float converts through its
+  decimal text: `Decimal(repr(v))`, whose exact `as_integer_ratio` is half the
+  cost of `Fraction` parsing the text.
+- A `RamlError` renders its message only when it is read. Validating a union
+  member that fails, or testing whether a member admits an enum value, builds a
+  diagnostic nobody reads.
 - Optional state stays optional: source retention, JSON Schema compilation,
   uncommon dependencies, and the pluralization dictionary are created only when
   requested.

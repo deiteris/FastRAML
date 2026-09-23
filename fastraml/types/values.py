@@ -33,6 +33,7 @@ __all__ = [
     'TIME_ONLY',
     'EnumValues',
     'ValueSet',
+    'as_exact',
     'as_fraction',
     'check_non_negative',
     'decimal_text',
@@ -127,7 +128,9 @@ def as_fraction(value: Any) -> Fraction | None:  # noqa: PLR0911 - one return pe
 
     `repr` gives the shortest decimal that round-trips to the same float, which
     is the author's text in every case that matters. go-raml does the same thing
-    with `big.Rat.SetString(fmt.Sprintf("%v", v))`.
+    with `big.Rat.SetString(fmt.Sprintf("%v", v))`. The text is read by
+    `Decimal`, whose `as_integer_ratio` is exact and, being C, half the cost of
+    `Fraction` parsing it (`bench micro 'validate number'`).
 
     `bool` is not a number here even though Python says it is a subclass of
     `int`; callers reject it before asking, and this is the second line of
@@ -139,9 +142,9 @@ def as_fraction(value: Any) -> Fraction | None:  # noqa: PLR0911 - one return pe
         return Fraction(value)
     if isinstance(value, float):
         # `inf` and `nan` have no decimal form; they are not RAML numbers.
-        if value != value or value in (float('inf'), float('-inf')):  # noqa: PLR0124 - the NaN test
+        if not isfinite(value):
             return None
-        return Fraction(repr(value))
+        return Fraction(*Decimal(repr(value)).as_integer_ratio())
     if isinstance(value, Decimal):
         try:
             return Fraction(str(value))
@@ -157,13 +160,28 @@ def as_fraction(value: Any) -> Fraction | None:  # noqa: PLR0911 - one return pe
     return None
 
 
-def is_multiple_of(value: Fraction, multiple: Fraction) -> bool:
+def as_exact(value: Any) -> int | Fraction | None:
+    """`as_fraction`, except that an `int` stays an `int`.
+
+    An `int` is already exact, and comparing it with an `int` bound is one C
+    operation where a `Fraction` pays four Python-level calls. `integer` bounds
+    are `int`s, so validating an integer compares nothing else. `denominator`
+    and `str` read the same on both types.
+    """
+    if type(value) is int:
+        return value
+    return as_fraction(value)
+
+
+def is_multiple_of(value: int | Fraction, multiple: Fraction) -> bool:
     """Exactly, not approximately: the quotient's denominator must be 1."""
     if multiple == 0:
         # `check()` rejects `multipleOf: 0`, so this only guards a shape built
         # programmatically. Nothing is a multiple of zero.
         return False
-    return (value / multiple).denominator == 1
+    # a/b ÷ c/d is integral when a·d is divisible by b·c: integer arithmetic,
+    # where dividing two `Fraction`s would reduce the quotient by a gcd first.
+    return (value.numerator * multiple.denominator) % (value.denominator * multiple.numerator) == 0
 
 
 def decimal_text(value: Fraction) -> str:
@@ -238,19 +256,19 @@ def _valid_time(hour: int, minute: int, second: int) -> bool:
 
 def valid_date_only(text: str) -> bool:
     match = DATE_ONLY.match(text)
-    return match is not None and _valid_date(*(int(part) for part in match.groups()))
+    return match is not None and _valid_date(*map(int, match.groups()))
 
 
 def valid_time_only(text: str) -> bool:
     match = TIME_ONLY.match(text)
-    return match is not None and _valid_time(*(int(part) for part in match.groups()))
+    return match is not None and _valid_time(*map(int, match.groups()))
 
 
 def valid_datetime_only(text: str) -> bool:
     match = DATETIME_ONLY.match(text)
     if match is None:
         return False
-    year, month, day, hour, minute, second = (int(part) for part in match.groups())
+    year, month, day, hour, minute, second = map(int, match.groups())
     return _valid_date(year, month, day) and _valid_time(hour, minute, second)
 
 
@@ -258,7 +276,7 @@ def parse_rfc3339(text: str) -> bool:
     match = _RFC3339.match(text)
     if match is None:
         return False
-    year, month, day, hour, minute, second = (int(part) for part in match.groups())
+    year, month, day, hour, minute, second = map(int, match.groups())
     return _valid_date(year, month, day) and _valid_time(hour, minute, second)
 
 
@@ -266,7 +284,7 @@ def parse_rfc2616(text: str) -> bool:
     match = _RFC2616.match(text)
     if match is None:
         return False
-    day, year, hour, minute, second = (int(part) for part in match.groups())
+    day, year, hour, minute, second = map(int, match.groups())
     month = 'JanFebMarAprMayJunJulAugSepOctNovDec'.index(text[8:11]) // 3 + 1
     return _valid_date(year, month, day) and _valid_time(hour, minute, second)
 

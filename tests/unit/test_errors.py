@@ -106,6 +106,13 @@ class TestRendering:
         err = RamlError.new('title is required', LOC, POS)
         assert str(err.args[0]) == 'title is required'
 
+    def test_the_message_is_rendered_when_read_with_its_info(self):
+        # Rendered on demand (docs/12 § 2), so `args` and `repr` still carry
+        # what `Exception` would have held.
+        err = RamlError.new('value is too long', LOC, POS, info={'maxLength': 3})
+        assert err.args == ('value is too long: maxLength: 3',)
+        assert repr(err) == "RamlError('value is too long: maxLength: 3')"
+
 
 class TestAccumulator:
     def test_empty_accumulator_yields_nothing(self):

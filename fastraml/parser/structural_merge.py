@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from fastraml.yamlnode import Node, NodeKind, pairs, with_content
+from fastraml.yamlnode import Node, NodeKind, mark_subtree, pairs, with_content
 
 if TYPE_CHECKING:
     from fastraml.registry import ParseCtx
@@ -149,15 +149,8 @@ def mark_graft(overlay: ProvenanceOverlay | None, node: Node | None, scope: Pars
     nor descends beneath it, and that value keeps the caller's namespace even
     though it now sits inside a grafted subtree.
     """
-    if overlay is None or node is None or scope is None:
-        return
-    stack = [node]
-    while stack:
-        current = stack.pop()
-        if current in overlay:
-            continue
-        overlay[current] = scope
-        stack += current.content
+    if overlay is not None and node is not None and scope is not None:
+        mark_subtree(overlay, node, scope)
 
 
 def copy_overlay(destination: ProvenanceOverlay, source: ProvenanceOverlay) -> None:

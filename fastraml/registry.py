@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from fastraml.domains import DomainLocation
 from fastraml.loaders import SchemeLoader
-from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, NodeKind
+from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, NodeKind, mark_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -367,18 +367,9 @@ class Raml:
     def mark_authored(self, node: Node, author: ReferenceResolver) -> None:
         """Record `node` and its whole subtree as written by `author`.
 
-        The whole subtree, because `Node` has no parent pointer: a decoder asks
-        about the node in its hand, however deep. Authorship is a fact about the
-        node, so a mark is never replaced.
+        Authorship is a fact about the node, so a mark is never replaced.
         """
-        documents = self._document_provenance
-        stack = [node]
-        while stack:
-            current = stack.pop()
-            if current in documents:
-                continue
-            documents[current] = author
-            stack += current.content
+        mark_subtree(self._document_provenance, node, author)
 
     def document_anchor(self, node: Node) -> ReferenceResolver | None:
         """The extension document that wrote `node`, if one did."""

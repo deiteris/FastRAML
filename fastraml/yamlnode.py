@@ -41,6 +41,7 @@ __all__ = [
     'end_line',
     'is_null',
     'last_leaf',
+    'mark_subtree',
     'node_error',
     'pairs',
     'read_head',
@@ -324,6 +325,23 @@ def pairs(node: Node) -> Iterator[tuple[Node, Node]]:
     content = node.content
     for index in range(0, len(content) - 1, 2):
         yield content[index], content[index + 1]
+
+
+def mark_subtree[V](marks: dict[Node, V], node: Node, value: V) -> None:
+    """Map `node` and every descendant to `value`, set-if-absent.
+
+    The whole subtree, because `Node` has no parent pointer: a decoder asks
+    about the node in its hand, however deep. A node already in `marks` keeps
+    its value, and its subtree is not entered, so a more specific mark
+    recorded earlier survives. Iterative, so depth costs no stack.
+    """
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current in marks:
+            continue
+        marks[current] = value
+        stack += current.content
 
 
 def last_leaf(node: Node) -> Node:

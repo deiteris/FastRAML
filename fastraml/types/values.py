@@ -16,11 +16,14 @@ from __future__ import annotations
 import re
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
+from math import isfinite
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.errors import ErrorKind, RamlError
 
 if TYPE_CHECKING:
+    from collections.abc import Hashable, Iterable
+
     from fastraml.positions import Position
 
 __all__ = [
@@ -28,12 +31,15 @@ __all__ = [
     'DATE_ONLY',
     'INTEGER_RANGES',
     'TIME_ONLY',
+    'EnumValues',
+    'ValueSet',
     'as_fraction',
     'check_non_negative',
     'decimal_text',
     'failure',
     'index_path',
     'is_multiple_of',
+    'is_subset',
     'key_path',
     'parse_rfc2616',
     'parse_rfc3339',
@@ -43,6 +49,7 @@ __all__ = [
     'valid_date_only',
     'valid_datetime_only',
     'valid_time_only',
+    'value_key',
 ]
 
 
@@ -264,11 +271,7 @@ def parse_rfc2616(text: str) -> bool:
     return _valid_date(year, month, day) and _valid_time(hour, minute, second)
 
 
-# -- uniqueItems (docs/10 § 5) -------------------------------------------------
-
-#: Below this many items, pairwise comparison beats hashing: it allocates
-#: nothing, and n² is small.
-PAIRWISE_LIMIT: Final = 20
+# -- semantic equality (docs/10 § 5) -----------------------------------------
 
 
 def same_value(left: Any, right: Any) -> bool:  # noqa: PLR0911 - a chain of disjoint cases, not nested logic
@@ -298,38 +301,161 @@ def same_value(left: Any, right: Any) -> bool:  # noqa: PLR0911 - a chain of dis
     return type(left) is type(right) and left == right
 
 
-def _hash(value: Any) -> int:
-    """A hash agreeing with `same_value`: key-sorted for mappings, ordered for sequences."""
-    if isinstance(value, dict):
-        return hash(('map', tuple(sorted((key, _hash(child)) for key, child in value.items()))))
-    if isinstance(value, list):
-        return hash(('seq', tuple(_hash(child) for child in value)))
+#: What `Fraction` accepts from text begins like this (optional space and sign,
+#: then a digit or a point and a digit). A string that does not is not a number,
+#: and is keyed without paying for a failed parse.
+_NUMBER_START: Final = re.compile(r'\s*[-+]?(?:\d|\.\d)')
+
+#: Tags keep the three structured keys apart from each other and from a number.
+_BOOL: Final = 'bool'
+_MAP: Final = 'map'
+_SEQ: Final = 'seq'
+_OTHER: Final = 'other'
+
+
+class _NoKey(Exception):  # noqa: N818 - a signal, not an error
+    """A value `value_key` cannot represent: unhashable, or not equal to itself."""
+
+
+def value_key(value: Any) -> Hashable:  # noqa: PLR0911 - one return per kind, as `same_value`
+    """The hashable form of `value` under semantic equality.
+
+    Two values have equal keys exactly when `same_value` calls them equal.
+    Computed once per value, so membership is a C-level `set` lookup instead of
+    one `same_value` call per member. `same_value` stays the definition;
+    `tests/property` checks that the two agree in both directions.
+
+    Raises `_NoKey` for a value it cannot represent (NaN, or an unhashable
+    type YAML does not produce); `ValueSet` compares those with `same_value`.
+    """
     if value is True or value is False:
-        return hash(('bool', value))
-    number = as_fraction(value)
-    if number is not None:
-        # Tagged as one type so `1` and `1.0` land in the same bucket.
-        return hash(('num', number))
-    return hash(('other', type(value).__name__, value))
+        return (_BOOL, value)
+    if isinstance(value, str):
+        if _NUMBER_START.match(value) is None:
+            return value
+        number = as_fraction(value)
+        return value if number is None else number
+    if isinstance(value, dict):
+        return (_MAP, frozenset((key, value_key(child)) for key, child in value.items()))
+    if isinstance(value, list):
+        return (_SEQ, tuple(value_key(child) for child in value))
+    # Numbers are keyed by whichever exact type is cheapest to build. Python
+    # compares and hashes `int`, `Decimal` and `Fraction` exactly and alike, so
+    # `1`, `Decimal('1.0')` and `Fraction(1)` are one key. A float goes through
+    # the same decimal text `as_fraction` reads (`repr`), never its binary value.
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and isfinite(value):
+        return Decimal(repr(value))
+    if isinstance(value, Decimal) and value.is_finite():
+        return value
+    # `same_value` falls back to `type(a) is type(b) and a == b`.
+    if value != value:  # noqa: PLR0124 - NaN, which equals nothing, itself included
+        raise _NoKey
+    try:
+        hash(value)
+    except TypeError:
+        raise _NoKey from None
+    return (_OTHER, type(value), value)
+
+
+class ValueSet:
+    """A set of data values under `same_value`, so `1` and `1.0` are one member.
+
+    Python's own `set` gets three things wrong for RAML data: `True` equals `1`,
+    and neither a mapping nor a sequence is hashable, so a fallback to text
+    would make `{a: 1, b: 2}` differ from `{b: 2, a: 1}` and `[1]` from `[1.0]`.
+    Every question of the form "is this value one of those" goes through here or
+    through `same_value`, so enum membership, enum narrowing and `uniqueItems`
+    agree.
+
+    Members are stored by `value_key`. The rare value without one is kept aside
+    and compared with `same_value`; it can only equal another such value, since
+    `same_value` then requires the same type.
+    """
+
+    __slots__ = ('_keyless', '_keys')
+
+    def __init__(self, values: Iterable[Any] = ()) -> None:
+        self._keys: set[Hashable] = set()
+        self._keyless: list[Any] = []
+        for value in values:
+            self.add(value)
+
+    def __contains__(self, value: Any) -> bool:
+        try:
+            return value_key(value) in self._keys
+        except _NoKey:
+            return any(same_value(value, member) for member in self._keyless)
+
+    def add(self, value: Any) -> bool:
+        """Add `value`; `False` if an equal member was already present."""
+        try:
+            key = value_key(value)
+        except _NoKey:
+            if any(same_value(value, member) for member in self._keyless):
+                return False
+            self._keyless.append(value)
+            return True
+        if key in self._keys:
+            return False
+        self._keys.add(key)
+        return True
+
+
+class EnumValues(list[Any]):
+    """An `enum` facet's members, which build their own `ValueSet` on first use.
+
+    The index lives on the list rather than on the shape, so a shape without
+    an `enum` carries nothing for it. Built once, it serves every membership
+    test (docs/10 § 5). Valid because an enum is never edited in place:
+    inheritance and the union intersection bind a new list (docs/07 § 4, § 5).
+    """
+
+    __slots__ = ('_index',)
+
+    def __init__(self, members: Iterable[Any] = ()) -> None:
+        super().__init__(members)
+        self._index: ValueSet | None = None
+
+    def contains(self, value: Any) -> bool:
+        """Is `value` one of these members' raw values, under `same_value`?"""
+        index = self._index
+        if index is None:
+            index = self._index = ValueSet(member.raw for member in self)
+        return value in index
 
 
 def unique_items(items: list[Any]) -> int | None:
     """The index of the first duplicate, or `None` if every item is distinct.
 
-    Two strategies by size, as in go-raml. The hashed path resolves collisions
-    by full comparison, so it never reports a duplicate that is not one.
+    Keys in a plain `set` first; `ValueSet` only if an item has no key.
     """
-    if len(items) <= PAIRWISE_LIMIT:
+    seen: set[Hashable] = set()
+    try:
         for index, item in enumerate(items):
-            for earlier_index in range(index):
-                if same_value(item, items[earlier_index]):
-                    return index
-        return None
-
-    buckets: dict[int, list[Any]] = {}
-    for index, item in enumerate(items):
-        bucket = buckets.setdefault(_hash(item), [])
-        if any(same_value(item, earlier) for earlier in bucket):
-            return index
-        bucket.append(item)
+            key = value_key(item)
+            if key in seen:
+                return index
+            seen.add(key)
+    except _NoKey:
+        members = ValueSet()
+        for index, item in enumerate(items):
+            if not members.add(item):
+                return index
     return None
+
+
+def is_subset(values: Iterable[Any], allowed: Iterable[Any]) -> bool:
+    """Is every one of `values` one of `allowed`, under `same_value`?
+
+    Keys in a plain `set` first; `ValueSet` only if a value has no key.
+    """
+    values = list(values)
+    allowed = list(allowed)
+    try:
+        keys = {value_key(value) for value in allowed}
+        return all(value_key(value) in keys for value in values)
+    except _NoKey:
+        members = ValueSet(allowed)
+        return all(value in members for value in values)

@@ -12,6 +12,15 @@ one-sided: a run can be slowed by the rest of the machine and cannot be sped up
 by it, so the minimum is the best estimate of the parser's own cost and the mean
 mostly measures the machine.
 
+**Memory is measured with the collector paused, and reported twice.** With it
+running, the traced peak depends on where in the build a collection happens to
+fall. Allocation counts are deterministic, so each code version has its own
+schedule, and one line changed elsewhere moved `large/parse` between 25.13 and
+25.54 MB with no change to what was built. Paused, the peak is the high-water
+mark of everything the build allocates, garbage included, and does not depend
+on the schedule. *Retained* is what remains after a full collection with the
+result alive: the size of the model itself, which is what a consumer keeps.
+
 **Peak RSS is only meaningful in a fresh process.** `ru_maxrss` is a high-water
 mark for the process, monotonic and never reset, so a second bench in the same
 interpreter reports the first bench's peak whenever the first was larger. The
@@ -43,11 +52,14 @@ class Measurement:
     config: str
     #: Best of `repeat` runs, in seconds.
     seconds: float
-    #: `tracemalloc`'s peak for a single run, in bytes.
+    #: `tracemalloc`'s peak for a single run with the collector paused, in bytes.
     allocated_bytes: int
     #: Process high-water mark, in bytes. `None` where the platform has no way
     #: to report one without an optional dependency.
     max_rss_bytes: int | None
+    #: What the result keeps alive after a full collection, in bytes. Zero in
+    #: a baseline recorded before it was measured.
+    retained_bytes: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -56,13 +68,14 @@ class Measurement:
 def measure(bench: str, config: str, build: Callable[[], object], *, repeat: int = 3) -> Measurement:
     """Time `build`, then measure its allocations, then read the RSS mark."""
     seconds = _fastest(build, repeat)
-    allocated = _allocated(build)
+    allocated, retained = _allocated(build)
     return Measurement(
         bench=bench,
         config=config,
         seconds=seconds,
         allocated_bytes=allocated,
         max_rss_bytes=peak_rss_bytes(),
+        retained_bytes=retained,
     )
 
 
@@ -78,16 +91,23 @@ def _fastest(build: Callable[[], object], repeat: int) -> float:
     return best
 
 
-def _allocated(build: Callable[[], object]) -> int:
+def _allocated(build: Callable[[], object]) -> tuple[int, int]:
+    """The traced peak of one build, and what its result retains."""
     gc.collect()
+    was_enabled = gc.isenabled()
+    gc.disable()
     tracemalloc.start()
     try:
         result = build()
         _, peak = tracemalloc.get_traced_memory()
+        gc.collect()
+        retained, _ = tracemalloc.get_traced_memory()
         del result
     finally:
         tracemalloc.stop()
-    return peak
+        if was_enabled:
+            gc.enable()
+    return peak, retained
 
 
 def peak_rss_bytes() -> int | None:

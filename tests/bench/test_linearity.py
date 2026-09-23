@@ -1,4 +1,4 @@
-"""The linearity bound of docs/12-performance.md § 5, measured.
+"""The linearity bound of docs/12-performance.md § 5, in time and memory.
 
 Skipped unless `FASTRAML_BENCH=1`, the same way the TCK skips without its fixture
 directory: it costs seconds, not milliseconds, and a developer running the unit
@@ -17,16 +17,18 @@ import os
 
 import pytest
 
-from bench.__main__ import LINEARITY_TOLERANCE, run_suite
+from bench.__main__ import LINEARITY_CONFIGS, LINEARITY_TOLERANCE, measure_linearity
 
 pytestmark = pytest.mark.skipif(
     os.environ.get('FASTRAML_BENCH') != '1',
     reason='set FASTRAML_BENCH=1 to run the benchmarks',
 )
 
-#: A quarter of the generated corpus: enough for the ratio to mean something and
+#: A fifth of the generated corpus: enough for the ratio to mean something and
 #: quick enough for CI. Full-scale measurements remain a local benchmark action.
-SCALE = 0.25
+#: Chosen so every workload's counts halve exactly: at 0.25, `unions` has 15
+#: families and its "half" rounds 7.5 to 8, which read as sublinear memory.
+SCALE = 0.2
 
 #: How many times each size is measured. `run_suite` already takes the best of
 #: its repeats *within* one process, for the reason `bench/harness.py` gives:
@@ -39,19 +41,19 @@ SCALE = 0.25
 ATTEMPTS = 3
 
 
-def _parse_seconds(scale: float) -> float:
-    return run_suite(['large'], ['parse'], scale=scale, repeat=3, keep=None)[0].seconds
+@pytest.mark.parametrize('name', sorted(LINEARITY_CONFIGS))
+def test_linear_in_input_size_in_time_and_memory(name):
+    """`large` for the general pipeline; each feature workload for its own code.
 
-
-def test_large_is_linear_in_input_size():
-    # Interleaved so a slow stretch is not concentrated on one of the two.
-    full = half = float('inf')
-    for _ in range(ATTEMPTS):
-        full = min(full, _parse_seconds(SCALE))
-        half = min(half, _parse_seconds(SCALE / 2))
-
-    ratio = full / (2 * half)
-    assert abs(ratio - 1.0) <= LINEARITY_TOLERANCE, (
-        f'{full * 1e3:.1f} ms at full size against {half * 1e3:.1f} ms at half: '
-        f'ratio to linear {ratio:.3f}, best of {ATTEMPTS}'
+    Memory is checked twice (`bench/harness.py`): the peak of one build with the
+    collector paused, and what the result retains. A cache kept on the model, or
+    a copy per union member, grows them; superlinear growth there is the same
+    bug as in time, and it does not hide behind a noisy machine.
+    """
+    result = measure_linearity(name, scale=SCALE, repeat=3, attempts=ATTEMPTS)
+    assert not result.failures(), (
+        f'{name}/{result.config}: {result.full.seconds * 1e3:.1f} ms and '
+        f'{result.full.retained_bytes / 1e6:.1f} MB retained at full size against '
+        f'{result.half.seconds * 1e3:.1f} ms and {result.half.retained_bytes / 1e6:.1f} MB at half: '
+        f'{", ".join(result.failures())} (tolerance {LINEARITY_TOLERANCE}), best of {ATTEMPTS}'
     )

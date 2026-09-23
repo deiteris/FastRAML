@@ -36,6 +36,7 @@ from fastraml.types.scalars import (
     NumberShape,
     StringShape,
 )
+from fastraml.types.values import is_subset
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -154,19 +155,9 @@ def _enum_values(enum: list[DataNode]) -> list[Any]:
     return [node.raw for node in enum]
 
 
-def _hashable(value: Any) -> Any:
-    """Enum members are scalars in practice; anything else compares by text."""
-    try:
-        hash(value)
-    except TypeError:
-        return repr(value)
-    return value
-
-
 def _is_subset(target: list[DataNode], source: list[DataNode]) -> bool:
-    """A child's enum may only narrow its parent's."""
-    allowed = {_hashable(node.raw) for node in source}
-    return all(_hashable(node.raw) in allowed for node in target)
+    """A child's enum may only narrow its parent's (docs/10 § 5 equality)."""
+    return is_subset((node.raw for node in target), (node.raw for node in source))
 
 
 # -- union interaction (docs/07 § 5) ------------------------------------------

@@ -1,4 +1,4 @@
-"""Generators for the five benchmark corpora.
+"""Generators for the benchmark corpora.
 
 Nothing here is vendored. The corpora are generated (docs/12 § 4): 7000 types
 of RAML is megabytes of text nobody reads, and `bench_large` must be
@@ -18,10 +18,17 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 __all__ = [
+    'ENUM_SIZES',
+    'FACET_PARENTS',
+    'UNION_WIDTHS',
+    'UNIQUE_LENGTHS',
     'write_endpoints',
+    'write_enums',
+    'write_facets',
     'write_jsonschema',
     'write_large',
     'write_small',
+    'write_unions',
     'write_validate',
 ]
 
@@ -311,6 +318,152 @@ def write_validate(root: Path, *, type_count: int = 1000) -> Path:
         lines.append(properties)
         lines.append('    example:')
         lines.append(example)
+    _write(root, {'lib.raml': '\n'.join(lines) + '\n'})
+    return root / 'lib.raml'
+
+
+# -- enums --------------------------------------------------------------------
+
+#: Enum sizes from a handful to a thousand, so a per-value constant in the
+#: subset check shows, and the curve with it.
+ENUM_SIZES: tuple[int, ...] = (5, 20, 100, 1000)
+
+#: `uniqueItems` example lengths, on the same principle.
+UNIQUE_LENGTHS: tuple[int, ...] = (10, 50, 500)
+
+
+#: One kind per family, in turn. Numbers are the case semantic equality exists
+#: for (`1` and `1.0` are one value, docs/10 § 5), so a corpus of strings
+#: alone would measure its cheapest path only.
+_ENUM_KINDS: tuple[str, ...] = ('string', 'integer', 'number')
+
+
+def _enum_values(kind: str, size: int, family: int) -> list[str]:
+    """`size` distinct values of `kind`, as their YAML spelling."""
+    match kind:
+        case 'string':
+            return [f'c{family}x{index}' for index in range(size)]
+        case 'integer':
+            return [str(family * 10000 + index) for index in range(size)]
+        case _:
+            return [f'{family}{index}.5' for index in range(size)]
+
+
+def write_enums(root: Path, *, family_count: int = 40) -> Path:
+    """Enum narrowing, enum membership and `uniqueItems`: semantic equality.
+
+    Each family is a parent enum of every size in `ENUM_SIZES`, a child keeping
+    half of it and a grandchild keeping a quarter, so P9 runs the subset check
+    of docs/07 § 4 on two edges per size, and P10 checks the grandchild's
+    example against its enum. Each family also declares one
+    `uniqueItems` array per length in `UNIQUE_LENGTHS`, whose example P10
+    checks. `tests/bench/test_corpus.py` pins that both paths are reached.
+    """
+    lines = ['#%RAML 1.0 Library', 'types:']
+    for family in range(family_count):
+        kind = _ENUM_KINDS[family % len(_ENUM_KINDS)]
+        for size in ENUM_SIZES:
+            values = _enum_values(kind, size, family)
+            stem = f'F{family}S{size}'
+            lines.append(f'  {stem}Parent:\n    type: {kind}\n    enum: [{", ".join(values)}]')
+            lines.append(f'  {stem}Child:\n    type: {stem}Parent\n    enum: [{", ".join(values[::2])}]')
+            kept = values[::4]
+            # The example is the last value: the far end of a linear scan.
+            lines.append(
+                f'  {stem}Grandchild:\n    type: {stem}Child\n    enum: [{", ".join(kept)}]\n    example: {kept[-1]}'
+            )
+        for length in UNIQUE_LENGTHS:
+            items = _enum_values(kind, length, family)
+            lines.append(
+                f'  F{family}U{length}:\n    type: {kind}[]\n    uniqueItems: true\n    example: [{", ".join(items)}]'
+            )
+    _write(root, {'lib.raml': '\n'.join(lines) + '\n'})
+    return root / 'lib.raml'
+
+
+# -- unions -------------------------------------------------------------------
+
+#: Member counts per union, from the common two to a wide eight.
+UNION_WIDTHS: tuple[int, ...] = (2, 4, 8)
+
+#: Values each member admits for the restated enum property.
+_UNION_ENUM: int = 10
+
+
+def write_unions(root: Path, *, family_count: int = 60) -> Path:
+    """Facets beside a union: built once, handed to every member (docs/07 § 5).
+
+    Each family declares, per width in `UNION_WIDTHS`, that many object members,
+    each admitting its own `_UNION_ENUM` values for `code`. A union of them adds
+    a property beside the union and restates `code` with one value from each
+    member, so every member keeps a different slice. A nested union and a union
+    of arrays with `items:` beside it cover the other two paths.
+    `tests/bench/test_corpus.py` pins that each is reached.
+    """
+    lines = ['#%RAML 1.0 Library', 'types:']
+    for family in range(family_count):
+        for width in UNION_WIDTHS:
+            stem = f'F{family}W{width}'
+            members = []
+            picked = []
+            for member in range(width):
+                name = f'{stem}M{member}'
+                values = [f'm{member}v{index}' for index in range(_UNION_ENUM)]
+                lines.append(
+                    f'  {name}:\n    properties:\n      id: string\n'
+                    f'      code:\n        type: string\n        enum: [{", ".join(values)}]'
+                )
+                members.append(name)
+                picked.append(values[family % _UNION_ENUM])
+            beside = (
+                f'    properties:\n      note?: string\n'
+                f'      code:\n        type: string\n        enum: [{", ".join(picked)}]'
+            )
+            lines.append(f'  {stem}U:\n    type: {" | ".join(members)}\n{beside}')
+            # Two members cannot nest; wider unions nest all but the first.
+            nested = (
+                ' | '.join(members) if width == min(UNION_WIDTHS) else f'{members[0]} | ({" | ".join(members[1:])})'
+            )
+            lines.append(f'  {stem}N:\n    type: {nested}\n{beside}')
+        lines.append(f'  F{family}A: string[]\n  F{family}B: string[]')
+        lines.append(f'  F{family}AU:\n    type: F{family}A | F{family}B\n    items:\n      maxLength: 16')
+    _write(root, {'lib.raml': '\n'.join(lines) + '\n'})
+    return root / 'lib.raml'
+
+
+# -- custom facets ------------------------------------------------------------
+
+#: Parent counts for multiple inheritance.
+FACET_PARENTS: tuple[int, ...] = (2, 4, 8)
+
+
+def write_facets(root: Path, *, family_count: int = 150) -> Path:
+    """Custom facets declared up every parent of a multiply-inheriting type.
+
+    Each family declares, per count in `FACET_PARENTS`, that many parents, each
+    two levels below a root declaring one required facet, and a child
+    inheriting from all of them that supplies every facet. A diamond, two
+    parents sharing one root, covers the visited set. P10 walks every parent
+    (docs/10 § 4); `tests/bench/test_corpus.py` pins that it does.
+    """
+    lines = ['#%RAML 1.0 Library', 'types:']
+    for family in range(family_count):
+        for count in FACET_PARENTS:
+            stem = f'F{family}P{count}'
+            parents = []
+            supplied = []
+            for parent in range(count):
+                facet = f'f{parent}'
+                lines.append(f'  {stem}R{parent}:\n    type: object\n    facets:\n      {facet}: integer')
+                lines.append(f'  {stem}I{parent}:\n    type: {stem}R{parent}\n    {facet}: {parent}')
+                lines.append(f'  {stem}Q{parent}:\n    type: {stem}I{parent}')
+                parents.append(f'{stem}Q{parent}')
+                supplied.append(f'    {facet}: {parent + 1}')
+            lines.append(f'  {stem}C:\n    type: [{", ".join(parents)}]\n' + '\n'.join(supplied))
+        root_name = f'F{family}D'
+        lines.append(f'  {root_name}:\n    type: object\n    facets:\n      shared?: integer')
+        lines.append(f'  {root_name}L:\n    type: {root_name}\n  {root_name}R:\n    type: {root_name}')
+        lines.append(f'  {root_name}C:\n    type: [{root_name}L, {root_name}R]\n    shared: 1')
     _write(root, {'lib.raml': '\n'.join(lines) + '\n'})
     return root / 'lib.raml'
 

@@ -3,7 +3,7 @@
 A RAML 1.0 parser for Python 3.12+. `docs/` is normative: start at `docs/README.md`;
 `docs/02-architecture.md` maps each area to its document and modules.
 
-Status: the parser pipeline is complete and the TCK passes 973 of 973. Current
+Status: the parser pipeline is complete and the TCK passes 984 of 984. Current
 deferred work is listed in `docs/15-implementation-plan.md`.
 
 ## Before changing anything
@@ -21,8 +21,11 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy fastraml/ && 
 All four must pass before work is reported done. `mypy` is strict for `fastraml.*`,
 lenient for tests.
 
-Benchmarks are a gate too: run `python -m bench compare` before and after any change
-to a hot path, and put the delta in the commit message (`docs/12` § 5).
+Benchmarks are a gate too (`docs/12` § 5). A performance claim needs a workload that
+runs the changed code; if none does, add a feature workload and its reach test
+first. Measure with `python -m bench ab BASE --bench NAME`, and put the time delta
+(only if it exceeds the reported noise) and the allocation delta in the commit
+message. For a new feature with no base number, use `bench linearity --bench NAME`.
 
 ## Layers and import boundaries
 
@@ -88,9 +91,9 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
   dataclass suits.
 - Never import `copy`. Use `clone(memo)` or `clone_detached()` (`docs/07` § 6); a
   test enforces this.
-- A `facets:` block declares what subtypes must supply. The P10 chain walk starts at
-  `inherits[0]`, so the declaring type need not satisfy its own required facets, and
-  supplying a value for one is `unknown facet` (`docs/10` § 4).
+- A `facets:` block declares what subtypes must supply. The P10 walk starts at the
+  parents, all of them, so the declaring type need not satisfy its own required
+  facets, and supplying a value for one is `unknown facet` (`docs/10` § 4).
 - Where an annotation was applied rides `ParseCtx`, not a parameter. A decoder that
   establishes a new application site wraps itself in `Raml.target_scope(...)` and
   gets a test that names the site; a missing scope silently records the enclosing

@@ -56,7 +56,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures six workloads:
+`bench/` generates deterministic corpora and measures nine workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -66,6 +66,18 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `extensions` | the `endpoints` corpus under an Overlay and an Extension: chain load, merge, overlay check, and document provenance |
 | `validate` | declaration and example validation |
 | `jsonschema` | shared JSON Schema references |
+| `enums` | enum narrowing and enum membership at 5, 20, 100, and 1000 values, and `uniqueItems` examples at 10, 50, and 500 items, for string, integer, and number |
+| `unions` | `properties` and `items` beside unions of 2, 4, and 8 members, flat and nested, with an enum each member narrows differently ([07](07-resolution-and-inheritance.md) § 5) |
+| `facets` | custom facets declared up every parent of types that inherit from 2, 4, and 8 parents, and a diamond ([10](10-validation.md) § 4) |
+
+The first six are general workloads. The last three are feature workloads:
+each exists because no general workload runs the code it covers. Their tests
+(`tests/bench/test_corpus.py`) count calls and fail if a corpus stops reaching
+that code at every size it covers.
+
+A feature added to the language has no baseline on `master`, where the corpus
+fails or skips the work. Measure it by linearity instead: at `--scale 0.5` the
+time should halve.
 
 Each workload supports `parse`, `unwrap`, `validate`, `unwrap+validate`,
 `unwrap+graph`, and `unwrap+lint`. Corpus generation is outside the timed region.
@@ -78,7 +90,15 @@ python -m bench baseline
 python -m bench compare
 python -m bench linearity
 python -m bench startup
+python -m bench micro [PATTERN]
 ```
+
+`bench micro` times single leaf functions, such as `same_value`, enum
+membership, the enum subset check, and `unique_items`, at sizes from 5 to 1000.
+Use it when the question is a function's constant factor, which a corpus
+dilutes. It looks up each target by name when it runs, so the same cases can
+run against an older checkout. `tests/bench/test_micro.py` fails if a target
+no longer exists in this tree.
 
 Measurements run in fresh subprocesses. Wall time is the best of repeated
 untraced runs; allocation tracing runs separately; RSS is a process high-water
@@ -88,14 +108,33 @@ YAML backend. A comparison across fingerprints is intentionally not a result.
 ## 5. Gates and local policy
 
 CI does not compare absolute benchmark times or committed baselines. Its `bench`
-job runs `tests/bench` with `FASTRAML_BENCH=1`, which asserts that `bench_large`
-is within 15 percent of linear against a half-size corpus. Linearity is portable;
+job runs `tests/bench` with `FASTRAML_BENCH=1`. For `large` and each feature
+workload, that test asserts that time and the allocation peak are both within
+15 percent of linear against a half-size corpus. Linearity is portable;
 absolute duration and RSS are not.
 
-Before and after a hot-path change, run `python -m bench compare` on the same
-machine and inspect the result. Record a meaningful measured delta in the commit
-message. Profile before optimizing: use `cProfile` for call counts, `tracemalloc`
-for allocation attribution, and a wall-clock profiler for elapsed-time evidence.
+A performance claim must rest on a measurement that runs the changed code. For
+a change to a hot path, or to any code a claim is made about:
+
+1. Name the workload that reaches the changed code. If no workload does, add a
+   feature workload and its reach test first. A general workload that never
+   calls the code shows only noise.
+2. Run `python -m bench ab BASE --bench NAME`. It alternates the base revision
+   and this tree over one corpus. A time delta counts only if it is larger than
+   the reported noise. Record the allocation delta whether or not the time
+   moved, because it is nearly deterministic. A field added to every shape
+   shows there and nowhere else.
+3. Where the question is a leaf function's constant factor, add or run a
+   `bench micro` case at sizes that cover the function's range.
+4. For a new feature, the base revision has no comparable number. Run
+   `python -m bench linearity --bench NAME` for time and memory instead.
+
+Include the workload, both deltas, and the noise in the commit message.
+`bench compare` against the committed baseline is only a coarse check for
+large regressions: the baseline and the comparison run at different times, and
+the machine drifts in between. Profile before optimizing: use `cProfile` for
+call counts, `tracemalloc` for allocation attribution, and a wall-clock
+profiler for elapsed-time evidence.
 
 ## 6. Garbage collection
 

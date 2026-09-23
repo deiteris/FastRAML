@@ -104,6 +104,24 @@ class TestBaseFacets:
         messages = failure(workspace, '    type: string\n    enum: [a, c]\n', '    type: string\n    enum: [a, b]\n')
         assert 'enum constraint violation' in messages
 
+    @pytest.mark.parametrize(
+        ('child', 'parent'),
+        [
+            ('[{b: 2, a: 1}]', '[{a: 1, b: 2}]'),
+            ('[[1.0]]', '[[1]]'),
+        ],
+        ids=['mapping-key-order', 'nested-number-spelling'],
+    )
+    def test_enum_narrowing_uses_the_equality_of_enum_membership(self, workspace, child, parent):
+        # docs/10 § 5: `same_value` decides membership, so it decides narrowing
+        # too. Comparing by Python hash or by text rejected both of these.
+        merge(workspace, f'    type: any\n    enum: {child}\n', f'    type: any\n    enum: {parent}\n')
+
+    def test_true_does_not_narrow_an_enum_of_one(self, workspace):
+        # Python's `True == 1` let this through.
+        messages = failure(workspace, '    type: any\n    enum: [true]\n', '    type: any\n    enum: [1]\n')
+        assert 'enum constraint violation' in messages
+
 
 class TestStringRules:
     def test_min_length_may_be_raised(self, workspace):

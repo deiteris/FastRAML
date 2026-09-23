@@ -17,7 +17,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from fastraml import ParseOptions, RamlError, parse_from_path
-from fastraml.types.values import same_value, unique_items
+from fastraml.types.values import ValueSet, is_subset, same_value, unique_items
 
 API = '#%RAML 1.0\ntitle: T\n'
 
@@ -205,16 +205,11 @@ class TestArray:
 
 
 class TestUniqueItems:
-    """docs/10 § 5 — two strategies, one meaning."""
+    """docs/10 § 5 — semantic equality, through a key or through `same_value`.
 
-    def test_the_two_strategies_agree_across_the_switch(self, workspace):
-        # 20 is pairwise, 21 hashes. A difference here would be invisible in
-        # normal use and wrong in exactly one size range.
-        for size in (20, 21):
-            distinct = list(range(size))
-            assert unique_items(distinct) is None
-            duplicated = [*distinct[:-1], distinct[0]]
-            assert unique_items(duplicated) == size - 1
+    `tests/property/test_value_key.py` checks that the key agrees with
+    `same_value`; these pin the behaviour a reader would ask about.
+    """
 
     def test_equality_is_semantic_not_pythonic(self):
         assert same_value(1, 1.0)
@@ -227,10 +222,31 @@ class TestUniqueItems:
         assert same_value({'a': 1, 'b': 2}, {'b': 2, 'a': 1})
         assert not same_value([1, 2], [2, 1])
 
-    def test_semantic_duplicates_are_found_by_both_strategies(self):
+    def test_semantic_duplicates_are_found(self):
         assert unique_items([1, 1.0]) == 1
         assert unique_items([{'a': 1}, {'a': 1.0}]) == 1
         assert unique_items([*range(25), 1.0]) == 25
+        assert unique_items([1, True]) is None
+
+    def test_a_value_without_a_key_is_compared_by_same_value(self):
+        # NaN equals nothing, itself included, so it can never be a duplicate.
+        nan = float('nan')
+        assert unique_items([nan, nan]) is None
+        assert unique_items([nan, 1, 1.0]) == 2
+
+    def test_value_set_membership_is_semantic(self):
+        nan = float('nan')
+        members = ValueSet([1, [1], {'a': 1, 'b': 2}, nan])
+        assert 1.0 in members
+        assert [1.0] in members
+        assert {'b': 2, 'a': 1} in members
+        assert True not in members
+        assert nan not in members, 'NaN is not even the same value as itself'
+
+    def test_is_subset_uses_the_same_equality(self):
+        assert is_subset(['1', 1.0], [1])
+        assert not is_subset([True], [1])
+        assert is_subset([{'b': 2, 'a': 1}], [{'a': 1, 'b': 2}])
 
 
 class TestObject:
@@ -707,20 +723,70 @@ class TestCustomFacets:
         )
         assert error is None, messages(error)
 
-    def test_a_facet_on_a_second_parent_is_not_seen(self, workspace):
-        """The `inherits[0]`-only limitation, pinned so the fix is visible.
-
-        docs/10 § 4 and docs/15 § 2 record it. If this test starts
-        failing because the walk grew a visited set, that is the fix landing —
-        update the test, do not restore the behaviour.
-        """
-        assert (
-            parse_validating(
-                workspace,
-                '  A:\n    type: object\n  B:\n    type: object\n    facets:\n      extra: integer\n  C: [A, B]\n',
-            )
-            is None
+    def test_a_required_facet_on_a_second_parent_must_be_supplied(self, workspace):
+        # Spec § User-defined Facets: "any ancestor type". go-raml follows
+        # `inherits[0]` only and accepts this.
+        error = parse_validating(
+            workspace,
+            '  A:\n    type: object\n  B:\n    type: object\n    facets:\n      extra: integer\n  C: [A, B]\n',
         )
+        assert error is not None
+        assert 'required custom facet is missing' in messages(error)
+
+    def test_a_facet_on_a_second_parent_is_validated(self, workspace):
+        body = '  A:\n    type: object\n  B:\n    type: object\n    facets:\n      extra: integer\n'
+        assert parse_validating(workspace, body + '  C:\n    type: [A, B]\n    extra: 5\n') is None
+        error = parse_validating(workspace, body + '  C:\n    type: [A, B]\n    extra: no\n')
+        assert error is not None
+        assert 'invalid custom facet value' in messages(error)
+
+    def test_a_facet_on_a_grandparent_through_the_second_parent_is_seen(self, workspace):
+        # Only a walk that reaches G can validate `extra`; the first-parent walk
+        # called it an unknown facet.
+        body = (
+            '  A:\n    type: object\n  G:\n    type: object\n    facets:\n      extra: integer\n'
+            '  B:\n    type: G\n    extra: 1\n  C:\n    type: [A, B]\n    extra: no\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert messages(error) >= {'invalid custom facet value'}
+        assert 'unknown facet' not in messages(error)
+
+    def test_a_diamond_reaches_its_shared_ancestor_once(self, workspace):
+        # Two routes to one declaration are not two declarations.
+        body = (
+            '  G:\n    type: object\n    facets:\n      extra?: integer\n'
+            '  L:\n    type: G\n  R:\n    type: G\n  C:\n    type: [L, R]\n    extra: 5\n'
+        )
+        assert parse_validating(workspace, body) is None
+
+    def test_an_alias_and_its_referent_share_one_declaration(self, workspace):
+        body = (
+            '  G:\n    type: object\n    facets:\n      extra?: integer\n'
+            '  Same: G\n  C:\n    type: [G, Same]\n    extra: 5\n'
+        )
+        assert parse_validating(workspace, body) is None
+
+    def test_two_parents_declaring_one_name_is_a_duplicate(self, workspace):
+        # The spec forbids matching an ancestor's facet name, and says nothing
+        # of two unrelated parents; reported, as a chain duplicate always was.
+        body = (
+            '  A:\n    type: object\n    facets:\n      extra?: integer\n'
+            '  B:\n    type: object\n    facets:\n      extra?: integer\n'
+            '  C:\n    type: [A, B]\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert 'duplicate custom facet' in messages(error)
+
+    def test_a_facet_redeclared_below_its_ancestor_is_a_duplicate(self, workspace):
+        body = (
+            '  G:\n    type: object\n    facets:\n      extra?: integer\n'
+            '  P:\n    type: G\n    facets:\n      extra?: integer\n  C:\n    type: P\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert 'duplicate custom facet' in messages(error)
 
 
 class TestUnionFacetsAreDistributed:
@@ -784,6 +850,70 @@ class TestUnionFacetsAreDistributed:
             }
         )
         assert parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
+
+
+class TestUnionDeclarationFacetsAreDistributed:
+    """`properties:` and `items:` beside `type: A | B` reach each member too.
+
+    docs/07 § 5. They hold declarations, so they are built with the union's
+    other declaration facets and each member takes its own copy; handed to a
+    member's `decode_facets` as YAML they were filed as unknown custom facets.
+    """
+
+    OBJECTS = '  A:\n    properties:\n      a: string\n  B:\n    properties:\n      b: string\n'
+
+    def test_properties_beside_a_union_of_objects_are_accepted(self, workspace):
+        body = self.OBJECTS + '  T:\n    type: A | B\n    properties:\n      c: integer\n    example: {a: x, c: 1}\n'
+        assert parse_validating(workspace, body) is None
+
+    def test_and_constrain_every_member(self, workspace):
+        body = self.OBJECTS + '  T:\n    type: A | B\n    properties:\n      c: integer\n    example: {a: x, c: no}\n'
+        error = parse_validating(workspace, body)
+        assert error is not None
+        paths = {trace.info.get('path') for chain in error.chains() for trace in chain if trace.info}
+        assert '$.c' in paths
+
+    def test_items_beside_a_union_of_arrays_constrain_every_member(self, workspace):
+        body = (
+            '  A:\n    type: array\n    items: string\n  B:\n    type: array\n    items: string\n'
+            '  T:\n    type: A | B\n    items:\n      maxLength: 3\n    example: [abcd]\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert 'invalid example' in messages(error)
+
+    def test_a_member_that_takes_no_properties_reports_an_unknown_facet(self, workspace):
+        body = '  A:\n    properties:\n      a: string\n  T:\n    type: A | string\n    properties:\n      c: integer\n'
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert 'unknown facet' in messages(error)
+
+    def test_a_name_in_a_distributed_property_resolves(self, workspace):
+        # Built with the union's other declarations, so P7 binds `N` as usual.
+        body = self.OBJECTS + '  T:\n    type: A | B\n    properties:\n      c: N\n    example: {b: x, c: -1}\n'
+        error = parse_validating(workspace, body + '  N:\n    type: integer\n    minimum: 0\n')
+        assert error is not None
+        assert 'invalid example' in messages(error)
+
+    def test_a_nested_union_passes_the_declarations_on(self, workspace):
+        body = (
+            self.OBJECTS
+            + '  C:\n    properties:\n      x: string\n'
+            + '  T:\n    type: A | (B | C)\n    properties:\n      c: integer\n    example: {x: y, c: no}\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert 'invalid example' in messages(error)
+
+    def test_members_take_separate_copies(self, workspace):
+        """Each member's merge narrows its copy in place, so a shared copy would
+        let one member's parent constrain the other's."""
+        _raml, union = declared_in(
+            workspace, self.OBJECTS + '  T:\n    type: A | B\n    properties:\n      c: integer\n'
+        )
+        first, second = (member.shape.properties['c'].base for member in union.shape.any_of)
+        assert first is not second
+        assert first.id != second.id
 
 
 class TestPublicSurface:

@@ -53,15 +53,20 @@ member need not be checked again.
 ## 4. Custom facets
 
 A `facets:` block declares values for subtypes, not for its declaring shape.
-P10 starts at `inherits[0]`: the declaring type neither supplies nor is required
-to supply its own declared facet. It reports duplicate declarations in that
-chain, missing required values, unknown supplied values, and values that fail
-their facet declaration.
+P10 starts at the shape's parents: the declaring type neither supplies nor is
+required to supply its own declared facet. It walks every parent, transitively,
+because *spec section User-defined Facets* names "any ancestor type in the
+inheritance chain". The walk is breadth-first in declaration order with a
+visited set, so a diamond reaches its shared ancestor once. It reports missing
+required values, unknown supplied values, values that fail their facet
+declaration, and duplicate declarations.
 
-The current implementation follows only the first parent chain. A custom facet
-declared solely on a second multiple-inheritance parent is not visible to this
-check. `tests/unit/test_validate.py::TestCustomFacets::test_a_facet_on_a_second_parent_is_not_seen`
-pins that current limitation.
+A duplicate is one facet name declared by two different ancestors. An alias
+shares its referent's declarations ([07](07-resolution-and-inheritance.md)
+§ 3), so reaching both is not a duplicate. The spec forbids a facet name that
+matches an ancestor's. It says nothing about two unrelated parents declaring
+the same name; that is reported as a duplicate too. go-raml follows only the
+first parent at each step.
 
 Recursion markers are traversal stops for these checks: the corresponding head
 is checked where it is declared.
@@ -89,9 +94,20 @@ declaration order. With patterns present, an unmatched extra fails; without
 patterns, `additionalProperties: false` rejects extras.
 
 `uniqueItems` and enum matching use semantic equality: numeric spellings such as
-`1` and `1.0` are equal, but booleans do not equal integers. Small arrays use
-pairwise comparison; larger arrays use type-aware hash buckets followed by full
-comparison.
+`1` and `1.0` are equal, but booleans do not equal integers. Enum narrowing
+([07](07-resolution-and-inheritance.md) § 4) uses the same equality.
+`same_value` defines it. `value_key` gives each value a hashable key, and two
+keys are equal exactly when `same_value` calls the values equal:
+
+- a boolean gets a tag;
+- a number gets an exact numeric key, where a float goes through its `repr`;
+- a string gets the same number when it reads as a number;
+- a mapping gets a tagged `frozenset`, and a sequence a tagged tuple.
+
+`uniqueItems` and the subset check therefore look keys up in a set. A value
+with no key (NaN, or an unhashable type) is compared with `same_value`, against
+other such values only. `tests/property/test_value_key.py` checks that the key
+and `same_value` agree.
 
 Numeric values never compare through binary floating point. Bounds are exact
 fractions from source text; values use `as_fraction()`, which converts floats

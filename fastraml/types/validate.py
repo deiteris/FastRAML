@@ -16,6 +16,7 @@ See docs/10-validation.md.
 
 from __future__ import annotations
 
+from collections import deque
 from typing import TYPE_CHECKING
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
@@ -403,17 +404,26 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
     own required facets nor may supply a value for one — go-raml calls that
     `unknown facet`, and both halves are measured behaviour, not inference.
 
-    Known limitation, shared with go-raml: the walk follows `inherits[0]` only,
-    so a facet declared on the second parent of a multiply-inheriting type is
-    not seen (docs/10 § 4). `test_a_facet_on_a_second_parent_is_not_seen` pins
-    the current behaviour.
+    **Every parent, not only the first.** Spec § User-defined Facets names "any
+    ancestor type in the inheritance chain", and a multiply-inheriting type
+    has several. go-raml follows `inherits[0]` only. The walk is breadth-first
+    in declaration order with a visited set, so a diamond reaches its shared
+    ancestor once. A name met again is a duplicate unless it is the same
+    declaration, which an alias shares with its referent (docs/07 § 3).
     """
     declared: dict[str, Property] = {}
-    current: BaseShape | None = base.inherits[0] if base.inherits else None
-    depth = 0
-    while current is not None and depth < base._raml.max_depth:  # noqa: SLF001 - as above
+    seen: set[int] = set()
+    queue = deque(base.inherits)
+    while queue:
+        current = queue.popleft()
+        if current.id in seen:
+            continue
+        seen.add(current.id)
         for name, prop in current.custom_facet_defs.items():
-            if name in declared:
+            existing = declared.get(name)
+            if existing is None:
+                declared[name] = prop
+            elif existing is not prop:
                 acc.add(
                     failure(
                         'duplicate custom facet',
@@ -422,10 +432,7 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
                         info={'facet': name},
                     )
                 )
-                continue
-            declared[name] = prop
-        current = current.inherits[0] if current.inherits else None
-        depth += 1
+        queue.extend(current.inherits)
     return declared
 
 

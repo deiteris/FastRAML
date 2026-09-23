@@ -17,12 +17,7 @@ Overlays and Extensions are implemented for an entry document
 ([19](19-overlays-and-extensions.md)). Applying several extension documents
 that each extend the same master remains deferred (docs/19 § 7).
 
-Known limitations are documented beside the rules they affect:
-
-- custom-facet validation follows the first inheritance parent rather than a
-  complete multi-parent facet chain;
-- union `enum` semantics remain deferred; and
-- XML Schema external types are unsupported.
+XML Schema external types are unsupported ([01](01-scope-and-coverage.md) § 3).
 
 ## 3. Potential future work
 

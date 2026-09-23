@@ -47,6 +47,7 @@ from fastraml.types.complex_ import ArrayShape, ComplexKind, ObjectShape, Recurs
 from fastraml.types.examples import Example, Examples
 from fastraml.types.inherit import inherit
 from fastraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
+from fastraml.types.values import EnumValues
 from fastraml.uris import uri_stem
 from fastraml.yamlnode import node_error
 
@@ -1014,7 +1015,7 @@ def _decorate(base: BaseShape, contents: dict) -> BaseShape:
         base.default = _data(base, contents['default'])
     enum = contents.get('enum')
     if isinstance(enum, list):
-        base.enum = [_data(base, member) for member in enum]
+        base.enum = EnumValues(_data(base, member) for member in enum)
     examples = contents.get('examples')
     if isinstance(examples, list) and examples:
         base.examples = Examples(

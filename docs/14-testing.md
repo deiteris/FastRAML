@@ -38,7 +38,7 @@ intentional change with `uv run pytest tests/tck --update-ratchet`, then inspect
 the ratchet diff. A `fail` outcome is reserved for work outstanding, not a suite
 disagreement.
 
-The current ratchet has 973 evaluated fixtures, all passing, Overlays and
+The current ratchet has 984 evaluated fixtures, all passing, Overlays and
 Extensions included. Three named fixtures are skipped: two that require
 network access, and one that conflicts with the documented JSON Schema
 expression policy.

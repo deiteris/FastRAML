@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
 from fastraml.datanode import make_data_node
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.positions import UNKNOWN, Position
-from fastraml.types.values import same_value as _same_value
+from fastraml.types.values import EnumValues, ValueSet
 
 if TYPE_CHECKING:
     import re
@@ -172,6 +172,16 @@ class TypeExprRef:
     library_alias: str | None = None
     #: The keyword, when the name was a primitive rather than a reference.
     builtin: str | None = None
+
+
+def _enum_contains(enum: list[DataNode], value: Any) -> bool:
+    """Membership under `same_value`; indexed when the list is an `EnumValues`.
+
+    A plain list, which only a caller outside the parser builds, is scanned.
+    """
+    if isinstance(enum, EnumValues):
+        return enum.contains(value)
+    return value in ValueSet(member.raw for member in enum)
 
 
 class BaseShape:
@@ -416,7 +426,7 @@ class BaseShape:
         if self.shape is None:
             raise RamlError.new('declaration has no shape', self.location, self.key_pos, kind=ErrorKind.VALIDATING)
         if self.enum:
-            if not any(_same_value(value, member.raw) for member in self.enum):
+            if not _enum_contains(self.enum, value):
                 raise RamlError.new(
                     'value is not one of the allowed values',
                     self.location,

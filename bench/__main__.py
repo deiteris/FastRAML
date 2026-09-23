@@ -5,8 +5,10 @@ python -m bench run                  # every bench, every configuration
 python -m bench run --bench large --config parse
 python -m bench baseline             # record bench/baselines.json
 python -m bench compare              # fail on a >25 % regression
-python -m bench linearity            # bench_large against a half-size corpus
+python -m bench linearity            # time and memory against a half-size corpus
 python -m bench startup              # cold process, package and CLI startup
+python -m bench micro [PATTERN]      # leaf functions, per call (bench/micro.py)
+python -m bench ab REF --bench enums # this tree against REF, alternated (bench/ab.py)
 ```
 
 Each measurement runs in a **fresh subprocess**. `harness.py` explains why in
@@ -76,6 +78,9 @@ BENCHES: tuple[Bench, ...] = (
     Bench('extensions', lambda root, scale: corpus.write_extensions(root, resource_count=_at(500, scale))),
     Bench('validate', lambda root, scale: corpus.write_validate(root, type_count=_at(1000, scale))),
     Bench('jsonschema', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
+    Bench('enums', lambda root, scale: corpus.write_enums(root, family_count=_at(40, scale))),
+    Bench('unions', lambda root, scale: corpus.write_unions(root, family_count=_at(60, scale))),
+    Bench('facets', lambda root, scale: corpus.write_facets(root, family_count=_at(150, scale))),
 )
 
 _BY_NAME = {bench.name: bench for bench in BENCHES}
@@ -118,21 +123,28 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
 # -- the driver ---------------------------------------------------------------
 
 
-def _spawn(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
+def _spawn(bench: str, config: str, entry: Path, repeat: int, *, cwd: Path | None = None) -> Measurement:
+    """Measure in a fresh process started in `cwd`, whose `fastraml` it imports."""
     completed = subprocess.run(  # noqa: S603 - fixed argv, sys.executable, no shell
         [sys.executable, '-m', 'bench', 'worker', bench, config, str(entry), str(repeat)],
         capture_output=True,
         text=True,
         check=False,
-        cwd=str(Path(__file__).parent.parent),
+        cwd=str(cwd or Path(__file__).parent.parent),
     )
     if completed.returncode != 0:
         raise RuntimeError(f'{bench}/{config} failed:\n{completed.stdout}\n{completed.stderr}')
     return Measurement(**json.loads(completed.stdout.strip().splitlines()[-1]))
 
 
-def run_suite(
-    names: Sequence[str], configs: Sequence[str], *, scale: float, repeat: int, keep: Path | None
+def run_suite(  # noqa: PLR0913 - the selectors, and whether to print
+    names: Sequence[str],
+    configs: Sequence[str],
+    *,
+    scale: float,
+    repeat: int,
+    keep: Path | None,
+    quiet: bool = False,
 ) -> list[Measurement]:
     results: list[Measurement] = []
     for name in names:
@@ -145,7 +157,8 @@ def run_suite(
             entry = bench.write(root, scale)
             for config in configs:
                 result = _spawn(name, config, entry, repeat)
-                print(_format(result))
+                if not quiet:
+                    print(_format(result))
                 results.append(result)
         finally:
             if keep is None:
@@ -220,19 +233,76 @@ def compare(results: Sequence[Measurement], tolerance: float) -> int:
 # -- linearity ----------------------------------------------------------------
 
 
-def linearity(repeat: int, scale: float) -> int:
-    """The linearity bound of docs/12 § 5, measured rather than asserted."""
-    full = run_suite(['large'], ['parse'], scale=scale, repeat=repeat, keep=None)[0]
-    half = run_suite(['large'], ['parse'], scale=scale / 2, repeat=repeat, keep=None)[0]
-    ratio = full.seconds / (2 * half.seconds)
-    deviation = abs(ratio - 1.0)
-    print(f'full {full.seconds * 1e3:.1f} ms, half {half.seconds * 1e3:.1f} ms')
-    print(f'ratio to linear {ratio:.3f} ({deviation * 100:+.1f} %)')
-    if deviation > LINEARITY_TOLERANCE:
-        print(f'FAIL: outside {LINEARITY_TOLERANCE * 100:.0f} % of linear')
-        return 1
-    print('ok')
-    return 0
+#: The configuration each workload's linearity is measured in: the one that
+#: runs the code it exists for (docs/12 § 4).
+LINEARITY_CONFIGS: dict[str, str] = {
+    'large': 'parse',
+    'enums': 'unwrap+validate',
+    'unions': 'unwrap+validate',
+    'facets': 'unwrap+validate',
+}
+
+
+@dataclass(frozen=True, slots=True)
+class Linearity:
+    """Full size against half size: each ratio is 1.0 when the cost is linear."""
+
+    bench: str
+    config: str
+    full: Measurement
+    half: Measurement
+
+    @property
+    def time_ratio(self) -> float:
+        return self.full.seconds / (2 * self.half.seconds)
+
+    @property
+    def peak_ratio(self) -> float:
+        return self.full.allocated_bytes / (2 * self.half.allocated_bytes)
+
+    @property
+    def retained_ratio(self) -> float:
+        return self.full.retained_bytes / (2 * self.half.retained_bytes)
+
+    def failures(self) -> list[str]:
+        ratios = (('time', self.time_ratio), ('peak memory', self.peak_ratio), ('retained memory', self.retained_ratio))
+        return [
+            f'{what} ratio to linear {ratio:.3f}' for what, ratio in ratios if abs(ratio - 1.0) > LINEARITY_TOLERANCE
+        ]
+
+
+def measure_linearity(name: str, *, scale: float, repeat: int, attempts: int = 1) -> Linearity:
+    """Best of `attempts` at each size, interleaved so a slow stretch hits both."""
+    config = LINEARITY_CONFIGS.get(name, 'parse')
+    full: Measurement | None = None
+    half: Measurement | None = None
+    for _ in range(attempts):
+        at_full = run_suite([name], [config], scale=scale, repeat=repeat, keep=None, quiet=True)[0]
+        at_half = run_suite([name], [config], scale=scale / 2, repeat=repeat, keep=None, quiet=True)[0]
+        full = at_full if full is None or at_full.seconds < full.seconds else full
+        half = at_half if half is None or at_half.seconds < half.seconds else half
+    if full is None or half is None:
+        msg = 'attempts must be at least 1'
+        raise ValueError(msg)
+    return Linearity(name, config, full, half)
+
+
+def linearity(names: Sequence[str], repeat: int, scale: float) -> int:
+    """The linearity bound of docs/12 § 5, in time and in memory."""
+    failed = 0
+    for name in names:
+        result = measure_linearity(name, scale=scale, repeat=repeat)
+        print(
+            f'{name}/{result.config}: time {result.time_ratio:.3f} '
+            f'({result.full.seconds * 1e3:.1f} / {result.half.seconds * 1e3:.1f} ms), '
+            f'peak {result.peak_ratio:.3f} ({result.full.allocated_bytes / 1e6:.1f} / '
+            f'{result.half.allocated_bytes / 1e6:.1f} MB), retained {result.retained_ratio:.3f} '
+            f'({result.full.retained_bytes / 1e6:.1f} / {result.half.retained_bytes / 1e6:.1f} MB)'
+        )
+        for failure in result.failures():
+            print(f'  FAIL: {failure}, outside {LINEARITY_TOLERANCE * 100:.0f} %')
+            failed += 1
+    return 1 if failed else 0
 
 
 # -- startup ------------------------------------------------------------------
@@ -263,12 +333,51 @@ def startup(repeat: int) -> int:
     return 0
 
 
+# -- micro --------------------------------------------------------------------
+
+
+def micro(pattern: str) -> int:
+    """Print each microbenchmark's time per call (docs/12 § 4)."""
+    from bench.micro import run_micro  # noqa: PLC0415 - imports the package under test
+
+    for name, seconds in run_micro(pattern).items():
+        shown = 'missing' if seconds is None else f'{seconds * 1e6:10.2f} us'
+        print(f'{name:<28} {shown}')
+    return 0
+
+
 # -- entry point --------------------------------------------------------------
+
+
+def _ab(args: argparse.Namespace) -> int:
+    from bench.ab import run_ab  # noqa: PLC0415 - only this command needs git
+
+    if not args.rest:
+        print('usage: python -m bench ab REF [--bench NAME] [--config NAME] [--rounds N]')
+        return 2
+    return run_ab(
+        args.rest[0],
+        args.bench or [bench.name for bench in BENCHES],
+        args.config or list(CONFIGS),
+        scale=args.scale,
+        repeat=args.repeat,
+        rounds=args.rounds,
+        spawn=_spawn,
+        write=lambda name, root, scale: _BY_NAME[name].write(root, scale),
+    )
+
+
+def _worker(rest: Sequence[str]) -> int:
+    bench, config, entry, repeat = rest
+    print(json.dumps(run_one(bench, config, Path(entry), int(repeat)).as_dict()))
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog='bench', description=__doc__)
-    parser.add_argument('command', choices=('run', 'baseline', 'compare', 'linearity', 'startup', 'worker'))
+    parser.add_argument(
+        'command', choices=('run', 'baseline', 'compare', 'linearity', 'startup', 'micro', 'ab', 'worker')
+    )
     parser.add_argument('rest', nargs='*')
     parser.add_argument('--bench', action='append', choices=[bench.name for bench in BENCHES])
     parser.add_argument('--config', action='append', choices=CONFIGS)
@@ -276,17 +385,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument('--repeat', type=int, default=3)
     parser.add_argument('--tolerance', type=float, default=DEFAULT_TOLERANCE)
     parser.add_argument('--keep', type=Path, default=None, help='write corpora here instead of a temp dir')
+    parser.add_argument('--rounds', type=int, default=3, help='ab: alternations of the two trees')
     args = parser.parse_args(argv)
 
-    if args.command == 'worker':
-        bench, config, entry, repeat = args.rest
-        print(json.dumps(run_one(bench, config, Path(entry), int(repeat)).as_dict()))
-        return 0
-
-    if args.command == 'linearity':
-        return linearity(args.repeat, args.scale)
-    if args.command == 'startup':
-        return startup(args.repeat)
+    # The commands that do not run the suite.
+    standalone: dict[str, Callable[[], int]] = {
+        'worker': lambda: _worker(args.rest),
+        'linearity': lambda: linearity(args.bench or list(LINEARITY_CONFIGS), args.repeat, args.scale),
+        'ab': lambda: _ab(args),
+        'startup': lambda: startup(args.repeat),
+        'micro': lambda: micro(args.rest[0] if args.rest else ''),
+    }
+    if args.command in standalone:
+        return standalone[args.command]()
 
     names = args.bench or [bench.name for bench in BENCHES]
     configs = args.config or list(CONFIGS)

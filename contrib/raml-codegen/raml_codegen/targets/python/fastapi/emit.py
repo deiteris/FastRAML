@@ -176,11 +176,6 @@ class Route:
     def name(self) -> str:
         return self.endpoint.module
 
-    @property
-    def sets_headers(self) -> bool:
-        """True where the document says a response of this carries a header."""
-        return any(case.headers for case in self.endpoint.cases)
-
 
 def _route(endpoint: Endpoint) -> Route:
     returns = endpoint.success.annotation.spelling if endpoint.success and endpoint.success.annotation else 'None'

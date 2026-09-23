@@ -26,6 +26,7 @@ __all__ = [
     'ParserConfig',
     'load_config',
     'parse_config',
+    'schema_type',
 ]
 
 type Impact = Literal['breaking', 'review', 'compatible', 'cosmetic']
@@ -76,16 +77,26 @@ class FastRamlConfig:
     compatibility: CompatibilityConfig = CompatibilityConfig()
 
 
+def schema_type(schema: Path, root: str) -> BaseShape:
+    """The unwrapped declaration `root` in a configuration schema shipped as RAML.
+
+    The parser import stays local, so importing a configuration module stays
+    cheap until a configuration is validated. Callers cache the result.
+    """
+    from fastraml.parser.entry import ParseOptions, parse_from_path  # noqa: PLC0415 - deferred, see above
+
+    raml = parse_from_path(schema, ParseOptions(unwrap=True, workspace_root=str(schema.parent)))
+    types: Mapping[str, BaseShape] = getattr(raml.entry_point, 'types', {})
+    shape = types.get(root)
+    if shape is None:
+        raise ValueError(f'{schema.name} declares no {root}')
+    return shape
+
+
 @lru_cache(maxsize=1)
 def config_shape() -> BaseShape:
-    from fastraml.parser.entry import ParseOptions, parse_from_path  # noqa: PLC0415 - deferred schema parse
-
-    raml = parse_from_path(SCHEMA, ParseOptions(unwrap=True, workspace_root=str(SCHEMA.parent)))
-    types: Mapping[str, BaseShape] = getattr(raml.entry_point, 'types', {})
-    shape = types.get(ROOT)
-    if shape is None:
-        raise ValueError(f'{SCHEMA.name} declares no {ROOT}')
-    return shape
+    """The unwrapped `FastRamlConfig` declaration, parsed once per process."""
+    return schema_type(SCHEMA, ROOT)
 
 
 def load_config(path: str | os.PathLike[str] | None) -> FastRamlConfig:

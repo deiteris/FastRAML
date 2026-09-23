@@ -26,6 +26,7 @@ from fastraml.parser.security import SecuritySchemeDefinition
 from fastraml.parser.traits import TraitDefinition
 from fastraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet, facets_of
 from fastraml.types.jsonschema_ import projected
+from fastraml.types.values import decimal_text
 from fastraml.uris import relative_to
 
 if TYPE_CHECKING:
@@ -502,7 +503,7 @@ def _facet_value(value: object) -> str | int | bool | None:
     if value is True or value is False:
         return value
     if isinstance(value, Fraction):
-        return _number_text(value)
+        return decimal_text(value)
     if isinstance(value, re.Pattern):
         # The facet holds a *compiled* pattern. Without this a `pattern:` on a
         # type reaches no node attribute at all, so every consumer of the
@@ -512,32 +513,3 @@ def _facet_value(value: object) -> str | int | bool | None:
     if isinstance(value, (int, str)):
         return value
     return None
-
-
-def _number_text(value: Fraction) -> str:
-    """A `Fraction` as text, without going through `float`.
-
-    The project rule is that numbers never pass through `float` on either side
-    of a comparison (docs/10 § 5.2), and a graph literal is no exception even
-    though nothing compares it: `1.1` reaching a reader as `1.100000000000000088`
-    would be a defect of this module, not of the parser.
-    """
-    if value.denominator == 1:
-        return str(value.numerator)
-    residue = value.denominator
-    for factor in (2, 5):
-        while residue % factor == 0:
-            residue //= factor
-    if residue != 1:
-        # Not representable as a terminating decimal, so it is reported exactly
-        # as the ratio it is. `multipleOf: 1/3` cannot arise from RAML source,
-        # which is decimal, but a merged bound could in principle.
-        return f'{value.numerator}/{value.denominator}'
-    digits = 0
-    scaled = value
-    while scaled.denominator != 1:
-        scaled *= 10
-        digits += 1
-    text = str(abs(scaled.numerator)).rjust(digits + 1, '0')
-    sign = '-' if scaled.numerator < 0 else ''
-    return f'{sign}{text[:-digits]}.{text[-digits:]}'

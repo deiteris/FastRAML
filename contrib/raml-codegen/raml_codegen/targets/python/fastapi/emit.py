@@ -22,16 +22,17 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Final
 
-import jinja2
-
 from ....naming import class_name
 from ....targets import Generated, Settings
 from ..shared import docs
 from ..shared.imports import Needs, Source, imports_for
+from ..shared.templating import template_environment
 from .plan import plan_server
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+
+    import jinja2
 
     from ....reader import Tree
     from ..shared.annotate import Annotation
@@ -174,11 +175,6 @@ class Route:
     @property
     def name(self) -> str:
         return self.endpoint.module
-
-    @property
-    def sets_headers(self) -> bool:
-        """True where the document says a response of this carries a header."""
-        return any(case.headers for case in self.endpoint.cases)
 
 
 def _route(endpoint: Endpoint) -> Route:
@@ -429,17 +425,7 @@ def _runtime_of(annotations: Iterable[Annotation]) -> tuple[str, ...]:
 
 
 def _environment() -> jinja2.Environment:
-    environment = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(_TEMPLATES),
-        autoescape=False,  # noqa: S701 - the output is Python, not HTML
-        trim_blocks=True,
-        lstrip_blocks=True,
-        keep_trailing_newline=True,
-    )
-    environment.filters['repr'] = repr
-    environment.filters['one_line'] = docs.one_line
-    environment.filters['summary'] = docs.summary
-    environment.filters['details'] = docs.details
+    environment = template_environment(_TEMPLATES)
     environment.filters['attribute'] = _documented
     return environment
 

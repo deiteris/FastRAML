@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from fastraml.config import schema_type
 from fastraml.views.lint.engine import Config, Registry, RuleSetting, parse_severity
 
 if TYPE_CHECKING:
@@ -44,17 +45,9 @@ def config_shape() -> BaseShape:
     """The unwrapped `LintConfig` declaration.
 
     Cached so repeated configuration parsing pays for one schema parse per
-    process. The parser imports stay local so importing the lint API remains
-    cheap until a configuration is validated.
+    process.
     """
-    from fastraml.parser.entry import ParseOptions, parse_from_path  # noqa: PLC0415 - deferred, see above
-
-    raml = parse_from_path(SCHEMA, ParseOptions(unwrap=True, workspace_root=str(SCHEMA.parent)))
-    types: Mapping[str, BaseShape] = getattr(raml.entry_point, 'types', {})
-    shape = types.get(ROOT)
-    if shape is None:
-        raise ValueError(f'{SCHEMA.name} declares no {ROOT}')
-    return shape
+    return schema_type(SCHEMA, ROOT)
 
 
 def parse_config(text: str, registry: Registry, *, plugins: set[str] | None = None) -> Config:

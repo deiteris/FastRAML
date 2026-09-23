@@ -31,6 +31,7 @@ import yaml
 from fastraml.types.base import facets_of
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.jsonschema_ import JsonShape, projected, subschema_document
+from fastraml.types.values import decimal_text
 from fastraml.uris import relative_to
 
 if TYPE_CHECKING:
@@ -492,7 +493,7 @@ def _scalar(value: Any) -> str:
     if value is True or value is False:
         return 'true' if value else 'false'
     if isinstance(value, Fraction):
-        return _number(value)
+        return decimal_text(value)
     if isinstance(value, re.Pattern):
         # The facet holds a *compiled* pattern, and `str()` of one is
         # `re.compile('…')` — Python's repr where the author's regex belongs.
@@ -543,23 +544,6 @@ def _dumped_scalar(value: str | float) -> str:
 def _emit(value: Any) -> str:
     text = yaml.safe_dump(value, default_flow_style=True, width=_UNWRAPPED, allow_unicode=True)
     return text.rstrip('\n').removesuffix('\n...').rstrip()
-
-
-def _number(value: Fraction) -> str:
-    if value.denominator == 1:
-        return str(value.numerator)
-    residue = value.denominator
-    for factor in (2, 5):
-        while residue % factor == 0:
-            residue //= factor
-    if residue != 1:
-        return f'{value.numerator}/{value.denominator}'
-    digits, scaled = 0, value
-    while scaled.denominator != 1:
-        scaled *= 10
-        digits += 1
-    text = str(abs(scaled.numerator)).rjust(digits + 1, '0')
-    return f'{"-" if scaled.numerator < 0 else ""}{text[:-digits]}.{text[-digits:]}'
 
 
 # -- endpoints ----------------------------------------------------------------

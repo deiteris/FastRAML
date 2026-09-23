@@ -127,6 +127,22 @@ class TestNumericExactness:
         shape = declared(workspace, '  T:\n    type: number\n    minimum: 0.1\n')
         assert shape.shape.minimum.value == Fraction(1, 10)
 
+    @pytest.mark.parametrize(
+        ('value', 'text'),
+        [
+            (Fraction(3), '3'),
+            (Fraction(11, 10), '1.1'),
+            (Fraction(-1, 20), '-0.05'),
+            (Fraction(1, 3), '1/3'),
+        ],
+    )
+    def test_a_bound_is_shown_as_its_exact_decimal(self, value, text):
+        # docs/10 section 5.2: a view shows `1.1`, never `1.100000000000000088`,
+        # and a ratio with no terminating decimal as the ratio it is.
+        from fastraml.types.values import decimal_text
+
+        assert decimal_text(value) == text
+
     def test_a_format_range_is_enforced(self, workspace):
         shape = declared(workspace, '  T:\n    type: integer\n    format: int8\n')
         assert shape.validate(127) is None

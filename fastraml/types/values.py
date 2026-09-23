@@ -34,6 +34,7 @@ __all__ = [
     'TIME_ONLY',
     'as_fraction',
     'check_non_negative',
+    'decimal_text',
     'failure',
     'index_path',
     'is_multiple_of',
@@ -160,6 +161,35 @@ def is_multiple_of(value: Fraction, multiple: Fraction) -> bool:
         # programmatically. Nothing is a multiple of zero.
         return False
     return (value / multiple).denominator == 1
+
+
+def decimal_text(value: Fraction) -> str:
+    """A `Fraction` as decimal text, without going through `float`.
+
+    Numbers never pass through `float` (docs/10 § 5.2), and a value shown to a
+    reader is no exception even though nothing compares it: `1.1` reaching a
+    reader as `1.100000000000000088` would be a defect of the view, not of the
+    parser. The graph, the renderer and the compatibility report all use this.
+    """
+    if value.denominator == 1:
+        return str(value.numerator)
+    residue = value.denominator
+    for factor in (2, 5):
+        while residue % factor == 0:
+            residue //= factor
+    if residue != 1:
+        # Not representable as a terminating decimal, so it is reported exactly
+        # as the ratio it is. `multipleOf: 1/3` cannot arise from RAML source,
+        # which is decimal, but a merged bound could in principle.
+        return f'{value.numerator}/{value.denominator}'
+    digits = 0
+    scaled = value
+    while scaled.denominator != 1:
+        scaled *= 10
+        digits += 1
+    text = str(abs(scaled.numerator)).rjust(digits + 1, '0')
+    sign = '-' if scaled.numerator < 0 else ''
+    return f'{sign}{text[:-digits]}.{text[-digits:]}'
 
 
 # -- dates (docs/10 section 5) -------------------------------------------------

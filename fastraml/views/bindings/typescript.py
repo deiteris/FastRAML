@@ -39,10 +39,10 @@ from __future__ import annotations
 
 import argparse
 import pathlib
-import sys
 from typing import TYPE_CHECKING, Final
 
-from .schema import JSON_ONLY, PRODUCES, Container, ContractSchema, Holds, Structural, contract_schema
+from .output import write_rendered
+from .schema import JSON_ONLY, Container, ContractSchema, Holds, Structural, contract_schema
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -208,15 +208,8 @@ def _vocabularies(schema: ContractSchema) -> str:
 def _interfaces(schema: ContractSchema) -> list[str]:
     """One interface per structural producer, keys checked against the source."""
     written: dict[str, list[str]] = {}
-    for method, interface in PRODUCES.items():
-        found = schema.projector.get(method)
-        if found is None:
-            raise LookupError(f'PRODUCES names `{method}`, which is not a _Projector method')
-        lines = written.setdefault(interface, [])
-        for name in found.required:
-            lines.append(_field(schema, interface, name, optional=False))
-        for name in found.optional:
-            lines.append(_field(schema, interface, name, optional=True))
+    for interface, name, optional in schema.produced_keys():
+        written.setdefault(interface, []).append(_field(schema, interface, name, optional=optional))
 
     return [
         f'export interface {interface} {{\n' + '\n'.join(dict.fromkeys(lines)) + '\n}\n'
@@ -230,20 +223,7 @@ def _field(schema: ContractSchema, owner: str, name: str, *, optional: bool) -> 
 
 def _shape(schema: ContractSchema) -> str:
     """A common shape record and one discriminator-derived interface per kind."""
-    found = schema.projector.get('shape')
-    if found is None:
-        raise LookupError('_Projector.shape not found')
-    # Including what it delegates to. `shape()` merges two methods' results into
-    # its own: `kind_facets`, whose keys are the kinds' facets and are read
-    # below, and `json_schema`, whose keys are literal. Reading only `shape()`
-    # meant a key added to a delegate reached the tree and never reached this
-    # file -- the one failure this generator exists to make impossible, and it
-    # was silent, which is worse than the wrong type.
-    delegated = schema.delegated_fields(found)
-    known = set(found.required) | set(found.optional) | set(delegated)
-    undeclared = sorted(known - set(schema.structural['ShapeBase']))
-    if undeclared:
-        raise LookupError(f"shape() emits {undeclared}, not declared under 'ShapeBase' in schema.py")
+    found, delegated = schema.shape_projection()
 
     base = [_field(schema, 'ShapeBase', name, optional=False) for name in found.required if name != 'type']
     # A delegate's keys are optional whatever it says of them: whether it runs
@@ -251,9 +231,7 @@ def _shape(schema: ContractSchema) -> str:
     # are the exception: they belong only to JsonShape below.
     base += [_field(schema, 'ShapeBase', name, optional=True) for name in found.optional if name not in JSON_ONLY]
 
-    by_model: dict[str, list[str]] = {}
-    for kind in schema.shape_kinds:
-        by_model.setdefault(kind.model, []).append(kind.name)
+    by_model = schema.kinds_by_model()
 
     variants: list[str] = []
     for model, names in by_model.items():
@@ -319,20 +297,11 @@ def main(arguments: Sequence[str] | None = None) -> None:
     parser.add_argument('--conform', help='where to write the conformance driver; vendor it beside --runtime')
     parser.add_argument('--runtime', help='where to write the reading half; it imports the types from --output')
     options = parser.parse_args(arguments)
-    _write(options.output, typescript())
+    write_rendered(options.output, typescript())
     if options.runtime:
-        _write(options.runtime, typescript_runtime())
+        write_rendered(options.runtime, typescript_runtime())
     if options.conform:
-        _write(options.conform, typescript_conform())
-
-
-def _write(destination: str, rendered: str) -> None:
-    if destination == '-':
-        sys.stdout.write(rendered)
-        return
-    path = pathlib.Path(destination)
-    path.write_text(rendered, encoding='utf-8')
-    sys.stdout.write(f'wrote {path.resolve()}\n')
+        write_rendered(options.conform, typescript_conform())
 
 
 if __name__ == '__main__':

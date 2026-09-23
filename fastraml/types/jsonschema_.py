@@ -150,11 +150,6 @@ class SchemaRegistry:
         """Record a projection. `defs` only where a whole document was walked."""
         self._projections[uri] = (built, defs if defs is not None else {})
 
-    @property
-    def fetched(self) -> int:
-        """How many distinct URIs have been read. Test surface, not model state."""
-        return len(self._resources)
-
     def compile(self, raw: str, location: str, position: Position | None) -> CompiledSchema:
         """Compile one schema, resolving every reference it names.
 

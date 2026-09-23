@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import collections.abc
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, runtime_checkable
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, ErrorKind, RamlError
@@ -397,14 +397,14 @@ class _NameResolver:
 
     __slots__ = ()
 
-    def _declared(self, kind: str) -> Mapping[str, object] | None:
+    def _declared(self, kind: str) -> Mapping[str, Any] | None:
         raise NotImplementedError
 
     def _libraries(self) -> Mapping[str, LibraryLink]:
         raise NotImplementedError
 
     def _resolve[T](self, kind: str, name: str, pick: Callable[[Library, str], T | None]) -> T:
-        local = cast('Mapping[str, T] | None', self._declared(kind))
+        local: Mapping[str, T] | None = self._declared(kind)
         return resolve_reference(local, self._libraries(), name, pick)
 
     def library_link(self, prefix: str) -> LibraryLink | None:
@@ -459,8 +459,8 @@ class _DeclaringFragment(_NameResolver, _BaseFragment):
 
     # -- ReferenceResolver / SecuritySchemeResolver ---------------------------
 
-    def _declared(self, kind: str) -> Mapping[str, object] | None:
-        table: Mapping[str, object] = getattr(self, _DECLARATION_TABLES[kind])
+    def _declared(self, kind: str) -> Mapping[str, Any] | None:
+        table: Mapping[str, Any] = getattr(self, _DECLARATION_TABLES[kind])
         return table
 
     def _libraries(self) -> Mapping[str, LibraryLink]:
@@ -557,7 +557,7 @@ class APIFragment(_DeclaringFragment):
         #: for an API parsed on its own (docs/19 § 5.2).
         self.declared_by: dict[str, dict[str, int]] | None = None
 
-    def _declared(self, kind: str) -> Mapping[str, object] | None:
+    def _declared(self, kind: str) -> Mapping[str, Any] | None:
         """The root API's own nodes see only the root API's declarations (docs/19 § 5.2)."""
         return _seen_from(self, kind, 0)
 
@@ -764,20 +764,20 @@ class ExtensionFragment(_NameResolver, _BaseFragment):
         #: Target properties this document's keys displaced (docs/19 § 3.4).
         self.removed_properties: list[RemovedProperty] = []
 
-    def _declared(self, kind: str) -> Mapping[str, object] | None:
+    def _declared(self, kind: str) -> Mapping[str, Any] | None:
         return None if self.api is None else _seen_from(self.api, kind, self.position)
 
     def _libraries(self) -> Mapping[str, LibraryLink]:
         return self.visible_uses
 
 
-def _seen_from(api: APIFragment, kind: str, position: int) -> Mapping[str, object]:
+def _seen_from(api: APIFragment, kind: str, position: int) -> Mapping[str, Any]:
     """`api`'s declarations of `kind` as chain position `position` sees them.
 
     An API parsed on its own sees everything; so does every position when no
     extension document declared a name of that kind (docs/19 § 5.2).
     """
-    table: Mapping[str, object] = getattr(api, _DECLARATION_TABLES[kind])
+    table: Mapping[str, Any] = getattr(api, _DECLARATION_TABLES[kind])
     declared_by = api.declared_by
     if declared_by is None or kind not in declared_by:
         return table

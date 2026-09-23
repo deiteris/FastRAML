@@ -340,9 +340,10 @@ class Raml:
         authored (docs/08 § 4.2). Merge-created containers carry no mark, so
         callers ask about the specific child node.
         """
-        anchor = self.document_anchor(node)
-        if anchor is not None:
-            return anchor.location
+        if self._document_provenance:  # checked here: every stage-2 constructor asks
+            anchor = self.document_anchor(node)
+            if anchor is not None:
+                return anchor.location
         overlay = self._active_overlay
         scope = None if overlay is None else overlay.get(node)
         if scope is not None and scope.anchor is not None:
@@ -351,9 +352,10 @@ class Raml:
 
     def _marked_scope(self, node: Node) -> ParseCtx | None:
         """The document mark first, then the active unit's (docs/19 § 5.3)."""
-        authored = self.document_ctx(node)
-        if authored is not None:
-            return authored
+        if self._document_provenance:  # checked here: stage 2 asks for every value it decodes
+            authored = self.document_ctx(node)
+            if authored is not None:
+                return authored
         overlay = self._active_overlay
         return None if overlay is None else overlay.get(node)
 

@@ -28,6 +28,7 @@ __all__ = [
     'write_jsonschema',
     'write_large',
     'write_small',
+    'write_templates',
     'write_unions',
     'write_validate',
 ]
@@ -251,6 +252,73 @@ def write_endpoints(root: Path, *, resource_count: int = 500) -> Path:
             lines.append('        body:')
             lines.append('          application/json:')
             lines.append('            type: Item')
+    _write(root, {'api.raml': '\n'.join(lines) + '\n'})
+    return root / 'api.raml'
+
+
+# -- templates ----------------------------------------------------------------
+
+_RESOURCE_TYPES = """
+resourceTypes:
+  collection:
+    description: Every <<resourcePathName | !singularize>> in the store
+    get:
+      is: [searchable: {field: <<resourcePathName | !singularize>>Name}]
+      description: List <<resourcePathName | !pluralize>>
+      responses:
+        200:
+          body:
+            application/json:
+              type: <<resourcePathName | !singularize | !uppercamelcase>>[]
+    post:
+      description: Create one <<resourcePathName | !singularize>>
+      body:
+        application/json:
+          type: <<resourcePathName | !singularize | !uppercamelcase>>
+  item:
+    description: One <<item>>, at <<resourcePath>>
+    get:
+      responses:
+        200:
+          body:
+            application/json:
+              type: <<item>>
+    put:
+      body:
+        application/json:
+          type: <<item>>
+    delete?:
+traits:
+  searchable:
+    queryParameters:
+      <<field>>:
+        description: Filter on <<field | !lowerhyphencase>>
+        required: false
+"""
+
+
+def write_templates(root: Path, *, resource_count: int = 250) -> Path:
+    """Resource types and a trait with parameters and transforms, as real APIs write them.
+
+    `endpoints` applies traits without parameters and no resource type, so it
+    never runs resource type application, parameter substitution in a
+    resource type, or any of the ten transforms (docs/08 § 5). Each resource
+    here is a `collection` whose name every transform reads, and an `{id}` child
+    whose `item` parameter names its type. `!singularize` and `!pluralize` run
+    several times per resource on the same name, which is how the
+    `resourcePathName` of one resource is used. `tests/bench/test_corpus.py`
+    pins that both are reached at every resource.
+    """
+    lines = ['#%RAML 1.0', 'title: Generated template benchmark', _RESOURCE_TYPES.strip('\n'), 'types:']
+    lines.extend(
+        f'  W{index}widget:\n    properties:\n      id: string\n      w{index}widgetName: string'
+        for index in range(resource_count)
+    )
+    for index in range(resource_count):
+        lines.append(f'/w{index}widgets:')
+        lines.append('  type: collection')
+        lines.append('  /{id}:')
+        lines.append(f'    type: {{item: {{item: W{index}widget}}}}')
     _write(root, {'api.raml': '\n'.join(lines) + '\n'})
     return root / 'api.raml'
 

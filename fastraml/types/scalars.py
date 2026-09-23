@@ -32,7 +32,7 @@ from fastraml.parser.facets import (
 from fastraml.types.base import KindBase
 from fastraml.types.values import (
     INTEGER_RANGES,
-    as_fraction,
+    as_exact,
     check_non_negative,
     failure,
     is_multiple_of,
@@ -150,7 +150,7 @@ def _check_numeric(
 
 def _validate_numeric(  # noqa: PLR0913 - three facets, and each names itself at the call site
     base: BaseShape,
-    number: Fraction,
+    number: int | Fraction,
     path: str,
     *,
     minimum: ScalarFacet[Any] | None,
@@ -427,7 +427,7 @@ class NumberShape(ScalarKind):
     def validate(self, value: Any, path: str) -> None:
         # `bool` is a subclass of `int` in Python, so it reaches here as a
         # number unless it is refused by identity first (docs/10 § 5).
-        number = None if value is True or value is False else as_fraction(value)
+        number = None if value is True or value is False else as_exact(value)
         if number is None or isinstance(value, str):
             # A numeric string is accepted for `integer` but not for `number`
             # (docs/10 § 5).
@@ -476,7 +476,7 @@ class IntegerShape(ScalarKind):
         _check_format(self.base, self.format, INTEGER_FORMATS, 'integer')
 
     def validate(self, value: Any, path: str) -> None:
-        number = None if value is True or value is False else as_fraction(value)
+        number = None if value is True or value is False else as_exact(value)
         if number is None:
             raise self.wrong_type(value, path, 'integer')
         if number.denominator != 1:

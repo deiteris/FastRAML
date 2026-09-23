@@ -18,3 +18,17 @@ def test_every_case_resolves_here(case):
     function = _resolve(case.target)
     assert function is not None, f'{case.target} does not exist; update bench/micro.py'
     case.build(function)()
+
+
+_VALIDATING = [case for case in CASES if case.name.startswith('validate ')]
+
+
+@pytest.mark.parametrize('case', _VALIDATING, ids=[case.name for case in _VALIDATING])
+def test_every_validation_case_takes_the_path_it_names(case):
+    """A value meant to conform that fails would time the failure path instead."""
+    result = case.build(_resolve(case.target))()
+    if 'missing' in case.name:
+        assert result is not None
+        assert result.head.message == 'missing required properties'
+    else:
+        assert result is None, result

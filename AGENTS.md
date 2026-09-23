@@ -111,8 +111,9 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
   non-mapping root only when the outermost frame is located at the entry URI;
   the same included-fragment failure returns a partial model.
 - Numbers never pass through `float` on either side of a comparison. Build a facet's
-  `Fraction` from the raw scalar text, and a value via `Fraction(repr(v))`, not
-  `as_integer_ratio()`. `multipleOf: 1.1` must accept `2.2`.
+  `Fraction` from the raw scalar text, and a float value from `repr(v)` (through
+  `as_fraction`), never `float.as_integer_ratio()`. `multipleOf: 1.1` must accept
+  `2.2`.
 - `pattern:` and `/regex/` property names use `search`, not `fullmatch`; the author
   writes anchors (`docs/10` § 5).
 - The discriminator inline-declaration rule runs before P9, because after unwrap

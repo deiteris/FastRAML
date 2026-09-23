@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import TYPE_CHECKING, Final, Self
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
@@ -311,10 +312,20 @@ def _lower_hyphen_case(value: str) -> str:
     return _BEFORE_CAP_HYPHEN.sub('-', value).lower()
 
 
+#: Distinct words the two dictionary transforms remember. The engine tries
+#: its rules in turn, about thirty regex searches a word, and a resource type
+#: applies them to one `resourcePathName` in several places per resource
+#: (`bench run --bench templates`). The result depends on the word alone:
+#: the rules are fixed once `_get_pluralizer` has built the engine.
+_WORD_CACHE: Final = 4096
+
+
+@lru_cache(maxsize=_WORD_CACHE)
 def _singularize(value: str) -> str:
     return _get_pluralizer().singular(value) if value else value
 
 
+@lru_cache(maxsize=_WORD_CACHE)
 def _pluralize(value: str) -> str:
     return _get_pluralizer().plural(value) if value else value
 

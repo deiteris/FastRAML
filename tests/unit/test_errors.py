@@ -5,6 +5,11 @@ See docs/11-diagnostics.md.
 
 from __future__ import annotations
 
+import copy
+import pickle
+from concurrent.futures import ProcessPoolExecutor
+from fractions import Fraction
+
 import pytest
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
@@ -105,6 +110,55 @@ class TestRendering:
     def test_exception_message_is_the_head(self):
         err = RamlError.new('title is required', LOC, POS)
         assert str(err.args[0]) == 'title is required'
+
+    def test_the_message_is_rendered_when_read_with_its_info(self):
+        # Rendered on demand (docs/12 § 2), so `args` and `repr` still carry
+        # what `Exception` would have held.
+        err = RamlError.new('value is too long', LOC, POS, info={'maxLength': 3})
+        assert err.args == ('value is too long: maxLength: 3',)
+        assert repr(err) == "RamlError('value is too long: maxLength: 3')"
+
+
+def _chained() -> RamlError:
+    """Two frames, a sibling, a position, and a `Fraction` in `info`."""
+    inner = RamlError.new(
+        'value is below the minimum',
+        LOC,
+        POS,
+        kind=ErrorKind.VALIDATING,
+        info={'path': '$.x', 'minimum': Fraction(1, 10)},
+    )
+    outer = RamlError.wrap('value matches no member of the union', inner, LOC, Position(1, 1))
+    return outer.append(RamlError.new('title is required', 'file:///t/other.raml'))
+
+
+def _raise_chained() -> None:
+    raise _chained()
+
+
+class TestPickling:
+    """docs/11 § 1: an error survives a process boundary and `copy`."""
+
+    def test_a_chain_with_siblings_round_trips(self):
+        err = _chained()
+        back = pickle.loads(pickle.dumps(err))  # noqa: S301 - our own bytes
+        assert type(back) is RamlError
+        assert back.to_dict() == err.to_dict()
+        assert [frame.position for frame in back.frames()] == [Position(1, 1), POS]
+        assert back.frames()[1].kind is ErrorKind.VALIDATING
+        assert back.frames()[1].info == {'path': '$.x', 'minimum': Fraction(1, 10)}
+        assert len(back.siblings) == 1
+
+    def test_copy_keeps_the_chain(self):
+        err = _chained()
+        assert copy.copy(err).to_dict() == err.to_dict()
+
+    def test_an_error_raised_in_a_worker_reaches_the_parent(self):
+        with ProcessPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_raise_chained)
+            with pytest.raises(RamlError) as caught:
+                future.result()
+        assert caught.value.to_dict() == _chained().to_dict()
 
 
 class TestAccumulator:

@@ -1,6 +1,6 @@
 """The built `viewer/` SPA, as an installable package.
 
-`viewer/` is a React app over `fastraml tree` output (docs/16 section 11). In a
+`viewer/` is a React app over `fastraml tree` output (docs/16 § 6). In a
 checkout you build it and serve `viewer/dist` yourself. That advice is useless
 to someone who installed from PyPI and has no checkout, which is why the assets
 ship here instead.

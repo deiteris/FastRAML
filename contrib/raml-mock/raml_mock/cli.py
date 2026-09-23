@@ -1,3 +1,5 @@
+"""`raml-mock serve`: run a mock server for a RAML file."""
+
 from __future__ import annotations
 
 import dataclasses

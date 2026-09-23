@@ -1,3 +1,5 @@
+"""The extension point for a media type the mock does not handle natively."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol

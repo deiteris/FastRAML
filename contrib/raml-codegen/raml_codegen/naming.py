@@ -1,7 +1,7 @@
 """Turn RAML names into Python names.
 
 **An address identifies a type; a name does not.** Two files may both declare
-`Page`, and nothing reports the collision (docs/16 § 3.1). So every generated
+`Page`, and nothing reports the collision (docs/16 § 2). So every generated
 name is claimed through a `Names` registry keyed by address: the first claimant
 of a spelling keeps it, and the next one is given an alternative.
 

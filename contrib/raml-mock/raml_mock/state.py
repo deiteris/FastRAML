@@ -1,3 +1,5 @@
+"""In-memory state for resources configured as stateful: create, read, update, delete."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,3 +1,5 @@
+"""Errors the mock raises, and the request-validation issues it reports."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

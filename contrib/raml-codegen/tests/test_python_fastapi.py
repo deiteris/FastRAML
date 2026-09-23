@@ -2,7 +2,7 @@
 
 Every assertion here is about a pydantic or FastAPI spelling. None of them is
 about RAML: the language ran nine passes before this package saw anything
-(docs/16 § 11.7), and a test here that needed a RAML rule would be evidence of a
+(docs/16 § 6.1), and a test here that needed a RAML rule would be evidence of a
 gap in the parser rather than a test of this.
 
 The comparison worth keeping in view is with `test_python_target.py`. The two
@@ -123,7 +123,7 @@ class TestShapesBecomeTypes:
         assert isbn.alias.spelling.startswith('Annotated[str, Field(')
 
     def test_a_json_schema_type_reads_as_its_projection(self, package):
-        # docs/16 § 11.10: `json` is how the type arrived, not what it is.
+        # docs/16 § 6.2: `json` is how the type arrived, not what it is.
         invoice = model(package, 'Invoice')
         assert not invoice.is_alias
         assert {one.wire for one in invoice.fields} >= {'number', 'total'}
@@ -189,9 +189,9 @@ class TestEndpointsBecomeMethods:
         assert endpoint(package, 'delete', '/books/{isbn}').success.annotation is None
 
     def test_there_are_no_response_classes(self, package):
-        # RAML states 3-digit codes and nothing else (docs/08 § 3). `4xx` is
-        # OpenAPI's, and arriving at it by analogy is the mistake docs/17 § 2.1
-        # records against raml-mock.
+        # RAML states 3-digit codes and nothing else (docs/08 § 6.1). `4xx` is
+        # OpenAPI's, and arriving at it by analogy would be inventing a rule
+        # RAML does not have (docs/17 § 1).
         for one in package.endpoints:
             for case in one.cases:
                 assert case.status.isdigit()
@@ -289,7 +289,7 @@ class TestModelsAreFlat:
         assert model(package, 'Magazine').discriminator == ('kind', 'monthly')
 
     def test_a_body_that_is_a_declared_type_is_that_type(self, package):
-        # The effective view inlines a supertype (docs/16 § 11.3), so `body:
+        # The effective view inlines a supertype (docs/16 § 6.1), so `body:
         # Book` arrives as an anonymous object carrying Book's properties. Read
         # literally that generates a duplicate class under a name the author
         # never wrote.

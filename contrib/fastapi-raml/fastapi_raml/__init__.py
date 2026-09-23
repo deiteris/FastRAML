@@ -1,6 +1,6 @@
 """Render a FastAPI application as RAML 1.0.
 
-A consumer of `fastraml`, not part of it. `docs/01-scope-and-coverage.md` § 2 keeps
+A consumer of `fastraml`, not part of it. `docs/01-scope-and-coverage.md` § 3 keeps
 code generation and format converters out of the package, and this one also
 depends on `fastapi` and `pydantic`, which the parser must not.
 

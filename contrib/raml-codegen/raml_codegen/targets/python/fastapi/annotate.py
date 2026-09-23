@@ -5,7 +5,7 @@ and the one thing this target does that the client target refuses to: a
 `minLength:` becomes `min_length=`, so the generated server rejects a request
 the document forbids.
 
-That is not this package holding a rule of the language (docs/17 § 2). RAML says
+That is not this package holding a rule of the language (docs/17 § 1). RAML says
 what `minLength:` constrains and pydantic says the same thing in its own words;
 transcribing one into the other is a spelling. What would be a rule is deciding
 something the document does not say — and there is one of those, named below.
@@ -116,7 +116,7 @@ class FastapiAnnotator(Annotator):
 
         Only where every member states one. RAML defaults an unstated value to
         the type name; applying that default here would be a rule of the
-        language living in a consumer (docs/17 § 2), and a tagged union missing
+        language living in a consumer (docs/17 § 1), and a tagged union missing
         one tag rejects valid payloads rather than merely reporting worse.
         """
         members = self.members(shape)
@@ -188,7 +188,7 @@ def _literal(key: str, value: object) -> str:
     """One facet's value, as the Python literal that states it.
 
     A numeric bound arrives as the exact decimal text the document wrote
-    (`ExactDecimal` is a string, docs/16 § 11). It is written out verbatim, so
+    (`ExactDecimal` is a string, docs/16 § 6). It is written out verbatim, so
     nothing here parses it into a float and back -- the generated source says
     what the document said.
     """

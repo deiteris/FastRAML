@@ -279,7 +279,7 @@ class _Builder:
                 declaration.address,
                 class_name(declaration.name),
                 # Two files may declare `Page`, and the collision is silent
-                # (docs/16 § 3.1). The file is the disambiguation a reader can
+                # (docs/16 § 2). The file is the disambiguation a reader can
                 # check; `Page2` is not.
                 class_name(f'{_stem(declaration.file)}-{declaration.name}'),
             )
@@ -488,7 +488,7 @@ def _discriminator(shape: Shape) -> tuple[str, object] | None:
 
     Only where the tree states the value. RAML defaults an unstated one to the
     type name, and applying that default here would put a rule of the language
-    inside this package (docs/17 § 2).
+    inside this package (docs/17 § 1).
     """
     if shape['type'] != 'object':
         return None

@@ -40,7 +40,7 @@ def properties_of(shape: Shape) -> dict[str, Property]:
 
     Only an `object` has `properties`, so narrow on `type` before reading it.
     The generated binding is what makes that a type error rather than a
-    run-time surprise (docs/16 § 11.11a).
+    run-time surprise (docs/16 § 7).
     """
     return shape.get('properties', {}) if shape['type'] == 'object' else {}
 
@@ -84,7 +84,7 @@ class Tree(_Tree):
     def _declared(self, by_file: ShapeDeclarationsByFile) -> Iterator[Declaration]:
         for file, declarations in by_file.items():
             for name, node in declarations.items():
-                # An alias never reaches the output as a node (docs/16 § 11.8),
+                # An alias never reaches the output as a node (docs/16 § 6.1),
                 # so a declaration that is a bare link names another declaration
                 # and resolves. One that does not is a tree we cannot read.
                 if is_ref(node):

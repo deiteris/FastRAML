@@ -3,9 +3,8 @@
 The **traversal** is here and the **spellings** are not. Descending a shape,
 following a link, stopping at a recursion marker, deciding that an anonymous
 body is really a declared type, claiming a name for one that is not — none of
-that changes when the output language does, and each of them was a finding
-rather than a reading. A target supplies the six hooks at the bottom and gets
-all of it.
+that changes when the output language does. A target supplies the six hooks at
+the bottom and gets all of it.
 
 An `Annotation` carries three things, and a template cannot work out any of them
 from the others: how to spell the type, how to write one of its values as JSON,
@@ -184,10 +183,9 @@ class Annotator:
     # -- per kind ---------------------------------------------------------------
 
     def _of_shape(self, shape: Shape, address: str | None, prefer: str | None = None) -> Annotation:
-        # A `json` shape is how a type *arrived*, not what it is: the spec
-        # forbids it from participating in inheritance, so the parser decodes no
-        # RAML facet from it and reading it directly reports a type made of
-        # nothing (docs/16 § 11.10).
+        # A `json` shape is how a type *arrived*, not what it is: it carries no
+        # RAML facets, so reading it directly reports a type made of nothing.
+        # Its `projection` is the type (docs/16 § 6.2).
         content = self.tree.content(shape)
         kind = content['type']
 
@@ -219,7 +217,7 @@ class Annotator:
         """Return the supertype where a shape is only a copy of it.
 
         The effective view inlines a supertype's properties wherever the
-        supertype is not referenced by name (docs/16 § 11.3). So `body: Book`
+        supertype is not referenced by name (docs/16 § 6.1). So `body: Book`
         arrives as an anonymous object that carries every one of Book's
         properties and inherits `{"$ref": Book}`. Read literally, that is a
         distinct type, and generating it produces `PostBooksBody`: a duplicate
@@ -268,7 +266,7 @@ class Annotator:
         # "which member is this", so it is asked first. Only where the tree
         # *states* a value: RAML defaults an unstated one to the type name, and
         # applying that default here would be this package holding a rule of the
-        # language (docs/17 § 2).
+        # language (docs/17 § 1).
         #
         # Subscripted rather than taken from `kind`: the narrowing has to be on
         # `content` itself for the two `.get`s below to be the object variant's.

@@ -8,12 +8,9 @@ Two routes, neither in the app's own schema, plus an optional viewer:
 | `/raml.json` | `fastraml tree` output for it, which is what the viewer reads |
 | `/raml-viewer` | the `fastraml-viewer` bundle, when that package is installed |
 
-**This package renders nothing itself.** It used to serve an HTML page listing
-the two routes and linking to `{viewer}?src=/raml.json`, which existed only
-because the viewer took its document from a query string. The viewer now reads
-`api.json` beside itself, so the mount serves this app's tree at that name and
-the bundle is pointed at the right document by where it is mounted rather than
-by a page whose sole job was to compose a link.
+**This package renders nothing itself.** The viewer reads `api.json` beside
+itself, so the mount serves this app's tree at that name and the bundle is
+pointed at the right document by where it is mounted.
 
 The pipeline behind the first two:
 

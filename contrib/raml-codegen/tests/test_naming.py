@@ -59,7 +59,7 @@ class TestSpelling:
 
 
 class TestAnAddressIsTheIdentity:
-    """docs/16 § 3.1: two files may declare one name, and it is silent."""
+    """docs/16 § 2: two files may declare one name, and it is silent."""
 
     def test_the_first_claimant_keeps_the_spelling(self):
         names = Names()

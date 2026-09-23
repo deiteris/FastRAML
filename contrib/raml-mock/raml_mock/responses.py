@@ -1,3 +1,5 @@
+"""Choose a declared response and media type for a request, and build its body and headers."""
+
 from __future__ import annotations
 
 import base64
@@ -118,7 +120,7 @@ def _select_response(request: web.Request, operation: Operation, configured: str
 
 def _status_of(code: str) -> int:
     # Every `responses:` key fastRAML hands over is a 3-digit status -- it
-    # rejects anything else, `4xx` classes included (docs/08 section 3). The
+    # rejects anything else, `4xx` classes included (docs/08 § 6.1). The
     # guard is for an `Operation` assembled in Python, not for a parsed one.
     if not code.isdigit():
         raise RequestValidationError(

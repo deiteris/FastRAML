@@ -1,3 +1,5 @@
+"""Mock behaviour options: generation, per-route responses, authentication, state."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -150,6 +152,6 @@ class MockOptions:
 
 def _valid_response_status(status: str) -> bool:
     # 3-digit only. A `4xx` class is OpenAPI, not RAML: the parser rejects such
-    # a `responses:` key outright (docs/08 section 3), so no parsed operation
+    # a `responses:` key outright (docs/08 § 6.1), so no parsed operation
     # can declare one and a behavior naming one could never be selected.
     return status.isdigit() and STATUS_MIN <= int(status) <= STATUS_MAX

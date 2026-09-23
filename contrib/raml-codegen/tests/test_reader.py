@@ -10,7 +10,7 @@ from raml_codegen.reader import UnreadableTree, is_recursion, is_ref
 
 
 class TestTheEnvelopeIsChecked:
-    """docs/16 § 11.9: a consumer rejects a representation it does not know.
+    """docs/16 § 6: a consumer rejects a representation it does not know.
 
     Emitting the envelope is only worth it if something refuses on it, and
     nothing did until this. A tree from a future version may have renamed a
@@ -51,7 +51,7 @@ class TestTheThreeConstructs:
 
     def test_a_recursion_marker_is_not_a_link(self, tree):
         # Merging the two would break the law: a walker expanding links cannot
-        # tell a repeat from a fresh subtree (docs/16 § 11.7).
+        # tell a repeat from a fresh subtree (docs/16 § 6.1).
         chain = next(one for one in tree.types() if one.name == 'Chain')
         marker = chain.shape['properties']['next']['type']
         assert is_recursion(marker)
@@ -70,7 +70,7 @@ class TestTheThreeConstructs:
 
 
 class TestASchemaTypeIsNotALeaf:
-    """docs/16 § 11.10: a consumer reads the `projection` as the type."""
+    """docs/16 § 6.2: a consumer reads the `projection` as the type."""
 
     def test_a_json_shape_reads_as_its_projection(self, tree):
         invoice = next(one for one in tree.types() if one.name == 'Invoice')
@@ -94,7 +94,7 @@ class TestWhatTheDocumentHolds:
 
     def test_an_alias_declaration_resolves_to_its_referent(self, tree):
         # `AnythingAlias: Anything` arrives as a bare link, because an alias
-        # never reaches the output as a node (docs/16 § 11.8).
+        # never reaches the output as a node (docs/16 § 6.1).
         alias = next(one for one in tree.types() if one.name == 'AnythingAlias')
         assert alias.shape['name'] == 'Anything'
 

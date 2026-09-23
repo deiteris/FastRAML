@@ -88,7 +88,7 @@ status and `X-RAML-Mock-Example` to select a named example.
 
 Every status is a 3-digit code, and so is every status you configure. RAML has no
 `4xx` response class — the parser rejects such a `responses:` key outright
-(`docs/08-templates-and-endpoints.md` § 3, measured against the reference
+(`docs/08-templates-and-endpoints.md` § 6.1, measured against the reference
 implementation) — so there is no wildcard to match against and a mock that
 accepted one would be answering for a document that cannot exist.
 

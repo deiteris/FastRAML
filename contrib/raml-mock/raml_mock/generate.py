@@ -1,3 +1,5 @@
+"""Generate a deterministic value that conforms to an unwrapped shape, preferring examples."""
+
 from __future__ import annotations
 
 import base64

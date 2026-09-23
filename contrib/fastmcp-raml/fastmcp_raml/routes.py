@@ -318,7 +318,7 @@ def to_http_routes(raml: Raml) -> Routes:
     declared model would produce schemas missing every inherited facet, and
     produce them silently (invariant I12).
     """
-    assert raml.unwrapped, (  # noqa: S101 - docs/02 section 4 invariant, not input validation
+    assert raml.unwrapped, (  # noqa: S101 - docs/02 § 4 invariant, not input validation
         'to_http_routes needs an unwrapped shape: parse with ParseOptions(unwrap=True)'
     )
     dropped: list[str] = []

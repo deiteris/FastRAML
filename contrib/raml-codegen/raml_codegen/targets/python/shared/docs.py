@@ -1,8 +1,8 @@
 """Turn a RAML `description:` into a docstring.
 
 RAML says every `description:` is Markdown, so it may be a list, and the shape
-of one has to survive being put into a docstring. Collapsing the whole thing to
-one line is what put `* price is the current price` in the middle of a sentence.
+of one has to survive being put into a docstring: collapsed to one line, a list
+item such as `* price is the current price` lands mid-sentence.
 """
 
 from __future__ import annotations

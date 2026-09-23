@@ -247,7 +247,7 @@ class TestStatefulResources:
 
     async def test_a_declared_state_error_status_is_answered_from_the_raml(self, source):
         # `/items/{id}` declares `499:` itself. RAML has no `4xx` response class
-        # -- the parser rejects the key (docs/08 section 3) -- so a mock status
+        # -- the parser rejects the key (docs/08 § 6.1) -- so a mock status
         # outside the usual few is reachable only if the document names it.
         resource = StatefulResource(
             name='items',

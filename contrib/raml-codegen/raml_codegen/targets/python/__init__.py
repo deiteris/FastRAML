@@ -13,7 +13,7 @@ library's: a RAML `description:` as a docstring, and a module's import block.
 The two targets read the same document in opposite directions. `httpx` writes
 the caller; `fastapi` writes the thing being called. They disagree in exactly
 one place — a facet is documentation to a client and a constraint to a server —
-and `docs/17` § 5.3 says why.
+and `docs/17` § 1 says why.
 """
 
 from __future__ import annotations

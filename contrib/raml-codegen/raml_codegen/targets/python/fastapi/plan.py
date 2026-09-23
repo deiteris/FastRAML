@@ -38,7 +38,7 @@ def _tagged(model: Model) -> Model:
 
     Only where the document states a value. RAML defaults an unstated one to the
     type name and this does not apply that default, so a type that states none
-    keeps a plain `str` (docs/17 § 2).
+    keeps a plain `str` (docs/17 § 1).
     """
     if model.discriminator is None:
         return model

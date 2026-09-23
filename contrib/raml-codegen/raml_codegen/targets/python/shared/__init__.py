@@ -3,8 +3,7 @@
 A target decides spellings. Everything before a spelling — descending the tree,
 following a link, stopping at a recursion marker, claiming a name for an
 anonymous shape, working out which supertype a body really is — is the same
-question whatever the answer is written in, and getting it right took findings
-rather than reading. So it lives here once.
+question whatever the answer is written in, so it lives here once.
 
 `annotate.py` holds the traversal and leaves each kind's spelling to a hook;
 `plan.py` reads the whole tree into one `Package`; `docs.py` turns a RAML

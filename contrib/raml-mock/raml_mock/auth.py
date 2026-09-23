@@ -1,3 +1,5 @@
+"""Check a request's credentials against the operation's `securedBy:` alternatives."""
+
 from __future__ import annotations
 
 import base64

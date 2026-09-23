@@ -22,7 +22,7 @@ that requirement, so it is in this package's README and not in the document.
 `file_types`, `max_size` and `min_size` are RAML's `fileTypes`, `maxLength` and
 `minLength`, and each is enforced as well as written -- `fileTypes` off the
 part's header before a byte is read, the two lengths as a running count while it
-is. That is a spelling and not a rule (`docs/17` § 5.3): RAML says what the
+is. That is a spelling and not a rule (`docs/17` § 1): RAML says what the
 facet constrains and this says the same thing in Python.
 """
 

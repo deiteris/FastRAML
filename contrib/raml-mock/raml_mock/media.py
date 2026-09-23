@@ -1,3 +1,5 @@
+"""Media type normalisation and JSON detection."""
+
 from __future__ import annotations
 
 __all__ = ['base_media_type', 'is_json_media_type']

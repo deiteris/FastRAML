@@ -157,7 +157,7 @@ class TestTheServerChangedAType:
     def test_it_passes_through_unchecked(self, client_package):
         # Named so the absence is a decision rather than an oversight. Checking
         # here would restate a rule of the language on this side of the line
-        # (docs/17 § 2), and the client still could not say whether the *server*
+        # (docs/17 § 1), and the client still could not say whether the *server*
         # is right.
         assert listed(client_package, [BOOK | {'title': 42}]).parsed[0].title == 42
 

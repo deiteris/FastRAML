@@ -1,3 +1,5 @@
+"""The aiohttp application: match a request to a RAML operation and answer it."""
+
 from __future__ import annotations
 
 import asyncio
@@ -271,7 +273,7 @@ def _problem(
 
 def _declares_status(responses: Mapping[str, object], status: int | str) -> bool:
     # An exact key and nothing else. RAML has no `4xx` response class, so the
-    # parser never produces one to match against (docs/08 section 3).
+    # parser never produces one to match against (docs/08 § 6.1).
     return str(status) in responses
 
 

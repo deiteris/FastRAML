@@ -1,11 +1,8 @@
 """Work out one generated module's import block.
 
-**The import block is computed, not formatted.** An earlier version ran
-`ruff check --fix --select I,F401` over the finished files. That made the output
-depend on the installed ruff version, so upgrading ruff changed the golden
-record for reasons unrelated to this package. It also failed silently where ruff
-was missing: `check --fix-only` and "no such module" both exit 1, so imports
-came out unsorted and unused ones stayed. A module's imports follow from its own
+**The import block is computed, not formatted.** Running ruff over the
+finished files would make the output depend on the installed ruff version and
+fail silently where ruff is missing. A module's imports follow from its own
 plan, so this works them out and runs no subprocess.
 """
 

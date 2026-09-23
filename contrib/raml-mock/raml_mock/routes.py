@@ -1,3 +1,5 @@
+"""Match request paths against the parsed endpoints' URI templates."""
+
 from __future__ import annotations
 
 import re

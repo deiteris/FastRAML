@@ -1,3 +1,5 @@
+"""Decode a request's parameters and body, coerce them to their declared types, and validate them."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

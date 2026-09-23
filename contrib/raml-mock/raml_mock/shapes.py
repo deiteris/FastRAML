@@ -1,3 +1,5 @@
+"""Small readings of a shape shared by request decoding and response generation."""
+
 from __future__ import annotations
 
 from fastraml import BaseShape, FileShape, JsonShape

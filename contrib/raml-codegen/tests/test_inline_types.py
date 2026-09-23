@@ -3,7 +3,7 @@
 `fixtures/sample/api.raml` declares every body by name — `type: Book`,
 `type: Delivery[]` — so the whole anonymous-naming path is unreachable from it,
 and every name it produces was untested until this file. Changing the shared
-fixture to reach it would move four other consumers (docs/17 § 3), so this
+fixture to reach it would move four other consumers (docs/17 § 2), so this
 document is its own. `DOCUMENT` below is the source; `tests/inline.json` is that
 document projected, and is what the tests actually read.
 

@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 license = "MIT"
 # No `fastraml`. The input is the published wire format, so generating needs
 # the JSON and not the parser that wrote it — the same footing `viewer/` is on
-# (docs/17 § 2).
+# (docs/17 § 1).
 dependencies = ["jinja2>=3.1", "typer>=0.26"]
 
 [project.scripts]

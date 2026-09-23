@@ -14,7 +14,7 @@ validate every request and produce the RAML document that describes them.
 
     add_raml_routes(build_app(), title='Library', version='v2')
 
-A consumer of `fastraml`, not part of it. `docs/01-scope-and-coverage.md` § 2
+A consumer of `fastraml`, not part of it. `docs/01-scope-and-coverage.md` § 3
 keeps this out of the parser, and it depends on `aiohttp` and `pydantic`, which
 the parser must not.
 

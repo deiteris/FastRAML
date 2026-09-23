@@ -1,3 +1,5 @@
+"""Serve `fixtures/sample` as a mock, with the `books` resource kept in memory."""
+
 from __future__ import annotations
 
 import argparse

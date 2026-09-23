@@ -167,6 +167,7 @@ _EXPORTS = {
     'resolve_uri_ref': ('fastraml.uris', 'resolve_uri_ref'),
     'render_compatibility_markdown': ('fastraml.views.backward', 'render_markdown'),
     'same_value': ('fastraml.types.values', 'same_value'),
+    'set_gc_tuning': ('fastraml.gctuning', 'set_gc_tuning'),
 }
 
 
@@ -316,6 +317,7 @@ __all__ = [  # noqa: RUF022
     'resolve_uri_ref',
     'rule_for',
     'same_value',
+    'set_gc_tuning',
     'side_of',
     'side_of_rule',
     'to_json_schema',

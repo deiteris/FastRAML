@@ -533,6 +533,15 @@ def test_the_error_type_is_declared_once_and_named() -> None:
     assert document['types']['RequestError']['properties']['in']['type'] == 'string'
 
 
+def test_the_error_type_declares_no_placeholder_defaults() -> None:
+    """Every 400 carries all four keys, so none is optional and none has a default."""
+    document, _ = rendered(one_view('/books/{isbn}', ParamsView))
+    for name, prop in document['types']['RequestError']['properties'].items():
+        if isinstance(prop, dict):
+            assert 'default' not in prop, name
+            assert 'required' not in prop, name
+
+
 class NoParameters(RamlView):
     async def get(self) -> Annotated[web.Response, Responds(204)]: ...
 

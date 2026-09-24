@@ -32,11 +32,13 @@ class RequestError(BaseModel):
     #: Which RAML node the value came from: `uriParameters`, `queryParameters`,
     #: `headers` or `body`.
     in_: Annotated[str, Field(alias='in', description='the RAML node the value came from')]
+    # No defaults: `describe` writes every key, and a placeholder default here
+    # would reach the document as `required: false` and `default: ''`.
     #: The path to the value inside that node.
-    loc: list[str | int] = []
+    loc: list[str | int]
     #: pydantic's error code, e.g. `missing`, `string_pattern_mismatch`.
-    type: str = ''
-    msg: str = ''
+    type: str
+    msg: str
 
 
 def describe(

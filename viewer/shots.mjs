@@ -66,6 +66,9 @@ const PAGES = [
  * all fit at 1400 and none of them fit at 760, so a run at one width says
  * nothing about the other -- and 760 is a window split beside an editor, which
  * is where API documentation is actually read.
+ *
+ * And a phone, below the breakpoint where the nav becomes a drawer: the same
+ * narrow pages plus one of each other kind, in the one-column layout.
  */
 const NARROW = new Set([
   'type-union-large',
@@ -75,9 +78,11 @@ const NARROW = new Set([
   'type-examples',
   'type-at-the-limits',
 ]);
+const PHONE = new Set([...NARROW, 'overview', 'types', 'type-object', 'resource', 'operation-get', 'security']);
 const VIEWPORTS = [
   { suffix: '', width: 1400 },
   { suffix: '-narrow', width: 760, pages: NARROW },
+  { suffix: '-phone', width: 390, pages: PHONE },
 ];
 
 /**

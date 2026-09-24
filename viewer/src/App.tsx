@@ -54,6 +54,11 @@ function Shell() {
   // generated walk, and `Index` adds the page routing on top.
   const index = useMemo(() => (document ? new Index(Tree.of(document)) : null), [document]);
   const main = useArrival(document, index);
+  const { pathname } = useLocation();
+  const [navOpen, setNavOpen] = useState(false);
+  const menu = useRef<HTMLButtonElement>(null);
+  // The drawer is for choosing a page; once one is chosen it is in the way.
+  useEffect(() => setNavOpen(false), [pathname]);
 
   if (!document || !index) {
     return (
@@ -70,9 +75,33 @@ function Shell() {
     );
   }
 
+  const close = () => {
+    setNavOpen(false);
+    menu.current?.focus();
+  };
   return (
-    <div className="app">
+    <div
+      className={`app ${navOpen ? 'nav-is-open' : ''}`}
+      onKeyDown={(event) => navOpen && event.key === 'Escape' && close()}
+    >
+      {/* Narrow windows only: the nav becomes a drawer behind this bar. A
+          fixed 320px column beside the page left a phone about a third of
+          the screen for the page. */}
+      <header className="topbar">
+        <button
+          ref={menu}
+          type="button"
+          className="nav-open"
+          aria-expanded={navOpen}
+          aria-controls="sidebar"
+          onClick={() => setNavOpen(!navOpen)}
+        >
+          Menu
+        </button>
+        <span className="topbar-title">{document.entry_point?.title ?? 'API reference'}</span>
+      </header>
       <Sidebar document={document} index={index} />
+      {navOpen && <div className="scrim" onClick={close} />}
       <main ref={main} tabIndex={-1}>
         <Pages document={document} index={index} />
       </main>

@@ -93,6 +93,11 @@ label and a rule around one word was three lines of chrome, and for `Book[]` it
 repeated what had just been read. An item with structure of its own still gets a
 nested block.
 
+Below 720px the nav is a **drawer** behind a Menu bar, and a listing row stacks
+its description under its name: a fixed 320px column left a phone a third of
+its width, and a three-column table broke `object` into `objec t`. `shots`
+checks a phone width alongside the split-window 760.
+
 Both themes follow the system by default; the toggle has three states, because
 one with two silently makes the choice for a reader who never made it.
 

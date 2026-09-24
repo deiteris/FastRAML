@@ -30,7 +30,7 @@ export function Sidebar({
   const schemes = declarations(document.security_schemes).filter(({ name }) => matches(name));
 
   return (
-    <nav className="sidebar">
+    <nav className="sidebar" id="sidebar">
       <Link to="/" className="brand">
         {document.entry_point?.title ?? 'API reference'}
       </Link>

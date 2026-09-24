@@ -163,6 +163,12 @@ main {
   min-width: 0;
 }
 
+/* Focused on arrival, for a screen reader; a ring round the whole page says
+   nothing to anyone else. */
+main:focus {
+  outline: none;
+}
+
 .loading {
   padding: 72px;
 }

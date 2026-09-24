@@ -9,7 +9,7 @@ root gate does not see them. `docs/17-consumers.md` settles the boundary.
 | [`raml-document`](raml-document/) | neither | A typed authoring model for a RAML document, and a reader that builds one from pydantic models. Depends on no web framework. |
 | [`fastapi-raml`](fastapi-raml/) | code → RAML | Renders a FastAPI app's routes as RAML, and serves it. |
 | [`aiohttp-raml`](aiohttp-raml/) | code → RAML | Code-first RAML for aiohttp: pydantic-validated views that describe themselves. Depends on no other web framework package. |
-| [`fastmcp-raml`](fastmcp-raml/) | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP. |
+| [`fastmcp-raml`](fastmcp-raml/) | RAML → MCP | Serves a RAML-described API as an MCP server through FastMCP; `fastmcp-raml api.raml` runs one. |
 | [`raml-mock`](raml-mock/) | RAML → HTTP | Runs an in-process aiohttp mock with request validation and generated responses. |
 | [`fastraml-viewer`](fastraml-viewer/) | neither | The built `viewer/` bundle as static assets, and `serve(document)`. Depends on nothing, including `fastraml`. |
 | [`raml-codegen`](raml-codegen/) | tree → code | Generates source from a `fastraml tree` document. Two targets: `python-httpx`, a typed client, and `python-fastapi`, a server interface to implement. |

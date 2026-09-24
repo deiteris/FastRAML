@@ -47,6 +47,30 @@ mcp.add_provider(provider)
 Parse with `unwrap=True`: a schema built from an un-flattened shape is missing
 every inherited facet, and `RAMLProvider` refuses one.
 
+## Command line
+
+```bash
+fastmcp-raml api.raml                                   # stdio, requests to the document's baseUri
+fastmcp-raml api.raml --param tenant=acme               # bind a templated baseUri
+fastmcp-raml api.raml --base-url https://staging.example/v1 \
+                      --header 'Authorization: Bearer ...'
+fastmcp-raml api.raml --mock                            # answered by raml-mock (fastmcp-raml[mock])
+fastmcp-raml api.raml --http --port 8000                # streamable HTTP at /mcp
+fastmcp-raml api.raml --describe                        # the tools and resources, then exit
+```
+
+Stdio is the default, since that is how an MCP client's config starts a server:
+
+```json
+{"mcpServers": {"bookstore": {"command": "fastmcp-raml", "args": ["api.raml", "--param", "tenant=acme"]}}}
+```
+
+`--header` is the command line's only way to send credentials, and a header
+written into `args` sits in the client config in plain text. Build the server
+in Python with your own `httpx2` client when that matters. `--workspace` widens
+the include sandbox, as in `fastraml`. `--mock-config` takes the JSON file
+`raml-mock --config` does, and implies `--mock`.
+
 ## No OpenAPI in the middle
 
 FastMCP's OpenAPI provider does two things with a spec: it builds

@@ -21,10 +21,15 @@ license = "MIT"
 # The upstream change the README proposes -- `OpenAPIProvider` taking
 # `routes: list[HTTPRoute]` -- would leave this package the RAML front half and
 # nothing else, and the pin could widen to whatever ships it.
-dependencies = ["fastraml>=0.1,<0.2", "fastmcp>=4.0,<5"]
+dependencies = ["fastraml>=0.1,<0.2", "fastmcp>=4.0,<5", "typer>=0.26"]
 
 [project.optional-dependencies]
+# `fastmcp-raml --mock`: answer from raml-mock instead of a real API.
+mock = ["raml-mock>=0.1,<0.2"]
 examples = ["raml-mock>=0.1,<0.2"]
+
+[project.scripts]
+fastmcp-raml = "fastmcp_raml.cli:app"
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "mypy>=1.10", "ruff>=0.6", "raml-mock"]
@@ -62,6 +67,9 @@ multiline-quotes = "double"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101", "ANN", "D", "INP001", "PLR2004", "PLC0415", "SLF001", "ARG001", "ARG005", "TC003"]
+# `--mock`, `--http` and `--describe` are boolean flags, which is what typer
+# reads a boolean parameter with a default as.
+"fastmcp_raml/cli.py" = ["FBT"]
 "examples/*.py" = ["INP001", "T201", "SLF001"]
 
 [tool.mypy]

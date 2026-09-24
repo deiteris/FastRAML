@@ -108,7 +108,10 @@ def _mount_viewer(app: web.Application, path: str, tree: Callable[[web.Request],
 
     aiohttp serves no index for a static route, so `/` under the mount is its
     own handler. The bundle is built with vite `base: './'`, so its assets
-    resolve under whatever path it lands on.
+    resolve under whatever path it lands on -- which is why the bare mount path
+    redirects rather than answering: served at `/raml-viewer`, `./assets/x.js`
+    resolves to `/assets/x.js`, and the page loads blank. Starlette's
+    `redirect_slashes` does the same for FastAPI.
     """
     try:
         from fastraml_viewer import static_dir  # noqa: PLC0415 - optional extra
@@ -121,8 +124,13 @@ def _mount_viewer(app: web.Application, path: str, tree: Callable[[web.Request],
     async def viewer_index(request: web.Request) -> web.Response:  # noqa: ARG001 - the signature aiohttp calls
         return web.Response(text=index.read_text(encoding='utf-8'), content_type='text/html')
 
+    @exclude
+    async def viewer_slash(request: web.Request) -> web.Response:
+        query = f'?{request.query_string}' if request.query_string else ''
+        raise web.HTTPTemporaryRedirect(f'{path}/{query}')
+
     app.router.add_get(f'{path}/api.json', tree)
-    app.router.add_get(path, viewer_index)
+    app.router.add_get(path, viewer_slash)
     app.router.add_get(f'{path}/', viewer_index)
     exclude(app.router.add_static(f'{path}/', directory))
     return True

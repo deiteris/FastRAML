@@ -10,6 +10,11 @@ license = "MIT"
 # (docs/17 § 1).
 dependencies = ["jinja2>=3.1", "typer>=0.26"]
 
+[project.optional-dependencies]
+# `raml-codegen <target> api.raml`: the CLI runs `fastraml tree` in-process.
+# Only `cli.py` imports it, and only to produce the JSON a pipe would carry.
+raml = ["fastraml>=0.1,<0.2"]
+
 [project.scripts]
 raml-codegen = "raml_codegen.cli:app"
 
@@ -18,6 +23,9 @@ raml-codegen = "raml_codegen.cli:app"
 # this package: the suite imports what it wrote and drives requests through
 # it. Neither appears in `dependencies`.
 dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6", "httpx>=0.27", "fastapi>=0.115", "pydantic>=2.9"]
+
+[tool.uv.sources]
+fastraml = { path = "../..", editable = true }
 
 [build-system]
 requires = ["hatchling"]

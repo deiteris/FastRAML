@@ -540,10 +540,14 @@ source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
     { name = "fastraml" },
+    { name = "typer" },
 ]
 
 [package.optional-dependencies]
 examples = [
+    { name = "raml-mock" },
+]
+mock = [
     { name = "raml-mock" },
 ]
 
@@ -561,8 +565,10 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=4.0,<5" },
     { name = "fastraml", editable = "../../" },
     { name = "raml-mock", marker = "extra == 'examples'", editable = "../raml-mock" },
+    { name = "raml-mock", marker = "extra == 'mock'", editable = "../raml-mock" },
+    { name = "typer", specifier = ">=0.26" },
 ]
-provides-extras = ["examples"]
+provides-extras = ["mock", "examples"]
 
 [package.metadata.requires-dev]
 dev = [

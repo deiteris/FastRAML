@@ -99,6 +99,9 @@ README for its supported behavior. In particular:
 
 - `raml-document` is an authoring model, separate from fastRAML's parsed model.
 - `raml-codegen` reads the tree contract and deliberately depends on no parser.
+  Its optional `raml` extra installs `fastraml` so the command line can accept a
+  `.raml` path; it runs the `tree` projection in-process and generates from the
+  resulting JSON, so the generator still reads only the contract.
 - `fastraml-viewer` packages the built SPA and server helper without depending on
   `fastraml`.
 

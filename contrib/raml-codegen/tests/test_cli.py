@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import pathlib
+import sys
 
 from conftest import TREE, envelope
 from typer.testing import CliRunner
@@ -74,14 +76,40 @@ def test_it_reads_a_tree_from_stdin(tmp_path, document):
     assert (tmp_path / 'bookstore_api' / 'models' / 'book.py').exists()
 
 
-def test_raml_is_not_an_input(tmp_path):
-    # This package has no parser. Saying so beats a traceback about a byte that
-    # is not JSON.
-    source = tmp_path / 'api.raml'
-    source.write_text('#%RAML 1.0\ntitle: Nope\n', encoding='utf-8')
-    result = runner.invoke(app, ['python-httpx', str(source), '-o', str(tmp_path / 'out')])
+#: The document `tests/api.json` was projected from, and the root its includes need.
+FIXTURES = pathlib.Path(__file__).resolve().parents[3] / 'fixtures'
+SAMPLE = FIXTURES / 'sample' / 'api.raml'
+
+
+def written(root: pathlib.Path) -> dict[str, str]:
+    return {str(path.relative_to(root)): path.read_text(encoding='utf-8') for path in root.rglob('*') if path.is_file()}
+
+
+def test_raml_generates_what_its_tree_generates(tmp_path):
+    # `.raml` input runs `fastraml tree` in-process, so it may not differ from
+    # the pipe by a byte. `tests/api.json` is that projection of the sample.
+    from_raml = runner.invoke(app, ['python-httpx', str(SAMPLE), '-w', str(FIXTURES), '-o', str(tmp_path / 'raml')])
+    from_tree = runner.invoke(app, ['python-httpx', str(TREE), '-o', str(tmp_path / 'tree')])
+    assert from_raml.exit_code == 0, from_raml.output
+    assert from_tree.exit_code == 0, from_tree.output
+    assert written(tmp_path / 'raml') == written(tmp_path / 'tree')
+
+
+def test_raml_without_the_parser_names_the_extra(tmp_path, monkeypatch):
+    # The parser is optional. Saying which extra brings it beats a traceback.
+    monkeypatch.setitem(sys.modules, 'fastraml', None)
+    result = runner.invoke(app, ['python-httpx', str(SAMPLE), '-o', str(tmp_path)])
     assert result.exit_code == 2
-    assert 'not JSON' in result.output
+    assert 'raml-codegen[raml]' in result.output
+
+
+def test_raml_the_parser_rejects_is_an_error_and_not_a_traceback(tmp_path):
+    # The sample includes from `fixtures/shared`, outside its own directory, so
+    # without `-w` the loader's sandbox refuses it.
+    result = runner.invoke(app, ['python-httpx', str(SAMPLE), '-o', str(tmp_path)])
+    assert result.exit_code == 2
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+    assert not (tmp_path / 'bookstore_api').exists()
 
 
 def test_the_package_name_can_be_chosen(tmp_path, document):

@@ -8,18 +8,21 @@
 
 import { useMemo, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
-import { type Document, type Index, type PathNode, declarations, methodsOf, pathTree } from '../model';
+import { type Document, type Index, type PathNode, type PathOrder, declarations, methodsOf, pathTree } from '../model';
 import { Chevron, ThemeToggle, Verb } from './ui';
 
 export function Sidebar({
   document,
   index,
+  pathOrder = 'authored',
 }: {
   document: Document;
   index: Index;
+  /** How endpoint paths are listed: as declared, or A-Z (see `pathTree`). */
+  pathOrder?: PathOrder;
 }) {
   const [filter, setFilter] = useState('');
-  const roots = useMemo(() => pathTree(document.endpoints), [document]);
+  const roots = useMemo(() => pathTree(document.endpoints, pathOrder), [document, pathOrder]);
   const matches = (text: string) => !filter || text.toLowerCase().includes(filter.toLowerCase());
 
   const docs = (document.entry_point?.documentation ?? [])
@@ -30,7 +33,7 @@ export function Sidebar({
   const schemes = declarations(document.security_schemes).filter(({ name }) => matches(name));
 
   return (
-    <nav className="sidebar">
+    <nav className="sidebar" id="sidebar">
       <Link to="/" className="brand">
         {document.entry_point?.title ?? 'API reference'}
       </Link>

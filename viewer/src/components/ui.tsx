@@ -1,6 +1,6 @@
 /** Small pieces every page uses. Nothing here knows about RAML. */
 
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 
 export function Chip({ tone = 'plain', title, children }: { tone?: Tone; title?: string; children: ReactNode }) {
   return (
@@ -118,9 +118,13 @@ export function KeyValues({ rows }: { rows: [string, ReactNode][] }) {
  * The chevrons only appear where there is something to reach. They are laid out
  * beside the strip rather than over it, because an overlay covers the first and
  * last tab -- the two a reader scrolling is trying to read.
+ *
+ * The WAI-ARIA tabs pattern, so assistive technology announces it as one: one
+ * tab stop for the strip, the arrow keys, Home and End to move along it.
  */
 export function Tabs({ label, items }: { label?: string; items: Tab[] }) {
   const [chosen, setChosen] = useState(0);
+  const id = useId();
   const strip = useRef<HTMLDivElement>(null);
   const [reach, setReach] = useState<Reach>(FITS);
   const at = Math.min(chosen, Math.max(items.length - 1, 0));
@@ -163,6 +167,15 @@ export function Tabs({ label, items }: { label?: string; items: Tab[] }) {
     const node = strip.current;
     if (node) node.scrollBy({ left: way * node.clientWidth * 0.8, behavior: 'smooth' });
   };
+  const keyed = (event: KeyboardEvent) => {
+    const last = items.length - 1;
+    const to = { ArrowLeft: at === 0 ? last : at - 1, ArrowRight: at === last ? 0 : at + 1, Home: 0, End: last }[event.key];
+    if (to === undefined) return;
+    event.preventDefault();
+    setChosen(to);
+    const tab = strip.current?.children[to];
+    if (tab instanceof HTMLElement) tab.focus();
+  };
 
   return (
     <div className="tabs">
@@ -172,13 +185,25 @@ export function Tabs({ label, items }: { label?: string; items: Tab[] }) {
         {/* `data-scroll` says this box shows what it clips, on a control that
             says so -- which is what excuses it from the "nothing is wider than
             its box" check in `shots.mjs`. */}
-        <div className="tabs-strip" data-scroll ref={strip} onScroll={measure}>
+        <div
+          className="tabs-strip"
+          data-scroll
+          ref={strip}
+          onScroll={measure}
+          onKeyDown={keyed}
+          role="tablist"
+          aria-label={label}
+        >
           {items.map((item, position) => (
             <button
               key={item.key}
               type="button"
               className={`tab tab-${item.tone ?? 'plain'} ${position === at ? 'is-chosen' : ''}`}
+              role="tab"
+              id={`${id}-tab-${position}`}
               aria-selected={position === at}
+              aria-controls={`${id}-panel`}
+              tabIndex={position === at ? 0 : -1}
               onClick={() => setChosen(position)}
             >
               {item.label}
@@ -188,7 +213,9 @@ export function Tabs({ label, items }: { label?: string; items: Tab[] }) {
         </div>
         {reach !== FITS && <Step way={1} enabled={reach.on} onClick={() => step(1)} />}
       </div>
-      <div className="tabs-panel">{items[at]?.body}</div>
+      <div className="tabs-panel" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${at}`}>
+        {items[at]?.body}
+      </div>
     </div>
   );
 }
@@ -242,16 +269,20 @@ export interface Tab {
  * how the stylesheet's media query stays in charge.
  */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme | null) ?? 'system');
+  const [theme, setTheme] = useState<Theme>(storedTheme);
 
+  // `index.html` applies the stored choice before the first paint; this keeps
+  // the attribute and the store in step with the toggle after that.
   useEffect(() => {
     const root = window.document.documentElement;
-    if (theme === 'system') {
-      root.removeAttribute('data-theme');
-      localStorage.removeItem('theme');
-    } else {
-      root.setAttribute('data-theme', theme);
-      localStorage.setItem('theme', theme);
+    if (theme === 'system') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', theme);
+    try {
+      if (theme === 'system') localStorage.removeItem('theme');
+      else localStorage.setItem('theme', theme);
+    } catch {
+      // Storage refused (a file:// page, a private window): the choice lasts
+      // until the page closes, which is all that can be offered.
     }
   }, [theme]);
 
@@ -265,3 +296,13 @@ export function ThemeToggle() {
 }
 
 type Theme = 'system' | 'light' | 'dark';
+
+/** The stored choice, if it is one; anything else in the store means none was made. */
+function storedTheme(): Theme {
+  try {
+    const stored = localStorage.getItem('theme');
+    return stored === 'light' || stored === 'dark' ? stored : 'system';
+  } catch {
+    return 'system';
+  }
+}

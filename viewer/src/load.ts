@@ -1,15 +1,13 @@
 /**
  * Getting a document in.
  *
- * Two ways: `api.json` beside the bundle, and a file picker for whatever
- * `fastraml tree` just printed. Both end at the same parsed value; nothing
- * downstream knows which was used.
+ * One way: `api.json` beside the bundle.
  *
  * **There is deliberately no `?src=`.** Accepting any URL would let a crafted
  * link render someone else's document under this origin, with nothing on the
  * page saying so, and would make every host that mounts this bundle compose a
  * query string. A host that wants its own document served here serves it at
- * `api.json`; the file picker covers the rest.
+ * `api.json`.
  *
  * Through `parse` and not `JSON.parse`, so an example carrying an integer
  * larger than a double reaches the page as the author wrote it (`numbers.ts`).

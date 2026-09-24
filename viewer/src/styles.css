@@ -163,8 +163,19 @@ main {
   min-width: 0;
 }
 
+/* Focused on arrival, for a screen reader; a ring round the whole page says
+   nothing to anyone else. */
+main:focus {
+  outline: none;
+}
+
 .loading {
   padding: 72px;
+}
+
+/* The bar that opens the nav on a narrow window; absent otherwise. */
+.topbar {
+  display: none;
 }
 
 .error {
@@ -404,11 +415,6 @@ h4 {
   align-items: flex-start;
 }
 
-.picker input {
-  display: none;
-}
-
-.picker span,
 .theme {
   display: inline-block;
   padding: 5px 10px;
@@ -420,7 +426,6 @@ h4 {
   cursor: pointer;
 }
 
-.picker span:hover,
 .theme:hover {
   border-color: var(--accent);
   color: var(--accent);
@@ -1566,4 +1571,105 @@ table.properties td {
 .shape-display {
   font-weight: 650;
   color: var(--ink);
+}
+
+/*
+ * A narrow window: one column, and the nav as a drawer over it.
+ *
+ * Below 720px a 320px nav column leaves the page too little to set an attribute
+ * row in. The breakpoint sits under the 760px `shots.mjs` checks as "a window
+ * split beside an editor", which keeps the column there.
+ */
+@media (max-width: 720px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    background: var(--bg);
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 10px 18px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .topbar-title {
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nav-open {
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--bg);
+    color: var(--dim);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .nav-is-open .sidebar {
+    display: block;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 20;
+    width: min(320px, 85vw);
+    max-height: none;
+    background: var(--panel);
+  }
+
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    background: rgb(0 0 0 / 35%);
+  }
+
+  main {
+    padding: 24px 18px 80px;
+  }
+
+  .loading {
+    padding: 32px 18px;
+  }
+
+  .keyvalue {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  /* A listing row stacked: name and type on one line, the description under
+     them. Three columns at this width broke `object` into `objec t`. */
+  table.properties thead {
+    display: none;
+  }
+
+  table.properties tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  table.properties td {
+    border: 0;
+    padding: 0;
+  }
+
+  table.properties td.property-description {
+    grid-column: 1 / -1;
+  }
 }

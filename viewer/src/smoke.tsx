@@ -29,6 +29,7 @@ import {
   isRecursive,
   isRef,
   labelOf,
+  pathTree,
   type Document,
   type Example,
   type Shape,
@@ -431,6 +432,60 @@ if (!highlightedFence.includes('hljs-attr') || !highlightedFence.includes('langu
   failed += 1;
 }
 process.stdout.write(`${HOSTILE.length} hostile descriptions checked\n`);
+
+/*
+ * The nav lists paths as declared unless the reader asks for A-Z. Declaration
+ * order is the order the keys arrive in; a sort that crept back into the
+ * default would read as nothing more than a tidy list.
+ */
+{
+  const flat = (nodes: ReturnType<typeof pathTree>): string[] => nodes.flatMap((node) => [node.path, ...flat(node.children)]);
+  const declared = Object.keys(document.endpoints);
+  const authored = flat(pathTree(document.endpoints)).filter((path) => path in document.endpoints);
+  const sorted = flat(pathTree(document.endpoints, 'sorted')).filter((path) => path in document.endpoints);
+  if (authored.join() !== declared.join()) {
+    process.stderr.write(`ORDER  the nav lists ${authored.join(' ')}; declared ${declared.join(' ')}\n`);
+    failed += 1;
+  }
+  if (sorted.join() !== [...declared].sort().join()) {
+    process.stderr.write(`ORDER  the sorted nav lists ${sorted.join(' ')}\n`);
+    failed += 1;
+  }
+  if (declared.join() === [...declared].sort().join()) {
+    process.stderr.write('the sample declares its paths in sorted order; the order check is vacuous\n');
+    failed += 1;
+  }
+}
+
+/*
+ * A resource's method list names an operation by its description where it has
+ * no `displayName`, and the description is Markdown. The sample names every
+ * operation, so one is unnamed here: the row must read as rendered prose, and
+ * as its first paragraph only.
+ */
+{
+  const [path, endpoint] = Object.entries(document.endpoints).find(([, one]) => Object.keys(one.operations).length > 0)!;
+  const [method, operation] = Object.entries(endpoint.operations)[0]!;
+  const unnamed: Document = {
+    ...document,
+    endpoints: {
+      ...document.endpoints,
+      [path]: {
+        ...endpoint,
+        operations: { ...endpoint.operations, [method]: { ...operation, display_name: null, description: 'Lists *books*.\n\n- the rest' } },
+      },
+    },
+  };
+  const html = renderToStaticMarkup(
+    <MemoryRouter initialEntries={[`/endpoints/${encodeURIComponent(path)}`]}>
+      <Pages document={unnamed} index={new Index(Tree.of(unnamed))} />
+    </MemoryRouter>,
+  );
+  if (!html.includes('<em>books</em>') || html.includes('*books*') || html.includes('the rest')) {
+    process.stderr.write(`METHOD ${method.toUpperCase()} ${path}: an unnamed operation's description is not its rendered first paragraph\n`);
+    failed += 1;
+  }
+}
 
 /*
  * A number the page shows is the number the document carried.

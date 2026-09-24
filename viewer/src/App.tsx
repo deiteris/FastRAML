@@ -9,8 +9,8 @@
  * `components/`, and this file holds the route table and the load.
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import { HashRouter, Route, Routes, useLocation } from 'react-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { HashRouter, Route, Routes, useLocation, useNavigationType } from 'react-router';
 import { Sidebar } from './components/Sidebar';
 import { DEFAULT_SOURCE, loadDocument } from './load';
 import { type Document, Index, Tree } from './model';
@@ -53,6 +53,12 @@ function Shell() {
   // One `Tree` per document: it indexes every addressed shape by the
   // generated walk, and `Index` adds the page routing on top.
   const index = useMemo(() => (document ? new Index(Tree.of(document)) : null), [document]);
+  const main = useArrival(document, index);
+  const { pathname } = useLocation();
+  const [navOpen, setNavOpen] = useState(false);
+  const menu = useRef<HTMLButtonElement>(null);
+  // The drawer is for choosing a page; once one is chosen it is in the way.
+  useEffect(() => setNavOpen(false), [pathname]);
 
   if (!document || !index) {
     return (
@@ -69,14 +75,98 @@ function Shell() {
     );
   }
 
+  const close = () => {
+    setNavOpen(false);
+    menu.current?.focus();
+  };
   return (
-    <div className="app">
+    <div
+      className={`app ${navOpen ? 'nav-is-open' : ''}`}
+      onKeyDown={(event) => navOpen && event.key === 'Escape' && close()}
+    >
+      {/* Narrow windows only: the nav becomes a drawer behind this bar. A
+          fixed 320px column beside the page left a phone about a third of
+          the screen for the page. */}
+      <header className="topbar">
+        <button
+          ref={menu}
+          type="button"
+          className="nav-open"
+          aria-expanded={navOpen}
+          aria-controls="sidebar"
+          onClick={() => setNavOpen(!navOpen)}
+        >
+          Menu
+        </button>
+        <span className="topbar-title">{document.entry_point?.title ?? 'API reference'}</span>
+      </header>
       <Sidebar document={document} index={index} />
-      <main>
+      {navOpen && <div className="scrim" onClick={close} />}
+      <main ref={main} tabIndex={-1}>
         <Pages document={document} index={index} />
       </main>
     </div>
   );
+}
+
+/**
+ * What arriving at a page does outside it: the window's title, where the window
+ * is scrolled, and where focus is.
+ *
+ * The window scrolls, not `main`, and a route change remounts the page without
+ * moving it -- so a link followed from the foot of a long operation opened the
+ * next page as far down. Only on a push: going back is a traversal, and there
+ * the browser restores the position the reader left. Focus moves to `main` for
+ * the same reason a page load puts it at the top: a screen reader otherwise
+ * stays on the link, in a page that is no longer there.
+ */
+function useArrival(document: Document | null, index: Index | null) {
+  const { pathname } = useLocation();
+  const navigation = useNavigationType();
+  const main = useRef<HTMLElement>(null);
+
+  // One title per route, from the index that already names every page: a tab
+  // strip of `API reference` and a history of identical entries say nothing.
+  const titles = useMemo(() => {
+    const named = new Map<string, string>(SECTIONS);
+    for (const entry of index?.byAddress.values() ?? []) {
+      const [method, ...path] = entry.name.split(' ');
+      named.set(decoded(entry.href), entry.section === 'operation' ? `${method!.toUpperCase()} ${path.join(' ')}` : entry.name);
+    }
+    for (const [at, item] of (document?.entry_point?.documentation ?? []).entries()) named.set(`/documentation/${at}`, item.title);
+    return named;
+  }, [document, index]);
+
+  useEffect(() => {
+    if (!document) return;
+    const site = document.entry_point?.title ?? 'API reference';
+    const page = titles.get(decoded(pathname));
+    window.document.title = page ? `${page} · ${site}` : site;
+  }, [document, pathname, titles]);
+
+  useEffect(() => {
+    if (navigation === 'POP') return;
+    window.scrollTo(0, 0);
+    main.current?.focus({ preventScroll: true });
+  }, [pathname, navigation]);
+
+  return main;
+}
+
+const SECTIONS: [string, string][] = [
+  ['/documentation', 'Documentation'],
+  ['/types', 'Types'],
+  ['/annotation-types', 'Annotation types'],
+  ['/security', 'Security schemes'],
+];
+
+/** A route as one spelling: a link and the location it produced may escape differently. */
+function decoded(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
 }
 
 /**

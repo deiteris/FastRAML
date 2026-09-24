@@ -53,6 +53,7 @@ export function SecurityChoice({
             key={at}
             type="button"
             className={`scheme ${at === chosen ? 'is-chosen' : ''}`}
+            aria-pressed={at === chosen}
             onClick={() => onChoose(at)}
           >
             {one.is_null ? 'None' : one.name}

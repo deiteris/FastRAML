@@ -1429,26 +1429,6 @@ h4 + .tabs > .tabs-bar,
   color: var(--faint);
 }
 
-/* -- operations ---------------------------------------------------------------- */
-
-.operation {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--raised);
-  box-shadow: var(--shadow);
-  padding: 16px 20px 20px;
-  margin: 20px 0;
-}
-
-.operation h2 {
-  margin-top: 0;
-}
-
-.operation-name {
-  font-size: 16px;
-  font-weight: 600;
-}
-
 .parameters,
 .bodies,
 .responses {

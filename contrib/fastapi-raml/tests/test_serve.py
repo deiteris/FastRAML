@@ -63,6 +63,16 @@ def test_the_bundled_viewer_is_mounted_and_serves_its_index(client: TestClient) 
     assert './assets/' in response.text
 
 
+def test_the_bare_mount_path_redirects_to_the_slash(client: TestClient) -> None:
+    """Served without the slash, the bundle's `./assets/` resolve above the mount.
+
+    Starlette's `redirect_slashes` is what does it; this pins that it still does.
+    """
+    response = client.get('/raml-viewer', follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers['location'].endswith('/raml-viewer/')
+
+
 def test_without_the_package_nothing_is_mounted_and_nothing_fails(monkeypatch: Any) -> None:
     """A missing frontend must not stop an app serving its own RAML."""
     import builtins

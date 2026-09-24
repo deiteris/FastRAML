@@ -90,6 +90,19 @@ async def test_the_bundled_viewer_is_mounted_and_serves_its_index(client: Any) -
     assert './assets/' in text
 
 
+@pytest.mark.parametrize(
+    ('mount', 'asked', 'target'), [('/raml-viewer', '/raml-viewer', '/raml-viewer/'), ('/ui/', '/ui?x=1', '/ui/?x=1')]
+)
+async def test_the_bare_mount_path_redirects_to_the_slash(
+    aiohttp_client: Any, mount: str, asked: str, target: str
+) -> None:
+    """Served without the slash, the bundle's `./assets/` resolve above the mount."""
+    local = await aiohttp_client(add_raml_routes(build_app(), mount_viewer=mount, title='Fresh'))
+    response = await local.get(asked, allow_redirects=False)
+    assert response.status == 307
+    assert response.headers['Location'] == target
+
+
 async def test_the_mounted_viewer_reads_this_app_and_not_its_own_sample(client: Any) -> None:
     """The bundle ships `api.json` -- the worked bookstore -- so it demos alone.
 

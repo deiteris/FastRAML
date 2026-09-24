@@ -6,8 +6,15 @@
  * name -- was invisible in the DOM and obvious in a picture. `npm run smoke`
  * proves a page renders; this is how it is seen.
  *
- *     npm run shots            # writes shots/*.png, both themes
- *     npm run shots -- --dark  # dark only
+ *     npm run shots                                # every page, width and theme
+ *     npm run shots -- --dark                      # dark only
+ *     npm run shots -- --only=type-object,search   # those pages only
+ *     npm run shots -- --view=phone --light        # one width, one theme
+ *
+ * `--only` takes the names in `PAGES`, plus `search` for the search dialog; a
+ * name it does not know is an error that lists the ones it does. A page is
+ * shot at the widths that list it, so `--only=types --view=narrow` is nothing,
+ * and says so. A selective run overwrites what it shoots and leaves the rest.
  *
  * Output is gitignored: these are for looking at, not for diffing.
  */
@@ -79,7 +86,7 @@ const NARROW = new Set([
   'type-at-the-limits',
 ]);
 const PHONE = new Set([...NARROW, 'overview', 'types', 'type-object', 'resource', 'operation-get', 'security']);
-const VIEWPORTS = [
+const ALL_VIEWPORTS = [
   { name: 'wide', suffix: '', width: 1400 },
   { name: 'narrow', suffix: '-narrow', width: 760, pages: NARROW },
   { name: 'phone', suffix: '-phone', width: 390, pages: PHONE },
@@ -113,6 +120,30 @@ const NESTINGS = [
 const RULED_NESTINGS = new Set(['inline attribute detail', 'each item', 'an expanded type']);
 
 const only = process.argv.includes('--dark') ? ['dark'] : process.argv.includes('--light') ? ['light'] : ['light', 'dark'];
+const chosen = listArgument('only', [...PAGES.map(([name]) => name), 'search']);
+const views = listArgument('view', ALL_VIEWPORTS.map(({ name }) => name));
+const VIEWPORTS = ALL_VIEWPORTS.filter((view) => views?.has(view.name) ?? true);
+const selective = chosen !== null || views !== null;
+const wanted = (name, view) => (chosen?.has(name) ?? true) && (!view.pages || view.pages.has(name));
+const searchViews = VIEWPORTS.filter((view) => SEARCH_VIEWPORTS.has(view.name) && (chosen?.has('search') ?? true));
+const planned = VIEWPORTS.reduce((sum, view) => sum + PAGES.filter(([name]) => wanted(name, view)).length, searchViews.length);
+if (planned === 0) {
+  console.error('nothing to shoot: no chosen page is listed at a chosen width');
+  process.exit(1);
+}
+
+/** `--name=a,b` as a set, checked against what exists; null when not given. */
+function listArgument(name, known) {
+  const given = process.argv.find((argument) => argument.startsWith(`--${name}=`));
+  if (!given) return null;
+  const values = new Set(given.slice(name.length + 3).split(',').filter(Boolean));
+  const unknown = [...values].filter((value) => !known.includes(value));
+  if (unknown.length > 0) {
+    console.error(`--${name}: unknown ${unknown.join(', ')}\nknown: ${known.join(', ')}`);
+    process.exit(1);
+  }
+  return values;
+}
 
 /*
  * The dev server, not `vite preview`, though `npm run shots` builds first and
@@ -138,7 +169,7 @@ server.on('exit', (code) => {
 
 try {
   await waitFor(`http://localhost:${PORT}/`);
-  rmSync('shots', { recursive: true, force: true });
+  if (!selective) rmSync('shots', { recursive: true, force: true });
   mkdirSync('shots', { recursive: true });
 
   const browser = await puppeteer.launch({ headless: true });
@@ -179,7 +210,7 @@ try {
     for (const view of VIEWPORTS) {
       await page.setViewport({ width: view.width, height: 1000, deviceScaleFactor: 2 });
       for (const [name, at] of PAGES) {
-        if (view.pages && !view.pages.has(name)) continue;
+        if (!wanted(name, view)) continue;
         route = `${at}${view.suffix}`;
         await page.goto(`http://localhost:${PORT}/#${at}`, { waitUntil: 'networkidle0' });
         // The document loads after the first paint, so wait for content rather
@@ -199,8 +230,7 @@ try {
 
     // The search dialog, driven by the keyboard alone: that is the path a
     // static render cannot take, and the one a reader without a mouse has.
-    for (const view of VIEWPORTS) {
-      if (!SEARCH_VIEWPORTS.has(view.name)) continue;
+    for (const view of searchViews) {
       await page.setViewport({ width: view.width, height: 900, deviceScaleFactor: 2 });
       route = `search${view.suffix}`;
       await page.goto(`http://localhost:${PORT}/#/types`, { waitUntil: 'networkidle0' });
@@ -215,8 +245,9 @@ try {
 
   for (const [kind] of NESTINGS) {
     const seen = levels[kind] ?? new Map();
+    // A selective run need not reach every construct; a full one must.
     if (seen.size === 0) {
-      failures.push(`no page draws ${kind}; the check on it is vacuous`);
+      if (!selective) failures.push(`no page draws ${kind}; the check on it is vacuous`);
     } else if (seen.size > 1) {
       const where = [...seen].map(([step, at]) => `\n         ${step} at ${at}`).join('');
       failures.push(`${kind} is drawn at ${seen.size} different indents:${where}`);
@@ -233,9 +264,10 @@ try {
   if (attributeSteps.some((step) => step !== '0px + 0px rule')) {
     failures.push(`attribute-list content owns an indent: ${attributeSteps.join(', ')}`);
   }
-  process.stdout.write(
-    `${NESTINGS.map(([kind]) => `${kind} ${[...(levels[kind] ?? new Map()).keys()][0]}`).join(', ')}\n`,
-  );
+  const drawn = NESTINGS.filter(([kind]) => levels[kind]?.size);
+  if (drawn.length > 0) {
+    process.stdout.write(`${drawn.map(([kind]) => `${kind} ${[...levels[kind].keys()][0]}`).join(', ')}\n`);
+  }
 
   if (failures.length > 0) {
     for (const failure of [...new Set(failures)]) console.error('ERROR', failure);

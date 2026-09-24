@@ -13,6 +13,7 @@ npm install
 npm run sample        # fastraml tree ../fixtures/sample/api.raml > public/api.json
 npm run dev
 npm run shots         # screenshot every page, both themes, into shots/
+npm run shots -- --only=type-object,search --view=phone --light
 npm run check         # tsc, layers, smoke
 ```
 
@@ -206,6 +207,12 @@ Four layers, because each sees what the ones before it cannot:
 | `npm run layers` | a component importing a page, `model.ts`, `load.ts` or `search.ts` importing a component, an import cycle |
 | `npm run smoke` | a page that throws or comes back empty; a union member named by its container; a `$ref` that resolves nowhere; a search result that opens no page |
 | `npm run shots` | anything that only happens in a browser, **and** the layout; the search dialog driven by the keyboard |
+
+`shots` takes what it shoots: `--only=` the page names in `PAGES`, plus
+`search`; `--view=` any of `wide`, `narrow`, `phone`; `--light` or `--dark`. An
+unknown name is an error that lists the known ones. A selective run overwrites
+what it shoots and leaves the rest of `shots/`, and skips the check that every
+nesting construct was seen, since the pages chosen need not contain them all.
 
 The browser layer is not decoration, though it is not in `check`. `smoke` renders to static markup, which does not
 run the client: an icon package that resolved a second copy of React threw

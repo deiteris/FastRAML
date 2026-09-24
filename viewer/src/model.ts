@@ -512,17 +512,28 @@ export interface PathNode {
   children: PathNode[];
 }
 
+/** Paths as the author declared them, or sorted. */
+export type PathOrder = 'authored' | 'sorted';
+
 /**
  * `document.endpoints` is flat and keyed by full path, because that is what the
  * model holds after P6 propagated URI parameters down. A reader navigates by
  * nesting, so it is rebuilt here -- from the keys alone, which is why a
  * resource that declares no method of its own still appears as a branch.
+ *
+ * Authored order by default: the keys arrive in declaration order, and an
+ * author who put `/books` before `/shelves` chose the order the API is read in.
+ * `sorted` is for a document whose order is an accident -- generated, or
+ * merged from several sources -- where a stable A-Z list is easier to search.
+ * Nesting does not depend on either: a branch is created where its first
+ * descendant appears.
  */
-export function pathTree(endpoints: Record<string, Endpoint>): PathNode[] {
+export function pathTree(endpoints: Record<string, Endpoint>, order: PathOrder = 'authored'): PathNode[] {
   const roots: PathNode[] = [];
   const byPath = new Map<string, PathNode>();
+  const paths = Object.keys(endpoints);
 
-  for (const path of Object.keys(endpoints).sort()) {
+  for (const path of order === 'sorted' ? paths.sort() : paths) {
     let prefix = '';
     let parent: PathNode | undefined;
     for (const segment of path.split('/').filter(Boolean)) {

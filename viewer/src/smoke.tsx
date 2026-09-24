@@ -29,6 +29,7 @@ import {
   isRecursive,
   isRef,
   labelOf,
+  pathTree,
   type Document,
   type Example,
   type Shape,
@@ -431,6 +432,30 @@ if (!highlightedFence.includes('hljs-attr') || !highlightedFence.includes('langu
   failed += 1;
 }
 process.stdout.write(`${HOSTILE.length} hostile descriptions checked\n`);
+
+/*
+ * The nav lists paths as declared unless the reader asks for A-Z. Declaration
+ * order is the order the keys arrive in; a sort that crept back into the
+ * default would read as nothing more than a tidy list.
+ */
+{
+  const flat = (nodes: ReturnType<typeof pathTree>): string[] => nodes.flatMap((node) => [node.path, ...flat(node.children)]);
+  const declared = Object.keys(document.endpoints);
+  const authored = flat(pathTree(document.endpoints)).filter((path) => path in document.endpoints);
+  const sorted = flat(pathTree(document.endpoints, 'sorted')).filter((path) => path in document.endpoints);
+  if (authored.join() !== declared.join()) {
+    process.stderr.write(`ORDER  the nav lists ${authored.join(' ')}; declared ${declared.join(' ')}\n`);
+    failed += 1;
+  }
+  if (sorted.join() !== [...declared].sort().join()) {
+    process.stderr.write(`ORDER  the sorted nav lists ${sorted.join(' ')}\n`);
+    failed += 1;
+  }
+  if (declared.join() === [...declared].sort().join()) {
+    process.stderr.write('the sample declares its paths in sorted order; the order check is vacuous\n');
+    failed += 1;
+  }
+}
 
 /*
  * A resource's method list names an operation by its description where it has

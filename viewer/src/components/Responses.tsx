@@ -12,26 +12,41 @@ import { Bodies } from './Bodies';
 import { type Borrowed, From } from './Borrowed';
 import { ParameterTable } from './Parameters';
 import { Prose } from './markdown';
-import { Empty, Tabs } from './ui';
+import { Empty, Heading, Tabs } from './ui';
+
+/**
+ * Every status an operation can answer with, the chosen scheme's included.
+ *
+ * The operation's own response wins over a scheme's for the same status, as a
+ * declared parameter wins over a borrowed one: the operation said something
+ * about its `401` that the scheme's general one does not.
+ */
+export function responsesOf(responses: Record<string, Response>, borrowed?: Borrowed<Response>): [string, Response][] {
+  return Object.entries({ ...borrowed?.rows, ...responses }).sort(([a], [b]) => a.localeCompare(b));
+}
 
 export function Responses({
   responses,
   borrowed,
   index,
   title = 'Responses',
+  anchor,
 }: {
   responses: Record<string, Response>;
   /** What the chosen security scheme adds -- a `401`, typically. */
   borrowed?: Borrowed<Response>;
   index: Index;
   title?: string;
+  anchor?: string;
 }) {
   const own = new Set(Object.keys(responses));
-  const codes = Object.entries({ ...responses, ...borrowed?.rows }).sort(([a], [b]) => a.localeCompare(b));
+  const codes = responsesOf(responses, borrowed);
   if (codes.length === 0) return null;
   return (
     <section className="responses">
-      <h4>{title}</h4>
+      <Heading level={4} anchor={anchor}>
+        {title}
+      </Heading>
       <Tabs
         items={codes.map(([code, response]) => ({
           key: code,

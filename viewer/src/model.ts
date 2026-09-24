@@ -505,6 +505,13 @@ export function schemeOf(protocols: string[] | undefined, base: string): string 
   return base.startsWith(`${only}://`) ? null : only;
 }
 
+/** The base URI a method is called at: `baseUriOf`, with the method's own scheme. */
+export function baseFor(api: EntryPoint | null | undefined, protocols: string[] | undefined): string {
+  const base = baseUriOf(api);
+  const scheme = schemeOf(protocols, base);
+  return scheme ? base.replace(/^[a-z][a-z0-9+.-]*:/i, `${scheme}:`) : base;
+}
+
 /* -- endpoints as a tree -------------------------------------------------------- */
 
 export interface PathNode {

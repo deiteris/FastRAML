@@ -16,22 +16,26 @@
 
 import type { Index, ShapeNode } from '../model';
 import { ShapeView } from './Shape';
-import { Tabs } from './ui';
+import { Heading, Tabs } from './ui';
 
 export function Bodies({
   title,
   bodies,
   index,
+  anchor,
 }: {
   title: string;
   bodies?: Record<string, ShapeNode | null>;
   index: Index;
+  anchor?: string;
 }) {
   const entries = Object.entries(bodies ?? {});
   if (entries.length === 0) return null;
   return (
     <div className="bodies">
-      <h4>{title}</h4>
+      <Heading level={4} anchor={anchor}>
+        {title}
+      </Heading>
       <Tabs
         label="media type"
         items={entries.map(([media, shape]) => ({

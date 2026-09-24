@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HashRouter, Route, Routes, useLocation, useNavigationType } from 'react-router';
 import { SearchDialog } from './components/Search';
 import { Sidebar } from './components/Sidebar';
+import { Boundary } from './components/ui';
 import { DEFAULT_SOURCE, loadDocument } from './load';
 import { type Document, Index, Tree } from './model';
 import {
@@ -158,7 +159,7 @@ function useSearchKeys(open: () => void) {
  * stays on the link, in a page that is no longer there.
  */
 function useArrival(document: Document | null, index: Index | null) {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const navigation = useNavigationType();
   const main = useRef<HTMLElement>(null);
 
@@ -181,11 +182,25 @@ function useArrival(document: Document | null, index: Index | null) {
     window.document.title = page ? `${page} · ${site}` : site;
   }, [document, pathname, titles]);
 
+  // A link to a section -- `#/endpoints/…/get#responses` -- lands on it. The
+  // browser cannot do that itself: the whole of that is its fragment, and no
+  // element has it as an id. On the first load as well, which is a POP too,
+  // because a shared link to a section is opened that way.
+  const first = useRef(true);
   useEffect(() => {
+    if (!document) return;
+    const initial = first.current;
+    first.current = false;
+    const target = hash ? window.document.getElementById(decoded(hash.slice(1))) : null;
+    if (target && (initial || navigation !== 'POP')) {
+      target.scrollIntoView();
+      target.focus({ preventScroll: true });
+      return;
+    }
     if (navigation === 'POP') return;
     window.scrollTo(0, 0);
     main.current?.focus({ preventScroll: true });
-  }, [pathname, navigation]);
+  }, [document, pathname, hash, navigation]);
 
   return main;
 }
@@ -219,22 +234,25 @@ export function Pages({ document, index }: { document: Document; index: Index })
   // Keyed on the path so a route change remounts. React reconciles by position,
   // so without this a `$ref` expanded under one type stays expanded at the same
   // position under the next -- showing a disclosure open on a shape nobody
-  // opened, which reads as a property of the document.
+  // opened, which reads as a property of the document. The boundary is keyed
+  // the same way, so a page that failed does not stay failed on the next one.
   return (
-    <Routes key={pathname}>
-      <Route path="/" element={<Overview {...pages} />} />
-      <Route path="/documentation" element={<DocumentationList {...pages} />} />
-      <Route path="/documentation/:at" element={<DocumentationPage {...pages} />} />
-      <Route path="/endpoints/:path" element={<EndpointPage {...pages} />} />
-      <Route path="/endpoints/:path/:method" element={<OperationPage {...pages} />} />
-      <Route path="/types" element={<TypeList {...pages} />} />
-      <Route path="/types/:file/:name" element={<TypePage {...pages} />} />
-      <Route path="/annotation-types" element={<AnnotationTypeList {...pages} />} />
-      <Route path="/annotation-types/:file/:name" element={<AnnotationTypePage {...pages} />} />
-      <Route path="/security" element={<SecurityList {...pages} />} />
-      <Route path="/security/:file/:name" element={<SecuritySchemePage {...pages} />} />
-      <Route path="/n/:address" element={<ResolveAddress {...pages} />} />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+    <Boundary key={pathname} what="page">
+      <Routes>
+        <Route path="/" element={<Overview {...pages} />} />
+        <Route path="/documentation" element={<DocumentationList {...pages} />} />
+        <Route path="/documentation/:at" element={<DocumentationPage {...pages} />} />
+        <Route path="/endpoints/:path" element={<EndpointPage {...pages} />} />
+        <Route path="/endpoints/:path/:method" element={<OperationPage {...pages} />} />
+        <Route path="/types" element={<TypeList {...pages} />} />
+        <Route path="/types/:file/:name" element={<TypePage {...pages} />} />
+        <Route path="/annotation-types" element={<AnnotationTypeList {...pages} />} />
+        <Route path="/annotation-types/:file/:name" element={<AnnotationTypePage {...pages} />} />
+        <Route path="/security" element={<SecurityList {...pages} />} />
+        <Route path="/security/:file/:name" element={<SecuritySchemePage {...pages} />} />
+        <Route path="/n/:address" element={<ResolveAddress {...pages} />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Boundary>
   );
 }

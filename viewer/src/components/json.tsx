@@ -11,15 +11,29 @@
 import type { Json } from '../model';
 import { stringify } from '../numbers';
 import { highlightCode } from './highlighting';
+import { CopyButton } from './ui';
 
+/**
+ * A value or a snippet as a code block, with a button that copies it.
+ *
+ * Every block has one: an example is the thing a reader most often takes away
+ * from a page, and selecting a forty-line block by hand drags the page with it.
+ * The copy is the text as shown -- exact integers included -- not the markup.
+ */
 export function Code({ children, language }: { children: Json; language?: string }) {
   const text = typeof children === 'string' ? children : stringify(children, 2);
   const highlighted = highlightCode(text, language ?? (typeof children === 'string' ? undefined : 'json'));
-  if (!highlighted) return <pre className="code">{text}</pre>;
   return (
-    <pre className="code" data-language={highlighted.language}>
-      <code className={`hljs language-${highlighted.language}`} dangerouslySetInnerHTML={{ __html: highlighted.html }} />
-    </pre>
+    <div className="code-block">
+      {highlighted ? (
+        <pre className="code" data-language={highlighted.language}>
+          <code className={`hljs language-${highlighted.language}`} dangerouslySetInnerHTML={{ __html: highlighted.html }} />
+        </pre>
+      ) : (
+        <pre className="code">{text}</pre>
+      )}
+      <CopyButton text={text} />
+    </div>
   );
 }
 

@@ -10,6 +10,7 @@ import { Link } from 'react-router';
 import { type Index, type ShapeNode, isRef } from '../model';
 import type { Borrowed } from './Borrowed';
 import { Attribute, ShapeView } from './Shape';
+import { Heading } from './ui';
 import type { Parameter } from '../model';
 
 export function ParameterTable({
@@ -17,12 +18,14 @@ export function ParameterTable({
   parameters,
   borrowed,
   index,
+  anchor,
 }: {
   title: string;
   parameters?: Record<string, Parameter>;
   /** What reaches this table from outside -- see `Borrowed`. */
   borrowed?: Borrowed<Parameter>;
   index: Index;
+  anchor?: string;
 }) {
   const own = Object.entries(parameters ?? {});
   // A declared name wins: a resource that names `{tenant}` itself has said
@@ -31,7 +34,9 @@ export function ParameterTable({
   if (own.length + extra.length === 0) return null;
   return (
     <section className="parameters">
-      <h4>{title}</h4>
+      <Heading level={4} anchor={anchor}>
+        {title}
+      </Heading>
       <div className="attributes">
         {own.map(([name, parameter]) => (
           <Attribute key={name} name={name} property={parameter} index={index} />
@@ -55,13 +60,15 @@ export function ParameterTable({
  *
  * The link to the declaration stays, because the type has a page of its own.
  */
-export function QueryString({ shape, index }: { shape: ShapeNode | null | undefined; index: Index }) {
+export function QueryString({ shape, index, anchor }: { shape: ShapeNode | null | undefined; index: Index; anchor?: string }) {
   if (shape === null || shape === undefined) return null;
   const entry = isRef(shape) ? index.get(shape.$ref) : undefined;
   const target = isRef(shape) ? index.shape(shape.$ref) : shape;
   return (
     <section className="parameters">
-      <h4>Query string</h4>
+      <Heading level={4} anchor={anchor}>
+        Query string
+      </Heading>
       {entry && (
         <div className="shape-line">
           <span className="label">type</span>

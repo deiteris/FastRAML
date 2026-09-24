@@ -1429,26 +1429,6 @@ h4 + .tabs > .tabs-bar,
   color: var(--faint);
 }
 
-/* -- operations ---------------------------------------------------------------- */
-
-.operation {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--raised);
-  box-shadow: var(--shadow);
-  padding: 16px 20px 20px;
-  margin: 20px 0;
-}
-
-.operation h2 {
-  margin-top: 0;
-}
-
-.operation-name {
-  font-size: 16px;
-  font-weight: 600;
-}
-
 .parameters,
 .bodies,
 .responses {
@@ -1602,6 +1582,69 @@ h4 {
 
 .code code {
   color: inherit;
+}
+
+/* The copy button sits in the block's corner, over room the block leaves for
+   it, so it never covers the first line. Shown on hover where there is hover;
+   a touch screen has none and keeps it visible. */
+.code-block {
+  position: relative;
+}
+
+.code-block .code {
+  padding-right: 72px;
+}
+
+.code-block .copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+@media (hover: hover) {
+  .code-block .copy {
+    opacity: 0;
+  }
+
+  .code-block:hover .copy,
+  .code-block .copy:focus-visible {
+    opacity: 1;
+  }
+}
+
+/* -- linkable headings ---------------------------------------------------------- */
+
+.anchored {
+  scroll-margin-top: 16px;
+}
+
+.anchored:focus {
+  outline: none;
+}
+
+.anchor {
+  color: var(--faint);
+  font-weight: 400;
+  opacity: 0;
+}
+
+.anchored:hover .anchor,
+.anchor:focus-visible {
+  opacity: 1;
+}
+
+/* The address and its copy button, on one line while they fit. */
+.operation-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.operation-head h1 {
+  margin-bottom: 0;
 }
 
 .hljs-comment,
@@ -1786,6 +1829,11 @@ table.properties td {
 
   .topbar-search {
     margin-left: auto;
+  }
+
+  /* Clear of the sticky top bar, or a linked heading lands under it. */
+  .anchored {
+    scroll-margin-top: 64px;
   }
 
   /* The whole screen: a phone's keyboard takes half of it already. */

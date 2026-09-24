@@ -34,7 +34,7 @@ export function ParameterTable({
   if (own.length + extra.length === 0) return null;
   return (
     <section className="parameters">
-      <Heading level={4} anchor={anchor}>
+      <Heading anchor={anchor}>
         {title}
       </Heading>
       <div className="attributes">
@@ -66,7 +66,7 @@ export function QueryString({ shape, index, anchor }: { shape: ShapeNode | null 
   const target = isRef(shape) ? index.shape(shape.$ref) : shape;
   return (
     <section className="parameters">
-      <Heading level={4} anchor={anchor}>
+      <Heading anchor={anchor}>
         Query string
       </Heading>
       {entry && (

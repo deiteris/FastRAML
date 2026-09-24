@@ -217,10 +217,11 @@ Four layers, because each sees what the ones before it cannot:
 | `npm run shots` | anything that only happens in a browser, **and** the layout; the search dialog and section links driven by the keyboard |
 
 `shots` takes what it shoots: `--only=` the page names in `PAGES`, plus the
-interactions `search` and `anchor`; `--view=` any of `wide`, `narrow`, `phone`; `--light` or `--dark`. An
-unknown name is an error that lists the known ones. A selective run overwrites
-what it shoots and leaves the rest of `shots/`, and skips the check that every
-nesting construct was seen, since the pages chosen need not contain them all.
+interactions `search` and `anchor`; `--view=` any of `wide`, `narrow`,
+`phone`; `--light` or `--dark`. An unknown name is an error that lists the
+known ones. A selective run overwrites what it shoots and leaves the rest of
+`shots/`, and skips the check that every nesting construct was seen, since the
+pages chosen need not contain them all.
 
 The browser layer is not decoration, though it is not in `check`. `smoke` renders to static markup, which does not
 run the client: an icon package that resolved a second copy of React threw

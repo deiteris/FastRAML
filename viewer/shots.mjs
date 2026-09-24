@@ -222,15 +222,7 @@ try {
       for (const [name, at] of PAGES) {
         if (!wanted(name, view)) continue;
         route = `${at}${view.suffix}`;
-        // The same route twice in a row -- two widths of one page, or two names
-        // for one route -- is no navigation at all, so the disclosures `nesting`
-        // opened on the last shot would still be open. A reload starts clean.
-        const url = `http://localhost:${PORT}/#${at}`;
-        if (page.url() === url) await page.reload({ waitUntil: 'networkidle0' });
-        else await page.goto(url, { waitUntil: 'networkidle0' });
-        // The document loads after the first paint, so wait for content rather
-        // than for the network: a screenshot of the loading state proves nothing.
-        await page.waitForSelector('main article, main .empty', { timeout: 5000 });
+        await open(page, at, false);
         for (const spill of await overflowing(page)) failures.push(`${route}: ${spill}`);
         const file = `shots/${name}${view.suffix}${only.length > 1 ? `-${theme}` : ''}.png`;
         await page.screenshot({ path: file, fullPage: true });
@@ -244,14 +236,12 @@ try {
     }
 
     // What only happens when something is done to a page, driven the way a
-    // reader without a mouse would. Each starts from a fresh load: a link to a
-    // section is opened that way, and a hash-only `goto` is no load at all.
+    // reader without a mouse would. Each starts from a fresh load, which is
+    // how a link to a section is opened.
     for (const { view, name, start, check } of interactions) {
       await page.setViewport({ width: view.width, height: 900, deviceScaleFactor: 2 });
       route = `${name}${view.suffix}`;
-      await page.goto(`http://localhost:${PORT}/#${start}`, { waitUntil: 'networkidle0' });
-      await page.reload({ waitUntil: 'networkidle0' });
-      await page.waitForSelector('main article, main .empty', { timeout: 5000 });
+      await open(page, start, true);
       for (const failure of await check(page, view.suffix, only.length > 1 ? `-${theme}` : '')) {
         failures.push(`${route}: ${failure}`);
       }
@@ -292,6 +282,24 @@ try {
   }
 } finally {
   server.kill();
+}
+
+/**
+ * Open a route, and wait for the page rather than for the network: the
+ * document loads after the first paint, and a shot of the loading state proves
+ * nothing.
+ *
+ * A `goto` that changes only what follows the `#` -- every route here -- is no
+ * load, and to the same URL it is no navigation at all, so the disclosures
+ * `nesting` opened on the last shot would still be open. Going by `about:blank`
+ * makes it a load: always when `fresh`, and otherwise for the same route twice
+ * in a row, two widths of one page or two names for one route.
+ */
+async function open(page, at, fresh) {
+  const url = `http://localhost:${PORT}/#${at}`;
+  if (fresh || page.url() === url) await page.goto('about:blank');
+  await page.goto(url, { waitUntil: 'networkidle0' });
+  await page.waitForSelector('main article, main .empty', { timeout: 5000 });
 }
 
 /**

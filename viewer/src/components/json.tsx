@@ -16,22 +16,27 @@ import { CopyButton } from './ui';
 /**
  * A value or a snippet as a code block, with a button that copies it.
  *
- * Every block has one: an example is the thing a reader most often takes away
- * from a page, and selecting a forty-line block by hand drags the page with it.
+ * A block of more than one line has one: an example is the thing a reader most
+ * often takes away from a page, and selecting a forty-line block by hand drags
+ * the page with it. A one-line value -- `90`, `"draft"` -- is selected with a
+ * double click, and on a touch screen, where the button never hides, a Copy
+ * beside every default and annotation value was more button than value.
  * The copy is the text as shown -- exact integers included -- not the markup.
  */
 export function Code({ children, language }: { children: Json; language?: string }) {
   const text = typeof children === 'string' ? children : stringify(children, 2);
   const highlighted = highlightCode(text, language ?? (typeof children === 'string' ? undefined : 'json'));
+  const block = highlighted ? (
+    <pre className="code" data-language={highlighted.language}>
+      <code className={`hljs language-${highlighted.language}`} dangerouslySetInnerHTML={{ __html: highlighted.html }} />
+    </pre>
+  ) : (
+    <pre className="code">{text}</pre>
+  );
+  if (!text.includes('\n')) return block;
   return (
     <div className="code-block">
-      {highlighted ? (
-        <pre className="code" data-language={highlighted.language}>
-          <code className={`hljs language-${highlighted.language}`} dangerouslySetInnerHTML={{ __html: highlighted.html }} />
-        </pre>
-      ) : (
-        <pre className="code">{text}</pre>
-      )}
+      {block}
       <CopyButton text={text} />
     </div>
   );

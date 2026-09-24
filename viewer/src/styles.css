@@ -1586,13 +1586,14 @@ h4 {
 
 /* The copy button sits in the block's corner, over room the block leaves for
    it, so it never covers the first line. Shown on hover where there is hover;
-   a touch screen has none and keeps it visible. */
+   a touch screen has none and keeps it visible. The room fits the widest
+   label, "Copy failed", not the usual "Copy". */
 .code-block {
   position: relative;
 }
 
 .code-block .code {
-  padding-right: 72px;
+  padding-right: 96px;
 }
 
 .code-block .copy {
@@ -1624,15 +1625,22 @@ h4 {
   outline: none;
 }
 
+/* Shown on hover where there is hover, as the copy button is; a touch screen
+   has none, and a link it cannot see is one it will not tap. */
 .anchor {
   color: var(--faint);
   font-weight: 400;
-  opacity: 0;
 }
 
-.anchored:hover .anchor,
-.anchor:focus-visible {
-  opacity: 1;
+@media (hover: hover) {
+  .anchor {
+    opacity: 0;
+  }
+
+  .anchored:hover .anchor,
+  .anchor:focus-visible {
+    opacity: 1;
+  }
 }
 
 /* The address and its copy button, on one line while they fit. */

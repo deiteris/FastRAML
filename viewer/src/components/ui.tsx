@@ -97,19 +97,21 @@ export function Empty({ children }: { children: ReactNode }) {
  * Without an anchor it is a plain heading. The same table is titled `Headers`
  * on an operation and inside every response tab, and two ids on one page would
  * make a link land on whichever came first.
+ *
+ * The title is a string so the link can be named after it: five links all
+ * called "link to this section" are one name in a screen reader's link list.
  */
-export function Heading({ level, anchor, children }: { level: 2 | 4; anchor?: string; children: ReactNode }) {
-  const Tag = `h${level}` as const;
+export function Heading({ anchor, children }: { anchor?: string; children: string }) {
   const { pathname } = useLocation();
   return (
-    <Tag id={anchor} tabIndex={anchor ? -1 : undefined} className={anchor ? 'anchored' : undefined}>
+    <h4 id={anchor} tabIndex={anchor ? -1 : undefined} className={anchor ? 'anchored' : undefined}>
       {children}
       {anchor && (
-        <Link to={{ pathname, hash: anchor }} className="anchor" aria-label="Link to this section">
+        <Link to={{ pathname, hash: anchor }} className="anchor" aria-label={`Link to ${children}`}>
           #
         </Link>
       )}
-    </Tag>
+    </h4>
   );
 }
 

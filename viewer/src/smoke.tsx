@@ -38,6 +38,7 @@ import {
 } from './model';
 import { parse, stringify } from './numbers';
 import { type Category, type Runs, plainText, searchIndexOf } from './search';
+import { responsesOf } from './components/Responses';
 
 const source = process.argv[2] ?? 'public/api.json';
 const document = parse(readFileSync(source, 'utf-8')) as Document;
@@ -477,13 +478,18 @@ const searchChecks: [string, boolean][] = [
   // Prose is what a reader sees: the link text, never its target.
   ['a link target is not searchable text', plainText('See [the guide](https://example.com/qqxzv).') === 'See the guide.'],
 ];
-for (const [what, holds] of searchChecks) {
-  if (!holds) {
-    process.stderr.write(`SEARCH ${what}: does not hold\n`);
-    failed += 1;
-  }
-}
+expect('SEARCH', searchChecks);
 process.stdout.write(`${searchable.entries.length} search entries open a page\n`);
+
+// The operation's own response wins over the chosen scheme's for one status,
+// as a declared parameter wins over a borrowed one.
+expect('MERGE', [
+  [
+    'an own response wins over a borrowed one',
+    responsesOf({ 401: { description: 'own' } }, { rows: { 401: { description: 'scheme' } }, label: 's', title: 's' })[0]?.[1]
+      .description === 'own',
+  ],
+]);
 
 /*
  * The nav lists paths as declared unless the reader asks for A-Z. Declaration
@@ -662,6 +668,16 @@ if (shapes < 10) {
   failed += 1;
 }
 process.exit(failed === 0 ? 0 : 1);
+
+/** Report each named check that does not hold. */
+function expect(tag: string, checks: [string, boolean][]): void {
+  for (const [what, holds] of checks) {
+    if (!holds) {
+      process.stderr.write(`${tag} ${what}: does not hold\n`);
+      failed += 1;
+    }
+  }
+}
 
 /** Every shape in the document, by the three keys `shape()` always writes. */
 function walk(node: unknown, visit: (shape: Shape) => void): void {

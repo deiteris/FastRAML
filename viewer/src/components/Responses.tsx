@@ -14,6 +14,17 @@ import { ParameterTable } from './Parameters';
 import { Prose } from './markdown';
 import { Empty, Tabs } from './ui';
 
+/**
+ * Every status an operation can answer with, the chosen scheme's included.
+ *
+ * The operation's own response wins over a scheme's for the same status, as a
+ * declared parameter wins over a borrowed one: the operation said something
+ * about its `401` that the scheme's general one does not.
+ */
+export function responsesOf(responses: Record<string, Response>, borrowed?: Borrowed<Response>): [string, Response][] {
+  return Object.entries({ ...borrowed?.rows, ...responses }).sort(([a], [b]) => a.localeCompare(b));
+}
+
 export function Responses({
   responses,
   borrowed,
@@ -27,7 +38,7 @@ export function Responses({
   title?: string;
 }) {
   const own = new Set(Object.keys(responses));
-  const codes = Object.entries({ ...responses, ...borrowed?.rows }).sort(([a], [b]) => a.localeCompare(b));
+  const codes = responsesOf(responses, borrowed);
   if (codes.length === 0) return null;
   return (
     <section className="responses">

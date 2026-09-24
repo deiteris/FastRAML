@@ -28,6 +28,8 @@ __all__ = [
     'CompatibilityMatch',
     'CompatibilityRuleSetting',
     'FastRamlConfig',
+    'JoinConfig',
+    'JoinInputConfig',
     'ParserConfig',
     'load_config',
     'parse_config',
@@ -76,10 +78,28 @@ class CompatibilityConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class JoinInputConfig:
+    #: Absolute, resolved against the configuration file's directory.
+    path: str
+    base_uri: str | None = None
+    #: The `baseUriParameters` mapping as YAML data; `None` when not given.
+    base_uri_parameters: Mapping[str, object] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class JoinConfig:
+    title: str | None = None
+    version: str | None = None
+    description: str | None = None
+    inputs: tuple[JoinInputConfig, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class FastRamlConfig:
     parser: ParserConfig = ParserConfig()
     lint: Mapping[str, object] = field(default_factory=dict)
     compatibility: CompatibilityConfig = CompatibilityConfig()
+    join: JoinConfig = JoinConfig()
 
 
 def schema_type(schema: Path, root: str) -> BaseShape:
@@ -135,7 +155,30 @@ def parse_config(text: str, *, base_dir: Path | None = None) -> FastRamlConfig:
     compatibility = CompatibilityConfig(
         rules=tuple(_compatibility_rule(value) for value in raw.get('compatibility', {}).get('rules', ()))
     )
-    return FastRamlConfig(parser=parser, lint=dict(raw.get('lint', {})), compatibility=compatibility)
+    return FastRamlConfig(
+        parser=parser,
+        lint=dict(raw.get('lint', {})),
+        compatibility=compatibility,
+        join=_join_config(raw.get('join', {}), base_dir),
+    )
+
+
+def _join_config(raw: Mapping[str, object], base_dir: Path | None) -> JoinConfig:
+    inputs = raw.get('inputs') or {}
+    assert isinstance(inputs, dict)  # noqa: S101 - the schema checked it
+    return JoinConfig(
+        title=_string(raw.get('title')),
+        version=_string(raw.get('version')),
+        description=_string(raw.get('description')),
+        inputs=tuple(
+            JoinInputConfig(
+                path=str(base_dir / path if base_dir is not None and not Path(path).is_absolute() else Path(path)),
+                base_uri=_string(value.get('baseUri')),
+                base_uri_parameters=value.get('baseUriParameters'),
+            )
+            for path, value in inputs.items()
+        ),
+    )
 
 
 def _compatibility_rule(value: Mapping[str, object]) -> CompatibilityRuleSetting:

@@ -10,8 +10,9 @@ none of them:
 
 - `--config FILE` — the fastraml configuration file, in YAML. Its `parser:`
   section sets parse options (`workspaceRoot`, `maxIncludeSize`, `maxDepth`,
-  `regexEngine`, `remote`), `lint:` configures `lint`, and `compatibility:`
-  configures `compat`. A flag on the command line wins over the file.
+  `regexEngine`, `remote`), `lint:` configures `lint`, `compatibility:`
+  configures `compat`, and `join:` configures `join`. A flag on the command line
+  wins over the file.
 - `-w ROOT`, `--workspace-root ROOT` — confine file reads to this directory.
   Defaults to the folder holding the file you named, which is why an `!include`
   pointing at a parent folder fails until you set this.
@@ -178,6 +179,24 @@ Convert the effective API to OpenAPI 3.0.3.
 The exit code stays 0 when the conversion drops information. Each dropped or
 substituted piece is reported as a `warning:` line on stderr.
 
+## `fastraml join INPUT INPUT...`
+
+Combine API documents into one RAML document. The first input is the primary
+one. Declarations and endpoints from every input are added side by side; a name
+two inputs declare differently is a conflict, and nothing is renamed. Exits 1
+and writes nothing if anything conflicts.
+
+- `--title T`, `--version V`, `--description D` — the joined root values. Needed
+  when the inputs disagree; an empty `--description` omits it.
+- `--base-uri INPUT=URI` — replace one input's `baseUri`, or give it one.
+  Repeat for more inputs. The joined `baseUri` is the inputs' common prefix;
+  each input's resources go under the rest of its path.
+- `-o FILE`, `--output FILE` — write the result to a file. Include paths are
+  written relative to its folder, so pass `-o` rather than redirecting.
+
+The configuration file's `join:` section takes the same values, plus
+`baseUriParameters` per input.
+
 ## `fastraml query [FILE ...]`
 
 Run SPARQL over the graph. Needs `pyoxigraph`.
@@ -225,7 +244,7 @@ Print the version and exit.
 
 - `0` — valid, or the command produced its answer.
 - `1` — invalid document, unresolved name, ambiguous name, nothing matched, a
-  breaking change in `compat`, an `error` finding in `lint`, or a missing optional
-  package.
+  breaking change in `compat`, an `error` finding in `lint`, a conflict in `join`,
+  or a missing optional package.
 - `2` — the command line was wrong, such as an unknown command or a missing
   argument.

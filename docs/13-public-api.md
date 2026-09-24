@@ -49,6 +49,9 @@ lists the applied documents in order ([19](19-overlays-and-extensions.md)
 § 6). The default workspace root is the entry document's directory, so a chain
 that reaches above it (`extends: ../api.raml`) needs `workspace_root`.
 
+`fastraml.join.join(paths, JoinOptions(...))` combines API documents and
+returns RAML text ([20](20-join.md) § 8). It is not part of `fastraml.__all__`.
+
 ## 2. Parse options
 
 | Option | Effect |
@@ -129,6 +132,7 @@ package exports it deliberately.
 | `deps FILE NAME` | Walk outgoing graph routes. |
 | `show FILE NAME` | Render an effective type, endpoint, or operation. |
 | `compat OLD NEW` | Compare effective APIs, or `types:` with `--types`. |
+| `join INPUT INPUT...` | Combine API documents into one RAML document ([20](20-join.md)). |
 | `query` | List/show named SPARQL queries or run `-n`, `-q`, or `-Q` against a file. |
 | `lint [FILE...]` | Run configured lint rules, list rules, or explain one rule; `--fail-on` selects the exit threshold. |
 | `skills` | List, print, or install packaged agent-guide stubs. |

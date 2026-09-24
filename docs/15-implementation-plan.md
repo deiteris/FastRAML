@@ -19,7 +19,9 @@ that each extend the same master remains deferred (docs/19 § 7).
 
 XML Schema external types are unsupported ([01](01-scope-and-coverage.md) § 3).
 
-`fastraml join` is designed in [20](20-join.md) and not yet implemented.
+`fastraml join` ([20](20-join.md)) accepts API documents only; Overlays,
+Extensions and Libraries as inputs, and renaming to resolve a conflict, are not
+covered (docs/20 § 11).
 
 ## 3. Potential future work
 

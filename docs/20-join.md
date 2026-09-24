@@ -5,7 +5,7 @@ one. It covers which inputs are accepted, how their declarations and endpoints
 are combined, how conflicts are reported, how root defaults and the base URI are
 reconciled, and how the result is written.
 
-Status: design. Nothing here is implemented yet.
+Status: implemented. Code: `fastraml/join/`. Tests: `tests/unit/test_join.py`.
 
 ## 1. Principles
 
@@ -32,15 +32,22 @@ The first input is the **primary input**. Where this document says an output
 follows input order, the primary input comes first, then the others in the
 order given.
 
-Each input is parsed on its own with `ParseOptions(retain_source=True)`. An
-input that fails to parse stops the join, and its diagnostics are reported as
-the parser produced them, so they point into that input's files. An input
-with a header other than `#%RAML 1.0` reports `unexpected fragment kind` with
-`expected: API` in `info`.
+Each input is parsed on its own with the caller's `ParseOptions` and
+`retain_source=True`; the command line parses without validation, as the view
+commands do. An input that fails to parse stops the join, and its diagnostics
+are reported as the parser produced them, so they point into that input's
+files. An input with a header other than `#%RAML 1.0` reports
+`unexpected fragment kind` with `expected: API` in `info`.
 
 The join reads each input's composed source trees, `Raml.source_nodes`, and
-consults the input's parsed model where § 5 and § 6.4 say so. It composes no
-file itself, so each file is still composed once per input parse (invariant I2).
+consults the input's parsed model where § 5 and § 6.4 say so. An include target
+the parse already read comes from the parse's caches. One the parse never read,
+such as an include inside a trait no method applies, is loaded through the same
+sandboxed loader and composed once for the join.
+
+On reading, every `!include` argument is replaced by the absolute URI it names.
+A node then means the same thing wherever the join moves it, so comparing
+entries (§ 4) and writing paths (§ 7.2) need no record of which file wrote it.
 
 ## 3. What is combined
 
@@ -69,9 +76,10 @@ identical. The same alias naming a different library reports
 `library namespace conflict`, with `library` and both URIs in `info`, the same
 key as in [19](19-overlays-and-extensions.md) § 5.2.
 
-A name map written as `types: !include types.raml` is read through the include:
-its entries are combined like inline ones and written inline. Each entry's own
-includes are then rewritten relative to the output (§ 7.2).
+A name map, a resource, a method and `documentation` cannot be written as a
+whole-value `!include`; the parser rejects each. A documentation item can: it
+is a DocumentationItem fragment, identified by the `title` inside it and
+written inline.
 
 Output order: each map lists the primary input's entries in declaration order,
 then each later input's new entries in its declaration order (invariant I8).
@@ -88,12 +96,15 @@ written flat and `/{id}` nested under `/users` are the same endpoint.
   resources: `displayName`, `description`, `type`, `is`, `securedBy`,
   `uriParameters` and annotations. When two inputs have the same endpoint, its
   own properties, taken together, are one entry (§ 4). An endpoint created by
-  § 6.3 has no own properties, so it never conflicts on them.
+  § 6.3 without a moved variable has no own properties, so it never conflicts
+  on them.
 
 Output structure: an endpoint that is already in the output receives the later
 input's operations and nested resources. A new endpoint is written under the
 output node of its parent endpoint in the same input, using the key that input
-wrote. Its nesting as authored is therefore kept.
+wrote. Its nesting as authored is therefore kept. Within an endpoint the output
+lists its own properties, then its methods, then its nested resources, each in
+first-declared order.
 
 ## 4. Identical entries and conflicts
 
@@ -126,13 +137,13 @@ this `info`:
 
 | Key | Value |
 |---|---|
-| `kind` | `type`, `annotationType`, `trait`, `resourceType`, `securityScheme`, `documentation`, `annotation`, `endpoint` or `operation` |
+| `kind` | `type`, `annotationType`, `trait`, `resourceType`, `securityScheme`, `documentation`, `annotation`, `endpoint`, `operation` or `baseUriParameter` (§ 6.2) |
 | `name` | The name, documentation title, full path, or `METHOD path` |
 | `other` | Location of the earlier input's entry |
-| `at` | Key path, from the entry, to the first differing node |
+| `at` | Key path, from the entry, to the first differing node, keys joined by `/`; empty when the entries differ at their root |
 
-Finding `at` needs a form of `node_value_equal` that returns the first differing
-pair instead of a boolean.
+Code: `join/compare.py`, whose `first_difference` is `node_value_equal`
+returning the first differing pair instead of a boolean.
 
 ## 5. Root defaults
 
@@ -180,10 +191,17 @@ type (directly, or through another template) that:
 - for `mediaType`, has a `body` with no media-type keys (`reason: body`); or
 - for `securedBy` and `protocols`, contributes a method the resource does not
   write itself, so there is no authored node to write onto (`reason: method`).
-  For `securedBy`, a resource that sets its own `securedBy` is exempt.
+  For `securedBy`, a resource that sets its own `securedBy` is exempt. A method
+  a resource type marks optional (`get?`) is contributed only where the
+  resource writes it, so it never counts.
+
+A template name that holds a parameter, such as `type: <<inner>>` inside a
+resource type, cannot be followed without applying the template. The join
+reports it with `reason: parameter` and the name as written.
 
 The check reads template definitions from the input's parsed model, including
-those declared in libraries.
+those declared in libraries. The parser rejects `securedBy` in a trait, so a
+`securedBy` default reaches a template only through a resource type.
 
 ## 6. Base URI
 
@@ -213,15 +231,22 @@ the output's version; elsewhere it writes the substituted text.
 Each base URI is split into its scheme and authority, and its path segments.
 
 - The scheme and authority must be identical in every input:
-  otherwise `join base uri conflict`, with each input's value in `info`. A
-  template variable there is compared as text, and its `baseUriParameters`
-  declaration is an entry (§ 4).
+  otherwise `join base uri conflict`, with each input's scheme and authority
+  in `values`.
 - The **common path** is the longest run of leading path segments that all
   inputs share. Segments compare as text, so `/v1/user` and `/v1/users` share
-  only `/v1`. A variable in the common path is handled like one in the
-  authority.
+  only `/v1`.
 
 The output `baseUri` is the shared scheme and authority plus the common path.
+
+A template variable in that shared part is compared as text. Its declaration
+must be identical in every input (§ 4), or absent from every input: an
+undeclared base URI variable is a required string, and a declaration makes it
+something else. A difference reports `join conflict` with
+`kind: baseUriParameter`. When one input declares the variable and another does
+not, `other` is the URI of an input without a declaration and `at` is empty.
+The output's `baseUriParameters` holds the shared declarations. `version` is
+never declared.
 
 ### 6.3 Created endpoints
 
@@ -237,10 +262,10 @@ resources go under endpoints created from its remainder:
   becomes a `uriParameters` declaration on the created endpoint whose key holds
   it. An undeclared variable needs nothing.
 
-A created endpoint then takes part in § 3.3 like any other. If it has the same
-full path as an endpoint another input wrote, the created one contributes no
-own properties, and the two inputs' operations and resources are combined
-under it.
+A created endpoint then takes part in § 3.3 like any other. Its own properties
+are the `uriParameters` of its moved variables, if any. One with none never
+conflicts: if it has the same full path as an endpoint another input wrote,
+the two inputs' operations and resources are combined under it.
 
 ### 6.4 `<<resourcePath>>`
 
@@ -282,10 +307,11 @@ one on another Windows drive, reports `join path not relative`, with `path` and
 
 ### 7.3 Checking the result
 
-The joined text is parsed again before it is written, with the workspace root
-set to the deepest directory that contains the output and every file it
-refers to. A diagnostic from that parse is a defect in the join. It is reported
-wrapped in a `join output` frame, and nothing is written.
+The joined text is parsed again before it is written, with the inputs'
+`ParseOptions` and the workspace root set to the deepest directory that
+contains the output's directory and every input's workspace root. A
+diagnostic from that parse is a defect in the join. It is reported wrapped in
+a `join output` frame, and nothing is written.
 
 ## 8. Command line and configuration
 
@@ -295,8 +321,12 @@ fastraml join INPUT INPUT... [-o OUTPUT] [--title TEXT] [--version TEXT]
 ```
 
 It accepts the common configuration and workspace options
-([13](13-public-api.md) § 5). It exits 1 when any error is reported, and then
-writes nothing.
+([13](13-public-api.md) § 5). It needs at least two inputs. It exits 1 when any
+error is reported, and then writes nothing.
+
+`--base-uri` splits at the first `=`. The Python entry point is
+`fastraml.join.join(paths, JoinOptions(...))`, which returns the text or raises
+a `RamlError` carrying every problem.
 
 The configuration file gains a `join` section, checked against
 `fastraml/config.raml`:
@@ -314,7 +344,9 @@ join:
 ```
 
 An `inputs` key is resolved relative to the configuration file. A CLI option
-takes precedence over the same setting in the configuration file. The
+takes precedence over the same setting in the configuration file; a
+`--base-uri` for an input replaces that input's configuration entry whole,
+`baseUriParameters` included. The
 configuration checks only that `baseUriParameters` is a mapping. Its values are
 checked as RAML when the output is parsed again (§ 7.3), so an error in them is
 reported against the output.
@@ -330,10 +362,23 @@ nor a view ([16](16-graph.md) § 1). It lives in `fastraml/join/`:
   `tests/unit/test_views.py` enforces this, next to the view-layer checks.
 
 Tests: `tests/unit/test_join.py`, with one test per rule in §§ 3 to 7 that names
-the rule it protects. The benchmark suite gains a join workload
-([12](12-performance.md) § 4).
+the rule it protects.
 
-## 10. Not covered
+Modules: `combine.py` (§§ 2 to 6 and the entry point), `compare.py` (§ 4),
+`templates.py` (§ 5.3, § 6.4), `baseuri.py` (§ 6), `paths.py` (§ 7.2) and
+`writer.py` (§ 7.1). The writer resolves plain scalars through
+`yamlnode.plain_tag`, the composer's own YAML 1.2 table.
+
+## 10. Cost
+
+Each input is parsed once. Reading it rewrites include arguments in one walk of
+its root tree. Combining visits every declaration and endpoint once, plus one
+comparison per repeated name, bounded by the smaller entry. The template check
+of § 5.3 walks each applied template once per resource that applies it. The
+output is parsed once more. No benchmark workload covers the join yet
+([12](12-performance.md) § 4); a performance claim about it needs one first.
+
+## 11. Not covered
 
 - Overlays, Extensions and Libraries as inputs.
 - Renaming entries to resolve a conflict. It would need every reference to

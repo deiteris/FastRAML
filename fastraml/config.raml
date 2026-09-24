@@ -12,6 +12,31 @@ types:
       parser?: ParserConfig
       lint?: lint.LintConfig
       compatibility?: CompatibilityConfig
+      join?: JoinConfig
+
+  JoinConfig:
+    type: object
+    additionalProperties: false
+    properties:
+      title?: string
+      version?: string
+      description?: string
+      inputs?:
+        description: Per input, keyed by its path relative to this file.
+        type: object
+        properties:
+          //: JoinInput
+
+  JoinInput:
+    type: object
+    additionalProperties: false
+    properties:
+      baseUri?:
+        type: string
+        minLength: 1
+      baseUriParameters?:
+        description: Checked as RAML when the joined output is parsed again.
+        type: object
 
   ParserConfig:
     type: object

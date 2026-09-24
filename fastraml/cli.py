@@ -1312,6 +1312,9 @@ def _join(args: argparse.Namespace) -> int:
     overrides: dict[str, BaseUriOverride] = {}
     for item in configured.inputs:
         if item.base_uri is None:
+            if item.base_uri_parameters is not None:
+                print(f'join: {item.path}: baseUriParameters needs a baseUri beside it', file=sys.stderr)
+                return EXIT_INVALID
             continue
         parameters = None
         if item.base_uri_parameters is not None:

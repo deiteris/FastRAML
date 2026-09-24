@@ -130,13 +130,24 @@ def first_difference(left: Side, right: Side) -> Difference | None:
     positions are ignored. An include is replaced by its target before
     comparing, and two includes of one target are equal unread.
     """
+    # The parser rejects include cycles only in targets it read. A target it
+    # never read, inside a template nothing applies, is read here first, so a
+    # cycle through it is a difference rather than a loop.
+    limit = left.reader.raml.max_depth
+    followed: set[tuple[str, str, str, str, tuple[str, ...]]] = set()
     stack: list[_Pair] = [(left.node, left.file, right.node, right.file, ())]
     while stack:
         pair = stack.pop()
         one, one_file, other, other_file, path = pair
         if one is other and one_file == other_file:
             continue
+        if len(path) > limit:
+            return Difference(one, other, path)
         if TAG_INCLUDE in {one.tag, other.tag}:
+            step = (one_file, one.value, other_file, other.value, path)
+            if step in followed:
+                return Difference(one, other, path)
+            followed.add(step)
             through = _through_includes(pair, left.reader, right.reader)
             if isinstance(through, Difference):
                 return through

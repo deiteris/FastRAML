@@ -187,7 +187,9 @@ template body written without them. The join reports
 `reason` in `info`, when an input that needs § 5.2 applies a trait or resource
 type (directly, or through another template) that:
 
-- sets the property anywhere in its definition (`reason: sets`);
+- sets the property where RAML reads it: at a trait's top level, or at a
+  resource type's top level or in one of its methods (`reason: sets`). A query
+  parameter or property that happens to be named `protocols` does not count;
 - for `mediaType`, has a `body` with no media-type keys (`reason: body`); or
 - for `securedBy` and `protocols`, contributes a method the resource does not
   write itself, so there is no authored node to write onto (`reason: method`).
@@ -219,12 +221,18 @@ input's declarations of the variables that remain in the new URI and drops the
 others, since every declared name must occur in `baseUri`
 ([08](08-templates-and-endpoints.md) § 6.2).
 
+An override for a path that is not one of the inputs reports
+`join override names no input`, with the URIs in `inputs`, before anything is
+combined; a mistyped path would otherwise be ignored.
+
 If no input has a base URI, the output has none and § 6.3 does nothing. If only
 some have one: `join missing base uri`, naming each input without one.
 
 `{version}` is replaced by the input's own `version` before anything is
 compared. The output keeps `{version}` only where every input's version equals
-the output's version; elsewhere it writes the substituted text.
+the output's version; elsewhere it writes the substituted text. Under a created
+endpoint (§ 6.3) `{version}` would be an ordinary URI parameter, so the part of
+a base URI that becomes a resource path always carries the input's own version.
 
 ### 6.2 The common base URI
 
@@ -251,8 +259,9 @@ never declared.
 ### 6.3 Created endpoints
 
 The segments after the common path are the input's **remainder**. An input
-with an empty remainder places its resources at the root. Otherwise its root
-resources go under endpoints created from its remainder:
+with an empty remainder places its resources at the root, and an input with no
+resources needs no created endpoint. Otherwise its root resources go under
+endpoints created from its remainder:
 
 - Remainders form a tree by segment. Inputs whose remainders share leading
   segments share the created endpoints for them.
@@ -346,10 +355,10 @@ join:
 An `inputs` key is resolved relative to the configuration file. A CLI option
 takes precedence over the same setting in the configuration file; a
 `--base-uri` for an input replaces that input's configuration entry whole,
-`baseUriParameters` included. The
-configuration checks only that `baseUriParameters` is a mapping. Its values are
-checked as RAML when the output is parsed again (§ 7.3), so an error in them is
-reported against the output.
+`baseUriParameters` included. The configuration checks only that
+`baseUriParameters` is a mapping, and that it has a `baseUri` beside it. Its
+values are checked as RAML when the output is parsed again (§ 7.3), so an error
+in them is reported against the output.
 
 ## 9. Placement
 

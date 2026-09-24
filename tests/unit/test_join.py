@@ -164,6 +164,15 @@ class TestIncludes:
         }
         assert document(tmp_path, files)['types'] == {'Point': {'example': '!include ../point.yaml'}}
 
+    def test_an_include_cycle_nothing_read_is_a_difference_not_a_loop(self, tmp_path):
+        # A trait nothing applies: the parser never reads its include.
+        files = {
+            'a.raml': HEAD + 'traits:\n  t:\n    description: !include loop.yaml\n',
+            'loop.yaml': '!include loop.yaml\n',
+            'b.raml': HEAD + 'traits:\n  t:\n    description: x\n',
+        }
+        assert failures(tmp_path, files)[0][1]['kind'] == 'trait'
+
     def test_include_arguments_are_written_relative_to_the_output(self, tmp_path):
         # docs/20 § 7.2.
         files = {
@@ -346,6 +355,16 @@ class TestRootDefaults:
         }
         assert failures(tmp_path, files)[0][1] == {'property': 'protocols', 'template': 'plain', 'reason': 'sets'}
 
+    def test_a_parameter_named_like_the_default_is_not_setting_it(self, tmp_path):
+        # docs/20 § 5.3: only a key where RAML reads the default counts.
+        files = {
+            'a.raml': HEAD
+            + 'protocols: [HTTPS]\ntraits:\n  q:\n    queryParameters:\n      protocols: string\n'
+            + '/a:\n  get:\n    is: [q]\n',
+            'b.raml': HEAD,
+        }
+        assert document(tmp_path, files)['/a']['get'] == {'is': ['q'], 'protocols': ['HTTPS']}
+
     def test_a_template_body_without_a_media_type_is_refused(self, tmp_path):
         files = {
             'a.raml': HEAD
@@ -493,6 +512,30 @@ class TestBaseUri:
         assert list(joined['/v1']) == ['/a']
         assert list(joined['/v2']) == ['/b']
 
+    def test_version_under_a_created_endpoint_is_always_substituted(self, tmp_path):
+        # docs/20 § 6.1: in a resource path `{version}` is an ordinary URI parameter.
+        files = {
+            'a.raml': HEAD + 'version: v1\nbaseUri: https://x/a/{version}\n/r:\n  get:\n',
+            'b.raml': HEAD + 'version: v1\nbaseUri: https://x/b\n/r:\n  get:\n',
+        }
+        joined = document(tmp_path, files)
+        assert list(joined['/a/v1']) == ['/r']
+        assert '/a/{version}' not in joined
+
+    def test_an_input_without_resources_gets_no_created_endpoint(self, tmp_path):
+        files = {
+            'a.raml': HEAD + 'baseUri: https://x/a\n/r:\n  get:\n',
+            'b.raml': HEAD + 'baseUri: https://x/b\ntypes:\n  T: string\n',
+        }
+        assert '/b' not in document(tmp_path, files)
+
+    def test_an_override_for_a_path_that_is_not_an_input_is_an_error(self, tmp_path):
+        files = {'a.raml': HEAD, 'b.raml': HEAD}
+        override = {path_to_file_uri(tmp_path / 'c.raml'): BaseUriOverride('https://x')}
+        ((message, info, _),) = failures(tmp_path, files, base_uris=override)
+        assert message == 'join override names no input'
+        assert info['inputs'][0].endswith('/c.raml')
+
     def test_a_moved_input_whose_template_reads_resource_path_is_refused(self, tmp_path):
         # docs/20 § 6.4.
         files = {
@@ -618,3 +661,11 @@ class TestCommandLine:
         joined = yaml.safe_load(capsys.readouterr().out)
         assert joined['title'] == 'Joined'
         assert joined['/{tenant}/b']['uriParameters'] == {'tenant': {'pattern': '^[a-z]+$'}}
+
+    def test_base_uri_parameters_without_a_base_uri_are_an_error(self, inputs, capsys):
+        (inputs / 'fastraml.yaml').write_text(
+            'join:\n  inputs:\n    b.raml:\n      baseUriParameters:\n        tenant: string\n', encoding='utf-8'
+        )
+        arguments = ['join', '--config', str(inputs / 'fastraml.yaml'), str(inputs / 'a.raml'), str(inputs / 'b.raml')]
+        assert main(arguments) == EXIT_INVALID
+        assert 'baseUriParameters needs a baseUri' in capsys.readouterr().err

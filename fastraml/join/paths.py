@@ -33,7 +33,7 @@ class Rebaser:
 
     def __init__(self, output_uri: str) -> None:
         #: The output directory's URI path, with a trailing slash.
-        self._directory = posixpath.dirname(urlsplit(output_uri).path) + '/'
+        self._directory = posixpath.dirname(urlsplit(output_uri).path).rstrip('/') + '/'
 
     def relative(self, target: str, node: Node, file_uri: str) -> str:
         """`target` relative to the output directory; a URL unchanged."""

@@ -384,7 +384,7 @@ def _check_pushed_templates(source: _Input, errors: Accumulator) -> None:
             reasons: list[tuple[str, str]] = [(unresolved, 'parameter') for unresolved in application.unresolved]
             for applied in application.applied:
                 definition = applied.definition
-                if name != 'mediaType' and definition.source is not None and sets_key(definition.source, name):
+                if name != 'mediaType' and sets_key(definition, name):
                     reasons.append((applied.name, 'sets'))
                 if name == 'mediaType' and template_bodies_without_media_type(definition):
                     reasons.append((applied.name, 'body'))
@@ -429,7 +429,6 @@ class _Endpoint:
     full: str
     #: The endpoint's own properties, or `None` for a created endpoint without any.
     props: _Entry | None
-    created: bool
     methods: dict[str, _Entry] = field(default_factory=dict)
     children: dict[str, _Endpoint] = field(default_factory=dict)
 
@@ -442,19 +441,17 @@ class _Endpoints:
         self._index: dict[str, _Endpoint] = {}
         self._errors = errors
 
-    def _place(
-        self, parent: _Endpoint | None, key: Node, full: str, props: _Entry | None, *, created: bool
-    ) -> _Endpoint:
+    def _place(self, parent: _Endpoint | None, key: Node, full: str, props: _Entry | None) -> _Endpoint:
         existing = self._index.get(full)
         if existing is None:
-            endpoint = _Endpoint(key, full, props, created)
+            endpoint = _Endpoint(key, full, props)
             self._index[full] = endpoint
             (parent.children if parent is not None else self.roots)[key.value] = endpoint
             return endpoint
         if props is None:
             return existing
         if existing.props is None:
-            existing.props, existing.created = props, created
+            existing.props = props
             return existing
         difference = _difference(existing.props, props)
         if difference is not None:
@@ -473,7 +470,7 @@ class _Endpoints:
                 # Reported, if it conflicts, at the first declaration that moved.
                 key_node = declared[0]
                 props = _Entry(source, source.uri, key_node, _mapping([_scalar('uriParameters'), _mapping(declared)]))
-            parent = self._place(parent, _scalar(step.key), step.full, props, created=True)
+            parent = self._place(parent, _scalar(step.key), step.full, props)
         return parent
 
     def add(self, source: _Input, parent: _Endpoint | None, key: Node, resource: Node) -> None:
@@ -491,7 +488,7 @@ class _Endpoints:
                 else:
                     own += [item_key, item]
         props = _Entry(source, source.uri, key, _mapping(own))
-        endpoint = self._place(parent, key, full, props, created=False)
+        endpoint = self._place(parent, key, full, props)
         for method_key, method in methods:
             entry = _Entry(source, source.uri, method_key, method)
             earlier = endpoint.methods.get(method_key.value)
@@ -638,7 +635,19 @@ def _plan_base_uri(
     plan.base_uri = uris[0].authority + ''.join('/' + segment for segment in common)
 
     plan.parameters = _shared_parameters(plan.base_uri, inputs, declared, errors)
-    plan.chains = plan_created([uri.segments[len(common) :] for uri in uris])
+    # Under a created endpoint `{version}` would be an ordinary URI parameter,
+    # so a remainder always carries the input's own version.
+    remainders = [
+        tuple(segment if input_version is None else segment.replace('{version}', input_version) for segment in rest)
+        for rest, input_version in zip((uri.segments[len(common) :] for uri in uris), versions, strict=True)
+    ]
+    # An input with no resources needs no endpoint to hold them.
+    plan.chains = plan_created(
+        [
+            rest if any(name.startswith('/') for name in source.fields) else ()
+            for rest, source in zip(remainders, inputs, strict=True)
+        ]
+    )
     for index, (chain, declarations) in enumerate(zip(plan.chains, declared, strict=True)):
         names = {name for step in chain for name in uri_variables(step.key)}
         plan.moved[index] = {name: found for name, found in declarations.items() if name in names}
@@ -895,6 +904,11 @@ def join(paths: Sequence[str | os.PathLike[str]], options: JoinOptions | None = 
     """
     options = options or JoinOptions()
     inputs = _read_inputs(paths, options.parse)
+    known = {source.uri for source in inputs}
+    # A mistyped path would otherwise be ignored and the join run without it.
+    strays = [uri for uri in options.base_uris if uri not in known]
+    if strays:
+        raise RamlError.new('join override names no input', strays[0], kind=ErrorKind.PARSING, info={'inputs': strays})
     output_uri = _output_uri(options.output)
     text = write_raml(_combine(inputs, options, output_uri))
     _check_output(text, output_uri, inputs, options.parse)

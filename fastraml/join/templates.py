@@ -10,10 +10,9 @@ key, write a body with no media type, contribute a method, or read
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from fastraml.errors import RamlError
-from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.directives import decode_trait_refs, decode_type_ref
 from fastraml.parser.resourcetypes import ResourceTypeDefinition
 from fastraml.parser.source_ir import METHODS
@@ -24,9 +23,6 @@ if TYPE_CHECKING:
     from fastraml.parser.templates import TemplateDefinition
 
 __all__ = ['Application', 'Applied', 'body_without_media_type', 'is_media_type_map', 'template_applications']
-
-#: Values that hold user data, not RAML: a key inside them is not a facet.
-_DATA_KEYS: Final = frozenset({'example', 'examples', 'default', 'enum'})
 
 
 @dataclass(slots=True, eq=False)
@@ -77,22 +73,19 @@ def body_without_media_type(method: Node) -> bool:
     return False
 
 
-def sets_key(node: Node, name: str) -> bool:
-    """Whether `name` is a key anywhere in `node` outside user data."""
-    stack = [node]
-    while stack:
-        current = stack.pop()
-        if current.kind is NodeKind.SEQUENCE:
-            stack.extend(current.content)
-            continue
-        if current.kind is not NodeKind.MAPPING:
-            continue
-        for key, value in pairs(current):
-            if key.value == name:
-                return True
-            if key.value not in _DATA_KEYS and not is_annotation_key(key.value):
-                stack.append(value)
-    return False
+def sets_key(definition: TemplateDefinition, name: str) -> bool:
+    """Whether a template sets `name` where RAML reads it: on a method, or on a resource.
+
+    A trait is a method; a resource type is a resource holding methods. A key
+    deeper down, such as a query parameter named `protocols`, is a name.
+    """
+    source = definition.source
+    if source is None or source.kind is not NodeKind.MAPPING:
+        return False
+    holders = [source, *_method_nodes(definition)] if isinstance(definition, ResourceTypeDefinition) else [source]
+    return any(
+        holder.kind is NodeKind.MAPPING and any(key.value == name for key, _ in pairs(holder)) for holder in holders
+    )
 
 
 def _method_nodes(definition: TemplateDefinition) -> list[Node]:

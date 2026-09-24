@@ -13,18 +13,18 @@ npm install
 npm run sample        # fastraml tree ../fixtures/sample/api.raml > public/api.json
 npm run dev
 npm run shots         # screenshot every page, both themes, into shots/
-npm run check         # tsc, layers, smoke, shots
+npm run check         # tsc, layers, smoke
 ```
 
-`npm run ci` is `check` with the screenshots replaced by the production build.
-The pictures are for looking at, not for diffing — `shots/` is gitignored — so
+`npm run ci` is `check` plus the production build. Neither takes screenshots:
+the pictures are for looking at, not for diffing — `shots/` is gitignored — so
 capturing them on a runner nobody watches buys a browser download and nothing
-else. Everything that can *fail* meaningfully is in both.
+else. Run `shots` by hand after a change to layout or to anything client-only.
 
 The document it renders is `fixtures/sample`, which is the repo's and not this
 app's: `tests/unit/test_bindings.py` holds `public/api.json` to it, and
 `contrib/fastmcp-raml` builds MCP tools while `contrib/raml-mock` runs HTTP
-routes from the same file. Editing it moves four consumers.
+routes from the same file. Editing it moves every consumer `AGENTS.md` lists under `fixtures/`.
 
 ## Style
 
@@ -174,18 +174,20 @@ raml2html has no answer to — its `test/outofmemory.raml` is 36 lines.
 ## Checks
 
 ```bash
-npm run check     # tsc, then render every page, then load every page in a browser
+npm run check     # tsc, the module layering, then render every page
+npm run shots     # load every page in a browser, at three widths, both themes
 ```
 
-Three layers, because each sees what the one before it cannot:
+Four layers, because each sees what the ones before it cannot:
 
 | | catches |
 |---|---|
 | `tsc` | types |
+| `npm run layers` | a component importing a page, `model.ts` or `load.ts` importing a component, an import cycle |
 | `npm run smoke` | a page that throws or comes back empty; a union member named by its container; a `$ref` that resolves nowhere |
 | `npm run shots` | anything that only happens in a browser, **and** the layout |
 
-The third is not decoration. `smoke` renders to static markup, which does not
+The browser layer is not decoration, though it is not in `check`. `smoke` renders to static markup, which does not
 run the client: an icon package that resolved a second copy of React threw
 `Invalid hook call` on every page and `smoke` still reported 38/38. `shots`
 fails on any console error or uncaught exception, naming the route.
@@ -221,12 +223,25 @@ that looks fine and says something untrue:
 ```
 src/
   tree.d.ts            GENERATED -- the contract
+  walk.ts              GENERATED -- the metamodel and the address index
   model.ts             index, addresses, path nesting, facet spelling
+  numbers.ts           JSON parsing that keeps integers a double cannot hold
   load.ts              fetch api.json
-  App.tsx              shell, sidebar, routes
-  pages.tsx            one page per section
-  smoke.tsx            render every page, fail on the first that throws
+  App.tsx              shell, routes, scroll and title on arrival
+  smoke.tsx            render every page, then the checks rendering cannot make
+  pages/               one module per page, re-exported by index.ts
   components/
     Shape.tsx          the type renderer -- the traversal law, directly
-    ui.tsx             chips, disclosures, tables
+    Sidebar.tsx        the nav: path tree, declarations, filter
+    Parameters.tsx, Bodies.tsx, Responses.tsx, Security.tsx, Borrowed.tsx
+                       the parts of an operation page
+    Url.tsx            base URI and path as one address
+    Usages.tsx         what else points at a declaration
+    Extra.tsx          annotations and custom facets
+    markdown.tsx       descriptions, and why rendering them is safe
+    json.tsx, highlighting.ts
+                       values and code blocks
+    ui.tsx             chips, tabs, sections, the theme toggle
+layers.mjs             the import layering, asserted
+shots.mjs              screenshot every page; fail on console errors and overflow
 ```

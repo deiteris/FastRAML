@@ -16,6 +16,7 @@
     "shots": "npm run build && node shots.mjs"
   },
   "dependencies": {
+    "fuse.js": "^7.5.0",
     "highlight.js": "^11.12.0",
     "markdown-it": "^15.0.1",
     "react": "^19.2.0",

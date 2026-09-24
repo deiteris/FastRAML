@@ -80,10 +80,12 @@ const NARROW = new Set([
 ]);
 const PHONE = new Set([...NARROW, 'overview', 'types', 'type-object', 'resource', 'operation-get', 'security']);
 const VIEWPORTS = [
-  { suffix: '', width: 1400 },
-  { suffix: '-narrow', width: 760, pages: NARROW },
-  { suffix: '-phone', width: 390, pages: PHONE },
+  { name: 'wide', suffix: '', width: 1400 },
+  { name: 'narrow', suffix: '-narrow', width: 760, pages: NARROW },
+  { name: 'phone', suffix: '-phone', width: 390, pages: PHONE },
 ];
+/** The widths the search dialog is shot at: the dialog, and the full-screen sheet. */
+const SEARCH_VIEWPORTS = new Set(['wide', 'phone']);
 
 /**
  * The regions involved in indentation, each of which must look the same
@@ -192,6 +194,19 @@ try {
         for (const [kind, seen] of await nesting(page)) {
           for (const [step, chain] of seen) (levels[kind] ??= new Map()).set(step, `${route} ${chain}`);
         }
+      }
+    }
+
+    // The search dialog, driven by the keyboard alone: that is the path a
+    // static render cannot take, and the one a reader without a mouse has.
+    for (const view of VIEWPORTS) {
+      if (!SEARCH_VIEWPORTS.has(view.name)) continue;
+      await page.setViewport({ width: view.width, height: 900, deviceScaleFactor: 2 });
+      route = `search${view.suffix}`;
+      await page.goto(`http://localhost:${PORT}/#/types`, { waitUntil: 'networkidle0' });
+      await page.waitForSelector('main article, main .empty', { timeout: 5000 });
+      for (const failure of await searchFails(page, view.suffix, only.length > 1 ? `-${theme}` : '')) {
+        failures.push(`${route}: ${failure}`);
       }
     }
   }
@@ -333,6 +348,61 @@ async function nesting(page) {
     },
     NESTINGS,
   );
+}
+
+/**
+ * Open, read, close and choose, by the keyboard; what went wrong, if anything.
+ *
+ * Focus is the thing checked throughout, because it is what the dialog manages
+ * and what nothing else here can see: a dialog that opens with the field
+ * unfocused, or closes with focus on `<body>`, looks correct in every picture.
+ */
+async function searchFails(page, suffix, themed) {
+  const failed = [];
+  const focusIs = (selector) => page.evaluate((wanted) => !!document.activeElement?.matches(wanted), selector);
+  const focused = () => page.evaluate(() => document.activeElement?.outerHTML.slice(0, 60) ?? 'nothing');
+  const opener = suffix === '-phone' ? '.topbar-search' : '.search-open';
+
+  await page.focus(opener);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('dialog.search[open]', { timeout: 2000 });
+  if (!(await focusIs('.search-field'))) failed.push(`opened with focus on ${await focused()}, not the field`);
+  await page.keyboard.type('book');
+  await page.waitForSelector('.search-option', { timeout: 2000 });
+  const shown = await page.evaluate(() => ({
+    groups: document.querySelectorAll('.search-results [role="group"]').length,
+    active: document.querySelector('.search-field')?.getAttribute('aria-activedescendant'),
+    selected: document.querySelector('[role="option"][aria-selected="true"]')?.id,
+  }));
+  if (shown.groups < 2) failed.push(`"book" found ${shown.groups} group(s); the sample has it in several`);
+  if (!shown.active || shown.active !== shown.selected) failed.push('the field does not point at the highlighted option');
+  const file = `shots/search${suffix}${themed}.png`;
+  await page.screenshot({ path: file });
+  process.stdout.write(`${file}\n`);
+
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('dialog.search', { hidden: true, timeout: 2000 });
+  if (!(await focusIs(opener))) {
+    failed.push(`closed with focus on ${await focused()}, not the control that opened it`);
+  }
+
+  // `/` from the page, the query kept, and a choice that goes somewhere.
+  await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+  await page.keyboard.press('/');
+  await page.waitForSelector('dialog.search[open]', { timeout: 2000 });
+  const kept = await page.$eval('.search-field', (field) => field.value);
+  if (kept !== 'book') failed.push(`reopened with "${kept}", not the last query`);
+  const before = await page.evaluate(() => location.hash);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('dialog.search', { hidden: true, timeout: 2000 });
+  // The route changes in a transition, a render after the one that closed the
+  // dialog, so focus reaches the page a moment after the dialog is gone.
+  const arrived = await page
+    .waitForFunction((from) => location.hash !== from && document.activeElement?.matches('main'), { timeout: 2000 }, before)
+    .then(() => true, () => false);
+  if (!arrived) failed.push(`Enter on a result left ${await page.evaluate(() => location.hash)} with focus on ${await focused()}`);
+  return failed;
 }
 
 /** `console.error(format, ...rest)` as one line: `%s`, `%d`, `%o` and `%i`. */

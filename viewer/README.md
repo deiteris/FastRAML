@@ -98,6 +98,26 @@ its description under its name: a fixed 320px column left a phone a third of
 its width, and a three-column table broke `object` into `objec t`. `shots`
 checks a phone width alongside the split-window 760.
 
+**Search is a dialog, not a filter.** The nav's field used to narrow the tree
+by name, which could not find `Book` from a word in its description and could
+not say what a match was. The field now opens a dialog, from `/` or Ctrl+K as
+well. It searches documentation by title and content; endpoints by path,
+display name and description; operations by method and path together
+(`get books`) as well as by display name and description; types and
+annotation types by name, display name and description; and security schemes
+by name, display name, type and description. Results are grouped by what they
+are, and the group with the best match comes first: with the groups in the
+nav's order, four documentation pages that mention a book in passing pushed
+the type named `Book` off screen.
+
+The matching is Fuse.js's token search, with every word required, a name
+outranking a display name and a display name outranking prose. `src/search.ts`
+holds what Fuse cannot know: what an entry is called and which page shows it,
+and its prose as the text a reader sees. A link's target is not searchable,
+because it is never shown. The dialog is a modal `<dialog>` holding a
+combobox and a grouped listbox; focus returns to whatever opened it. On a phone
+it is the whole screen, with a Close button, because there is no Escape key.
+
 Both themes follow the system by default; the toggle has three states, because
 one with two silently makes the choice for a reader who never made it.
 
@@ -183,9 +203,9 @@ Four layers, because each sees what the ones before it cannot:
 | | catches |
 |---|---|
 | `tsc` | types |
-| `npm run layers` | a component importing a page, `model.ts` or `load.ts` importing a component, an import cycle |
-| `npm run smoke` | a page that throws or comes back empty; a union member named by its container; a `$ref` that resolves nowhere |
-| `npm run shots` | anything that only happens in a browser, **and** the layout |
+| `npm run layers` | a component importing a page, `model.ts`, `load.ts` or `search.ts` importing a component, an import cycle |
+| `npm run smoke` | a page that throws or comes back empty; a union member named by its container; a `$ref` that resolves nowhere; a search result that opens no page |
+| `npm run shots` | anything that only happens in a browser, **and** the layout; the search dialog driven by the keyboard |
 
 The browser layer is not decoration, though it is not in `check`. `smoke` renders to static markup, which does not
 run the client: an icon package that resolved a second copy of React threw
@@ -227,12 +247,14 @@ src/
   model.ts             index, addresses, path nesting, facet spelling
   numbers.ts           JSON parsing that keeps integers a double cannot hold
   load.ts              fetch api.json
+  search.ts            the search index: entries, Fuse options, prose as text
   App.tsx              shell, routes, scroll and title on arrival
   smoke.tsx            render every page, then the checks rendering cannot make
   pages/               one module per page, re-exported by index.ts
   components/
     Shape.tsx          the type renderer -- the traversal law, directly
-    Sidebar.tsx        the nav: path tree, declarations, filter
+    Sidebar.tsx        the nav: path tree, declarations, search button
+    Search.tsx         the search dialog
     Parameters.tsx, Bodies.tsx, Responses.tsx, Security.tsx, Borrowed.tsx
                        the parts of an operation page
     Url.tsx            base URI and path as one address

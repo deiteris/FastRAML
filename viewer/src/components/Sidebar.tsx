@@ -1,6 +1,10 @@
 /**
  * The navigation: endpoints by path, then the declarations.
  *
+ * It lists and does not filter. Finding something is the search dialog's job
+ * (`Search.tsx`), which matches descriptions as well as names and says what
+ * each match is; a filter here could only narrow the tree by name.
+ *
  * Endpoints nest, because a path does. `document.endpoints` is flat and keyed
  * by the full path -- that is what the model holds after P6 propagated URI
  * parameters down -- so the nesting is rebuilt from the keys by `pathTree`.
@@ -9,41 +13,34 @@
 import { useMemo, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { type Document, type Index, type PathNode, type PathOrder, declarations, methodsOf, pathTree } from '../model';
+import { SearchButton } from './Search';
 import { Chevron, ThemeToggle, Verb } from './ui';
 
 export function Sidebar({
   document,
   index,
   pathOrder = 'authored',
+  onSearch,
 }: {
   document: Document;
   index: Index;
+  /** Opens the search dialog, which the shell owns. */
+  onSearch: () => void;
   /** How endpoint paths are listed: as declared, or A-Z (see `pathTree`). */
   pathOrder?: PathOrder;
 }) {
-  const [filter, setFilter] = useState('');
   const roots = useMemo(() => pathTree(document.endpoints, pathOrder), [document, pathOrder]);
-  const matches = (text: string) => !filter || text.toLowerCase().includes(filter.toLowerCase());
-
-  const docs = (document.entry_point?.documentation ?? [])
-    .map((item, at) => ({ item, at }))
-    .filter(({ item }) => matches(item.title));
-  const types = declarations(document.types).filter(({ name }) => matches(name));
-  const annotationTypes = declarations(document.annotation_types).filter(({ name }) => matches(name));
-  const schemes = declarations(document.security_schemes).filter(({ name }) => matches(name));
+  const docs = (document.entry_point?.documentation ?? []).map((item, at) => ({ item, at }));
+  const types = declarations(document.types);
+  const annotationTypes = declarations(document.annotation_types);
+  const schemes = declarations(document.security_schemes);
 
   return (
     <nav className="sidebar" id="sidebar">
       <Link to="/" className="brand">
         {document.entry_point?.title ?? 'API reference'}
       </Link>
-      <input
-        className="filter"
-        type="search"
-        placeholder="Filter…"
-        value={filter}
-        onChange={(event) => setFilter(event.target.value)}
-      />
+      <SearchButton onOpen={onSearch} />
 
       {/* A destination among the others, not only the thing the title happens
           to link to. What the API is -- its base URI, its media types, its
@@ -61,9 +58,8 @@ export function Sidebar({
         </NavLink>
       </h3>
 
-      {/* First, because it is the part meant to be read rather than looked up
-          -- and paired with its position, before the filter, because filtering
-          a list renumbers it and the route is the position. */}
+      {/* First, because it is the part meant to be read rather than looked up.
+          Keyed by position, because the route is the position. */}
       {docs.length > 0 && (
         <NavGroup title="Documentation" href="/documentation">
           {docs.map(({ item, at }) => (
@@ -74,7 +70,7 @@ export function Sidebar({
 
       <NavGroup title="Endpoints">
         {roots.map((node) => (
-          <PathBranch key={node.path} node={node} matches={matches} />
+          <PathBranch key={node.path} node={node} />
         ))}
       </NavGroup>
 
@@ -123,10 +119,8 @@ export function Sidebar({
  * leaving it out would break the nesting, and it does not link, because there
  * is nothing to show.
  */
-function PathBranch({ node, matches }: { node: PathNode; matches: (text: string) => boolean }) {
+function PathBranch({ node }: { node: PathNode }) {
   const [open, setOpen] = useState(true);
-  const relevant = matches(node.path) || node.children.some((child) => within(child, matches));
-  if (!relevant) return null;
   const methods = node.endpoint ? methodsOf(node.endpoint) : [];
   const expandable = methods.length > 0 || node.children.length > 0;
   return (
@@ -171,16 +165,12 @@ function PathBranch({ node, matches }: { node: PathNode; matches: (text: string)
       {open && node.children.length > 0 && (
         <ul className="nav-children">
           {node.children.map((child) => (
-            <PathBranch key={child.path} node={child} matches={matches} />
+            <PathBranch key={child.path} node={child} />
           ))}
         </ul>
       )}
     </li>
   );
-}
-
-function within(node: PathNode, matches: (text: string) => boolean): boolean {
-  return matches(node.path) || node.children.some((child) => within(child, matches));
 }
 
 /**

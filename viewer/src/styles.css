@@ -259,15 +259,193 @@ h4 {
   margin-bottom: 14px;
 }
 
-.filter {
+/* Drawn as the field it opens, so it reads as the place to search. */
+.search-open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--bg);
-  color: var(--ink);
+  color: var(--faint);
   font: inherit;
   font-size: 13px;
+  cursor: text;
+}
+
+.search-open:hover {
+  border-color: var(--faint);
+}
+
+kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--dim);
+  background: var(--panel);
+}
+
+/* -- search dialog ----------------------------------------------------------- */
+
+/*
+ * Near the top rather than centred: the list grows downwards as the query
+ * narrows, and a centred box would move its field with every keystroke.
+ */
+.search {
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(640px, calc(100vh - 96px));
+  margin: 10vh auto auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+  color: var(--ink);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 22%);
+}
+
+.search::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+
+.search-body {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+}
+
+.search-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* A small bordered button: Menu, Search in the top bar, Close in the dialog. */
+.plain-button {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.search-field {
+  flex: 1;
+  min-width: 0;
+  padding: 16px 20px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 18px;
+  line-height: 26px;
+  outline: none;
+}
+
+.search-results {
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+
+.search-results:empty {
+  display: none;
+}
+
+.search-group {
+  padding: 12px 12px 4px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.search-option {
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.search-option.is-active {
+  background: var(--line-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Wraps, so the file drops under the name on a phone rather than being lost:
+   it is what tells two libraries' `Book` apart. */
+.search-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.search-title {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.search-title.mono {
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.search-detail {
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.search-file {
+  margin-left: auto;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.search-excerpt {
+  margin-top: 2px;
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.search mark {
+  background: none;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.search-none {
+  margin: 0;
+  padding: 20px;
+  color: var(--dim);
+}
+
+.search-keys {
+  margin: 0;
+  padding: 8px 20px;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .nav-group ul {
@@ -1606,14 +1784,28 @@ table.properties td {
     white-space: nowrap;
   }
 
-  .nav-open {
-    padding: 4px 10px;
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    background: var(--bg);
-    color: var(--dim);
-    font-size: 13px;
-    cursor: pointer;
+  .topbar-search {
+    margin-left: auto;
+  }
+
+  /* The whole screen: a phone's keyboard takes half of it already. */
+  .search {
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .search-body {
+    max-height: 100dvh;
+  }
+
+  /* Keys a touch screen does not have. */
+  .search-keys {
+    display: none;
   }
 
   .sidebar {

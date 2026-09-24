@@ -498,7 +498,7 @@ export function baseUriOf(api: EntryPoint | null | undefined): string {
  * not a footnote about it. Returns nothing when the base URI already agrees,
  * which is the ordinary case and would otherwise print the scheme twice.
  */
-export function schemeOf(protocols: string[] | undefined, base: string): string | null {
+function schemeOf(protocols: string[] | undefined, base: string): string | null {
   if (!protocols || protocols.length === 0) return null;
   const only = protocols.length === 1 ? protocols[0]!.toLowerCase() : null;
   if (only === null) return null;

@@ -6,7 +6,7 @@
  * schemas, and the URI parameters that apply to all of them scrolled away.
  */
 
-import { Link } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { Annotations } from '../components/Extra';
 import { fromBaseUri } from '../components/Borrowed';
 import { ParameterTable } from '../components/Parameters';
@@ -15,7 +15,6 @@ import { Url } from '../components/Url';
 import { Prose } from '../components/markdown';
 import { Empty, Section, Verb } from '../components/ui';
 import { methodsOf } from '../model';
-import { useParams } from 'react-router';
 import type { Props } from './props';
 
 export function EndpointPage({ document, index }: Props) {

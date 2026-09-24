@@ -5,7 +5,6 @@ import { Annotations } from '../components/Extra';
 import { ParameterTable } from '../components/Parameters';
 import { Prose } from '../components/markdown';
 import { SecuredByList } from '../components/Security';
-// import { oneLine } from '../components/json';
 import { Chip, Empty, KeyValues, Section } from '../components/ui';
 import { baseUriOf, declarations } from '../model';
 import type { Props } from './props';
@@ -78,38 +77,6 @@ export function Overview({ document, index }: Props) {
           </ul>
         </Section>
       )}
-
-      {/* {document.annotations.length > 0 && (
-        <Section title="Annotations applied in this document">
-          <table className="properties">
-            <thead>
-              <tr>
-                <th>Annotation</th>
-                <th>Target</th>
-                <th>Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {document.annotations.map((applied, at) => {
-                const entry = index.get(applied.type);
-                return (
-                  <tr key={at}>
-                    <td className="property-name">
-                      {entry ? <Link to={entry.href}>({applied.name})</Link> : <code>({applied.name})</code>}
-                    </td>
-                    <td>
-                      <Chip>{applied.target}</Chip>
-                    </td>
-                    <td>
-                      <code>{oneLine(applied.value)}</code>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Section>
-      )} */}
     </article>
   );
 }

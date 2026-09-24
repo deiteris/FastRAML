@@ -37,12 +37,16 @@ unwrapped copies.
 | Security and annotations | `parser/security.py`, `parser/annotations.py`, `parser/directives.py` | [09](09-security-and-annotations.md) |
 | Type system | `types/` | [05](05-type-model.md) through [10](10-validation.md) |
 | Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, and linting | [16](16-graph.md), [18](18-linting.md) |
+| Joining API documents | `join/` | [20](20-join.md) |
 | CLI | `cli.py` | [13](13-public-api.md) |
 
 `views/` is a consumer layer, not a parser pass. Nothing under `parser/` or
 `types/` may import `fastraml.views`; outside `views/`, only `cli.py` may do so.
 Views requiring effective types require their caller to provide an unwrapped
 model; CLI commands do this through `ParseOptions(unwrap=True)`.
+
+`join/` runs on source trees before decoding, so it is neither a pass nor a view.
+It imports no view, and only `cli.py` imports it ([20](20-join.md) § 9).
 
 `registry.py` imports no parser or type module at runtime. `loaders.py` is the
 only module that reads files or the network. The type layer may import

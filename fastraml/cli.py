@@ -11,6 +11,7 @@ fastraml list FILE [PATTERN]
 fastraml refs|deps FILE NAME
 fastraml show [--depth N] FILE NAME
 fastraml compat [--types] [--json] OLD NEW
+fastraml join [--title T] [--version V] [--description D] [--base-uri INPUT=URI]... INPUT INPUT...
 fastraml query [FILE] (-q SPARQL | -Q FILE.rq | -n NAME | --list | --show NAME)
 fastraml lint [--config FILE] [--format human|text|json|summary] FILE...
 fastraml skills (list | get NAME... | install [NAME...])
@@ -141,6 +142,8 @@ def _parser() -> argparse.ArgumentParser:
 
     _add_skills(commands)
 
+    _add_join(commands)
+
     _COMMANDS.update(
         validate=_validate,
         info=_info,
@@ -156,6 +159,7 @@ def _parser() -> argparse.ArgumentParser:
         query=_query,
         lint=_lint,
         skills=_skills,
+        join=_join,
     )
     return parser
 
@@ -329,6 +333,23 @@ def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser
         help='levels to expand; 1 names nested types rather than opening them (default: 1)',
     )
     _add_common(show)
+
+
+def _add_join(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    join = commands.add_parser('join', help='combine API documents into one')
+    join.add_argument('files', metavar='INPUT', nargs='+', help='API documents; the first is the primary input')
+    join.add_argument('--title', help="the joined API's title")
+    join.add_argument('--version', dest='api_version', metavar='VERSION', help="the joined API's version")
+    join.add_argument('--description', help="the joined API's description; empty to omit it")
+    join.add_argument(
+        '--base-uri',
+        action='append',
+        default=[],
+        metavar='INPUT=URI',
+        help="replace one input's baseUri; repeatable",
+    )
+    _add_output(join)
+    _add_common(join)
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
@@ -1267,6 +1288,62 @@ def _guide_references(guide: _Guide) -> list[tuple[str, str]]:
 
 
 # -- options ------------------------------------------------------------------
+
+
+def _join(args: argparse.Namespace) -> int:
+    """Combine API documents into one (docs/20)."""
+    from pathlib import Path  # noqa: PLC0415 - join only
+
+    import yaml  # noqa: PLC0415 - config parameters only
+
+    from fastraml.errors import RamlError  # noqa: PLC0415
+    from fastraml.join import BaseUriOverride, JoinOptions, join  # noqa: PLC0415
+    from fastraml.uris import path_to_file_uri  # noqa: PLC0415
+    from fastraml.yamlnode import compose  # noqa: PLC0415
+
+    if len(args.files) < 2:  # noqa: PLR2004 - a join of one document is a copy
+        print('join: at least two INPUT files are required', file=sys.stderr)
+        return EXIT_INVALID
+
+    def uri_of(path: str) -> str:
+        return path_to_file_uri(Path(path).absolute())
+
+    configured = args.fastraml_config.join
+    overrides: dict[str, BaseUriOverride] = {}
+    for item in configured.inputs:
+        if item.base_uri is None:
+            if item.base_uri_parameters is not None:
+                print(f'join: {item.path}: baseUriParameters needs a baseUri beside it', file=sys.stderr)
+                return EXIT_INVALID
+            continue
+        parameters = None
+        if item.base_uri_parameters is not None:
+            text = yaml.safe_dump(dict(item.base_uri_parameters), sort_keys=False, allow_unicode=True)
+            parameters = compose(text, uri=path_to_file_uri(Path(args.config).absolute()))
+        overrides[uri_of(item.path)] = BaseUriOverride(item.base_uri, parameters)
+    # A CLI override replaces the configuration's entry for that input whole.
+    for raw in args.base_uri:
+        path, separator, uri = raw.partition('=')
+        if not separator or not path or not uri:
+            print(f'join: --base-uri takes INPUT=URI, not {raw!r}', file=sys.stderr)
+            return EXIT_INVALID
+        overrides[uri_of(path)] = BaseUriOverride(uri)
+
+    options = JoinOptions(
+        title=args.title if args.title is not None else configured.title,
+        version=args.api_version if args.api_version is not None else configured.version,
+        description=args.description if args.description is not None else configured.description,
+        base_uris=overrides,
+        output=args.output,
+        parse=_options(args, validate=False),
+    )
+    try:
+        text = join(args.files, options)
+    except RamlError as err:
+        print('join: failed', file=sys.stderr)
+        print(err, file=sys.stderr)
+        return EXIT_INVALID
+    return _emit_document(args, text)
 
 
 def _options(args: argparse.Namespace, *, validate: bool = True, retain_source: bool = False) -> ParseOptions:

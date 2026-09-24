@@ -44,6 +44,7 @@ __all__ = [
     'mark_subtree',
     'node_error',
     'pairs',
+    'plain_tag',
     'read_head',
     'with_content',
     'with_value',
@@ -159,6 +160,19 @@ def _assert_resolver_shape() -> None:
 
 
 _assert_resolver_shape()
+
+
+def plain_tag(value: str) -> str:
+    """The short tag `compose` gives `value` written as a plain scalar.
+
+    A writer needs it to know whether a scalar reads back with its tag unquoted:
+    under YAML 1.2, `1e3` is a float and `no` is a string.
+    """
+    for tag, regexp in _RamlLoader.yaml_implicit_resolvers.get(value[:1], ()):
+        if regexp.match(value):
+            short: str = _SHORT_TAGS.get(tag, tag)
+            return short
+    return TAG_STR
 
 
 def backend_name() -> str:

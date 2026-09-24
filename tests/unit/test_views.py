@@ -79,6 +79,30 @@ class TestTheModelDoesNotSeeTheViews:
         assert not offenders, '\n'.join(offenders)
 
 
+class TestTheJoinIsNeitherAPassNorAView:
+    """`fastraml/join/` runs on source trees before decoding (docs/20 § 9)."""
+
+    def test_nothing_but_the_cli_imports_the_join(self):
+        allowed = {pathlib.Path('fastraml/cli.py')}
+        offenders = [
+            f'{path}:{line} imports {module}'
+            for path in _sources('fastraml')
+            if path not in allowed and 'join' not in path.parts
+            for line, module in _imports(path)
+            if module == 'fastraml.join' or module.startswith('fastraml.join.')
+        ]
+        assert not offenders, '\n'.join(offenders)
+
+    def test_the_join_imports_no_view(self):
+        offenders = [
+            f'{path}:{line} imports {module}'
+            for path in _sources('fastraml/join')
+            for line, module in _imports(path)
+            if module.startswith('fastraml.views')
+        ]
+        assert not offenders, '\n'.join(offenders)
+
+
 class TestThePackageCostsNothingToImport:
     def test_importing_the_package_imports_no_view(self):
         # A package `__init__` that pulled its modules in would make `fastraml`'s

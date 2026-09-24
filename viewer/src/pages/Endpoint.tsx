@@ -12,7 +12,7 @@ import { fromBaseUri } from '../components/Borrowed';
 import { ParameterTable } from '../components/Parameters';
 import { SecuredByList } from '../components/Security';
 import { Url } from '../components/Url';
-import { Prose } from '../components/markdown';
+import { Prose, ProseInline, firstParagraph } from '../components/markdown';
 import { Empty, Section, Verb } from '../components/ui';
 import { methodsOf } from '../model';
 import type { Props } from './props';
@@ -57,7 +57,13 @@ export function EndpointPage({ document, index }: Props) {
               <li key={method}>
                 <Link to={`/endpoints/${encodeURIComponent(full)}/${method}`} className="method-link">
                   <Verb method={method} />
-                  <span className="method-name">{operation.display_name ?? operation.description ?? full}</span>
+                  {/* A description is Markdown, and may run to pages: its first
+                      paragraph, rendered, or the row read as source. */}
+                  {operation.display_name || !firstParagraph(operation.description ?? '') ? (
+                    <span className="method-name">{operation.display_name ?? full}</span>
+                  ) : (
+                    <ProseInline className="method-name">{operation.description}</ProseInline>
+                  )}
                 </Link>
               </li>
             ))}

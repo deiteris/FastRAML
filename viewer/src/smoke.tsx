@@ -433,6 +433,36 @@ if (!highlightedFence.includes('hljs-attr') || !highlightedFence.includes('langu
 process.stdout.write(`${HOSTILE.length} hostile descriptions checked\n`);
 
 /*
+ * A resource's method list names an operation by its description where it has
+ * no `displayName`, and the description is Markdown. The sample names every
+ * operation, so one is unnamed here: the row must read as rendered prose, and
+ * as its first paragraph only.
+ */
+{
+  const [path, endpoint] = Object.entries(document.endpoints).find(([, one]) => Object.keys(one.operations).length > 0)!;
+  const [method, operation] = Object.entries(endpoint.operations)[0]!;
+  const unnamed: Document = {
+    ...document,
+    endpoints: {
+      ...document.endpoints,
+      [path]: {
+        ...endpoint,
+        operations: { ...endpoint.operations, [method]: { ...operation, display_name: null, description: 'Lists *books*.\n\n- the rest' } },
+      },
+    },
+  };
+  const html = renderToStaticMarkup(
+    <MemoryRouter initialEntries={[`/endpoints/${encodeURIComponent(path)}`]}>
+      <Pages document={unnamed} index={new Index(Tree.of(unnamed))} />
+    </MemoryRouter>,
+  );
+  if (!html.includes('<em>books</em>') || html.includes('*books*') || html.includes('the rest')) {
+    process.stderr.write(`METHOD ${method.toUpperCase()} ${path}: an unnamed operation's description is not its rendered first paragraph\n`);
+    failed += 1;
+  }
+}
+
+/*
  * A number the page shows is the number the document carried.
  *
  * Two halves, because the failure has two causes and either one alone is a

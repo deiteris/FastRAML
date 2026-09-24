@@ -212,7 +212,12 @@ try {
       for (const [name, at] of PAGES) {
         if (!wanted(name, view)) continue;
         route = `${at}${view.suffix}`;
-        await page.goto(`http://localhost:${PORT}/#${at}`, { waitUntil: 'networkidle0' });
+        // The same route twice in a row -- two widths of one page, or two names
+        // for one route -- is no navigation at all, so the disclosures `nesting`
+        // opened on the last shot would still be open. A reload starts clean.
+        const url = `http://localhost:${PORT}/#${at}`;
+        if (page.url() === url) await page.reload({ waitUntil: 'networkidle0' });
+        else await page.goto(url, { waitUntil: 'networkidle0' });
         // The document loads after the first paint, so wait for content rather
         // than for the network: a screenshot of the loading state proves nothing.
         await page.waitForSelector('main article, main .empty', { timeout: 5000 });

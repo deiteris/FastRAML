@@ -98,12 +98,12 @@ one with two silently makes the choice for a reader who never made it.
 
 ## Where the document comes from
 
-Three ways, one parsed value:
+Always `api.json`, beside the bundle:
 
 | | for |
 |---|---|
 | `public/api.json` | a built bundle someone is handed |
-| the file picker | whatever `fastraml tree` just printed |
+| `fastraml serve FILE` | a document being written; the server answers `api.json` with it |
 
 ## The contract is generated
 
@@ -217,7 +217,7 @@ that looks fine and says something untrue:
 src/
   tree.d.ts            GENERATED -- the contract
   model.ts             index, addresses, path nesting, facet spelling
-  load.ts              fetch api.json / file picker
+  load.ts              fetch api.json
   App.tsx              shell, sidebar, routes
   pages.tsx            one page per section
   smoke.tsx            render every page, fail on the first that throws

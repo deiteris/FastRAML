@@ -404,11 +404,6 @@ h4 {
   align-items: flex-start;
 }
 
-.picker input {
-  display: none;
-}
-
-.picker span,
 .theme {
   display: inline-block;
   padding: 5px 10px;
@@ -420,7 +415,6 @@ h4 {
   cursor: pointer;
 }
 
-.picker span:hover,
 .theme:hover {
   border-color: var(--accent);
   color: var(--accent);

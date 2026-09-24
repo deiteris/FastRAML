@@ -29,12 +29,15 @@ import {
   isRecursive,
   isRef,
   labelOf,
+  methodsOf,
+  operationHref,
   pathTree,
   type Document,
   type Example,
   type Shape,
 } from './model';
 import { parse, stringify } from './numbers';
+import { type Category, type Runs, plainText, searchIndexOf } from './search';
 
 const source = process.argv[2] ?? 'public/api.json';
 const document = parse(readFileSync(source, 'utf-8')) as Document;
@@ -432,6 +435,55 @@ if (!highlightedFence.includes('hljs-attr') || !highlightedFence.includes('langu
   failed += 1;
 }
 process.stdout.write(`${HOSTILE.length} hostile descriptions checked\n`);
+
+/*
+ * Search. Every result must open a page that shows it: a result whose route
+ * misses renders "No such page", which a reader takes as the document's fault.
+ * A page that found nothing renders only its `Empty`, so that is the test.
+ */
+const searchable = searchIndexOf(document, index);
+const searchableThings =
+  (document.entry_point?.documentation ?? []).length +
+  Object.values(document.endpoints).reduce((sum, endpoint) => sum + 1 + methodsOf(endpoint).length, 0) +
+  declarations(document.types).length +
+  declarations(document.annotation_types).length +
+  declarations(document.security_schemes).length;
+if (searchable.entries.length !== searchableThings) {
+  process.stderr.write(`SEARCH ${searchable.entries.length} entries indexed, ${searchableThings} searchable things in the document\n`);
+  failed += 1;
+}
+for (const entry of searchable.entries) {
+  const html = renderToStaticMarkup(
+    <MemoryRouter initialEntries={[entry.href]}>
+      <Pages document={document} index={index} />
+    </MemoryRouter>,
+  );
+  if (html.startsWith('<p class="empty">')) {
+    process.stderr.write(`SEARCH ${entry.category} ${entry.title} opens ${entry.href}, which shows nothing\n`);
+    failed += 1;
+  }
+}
+const best = (query: string, category: Category) =>
+  searchable.find(query).find((group) => group.category === category)?.results[0];
+const marked = (runs: Runs | undefined) => (runs ?? []).filter(([, on]) => on).map(([text]) => text).join(' ');
+const getBooks = best('get books', 'operation');
+const searchChecks: [string, boolean][] = [
+  // The verb and the path together name an operation, and every word must match.
+  ['get books finds GET /books', getBooks?.entry.href === operationHref('/books', 'get')],
+  ['a word nothing contains empties the result', searchable.find('isbn qqxzv').length === 0],
+  // The verb is a badge, so the mark belongs on the path beside it.
+  ['an operation is marked on its path', marked(getBooks?.title) === 'books'],
+  ['an annotation type is marked inside its parentheses', marked(best('deprecated', 'annotationType')?.title) === 'deprecated'],
+  // Prose is what a reader sees: the link text, never its target.
+  ['a link target is not searchable text', plainText('See [the guide](https://example.com/qqxzv).') === 'See the guide.'],
+];
+for (const [what, holds] of searchChecks) {
+  if (!holds) {
+    process.stderr.write(`SEARCH ${what}: does not hold\n`);
+    failed += 1;
+  }
+}
+process.stdout.write(`${searchable.entries.length} search entries open a page\n`);
 
 /*
  * The nav lists paths as declared unless the reader asks for A-Z. Declaration

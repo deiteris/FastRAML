@@ -14,8 +14,8 @@
  *   2. No import cycle. The one cycle that is real -- a shape holds attributes,
  *      an attribute holds a shape -- lives inside `components/Shape.tsx`, where
  *      a cycle costs nothing, rather than across two modules.
- *   3. `model.ts` and `load.ts` import no component. They are the reading layer
- *      and know nothing about rendering.
+ *   3. `model.ts`, `load.ts` and `search.ts` import no component. They are the
+ *      reading layer and know nothing about rendering.
  *
  *     node layers.mjs
  */
@@ -24,6 +24,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname, relative, resolve } from 'node:path';
 
 const ROOT = 'src';
+const READING = new Set(['src/model.ts', 'src/load.ts', 'src/search.ts']);
 const files = [...walk(ROOT)].filter((path) => /\.tsx?$/.test(path) && !path.endsWith('.d.ts'));
 const imports = new Map(files.map((path) => [path, local(path)]));
 
@@ -35,7 +36,7 @@ for (const [path, targets] of imports) {
     if (where === 'components' && area(target) === 'pages') {
       failures.push(`${path} imports the page ${target}: components are composed by pages, not the reverse`);
     }
-    if ((path === 'src/model.ts' || path === 'src/load.ts') && area(target) !== null) {
+    if (READING.has(path) && area(target) !== null) {
       failures.push(`${path} imports ${target}: the reading layer knows nothing about rendering`);
     }
   }

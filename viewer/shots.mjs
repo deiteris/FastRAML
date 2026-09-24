@@ -6,8 +6,15 @@
  * name -- was invisible in the DOM and obvious in a picture. `npm run smoke`
  * proves a page renders; this is how it is seen.
  *
- *     npm run shots            # writes shots/*.png, both themes
- *     npm run shots -- --dark  # dark only
+ *     npm run shots                                # every page, width and theme
+ *     npm run shots -- --dark                      # dark only
+ *     npm run shots -- --only=type-object,search   # those pages only
+ *     npm run shots -- --view=phone --light        # one width, one theme
+ *
+ * `--only` takes the names in `PAGES`, plus `search` for the search dialog; a
+ * name it does not know is an error that lists the ones it does. A page is
+ * shot at the widths that list it, so `--only=types --view=narrow` is nothing,
+ * and says so. A selective run overwrites what it shoots and leaves the rest.
  *
  * Output is gitignored: these are for looking at, not for diffing.
  */
@@ -79,11 +86,13 @@ const NARROW = new Set([
   'type-at-the-limits',
 ]);
 const PHONE = new Set([...NARROW, 'overview', 'types', 'type-object', 'resource', 'operation-get', 'security']);
-const VIEWPORTS = [
-  { suffix: '', width: 1400 },
-  { suffix: '-narrow', width: 760, pages: NARROW },
-  { suffix: '-phone', width: 390, pages: PHONE },
+const ALL_VIEWPORTS = [
+  { name: 'wide', suffix: '', width: 1400 },
+  { name: 'narrow', suffix: '-narrow', width: 760, pages: NARROW },
+  { name: 'phone', suffix: '-phone', width: 390, pages: PHONE },
 ];
+/** The widths the search dialog is shot at: the dialog, and the full-screen sheet. */
+const SEARCH_VIEWPORTS = new Set(['wide', 'phone']);
 
 /**
  * The regions involved in indentation, each of which must look the same
@@ -111,6 +120,30 @@ const NESTINGS = [
 const RULED_NESTINGS = new Set(['inline attribute detail', 'each item', 'an expanded type']);
 
 const only = process.argv.includes('--dark') ? ['dark'] : process.argv.includes('--light') ? ['light'] : ['light', 'dark'];
+const chosen = listArgument('only', [...PAGES.map(([name]) => name), 'search']);
+const views = listArgument('view', ALL_VIEWPORTS.map(({ name }) => name));
+const VIEWPORTS = ALL_VIEWPORTS.filter((view) => views?.has(view.name) ?? true);
+const selective = chosen !== null || views !== null;
+const wanted = (name, view) => (chosen?.has(name) ?? true) && (!view.pages || view.pages.has(name));
+const searchViews = VIEWPORTS.filter((view) => SEARCH_VIEWPORTS.has(view.name) && (chosen?.has('search') ?? true));
+const planned = VIEWPORTS.reduce((sum, view) => sum + PAGES.filter(([name]) => wanted(name, view)).length, searchViews.length);
+if (planned === 0) {
+  console.error('nothing to shoot: no chosen page is listed at a chosen width');
+  process.exit(1);
+}
+
+/** `--name=a,b` as a set, checked against what exists; null when not given. */
+function listArgument(name, known) {
+  const given = process.argv.find((argument) => argument.startsWith(`--${name}=`));
+  if (!given) return null;
+  const values = new Set(given.slice(name.length + 3).split(',').filter(Boolean));
+  const unknown = [...values].filter((value) => !known.includes(value));
+  if (unknown.length > 0) {
+    console.error(`--${name}: unknown ${unknown.join(', ')}\nknown: ${known.join(', ')}`);
+    process.exit(1);
+  }
+  return values;
+}
 
 /*
  * The dev server, not `vite preview`, though `npm run shots` builds first and
@@ -136,7 +169,7 @@ server.on('exit', (code) => {
 
 try {
   await waitFor(`http://localhost:${PORT}/`);
-  rmSync('shots', { recursive: true, force: true });
+  if (!selective) rmSync('shots', { recursive: true, force: true });
   mkdirSync('shots', { recursive: true });
 
   const browser = await puppeteer.launch({ headless: true });
@@ -177,7 +210,7 @@ try {
     for (const view of VIEWPORTS) {
       await page.setViewport({ width: view.width, height: 1000, deviceScaleFactor: 2 });
       for (const [name, at] of PAGES) {
-        if (view.pages && !view.pages.has(name)) continue;
+        if (!wanted(name, view)) continue;
         route = `${at}${view.suffix}`;
         await page.goto(`http://localhost:${PORT}/#${at}`, { waitUntil: 'networkidle0' });
         // The document loads after the first paint, so wait for content rather
@@ -194,14 +227,27 @@ try {
         }
       }
     }
+
+    // The search dialog, driven by the keyboard alone: that is the path a
+    // static render cannot take, and the one a reader without a mouse has.
+    for (const view of searchViews) {
+      await page.setViewport({ width: view.width, height: 900, deviceScaleFactor: 2 });
+      route = `search${view.suffix}`;
+      await page.goto(`http://localhost:${PORT}/#/types`, { waitUntil: 'networkidle0' });
+      await page.waitForSelector('main article, main .empty', { timeout: 5000 });
+      for (const failure of await searchFails(page, view.suffix, only.length > 1 ? `-${theme}` : '')) {
+        failures.push(`${route}: ${failure}`);
+      }
+    }
   }
   await browser.close();
   await Promise.all(pending);
 
   for (const [kind] of NESTINGS) {
     const seen = levels[kind] ?? new Map();
+    // A selective run need not reach every construct; a full one must.
     if (seen.size === 0) {
-      failures.push(`no page draws ${kind}; the check on it is vacuous`);
+      if (!selective) failures.push(`no page draws ${kind}; the check on it is vacuous`);
     } else if (seen.size > 1) {
       const where = [...seen].map(([step, at]) => `\n         ${step} at ${at}`).join('');
       failures.push(`${kind} is drawn at ${seen.size} different indents:${where}`);
@@ -218,9 +264,10 @@ try {
   if (attributeSteps.some((step) => step !== '0px + 0px rule')) {
     failures.push(`attribute-list content owns an indent: ${attributeSteps.join(', ')}`);
   }
-  process.stdout.write(
-    `${NESTINGS.map(([kind]) => `${kind} ${[...(levels[kind] ?? new Map()).keys()][0]}`).join(', ')}\n`,
-  );
+  const drawn = NESTINGS.filter(([kind]) => levels[kind]?.size);
+  if (drawn.length > 0) {
+    process.stdout.write(`${drawn.map(([kind]) => `${kind} ${[...levels[kind].keys()][0]}`).join(', ')}\n`);
+  }
 
   if (failures.length > 0) {
     for (const failure of [...new Set(failures)]) console.error('ERROR', failure);
@@ -333,6 +380,61 @@ async function nesting(page) {
     },
     NESTINGS,
   );
+}
+
+/**
+ * Open, read, close and choose, by the keyboard; what went wrong, if anything.
+ *
+ * Focus is the thing checked throughout, because it is what the dialog manages
+ * and what nothing else here can see: a dialog that opens with the field
+ * unfocused, or closes with focus on `<body>`, looks correct in every picture.
+ */
+async function searchFails(page, suffix, themed) {
+  const failed = [];
+  const focusIs = (selector) => page.evaluate((wanted) => !!document.activeElement?.matches(wanted), selector);
+  const focused = () => page.evaluate(() => document.activeElement?.outerHTML.slice(0, 60) ?? 'nothing');
+  const opener = suffix === '-phone' ? '.topbar-search' : '.search-open';
+
+  await page.focus(opener);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('dialog.search[open]', { timeout: 2000 });
+  if (!(await focusIs('.search-field'))) failed.push(`opened with focus on ${await focused()}, not the field`);
+  await page.keyboard.type('book');
+  await page.waitForSelector('.search-option', { timeout: 2000 });
+  const shown = await page.evaluate(() => ({
+    groups: document.querySelectorAll('.search-results [role="group"]').length,
+    active: document.querySelector('.search-field')?.getAttribute('aria-activedescendant'),
+    selected: document.querySelector('[role="option"][aria-selected="true"]')?.id,
+  }));
+  if (shown.groups < 2) failed.push(`"book" found ${shown.groups} group(s); the sample has it in several`);
+  if (!shown.active || shown.active !== shown.selected) failed.push('the field does not point at the highlighted option');
+  const file = `shots/search${suffix}${themed}.png`;
+  await page.screenshot({ path: file });
+  process.stdout.write(`${file}\n`);
+
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('dialog.search', { hidden: true, timeout: 2000 });
+  if (!(await focusIs(opener))) {
+    failed.push(`closed with focus on ${await focused()}, not the control that opened it`);
+  }
+
+  // `/` from the page, the query kept, and a choice that goes somewhere.
+  await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+  await page.keyboard.press('/');
+  await page.waitForSelector('dialog.search[open]', { timeout: 2000 });
+  const kept = await page.$eval('.search-field', (field) => field.value);
+  if (kept !== 'book') failed.push(`reopened with "${kept}", not the last query`);
+  const before = await page.evaluate(() => location.hash);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('dialog.search', { hidden: true, timeout: 2000 });
+  // The route changes in a transition, a render after the one that closed the
+  // dialog, so focus reaches the page a moment after the dialog is gone.
+  const arrived = await page
+    .waitForFunction((from) => location.hash !== from && document.activeElement?.matches('main'), { timeout: 2000 }, before)
+    .then(() => true, () => false);
+  if (!arrived) failed.push(`Enter on a result left ${await page.evaluate(() => location.hash)} with focus on ${await focused()}`);
+  return failed;
 }
 
 /** `console.error(format, ...rest)` as one line: `%s`, `%d`, `%o` and `%i`. */

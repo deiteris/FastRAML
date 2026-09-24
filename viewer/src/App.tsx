@@ -9,8 +9,9 @@
  * `components/`, and this file holds the route table and the load.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HashRouter, Route, Routes, useLocation, useNavigationType } from 'react-router';
+import { SearchDialog } from './components/Search';
 import { Sidebar } from './components/Sidebar';
 import { DEFAULT_SOURCE, loadDocument } from './load';
 import { type Document, Index, Tree } from './model';
@@ -59,6 +60,12 @@ function Shell() {
   const menu = useRef<HTMLButtonElement>(null);
   // The drawer is for choosing a page; once one is chosen it is in the way.
   useEffect(() => setNavOpen(false), [pathname]);
+  const [searching, setSearching] = useState(false);
+  // Kept across openings: a reader who opened the wrong result comes back to
+  // the list they chose from, not an empty field.
+  const [query, setQuery] = useState('');
+  const openSearch = useCallback(() => setSearching(true), []);
+  useSearchKeys(openSearch);
 
   if (!document || !index) {
     return (
@@ -91,7 +98,7 @@ function Shell() {
         <button
           ref={menu}
           type="button"
-          className="nav-open"
+          className="plain-button"
           aria-expanded={navOpen}
           aria-controls="sidebar"
           onClick={() => setNavOpen(!navOpen)}
@@ -99,14 +106,44 @@ function Shell() {
           Menu
         </button>
         <span className="topbar-title">{document.entry_point?.title ?? 'API reference'}</span>
+        <button type="button" className="plain-button topbar-search" aria-haspopup="dialog" onClick={openSearch}>
+          Search
+        </button>
       </header>
-      <Sidebar document={document} index={index} />
+      <Sidebar document={document} index={index} onSearch={openSearch} />
       {navOpen && <div className="scrim" onClick={close} />}
       <main ref={main} tabIndex={-1}>
         <Pages document={document} index={index} />
       </main>
+      {searching && (
+        <SearchDialog document={document} index={index} query={query} onQuery={setQuery} onClose={() => setSearching(false)} />
+      )}
     </div>
   );
+}
+
+/**
+ * `/` and Ctrl+K (Cmd+K on a Mac) open search from anywhere on the page.
+ *
+ * `/` only where it cannot be text: typed into a field it is a character. The
+ * modifier chord has no such case, so it applies everywhere, and it is taken
+ * from the browser, whose own Ctrl+K would move focus to its address bar.
+ */
+function useSearchKeys(open: () => void) {
+  useEffect(() => {
+    const keyed = (event: globalThis.KeyboardEvent) => {
+      const chord = (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'k';
+      const target = event.target;
+      const typing =
+        target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+      const slash = event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !typing;
+      if (!chord && !slash) return;
+      event.preventDefault();
+      open();
+    };
+    window.addEventListener('keydown', keyed);
+    return () => window.removeEventListener('keydown', keyed);
+  }, [open]);
 }
 
 /**

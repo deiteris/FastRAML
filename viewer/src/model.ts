@@ -109,7 +109,7 @@ export class Index {
       // pages of detail on one screen otherwise, and only one of them is ever
       // the one being read.
       for (const [method, operation] of methodsOf(endpoint)) {
-        this.add(operation.id, `${method} ${path}`, 'operation', undefined, `/endpoints/${encodeURIComponent(path)}/${method}`);
+        this.add(operation.id, `${method} ${path}`, 'operation', undefined, operationHref(path, method));
       }
     }
   }
@@ -170,6 +170,10 @@ export function hrefOf(section: Section, name: string, file?: string): string {
     default:
       return `/endpoints/${encodeURIComponent(name)}`;
   }
+}
+
+export function operationHref(path: string, method: string): string {
+  return `${hrefOf('endpoint', path)}/${method}`;
 }
 
 /* -- reading a shape ----------------------------------------------------------- */

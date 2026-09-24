@@ -72,6 +72,9 @@ const routes = [
   // that the numbering the nav writes and the numbering the page reads agree.
   ...(document.entry_point?.documentation ?? []).map((_, at) => `/documentation/${at}`),
   ...Object.keys(document.endpoints).map((path) => `/endpoints/${encodeURIComponent(path)}`),
+  // Every operation, which is the page with the most on it. `/n/<address>`
+  // below reaches one only as a link to follow.
+  ...Object.entries(document.endpoints).flatMap(([path, endpoint]) => methodsOf(endpoint).map(([method]) => operationHref(path, method))),
   ...declarations(document.types).map(({ file, name }) => at('types', file, name)),
   ...declarations(document.annotation_types).map(({ file, name }) => at('annotation-types', file, name)),
   ...declarations(document.security_schemes).map(({ file, name }) => at('security', file, name)),
@@ -96,6 +99,13 @@ for (const route of routes) {
     if (html.length < smallest.size) smallest = { route, size: html.length };
     if (html.length < 40) {
       process.stderr.write(`EMPTY  ${route}\n`);
+      failed += 1;
+    }
+    // A link to a section lands on the first element with its id, so a second
+    // one is a section no link can reach.
+    const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(([, id]) => id);
+    for (const id of new Set(ids.filter((id, at) => ids.indexOf(id) !== at))) {
+      process.stderr.write(`ID     ${route}: id "${id}" appears more than once\n`);
       failed += 1;
     }
   } catch (error) {

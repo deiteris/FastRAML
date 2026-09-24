@@ -89,6 +89,14 @@ two scopes, which is the ordinary case.
 A **padlock** marks a secured operation, open where a `securedBy: [null]` entry
 means it may also be called unauthenticated.
 
+**Section headings link**: `#/endpoints/…/get#responses` opens the page at its
+responses, focused, clear of the phone's sticky bar. Every code block has a
+copy button, and the operation's URL has one.
+
+**A part of a page fails alone.** An error boundary around each page, and around
+an operation's request and responses, turns an exception into a line saying
+which part could not be shown, where it used to blank the app.
+
 An **array says what it holds on its own line** — `tags array of string`. A
 label and a rule around one word was three lines of chrome, and for `Book[]` it
 repeated what had just been read. An item with structure of its own still gets a
@@ -205,11 +213,11 @@ Four layers, because each sees what the ones before it cannot:
 |---|---|
 | `tsc` | types |
 | `npm run layers` | a component importing a page, `model.ts`, `load.ts` or `search.ts` importing a component, an import cycle |
-| `npm run smoke` | a page that throws or comes back empty; a union member named by its container; a `$ref` that resolves nowhere; a search result that opens no page |
-| `npm run shots` | anything that only happens in a browser, **and** the layout; the search dialog driven by the keyboard |
+| `npm run smoke` | a page that throws or comes back empty; an id twice on one page; a union member named by its container; a `$ref` that resolves nowhere; a search result that opens no page |
+| `npm run shots` | anything that only happens in a browser, **and** the layout; the search dialog and section links driven by the keyboard |
 
-`shots` takes what it shoots: `--only=` the page names in `PAGES`, plus
-`search`; `--view=` any of `wide`, `narrow`, `phone`; `--light` or `--dark`. An
+`shots` takes what it shoots: `--only=` the page names in `PAGES`, plus the
+interactions `search` and `anchor`; `--view=` any of `wide`, `narrow`, `phone`; `--light` or `--dark`. An
 unknown name is an error that lists the known ones. A selective run overwrites
 what it shoots and leaves the rest of `shots/`, and skips the check that every
 nesting construct was seen, since the pages chosen need not contain them all.
@@ -270,7 +278,8 @@ src/
     markdown.tsx       descriptions, and why rendering them is safe
     json.tsx, highlighting.ts
                        values and code blocks
-    ui.tsx             chips, tabs, sections, the theme toggle
+    ui.tsx             chips, tabs, sections, linkable headings, copy buttons,
+                       error boundaries, the theme toggle
 layers.mjs             the import layering, asserted
 shots.mjs              screenshot every page; fail on console errors and overflow
 ```

@@ -1,6 +1,7 @@
 /** Small pieces every page uses. Nothing here knows about RAML. */
 
-import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Component, type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router';
 
 export function Chip({ tone = 'plain', title, children }: { tone?: Tone; title?: string; children: ReactNode }) {
   return (
@@ -83,6 +84,90 @@ export function Section({ title, aside, children }: { title: string; aside?: Rea
 
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="empty">{children}</p>;
+}
+
+/**
+ * A heading a reader can link to, where it is given an `anchor`.
+ *
+ * The link is the route plus a fragment, `#/endpoints/…/get#query-parameters`:
+ * the router keeps the part after the second `#` as its own hash, and the shell
+ * scrolls to it on arrival. A `#` beside the title rather than the title as a
+ * link, because a heading that navigates reads as the way to somewhere else.
+ *
+ * Without an anchor it is a plain heading. The same table is titled `Headers`
+ * on an operation and inside every response tab, and two ids on one page would
+ * make a link land on whichever came first.
+ */
+export function Heading({ level, anchor, children }: { level: 2 | 4; anchor?: string; children: ReactNode }) {
+  const Tag = `h${level}` as const;
+  const { pathname } = useLocation();
+  return (
+    <Tag id={anchor} tabIndex={anchor ? -1 : undefined} className={anchor ? 'anchored' : undefined}>
+      {children}
+      {anchor && (
+        <Link to={{ pathname, hash: anchor }} className="anchor" aria-label="Link to this section">
+          #
+        </Link>
+      )}
+    </Tag>
+  );
+}
+
+/**
+ * Copy a text, and say so for a moment.
+ *
+ * The label changes rather than a toast appearing: the confirmation is where
+ * the reader is looking, and a screen reader hears it through `aria-live`.
+ */
+export function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
+  const [done, setDone] = useState<'copied' | 'failed' | null>(null);
+  useEffect(() => {
+    if (done === null) return;
+    const clear = setTimeout(() => setDone(null), 1500);
+    return () => clearTimeout(clear);
+  }, [done]);
+  const copy = () => {
+    // `clipboard` is absent outside a secure context -- a bundle opened over
+    // plain http from another machine -- and the write can be refused.
+    const write = navigator.clipboard?.writeText(text);
+    if (!write) return setDone('failed');
+    write.then(
+      () => setDone('copied'),
+      () => setDone('failed'),
+    );
+  };
+  return (
+    <button type="button" className="plain-button copy" onClick={copy} aria-live="polite">
+      {done === 'copied' ? 'Copied' : done === 'failed' ? 'Copy failed' : label}
+    </button>
+  );
+}
+
+/**
+ * A part of a page that fails alone.
+ *
+ * A document the reader is writing under `fastraml serve` is not the sample
+ * `smoke` renders, and one shape this app misreads threw away the whole page,
+ * nav included. Now it costs the section it is in, and says which.
+ *
+ * `smoke` renders to static markup, where a boundary catches nothing, so an
+ * exception there still fails the run.
+ */
+export class Boundary extends Component<{ what: string; children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error === null) return this.props.children;
+    return (
+      <p className="error" role="alert">
+        The {this.props.what} could not be shown: {this.state.error.message}
+      </p>
+    );
+  }
 }
 
 export function KeyValues({ rows }: { rows: [string, ReactNode][] }) {

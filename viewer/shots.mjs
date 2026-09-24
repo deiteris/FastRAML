@@ -11,10 +11,10 @@
  *     npm run shots -- --only=type-object,search   # those pages only
  *     npm run shots -- --view=phone --light        # one width, one theme
  *
- * `--only` takes the names in `PAGES`, plus `search` for the search dialog; a
- * name it does not know is an error that lists the ones it does. A page is
- * shot at the widths that list it, so `--only=types --view=narrow` is nothing,
- * and says so. A selective run overwrites what it shoots and leaves the rest.
+ * `--only` takes the names in `PAGES` and in `INTERACTIONS`; a name it does not
+ * know is an error that lists the ones it does. A page is shot at the widths
+ * that list it, so `--only=types --view=narrow` is nothing, and says so. A
+ * selective run overwrites what it shoots and leaves the rest.
  *
  * Output is gitignored: these are for looking at, not for diffing.
  */
@@ -91,8 +91,16 @@ const ALL_VIEWPORTS = [
   { name: 'narrow', suffix: '-narrow', width: 760, pages: NARROW },
   { name: 'phone', suffix: '-phone', width: 390, pages: PHONE },
 ];
-/** The widths the search dialog is shot at: the dialog, and the full-screen sheet. */
-const SEARCH_VIEWPORTS = new Set(['wide', 'phone']);
+/**
+ * What is driven rather than looked at: a name for `--only`, the route it
+ * starts from, and the check. Each runs wide and on a phone, where the search
+ * dialog becomes a full-screen sheet and a sticky bar can cover a heading.
+ */
+const INTERACTIONS = [
+  { name: 'search', start: '/types', check: searchFails },
+  { name: 'anchor', start: '/endpoints/%2Fsearch/get#responses', check: anchorFails },
+];
+const INTERACTION_VIEWPORTS = new Set(['wide', 'phone']);
 
 /**
  * The regions involved in indentation, each of which must look the same
@@ -120,13 +128,15 @@ const NESTINGS = [
 const RULED_NESTINGS = new Set(['inline attribute detail', 'each item', 'an expanded type']);
 
 const only = process.argv.includes('--dark') ? ['dark'] : process.argv.includes('--light') ? ['light'] : ['light', 'dark'];
-const chosen = listArgument('only', [...PAGES.map(([name]) => name), 'search']);
+const chosen = listArgument('only', [...PAGES.map(([name]) => name), ...INTERACTIONS.map(({ name }) => name)]);
 const views = listArgument('view', ALL_VIEWPORTS.map(({ name }) => name));
 const VIEWPORTS = ALL_VIEWPORTS.filter((view) => views?.has(view.name) ?? true);
 const selective = chosen !== null || views !== null;
 const wanted = (name, view) => (chosen?.has(name) ?? true) && (!view.pages || view.pages.has(name));
-const searchViews = VIEWPORTS.filter((view) => SEARCH_VIEWPORTS.has(view.name) && (chosen?.has('search') ?? true));
-const planned = VIEWPORTS.reduce((sum, view) => sum + PAGES.filter(([name]) => wanted(name, view)).length, searchViews.length);
+const interactions = VIEWPORTS.filter((view) => INTERACTION_VIEWPORTS.has(view.name)).flatMap((view) =>
+  INTERACTIONS.filter(({ name }) => chosen?.has(name) ?? true).map((interaction) => ({ view, ...interaction })),
+);
+const planned = VIEWPORTS.reduce((sum, view) => sum + PAGES.filter(([name]) => wanted(name, view)).length, interactions.length);
 if (planned === 0) {
   console.error('nothing to shoot: no chosen page is listed at a chosen width');
   process.exit(1);
@@ -233,14 +243,16 @@ try {
       }
     }
 
-    // The search dialog, driven by the keyboard alone: that is the path a
-    // static render cannot take, and the one a reader without a mouse has.
-    for (const view of searchViews) {
+    // What only happens when something is done to a page, driven the way a
+    // reader without a mouse would. Each starts from a fresh load: a link to a
+    // section is opened that way, and a hash-only `goto` is no load at all.
+    for (const { view, name, start, check } of interactions) {
       await page.setViewport({ width: view.width, height: 900, deviceScaleFactor: 2 });
-      route = `search${view.suffix}`;
-      await page.goto(`http://localhost:${PORT}/#/types`, { waitUntil: 'networkidle0' });
+      route = `${name}${view.suffix}`;
+      await page.goto(`http://localhost:${PORT}/#${start}`, { waitUntil: 'networkidle0' });
+      await page.reload({ waitUntil: 'networkidle0' });
       await page.waitForSelector('main article, main .empty', { timeout: 5000 });
-      for (const failure of await searchFails(page, view.suffix, only.length > 1 ? `-${theme}` : '')) {
+      for (const failure of await check(page, view.suffix, only.length > 1 ? `-${theme}` : '')) {
         failures.push(`${route}: ${failure}`);
       }
     }
@@ -439,6 +451,39 @@ async function searchFails(page, suffix, themed) {
     .waitForFunction((from) => location.hash !== from && document.activeElement?.matches('main'), { timeout: 2000 }, before)
     .then(() => true, () => false);
   if (!arrived) failed.push(`Enter on a result left ${await page.evaluate(() => location.hash)} with focus on ${await focused()}`);
+  return failed;
+}
+
+/**
+ * A link to a section lands on it, and a `#` beside a heading moves to it.
+ *
+ * Both end with the heading focused and in view below anything sticky: on a
+ * phone the top bar stays put, and a heading scrolled to the very top sits
+ * under it -- present, focused, and not visible.
+ */
+async function anchorFails(page, suffix, themed) {
+  const failed = [];
+  const landed = (id) =>
+    page
+      .waitForFunction((wanted) => document.activeElement?.id === wanted, { timeout: 2000 }, id)
+      .then(() => true, () => false);
+  const visible = (id) =>
+    page.evaluate((wanted) => {
+      const top = document.getElementById(wanted)?.getBoundingClientRect().top ?? -1;
+      const bar = document.querySelector('.topbar');
+      const covered = bar && getComputedStyle(bar).display !== 'none' ? bar.getBoundingClientRect().bottom : 0;
+      return top >= covered - 1 && top < window.innerHeight / 2;
+    }, id);
+
+  if (!(await landed('responses'))) failed.push('a link to #responses did not focus the Responses heading');
+  else if (!(await visible('responses'))) failed.push('the Responses heading is focused but not in view');
+  const file = `shots/anchor${suffix}${themed}.png`;
+  await page.screenshot({ path: file });
+  process.stdout.write(`${file}\n`);
+
+  await page.click('#headers .anchor');
+  if (!(await landed('headers'))) failed.push("the Headers heading's # did not move to it");
+  else if (!(await visible('headers'))) failed.push('the Headers heading is focused but not in view');
   return failed;
 }
 

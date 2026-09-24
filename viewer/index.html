@@ -5,6 +5,14 @@
     <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>API reference</title>
+    <!-- Before the first paint: `ThemeToggle` applies a stored choice only once
+         React has mounted, and a page drawn in the system theme first flashed. -->
+    <script>
+      try {
+        const theme = localStorage.getItem('theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

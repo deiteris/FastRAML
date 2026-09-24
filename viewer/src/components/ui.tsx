@@ -242,16 +242,20 @@ export interface Tab {
  * how the stylesheet's media query stays in charge.
  */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme | null) ?? 'system');
+  const [theme, setTheme] = useState<Theme>(storedTheme);
 
+  // `index.html` applies the stored choice before the first paint; this keeps
+  // the attribute and the store in step with the toggle after that.
   useEffect(() => {
     const root = window.document.documentElement;
-    if (theme === 'system') {
-      root.removeAttribute('data-theme');
-      localStorage.removeItem('theme');
-    } else {
-      root.setAttribute('data-theme', theme);
-      localStorage.setItem('theme', theme);
+    if (theme === 'system') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', theme);
+    try {
+      if (theme === 'system') localStorage.removeItem('theme');
+      else localStorage.setItem('theme', theme);
+    } catch {
+      // Storage refused (a file:// page, a private window): the choice lasts
+      // until the page closes, which is all that can be offered.
     }
   }, [theme]);
 
@@ -265,3 +269,13 @@ export function ThemeToggle() {
 }
 
 type Theme = 'system' | 'light' | 'dark';
+
+/** The stored choice, if it is one; anything else in the store means none was made. */
+function storedTheme(): Theme {
+  try {
+    const stored = localStorage.getItem('theme');
+    return stored === 'light' || stored === 'dark' ? stored : 'system';
+  } catch {
+    return 'system';
+  }
+}

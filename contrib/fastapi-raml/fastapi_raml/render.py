@@ -34,6 +34,7 @@ from fastapi.dependencies.models import (
 from fastapi.dependencies.utils import get_flat_params
 from fastapi.routing import APIRoute
 from raml_document import (
+    UNSET,
     Body,
     Document,
     Method,
@@ -207,7 +208,7 @@ def render(app: Any) -> Report:
     if app.servers:
         document.base_uri = app.servers[0]['url']
         for name, spec in (app.servers[0].get('variables') or {}).items():
-            document.base_uri_parameters[name] = TypeDecl(type='string', default=spec.get('default'))
+            document.base_uri_parameters[name] = TypeDecl(type='string', default=spec.get('default', UNSET))
         if len(app.servers) > 1:
             walk.drop('servers', f'{len(app.servers) - 1} extra server(s); RAML has one baseUri')
 

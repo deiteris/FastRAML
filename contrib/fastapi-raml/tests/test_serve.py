@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from examples.server import app
-from fastapi_raml import add_raml_routes
+from fastapi_raml import add_raml_routes, render
 from fastapi_raml.serve import RAML_MEDIA_TYPE
 
 
@@ -160,3 +160,9 @@ def test_a_custom_mount_path_carries_its_own_document(client: Any) -> None:  # n
     local = TestClient(fresh)
     assert local.get('/ui/').status_code == 200
     assert local.get('/ui/api.json').json() == local.get('/raml.json').json()
+
+
+def test_a_server_variable_without_a_default_renders_none() -> None:
+    """An absent default stays absent; `default: null` would be a value."""
+    fresh = FastAPI(servers=[{'url': 'https://{host}/v1', 'variables': {'host': {'enum': ['a', 'b']}}}])
+    assert 'default' not in render(fresh).to_raml().split('baseUriParameters:')[1]

@@ -33,7 +33,7 @@ export function Bodies({
   if (entries.length === 0) return null;
   return (
     <div className="bodies">
-      <Heading level={4} anchor={anchor}>
+      <Heading anchor={anchor}>
         {title}
       </Heading>
       <Tabs

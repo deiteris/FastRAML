@@ -44,7 +44,7 @@ export function Responses({
   if (codes.length === 0) return null;
   return (
     <section className="responses">
-      <Heading level={4} anchor={anchor}>
+      <Heading anchor={anchor}>
         {title}
       </Heading>
       <Tabs

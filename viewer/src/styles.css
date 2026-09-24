@@ -1624,15 +1624,22 @@ h4 {
   outline: none;
 }
 
+/* Shown on hover where there is hover, as the copy button is; a touch screen
+   has none, and a link it cannot see is one it will not tap. */
 .anchor {
   color: var(--faint);
   font-weight: 400;
-  opacity: 0;
 }
 
-.anchored:hover .anchor,
-.anchor:focus-visible {
-  opacity: 1;
+@media (hover: hover) {
+  .anchor {
+    opacity: 0;
+  }
+
+  .anchored:hover .anchor,
+  .anchor:focus-visible {
+    opacity: 1;
+  }
 }
 
 /* The address and its copy button, on one line while they fit. */

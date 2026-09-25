@@ -135,7 +135,10 @@ A step renders, in this order:
    out;
 5. the concrete HTTP request or response, whose first line is the method and
    path, or the status;
-6. one link, to the full reference entry.
+6. a link to the full reference entry.
+
+A declared type -- the body's `Book`, a field's `Money` -- links to its own
+entry, as it does in the reference.
 
 A step doesn't restate what its message already says: there's no "Send POST …"
 line, no status line, and not the RAML's own description of the method or

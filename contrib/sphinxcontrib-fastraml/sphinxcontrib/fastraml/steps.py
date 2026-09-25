@@ -5,8 +5,9 @@ reader looking something up and wrong for one following a guide: they have to
 leave the step to learn what `{tenant}` or `Book` means. A step is written for
 the second reader. Everything it needs is spelled out in place, in tables a
 reader scans down -- each input's meaning and constraints in words, the body's
-fields one level deep -- then the concrete message, and a single link to the
-full entry.
+fields one level deep -- then the concrete message, and a link to the full
+entry. A declared type is a link to its own entry, as it is in the reference,
+so a reader who wants to know what a `Money` is can go and look.
 
 An input is explained once per page. The next step that takes the same
 `tenant` shows its value in the message and leaves the explanation to the step
@@ -115,7 +116,7 @@ class Input:
 
 
 class Steps(Writer):
-    """Renders `raml:send` and `raml:expect`. Registers no targets; links only at the end."""
+    """Renders `raml:send` and `raml:expect`. Registers no targets of its own."""
 
     # -- raml:send -------------------------------------------------------------
 
@@ -288,7 +289,7 @@ class Steps(Writer):
     def body_fields(self, payload: Payload, fields: Fields) -> list[Node]:
         media = payload.media
         lead = nodes.paragraph(
-            '', '', nodes.Text('Body, '), nodes.literal(media, media), nodes.Text(f': {payload.words}')
+            '', '', nodes.Text('Body, '), nodes.literal(media, media), nodes.Text(': '), *self.label(payload.shape)
         )
         out: list[Node] = [lead]
         if fields == 'none':
@@ -306,7 +307,7 @@ class Steps(Writer):
         rows: list[list[list[Node]]] = [
             [
                 [nodes.literal(name, name)],
-                [nodes.Text(self.words(prop.base))],
+                self.label(prop.base),
                 _required(prop.required),
                 self.explained(prop.base),
             ]

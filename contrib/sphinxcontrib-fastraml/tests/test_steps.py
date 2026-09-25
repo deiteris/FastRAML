@@ -313,3 +313,17 @@ def test_fields_follow_every_field_when_there_is_no_example(build, tmp_path):
         conf=OFF,
     )
     assert [row[0] for row in rows(built)] == ['name', 'nick']
+
+
+def test_a_declared_type_in_a_step_links_to_its_entry(build):
+    built = build(
+        {
+            'index': 'Home\n====\n\n.. raml:send:: POST /books\n',
+            'types': 'Types\n=====\n\n.. raml:type:: Book\n\n.. raml:type:: Money\n',
+        },
+        conf=OFF,
+    )
+    links = built.links()
+    # The body's type, and a field's.
+    assert 'types.html#raml-books-type-sample-api.raml-Book' in links
+    assert 'types.html#raml-books-type-sample-api.raml-Money' in links

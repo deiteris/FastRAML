@@ -90,7 +90,7 @@ CI runs `npm run ci`; screenshots are not a CI gate.
 
 ## 4. Contrib projects
 
-`contrib/` contains seven independently versioned `uv` projects. Each has its
+`contrib/` contains eight independently versioned `uv` projects. Each has its
 own lock, dependencies, and test gate. The root `pyproject.toml` does not package
 them; CI runs their gates as a matrix.
 
@@ -104,6 +104,12 @@ README for its supported behavior. In particular:
   resulting JSON, so the generator still reads only the contract.
 - `fastraml-viewer` packages the built SPA and server helper without depending on
   `fastraml`.
+- `sphinxcontrib-fastraml` parses in-process with `unwrap=True` and reads the
+  effective model through the public parser API. The tree is a serialization
+  of that same model for readers that cannot import the parser; this one can,
+  and it validates each value a guide's step shows with the shape it is for. It
+  is a namespace package, so its `pyproject.toml` names the path `mypy`
+  checks.
 
 For most projects, work locally from the project directory:
 
@@ -145,14 +151,14 @@ source.
 
 - the root Python checks and tests
 - optional-extra, bindings, benchmark-linearity, and TCK jobs
-- the seven-project contrib matrix
+- the eight-project contrib matrix
 - the viewer production gate
 
 The `bindings` job installs Go and Node and rejects skipped binding or
 cross-language conformance checks. The `contrib` job runs each project with its
 own dependencies.
 
-There are eight independently versioned distributions: `fastraml` and the seven
+There are nine independently versioned distributions: `fastraml` and the eight
 projects under `contrib/`. `.github/workflows/publish.yml` selects a distribution
 from its tag, reruns that distribution's gate, verifies the tag version, and
 publishes with Trusted Publishing. Consult the workflow for supported tag forms.

@@ -89,6 +89,24 @@ class TestNarrowing:
         expected = {'BaseShape', 'Body', 'EndPoint', 'Operation', 'PatternProperty', 'Property', 'Request', 'Response'}
         assert expected <= set(fastraml.__all__)
 
+    def test_what_a_reader_of_the_effective_model_meets_is_exported(self):
+        """A consumer walking an API meets these, and should not import internals to name them.
+
+        A `securedBy:` entry and the scheme it binds, an example on a shape,
+        and the constraints a kind carries: `facets_of` is the one listing that
+        stays current as kinds gain facets (`types/base.py`).
+        """
+        expected = {
+            'Example',
+            'Examples',
+            'SecurityScheme',
+            'SecuritySchemeDefinition',
+            'SecuritySchemeDescription',
+            'SecuritySchemeSettings',
+            'facets_of',
+        }
+        assert expected <= set(fastraml.__all__)
+
     def test_the_rdf_namespace_is_read_from_the_package(self):
         """The README tells callers to read `RAML_NS` rather than hard-code it,
         because the namespace is not frozen before 1.0."""

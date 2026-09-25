@@ -23,6 +23,7 @@ from fastraml.loaders import build_loader as build_loader
 from fastraml.nodes import Entity as Entity
 from fastraml.nodes import GraphNode as GraphNode
 from fastraml.parser.annotations import DomainExtension as DomainExtension
+from fastraml.parser.directives import SecurityScheme as SecurityScheme
 from fastraml.parser.documentation import DocumentationItem as DocumentationItem
 from fastraml.parser.endpoints import Body as Body
 from fastraml.parser.endpoints import EndPoint as EndPoint
@@ -45,6 +46,9 @@ from fastraml.parser.fragments import SecuritySchemeFragment as SecuritySchemeFr
 from fastraml.parser.fragments import TraitFragment as TraitFragment
 from fastraml.parser.includes import IncludeInfo as IncludeInfo
 from fastraml.parser.includes import IncludeRef as IncludeRef
+from fastraml.parser.security import SecuritySchemeDefinition as SecuritySchemeDefinition
+from fastraml.parser.security import SecuritySchemeDescription as SecuritySchemeDescription
+from fastraml.parser.security import SecuritySchemeSettings as SecuritySchemeSettings
 from fastraml.positions import Position as Position
 from fastraml.registry import ParseCtx as ParseCtx
 from fastraml.registry import Raml as Raml
@@ -53,11 +57,14 @@ from fastraml.types.base import Parameter as Parameter
 from fastraml.types.base import PatternProperty as PatternProperty
 from fastraml.types.base import Property as Property
 from fastraml.types.base import ScalarFacet as ScalarFacet
+from fastraml.types.base import facets_of as facets_of
 from fastraml.types.complex_ import ArrayShape as ArrayShape
 from fastraml.types.complex_ import ObjectShape as ObjectShape
 from fastraml.types.complex_ import RecursiveShape as RecursiveShape
 from fastraml.types.complex_ import UnionShape as UnionShape
 from fastraml.types.complex_ import UnknownShape as UnknownShape
+from fastraml.types.examples import Example as Example
+from fastraml.types.examples import Examples as Examples
 from fastraml.types.jsonschema_ import JsonShape as JsonShape
 from fastraml.types.scalars import AnyShape as AnyShape
 from fastraml.types.scalars import BooleanShape as BooleanShape
@@ -115,6 +122,7 @@ from fastraml.views.backward import render_markdown as render_compatibility_mark
 from fastraml.views.backward import rule_for as rule_for
 from fastraml.views.backward import side_of as side_of
 from fastraml.views.backward import side_of_rule as side_of_rule
+from fastraml.views.base_uri import bound_base_uri as bound_base_uri
 from fastraml.views.graph import RAML_NS as RAML_NS
 from fastraml.views.graph import Edge as Edge
 from fastraml.views.graph import Graph as Graph
@@ -164,6 +172,8 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'EndPoint',
     'Entity',
     'ErrorKind',
+    'Example',
+    'Examples',
     'FastRamlConfig',
     'FileLoader',
     'FileShape',
@@ -226,7 +236,11 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'SchemaLocation',
     'SchemeLoader',
     'SecurityLocation',
+    'SecurityScheme',
+    'SecuritySchemeDefinition',
+    'SecuritySchemeDescription',
     'SecuritySchemeFragment',
+    'SecuritySchemeSettings',
     'StringShape',
     'Subject',
     'TimeOnlyShape',
@@ -246,11 +260,13 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'backward',
     'backward_markdown',
     'backward_types',
+    'bound_base_uri',
     'build_graph',
     'build_loader',
     'build_tree',
     'compose',
     'configure',
+    'facets_of',
     'file_uri_to_path',
     'impact_of',
     'load_config',

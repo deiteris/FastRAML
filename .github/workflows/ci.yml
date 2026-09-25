@@ -194,7 +194,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dist: [raml-document, fastapi-raml, aiohttp-raml, fastmcp-raml, fastraml-viewer, raml-mock, raml-codegen]
+        dist: [raml-document, fastapi-raml, aiohttp-raml, fastmcp-raml, fastraml-viewer, raml-mock, raml-codegen, sphinxcontrib-fastraml]
     defaults:
       run:
         working-directory: contrib/${{ matrix.dist }}
@@ -227,7 +227,10 @@ jobs:
       - name: Type-check the package
         env:
           DIST: ${{ matrix.dist }}
-        run: uv run mypy "${DIST//-/_}"
+        # A package is named after its distribution, except a namespace
+        # package (`sphinxcontrib/fastraml`), which names itself in
+        # `[tool.mypy] files`.
+        run: if [ -d "${DIST//-/_}" ]; then uv run mypy "${DIST//-/_}"; else uv run mypy; fi
       - run: uv run pytest -q
 
   # `viewer/` is outside the Python gate and has its own. It renders

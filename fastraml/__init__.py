@@ -175,6 +175,8 @@ _EXPORTS = {
     'resolve_uri_ref': ('fastraml.uris', 'resolve_uri_ref'),
     'render_compatibility_markdown': ('fastraml.views.backward', 'render_markdown'),
     'same_value': ('fastraml.types.values', 'same_value'),
+    'decimal_text': ('fastraml.types.values', 'decimal_text'),
+    'projected': ('fastraml.types.jsonschema_', 'projected'),
     'set_gc_tuning': ('fastraml.gctuning', 'set_gc_tuning'),
 }
 
@@ -320,6 +322,7 @@ __all__ = [  # noqa: RUF022
     'build_tree',
     'compose',
     'configure',
+    'decimal_text',
     'facets_of',
     'file_uri_to_path',
     'impact_of',
@@ -328,6 +331,7 @@ __all__ = [  # noqa: RUF022
     'parse_from_string',
     'parse_lenient',
     'path_to_file_uri',
+    'projected',
     'record',
     'render_compatibility_markdown',
     'resolve_uri_ref',

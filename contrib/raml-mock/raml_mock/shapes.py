@@ -2,24 +2,16 @@
 
 from __future__ import annotations
 
-from fastraml import BaseShape, FileShape, JsonShape
+from fastraml import BaseShape, FileShape, projected
 
 from raml_mock.media import base_media_type
 
-__all__ = ['concrete_shape', 'file_type_accepts', 'projected_shape', 'shape_name']
-
-
-def projected_shape(base: BaseShape) -> BaseShape:
-    """Return JSON Schema's structural view, or *base* when none exists."""
-    shape = base.shape
-    if isinstance(shape, JsonShape):
-        return shape.as_shape() or base
-    return base
+__all__ = ['concrete_shape', 'file_type_accepts', 'shape_name']
 
 
 def concrete_shape(base: BaseShape) -> object | None:
     """The concrete kind a consumer should narrow against."""
-    return projected_shape(base).shape
+    return projected(base).shape
 
 
 def shape_name(base: BaseShape) -> str:

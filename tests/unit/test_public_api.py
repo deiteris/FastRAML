@@ -94,7 +94,9 @@ class TestNarrowing:
 
         A `securedBy:` entry and the scheme it binds, an example on a shape,
         and the constraints a kind carries: `facets_of` is the one listing that
-        stays current as kinds gain facets (`types/base.py`).
+        stays current as kinds gain facets (`types/base.py`). `projected` and
+        `decimal_text` are here because consumers that could not import them
+        kept private copies, which drifted.
         """
         expected = {
             'Example',
@@ -103,7 +105,9 @@ class TestNarrowing:
             'SecuritySchemeDefinition',
             'SecuritySchemeDescription',
             'SecuritySchemeSettings',
+            'decimal_text',
             'facets_of',
+            'projected',
         }
         assert expected <= set(fastraml.__all__)
 

@@ -26,12 +26,13 @@ from fastraml import (
     StringShape,
     TimeOnlyShape,
     UnionShape,
+    projected,
     same_value,
 )
 
 from raml_mock.config import GenerationOptions
 from raml_mock.errors import MockGenerationError
-from raml_mock.shapes import projected_shape, shape_name
+from raml_mock.shapes import shape_name
 from raml_mock.values import detach
 
 if TYPE_CHECKING:
@@ -168,9 +169,9 @@ def _generate(
             return inherited[variant % len(inherited)]
     if base.id in active:
         raise MockGenerationError(f'required recursive value has no finite example: {shape_name(base)}')
-    projected = projected_shape(base)
-    if projected is not base:
-        return _generate(projected, active, variant, policy=policy)
+    view = projected(base)
+    if view is not base:
+        return _generate(view, active, variant, policy=policy)
     concrete = base.shape
     if isinstance(concrete, RecursiveShape):
         raise MockGenerationError(f'required recursive value has no finite example: {shape_name(base)}')

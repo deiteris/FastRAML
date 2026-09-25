@@ -229,6 +229,23 @@ def test_an_inline_subtype_shows_narrowed_inherited_properties(build, tmp_path):
     assert 'unchanged' not in built.text()
 
 
+def test_a_json_schema_body_lists_the_properties_of_its_projection(build, tmp_path):
+    """docs/10 § 7: a schema is shown through the nearest RAML shape, not as an opaque leaf."""
+    spec = tmp_path / 'schema.raml'
+    spec.write_text(
+        '#%RAML 1.0\ntitle: T\n/items:\n  post:\n    body:\n      application/json:\n'
+        '        type: \'{"type": "object", "properties": {"sku": {"type": "string"}}}\'\n',
+        encoding='utf-8',
+    )
+    built = build(
+        {'index': 'Home\n====\n\n.. raml:method:: POST /items\n'},
+        apis=f"'t': {str(spec)!r}",
+        conf='raml_warn_unrendered = False',
+    )
+    assert built.warnings == []
+    assert 'sku : string' in built.text()
+
+
 def test_a_library_type_renders_by_file_and_links_by_file(build):
     built = build(
         {

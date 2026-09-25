@@ -6,7 +6,7 @@ from fractions import Fraction
 
 import pytest
 
-from sphinxcontrib.fastraml.model import exact
+from sphinxcontrib.fastraml.model import scalar
 
 
 @pytest.mark.parametrize(
@@ -22,4 +22,4 @@ from sphinxcontrib.fastraml.model import exact
     ],
 )
 def test_a_bound_is_the_decimal_the_author_wrote(bound, written):
-    assert exact(bound) == written
+    assert scalar(bound) == written

@@ -66,6 +66,7 @@ from fastraml.types.complex_ import UnknownShape as UnknownShape
 from fastraml.types.examples import Example as Example
 from fastraml.types.examples import Examples as Examples
 from fastraml.types.jsonschema_ import JsonShape as JsonShape
+from fastraml.types.jsonschema_ import projected as projected
 from fastraml.types.scalars import AnyShape as AnyShape
 from fastraml.types.scalars import BooleanShape as BooleanShape
 from fastraml.types.scalars import DateOnlyShape as DateOnlyShape
@@ -77,6 +78,7 @@ from fastraml.types.scalars import NilShape as NilShape
 from fastraml.types.scalars import NumberShape as NumberShape
 from fastraml.types.scalars import StringShape as StringShape
 from fastraml.types.scalars import TimeOnlyShape as TimeOnlyShape
+from fastraml.types.values import decimal_text as decimal_text
 from fastraml.types.values import same_value as same_value
 from fastraml.uris import file_uri_to_path as file_uri_to_path
 from fastraml.uris import path_to_file_uri as path_to_file_uri
@@ -266,6 +268,7 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'build_tree',
     'compose',
     'configure',
+    'decimal_text',
     'facets_of',
     'file_uri_to_path',
     'impact_of',
@@ -274,6 +277,7 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'parse_from_string',
     'parse_lenient',
     'path_to_file_uri',
+    'projected',
     'record',
     'render_compatibility_markdown',
     'resolve_uri_ref',

@@ -12,7 +12,10 @@ the author names. The concrete request or response is built only from values
 fastraml validated for exactly that input (`values.py`); where there is none,
 it shows a placeholder rather than a value that might be wrong.
 
-A step is never a link target, so it cannot compete with the reference.
+A step never repeats the method's or the response's own description: the
+author's text is the step's explanation, and the RAML's prose is one link away
+in the reference. It is never a link target either, so it cannot compete with
+the reference.
 """
 
 from __future__ import annotations
@@ -42,6 +45,7 @@ logger = logging.getLogger(__name__)
 NO_BODY: Any = object()
 
 Where = Literal['path', 'header', 'query parameter']
+Fields = Literal['none', 'required', 'all']
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +57,9 @@ class Ask:
     media: str | None = None
     #: Optional headers and query parameters to include, by name.
     optional: frozenset[str] = frozenset()
-    all_fields: bool = False
+    #: Which of the body's fields to explain. `None` is the directive's own
+    #: default: the required ones for what to send, none for what comes back.
+    fields: Fields | None = None
     #: Values for inputs, by name, as written in the directive.
     values: dict[str, str] = field(default_factory=dict)
     body: Any = NO_BODY
@@ -125,7 +131,7 @@ class Steps(Writer):
         out.extend(self.inputs(inputs))
         payload = self.payload(key, request.bodies if request else {}, ask)
         if payload is not None:
-            out.extend(self.body_fields(payload, ask))
+            out.extend(self.body_fields(payload, ask.fields or 'required'))
         out.append(self.request_block(method, f'{base_uri}{path}', inputs, values, payload))
         out.extend(_no_example(payload))
         out.append(nodes.paragraph('', '', nodes.Text('Full reference: '), self.xref('method', key, key)))
@@ -142,11 +148,13 @@ class Steps(Writer):
         out: list[Node] = [
             nodes.paragraph('', '', nodes.Text('You get back '), nodes.literal(status, f'{status} {phrase}'.strip())),
         ]
-        out.extend(markdown(text(response.description), self.document))
         out.extend(self.inputs(inputs))
         payload = self.payload(key, response.bodies, ask)
         if payload is not None:
-            out.extend(self.body_fields(payload, ask))
+            # None by default: explaining fields is for what the reader fills
+            # in, and what comes back is in the block below, and in full in
+            # the reference.
+            out.extend(self.body_fields(payload, ask.fields or 'none'))
         out.append(self.response_block(f'{status} {phrase}'.strip(), inputs, values, payload))
         out.extend(_no_example(payload))
         out.append(nodes.paragraph('', '', nodes.Text('Full reference: '), self.xref('response', key, key)))
@@ -255,19 +263,21 @@ class Steps(Writer):
             return []
         return [nodes.paragraph('', 'With:'), bullets(rows)]
 
-    def body_fields(self, payload: Payload, ask: Ask) -> list[Node]:
+    def body_fields(self, payload: Payload, fields: Fields) -> list[Node]:
         media = payload.media
         lead = nodes.paragraph(
             '', '', nodes.Text('Body, '), nodes.literal(media, media), nodes.Text(f': {payload.words}')
         )
         out: list[Node] = [lead]
+        if fields == 'none':
+            return out
         shape = target(payload.shape).shape
         properties = shape.properties or {} if isinstance(shape, ObjectShape) else {}
-        shown = {name: prop for name, prop in properties.items() if prop.required or ask.all_fields}
+        shown = {name: prop for name, prop in properties.items() if prop.required or fields == 'all'}
         rows = []
         for name, prop in shown.items():
             row = nodes.paragraph('', '', nodes.literal(name, name), nodes.Text(f' ({self.words(prop.base)})'))
-            if ask.all_fields and not prop.required:
+            if not prop.required:
                 row += nodes.Text(', optional')
             rows.append([row, *self.explained(prop.base)])
         if rows:

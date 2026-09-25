@@ -261,7 +261,7 @@ def _values(argument: str | None) -> dict[str, str]:
 
 
 def _fields(argument: str | None) -> str:
-    return directives.choice(argument or '', ('required', 'all'))
+    return directives.choice(argument or '', ('none', 'required', 'all'))
 
 
 class Step(RamlDirective):
@@ -300,7 +300,7 @@ class Step(RamlDirective):
             security=self.options.get('security'),
             media=self.options.get('media'),
             optional=frozenset(self.options.get('with', '').split()),
-            all_fields=self.options.get('fields') == 'all',
+            fields=self.options.get('fields'),
             values=self.options.get('values', {}),
             body=body,
         )

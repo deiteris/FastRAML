@@ -126,7 +126,9 @@ A step renders, in this order:
 2. the method and URL, and which scheme to authenticate with;
 3. each input with its meaning and constraints in words: path parameters,
    headers (including those the security scheme adds) and query parameters;
-4. the body's fields, one level deep, with nested types summarised by name;
+4. for `raml:send`, the body's fields, one level deep, with nested types
+   summarised by name. `raml:expect` names the body's type and lists no fields
+   by default, because the response block already shows them;
 5. the concrete HTTP request or response;
 6. one link, to the full reference entry.
 
@@ -137,7 +139,7 @@ A step is never a link target, so it can't compete with the reference.
 | `:values:` | `name = value` lines for any input. A value is read as text, else as JSON |
 | `:body:` | a JSON file, relative to the page, holding the body |
 | `:with:` | optional headers and query parameters to include, by name |
-| `:fields: all` | list the body's optional fields too; by default only required ones are |
+| `:fields:` | which of the body's fields to explain: `none`, `required` or `all`. The default is `required` for `raml:send`, `none` for `raml:expect` |
 | `:media:` | which body to show, by media type; by default the first JSON one |
 | `:security:` | on `raml:send`, which scheme to authenticate with, or `none` |
 

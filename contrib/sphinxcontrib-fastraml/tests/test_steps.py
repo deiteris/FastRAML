@@ -191,7 +191,13 @@ def test_the_security_asked_for_is_the_one_shown(build):
 def test_expect_spells_out_the_response(build):
     built = build({'index': 'Home\n====\n\n.. raml:expect:: POST /books 201\n'}, conf=OFF)
     text = built.text()
-    assert 'You get back 201 Created' in text
+    # Straight to what comes back: the response's own description is the
+    # reference's to show, and here it would only say `Created` again.
+    assert 'You get back 201 Created With:' in text
+    # The body is named, and its fields are not explained again: the block
+    # shows them, and a guide has usually just listed them for the request.
+    assert 'Body, application/json : Book' in text
+    assert 'as printed on the cover' not in text
     assert 'Location (header)' in text
     response = blocks(built)[0]
     assert response.startswith('HTTP/1.1 201 Created')

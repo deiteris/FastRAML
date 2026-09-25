@@ -237,7 +237,9 @@ def _write(document, destination, *, keep_stub_from):
 
 
 def _mypy(cwd):
-    return _run(['-m', 'mypy', 'impl.py'], cwd=cwd).stdout
+    # Plain text whatever the environment: mypy colours under `FORCE_COLOR`,
+    # and the escapes land inside the messages these tests read.
+    return _run(['-m', 'mypy', '--no-color-output', 'impl.py'], cwd=cwd).stdout
 
 
 def _run(arguments, cwd):

@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from sphinx.util.docutils import SphinxDirective
 
     from .apis import Api
-    from .catalogue import Declared, Kind
+    from .catalogue import Catalogue, Declared, Kind
 
 Detail = Literal['summary', 'request', 'full']
 Register = Literal['indexed', 'target', 'none']
@@ -88,6 +88,8 @@ class Writer:
             fields(
                 [
                     ('Base URI', _literals(self.catalogue.value('base_uri'))),
+                    # The template, where binding `{version}` changed it.
+                    ('As written', _written(self.catalogue)),
                     ('Base URI parameters', self.parameters(self.catalogue.base_uri_parameters(), addressable=True)),
                     ('Protocols', _words([protocol.upper() for protocol in self.catalogue.value('protocols')])),
                     ('Media types', _literals(self.catalogue.value('media_types'))),
@@ -406,7 +408,7 @@ class Writer:
         facets = {
             name: value for name, value in constraints(base).items() if all(p.get(name) != value for p in inherited)
         }
-        out.extend(constraint_line(facets))
+        out.extend(constraint_line(facets, unit_of(base)))
         enum = [plain(member) for member in base.enum or []]
         if all([plain(member) for member in parent.enum or []] != enum for parent in beneath):
             out.extend(one_of(enum))
@@ -610,6 +612,11 @@ def fields(rows: list[tuple[str, list[Node]]]) -> list[Node]:
     return [out]
 
 
+def _written(catalogue: Catalogue) -> list[Node]:
+    written = catalogue.value('written_base_uri')
+    return _literals(written) if written != catalogue.value('base_uri') else []
+
+
 def _content(declared: SecuritySchemeDefinition | BaseShape | None) -> SecuritySchemeDefinition:
     """A scheme declaration's content: its own, or the fragment it includes."""
     return cast('SecuritySchemeDefinition', declared).resolved()
@@ -625,18 +632,117 @@ def constraints(base: BaseShape) -> dict[str, str]:
     return out
 
 
-def constraint_line(facets: dict[str, str]) -> list[Node]:
-    """`minLength 1, maxLength 200`: constraints in RAML's own spelling, on one line."""
-    if not facets:
+def constraint_line(facets: dict[str, str], unit: str = 'character') -> list[Node]:
+    """Constraints as a sentence a caller reads: `1–200 characters, matching ^[a-z]+$.`
+
+    The reader is calling the API, not writing RAML, so `minLength`/`maxLength`
+    become a length and `minimum`/`maximum` a range. A pattern is shown, never
+    paraphrased. A facet with no wording here -- a custom one -- keeps its name.
+    """
+    phrases = _phrases(dict(facets), unit)
+    if not phrases:
         return []
+    first = phrases[0][0]
+    if isinstance(first, nodes.Text):
+        # A sentence starts with a capital; a literal is left as written.
+        phrases[0][0] = nodes.Text(first.astext()[:1].upper() + first.astext()[1:])
     row = nodes.paragraph()
-    for position, (name, value) in enumerate(facets.items()):
+    for position, phrase in enumerate(phrases):
         if position:
             row += nodes.Text(', ')
-        row += nodes.emphasis(name, name)
-        row += nodes.Text(' ')
-        row += nodes.literal(value, value)
+        row.extend(phrase)
+    row += nodes.Text('.')
     return [row]
+
+
+def unit_of(base: BaseShape) -> str:
+    """What a length counts: a file's bytes, a string's characters."""
+    return 'byte' if isinstance(base.shape, FileShape) else 'character'
+
+
+def _phrases(facets: dict[str, str], unit: str) -> list[list[Node]]:
+    """One phrase per constraint, pairing the bounds of a range into one."""
+    out: list[list[Node]] = []
+    for low, high, noun in (
+        ('minLength', 'maxLength', unit),
+        ('minItems', 'maxItems', 'item'),
+        ('minProperties', 'maxProperties', 'property'),
+    ):
+        counted = _count(_take(facets, low), _take(facets, high), noun)
+        if counted:
+            out.append([nodes.Text(counted)])
+    least, most = _take(facets, 'minimum'), _take(facets, 'maximum')
+    if least is not None and most is not None:
+        out.append([nodes.Text('from '), nodes.literal(least, least), nodes.Text(' to '), nodes.literal(most, most)])
+    elif least is not None:
+        out.append([nodes.Text('at least '), nodes.literal(least, least)])
+    elif most is not None:
+        out.append([nodes.Text('at most '), nodes.literal(most, most)])
+    worded = {
+        'multipleOf': 'a multiple of ',
+        'pattern': 'matching ',
+        'format': 'format ',
+        'fileTypes': 'of type ',
+        'discriminator': 'told apart by ',
+        'discriminatorValue': 'discriminator value ',
+    }
+    if _take(facets, 'uniqueItems') == 'true':
+        out.append([nodes.Text('no duplicates')])
+    if _take(facets, 'additionalProperties') == 'false':
+        out.append([nodes.Text('no other properties')])
+    for name, value in facets.items():
+        lead = worded.get(name)
+        out.append([nodes.Text(lead) if lead else nodes.emphasis(name, name + ' '), nodes.literal(value, value)])
+    return out
+
+
+def _take(facets: dict[str, str], name: str) -> str | None:
+    """A facet's value, removed so that what is left is worded one by one."""
+    return facets.pop(name) if name in facets else None
+
+
+def _count(low: str | None, high: str | None, noun: str) -> str | None:
+    """`1–200 characters`, `exactly 13 characters`, `at least 1 item`."""
+    if low is None and high is None:
+        return None
+    if low == high:
+        return f'exactly {high} {_plural(noun, high)}'
+    if low is not None and high is not None:
+        return f'{low}–{high} {_plural(noun, high)}'
+    if low is not None:
+        return f'at least {low} {_plural(noun, low)}'
+    return f'at most {high} {_plural(noun, high)}'
+
+
+def _plural(noun: str, count: str | None) -> str:
+    if count == '1':
+        return noun
+    return noun[:-1] + 'ies' if noun.endswith('y') else noun + 's'
+
+
+def table(headers: list[str], rows: list[list[list[Node]]], widths: list[int]) -> nodes.table:
+    """A plain table: one row per item, each cell a few nodes.
+
+    Denser than a list for what a reader scans down -- names on the left, what
+    each means on the right -- which is how a guide's inputs and fields read.
+    """
+    out = nodes.table(classes=['raml-table'])
+    group = nodes.tgroup(cols=len(headers))
+    out += group
+    for width in widths:
+        group += nodes.colspec(colwidth=width)
+    head = nodes.thead()
+    head += nodes.row('', *(nodes.entry('', nodes.paragraph('', name)) for name in headers))
+    group += head
+    body = nodes.tbody()
+    for cells in rows:
+        row = nodes.row()
+        for cell in cells:
+            blocks = [node if isinstance(node, nodes.Body) else nodes.paragraph('', '', node) for node in cell]
+            row += nodes.entry('', *blocks)
+        body += row
+    group += body
+    return out
 
 
 def one_of(values: list[Any]) -> list[Node]:

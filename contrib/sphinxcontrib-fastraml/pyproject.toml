@@ -32,6 +32,8 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["ALL"]
+# `1–200 characters`: a range is written with an en dash in the text readers see.
+allowed-confusables = ["–"]
 ignore = [
     "COM", "C90", "D100", "D101", "D102", "D103", "D104", "D105", "D107",
     "D203", "D213", "D400", "D401", "D415", "E501", "EM101", "EM102",

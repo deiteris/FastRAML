@@ -123,16 +123,24 @@ Two directives write that:
 A step renders, in this order:
 
 1. the directive's own text, which is the step's instruction;
-2. the method and URL, and which scheme to authenticate with;
-3. each input with its meaning and constraints in words: path parameters,
-   headers (including those the security scheme adds) and query parameters;
-4. for `raml:send`, the body's fields, one level deep, with nested types
-   summarised by name. `raml:expect` names the body's type and lists no fields
-   by default, because the response block already shows them;
-5. the concrete HTTP request or response;
+2. for `raml:send`, which scheme to authenticate with;
+3. a table of inputs, one row each, with what each means and its constraints
+   in words. `In` says where it goes: the `URL` (host or path), a `header`
+   (including those the security scheme adds) or the `query`. For
+   `raml:expect`, a `Header | Meaning` table of the response headers the
+   specification explains;
+4. for `raml:send`, a table of the body's fields, one level deep, and the
+   optional fields it leaves out, by name. `raml:expect` names the body's type
+   and explains no fields by default, because the message shows them;
+5. the concrete HTTP request or response, whose first line is the method and
+   path, or the status;
 6. one link, to the full reference entry.
 
-A step is never a link target, so it can't compete with the reference.
+A step doesn't restate what its message already says: there's no "Send POST …"
+line, no status line, and not the RAML's own description of the method or
+response. An input is explained once per page, so a second step that takes
+`tenant` shows its value in the message and leaves the explanation to the step
+above. A step is never a link target, so it can't compete with the reference.
 
 | Option | Effect |
 |---|---|
@@ -189,7 +197,7 @@ API's namespace:
 |---|---|
 | `:raml:title:` | `title` |
 | `:raml:version:` | `version` |
-| `:raml:base-uri:` | `baseUri`, as written |
+| `:raml:base-uri:` | `baseUri` as a caller uses it, `{version}` bound |
 | `:raml:protocols:` | `protocols` |
 | `:raml:media-type:` | `mediaType` |
 
@@ -221,6 +229,13 @@ The RAML is parsed with `unwrap=True` and read as fastraml's effective model:
 traits and resource types are applied and inheritance is flattened, so an
 entry shows what a caller must actually send.
 
+- **Constraints read as a caller would say them**: `1–200 characters`,
+  `exactly 13 characters, matching ^\d{13}$`, `at least 0, a multiple of 0.01`,
+  not RAML's `minLength`/`maxLength`. A pattern is shown as written, never
+  paraphrased.
+- **The base URI is the one a caller uses**: `{version}` bound to `version:`
+  by fastraml's `bound_base_uri`. The overview also shows it as written where
+  that differs.
 - **A declared type is linked, never repeated.** A body of `Book` links to
   `Book`'s entry. An inline type is spelled out where it is used. An inline
   subtype of a declared type, such as `type: Book` with a facet added, shows
@@ -238,10 +253,6 @@ entry shows what a caller must actually send.
 - **Traits and resource types** are neither rendered nor addressable. The
   model keeps their declarations and records which ones each method and
   resource applied, so this is work for the extension, not the parser.
-- **`{version}` in the base URI.** RAML fills it in from `version:`, but
-  fastraml keeps `baseUri` as written, so this extension shows it as written.
-  Filling it in here would be a RAML rule held by a consumer; it belongs in
-  fastraml.
 - **Applied annotations** are listed with their values, but not rendered
   against their annotation type's shape.
 

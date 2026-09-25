@@ -9,6 +9,14 @@ import re
 OFF = 'raml_warn_unrendered = False'
 
 
+def rows(built, page: str = 'index') -> list[list[str]]:
+    """Every table row on the page, each cell as text."""
+    found = re.findall(r'<tr class="row-(?:odd|even)">(.*?)</tr>', built.html(page), re.DOTALL)
+    cells = [re.findall(r'<td>(.*?)</td>', row, re.DOTALL) for row in found]
+    # The header row has `<th>` cells, and so none here.
+    return [[' '.join(html.unescape(re.sub(r'<[^>]+>', ' ', cell)).split()) for cell in row] for row in cells if row]
+
+
 def blocks(built, page: str = 'index') -> list[str]:
     """Every HTTP block on the page, as text."""
     found = re.findall(
@@ -23,12 +31,18 @@ def test_a_step_leads_with_the_authors_words_and_links_out_once(build):
         conf=OFF,
     )
     text = built.text()
-    assert text.index('Ask for the book by its ISBN.') < text.index('Send GET')
-    # What an input means is here, not behind a link: the tenant's pattern and
-    # the ISBN's, in words.
-    assert 'tenant (path)' in text
-    assert 'The tenant subdomain' in text
-    assert 'isbn (path)' in text
+    assert text.startswith('Home ¶ Ask for the book by its ISBN.')
+    # What an input means is here, not behind a link, one row each: `{tenant}`
+    # is in the host, so it is in the URL rather than the path.
+    table = rows(built)
+    assert table[0] == ['tenant', 'URL', 'The tenant subdomain Matching ^[a-z0-9-]+$ .']
+    assert table[1][:2] == ['isbn', 'URL']
+    assert table[2][:2] == ['Authorization', 'header']
+    assert table[2][2].startswith('Added by oauth2.')
+    # No line restating the method and URL: the message starts with them, with
+    # `{version}` bound (`bound_base_uri`).
+    assert 'Send GET' not in text
+    assert blocks(built)[0].startswith('GET /v2/books/')
     # One link, to the full entry; none resolves here, since no page renders
     # the reference, which also shows the step is no target of its own.
     assert text.endswith('Full reference: GET /books/{isbn}')
@@ -191,14 +205,65 @@ def test_the_security_asked_for_is_the_one_shown(build):
 def test_expect_spells_out_the_response(build):
     built = build({'index': 'Home\n====\n\n.. raml:expect:: POST /books 201\n'}, conf=OFF)
     text = built.text()
-    # Straight to what comes back: the response's own description is the
-    # reference's to show, and here it would only say `Created` again.
-    assert 'You get back 201 Created With:' in text
+    # Straight to what comes back: no line announcing the status, which the
+    # message starts with, and not the response's own description, which is
+    # the reference's to show and here would only say `Created` again.
+    # `Location` has no description: the message shows it, and a row saying
+    # nothing more would be noise.
+    assert text.startswith('Home ¶ Body, application/json : Book')
+    assert 'Created Created' not in text
     # The body is named, and its fields are not explained again: the block
     # shows them, and a guide has usually just listed them for the request.
     assert 'Body, application/json : Book' in text
     assert 'as printed on the cover' not in text
-    assert 'Location (header)' in text
     response = blocks(built)[0]
     assert response.startswith('HTTP/1.1 201 Created')
     assert 'Location: <Location>' in response
+
+
+def test_the_body_reads_as_a_table_with_constraints_in_words(build):
+    built = build({'index': 'Home\n====\n\n.. raml:send:: POST /books\n'}, conf=OFF)
+    fields = {row[0]: row for row in rows(built) if row[0] in {'title', 'isbn'}}
+    # One row a field: its name, its type in words, its meaning with the
+    # constraints as a caller reads them rather than as RAML spells them.
+    assert fields['title'][:2] == ['title', 'string']
+    assert fields['title'][2].endswith('as printed on the cover. 1–200 characters.')
+    assert fields['isbn'][2].endswith('Exactly 13 characters, matching ^\\d{13}$ .')
+    # The optional fields are named, so a reader knows they exist without leaving.
+    assert 'Optional, not shown: tags , related , reviews , priceHistory , metadata .' in built.text()
+
+
+def test_an_input_is_explained_once_per_page(build):
+    built = build(
+        {
+            'index': """\
+                Home
+                ====
+
+                .. raml:send:: GET /books/{isbn}
+
+                .. raml:send:: DELETE /books/{isbn}
+                """,
+        },
+        conf=OFF,
+    )
+    explained = [row[0] for row in rows(built)]
+    # `tenant`, `isbn` and `Authorization` once each; the second step still
+    # carries their values in its message.
+    assert explained.count('tenant') == 1
+    assert explained.count('isbn') == 1
+    _, delete = blocks(built)
+    assert 'Host: <tenant>.books.example.com' in delete
+
+
+def test_a_response_header_the_spec_explains_gets_a_row(build, tmp_path):
+    spec = tmp_path / 'headers.raml'
+    spec.write_text(
+        '#%RAML 1.0\ntitle: T\n/pets:\n  post:\n    responses:\n      201:\n        headers:\n'
+        '          Location:\n            description: Where the new pet lives.\n'
+        '          X-Trace:\n',
+        encoding='utf-8',
+    )
+    built = build({'index': 'Home\n====\n\n.. raml:expect:: POST /pets 201\n'}, apis=f"'t': {str(spec)!r}", conf=OFF)
+    assert rows(built) == [['Location', 'Where the new pet lives.']]
+    assert 'X-Trace: <X-Trace>' in blocks(built)[0]

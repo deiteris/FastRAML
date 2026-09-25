@@ -254,8 +254,8 @@ def test_value_roles_write_the_apis_values(build):
         conf='raml_warn_unrendered = False',
     )
     assert built.warnings == []
-    # As written: `{version}` is RAML's to bind, and the tree does not bind it.
-    assert 'Version v2 at https://{tenant}.books.example.com/{version} .' in built.text()
+    # The base URI a caller uses: `{version}` bound by fastraml, `{tenant}` the caller's.
+    assert 'Version v2 at https://{tenant}.books.example.com/v2 .' in built.text()
 
 
 def test_a_page_depends_on_every_file_the_api_was_read_from(build):
@@ -350,7 +350,9 @@ def test_model_values_read_as_the_author_wrote_them(build):
         conf='raml_warn_unrendered = False',
     )
     text = built.text()
-    # A bound is the decimal the author wrote, not the ratio fastraml keeps it as.
-    assert 'multipleOf 0.01' in text
+    # A bound is the decimal the author wrote, not the ratio fastraml keeps it as,
+    # and in words a caller reads rather than RAML's facet name.
+    # `amount` is `minimum: 0` and `multipleOf: 0.01`: one sentence, bounds first.
+    assert 'At least 0 , a multiple of 0.01 .' in text
     # An alias names what it aliases, and shares everything with it (docs/07 § 3).
     assert 'AnythingAlias = Anything' in text

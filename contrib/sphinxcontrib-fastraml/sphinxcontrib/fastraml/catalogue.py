@@ -35,7 +35,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, Literal, cast
 from urllib.parse import unquote
 
-from fastraml import APIFragment, BaseShape, ObjectShape
+from fastraml import APIFragment, BaseShape, ObjectShape, bound_base_uri
 
 from .model import target, text, texts
 
@@ -114,7 +114,16 @@ class Catalogue:
         return text(self.entry.title if self.entry else None) or 'API'
 
     def value(self, field: str) -> list[str]:
-        """One of the API's own values: `version`, `base_uri`, `protocols`, ...; empty when absent."""
+        """One of the API's own values: `version`, `base_uri`, `protocols`, ...; empty when absent.
+
+        `base_uri` is the one a caller sends requests to, `{version}` bound,
+        which fastraml's `bound_base_uri` owns; `written_base_uri` is the text.
+        """
+        if field == 'base_uri':
+            bound = bound_base_uri(self.entry) if self.entry is not None else None
+            return [bound] if bound else []
+        if field == 'written_base_uri':
+            field = 'base_uri'
         found = getattr(self.entry, field, None)
         return texts(found) if isinstance(found, list) else [value] if (value := text(found)) else []
 

@@ -187,6 +187,13 @@ def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> 
         help='enable, regrade, or disable one rule; repeat for more',
     )
     lint.add_argument(
+        '--ruleset',
+        action='append',
+        default=[],
+        metavar='NAME',
+        help='enable one ruleset in addition to the configured ones; repeat for more',
+    )
+    lint.add_argument(
         '--format',
         choices=('human', 'text', 'json', 'summary'),
         default='human',
@@ -458,7 +465,7 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 -
         print(f'lint config: {err}', file=sys.stderr)
         return EXIT_INVALID
     try:
-        config = _lint_rule_overrides(config, args.rule, registry)
+        config = _lint_rule_overrides(_lint_rulesets(config, args.ruleset, registry), args.rule, registry)
     except ValueError as err:
         print(f'lint: {err}', file=sys.stderr)
         return EXIT_INVALID
@@ -527,6 +534,22 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 -
     root = path_to_file_uri(Path.cwd()).rstrip('/') + '/'
     emitted = _emit_document(args, render_findings(report, args.format, color=color, failed=failed, root=root))
     return EXIT_INVALID if failed or emitted == EXIT_INVALID else EXIT_OK
+
+
+def _lint_rulesets(config: LintConfig, names: Sequence[str], registry: LintRegistry) -> LintConfig:
+    """Add repeatable `--ruleset NAME` entries to the configured `extends`.
+
+    Rulesets only switch rules on, so configured categories and rules still
+    apply after them, as they do to `extends` (docs/18 § 3).
+    """
+    from fastraml.views.lint import Config  # noqa: PLC0415
+
+    available = registry.sets()
+    for name in names:
+        if name not in available:
+            raise ValueError(f'unknown ruleset: {name} (available: {", ".join(available)})')
+    extends = tuple(dict.fromkeys((*config.extends, *names)))
+    return Config(extends=extends, plugins=config.plugins, categories=config.categories, rules=config.rules)
 
 
 def _lint_rule_overrides(config: LintConfig, values: Sequence[str], registry: LintRegistry) -> LintConfig:

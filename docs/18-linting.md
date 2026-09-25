@@ -95,13 +95,18 @@ rule-level entry without `disabled:` enables that rule even if its ruleset is no
 selected. `match:` is a regex over a finding's rendered message; it filters that
 rule's findings without changing findings from other rules.
 
-For one invocation, repeat `--rule`:
+For one invocation, repeat `--ruleset` and `--rule`:
 
 ```bash
+fastraml lint --ruleset security --ruleset http api.raml
 fastraml lint --rule unbounded-string=error api.raml
 fastraml lint --rule explicit-uri-parameter api.raml
 fastraml lint --rule unused-type=off api.raml
 ```
+
+`--ruleset` adds to the configured `extends` and never removes from it, so the
+configuration's categories and rules still apply after it. `--rule` applies
+last.
 
 `--severity` is a display threshold, not a rule configuration mechanism. It
 shows the chosen severity and every more severe finding.
@@ -142,7 +147,8 @@ included file applies to findings at that file's URI and line.
 ## 5. CLI
 
 ```text
-fastraml lint [--config FILE] [--severity S] [--rule ID[=SEVERITY|off]]
+fastraml lint [--config FILE] [--severity S] [--ruleset NAME]
+              [--rule ID[=SEVERITY|off]]
               [--fail-on error|warning]
               [--format human|text|json|summary]
               [--max-findings N] [--max-findings-per-rule N]

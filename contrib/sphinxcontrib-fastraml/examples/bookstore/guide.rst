@@ -33,9 +33,10 @@ Add a book
    :values:
       Location = /books/9780061054884
    :body: new-book.json
+   :fields: none
 
-   The store answers with the book as it stored it. ``Location`` says where
-   it now lives.
+   The store answers with the book as it stored it, whose fields are the ones
+   you just sent. ``Location`` says where it now lives.
 
 Read it back
 ------------
@@ -47,6 +48,11 @@ Read it back
       isbn = 9780061054884
 
    Ask for the book by its ISBN.
+
+.. raml:expect:: GET /books/{isbn} 200
+   :body: new-book.json
+
+   The book comes back as JSON.
 
 Next steps
 ----------

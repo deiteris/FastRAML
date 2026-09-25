@@ -129,9 +129,9 @@ A step renders, in this order:
    (including those the security scheme adds) or the `query`. For
    `raml:expect`, a `Header | Meaning` table of the response headers the
    specification explains;
-4. for `raml:send`, a table of the body's fields, one level deep, and the
-   optional fields it leaves out, by name. `raml:expect` names the body's type
-   and explains no fields by default, because the message shows them;
+4. a table of the body's fields, one level deep, and the optional fields it
+   leaves out, by name. Where a response only echoes a body a step above has
+   explained, `:fields: none` leaves the table out;
 5. the concrete HTTP request or response, whose first line is the method and
    path, or the status;
 6. one link, to the full reference entry.
@@ -147,7 +147,7 @@ above. A step is never a link target, so it can't compete with the reference.
 | `:values:` | `name = value` lines for any input. A value is read as text, else as JSON |
 | `:body:` | a JSON file, relative to the page, holding the body |
 | `:with:` | optional headers and query parameters to include, by name |
-| `:fields:` | which of the body's fields to explain: `none`, `required` or `all`. The default is `required` for `raml:send`, `none` for `raml:expect` |
+| `:fields:` | which of the body's fields to explain: `none`, `required` (the default) or `all` |
 | `:media:` | which body to show, by media type; by default the first JSON one |
 | `:security:` | on `raml:send`, which scheme to authenticate with, or `none` |
 
@@ -264,7 +264,7 @@ API (`fixtures/sample/api.raml`), laid out the way a product's docs are:
 | Page | Shows |
 |---|---|
 | `index.rst` | a link to the overview under the API's title, and value roles for its version and base URI |
-| `guide.rst` | a tutorial whose steps use `raml:send` and `raml:expect`, with the author's own tenant, token and body (`new-book.json`), all validated |
+| `guide.rst` | a tutorial whose steps use `raml:send` and `raml:expect`, with the author's own tenant, token and body (`new-book.json`), all validated; the book read back is explained field by field |
 | `reference/index.rst` | the overview, and a one-line-per-method summary of every endpoint |
 | `reference/books.rst` | `/books` and everything below it, with a note of the author's |
 | `reference/catalogue.rst` | every other endpoint, picked by a path pattern |

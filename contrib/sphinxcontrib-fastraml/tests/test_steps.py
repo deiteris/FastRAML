@@ -203,22 +203,37 @@ def test_the_security_asked_for_is_the_one_shown(build):
 
 
 def test_expect_spells_out_the_response(build):
-    built = build({'index': 'Home\n====\n\n.. raml:expect:: POST /books 201\n'}, conf=OFF)
+    built = build(
+        {
+            'index': """\
+                Home
+                ====
+
+                .. raml:expect:: GET /books/{isbn} 200
+
+                .. raml:expect:: POST /books 201
+                   :fields: none
+                """,
+        },
+        conf=OFF,
+    )
     text = built.text()
     # Straight to what comes back: no line announcing the status, which the
-    # message starts with, and not the response's own description, which is
-    # the reference's to show and here would only say `Created` again.
-    # `Location` has no description: the message shows it, and a row saying
-    # nothing more would be noise.
-    assert text.startswith('Home ¶ Body, application/json : Book')
-    assert 'Created Created' not in text
-    # The body is named, and its fields are not explained again: the block
-    # shows them, and a guide has usually just listed them for the request.
-    assert 'Body, application/json : Book' in text
-    assert 'as printed on the cover' not in text
-    response = blocks(built)[0]
-    assert response.startswith('HTTP/1.1 201 Created')
-    assert 'Location: <Location>' in response
+    # message starts with, and not the response's own description.
+    assert text.startswith('Home ¶ Body, application/json : Book Field Type Meaning')
+    assert 'OK OK' not in text
+    # What comes back is explained as a request body is: the payload's fields
+    # in a table, and the optional ones named.
+    assert ['title', 'string'] in [row[:2] for row in rows(built)]
+    assert 'Optional, not shown: tags' in text
+    # `:fields: none` for a response that only echoes what a step above sent.
+    # `Location` has no description, so it has no row either: the message
+    # shows it.
+    echo = text[text.index('Full reference: GET /books/{isbn} 200') :]
+    assert 'Field Type Meaning' not in echo
+    assert 'Location' not in echo.partition('HTTP')[0]
+    assert blocks(built)[1].startswith('HTTP/1.1 201 Created')
+    assert 'Location: <Location>' in blocks(built)[1]
 
 
 def test_the_body_reads_as_a_table_with_constraints_in_words(build):

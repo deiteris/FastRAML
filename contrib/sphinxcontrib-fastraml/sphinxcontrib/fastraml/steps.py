@@ -67,8 +67,7 @@ class Ask:
     media: str | None = None
     #: Optional headers and query parameters to include, by name.
     optional: frozenset[str] = frozenset()
-    #: Which of the body's fields to explain. `None` is the directive's own
-    #: default: the required ones for what to send, none for what comes back.
+    #: Which of the body's fields to explain; the required ones unless asked.
     fields: Fields | None = None
     #: Values for inputs, by name, as written in the directive.
     values: dict[str, str] = field(default_factory=dict)
@@ -158,10 +157,10 @@ class Steps(Writer):
         out: list[Node] = [*self.inputs(inputs, response=True)]
         payload = self.payload(key, response.bodies, ask)
         if payload is not None:
-            # None by default: explaining fields is for what the reader fills
-            # in, and what comes back is in the block below, and in full in
-            # the reference.
-            out.extend(self.body_fields(payload, ask.fields or 'none'))
+            # What comes back is what the reader is there to understand, so it
+            # is explained as a request body is. Where it only echoes a body a
+            # step above has explained, the author says `:fields: none`.
+            out.extend(self.body_fields(payload, ask.fields or 'required'))
         out.append(self.response_block(f'{status} {phrase}'.strip(), inputs, values, payload))
         out.extend(_no_example(payload))
         out.append(nodes.paragraph('', '', nodes.Text('Full reference: '), self.xref('response', key, key)))

@@ -44,6 +44,7 @@ The key features are:
 * **Analysis and linting**: run custom SPARQL or one of 9 named graph queries. `lint` checks the effective model against 85 built-in rules, with opt-in security (OWASP and OAuth), HTTP semantics (RFC 9110), problem details (RFC 9457), I-JSON (RFC 7493) and style rulesets, per-rule explanations and plugins ([Linting](#linting)).
 * **Version comparison**: `compat` walks two effective API models in parallel and classifies compatibility impact by whether a value is sent in a request or received in a response ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md#5-compatibility-view)). It exits non-zero when the policy identifies a breaking change.
 * **OpenAPI and JSON Schema output**: convert an effective API to a typed OpenAPI 3.0.3 document, or a RAML shape to JSON Schema draft-07. Both conversion APIs report information the target format could not represent.
+* **Sample values**: `sample` returns a deterministic value a shape accepts. It uses the shape's own example first, then builds one from its properties' examples, then generates what the facets allow. It never borrows a supertype's example. Every value is validated before it is returned ([docs/16](https://github.com/deiteris/FastRAML/blob/master/docs/16-graph.md#81-value-samples)).
 * **Typed and measured**: ships `py.typed` and checks the package with strict mypy. CI gates linear scaling; the local benchmark harness measures time, allocations, and RSS under a machine fingerprint ([docs/12](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md)).
 * **Version-matched agent guides**: the CLI ships its own usage guides for coding agents, so the guide always matches the installed version ([Using it from an agent](#using-it-from-an-agent)).
 
@@ -118,6 +119,16 @@ get_users = openapi.paths['/users'].get
 if get_users is not None:
     print(get_users.responses['200'].description)
 payload = openapi.to_dict()  # JSON/YAML-ready only when you need it
+```
+
+`sample` gives a value for a request or response body, a parameter or a type:
+
+```python
+from fastraml import SampleOptions, sample
+
+sample(user)  # always the same valid value
+sample(user, options=SampleOptions(seed='ci'))  # another one, reproducibly
+sample(user, options=SampleOptions(synthesize=False))  # from the author's examples only, or SampleError
 ```
 
 ### Overlays and Extensions
@@ -365,9 +376,12 @@ output and depends on no parser, and `fastraml-viewer` depends on nothing.
 | [`fastapi-raml`](https://github.com/deiteris/FastRAML/tree/master/contrib/fastapi-raml) | code → RAML | Renders a FastAPI app's routes as RAML, and serves them |
 | [`aiohttp-raml`](https://github.com/deiteris/FastRAML/tree/master/contrib/aiohttp-raml) | code → RAML | Code-first RAML for aiohttp: pydantic-validated views that describe themselves |
 | [`fastmcp-raml`](https://github.com/deiteris/FastRAML/tree/master/contrib/fastmcp-raml) | RAML → MCP | Serves a RAML-described API as an MCP server |
-| [`raml-mock`](https://github.com/deiteris/FastRAML/tree/master/contrib/raml-mock) | RAML → HTTP | Runs an in-process mock that validates requests and returns examples |
+| [`raml-mock`](https://github.com/deiteris/FastRAML/tree/master/contrib/raml-mock) | RAML → HTTP | Runs an in-process mock that validates requests and answers with `sample` values |
 | [`raml-codegen`](https://github.com/deiteris/FastRAML/tree/master/contrib/raml-codegen) | tree → code | Generates a typed `httpx` client, or a FastAPI server interface to implement, from `fastraml tree` output |
 | [`fastraml-viewer`](https://github.com/deiteris/FastRAML/tree/master/contrib/fastraml-viewer) | — | The tree viewer as static assets any server can mount |
+| [`sphinxcontrib-fastraml`](https://github.com/deiteris/FastRAML/tree/master/contrib/sphinxcontrib-fastraml) | RAML → docs | A Sphinx extension that renders endpoints, methods and types as native Sphinx content, links prose to them through a `raml` domain, and writes request walkthroughs from validated values |
+
+Each has its own `uv` project and gate; [contrib/README.md](https://github.com/deiteris/FastRAML/blob/master/contrib/README.md) describes how they relate.
 
 ## Design documents
 
@@ -424,13 +438,16 @@ regression, or progress that was not recorded. See
 
 ```bash
 python -m bench run                      # every bench, every configuration
-python -m bench linearity                # the one hard requirement
-python -m bench compare                  # fail on a >25 % regression against the baseline
-FASTRAML_BENCH=1 uv run pytest tests/bench # the same gate, under pytest
+python -m bench ab master --bench large  # this tree against a revision, alternated over one corpus
+python -m bench linearity                # time and memory against a half-size corpus
+python -m bench micro sample             # single functions, per call, at sizes 5 to 1000
+FASTRAML_BENCH=1 uv run pytest tests/bench # the CI gate: linear scaling
 ```
 
-Run `compare` before and after any change to a hot path, and put the delta in
-the commit message.
+A performance claim needs a workload that runs the changed code. Measure it with
+`bench ab`, and put the time delta (if it exceeds the reported noise) and the
+allocation delta in the commit message
+([docs/12](https://github.com/deiteris/FastRAML/blob/master/docs/12-performance.md#5-gates-and-local-policy)).
 
 ## Licence
 

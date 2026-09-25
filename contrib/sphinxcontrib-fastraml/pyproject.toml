@@ -63,6 +63,8 @@ known-third-party = ["fastraml"]
 "sphinxcontrib/fastraml/*.py" = ["INP001"]
 # Sphinx calls these with its own signatures, whatever each override uses.
 "sphinxcontrib/fastraml/domain.py" = ["INP001", "PLR0913", "PLR0917", "ARG002"]
+# Sphinx executes a `conf.py` as a script; it is never imported as a module.
+"examples/*/conf.py" = ["INP001"]
 "tests/*.py" = ["S101", "ANN", "D", "INP001", "PLR2004", "PLC0415", "SLF001", "ARG001"]
 
 [tool.mypy]

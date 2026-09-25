@@ -180,6 +180,32 @@ actually send.
 - **Applied annotations** are listed with their values, but not rendered
   against their annotation type's shape.
 
+## Example
+
+`examples/bookstore` is a small documentation site for the repository's sample
+API (`fixtures/sample/api.raml`), laid out the way a product's docs are:
+
+| Page | Shows |
+|---|---|
+| `index.rst` | a link to the overview under the API's title, and value roles for its version and base URI |
+| `guide.rst` | a tutorial that links into the reference by name, and a request-only, non-indexed copy of `POST /books` with the author's note |
+| `reference/index.rst` | the overview, and a one-line-per-method summary of every endpoint |
+| `reference/books.rst` | `/books` and everything below it, with a note of the author's |
+| `reference/catalogue.rst` | every other endpoint, picked by a path pattern |
+| `reference/types.rst` | the root file's types, then each library's, by file |
+| `reference/security.rst` | security schemes and annotation types |
+| `reference/documentation.rst` | the specification's own `documentation:` entries, as sections |
+| `changelog.rst` | links to what changed, and `!` for what was removed |
+
+Build it with warnings as errors, from this directory:
+
+```bash
+uv run sphinx-build -W -b html examples/bookstore examples/bookstore/_build/html
+```
+
+Then open `examples/bookstore/_build/html/index.html`. `tests/test_example.py`
+builds the same site, so a change that breaks it fails the suite.
+
 ## Development
 
 ```bash

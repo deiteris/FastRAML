@@ -136,6 +136,11 @@ from fastraml.views.jsonschema import Conversion as Conversion
 from fastraml.views.jsonschema import to_json_schema as to_json_schema
 from fastraml.views.openapi import OAS3Document as OAS3Document
 from fastraml.views.openapi import to_openapi as to_openapi
+from fastraml.views.samples import SampleError as SampleError
+from fastraml.views.samples import SampleOptions as SampleOptions
+from fastraml.views.samples import declared_values as declared_values
+from fastraml.views.samples import named_example as named_example
+from fastraml.views.samples import sample as sample
 from fastraml.views.tree import build_tree as build_tree
 from fastraml.views.walk import Addresses as Addresses
 from fastraml.views.walk import address as address
@@ -236,6 +241,8 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'Rule',
     'SUBJECTS',
     'SafeFileLoader',
+    'SampleError',
+    'SampleOptions',
     'ScalarFacet',
     'SchemaLocation',
     'SchemeLoader',
@@ -272,11 +279,13 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'configure',
     'decimal_digits',
     'decimal_text',
+    'declared_values',
     'examples_of',
     'facets_of',
     'file_uri_to_path',
     'impact_of',
     'load_config',
+    'named_example',
     'parse_from_path',
     'parse_from_string',
     'parse_lenient',
@@ -287,6 +296,7 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'resolve_uri_ref',
     'rule_for',
     'same_value',
+    'sample',
     'set_gc_tuning',
     'side_of',
     'side_of_rule',

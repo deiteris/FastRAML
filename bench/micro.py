@@ -141,7 +141,26 @@ def _union_value(width: int, *, discriminated: bool) -> dict[str, Any]:
     return {'kind': f'm{last}', f'f{last}': 1} if discriminated else {f'f{last}': 1}
 
 
+def _sampling(types: str, name: str, *, synthesize: bool = True) -> Callable[[Callable[..., Any]], Callable[[], Any]]:
+    """`sample` of `name`: what a mock server calls per response."""
+
+    def build(function: Callable[..., Any]) -> Callable[[], Any]:
+        from fastraml.views.samples import SampleOptions  # noqa: PLC0415 - the package under test
+
+        shape = _declared(types, name)
+        options = SampleOptions(synthesize=synthesize)
+        return lambda: function(shape, options=options)
+
+    return build
+
+
+def _example_types(size: int) -> str:
+    properties = ''.join(f'      p{index}:\n        type: string\n        example: v{index}\n' for index in range(size))
+    return f'  O:\n    properties:\n{properties}'
+
+
 _VALIDATE = 'fastraml.types.base:BaseShape.validate'
+_SAMPLE = 'fastraml.views.samples:sample'
 _SCALAR_TYPES = (
     '  S:\n    type: string\n    pattern: ^[a-z]+-\\d+$\n    maxLength: 64\n'
     '  I:\n    type: integer\n    minimum: 0\n    maximum: 1000000\n    format: int32\n'
@@ -211,6 +230,21 @@ CASES: tuple[Case, ...] = (
         )
         for tagged in (False, True)
         for width in (2, 4, 8)
+    ),
+    # Each sampled value is validated as it is built and once whole, so these
+    # read against the `validate object` cases of the same size.
+    *(Case(f'sample object n={size}', _SAMPLE, _sampling(_object_types(size), 'O')) for size in SIZES),
+    *(
+        Case(f'sample object composed n={size}', _SAMPLE, _sampling(_example_types(size), 'O', synthesize=False))
+        for size in SIZES
+    ),
+    *(
+        Case(
+            f'sample unique array n={size}',
+            _SAMPLE,
+            _sampling(f'  A:\n    type: array\n    minItems: {size}\n    uniqueItems: true\n    items: integer\n', 'A'),
+        )
+        for size in SIZES
     ),
 )
 

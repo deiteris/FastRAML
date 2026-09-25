@@ -32,6 +32,7 @@ _VIEWS = (
     'jsonschema',
     'openapi',
     'base_uri',
+    'samples',
     'lint',
 )
 

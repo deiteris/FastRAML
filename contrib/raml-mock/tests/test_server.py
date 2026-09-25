@@ -207,7 +207,8 @@ class TestResponses:
         assert response.status == 200
         assert await response.json() == {'id': 9, 'name': 'Endpoint'}
 
-    async def test_a_named_example_can_be_selected_from_the_parent_type(self, client):
+    async def test_a_named_example_of_the_referenced_type_can_be_selected(self, client):
+        # `application/json: Item` is an alias of Item, so these are its own examples.
         response = await client.get('/items/3', headers={'X-RAML-Mock-Example': 'alternate'})
         assert response.status == 200
         assert await response.json() == {'id': 8, 'name': 'Foundation'}
@@ -220,10 +221,22 @@ class TestResponses:
             {'id': 8, 'name': 'Foundation'},
         ]
 
-    async def test_an_ancestor_example_must_satisfy_the_effective_shape(self, client):
+    async def test_a_narrowing_subtype_is_synthesized_to_its_own_facets(self, client):
         response = await client.get('/items/narrow')
         assert response.status == 200
         assert await response.json() == {'id': 10, 'name': 'string'}
+
+    async def test_a_subtype_never_borrows_its_parents_example(self, client):
+        # docs/16 § 8.1: not even one that would validate, as Item's do here.
+        response = await client.get('/items/plain')
+        assert response.status == 200
+        body = await response.json()
+        assert body not in ({'id': 7, 'name': 'Dune'}, {'id': 8, 'name': 'Foundation'})
+        assert set(body) == {'id', 'name'}
+
+    async def test_a_parents_example_cannot_be_named_through_a_subtype(self, client):
+        response = await client.get('/items/plain', headers={'X-RAML-Mock-Example': 'primary'})
+        assert response.status == 500
 
     async def test_automatic_selection_skips_a_non_strict_invalid_example(self, client):
         response = await client.get('/items/example-choice')
@@ -296,7 +309,7 @@ class TestResponses:
     async def test_min_properties_uses_typed_pattern_properties(self, client):
         response = await client.get('/pattern-object')
         assert response.status == 200
-        assert await response.json() == {'x-mock0': 5, 'x-mock1': 6}
+        assert await response.json() == {'x-name0': 5, 'x-name1': 6}
 
     async def test_common_constrained_string_patterns_are_synthesized(self, client):
         response = await client.get('/pattern-string')

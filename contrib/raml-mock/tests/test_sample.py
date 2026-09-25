@@ -57,28 +57,37 @@ class TestRepositorySample:
         assert response.status == 200
         assert await response.json() == [BOOK]
 
-    async def test_post_uses_the_book_response_type_example(self, sample_client):
+    async def test_post_composes_a_book_subtype_from_its_properties(self, sample_client):
+        # `type: Book` is a subtype, which may narrow Book, so Book's own example
+        # is never borrowed (docs/16 § 8.1). The properties' examples are used.
         submitted = {**BOOK, 'id': 'b-2', 'title': 'Neuromancer', 'isbn': '9780441569595'}
         response = await sample_client.post('/books', json=submitted)
         assert response.status == 201
         assert response.headers['Location'] == 'string'
-        assert await response.json() == BOOK
+        body = await response.json()
+        assert body != BOOK
+        assert (body['title'], body['isbn']) == (BOOK['title'], BOOK['isbn'])
 
-    async def test_path_operation_uses_the_book_response_type_example(self, sample_client):
+    async def test_path_operation_composes_a_book_subtype_from_its_properties(self, sample_client):
         response = await sample_client.get('/books/9780441013593')
         assert response.status == 200
-        assert await response.json() == BOOK
+        body = await response.json()
+        assert body != BOOK
+        assert (body['title'], body['isbn']) == (BOOK['title'], BOOK['isbn'])
 
     async def test_empty_response_has_no_synthesized_body(self, sample_client):
         response = await sample_client.delete('/books/9780441013593')
         assert response.status == 204
         assert await response.read() == b''
 
-    async def test_union_request_receives_the_shelf_type_example(self, sample_client):
+    async def test_union_request_composes_the_shelf_subtype(self, sample_client):
+        # The slot's `book: Book` is an alias of Book, so it carries Book's example.
         review = {'rating': 5, 'author': {'name': 'Ada', 'verified': True}}
         response = await sample_client.post('/shelves', json=review)
         assert response.status == 201
-        assert await response.json() == SHELF
+        body = await response.json()
+        assert body != SHELF
+        assert [slot['book'] for slot in body] == [BOOK]
 
     async def test_query_string_request_receives_the_delivery_item_example(self, sample_client):
         response = await sample_client.get('/deliveries?since=2024-06-01T00:00:00Z&city=Bristol')

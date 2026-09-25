@@ -10,11 +10,10 @@ from urllib.parse import urlencode
 
 import simplejson as json
 from aiohttp import MultipartWriter, web
-from fastraml import AnyShape, FileShape, ObjectShape, StringShape
+from fastraml import AnyShape, FileShape, ObjectShape, StringShape, named_example, sample
 
 from raml_mock.config import GenerationOptions, RouteBehavior
 from raml_mock.errors import MockGenerationError, RequestIssue, RequestValidationError
-from raml_mock.generate import generate
 from raml_mock.media import base_media_type, is_json_media_type
 from raml_mock.shapes import concrete_shape, file_type_accepts, shape_name
 from raml_mock.status import is_success
@@ -84,11 +83,14 @@ def build_response(
     example = request.headers.get('X-RAML-Mock-Example') or behavior.example
     value = selected_context.value
     if value is _GENERATED:
-        value = generate(
-            selected.shape,
-            example=example,
-            options=selected_context.generation,
-            key=f'{selected_context.key}:{status}:{selected.media_type}',
+        value = (
+            named_example(selected.shape, example)
+            if example is not None
+            else sample(
+                selected.shape,
+                options=selected_context.generation,
+                key=f'{selected_context.key}:{status}:{selected.media_type}',
+            )
         )
     elif selected.shape.validate(value) is not None:
         raise MockGenerationError(f'configured value does not satisfy {shape_name(selected.shape)}')
@@ -133,7 +135,7 @@ def _status_of(code: str) -> int:
 def _response_headers(response: Response) -> dict[str, str]:
     headers: dict[str, str] = {}
     for name, parameter in response.headers.items():
-        value = generate(parameter.base)
+        value = sample(parameter.base)
         headers[name] = _header_value(value)
     return headers
 

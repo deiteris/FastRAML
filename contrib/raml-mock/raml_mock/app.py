@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from aiohttp import web
-from fastraml import ParseOptions, Raml, parse_from_path
+from fastraml import ParseOptions, Raml, SampleError, parse_from_path
 
 from raml_mock.auth import authenticate
 from raml_mock.config import MockOptions, RouteBehavior
@@ -169,7 +169,7 @@ class _Dispatcher:
             return await self._answer(request, route, path_values)
         except RequestValidationError as error:
             return _validation_problem(route, error, self.validation_status)
-        except MockGenerationError as error:
+        except (MockGenerationError, SampleError) as error:
             return _problem(500, 'mock generation failed', issues=[{'location': 'response', 'message': str(error)}])
         except (TypeError, ValueError) as error:
             return _problem(500, 'stateful resource failed', issues=[{'location': 'state', 'message': str(error)}])

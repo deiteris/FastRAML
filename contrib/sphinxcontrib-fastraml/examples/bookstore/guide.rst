@@ -1,15 +1,15 @@
 Getting started
 ===============
 
-This guide adds a book to the catalogue and reads it back. It links to the
-reference for every detail, rather than repeating it.
+This guide adds a book to the catalogue and reads it back. Each step shows
+what to send and what comes back, in place; the reference has the rest.
 
 Choose your tenant
 ------------------
 
 Every request goes to your own subdomain, named by the
-:raml:base-uri-parameter:`tenant` base URI parameter. See the
-:raml:api:`API overview <books>` for the full address.
+:raml:base-uri-parameter:`tenant` base URI parameter. This guide uses
+``acme``.
 
 Sign in
 -------
@@ -21,25 +21,32 @@ scheme. Server-to-server integrations can use a
 Add a book
 ----------
 
-Send the new book to :raml:method:`POST /books`. The request looks like this:
+.. raml:send:: POST /books
+   :values:
+      tenant = acme
+      Authorization = Bearer <your token>
+   :body: new-book.json
 
-.. raml:method:: POST /books
-   :detail: request
-   :no-index:
+   Send the whole book as JSON. You choose its ``id`` and ``createdAt``.
 
-   Send the whole book. The store assigns ``id`` and ``createdAt``, and
-   ignores any values you give for them.
+.. raml:expect:: POST /books 201
+   :values:
+      Location = /books/9780061054884
+   :body: new-book.json
 
-``:no-index:`` makes this a copy: links to ``POST /books`` still go to its
-entry in the reference, not to this page. ``:detail: request`` leaves out the
-responses, which a first request does not need.
+   The store answers with the book as it stored it. ``Location`` says where
+   it now lives.
 
 Read it back
 ------------
 
-Fetch the book with :raml:method:`GET /books/{isbn}`, using its
-:raml:property:`Book.isbn`. A successful call returns
-:raml:response:`GET /books/{isbn} 200` with a :raml:type:`Book` in the body.
+.. raml:send:: GET /books/{isbn}
+   :values:
+      tenant = acme
+      Authorization = Bearer <your token>
+      isbn = 9780061054884
+
+   Ask for the book by its ISBN.
 
 Next steps
 ----------

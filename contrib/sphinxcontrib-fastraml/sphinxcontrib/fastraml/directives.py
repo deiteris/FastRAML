@@ -11,7 +11,9 @@ generated fields, where a note about that item reads first.
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, cast
 
 from docutils import nodes
@@ -23,6 +25,7 @@ from sphinx.util.docutils import SphinxDirective
 from . import apis
 from .domain import current_api
 from .render import DETAILS, Detail, Writer
+from .steps import NO_BODY, Ask, Steps
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -66,6 +69,8 @@ class CurrentApi(SphinxDirective):
 
 
 class RamlDirective(SphinxDirective):
+    #: What renders this directive's part of the API.
+    writer: ClassVar[type[Writer]] = Writer
     option_spec: ClassVar[dict[str, Callable[[str], object]]] = {
         'api': directives.unchanged_required,
         'no-index': directives.flag,
@@ -82,7 +87,7 @@ class RamlDirective(SphinxDirective):
         for path in loaded.files:
             self.env.note_dependency(str(path))
         index = 'no-index' not in self.options and 'noindex' not in self.options
-        rendered = self.render(Writer(self, loaded, index=index), loaded)
+        rendered = self.render(self.writer(self, loaded, index=index), loaded)
         if self.content:
             self.add_content(rendered)
         return rendered
@@ -242,6 +247,103 @@ class DocumentationItem(RamlDirective):
         return writer.documentation([title])
 
 
+def _values(argument: str | None) -> dict[str, str]:
+    """`name = value`, one per line: the value is text, read as the input takes it."""
+    out: dict[str, str] = {}
+    for line in (argument or '').splitlines():
+        if not line.strip():
+            continue
+        name, equals, value = line.partition('=')
+        if not equals or not name.strip():
+            raise ValueError(f'expected "name = value", got {line.strip()!r}')
+        out[name.strip()] = value.strip()
+    return out
+
+
+def _fields(argument: str | None) -> str:
+    return directives.choice(argument or '', ('required', 'all'))
+
+
+class Step(RamlDirective):
+    """What `raml:send` and `raml:expect` share: the options, and where the author's text goes.
+
+    The author's text comes first -- it is the step's instruction -- and the
+    generated part follows it. Neither is ever a link target, so `:no-index:`
+    changes nothing.
+    """
+
+    writer = Steps
+    required_arguments = 1
+    final_argument_whitespace = True
+    has_content = True
+    option_spec: ClassVar[dict[str, Callable[[str], object]]] = {
+        'api': directives.unchanged_required,
+        'media': directives.unchanged_required,
+        'with': directives.unchanged_required,
+        'fields': _fields,
+        'values': _values,
+        'body': directives.path,
+    }
+
+    def ask(self) -> Ask | None:
+        body = NO_BODY
+        if 'body' in self.options:
+            # Relative to the page, as `literalinclude` reads its file.
+            relative, absolute = self.env.relfn2path(self.options['body'])
+            self.env.note_dependency(relative)
+            try:
+                body = json.loads(Path(absolute).read_text(encoding='utf-8'))
+            except (OSError, ValueError) as err:
+                self.warn(f'the body file {self.options["body"]!r} could not be read as JSON: {err}')
+                return None
+        return Ask(
+            security=self.options.get('security'),
+            media=self.options.get('media'),
+            optional=frozenset(self.options.get('with', '').split()),
+            all_fields=self.options.get('fields') == 'all',
+            values=self.options.get('values', {}),
+            body=body,
+        )
+
+    def add_content(self, rendered: list[Node]) -> None:
+        rendered[0:0] = self.parse_content_to_nodes()
+
+
+class Send(Step):
+    """`.. raml:send:: POST /books` -- what to send for one method, spelled out in place."""
+
+    option_spec: ClassVar[dict[str, Callable[[str], object]]] = {
+        **Step.option_spec,
+        'security': directives.unchanged_required,
+    }
+
+    def render(self, writer: Writer, api: Api) -> list[Node]:
+        key = api.catalogue.normalise('method', self.arguments[0])
+        found = api.catalogue.operation(key) if key is not None else None
+        if found is None:
+            return self.warn(f'no method {self.arguments[0]!r} in RAML API {api.name!r}')
+        ask = self.ask()
+        if ask is None:
+            return []
+        path, method, operation = found
+        return cast('Steps', writer).send(path, method, operation, ask)
+
+
+class Expect(Step):
+    """`.. raml:expect:: POST /books 201` -- what comes back, spelled out in place."""
+
+    def render(self, writer: Writer, api: Api) -> list[Node]:
+        key = api.catalogue.normalise('response', self.arguments[0])
+        response = api.catalogue.response(key) if key is not None else None
+        if key is None or response is None:
+            return self.warn(f'no response {self.arguments[0]!r} in RAML API {api.name!r}')
+        ask = self.ask()
+        if ask is None:
+            return []
+        method, _, status = key.rpartition(' ')
+        return cast('Steps', writer).expect(method, status, response, ask)
+
+
 def _declarations(kind: Declared) -> type[Declarations]:
     return type(f'{kind.title().replace("-", "")}s', (Declarations,), {'kind': kind})
 
@@ -264,4 +366,6 @@ DIRECTIVES: dict[str, type[SphinxDirective]] = {
     'security-scheme': _declaration('security-scheme'),
     'documentation': Documentation,
     'documentation-item': DocumentationItem,
+    'send': Send,
+    'expect': Expect,
 }

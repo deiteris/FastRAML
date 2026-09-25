@@ -119,7 +119,7 @@ class Writer:
 
     def endpoints(self, paths: Iterable[str], detail: Detail, methods: set[str] | None) -> list[Node]:
         if detail == 'summary':
-            return [_bullets([self.endpoint_summary(path, methods) for path in paths])]
+            return [bullets([self.endpoint_summary(path, methods) for path in paths])]
         out: list[Node] = []
         for path in paths:
             out.extend(self.endpoint(path, detail, methods))
@@ -154,7 +154,7 @@ class Writer:
                 row = nodes.paragraph('', '', self.xref('method', key, key))
                 row.extend(_dash(text(operation.display_name), method))
                 rows.append([row])
-        return [lead, _bullets(rows)] if rows else [lead]
+        return [lead, bullets(rows)] if rows else [lead]
 
     def method(self, path: str, method: str, operation: Operation, detail: Detail) -> list[Node]:
         key = f'{method.upper()} {path}'
@@ -183,7 +183,7 @@ class Writer:
                     ('Headers', self.parameters(request.headers if request else {})),
                     ('Query parameters', self.parameters(request.query_parameters if request else {})),
                     ('Query string', self.typed(query_string) if query_string is not None else []),
-                    ('Request body', [_bullets(bodies)] if bodies else []),
+                    ('Request body', [bullets(bodies)] if bodies else []),
                 ]
             )
         )
@@ -196,7 +196,7 @@ class Writer:
     def response(self, method: str | None, status: str, response: Response) -> list[Node]:
         """One response: a target under its method's key, or none when `method` is `None`."""
         signature: list[Node] = [addnodes.desc_name(status, status)]
-        phrase = _phrase(status)
+        phrase = status_phrase(status)
         if phrase:
             signature.append(addnodes.desc_annotation('', f' {phrase}'))
         key = f'{method} {status}'
@@ -207,7 +207,7 @@ class Writer:
             fields(
                 [
                     ('Headers', self.parameters(response.headers)),
-                    ('Body', [_bullets(bodies)] if bodies else []),
+                    ('Body', [bullets(bodies)] if bodies else []),
                     ('Annotations', self.annotations(response.annotations)),
                 ]
             )
@@ -225,7 +225,7 @@ class Writer:
                 shown = declared if isinstance(declared, BaseShape) else _content(declared)
                 row.extend(_dash(text(getattr(shown, 'display_name', None)), key.partition('#')[2]))
                 rows.append([row])
-            return [_bullets(rows)]
+            return [bullets(rows)]
         out: list[Node] = []
         for key in keys:
             out.extend(self.declaration(kind, key))
@@ -299,7 +299,7 @@ class Writer:
         content.extend(
             fields(
                 [
-                    ('Settings', [_bullets(settings)] if settings else []),
+                    ('Settings', [bullets(settings)] if settings else []),
                     ('Adds headers', self.parameters(adds.headers if adds else {})),
                     ('Adds query parameters', self.parameters(adds.query_parameters if adds else {})),
                     ('Adds a query string', self.typed(adds.query_string) if adds and adds.query_string else []),
@@ -402,22 +402,14 @@ class Writer:
         """
         beneath = beneath or []
         out: list[Node] = []
-        inherited = [_facets(parent) for parent in beneath]
-        facets = [
-            (name, value) for name, value in _facets(base).items() if all(p.get(name) != value for p in inherited)
-        ]
-        if facets:
-            row = nodes.paragraph()
-            for position, (name, value) in enumerate(facets):
-                if position:
-                    row += nodes.Text(', ')
-                row += nodes.emphasis(name, name)
-                row += nodes.Text(' ')
-                row += nodes.literal(value, value)
-            out.append(row)
+        inherited = [constraints(parent) for parent in beneath]
+        facets = {
+            name: value for name, value in constraints(base).items() if all(p.get(name) != value for p in inherited)
+        }
+        out.extend(constraint_line(facets))
         enum = [plain(member) for member in base.enum or []]
-        if enum and all([plain(member) for member in parent.enum or []] != enum for parent in beneath):
-            out.append(nodes.paragraph('', '', nodes.Text('One of: '), *_literals(enum)))
+        if all([plain(member) for member in parent.enum or []] != enum for parent in beneath):
+            out.extend(one_of(enum))
         default = plain(base.default)
         if base.default is not None and all(plain(parent.default) != default for parent in beneath):
             out.append(nodes.paragraph('', '', nodes.Text('Default: '), *_literals([default])))
@@ -447,7 +439,7 @@ class Writer:
                 self.property_row(f'/{pattern.pattern.pattern}/', pattern.base, required=False)
                 for pattern in (shape.pattern_properties or {}).values()
             )
-            return [_bullets(rows)] if rows else []
+            return [bullets(rows)] if rows else []
         if isinstance(shape, ArrayShape):
             inner = self.about(shape.items)
             return [nodes.paragraph('', 'Each item:'), *inner] if inner else []
@@ -455,7 +447,7 @@ class Writer:
             rows = [
                 [nodes.paragraph('', '', *self.label(member)), *self.about(member)] for member in shape.any_of or []
             ]
-            return [nodes.paragraph('', 'One of:'), _bullets(rows)] if rows else []
+            return [nodes.paragraph('', 'One of:'), bullets(rows)] if rows else []
         if isinstance(shape, JsonShape):
             # The nearest RAML shape to the schema (docs/10 § 7): its structure
             # is what a reader of the schema needs, in the same form as the rest.
@@ -496,7 +488,7 @@ class Writer:
             if addressable and self.index:
                 self.target('base-uri-parameter', name, cast('Element', row[0]), f'{{{name}}}')
             rows.append(row)
-        return [_bullets(rows)] if rows else []
+        return [bullets(rows)] if rows else []
 
     def base_parameters(self) -> list[Node]:
         """The base URI's parameters, linked: `{tenant}` is required and is not in the path."""
@@ -545,7 +537,7 @@ class Writer:
                 row += nodes.Text(' ')
                 row.extend(_literals([value]))
             rows.append([row])
-        return [_bullets(rows)] if rows else []
+        return [bullets(rows)] if rows else []
 
     # -- entries and targets ---------------------------------------------------
 
@@ -623,7 +615,7 @@ def _content(declared: SecuritySchemeDefinition | BaseShape | None) -> SecurityS
     return cast('SecuritySchemeDefinition', declared).resolved()
 
 
-def _facets(base: BaseShape) -> dict[str, str]:
+def constraints(base: BaseShape) -> dict[str, str]:
     """A shape's constraints in RAML's spelling, each as the text a reader writes."""
     shape = base.shape
     out = {name: scalar(facet.value) for name, facet in facets_of(shape)}
@@ -633,7 +625,26 @@ def _facets(base: BaseShape) -> dict[str, str]:
     return out
 
 
-def _bullets(rows: Iterable[Sequence[Node]]) -> nodes.bullet_list:
+def constraint_line(facets: dict[str, str]) -> list[Node]:
+    """`minLength 1, maxLength 200`: constraints in RAML's own spelling, on one line."""
+    if not facets:
+        return []
+    row = nodes.paragraph()
+    for position, (name, value) in enumerate(facets.items()):
+        if position:
+            row += nodes.Text(', ')
+        row += nodes.emphasis(name, name)
+        row += nodes.Text(' ')
+        row += nodes.literal(value, value)
+    return [row]
+
+
+def one_of(values: list[Any]) -> list[Node]:
+    """The values an `enum` allows, each as written."""
+    return [nodes.paragraph('', '', nodes.Text('One of: '), *_literals(values))] if values else []
+
+
+def bullets(rows: Iterable[Sequence[Node]]) -> nodes.bullet_list:
     out = nodes.bullet_list()
     for row in rows:
         out += nodes.list_item('', *row)
@@ -666,7 +677,7 @@ def _code(value: Any) -> nodes.literal_block:
     return nodes.literal_block(shown, shown, language='json')
 
 
-def _phrase(status: str) -> str:
+def status_phrase(status: str) -> str:
     try:
         return HTTPStatus(int(status)).phrase
     except ValueError:

@@ -106,8 +106,9 @@ README for its supported behavior. In particular:
   `fastraml`.
 - `sphinxcontrib-fastraml` parses in-process with `unwrap=True` and reads the
   effective model through the public parser API. The tree is a serialization
-  of that same model for readers that cannot import the parser; this one can.
-  It is a namespace package, so its `pyproject.toml` names the path `mypy`
+  of that same model for readers that cannot import the parser; this one can,
+  and it validates each value a guide's step shows with the shape it is for. It
+  is a namespace package, so its `pyproject.toml` names the path `mypy`
   checks.
 
 For most projects, work locally from the project directory:

@@ -69,6 +69,8 @@ the page's `raml:api`, or the only API configured. Every directive also takes
 | `.. raml:security-schemes::`, `.. raml:security-scheme:: oauth2` | security schemes |
 | `.. raml:documentation::` | the RAML's `documentation:` items, as sections in the toctree |
 | `.. raml:documentation-item:: Getting started` | one of them, by title |
+| `.. raml:send:: POST /books` | a guide's step: what to send, spelled out in place (see *Steps*) |
+| `.. raml:expect:: POST /books 201` | a guide's step: what comes back |
 
 **Level of detail.** As with toctree's `:maxdepth:` and `:titlesonly:`:
 
@@ -93,8 +95,69 @@ fields:
 ```
 
 **Showing an item twice.** Rendering an item on two pages is a warning,
-because a link must go to one of them. Put `:no-index:` on the copy, for
-example in a tutorial, and links keep going to the reference.
+because a link must go to one of them. Put `:no-index:` on the copy, and
+links keep going to the reference. For a guide, a step (below) usually reads
+better than a copy of the reference entry.
+
+## Steps: what to send, and what comes back
+
+A reference entry lists everything and links outward. A guide's reader needs
+the opposite: only what this step takes, spelled out where they are reading.
+Two directives write that:
+
+```rst
+.. raml:send:: POST /books
+   :values:
+      tenant = acme
+      Authorization = Bearer <your token>
+   :body: new-book.json
+
+   Send the whole book as JSON.
+
+.. raml:expect:: POST /books 201
+   :body: new-book.json
+
+   The store answers with the book as it stored it.
+```
+
+A step renders, in this order:
+
+1. the directive's own text, which is the step's instruction;
+2. the method and URL, and which scheme to authenticate with;
+3. each input with its meaning and constraints in words: path parameters,
+   headers (including those the security scheme adds) and query parameters;
+4. the body's fields, one level deep, with nested types summarised by name;
+5. the concrete HTTP request or response;
+6. one link, to the full reference entry.
+
+A step is never a link target, so it can't compete with the reference.
+
+| Option | Effect |
+|---|---|
+| `:values:` | `name = value` lines for any input. A value is read as text, else as JSON |
+| `:body:` | a JSON file, relative to the page, holding the body |
+| `:with:` | optional headers and query parameters to include, by name |
+| `:fields: all` | list the body's optional fields too; by default only required ones are |
+| `:media:` | which body to show, by media type; by default the first JSON one |
+| `:security:` | on `raml:send`, which scheme to authenticate with, or `none` |
+
+**Only validated values are shown.** fastraml validates each value against the
+exact shape of the input it's for, and a step uses the first that passes:
+
+1. your own value from `:values:` or `:body:`. If it fails, you get a warning
+   with fastraml's reason;
+2. the input's own `example`, `examples` or `default`;
+3. an example of a declared type the input extends, but only if it validates
+   for this input. A body `type: Book` has no example of its own, so it gets
+   `Book`'s, unless the body narrows `Book` so that `Book`'s example no longer
+   fits.
+
+An example marked `strict: false` is never used. When nothing passes, the
+block shows `<name>` for an input, and leaves the body out with a sentence
+saying the specification has no example of it. Nothing is made up.
+
+A name in `:values:` or `:with:` that the method doesn't have, or a `:security:`
+that doesn't secure it, is a warning.
 
 ## Roles
 
@@ -188,7 +251,7 @@ API (`fixtures/sample/api.raml`), laid out the way a product's docs are:
 | Page | Shows |
 |---|---|
 | `index.rst` | a link to the overview under the API's title, and value roles for its version and base URI |
-| `guide.rst` | a tutorial that links into the reference by name, and a request-only, non-indexed copy of `POST /books` with the author's note |
+| `guide.rst` | a tutorial whose steps use `raml:send` and `raml:expect`, with the author's own tenant, token and body (`new-book.json`), all validated |
 | `reference/index.rst` | the overview, and a one-line-per-method summary of every endpoint |
 | `reference/books.rst` | `/books` and everything below it, with a note of the author's |
 | `reference/catalogue.rst` | every other endpoint, picked by a path pattern |

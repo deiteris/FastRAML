@@ -1,0 +1,11 @@
+{
+  "id": "b-2",
+  "createdAt": "2024-03-01T09:30:00Z",
+  "title": "The Dispossessed",
+  "isbn": "9780061054884",
+  "price": {
+    "amount": 8.99,
+    "currency": "USD"
+  },
+  "tags": ["science-fiction", "utopia"]
+}

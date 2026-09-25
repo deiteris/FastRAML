@@ -10,9 +10,10 @@ belongs in each consumer's README.
 Consumers are downstream of the parser.
 
 ```
-fastraml/  <- viewer/          through `fastraml tree` JSON
-           <- raml-codegen    through `fastraml tree` JSON
-           <- contrib/*       through the public parser API or tree contract
+fastraml/  <- viewer/                  through `fastraml tree` JSON
+           <- raml-codegen            through `fastraml tree` JSON
+           <- sphinxcontrib-fastraml  through `fastraml tree` JSON, parsed in-process
+           <- contrib/*               through the public parser API or tree contract
 ```
 
 Nothing under `fastraml/` may import a consumer. The one packaging exception is
@@ -90,7 +91,7 @@ CI runs `npm run ci`; screenshots are not a CI gate.
 
 ## 4. Contrib projects
 
-`contrib/` contains seven independently versioned `uv` projects. Each has its
+`contrib/` contains eight independently versioned `uv` projects. Each has its
 own lock, dependencies, and test gate. The root `pyproject.toml` does not package
 them; CI runs their gates as a matrix.
 
@@ -104,6 +105,10 @@ README for its supported behavior. In particular:
   resulting JSON, so the generator still reads only the contract.
 - `fastraml-viewer` packages the built SPA and server helper without depending on
   `fastraml`.
+- `sphinxcontrib-fastraml` parses with `fastraml` and reads the resulting tree
+  through its own copy of the Python bindings, so what it renders is the
+  contract, not the parser's objects. It is a namespace package, so its
+  `pyproject.toml` names the path `mypy` checks.
 
 For most projects, work locally from the project directory:
 
@@ -121,13 +126,14 @@ viewer before their dependency sync when their README or CI job requires it.
 
 ### 4.1 Tree consumers
 
-The viewer and `raml-codegen` consume tree JSON rather than parser objects. The
-Python codegen bindings and runtime are generated artifacts:
+The viewer, `raml-codegen` and `sphinxcontrib-fastraml` consume tree JSON rather
+than parser objects. The Python bindings and runtime are generated artifacts,
+vendored into each Python consumer:
 
-- `contrib/raml-codegen/raml_codegen/tree.py`
-- `contrib/raml-codegen/raml_codegen/walk.py`
+- `contrib/raml-codegen/raml_codegen/tree.py` and `walk.py`
+- `contrib/sphinxcontrib-fastraml/sphinxcontrib/fastraml/tree.py` and `walk.py`
 
-Regenerate them from the repository root:
+Regenerate a pair from the repository root, naming its directory:
 
 ```bash
 python -m fastraml.views.bindings python \
@@ -135,9 +141,9 @@ python -m fastraml.views.bindings python \
   --runtime contrib/raml-codegen/raml_codegen/walk.py
 ```
 
-The root binding suite checks these files and the codegen committed tree inputs.
-The generated module and runtime are contract artifacts, not codegen-owned
-source.
+The root binding suite checks every copy for staleness, and the codegen committed
+tree inputs. The generated module and runtime are contract artifacts, not owned
+by the consumer that vendors them.
 
 ## 5. CI and publishing
 
@@ -145,14 +151,14 @@ source.
 
 - the root Python checks and tests
 - optional-extra, bindings, benchmark-linearity, and TCK jobs
-- the seven-project contrib matrix
+- the eight-project contrib matrix
 - the viewer production gate
 
 The `bindings` job installs Go and Node and rejects skipped binding or
 cross-language conformance checks. The `contrib` job runs each project with its
 own dependencies.
 
-There are eight independently versioned distributions: `fastraml` and the seven
+There are nine independently versioned distributions: `fastraml` and the eight
 projects under `contrib/`. `.github/workflows/publish.yml` selects a distribution
 from its tag, reruns that distribution's gate, verifies the tag version, and
 publishes with Trusted Publishing. Consult the workflow for supported tag forms.

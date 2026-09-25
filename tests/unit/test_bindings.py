@@ -62,6 +62,16 @@ PYTHON_DESTINATION = 'contrib/raml-codegen/raml_codegen/tree.py'
 #: shape (docs/16 § 7).
 TYPESCRIPT_RUNTIME = 'viewer/src/walk.ts'
 PYTHON_RUNTIME = 'contrib/raml-codegen/raml_codegen/walk.py'
+#: Every consumer that vendors the Python bindings, as (types, runtime). The
+#: first is the one the structural checks below read; each is checked for
+#: staleness, since a stale copy anywhere is the same hazard.
+PYTHON_COPIES = [
+    (PYTHON_DESTINATION, PYTHON_RUNTIME),
+    (
+        'contrib/sphinxcontrib-fastraml/sphinxcontrib/fastraml/tree.py',
+        'contrib/sphinxcontrib-fastraml/sphinxcontrib/fastraml/walk.py',
+    ),
+]
 
 
 #: Generated records that carry shape fields but are not named `*Shape`.
@@ -165,11 +175,11 @@ class TestTheCheckedInReadingHalvesAreGenerated:
             f'-o {TYPESCRIPT_DESTINATION} --runtime {TYPESCRIPT_RUNTIME}` -- it is stale'
         )
 
-    def test_the_python_half_is_current(self):
-        current = (ROOT / PYTHON_RUNTIME).read_text(encoding='utf-8')
+    @pytest.mark.parametrize(('destination', 'runtime'), PYTHON_COPIES)
+    def test_the_python_half_is_current(self, destination, runtime):
+        current = (ROOT / runtime).read_text(encoding='utf-8')
         assert current == python_runtime(), (
-            'run `python -m fastraml.views.bindings python '
-            f'-o {PYTHON_DESTINATION} --runtime {PYTHON_RUNTIME}` -- it is stale'
+            f'run `python -m fastraml.views.bindings python -o {destination} --runtime {runtime}` -- it is stale'
         )
 
     def test_the_walk_table_is_in_all_three(self):
@@ -230,10 +240,11 @@ class TestTheCheckedInPythonFileIsGenerated:
     module therefore does not enable PEP 563, and this asks the object itself.
     """
 
-    def test_regenerating_changes_nothing(self):
-        current = (ROOT / PYTHON_DESTINATION).read_text(encoding='utf-8')
+    @pytest.mark.parametrize(('destination', 'runtime'), PYTHON_COPIES)
+    def test_regenerating_changes_nothing(self, destination, runtime):
+        current = (ROOT / destination).read_text(encoding='utf-8')
         assert current == python(), (
-            f'run `python -m fastraml.views.bindings python -o {PYTHON_DESTINATION}` -- {PYTHON_DESTINATION} is stale'
+            f'run `python -m fastraml.views.bindings python -o {destination} --runtime {runtime}` -- {destination} is stale'
         )
 
     def test_it_imports_and_reports_its_own_optional_keys(self, tmp_path):

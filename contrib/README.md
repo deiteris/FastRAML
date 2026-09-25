@@ -13,6 +13,7 @@ root gate does not see them. `docs/17-consumers.md` settles the boundary.
 | [`raml-mock`](raml-mock/) | RAML → HTTP | Runs an in-process aiohttp mock with request validation and generated responses. |
 | [`fastraml-viewer`](fastraml-viewer/) | neither | The built `viewer/` bundle as static assets, and `serve(document)`. Depends on nothing, including `fastraml`. |
 | [`raml-codegen`](raml-codegen/) | tree → code | Generates source from a `fastraml tree` document, or from RAML with the `raml` extra. Two targets: `python-httpx`, a typed client, and `python-fastapi`, a server interface to implement. |
+| [`sphinxcontrib-fastraml`](sphinxcontrib-fastraml/) | RAML → docs | Renders a RAML API as native Sphinx content, with a `raml` domain whose roles link prose to endpoints, methods and types. |
 
 `raml-document` is the part the two framework integrations share, so that they
 cannot disagree about what a RAML document is. The second one earned its keep
@@ -54,4 +55,4 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy <package>/ &&
 
 `fastraml` resolves to `../..` as an editable install, so a change to the parser is
 visible here without a reinstall. That is what lets these suites catch a change
-to the model that breaks a consumer of it. CI runs all seven as a matrix.
+to the model that breaks a consumer of it. CI runs all eight as a matrix.

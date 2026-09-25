@@ -45,12 +45,13 @@ message. For a new feature with no base number, use `bench linearity --bench NAM
   code in a Python string. `bindings/conformance/` drivers hold no expectations;
   `tests/unit/test_conformance.py` compares them.
 - Consumers (`docs/17-consumers.md`): `viewer/` (React SPA, `npm run check`) and
-  `contrib/` (seven separate `uv` projects, each with its own lock and gate, run by CI
+  `contrib/` (eight separate `uv` projects, each with its own lock and gate, run by CI
   as a matrix). Nothing under `fastraml/` imports a consumer. A consumer may not hold
   a rule the RAML language states, nor invent one it does not; a missing rule is a
   gap in a pass or a view.
 - Generated files, never edited by hand: `viewer/src/tree.d.ts`, `viewer/src/walk.ts`,
-  `contrib/raml-codegen/raml_codegen/tree.py` and `walk.py` (regenerate with
+  `contrib/raml-codegen/raml_codegen/tree.py` and `walk.py`, the same two under
+  `contrib/sphinxcontrib-fastraml/sphinxcontrib/fastraml/` (regenerate with
   `python -m fastraml.views.bindings <language> -o ... --runtime ...`), and the
   committed trees `viewer/public/api.json` (`npm run sample` in `viewer/`) and
   `contrib/raml-codegen/tests/api.json`. `tests/unit/test_bindings.py` fails on a
@@ -58,9 +59,9 @@ message. For a new feature with no base number, use `bench linearity --bench NAM
   `contrib/raml-codegen/tests/inline.json` is the projection of `DOCUMENT` in
   `test_inline_types.py`; edit `DOCUMENT`, then regenerate it. Nothing checks it
   for staleness.
-- `fixtures/` is read by five consumers. A change there moves `test_bindings.py`, the
-  viewer's committed JSON, the `fastmcp-raml` and `raml-mock`
-  suites, and `raml-codegen`'s `tests/api.json`.
+- `fixtures/` is read by six consumers. A change there moves `test_bindings.py`, the
+  viewer's committed JSON, the `fastmcp-raml`, `raml-mock` and
+  `sphinxcontrib-fastraml` suites, and `raml-codegen`'s `tests/api.json`.
 - `raml-codegen` targets: named `<language>-<library>`, module path
   `targets/<language>/<library>/`; shared tree reading is in
   `targets/python/shared/`. A change to one target must not alter another target's

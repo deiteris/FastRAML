@@ -5,7 +5,7 @@
 # short-lived token is minted per run. `id-token: write` is what mints it, and
 # it is granted per job rather than at the top level.
 #
-# Tag form decides what publishes, because the seven distributions version
+# Tag form decides what publishes, because the distributions version
 # independently:
 #
 #   v0.1.0                  -> fastraml, the parser
@@ -27,6 +27,7 @@ on:
       - 'fastraml-viewer-v*'
       - 'raml-mock-v*'
       - 'raml-codegen-v*'
+      - 'sphinxcontrib-fastraml-v*'
 
 # Action versions: `actions/*` publish a moving major tag, so `@v7` follows
 # patches. `astral-sh/setup-uv` stopped doing that after v7 -- from v8 on it
@@ -124,7 +125,8 @@ jobs:
           uv sync --all-extras --dev
           uv run ruff check .
           uv run ruff format --check .
-          uv run mypy "${DIST//-/_}"
+          # A namespace package names itself in `[tool.mypy] files` (ci.yml).
+          if [ -d "${DIST//-/_}" ]; then uv run mypy "${DIST//-/_}"; else uv run mypy; fi
           uv run pytest -q
 
       - name: The tag must match the version being published

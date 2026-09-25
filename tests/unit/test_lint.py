@@ -1401,6 +1401,30 @@ class TestLintCli:
         )
         assert 'WARNING explicit-uri-parameter' in capsys.readouterr().out
 
+    #: `uri-path-characters` is in the opt-in `http` set; `unused-type` in `recommended`.
+    SPACED = "#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n'/order items':\n  get:\n"
+
+    def test_cli_ruleset_enables_an_opt_in_set_beside_the_default(self, workspace, capsys):
+        root = workspace({'api.raml': self.SPACED})
+        assert main(['lint', '--format', 'text', '--ruleset', 'http', str(root / 'api.raml')]) == EXIT_OK
+        out = capsys.readouterr().out
+        assert 'WARNING uri-path-characters' in out
+        assert 'INFO unused-type' in out
+
+    def test_cli_ruleset_adds_to_file_config_whose_rules_still_apply(self, workspace, tmp_path, capsys):
+        """docs/18 § 3: `--ruleset` only extends; a configured rule-level disable still wins."""
+        root = workspace({'api.raml': self.SPACED})
+        config = tmp_path / 'lint.yaml'
+        config.write_text(
+            'lint:\n  extends: [http]\n  rules:\n    - id: unused-type\n      disabled: true\n',
+            encoding='utf-8',
+        )
+        arguments = ['lint', '--config', str(config), '--format', 'text', '--ruleset', 'recommended']
+        assert main([*arguments, str(root / 'api.raml')]) == EXIT_OK
+        out = capsys.readouterr().out
+        assert 'WARNING uri-path-characters' in out
+        assert 'unused-type' not in out
+
     def test_cli_rule_can_disable_a_default_rule(self, workspace, capsys):
         source = (
             '#%RAML 1.0\ntitle: t\ntypes:\n  User: |\n'
@@ -1418,6 +1442,7 @@ class TestLintCli:
             (['--rule', 'unused-type=loud'], 'unknown severity'),
             (['--rule', '=warning'], 'invalid rule override'),
             (['--rule', 'unused-type', '--rule', 'unused-type=off'], 'duplicate rule override'),
+            (['--ruleset', 'not-a-set'], 'unknown ruleset'),
         ],
     )
     def test_invalid_cli_rule_override_is_rejected_before_parsing(self, arguments, message, capsys):

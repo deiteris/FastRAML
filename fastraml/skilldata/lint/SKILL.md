@@ -86,9 +86,10 @@ a plugin contributed.
 
 ## Configure it
 
-Use `--rule` for a temporary override:
+Use `--ruleset` and `--rule` for a temporary override:
 
 ```bash
+fastraml lint -w . api.raml --format text --ruleset security --ruleset http
 fastraml lint -w . api.raml --format text --rule explicit-uri-parameter
 fastraml lint -w . api.raml --format text --rule unused-type=error
 fastraml lint -w . api.raml --format text --rule unused-type=off

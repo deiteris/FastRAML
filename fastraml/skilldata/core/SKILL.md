@@ -366,8 +366,9 @@ fastraml lint --explain unused-type           # one rule, with good and bad RAML
 ```
 
 Only the `spec` rules run by default. The `security`, `http`,
-`problem-details`, `i-json` and `style` sets are opt-in, and house rules come
-from a plugin; both are enabled in a config file:
+`problem-details`, `i-json` and `style` sets are opt-in: enable one for a run
+with `--ruleset NAME`, or in a config file. House rules come from a plugin,
+which only a config file enables:
 
 ```bash
 fastraml skills get lint

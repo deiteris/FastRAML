@@ -45,6 +45,8 @@ the run.
   `warning`, `info`. Default `info`, which shows everything. Filters the report;
   does not change the exit code.
 - `--fail-on error|warning` — the least severity that exits 1. Default `error`.
+- `--ruleset NAME` — enable one ruleset for this run, in addition to the
+  configured ones. Repeat for more.
 - `--rule ID[=SEVERITY|off]` — enable one rule, enable and regrade it, or disable
   it for this run. Repeat for different rules. Overrides the configuration file;
   duplicate IDs are errors.

@@ -258,6 +258,7 @@ built-in rule and activated plugin:
 fastraml lint api.raml                        # the recommended rules
 fastraml lint --list-rules                    # every rule, with its category, severity and source
 fastraml lint --explain unused-type           # what a rule checks, with good and bad examples
+fastraml lint api.raml --ruleset security     # enable one more ruleset for this run
 fastraml lint api.raml --rule https-only=error    # enable or regrade one rule for this run
 fastraml lint api.raml --format text          # one line per finding; also json and summary
 ```

@@ -124,14 +124,15 @@ A step renders, in this order:
 
 1. the directive's own text, which is the step's instruction;
 2. for `raml:send`, which scheme to authenticate with;
-3. a table of inputs, one row each, with what each means and its constraints
-   in words. `In` says where it goes: the `URL` (host or path), a `header`
-   (including those the security scheme adds) or the `query`. For
-   `raml:expect`, a `Header | Meaning` table of the response headers the
-   specification explains;
-4. a table of the body's fields, one level deep, and the optional fields it
-   leaves out, by name. Where a response only echoes a body a step above has
-   explained, `:fields: none` leaves the table out;
+3. a table of inputs, one row each, with whether it is required and what it
+   means, its constraints in words. `In` says where it goes: the `URL` (host or
+   path), a `header` (including those the security scheme adds) or the
+   `query`. For `raml:expect`, the response headers the specification
+   explains;
+4. a table of the body's fields, one level deep, each marked required or
+   not: an example body carries optional fields too. Where a response only
+   echoes a body a step above has explained, `:fields: none` leaves the table
+   out;
 5. the concrete HTTP request or response, whose first line is the method and
    path, or the status;
 6. one link, to the full reference entry.
@@ -147,7 +148,7 @@ above. A step is never a link target, so it can't compete with the reference.
 | `:values:` | `name = value` lines for any input. A value is read as text, else as JSON |
 | `:body:` | a JSON file, relative to the page, holding the body |
 | `:with:` | optional headers and query parameters to include, by name |
-| `:fields:` | which of the body's fields to explain: `none`, `required` (the default) or `all` |
+| `:fields:` | which of the body's fields to explain: `none`, `required` or `all` (the default) |
 | `:media:` | which body to show, by media type; by default the first JSON one |
 | `:security:` | on `raml:send`, which scheme to authenticate with, or `none` |
 

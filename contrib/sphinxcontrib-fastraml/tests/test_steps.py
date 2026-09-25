@@ -35,10 +35,10 @@ def test_a_step_leads_with_the_authors_words_and_links_out_once(build):
     # What an input means is here, not behind a link, one row each: `{tenant}`
     # is in the host, so it is in the URL rather than the path.
     table = rows(built)
-    assert table[0] == ['tenant', 'URL', 'The tenant subdomain Matching ^[a-z0-9-]+$ .']
-    assert table[1][:2] == ['isbn', 'URL']
-    assert table[2][:2] == ['Authorization', 'header']
-    assert table[2][2].startswith('Added by oauth2.')
+    assert table[0] == ['tenant', 'URL', 'yes', 'The tenant subdomain Matching ^[a-z0-9-]+$ .']
+    assert table[1][:3] == ['isbn', 'URL', 'yes']
+    assert table[2][:3] == ['Authorization', 'header', 'yes']
+    assert table[2][3].startswith('Added by oauth2.')
     # No line restating the method and URL: the message starts with them, with
     # `{version}` bound (`bound_base_uri`).
     assert 'Send GET' not in text
@@ -171,6 +171,8 @@ def test_optional_inputs_appear_only_when_named(build):
     # `limit` shows its default; `offset` the author's value, read as text.
     assert 'limit=20' in asked
     assert 'offset=40' in asked
+    # Named, so shown; optional, and the table says so.
+    assert ['limit', 'query', 'no'] in [row[:3] for row in rows(built)]
 
 
 def test_a_name_the_method_does_not_have_is_a_warning(build):
@@ -220,17 +222,18 @@ def test_expect_spells_out_the_response(build):
     text = built.text()
     # Straight to what comes back: no line announcing the status, which the
     # message starts with, and not the response's own description.
-    assert text.startswith('Home ¶ Body, application/json : Book Field Type Meaning')
+    assert text.startswith('Home ¶ Body, application/json : Book Field Type Required Meaning')
     assert 'OK OK' not in text
-    # What comes back is explained as a request body is: the payload's fields
-    # in a table, and the optional ones named.
-    assert ['title', 'string'] in [row[:2] for row in rows(built)]
-    assert 'Optional, not shown: tags' in text
+    # What comes back is explained as a request body is: every field of the
+    # payload, marked required or not.
+    table = [row[:3] for row in rows(built)]
+    assert ['title', 'string', 'yes'] in table
+    assert ['tags', 'array of string', 'no'] in table
     # `:fields: none` for a response that only echoes what a step above sent.
     # `Location` has no description, so it has no row either: the message
     # shows it.
     echo = text[text.index('Full reference: GET /books/{isbn} 200') :]
-    assert 'Field Type Meaning' not in echo
+    assert 'Field Type' not in echo
     assert 'Location' not in echo.partition('HTTP')[0]
     assert blocks(built)[1].startswith('HTTP/1.1 201 Created')
     assert 'Location: <Location>' in blocks(built)[1]
@@ -239,13 +242,15 @@ def test_expect_spells_out_the_response(build):
 def test_the_body_reads_as_a_table_with_constraints_in_words(build):
     built = build({'index': 'Home\n====\n\n.. raml:send:: POST /books\n'}, conf=OFF)
     fields = {row[0]: row for row in rows(built) if row[0] in {'title', 'isbn'}}
-    # One row a field: its name, its type in words, its meaning with the
-    # constraints as a caller reads them rather than as RAML spells them.
-    assert fields['title'][:2] == ['title', 'string']
-    assert fields['title'][2].endswith('as printed on the cover. 1–200 characters.')
-    assert fields['isbn'][2].endswith('Exactly 13 characters, matching ^\\d{13}$ .')
-    # The optional fields are named, so a reader knows they exist without leaving.
-    assert 'Optional, not shown: tags , related , reviews , priceHistory , metadata .' in built.text()
+    # One row a field: its name, its type in words, whether it is required,
+    # and its meaning with the constraints as a caller reads them.
+    assert fields['title'][:3] == ['title', 'string', 'yes']
+    assert fields['title'][3].endswith('as printed on the cover. 1–200 characters.')
+    assert fields['isbn'][3].endswith('Exactly 13 characters, matching ^\\d{13}$ .')
+    # Every field, the optional ones too: the example body carries `tags`, and
+    # the table is where a reader learns it may be left out.
+    assert ['tags', 'array of string', 'no'] in [row[:3] for row in rows(built)]
+    assert 'not shown' not in built.text()
 
 
 def test_an_input_is_explained_once_per_page(build):
@@ -280,5 +285,5 @@ def test_a_response_header_the_spec_explains_gets_a_row(build, tmp_path):
         encoding='utf-8',
     )
     built = build({'index': 'Home\n====\n\n.. raml:expect:: POST /pets 201\n'}, apis=f"'t': {str(spec)!r}", conf=OFF)
-    assert rows(built) == [['Location', 'Where the new pet lives.']]
+    assert rows(built) == [['Location', 'yes', 'Where the new pet lives.']]
     assert 'X-Trace: <X-Trace>' in blocks(built)[0]

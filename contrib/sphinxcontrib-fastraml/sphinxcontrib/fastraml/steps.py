@@ -67,7 +67,7 @@ class Ask:
     media: str | None = None
     #: Optional headers and query parameters to include, by name.
     optional: frozenset[str] = frozenset()
-    #: Which of the body's fields to explain; the required ones unless asked.
+    #: Which of the body's fields to explain; all of them unless asked.
     fields: Fields | None = None
     #: Values for inputs, by name, as written in the directive.
     values: dict[str, str] = field(default_factory=dict)
@@ -139,7 +139,7 @@ class Steps(Writer):
         out.extend(self.inputs(inputs))
         payload = self.payload(key, request.bodies if request else {}, ask)
         if payload is not None:
-            out.extend(self.body_fields(payload, ask.fields or 'required'))
+            out.extend(self.body_fields(payload, ask.fields or 'all'))
         out.append(self.request_block(method, f'{base_uri}{path}', inputs, values, payload))
         out.extend(_no_example(payload))
         out.append(nodes.paragraph('', '', nodes.Text('Full reference: '), self.xref('method', key, key)))
@@ -160,7 +160,7 @@ class Steps(Writer):
             # What comes back is what the reader is there to understand, so it
             # is explained as a request body is. Where it only echoes a body a
             # step above has explained, the author says `:fields: none`.
-            out.extend(self.body_fields(payload, ask.fields or 'required'))
+            out.extend(self.body_fields(payload, ask.fields or 'all'))
         out.append(self.response_block(f'{status} {phrase}'.strip(), inputs, values, payload))
         out.extend(_no_example(payload))
         out.append(nodes.paragraph('', '', nodes.Text('Full reference: '), self.xref('response', key, key)))
@@ -272,21 +272,18 @@ class Steps(Writer):
             if seen in explained:
                 continue
             explained.add(seen)
-            notes = [
-                note for note in ('' if item.required else 'Optional.', f'{item.via}.' if item.via else '') if note
-            ]
-            meaning: list[Node] = [nodes.paragraph('', ' '.join(notes))] if notes else []
+            meaning: list[Node] = [nodes.paragraph('', f'{item.via}.')] if item.via else []
             meaning.extend(self.explained(item.base))
             name: list[Node] = [nodes.literal(item.name, item.name)]
             if not response:
-                rows.append([name, [nodes.Text(item.where)], meaning])
+                rows.append([name, [nodes.Text(item.where)], _required(item.required), meaning])
             elif meaning:
-                rows.append([name, meaning])
+                rows.append([name, _required(item.required), meaning])
         if not rows:
             return []
         if response:
-            return [table(['Header', 'Meaning'], rows, [22, 78])]
-        return [table(['Parameter', 'In', 'Meaning'], rows, [22, 10, 68])]
+            return [table(['Header', 'Required', 'Meaning'], rows, [22, 10, 68])]
+        return [table(['Parameter', 'In', 'Required', 'Meaning'], rows, [20, 9, 10, 61])]
 
     def body_fields(self, payload: Payload, fields: Fields) -> list[Node]:
         media = payload.media
@@ -298,25 +295,21 @@ class Steps(Writer):
             return out
         shape = target(payload.shape).shape
         properties = shape.properties or {} if isinstance(shape, ObjectShape) else {}
-        rows: list[list[list[Node]]] = []
-        for name, prop in properties.items():
-            if not (prop.required or fields == 'all'):
-                continue
-            meaning: list[Node] = [] if prop.required else [nodes.paragraph('', 'Optional.')]
-            meaning.extend(self.explained(prop.base))
-            rows.append([[nodes.literal(name, name)], [nodes.Text(self.words(prop.base))], meaning])
+        # Every field, with whether it is required: an example body carries
+        # optional fields too, and a reader who meets `tags` in it has to find
+        # out here what it is and that it may be left out.
+        rows: list[list[list[Node]]] = [
+            [
+                [nodes.literal(name, name)],
+                [nodes.Text(self.words(prop.base))],
+                _required(prop.required),
+                self.explained(prop.base),
+            ]
+            for name, prop in properties.items()
+            if prop.required or fields == 'all'
+        ]
         if rows:
-            out.append(table(['Field', 'Type', 'Meaning'], rows, [22, 16, 62]))
-        hidden = [name for name, prop in properties.items() if not (prop.required or fields == 'all')]
-        if hidden:
-            # Named, so a reader who needs one knows it exists without leaving.
-            line = nodes.paragraph('', '', nodes.Text('Optional, not shown: '))
-            for position, name in enumerate(hidden):
-                if position:
-                    line += nodes.Text(', ')
-                line += nodes.literal(name, name)
-            line += nodes.Text('.')
-            out.append(line)
+            out.append(table(['Field', 'Type', 'Required', 'Meaning'], rows, [20, 14, 10, 56]))
         return out
 
     def explained(self, base: BaseShape) -> list[Node]:
@@ -406,6 +399,10 @@ class Steps(Writer):
 def _message(lines: list[str], payload: Payload | None) -> nodes.literal_block:
     shown = '\n'.join([*lines, *(payload.lines() if payload is not None else [])])
     return nodes.literal_block(shown, shown, language='http')
+
+
+def _required(required: bool) -> list[Node]:  # noqa: FBT001 - a cell for a flag
+    return [nodes.Text('yes' if required else 'no')]
 
 
 def _no_example(payload: Payload | None) -> list[Node]:

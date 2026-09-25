@@ -4,16 +4,14 @@ Only a value fastraml has validated against the exact shape of that input is
 ever shown. The candidates, first valid one wins:
 
 1. the author's own, from the directive (an error when it does not validate);
-2. the input's own `example`, then its `examples`, then its `default`;
-3. an example of a declared type it extends -- `body: Book` is an anonymous
-   subtype of `Book` with no example of its own -- if and only if it validates
-   against this input. A subtype that narrows its parent rejects the parent's
-   example, and then there is none: examples are not inherited, and this does
-   not pretend they are (docs/07 § 4).
+2. `fastraml.sample` with synthesis off (docs/16 § 8.1): the input's own
+   examples, never one marked `strict: false`, then its `default`, then an
+   `enum` member; else a value composed from its properties' or items' own.
 
-An example marked `strict: false` is one its author says does not validate, so
-it is never a candidate. Nothing is ever made up: with no valid candidate the
-caller shows a placeholder.
+A supertype's example is never a candidate. `body: {type: Book}` is a subtype
+of `Book` that may narrow it, so its value is composed from Book's properties
+instead; `body: Book` is Book itself and carries its examples (docs/07 § 3).
+Nothing is ever made up: with no candidate the caller shows a placeholder.
 """
 
 from __future__ import annotations
@@ -22,14 +20,13 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from fastraml import examples_of
-
-from .model import plain, target
+from fastraml import SampleError, SampleOptions, sample
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from fastraml import BaseShape
+
+#: Composed from the author's data alone: nothing is ever made up.
+_DECLARED_ONLY = SampleOptions(synthesize=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,11 +37,11 @@ class Chosen:
 
 
 def choose(base: BaseShape) -> Chosen | None:
-    """The first candidate from the input's own values or its supertypes' examples that validates."""
-    for candidate in _candidates(base):
-        if base.validate(candidate.value) is None:
-            return candidate
-    return None
+    """The input's declared value, or one composed from declared values; else `None`."""
+    try:
+        return Chosen(sample(base, options=_DECLARED_ONLY))
+    except SampleError:
+        return None
 
 
 def supplied(base: BaseShape, written: Any) -> tuple[Chosen | None, str | None]:
@@ -70,28 +67,3 @@ def supplied_text(base: BaseShape, written: str) -> tuple[Chosen | None, str | N
     except ValueError:
         return None, error
     return supplied(base, parsed)
-
-
-def _candidates(base: BaseShape) -> Iterator[Chosen]:
-    own = target(base)
-    yield from _examples(own)
-    if own.default is not None:
-        yield Chosen(plain(own.default))
-    # Ancestors' examples are candidates, not inherited values: `choose` checks
-    # each against the original, possibly narrower input before showing it.
-    seen = {own.id}
-    parents = list(reversed(own.inherits))
-    while parents:
-        parent = target(parents.pop())
-        if parent.id in seen:
-            continue
-        seen.add(parent.id)
-        yield from _examples(parent)
-        parents.extend(reversed(parent.inherits))
-
-
-def _examples(base: BaseShape) -> Iterator[Chosen]:
-    for example in examples_of(base):
-        strict = example.strict
-        if example.data is not None and (strict is None or strict.value):
-            yield Chosen(plain(example.data))

@@ -165,11 +165,15 @@ exact shape of the input it's for, and a step uses the first that passes:
 
 1. your own value from `:values:` or `:body:`. If it fails, you get a warning
    with fastraml's reason;
-2. the input's own `example`, `examples` or `default`;
-3. an example of a declared type the input extends, but only if it validates
-   for this input. A body `type: Book` has no example of its own, so it gets
-   `Book`'s, unless the body narrows `Book` so that `Book`'s example no longer
-   fits.
+2. the input's own `example`, `examples` or `default`, or an `enum` member;
+3. a value composed from the examples of its properties or items, found by
+   the same rules, using nothing else (fastRAML's `docs/16-graph.md` § 8.1).
+
+A supertype's example is never used, even one that would validate: a subtype
+may narrow its parent, so nothing guarantees the parent's example fits. A body
+written `Book` is `Book` itself and carries its examples. A body written
+`type: Book` is a subtype, so its value is composed from `Book`'s properties,
+and it has none if a required property has no example.
 
 An example marked `strict: false` is never used. When nothing passes, the
 block shows `<name>` for an input, and leaves the body out with a sentence

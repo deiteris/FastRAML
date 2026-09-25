@@ -148,7 +148,7 @@ above. A step is never a link target, so it can't compete with the reference.
 | `:values:` | `name = value` lines for any input. A value is read as text, else as JSON |
 | `:body:` | a JSON file, relative to the page, holding the body |
 | `:with:` | optional headers and query parameters to include, by name |
-| `:fields:` | which of the body's fields to explain: `none`, `required` or `all` (the default) |
+| `:fields:` | which of the body's fields to explain: `all` (the default), `required`, `example` (those the shown example carries, which always includes every required one) or `none` |
 | `:media:` | which body to show, by media type; by default the first JSON one |
 | `:security:` | on `raml:send`, which scheme to authenticate with, or `none` |
 

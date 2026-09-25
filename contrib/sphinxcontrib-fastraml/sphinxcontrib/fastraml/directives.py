@@ -261,7 +261,7 @@ def _values(argument: str | None) -> dict[str, str]:
 
 
 def _fields(argument: str | None) -> str:
-    return directives.choice(argument or '', ('none', 'required', 'all'))
+    return directives.choice(argument or '', ('none', 'required', 'example', 'all'))
 
 
 class Step(RamlDirective):

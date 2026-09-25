@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 NO_BODY: Any = object()
 
 Where = Literal['URL', 'header', 'query']
-Fields = Literal['none', 'required', 'all']
+Fields = Literal['none', 'required', 'example', 'all']
 
 #: The inputs each page has explained so far, by `(api, where, name, shape)`.
 #: Weak, so a page's set goes with its document once it is read.
@@ -298,6 +298,11 @@ class Steps(Writer):
         # Every field, with whether it is required: an example body carries
         # optional fields too, and a reader who meets `tags` in it has to find
         # out here what it is and that it may be left out.
+        # `example`: the fields the message below carries. The example passed
+        # validation, so no required field is ever left out by this; with no
+        # example object to go by, every field is shown rather than none.
+        sent = payload.chosen.value if payload.chosen is not None else None
+        in_example = set(sent) if isinstance(sent, dict) else None
         rows: list[list[list[Node]]] = [
             [
                 [nodes.literal(name, name)],
@@ -306,7 +311,9 @@ class Steps(Writer):
                 self.explained(prop.base),
             ]
             for name, prop in properties.items()
-            if prop.required or fields == 'all'
+            if fields == 'all'
+            or (fields == 'required' and prop.required)
+            or (fields == 'example' and (in_example is None or name in in_example))
         ]
         if rows:
             out.append(table(['Field', 'Type', 'Required', 'Meaning'], rows, [20, 14, 10, 56]))

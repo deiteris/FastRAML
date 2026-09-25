@@ -287,3 +287,29 @@ def test_a_response_header_the_spec_explains_gets_a_row(build, tmp_path):
     built = build({'index': 'Home\n====\n\n.. raml:expect:: POST /pets 201\n'}, apis=f"'t': {str(spec)!r}", conf=OFF)
     assert rows(built) == [['Location', 'yes', 'Where the new pet lives.']]
     assert 'X-Trace: <X-Trace>' in blocks(built)[0]
+
+
+def test_fields_can_follow_the_example(build):
+    built = build(
+        {'index': 'Home\n====\n\n.. raml:send:: POST /books\n   :fields: example\n'},
+        conf=OFF,
+    )
+    shown = [row[0] for row in rows(built) if row[1] not in {'URL', 'header', 'query'}]
+    # `Book`'s example: every required field, and of the optional ones none --
+    # so `tags`, which it does not carry, has no row.
+    assert shown == ['title', 'isbn', 'price', 'id', 'createdAt']
+
+
+def test_fields_follow_every_field_when_there_is_no_example(build, tmp_path):
+    spec = tmp_path / 'bare.raml'
+    spec.write_text(
+        '#%RAML 1.0\ntitle: T\n/pets:\n  post:\n    body:\n      application/json:\n'
+        '        properties:\n          name: string\n          nick?: string\n',
+        encoding='utf-8',
+    )
+    built = build(
+        {'index': 'Home\n====\n\n.. raml:send:: POST /pets\n   :fields: example\n'},
+        apis=f"'t': {str(spec)!r}",
+        conf=OFF,
+    )
+    assert [row[0] for row in rows(built)] == ['name', 'nick']

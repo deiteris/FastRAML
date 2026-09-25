@@ -131,6 +131,8 @@ class Steps(Writer):
             *self.parameters_of('header', request.headers if request else {}, ask),
             *self.parameters_of('query', request.query_parameters if request else {}, ask),
         ]
+        if request is not None and request.query_string is not None:
+            inputs.append(Input('query', 'queryString', request.query_string, required=True))
         self.check_names(key, inputs, ask, request.bodies if request else {})
         values = {item.name: self.value(key, item, ask) for item in inputs}
         base_uri = ''.join(self.catalogue.value('base_uri')).rstrip('/')
@@ -366,11 +368,14 @@ class Steps(Writer):
     ) -> nodes.literal_block:
         filled = self.fill(url, [item for item in inputs if item.where == 'URL'], values)
         parts = urlsplit(filled)
-        query = '&'.join(
+        named_query = '&'.join(
             f'{quote(item.name)}={_query_text(values[item.name], item.name)}'
             for item in inputs
-            if item.where == 'query'
+            if item.where == 'query' and item.name != 'queryString'
         )
+        query_string = next((item for item in inputs if item.where == 'query' and item.name == 'queryString'), None)
+        raw_query = _raw_query(values[query_string.name]) if query_string is not None else ''
+        query = '&'.join(part for part in (named_query, raw_query) if part)
         target_path = (parts.path or '/') + (f'?{query}' if query else '')
         lines = [f'{method.upper()} {target_path} HTTP/1.1']
         if parts.netloc:
@@ -396,7 +401,7 @@ class Steps(Writer):
         names = {item.name for item in inputs}
         return re.sub(
             r'\{([^{}]+)\}',
-            lambda found: _text(values.get(found[1]), found[1]) if found[1] in names else found[0],
+            lambda found: _query_text(values.get(found[1]), found[1]) if found[1] in names else found[0],
             url,
         )
 
@@ -433,6 +438,18 @@ def _text(chosen: Chosen | None, name: str) -> str:
 
 def _query_text(chosen: Chosen | None, name: str) -> str:
     return f'<{name}>' if chosen is None else quote(_text(chosen, name), safe='')
+
+
+def _raw_query(chosen: Chosen | None) -> str:
+    if chosen is None:
+        return '<queryString>'
+    if isinstance(chosen.value, dict):
+        return '&'.join(
+            f'{quote(str(name), safe="")}={_query_text(Chosen(value), str(name))}'
+            for name, entry in chosen.value.items()
+            for value in (entry if isinstance(entry, list) else [entry])
+        )
+    return _text(chosen, 'queryString')
 
 
 def _is_json(media: str) -> bool:

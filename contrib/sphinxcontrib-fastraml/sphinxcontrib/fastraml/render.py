@@ -426,16 +426,16 @@ class Writer:
         """What an anonymous type holds: its own properties, items or members."""
         shape = base.shape
         if isinstance(shape, ObjectShape):
-            inherited = {
-                name
-                for parent in beneath
-                if isinstance(parent.shape, ObjectShape)
-                for name in parent.shape.properties or {}
-            }
+            inherited = [parent.shape.properties or {} for parent in beneath if isinstance(parent.shape, ObjectShape)]
             rows = [
                 self.property_row(name, prop.base, required=prop.required)
                 for name, prop in (shape.properties or {}).items()
-                if name not in inherited
+                if not any(
+                    name in properties
+                    and prop.base is properties[name].base
+                    and prop.required == properties[name].required
+                    for properties in inherited
+                )
             ]
             rows.extend(
                 self.property_row(f'/{pattern.pattern.pattern}/', pattern.base, required=False)

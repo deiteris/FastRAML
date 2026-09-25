@@ -206,7 +206,7 @@ class RamlDomain(Domain):
     def note_object(self, kind: Kind, api: str, key: str, target: Target, location: Any = None) -> None:
         """Record where one item is rendered; a second place is a warning, and loses."""
         existing = self.objects.get((kind, api, key))
-        if existing is not None and existing.docname != target.docname:
+        if existing is not None:
             logger.warning(
                 'RAML %s %r of API %r is rendered twice; this one is also in %s -- use :no-index: on one',
                 LABELS[kind],

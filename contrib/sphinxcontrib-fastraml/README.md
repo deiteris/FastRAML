@@ -155,6 +155,11 @@ above. A step is never a link target, so it can't compete with the reference.
 | `:media:` | which body to show, by media type; by default the first JSON one |
 | `:security:` | on `raml:send`, which scheme to authenticate with, or `none` |
 
+For a method with `queryString`, use `queryString = ...` in `:values:` to
+provide the whole query. A validated object value is encoded as query
+parameters; a validated string is used as the query text. Without a value or
+example, the request shows `?<queryString>`.
+
 **Only validated values are shown.** fastraml validates each value against the
 exact shape of the input it's for, and a step uses the first that passes:
 

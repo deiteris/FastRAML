@@ -64,6 +64,7 @@ class _Parsed:
     catalogue: Catalogue
     files: tuple[Path, ...]
     mtimes: tuple[float, ...]
+    error: RamlError | None
 
 
 #: Parses kept across builds in one process, by root file and workspace root:
@@ -110,8 +111,13 @@ def sources(config: Config) -> dict[str, Source]:
 
 def load_all(app: Sphinx) -> None:
     """Parse every configured API now, in the parent process (`builder-inited`)."""
+    reported: set[tuple[Path, Path | None]] = set()
     for source in sources(app.config).values():
-        _load(source)
+        parsed = _parse(source)
+        key = (source.path, source.workspace_root)
+        if parsed is not None and parsed.error is not None and key not in reported:
+            _report(parsed.error)
+            reported.add(key)
 
 
 def api(env: BuildEnvironment, name: str) -> Api | None:
@@ -144,10 +150,8 @@ def _parse(source: Source) -> _Parsed | None:
     except (RamlError, OSError) as err:
         logger.warning('RAML API %r could not be read: %s', source.name, err, type='fastraml', subtype='parse')
         return None
-    if error is not None:
-        _report(error)
     files = _files(raml, source.path)
-    parsed = _Parsed(Catalogue(raml), files, _mtimes(files))
+    parsed = _Parsed(Catalogue(raml), files, _mtimes(files), error)
     _CACHE[key] = parsed
     return parsed
 

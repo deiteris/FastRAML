@@ -130,6 +130,17 @@ def test_rendering_one_item_twice_warns_unless_one_copy_is_not_indexed(build):
     assert copied.objects()['method', 'books', 'GET /books'].docname == 'reference'
 
 
+def test_rendering_one_item_twice_on_the_same_page_warns(build):
+    built = build(
+        {'index': 'Home\n====\n\n.. raml:type:: AnythingAlias\n\n.. raml:type:: AnythingAlias\n'},
+        conf='raml_warn_unrendered = False',
+    )
+    assert len([warning for warning in built.warnings if 'rendered twice' in warning]) == 1
+    assert built.objects()['type', 'books', f'{ROOT}#AnythingAlias'].anchor == (
+        'raml-books-type-sample-api.raml-AnythingAlias'
+    )
+
+
 def test_an_authors_note_follows_the_raml_prose_and_precedes_the_fields(build):
     built = build(
         {
@@ -191,6 +202,26 @@ def test_a_body_of_a_declared_type_links_to_it_rather_than_repeating_it(build):
     built = build({'index': 'Home\n====\n', 'reference': REFERENCE})
     # Book's description is in Book's entry, once; its uses as a body link there.
     assert built.text('reference').count('One book in the catalogue.') == 1
+
+
+def test_an_inline_subtype_shows_narrowed_inherited_properties(build, tmp_path):
+    spec = tmp_path / 'narrow.raml'
+    spec.write_text(
+        '#%RAML 1.0\ntitle: T\ntypes:\n  Parent:\n    properties:\n'
+        '      code: string\n      unchanged: string\n/items:\n  post:\n    body:\n'
+        '      application/json:\n        type: Parent\n        properties:\n'
+        '          code:\n            type: string\n            minLength: 5\n',
+        encoding='utf-8',
+    )
+    built = build(
+        {'index': 'Home\n====\n\n.. raml:method:: POST /items\n'},
+        apis=f"'t': {str(spec)!r}",
+        conf='raml_warn_unrendered = False',
+    )
+    assert built.warnings == []
+    assert 'code : string' in built.text()
+    assert 'at least 5 characters' in built.text().lower()
+    assert 'unchanged' not in built.text()
 
 
 def test_a_library_type_renders_by_file_and_links_by_file(build):
@@ -276,6 +307,27 @@ def test_a_diagnostic_is_a_warning_at_the_raml_line(build, tmp_path):
     assert len(placed) == 1, built.warnings
     assert 'invalid example' in placed[0]
     assert 'expected: integer' in placed[0]
+
+
+def test_a_cached_diagnostic_is_reported_on_every_build(build, tmp_path):
+    spec = tmp_path / 'broken.raml'
+    spec.write_text('#%RAML 1.0\ntitle: T\ntypes:\n  Age:\n    type: integer\n    example: old\n', encoding='utf-8')
+    pages = {'index': 'Home\n====\n\n.. raml:overview::\n'}
+    first = build(pages, apis=f"'t': {str(spec)!r}", conf='raml_warn_unrendered = False')
+    second = build(pages, apis=f"'t': {str(spec)!r}", conf='raml_warn_unrendered = False')
+    for result in (first, second):
+        assert len([warning for warning in result.warnings if 'invalid example' in warning]) == 1
+
+
+def test_two_namespaces_for_one_file_report_its_diagnostic_once(build, tmp_path):
+    spec = tmp_path / 'broken.raml'
+    spec.write_text('#%RAML 1.0\ntitle: T\ntypes:\n  Age:\n    type: integer\n    example: old\n', encoding='utf-8')
+    built = build(
+        {'index': 'Home\n====\n'},
+        apis=f"'first': {str(spec)!r}, 'second': {str(spec)!r}",
+        conf='raml_warn_unrendered = False',
+    )
+    assert len([warning for warning in built.warnings if 'invalid example' in warning]) == 1
 
 
 def test_a_workspace_refusal_names_the_root_it_needed(build):

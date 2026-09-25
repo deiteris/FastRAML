@@ -175,6 +175,59 @@ def test_optional_inputs_appear_only_when_named(build):
     assert ['limit', 'query', 'no'] in [row[:3] for row in rows(built)]
 
 
+def test_a_query_string_is_shown_and_validated_as_a_whole(build, tmp_path):
+    spec = tmp_path / 'query.raml'
+    spec.write_text(
+        '#%RAML 1.0\ntitle: T\n/items:\n  get:\n    queryString:\n'
+        '      type: string\n      pattern: ^token=.+$\n      example: token=abc\n',
+        encoding='utf-8',
+    )
+    built = build(
+        {
+            'index': 'Home\n====\n\n.. raml:send:: GET /items\n\n'
+            '.. raml:send:: GET /items\n   :values:\n      queryString = token=other\n',
+        },
+        apis=f"'t': {str(spec)!r}",
+        conf=OFF,
+    )
+    assert built.warnings == []
+    assert blocks(built)[0].startswith('GET /items?token=abc HTTP/1.1')
+    assert blocks(built)[1].startswith('GET /items?token=other HTTP/1.1')
+
+
+def test_an_object_query_string_is_encoded_and_an_invalid_one_is_not_shown(build, tmp_path):
+    spec = tmp_path / 'query-object.raml'
+    spec.write_text(
+        '#%RAML 1.0\ntitle: T\n/items:\n  get:\n    queryString:\n'
+        '      type: object\n      properties:\n        search: string\n'
+        '      example: {search: "red blue"}\n',
+        encoding='utf-8',
+    )
+    built = build(
+        {
+            'index': 'Home\n====\n\n.. raml:send:: GET /items\n\n'
+            '.. raml:send:: GET /items\n   :values:\n      queryString = {"other": 2}\n',
+        },
+        apis=f"'t': {str(spec)!r}",
+        conf=OFF,
+    )
+    assert blocks(built)[0].startswith('GET /items?search=red%20blue HTTP/1.1')
+    assert blocks(built)[1].startswith('GET /items?<queryString> HTTP/1.1')
+    assert any('queryString' in warning and 'not valid' in warning for warning in built.warnings)
+
+
+def test_uri_template_values_are_encoded_before_splitting_the_url(build, tmp_path):
+    spec = tmp_path / 'uri.raml'
+    spec.write_text('#%RAML 1.0\ntitle: T\n/items/{id}:\n  get:\n', encoding='utf-8')
+    built = build(
+        {'index': 'Home\n====\n\n.. raml:send:: GET /items/{id}\n   :values:\n      id = a#b?c/d\n'},
+        apis=f"'t': {str(spec)!r}",
+        conf=OFF,
+    )
+    assert built.warnings == []
+    assert blocks(built)[0].startswith('GET /items/a%23b%3Fc%2Fd HTTP/1.1')
+
+
 def test_a_name_the_method_does_not_have_is_a_warning(build):
     built = build({'index': 'Home\n====\n\n.. raml:send:: GET /books\n   :with: sort\n'}, conf=OFF)
     assert any("has no input named 'sort'" in warning for warning in built.warnings)

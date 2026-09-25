@@ -81,11 +81,9 @@ class RamlDirective(SphinxDirective):
         chosen = current_api(self.env, self.options.get('api'))
         if chosen is None:
             return self.warn('which RAML API? Several are configured: name one with :api: or raml:api')
-        loaded = apis.api(self.env, chosen)
+        loaded = apis.page_api(self.env, chosen)
         if loaded is None:
             return self.warn(f'RAML API {chosen!r} is not configured, or could not be read')
-        for path in loaded.files:
-            self.env.note_dependency(str(path))
         index = 'no-index' not in self.options and 'noindex' not in self.options
         rendered = self.render(self.writer(self, loaded, index=index), loaded)
         if self.content:

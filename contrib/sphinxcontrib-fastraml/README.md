@@ -297,3 +297,17 @@ builds the same site, so a change that breaks it fails the suite.
 uv sync --dev
 uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q
 ```
+
+To check how reading scales, generate a site with 100 pages, 20 RAML roles per
+page, and 32 RAML files:
+
+```bash
+uv run python bench_sphinx.py --pages 100 --roles 20 --files 32
+```
+
+The command times a fresh Sphinx build with the `dummy` builder, which reads
+directives and roles without generating HTML. Use `--builder html` to include
+HTML output, `--mode plain` to compare pages without RAML roles, and
+`--mode types --pages 0 --types 5000 --files 1` to check a large declaration
+list. Run `--trace` separately to measure peak Python allocations; tracing
+slows the build.

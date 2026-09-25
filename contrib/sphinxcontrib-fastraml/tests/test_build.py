@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from os import utime
+
+from sphinxcontrib.fastraml import apis, check_rendered
+from sphinxcontrib.fastraml.domain import Target
+
 from .conftest import FIXTURES, ROOT, sample
 
 REFERENCE = """\
@@ -295,6 +300,86 @@ def test_a_page_depends_on_every_file_the_api_was_read_from(build):
     assert {'api.raml', 'common.raml', 'measures.raml', 'machine.raml', 'invoice.json'} <= depends
 
 
+def test_pages_with_only_link_roles_depend_on_the_api_files(build):
+    built = build(
+        {
+            'index': 'Home\n====\n\nSee :raml:type:`Book`.\n',
+            'api': 'API\n===\n\nSee :raml:api:`books`.\n',
+            'reference': 'Reference\n=========\n\n.. raml:overview::\n\n.. raml:type:: Book\n',
+        },
+        conf='raml_warn_unrendered = False',
+    )
+    assert built.warnings == []
+    for docname in ('index', 'api'):
+        depends = {path.name for path in built.app.env.dependencies[docname]}
+        assert {'api.raml', 'common.raml', 'measures.raml', 'machine.raml', 'invoice.json'} <= depends
+
+
+def test_a_role_only_page_depends_on_an_unreadable_api_file(build, tmp_path):
+    spec = tmp_path / 'later.raml'
+    built = build(
+        {'index': 'Home\n====\n\nSee :raml:type:`Book`.\n'},
+        apis=f"'t': {str(spec)!r}",
+        conf='raml_warn_unrendered = False',
+    )
+    assert spec in built.app.env.dependencies['index']
+
+
+def test_a_new_page_read_refreshes_its_cached_api(build, tmp_path):
+    spec = tmp_path / 'changing.raml'
+    spec.write_text('#%RAML 1.0\ntitle: First\n', encoding='utf-8')
+    built = build(
+        {'index': 'Home\n====\n\n.. raml:overview::\n'},
+        apis=f"'t': {str(spec)!r}",
+        conf='raml_warn_unrendered = False',
+    )
+    env = built.app.env
+    env.prepare_settings('index')
+    first = apis.page_api(env, 't')
+    assert first is apis.page_api(env, 't')
+    assert first is not None
+    assert first.catalogue.title == 'First'
+
+    spec.write_text('#%RAML 1.0\ntitle: Second\n', encoding='utf-8')
+    later = spec.stat().st_mtime + 2
+    utime(spec, (later, later))
+    apis.clear_page_cache(built.app, 'index', [])
+    env.prepare_settings('index')
+    second = apis.page_api(env, 't')
+    assert second is not None
+    assert second.catalogue.title == 'Second'
+
+
+def test_parallel_target_merges_warn_and_keep_the_first_target(build, monkeypatch):
+    built = build({'index': 'Home\n====\n'}, conf='raml_warn_unrendered = False')
+    domain = built.app.env.get_domain('raml')
+    key = ('type', 'books', f'{ROOT}#Book')
+    domain.merge_domaindata({'first'}, {'objects': {key: Target('first', 'first-id', 'Book')}, 'linked': {}})
+    warnings = []
+    monkeypatch.setattr('sphinxcontrib.fastraml.domain.logger.warning', lambda *args, **_kwargs: warnings.append(args))
+    domain.merge_domaindata({'second'}, {'objects': {key: Target('second', 'second-id', 'Book')}, 'linked': {}})
+    assert domain.objects[key].docname == 'first'
+    assert len(warnings) == 1
+    assert 'rendered twice' in warnings[0][0]
+
+
+def test_clearing_a_page_preserves_links_from_other_pages(build, monkeypatch):
+    built = build({'index': 'Home\n====\n'}, conf='raml_warn_unrendered = False')
+    domain = built.app.env.get_domain('raml')
+    key = ('type', 'books', 'sample/common.raml#Address')
+    domain.note_link(*key, 'first')
+    domain.note_link(*key, 'second')
+    domain.clear_doc('first')
+    assert domain.linked[key] == {'second'}
+    domain.merge_domaindata({'third'}, {'objects': {}, 'linked': {key: {'third', 'unrelated'}}})
+    assert domain.linked[key] == {'second', 'third'}
+    warnings = []
+    monkeypatch.setattr('sphinxcontrib.fastraml.logger.warning', lambda *args, **_kwargs: warnings.append(args))
+    built.app.config.raml_warn_unrendered = True
+    check_rendered(built.app, built.app.env)
+    assert len([message for message in warnings if key[2] in message and 'second' in message]) == 1
+
+
 def test_a_diagnostic_is_a_warning_at_the_raml_line(build, tmp_path):
     spec = tmp_path / 'broken.raml'
     spec.write_text(
@@ -328,6 +413,19 @@ def test_two_namespaces_for_one_file_report_its_diagnostic_once(build, tmp_path)
         conf='raml_warn_unrendered = False',
     )
     assert len([warning for warning in built.warnings if 'invalid example' in warning]) == 1
+
+
+def test_an_unreadable_api_is_reported_once_per_build_and_retried_when_it_appears(build, tmp_path):
+    spec = tmp_path / 'later.raml'
+    pages = {'index': 'Home\n====\n\n.. raml:overview::\n'}
+    config = f"'t': {str(spec)!r}"
+    for _ in range(2):
+        built = build(pages, apis=config, conf='raml_warn_unrendered = False')
+        assert len([warning for warning in built.warnings if "RAML API 't' could not be read:" in warning]) == 1
+    spec.write_text('#%RAML 1.0\ntitle: Arrived\n', encoding='utf-8')
+    built = build(pages, apis=config, conf='raml_warn_unrendered = False')
+    assert built.warnings == []
+    assert 'Arrived' in built.text()
 
 
 def test_a_workspace_refusal_names_the_root_it_needed(build):

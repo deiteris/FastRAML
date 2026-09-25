@@ -56,6 +56,27 @@ def test_a_body_with_no_example_of_its_own_gets_its_supertypes_if_it_validates(b
     assert '"title": "Dune"' in request
 
 
+def test_a_grandparents_example_is_only_shown_when_it_validates_for_the_input(build, tmp_path):
+    spec = tmp_path / 'ancestor.raml'
+    spec.write_text(
+        '#%RAML 1.0\ntitle: T\ntypes:\n'
+        '  Root:\n    type: string\n    example: ok\n'
+        '  Middle:\n    type: Root\n'
+        '/items:\n  get:\n    queryParameters:\n'
+        '      accepted:\n        type: Middle\n'
+        '      narrowed:\n        type: Middle\n        minLength: 4\n',
+        encoding='utf-8',
+    )
+    built = build(
+        {'index': 'Home\n====\n\n.. raml:send:: GET /items\n   :with: accepted narrowed\n'},
+        apis=f"'t': {str(spec)!r}",
+        conf=OFF,
+    )
+    assert built.warnings == []
+    assert 'accepted=ok' in blocks(built)[0]
+    assert 'narrowed=<narrowed>' in blocks(built)[0]
+
+
 def test_a_narrowing_subtype_never_borrows_its_parents_example(build, tmp_path):
     spec = tmp_path / 'narrow.raml'
     spec.write_text(
@@ -255,6 +276,22 @@ def test_the_security_asked_for_is_the_one_shown(build):
     # `basic` does not secure this method: said so, and the first scheme is used.
     assert any("is not secured by 'basic'" in warning for warning in built.warnings)
     assert 'Authorization: <Authorization>' in blocks(built)[1]
+
+
+def test_asking_for_authentication_on_an_open_method_warns(build, tmp_path):
+    spec = tmp_path / 'open.raml'
+    spec.write_text('#%RAML 1.0\ntitle: T\n/open:\n  get:\n', encoding='utf-8')
+    built = build(
+        {
+            'index': 'Home\n====\n\n.. raml:send:: GET /open\n   :security: basic\n\n'
+            '.. raml:send:: GET /open\n   :security: none\n',
+        },
+        apis=f"'t': {str(spec)!r}",
+        conf=OFF,
+    )
+    assert len(built.warnings) == 1
+    assert "is not secured by 'basic'" in built.warnings[0]
+    assert 'Authenticate with basic' not in built.text()
 
 
 def test_expect_spells_out_the_response(build):

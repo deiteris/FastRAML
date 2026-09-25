@@ -184,6 +184,8 @@ class Steps(Writer):
     def scheme(self, key: str, secured_by: list[SecurityScheme], wanted: str | None) -> SecurityScheme | None:
         """The requirement to authenticate with: the one asked for, else the first that is a scheme."""
         if not secured_by:
+            if wanted not in (None, 'none'):
+                self.warn(key, f'is not secured by {wanted!r}; it takes none')
             return None
         if wanted is not None:
             for requirement in secured_by:

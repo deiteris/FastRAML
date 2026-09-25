@@ -61,14 +61,14 @@ def check_rendered(app: Sphinx, env: BuildEnvironment) -> None:
     # What is outside the root namespace -- a library's type, a response --
     # is required only once something links to it: a body of `Page` is a
     # link with nowhere to go until some page renders `Page`.
-    for (linked_kind, api, target), docname in sorted(domain.linked.items()):
+    for (linked_kind, api, target), docnames in sorted(domain.linked.items()):
         if (linked_kind, api, target) not in domain.objects and (linked_kind, target) not in namespaces.get(api, set()):
             logger.warning(
                 'RAML %s %r of API %r is linked from %s but rendered on no page',
                 LABELS[cast('Kind', linked_kind)],
                 target,
                 api,
-                docname,
+                min(docnames),
                 type='fastraml',
                 subtype='unrendered',
             )
@@ -83,5 +83,6 @@ def setup(app: Sphinx) -> dict[str, Any]:
     app.add_domain(RamlDomain)
     app.connect('config-inited', apis.resolve)
     app.connect('builder-inited', apis.load_all)
+    app.connect('source-read', apis.clear_page_cache)
     app.connect('env-check-consistency', check_rendered)
     return {'version': __version__, 'env_version': 1, 'parallel_read_safe': True, 'parallel_write_safe': True}

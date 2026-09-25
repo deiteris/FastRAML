@@ -74,7 +74,7 @@ METHODS: frozenset[str] = frozenset(('connect', 'delete', 'get', 'head', 'option
 class Catalogue:
     """One API's effective model, read for what can be named."""
 
-    __slots__ = ('_declared_at', '_workspace', 'raml', 'root_file')
+    __slots__ = ('_declarations', '_declared_at', '_workspace', 'raml', 'root_file')
 
     def __init__(self, raml: Raml) -> None:
         self.raml = raml
@@ -87,9 +87,10 @@ class Catalogue:
         #: A declaration's model id, to its kind and key: what a use of a
         #: declared type, scheme or annotation links to. Ids, as every fastraml
         #: view keys identity (docs/16 § 2): an unwrapped copy keeps its id.
+        self._declarations = {kind: self._collect(kind) for kind in DECLARED}
         self._declared_at: dict[int, tuple[Declared, str]] = {}
         for kind in DECLARED:
-            for key, node in self.declared(kind).items():
+            for key, node in self._declarations[kind].items():
                 self._declared_at.setdefault(node.id, (kind, key))
 
     def file(self, uri: str) -> str:
@@ -187,11 +188,19 @@ class Catalogue:
 
     def declared(self, kind: Declared, file: str | None = None) -> dict[str, BaseShape | SecuritySchemeDefinition]:
         """Every declaration of one kind by key, in declaration order; one file's if given."""
+        declarations = self._declarations[kind]
+        return (
+            dict(declarations)
+            if file is None
+            else {key: node for key, node in declarations.items() if key.partition('#')[0] == file}
+        )
+
+    def _collect(self, kind: Declared) -> dict[str, BaseShape | SecuritySchemeDefinition]:
+        """Build the per-kind index once; a single declaration lookup must not rebuild its file."""
         out: dict[str, BaseShape | SecuritySchemeDefinition] = {}
         for uri, declarations in self._sections(kind):
             source = self.file(uri)
-            if file is None or source == file:
-                out.update({f'{source}#{name}': node for name, node in declarations.items()})
+            out.update({f'{source}#{name}': node for name, node in declarations.items()})
         return out
 
     def _sections(self, kind: Declared) -> Iterator[tuple[str, dict[str, BaseShape | SecuritySchemeDefinition]]]:
@@ -210,7 +219,7 @@ class Catalogue:
                     yield uri, schemes
 
     def declaration(self, kind: Declared, key: str) -> BaseShape | SecuritySchemeDefinition | None:
-        return self.declared(kind, key.partition('#')[0]).get(key)
+        return self._declarations[kind].get(key)
 
     def declared_at(self, entity_id: int) -> tuple[Declared, str] | None:
         """The declaration a model entity is, if it is one."""

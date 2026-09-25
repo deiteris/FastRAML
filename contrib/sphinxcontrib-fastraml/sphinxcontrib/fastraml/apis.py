@@ -21,10 +21,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import unquote, urlsplit
-from urllib.request import url2pathname
+from urllib.parse import urlsplit
+from weakref import WeakKeyDictionary
 
-from fastraml import ParseOptions, RamlError, parse_lenient
+from fastraml import ParseOptions, RamlError, file_uri_to_path, parse_lenient
 from sphinx.errors import ConfigError
 from sphinx.util import logging
 
@@ -67,9 +67,21 @@ class _Parsed:
     error: RamlError | None
 
 
+@dataclass(frozen=True, slots=True)
+class _Failed:
+    files: tuple[Path, ...]
+    mtimes: tuple[float, ...]
+    error: RamlError | OSError
+
+
 #: Parses kept across builds in one process, by root file and workspace root:
 #: two namespaces that name one file are one parse.
-_CACHE: dict[tuple[Path, Path | None], _Parsed] = {}
+_CACHE: dict[tuple[Path, Path | None], _Parsed | _Failed] = {}
+
+# Keep page lookups outside the environment: it is pickled between builds, but
+# Catalogue and its registry belong to this process. `source-read` clears the
+# cache before a page is re-read, even when it has the same document name.
+_PAGE_APIS: WeakKeyDictionary[BuildEnvironment, tuple[str, dict[str, Api | None]]] = WeakKeyDictionary()
 
 
 def resolve(app: Sphinx, config: Config) -> None:
@@ -113,11 +125,17 @@ def load_all(app: Sphinx) -> None:
     """Parse every configured API now, in the parent process (`builder-inited`)."""
     reported: set[tuple[Path, Path | None]] = set()
     for source in sources(app.config).values():
-        parsed = _parse(source)
         key = (source.path, source.workspace_root)
-        if parsed is not None and parsed.error is not None and key not in reported:
+        if key in reported:
+            continue
+        reported.add(key)
+        parsed = _parse(source)
+        if isinstance(parsed, _Failed):
+            logger.warning(
+                'RAML API %r could not be read: %s', source.name, parsed.error, type='fastraml', subtype='parse'
+            )
+        elif parsed.error is not None:
             _report(parsed.error)
-            reported.add(key)
 
 
 def api(env: BuildEnvironment, name: str) -> Api | None:
@@ -126,16 +144,41 @@ def api(env: BuildEnvironment, name: str) -> Api | None:
     return None if source is None else _load(source)
 
 
+def page_api(env: BuildEnvironment, name: str) -> Api | None:
+    """Look up an API once per page, recording the file dependencies once."""
+    cached = _PAGE_APIS.get(env)
+    if cached is None or cached[0] != env.docname:
+        loaded: dict[str, Api | None] = {}
+        _PAGE_APIS[env] = (env.docname, loaded)
+    else:
+        loaded = cached[1]
+    if name not in loaded:
+        source = sources(env.config).get(name)
+        found = _load(source) if source is not None else None
+        files = found.files if found is not None else (source.path,) if source is not None else ()
+        for path in files:
+            env.note_dependency(str(path))
+        loaded[name] = found
+    return loaded[name]
+
+
+def clear_page_cache(app: Sphinx, _docname: str, _source: list[str]) -> None:
+    """Discard a prior reading of the same page before Sphinx parses it again."""
+    _PAGE_APIS.pop(app.env, None)
+
+
 def names(env: BuildEnvironment) -> list[str]:
     return list(env.config.raml_apis)
 
 
 def _load(source: Source) -> Api | None:
     parsed = _parse(source)
-    return None if parsed is None else Api(name=source.name, catalogue=parsed.catalogue, files=parsed.files)
+    return (
+        Api(name=source.name, catalogue=parsed.catalogue, files=parsed.files) if isinstance(parsed, _Parsed) else None
+    )
 
 
-def _parse(source: Source) -> _Parsed | None:
+def _parse(source: Source) -> _Parsed | _Failed:
     key = (source.path, source.workspace_root)
     cached = _CACHE.get(key)
     if cached is not None and cached.mtimes == _mtimes(cached.files):
@@ -148,8 +191,10 @@ def _parse(source: Source) -> _Parsed | None:
     try:
         raml, error = parse_lenient(source.path, options)
     except (RamlError, OSError) as err:
-        logger.warning('RAML API %r could not be read: %s', source.name, err, type='fastraml', subtype='parse')
-        return None
+        failed_files = (source.path,)
+        failed = _Failed(failed_files, _mtimes(failed_files), err)
+        _CACHE[key] = failed
+        return failed
     files = _files(raml, source.path)
     parsed = _Parsed(Catalogue(raml), files, _mtimes(files), error)
     _CACHE[key] = parsed
@@ -186,7 +231,7 @@ def _path(uri: str) -> Path | None:
     parts = urlsplit(uri)
     if parts.scheme != 'file':
         return None
-    return Path(url2pathname(unquote(parts.path)))
+    return Path(file_uri_to_path(uri))
 
 
 def _mtimes(files: tuple[Path, ...]) -> tuple[float, ...]:

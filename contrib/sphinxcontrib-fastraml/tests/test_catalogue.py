@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from fastraml import path_to_file_uri
 
 from sphinxcontrib.fastraml import apis
 
@@ -107,3 +108,8 @@ def test_a_file_is_named_as_it_is_on_disk(tmp_path):
     assert loaded is not None
     assert loaded.catalogue.root_file == 'my api.raml'
     assert loaded.catalogue.exists('type', 'my api.raml#A')
+
+
+def test_a_literal_percent_sequence_in_a_file_uri_is_decoded_once(tmp_path):
+    path = tmp_path / 'common%20types.raml'
+    assert apis._path(path_to_file_uri(path)) == path

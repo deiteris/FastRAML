@@ -84,6 +84,11 @@ def split_api(env: BuildEnvironment, text: str) -> tuple[str | None, str]:
     return None, text
 
 
+def _load_role_api(env: BuildEnvironment, name: str | None) -> apis.Api | None:
+    """Read an API for a role, making its page depend on the source even if the parse failed."""
+    return apis.page_api(env, name) if name is not None else None
+
+
 class RamlXRefRole(XRefRole):
     """A link to one rendered item, by the name an author writes for it."""
 
@@ -100,7 +105,7 @@ class RamlXRefRole(XRefRole):
             # The role's text is the API's namespace, and the link shows its title.
             chosen = current_api(env, target.strip() or None)
             refnode['raml:api'] = chosen
-            loaded = apis.api(env, chosen) if chosen is not None else None
+            loaded = _load_role_api(env, chosen)
             if not has_explicit_title and loaded is not None:
                 title = loaded.catalogue.title
             return title, ''
@@ -109,7 +114,7 @@ class RamlXRefRole(XRefRole):
         refnode['raml:api'] = chosen
         if not has_explicit_title:
             title = split_api(env, title)[1]
-        loaded = apis.api(env, chosen) if chosen is not None else None
+        loaded = _load_role_api(env, chosen)
         key = loaded.catalogue.normalise(kind, name) if loaded is not None else None
         return title, key if key is not None else name
 
@@ -128,14 +133,12 @@ class ValueRole(SphinxRole):
 
     def run(self) -> tuple[list[Node], list[system_message]]:
         chosen = current_api(self.env, self.text.strip() or None)
-        loaded = apis.api(self.env, chosen) if chosen is not None else None
+        loaded = _load_role_api(self.env, chosen)
         if loaded is None:
             logger.warning(
                 'no RAML API %r to read %s from', chosen, self.field, location=self.get_location(), type='fastraml'
             )
             return [nodes.inline(self.rawtext, self.rawtext)], []
-        for path in loaded.files:
-            self.env.note_dependency(str(path))
         text = ', '.join(loaded.catalogue.value(self.field))
         if not text:
             logger.warning(
@@ -189,19 +192,19 @@ class RamlDomain(Domain):
     }
     indices = [RamlIndex]  # noqa: RUF012 - Sphinx's attribute
     initial_data = {'objects': {}, 'linked': {}}  # noqa: RUF012 - Sphinx's attribute
-    data_version = 2
+    data_version = 3
 
     @property
     def objects(self) -> dict[tuple[str, str, str], Target]:
         return cast('dict[tuple[str, str, str], Target]', self.data.setdefault('objects', {}))
 
     @property
-    def linked(self) -> dict[tuple[str, str, str], str]:
-        """What the extension's own links point at, to the first page linking to each."""
-        return cast('dict[tuple[str, str, str], str]', self.data.setdefault('linked', {}))
+    def linked(self) -> dict[tuple[str, str, str], set[str]]:
+        """What the extension's own links point at, and every page linking to each."""
+        return cast('dict[tuple[str, str, str], set[str]]', self.data.setdefault('linked', {}))
 
     def note_link(self, kind: Kind, api: str, key: str, docname: str) -> None:
-        self.linked.setdefault((kind, api, key), docname)
+        self.linked.setdefault((kind, api, key), set()).add(docname)
 
     def note_object(self, kind: Kind, api: str, key: str, target: Target, location: Any = None) -> None:
         """Record where one item is rendered; a second place is a warning, and loses."""
@@ -225,16 +228,18 @@ class RamlDomain(Domain):
             if target.docname == docname:
                 del self.objects[name]
         for name, linking in list(self.linked.items()):
-            if linking == docname:
+            linking.discard(docname)
+            if not linking:
                 del self.linked[name]
 
     def merge_domaindata(self, docnames: AbstractSet[str], otherdata: dict[str, Any]) -> None:
         for key, target in otherdata['objects'].items():
             if target.docname in docnames:
-                self.objects[key] = target
+                self.note_object(cast('Kind', key[0]), key[1], key[2], target, target.docname)
         for key, linking in otherdata['linked'].items():
-            if linking in docnames:
-                self.linked.setdefault(key, linking)
+            owned = linking & docnames
+            if owned:
+                self.linked.setdefault(key, set()).update(owned)
 
     def resolve_xref(
         self,

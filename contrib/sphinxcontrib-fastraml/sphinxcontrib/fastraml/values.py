@@ -75,8 +75,17 @@ def _candidates(base: BaseShape) -> Iterator[Chosen]:
     yield from _examples(own)
     if own.default is not None:
         yield Chosen(plain(own.default))
-    for parent in own.inherits:
-        yield from _examples(target(parent))
+    # Ancestors' examples are candidates, not inherited values: `choose` checks
+    # each against the original, possibly narrower input before showing it.
+    seen = {own.id}
+    parents = list(reversed(own.inherits))
+    while parents:
+        parent = target(parents.pop())
+        if parent.id in seen:
+            continue
+        seen.add(parent.id)
+        yield from _examples(parent)
+        parents.extend(reversed(parent.inherits))
 
 
 def _examples(base: BaseShape) -> Iterator[Chosen]:

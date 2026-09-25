@@ -27,7 +27,17 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from docutils import nodes
-from fastraml import ArrayShape, BaseShape, FileShape, JsonShape, ObjectShape, RecursiveShape, UnionShape, facets_of
+from fastraml import (
+    ArrayShape,
+    BaseShape,
+    FileShape,
+    JsonShape,
+    ObjectShape,
+    RecursiveShape,
+    UnionShape,
+    facets_of,
+    projected,
+)
 from sphinx import addnodes
 from sphinx.util.nodes import make_id
 
@@ -423,8 +433,13 @@ class Writer:
         return out
 
     def structure(self, base: BaseShape, beneath: list[BaseShape]) -> list[Node]:
-        """What an anonymous type holds: its own properties, items or members."""
-        shape = base.shape
+        """What an anonymous type holds: its own properties, items or members.
+
+        A JSON-schema type shows the nearest RAML shape to the schema (docs/10
+        § 7): its structure is what a reader of the schema needs, in the same
+        form as the rest.
+        """
+        shape = projected(base).shape
         if isinstance(shape, ObjectShape):
             inherited = [parent.shape.properties or {} for parent in beneath if isinstance(parent.shape, ObjectShape)]
             rows = [
@@ -450,11 +465,6 @@ class Writer:
                 [nodes.paragraph('', '', *self.label(member)), *self.about(member)] for member in shape.any_of or []
             ]
             return [nodes.paragraph('', 'One of:'), bullets(rows)] if rows else []
-        if isinstance(shape, JsonShape):
-            # The nearest RAML shape to the schema (docs/10 § 7): its structure
-            # is what a reader of the schema needs, in the same form as the rest.
-            view = shape.as_shape()
-            return self.structure(view, []) if view is not None else []
         return []
 
     def property_row(self, name: str, base: BaseShape, *, required: bool) -> list[Node]:

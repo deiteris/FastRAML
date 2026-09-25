@@ -119,7 +119,8 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
 - The discriminator inline-declaration rule runs before P9, because after unwrap
   every subtype carries an inherited discriminator. The check on discriminator
   values runs in P10, outside the `strict` gate (`docs/05` § 6).
-- Read `Examples.entries()`, never `Examples.values`, which is empty when
+- Read a shape's examples through `examples_of(base)`, which goes through
+  `Examples.entries()`. Never read `Examples.values`: it is empty when
   `examples: !include ...` is used.
 - No per-character Python loops where a compiled regex or C-level string method will
   do (`docs/12` § 2).

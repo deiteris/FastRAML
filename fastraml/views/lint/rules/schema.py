@@ -18,6 +18,7 @@ from fastraml.types.jsonschema_ import JsonShape, escape_json_pointer_segment, p
 from fastraml.types.scalars import AnyShape, FileShape, NilShape
 from fastraml.views.graph import is_declaration
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
+from fastraml.views.lint.mediatypes import media_essence
 from fastraml.yamlnode import NodeKind, pairs
 
 if TYPE_CHECKING:
@@ -368,7 +369,7 @@ class MeaninglessMediaTypeSchema:
 
     def payload(self, ctx: Context, iri: str, body: Body) -> Iterable[Finding]:
         base = body.shape
-        issue = _media_type_issue(base, body.media_type.partition(';')[0].strip().casefold())
+        issue = _media_type_issue(base, media_essence(body.media_type))
         if issue is None:
             return ()
         return (
@@ -401,7 +402,7 @@ _FORM_MEDIA = frozenset({'application/x-www-form-urlencoded', 'multipart/form-da
 
 
 def _matches_media_type(pattern: str, media_type: str) -> bool:
-    pattern = pattern.partition(';')[0].strip().casefold()
+    pattern = media_essence(pattern)
     return pattern == media_type or (pattern.endswith('/*') and media_type.startswith(pattern[:-1]))
 
 

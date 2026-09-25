@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar, Final
 
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
+from fastraml.views.lint.mediatypes import is_json, split_media_type
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping
@@ -21,20 +22,6 @@ if TYPE_CHECKING:
 __all__ = ['DuplicateMediaType', 'JsonCharset']
 
 _UTF8: Final = frozenset({'utf-8', 'utf8'})
-
-
-def _split(media_type: str) -> tuple[str, dict[str, str]]:
-    """`type/subtype`, lowercased, and its parameters by lowercased name."""
-    essence, *parameters = (part.strip() for part in media_type.split(';'))
-    found = {}
-    for parameter in parameters:
-        name, _, value = parameter.partition('=')
-        found[name.strip().casefold()] = value.strip().strip('"')
-    return essence.casefold(), found
-
-
-def _is_json(essence: str) -> bool:
-    return essence == 'application/json' or essence.endswith('+json')
 
 
 class JsonCharset:
@@ -54,9 +41,9 @@ class JsonCharset:
     )
 
     def payload(self, ctx: Context, iri: str, body: Body) -> Iterable[Finding]:
-        essence, parameters = _split(body.media_type)
+        essence, parameters = split_media_type(body.media_type)
         charset = parameters.get('charset')
-        if charset is None or not _is_json(essence):
+        if charset is None or not is_json(essence):
             return ()
         forbidden = charset.casefold() not in _UTF8
         return (
@@ -104,7 +91,7 @@ class DuplicateMediaType:
         for where, bodies in _body_maps(operation):
             seen: dict[tuple[str, tuple[tuple[str, str], ...]], str] = {}
             for media_type, body in bodies.items():
-                essence, parameters = _split(media_type)
+                essence, parameters = split_media_type(media_type)
                 first = seen.setdefault((essence, tuple(sorted(parameters.items()))), media_type)
                 if first != media_type:
                     found.append(

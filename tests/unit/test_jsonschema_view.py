@@ -113,6 +113,14 @@ class TestFacets:
         assert node['default'] == 'x'
         assert node['examples'] == ['y']
 
+    def test_an_example_without_data_is_left_out(self, workspace):
+        # A model assembled in Python may carry one; it has nothing to write.
+        root = workspace({'api.raml': API + 'types:\n  T:\n    type: string\n    example: y\n'})
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        shape = raml.types_in(raml.location)['T']
+        shape.example.data = None
+        assert 'examples' not in to_json_schema(shape)[0]['definitions']['T']
+
 
 class TestKinds:
     @pytest.mark.parametrize(

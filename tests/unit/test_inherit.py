@@ -122,6 +122,16 @@ class TestBaseFacets:
         messages = failure(workspace, '    type: any\n    enum: [true]\n', '    type: any\n    enum: [1]\n')
         assert 'enum constraint violation' in messages
 
+    def test_examples_and_default_are_not_inherited(self, workspace):
+        # docs/07 § 4: each describes the declaration that wrote it; a narrowed
+        # child may reject them, so value samplers must not borrow them either.
+        child = merge(
+            workspace,
+            '    type: integer\n    maximum: 2\n',
+            '    type: integer\n    examples:\n      big: 9\n    default: 9\n',
+        )
+        assert (child.example, child.examples, child.default) == (None, None, None)
+
 
 class TestStringRules:
     def test_min_length_may_be_raised(self, workspace):

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from fastraml.types.examples import examples_of
 from fastraml.types.unwrap import finish_unwrap, unwrap_shape
 from fastraml.types.values import failure
 
@@ -341,15 +342,8 @@ def _check_one(  # noqa: PLR0913, PLR0917 - as above
 # -- examples, defaults, enums (docs/10 § 3) -----------------------------------
 
 
-def _each_example(base: BaseShape) -> Iterator[Example]:
-    if base.example is not None:
-        yield base.example
-    if base.examples is not None:
-        yield from base.examples.entries().values()
-
-
 def _validate_examples(base: BaseShape, known: DiscriminatorIndex, acc: Accumulator) -> None:
-    examples = tuple(_each_example(base))
+    examples = tuple(examples_of(base))
     for example in examples:
         # Before the `strict` gate, and outside it: naming a type that does not
         # exist is not a conformance failure the author may waive (docs/10 § 6).

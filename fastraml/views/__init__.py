@@ -16,6 +16,7 @@ decides no RAML rule, and reads the model without writing to it. Nothing under
     jsonschema  one shape as JSON Schema draft-07 (§ 8)
     openapi     the effective API as OpenAPI 3.0.3 (§ 8)
     base_uri    the base URI a caller sends requests to, `{version}` bound (§ 8)
+    samples     a value a shape accepts: declared, composed or synthesized (§ 8.1)
     lint/       policy rules over the effective model (docs/18-linting.md)
 
 `walk` is the shared substrate rather than a view of its own: `graph` and `tree`

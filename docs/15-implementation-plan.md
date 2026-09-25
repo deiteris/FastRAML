@@ -28,3 +28,19 @@ covered (docs/20 § 11).
 Potential consumers and tooling include an LSP, more editor recovery in
 `parse_lenient`, and improved remote-include latency. These are not commitments
 and must not change parser rules without an owning design document and tests.
+
+**Sampled examples in the tree (undecided).** The viewer's request and response
+panel (parked on `feat/viewer-request-samples`) needs a working body for each
+payload, and only Python can produce a validated one. The candidate design:
+`build_tree(raml, samples=True)` (`fastraml tree --samples`), off by default,
+adds a `sample(...)` value ([16](16-graph.md) § 8.1) as an ordinary example to
+each payload shape that has none of its own. It adds no key and no marker,
+and writes nothing to the model. Open questions:
+
+- whether to synthesize leaves, which makes every body runnable, or only
+  compose declared data, which is what the Sphinx extension does and leaves
+  gaps;
+- the `api.json` size cost on large definitions, which should be measured on
+  the `large` and `endpoints` bench corpora before deciding. Documents whose
+  authors gave every payload an example cost nothing extra, because only gaps
+  are filled.

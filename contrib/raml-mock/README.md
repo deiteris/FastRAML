@@ -92,20 +92,26 @@ Every status is a 3-digit code, and so is every status you configure. RAML has n
 implementation) — so there is no wildcard to match against and a mock that
 accepted one would be answering for a document that cannot exist.
 
-Response values are selected in this order:
+Response values come from `fastraml.sample` (fastRAML's `docs/16-graph.md`
+§ 8.1), in this order:
 
-1. `example` on the response body shape
-2. a valid entry from its `examples` (including an included NamedExample; a seed
-   selects one deterministically)
-3. its `default`
-4. its first `enum` member
-5. the nearest referenced parent type's first valid `example` or `examples` entry
-6. a deterministic value synthesized from the shape
+1. a valid `example` or `examples` entry of the response body shape itself,
+   including an included NamedExample, and never one marked `strict: false`
+   (a seed selects one deterministically)
+2. its `default`
+3. its first `enum` member
+4. a value composed from its properties or items, each chosen by these same
+   rules, so a property's own example is used
+5. a deterministic scalar synthesized from the shape's facets
+
+A supertype's example is never used. A body written `application/json: Book`
+is `Book` itself, so it answers with `Book`'s examples. One written as a
+mapping with `type: Book` is a subtype, which may narrow `Book`, so its value
+is composed from `Book`'s properties. `X-RAML-Mock-Example` likewise names only
+the body shape's own examples.
 
 An unconstrained array normally synthesizes to `[]`. When its item type has
 explicit examples, it contains the distinct examples that fit within `maxItems`.
-Parent examples are mock input candidates, not inherited RAML facets, and are
-used only when they validate against the effective response shape.
 
 Request validation returns `400` by default, while representation failures retain
 their `415` or `406`. When an API assigns a more specific meaning to a declared
@@ -123,7 +129,8 @@ app = create_app('api.raml', validation_status=validation_status)
 
 ## Configure generated responses
 
-`MockOptions` holds behavior that RAML does not define. A seed produces the same
+`MockOptions` holds behavior that RAML does not define. `GenerationOptions` is
+fastRAML's `SampleOptions` under this package's name. A seed produces the same
 values for the same route regardless of request order. `collection_size` sets the
 size of arrays that have no examples or `minItems`, and `optional_probability`
 controls how often generated objects include optional properties.

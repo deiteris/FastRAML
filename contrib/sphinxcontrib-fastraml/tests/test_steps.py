@@ -49,14 +49,32 @@ def test_a_step_leads_with_the_authors_words_and_links_out_once(build):
     assert built.objects() == {}
 
 
-def test_a_body_with_no_example_of_its_own_gets_its_supertypes_if_it_validates(build):
-    # `POST /books` takes `Book` with no example of its own; `Book`'s validates.
+def test_a_subtype_body_never_shows_its_supertypes_example(build):
+    # `POST /books` takes `type: Book`, a subtype with no example of its own.
+    # Book's would validate, but a subtype may narrow, so it is not borrowed
+    # (docs/16 § 8.1); `id` has no example to compose from, so none is shown.
     built = build({'index': 'Home\n====\n\n.. raml:send:: POST /books\n'}, conf=OFF)
     request = blocks(built)[0]
-    assert '"title": "Dune"' in request
+    assert '"title"' not in request
+    assert request.rstrip().endswith('Content-Type: application/json')
 
 
-def test_a_grandparents_example_is_only_shown_when_it_validates_for_the_input(build, tmp_path):
+def test_a_subtype_body_is_composed_from_its_properties_examples(build, tmp_path):
+    spec = tmp_path / 'composed.raml'
+    spec.write_text(
+        '#%RAML 1.0\ntitle: T\ntypes:\n'
+        '  Pet:\n    properties:\n      name:\n        type: string\n        example: Rex\n'
+        '    example: {name: Fido}\n'
+        '/pets:\n  post:\n    body:\n      application/json:\n        type: Pet\n        description: d\n',
+        encoding='utf-8',
+    )
+    built = build({'index': 'Home\n====\n\n.. raml:send:: POST /pets\n'}, apis=f"'t': {str(spec)!r}", conf=OFF)
+    request = blocks(built)[0]
+    assert '"name": "Rex"' in request
+    assert 'Fido' not in request
+
+
+def test_no_ancestors_example_is_shown_even_when_it_validates(build, tmp_path):
     spec = tmp_path / 'ancestor.raml'
     spec.write_text(
         '#%RAML 1.0\ntitle: T\ntypes:\n'
@@ -73,7 +91,7 @@ def test_a_grandparents_example_is_only_shown_when_it_validates_for_the_input(bu
         conf=OFF,
     )
     assert built.warnings == []
-    assert 'accepted=ok' in blocks(built)[0]
+    assert 'accepted=<accepted>' in blocks(built)[0]
     assert 'narrowed=<narrowed>' in blocks(built)[0]
 
 
@@ -379,15 +397,22 @@ def test_a_response_header_the_spec_explains_gets_a_row(build, tmp_path):
     assert 'X-Trace: <X-Trace>' in blocks(built)[0]
 
 
-def test_fields_can_follow_the_example(build):
+def test_fields_can_follow_the_example(build, tmp_path):
+    spec = tmp_path / 'pets.raml'
+    spec.write_text(
+        '#%RAML 1.0\ntitle: T\n/pets:\n  post:\n    body:\n      application/json:\n'
+        '        properties:\n          name: string\n          nick?: string\n'
+        '        example: {name: Rex}\n',
+        encoding='utf-8',
+    )
     built = build(
-        {'index': 'Home\n====\n\n.. raml:send:: POST /books\n   :fields: example\n'},
+        {'index': 'Home\n====\n\n.. raml:send:: POST /pets\n   :fields: example\n'},
+        apis=f"'t': {str(spec)!r}",
         conf=OFF,
     )
-    shown = [row[0] for row in rows(built) if row[1] not in {'URL', 'header', 'query'}]
-    # `Book`'s example: every required field, and of the optional ones none --
-    # so `tags`, which it does not carry, has no row.
-    assert shown == ['title', 'isbn', 'price', 'id', 'createdAt']
+    # The example carries every required field and no optional one, so `nick`,
+    # which it does not carry, has no row.
+    assert [row[0] for row in rows(built)] == ['name']
 
 
 def test_fields_follow_every_field_when_there_is_no_example(build, tmp_path):

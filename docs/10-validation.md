@@ -43,7 +43,8 @@ reported that failure.
 ## 3. Examples, defaults, and enums
 
 Examples validate unless their wrapper says `strict: false`. Defaults always
-validate. Named and included examples are read through `Examples.entries()`.
+validate. Named and included examples are read through `examples_of`
+([05](05-type-model.md) § 5).
 Validation errors identify nested values with `$`-rooted paths.
 
 Enum membership is checked before ordinary instance facets. The declaration

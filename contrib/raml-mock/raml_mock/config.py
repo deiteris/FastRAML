@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from math import isfinite
 from typing import TYPE_CHECKING, Protocol
 
+from fastraml import SampleOptions
+
 from raml_mock.status import (
     CLIENT_ERROR_MIN,
     STATUS_MAX,
@@ -37,17 +39,9 @@ __all__ = [
 type RouteKey = tuple[str, str]
 
 
-@dataclass(slots=True, frozen=True)
-class GenerationOptions:
-    seed: int | str | None = None
-    collection_size: int | None = None
-    optional_probability: float = 0.0
-
-    def __post_init__(self) -> None:
-        if self.collection_size is not None and self.collection_size < 0:
-            raise ValueError('collection_size must be non-negative')
-        if not isfinite(self.optional_probability) or not 0.0 <= self.optional_probability <= 1.0:
-            raise ValueError('optional_probability must be between zero and one')
+#: How a generated response chooses among valid values: fastraml's own
+#: options (docs/16 § 8.1), under the name this package has always used.
+GenerationOptions = SampleOptions
 
 
 @dataclass(slots=True, frozen=True)
@@ -144,7 +138,7 @@ class StatefulResource:
 
 @dataclass(slots=True, frozen=True)
 class MockOptions:
-    generation: GenerationOptions = GenerationOptions()
+    generation: GenerationOptions = field(default_factory=GenerationOptions)
     routes: Mapping[RouteKey, RouteBehavior] = field(default_factory=dict)
     authentication: Authentication | None = None
     resources: tuple[StatefulResource, ...] = ()

@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar, Final
 
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
+from fastraml.views.lint.mediatypes import media_essence
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -38,10 +39,6 @@ _INFORMATIONAL: Final = range(100, 200)
 def _has_header(headers: Mapping[str, Parameter], name: str) -> bool:
     wanted = name.casefold()
     return any(declared.casefold() == wanted for declared in headers)
-
-
-def _media_type(value: str) -> str:
-    return value.partition(';')[0].strip().casefold()
 
 
 def _no_content_clause(method: str, code: int) -> str | None:
@@ -200,7 +197,7 @@ class ContentRangeHeader:
         code = int(response.code)
         if code not in {206, 416} or _has_header(response.headers, 'Content-Range'):
             return ()
-        if code == 206 and any(_media_type(media) == 'multipart/byteranges' for media in response.bodies):  # noqa: PLR2004
+        if code == 206 and any(media_essence(media) == 'multipart/byteranges' for media in response.bodies):  # noqa: PLR2004
             return ()
         return (
             ctx.on(

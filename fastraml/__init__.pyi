@@ -65,7 +65,9 @@ from fastraml.types.complex_ import UnionShape as UnionShape
 from fastraml.types.complex_ import UnknownShape as UnknownShape
 from fastraml.types.examples import Example as Example
 from fastraml.types.examples import Examples as Examples
+from fastraml.types.examples import examples_of as examples_of
 from fastraml.types.jsonschema_ import JsonShape as JsonShape
+from fastraml.types.jsonschema_ import projected as projected
 from fastraml.types.scalars import AnyShape as AnyShape
 from fastraml.types.scalars import BooleanShape as BooleanShape
 from fastraml.types.scalars import DateOnlyShape as DateOnlyShape
@@ -77,6 +79,8 @@ from fastraml.types.scalars import NilShape as NilShape
 from fastraml.types.scalars import NumberShape as NumberShape
 from fastraml.types.scalars import StringShape as StringShape
 from fastraml.types.scalars import TimeOnlyShape as TimeOnlyShape
+from fastraml.types.values import decimal_digits as decimal_digits
+from fastraml.types.values import decimal_text as decimal_text
 from fastraml.types.values import same_value as same_value
 from fastraml.uris import file_uri_to_path as file_uri_to_path
 from fastraml.uris import path_to_file_uri as path_to_file_uri
@@ -132,6 +136,11 @@ from fastraml.views.jsonschema import Conversion as Conversion
 from fastraml.views.jsonschema import to_json_schema as to_json_schema
 from fastraml.views.openapi import OAS3Document as OAS3Document
 from fastraml.views.openapi import to_openapi as to_openapi
+from fastraml.views.samples import SampleError as SampleError
+from fastraml.views.samples import SampleOptions as SampleOptions
+from fastraml.views.samples import declared_values as declared_values
+from fastraml.views.samples import named_example as named_example
+from fastraml.views.samples import sample as sample
 from fastraml.views.tree import build_tree as build_tree
 from fastraml.views.walk import Addresses as Addresses
 from fastraml.views.walk import address as address
@@ -232,6 +241,8 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'Rule',
     'SUBJECTS',
     'SafeFileLoader',
+    'SampleError',
+    'SampleOptions',
     'ScalarFacet',
     'SchemaLocation',
     'SchemeLoader',
@@ -266,19 +277,26 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'build_tree',
     'compose',
     'configure',
+    'decimal_digits',
+    'decimal_text',
+    'declared_values',
+    'examples_of',
     'facets_of',
     'file_uri_to_path',
     'impact_of',
     'load_config',
+    'named_example',
     'parse_from_path',
     'parse_from_string',
     'parse_lenient',
     'path_to_file_uri',
+    'projected',
     'record',
     'render_compatibility_markdown',
     'resolve_uri_ref',
     'rule_for',
     'same_value',
+    'sample',
     'set_gc_tuning',
     'side_of',
     'side_of_rule',

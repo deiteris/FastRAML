@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from fastraml.parser.uritemplates import extract_uri_template_params
 from fastraml.positions import UNKNOWN
 from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
+from fastraml.types.examples import examples_of
 from fastraml.types.expressions.parser import Optional_, Primitive, Union, parse_expression
 from fastraml.types.inference import FACET_TYPE_HINT
 from fastraml.types.jsonschema_ import JsonShape
@@ -387,7 +388,7 @@ class MissingExample:
 
     @staticmethod
     def _has_example(base: BaseShape) -> bool:
-        return base.example is not None or (base.examples is not None and bool(base.examples.entries()))
+        return next(examples_of(base), None) is not None
 
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         if not is_declaration(iri) or self._has_example(base):

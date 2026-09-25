@@ -32,6 +32,7 @@ from fastraml.parser.fragments import DataTypeFragment
 from fastraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet, copyable_slots
 from fastraml.types.examples import Example, Examples
 from fastraml.types.jsonschema_ import JsonShape
+from fastraml.types.values import decimal_digits, decimal_text
 from fastraml.uris import relative_to
 from fastraml.views.walk import DEFAULT_BASE, Addresses, address, workspace_of
 from fastraml.yamlnode import Node, NodeKind
@@ -197,36 +198,18 @@ def _exact(value: object) -> Json:
     if not isinstance(value, (Fraction, int)):
         return None
     number = Fraction(value)
-    denominator = number.denominator
-    twos = fives = 0
-    while denominator % 2 == 0:
-        denominator //= 2
-        twos += 1
-    while denominator % 5 == 0:
-        denominator //= 5
-        fives += 1
-    if denominator != 1:
+    found = decimal_digits(number)
+    if found is None:
         return str(number)
-    scale = max(twos, fives)
-    digits = number.numerator * 2 ** (scale - twos) * 5 ** (scale - fives)
+    digits, scale = found
     # The smallest exponent that is still exact, so a bound arrives neither as
     # `1000E-1` nor as 309 digits ending in 292 zeros.
     while digits and digits % 10 == 0:
         digits //= 10
         scale -= 1
-    plain = _as_plain(digits, scale)
+    plain = decimal_text(number)
     scientific = _as_scientific(digits, scale)
     return scientific if len(plain) > _PLAIN_DIGITS and len(scientific) < len(plain) else plain
-
-
-def _as_plain(digits: int, scale: int) -> str:
-    """`digits * 10**-scale` written out, with no exponent."""
-    sign = '-' if digits < 0 else ''
-    text = str(abs(digits))
-    if scale <= 0:
-        return f'{sign}{text}{"0" * -scale}'
-    padded = text.rjust(scale + 1, '0')
-    return f'{sign}{padded[:-scale]}.{padded[-scale:]}'
 
 
 def _as_scientific(digits: int, scale: int) -> str:

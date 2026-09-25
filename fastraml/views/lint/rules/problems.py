@@ -17,6 +17,7 @@ from fastraml.types.complex_ import ObjectShape, UnionShape
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.types.scalars import AnyShape, IntegerShape, NilShape, NumberShape, StringShape
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
+from fastraml.views.lint.mediatypes import media_essence
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -41,14 +42,10 @@ _MEMBERS: Final[dict[str, tuple[str, tuple[type, ...]]]] = {
 }
 
 
-def _media_type(value: str) -> str:
-    return value.partition(';')[0].strip().casefold()
-
-
 def _problem_bodies(response: Response) -> Iterator[BaseShape]:
     """The RAML-typed `application/problem+json` body shapes of one response."""
     for media_type, body in response.bodies.items():
-        if _media_type(media_type) != _PROBLEM_JSON or body.shape is None:
+        if media_essence(media_type) != _PROBLEM_JSON or body.shape is None:
             continue
         if isinstance(body.shape.shape, (JsonShape, AnyShape)):
             continue
@@ -93,7 +90,7 @@ class ProblemMediaType:
     def response(self, ctx: Context, iri: str, response: Response) -> Iterable[Finding]:
         if int(response.code) < _FIRST_ERROR or not response.bodies:
             return ()
-        if any(_media_type(media_type) in _PROBLEM_TYPES for media_type in response.bodies):
+        if any(media_essence(media_type) in _PROBLEM_TYPES for media_type in response.bodies):
             return ()
         return (
             ctx.on(

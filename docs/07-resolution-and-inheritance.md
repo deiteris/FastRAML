@@ -75,6 +75,11 @@ A subtype may only narrow:
 Different concrete kinds cannot merge. Unknown and recursive targets cannot be
 inherited. A recursive source is compared through its head.
 
+`example`, `examples` and `default` are not inherited. Each describes the
+declaration that wrote it, and a subtype that narrows a facet or adds a
+required property may reject its parent's values. An alias is not a subtype
+and shares them (§ 3).
+
 ## 5. Union inheritance
 
 When a non-union child inherits a union, P9 clones the child graph for each

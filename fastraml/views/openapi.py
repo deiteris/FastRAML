@@ -21,6 +21,7 @@ from fastraml.parser.security import (
     TYPE_PASS_THROUGH,
 )
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from fastraml.types.examples import examples_of
 from fastraml.types.jsonschema_ import JsonShape, subschema_document
 from fastraml.types.scalars import (
     AnyShape,
@@ -916,12 +917,7 @@ def _schema_name(base: BaseShape) -> str:
 
 
 def _examples(base: BaseShape) -> list[Any]:
-    result = []
-    if base.example is not None and base.example.data is not None:
-        result.append(base.example.data.raw)
-    if base.examples is not None:
-        result.extend(item.data.raw for item in base.examples.entries().values() if item.data is not None)
-    return result
+    return [item.data.raw for item in examples_of(base) if item.data is not None]
 
 
 def _value(facet: Any) -> Any:

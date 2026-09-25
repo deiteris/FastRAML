@@ -143,6 +143,22 @@ class TestNumericExactness:
 
         assert decimal_text(value) == text
 
+    @pytest.mark.parametrize(
+        ('value', 'expected'),
+        [
+            (Fraction(1000), (1000, 0)),
+            (Fraction(11, 10), (11, 1)),
+            (Fraction(-1, 20), (-5, 2)),
+            (Fraction(1, 8), (125, 3)),
+            (Fraction(1, 3), None),
+        ],
+    )
+    def test_decimal_digits_is_the_least_exact_scale(self, value, expected):
+        # The one terminating-decimal test decimal_text, the tree and raml-mock share.
+        from fastraml.types.values import decimal_digits
+
+        assert decimal_digits(value) == expected
+
     def test_a_format_range_is_enforced(self, workspace):
         shape = declared(workspace, '  T:\n    type: integer\n    format: int8\n')
         assert shape.validate(127) is None

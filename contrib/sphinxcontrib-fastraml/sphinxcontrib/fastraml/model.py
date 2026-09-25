@@ -11,9 +11,10 @@ anything RAML says.
 from __future__ import annotations
 
 import re
-from decimal import Decimal, localcontext
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any
+
+from fastraml import decimal_text
 
 if TYPE_CHECKING:
     from fastraml import BaseShape, DataNode, ScalarFacet
@@ -35,7 +36,7 @@ def scalar(value: object) -> str:
     if isinstance(value, re.Pattern):
         return str(value.pattern)
     if isinstance(value, Fraction):
-        return exact(value)
+        return decimal_text(value)
     if isinstance(value, bool):
         return 'true' if value else 'false'
     return str(value)
@@ -44,20 +45,6 @@ def scalar(value: object) -> str:
 def plain(value: DataNode | None) -> Any:
     """A user value -- an example, a default, an enum member -- as plain Python data."""
     return None if value is None else value.raw
-
-
-def exact(number: Fraction) -> str:
-    """A numeric bound as the decimal the author wrote, never through `float`.
-
-    Every bound RAML can carry is written in decimal, so its expansion
-    terminates and this is exact: `multipleOf: 1.1` reads `1.1`, not
-    `1.100000000000000088817841970012523`.
-    """
-    if number.denominator == 1:
-        return str(number.numerator)
-    with localcontext() as context:
-        context.prec = 1000
-        return format((Decimal(number.numerator) / Decimal(number.denominator)).normalize(), 'f')
 
 
 def target(base: BaseShape) -> BaseShape:

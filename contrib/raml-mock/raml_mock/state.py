@@ -5,9 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-from fastraml import ArrayShape
+from fastraml import ArrayShape, sample
 
-from raml_mock.generate import generate
 from raml_mock.shapes import concrete_shape
 from raml_mock.status import is_success
 from raml_mock.values import detach_mapping
@@ -133,7 +132,7 @@ class MockState:
         store.values = {}
         initial = list(store.initial)
         if not initial and store.config.seed_from_example and store.item_shape is not None:
-            initial.append(_require_mapping(generate(store.item_shape)))
+            initial.append(_require_mapping(sample(store.item_shape)))
         for value in initial:
             item = detach_mapping(value)
             key = _hashable_key(item.get(store.config.key_field), store.config.key_field)

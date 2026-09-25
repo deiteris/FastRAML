@@ -36,7 +36,7 @@ unwrapped copies.
 | Endpoints and templates | `parser/source_ir.py`, `parser/structural_merge.py`, `parser/source_decode.py`, `parser/endpoint_build.py`, `parser/traits.py`, `parser/resourcetypes.py` | [08](08-templates-and-endpoints.md) |
 | Security and annotations | `parser/security.py`, `parser/annotations.py`, `parser/directives.py` | [09](09-security-and-annotations.md) |
 | Type system | `types/` | [05](05-type-model.md) through [10](10-validation.md) |
-| Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, and linting | [16](16-graph.md), [18](18-linting.md) |
+| Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, value samples, and linting | [16](16-graph.md), [18](18-linting.md) |
 | Joining API documents | `join/` | [20](20-join.md) |
 | CLI | `cli.py` | [13](13-public-api.md) |
 

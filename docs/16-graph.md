@@ -248,6 +248,44 @@ These are read-only views. Their detailed tests are
 `tests/unit/test_jsonschema_view.py`, `tests/unit/test_openapi_view.py` and
 `tests/unit/test_base_uri_view.py`.
 
+### 8.1 Value samples
+
+`fastraml.sample(shape, options=SampleOptions(), key='')` returns a
+deterministic value the unwrapped shape accepts, or raises `SampleError`. A
+mock server answers with it; documentation shows it. It is chosen in this order:
+
+1. **Declared.** The shape's own examples that validate, skipping any marked
+   `strict: false`; otherwise its own `default`; otherwise an `enum` member.
+   `declared_values(shape)` returns the first two.
+2. **Composed.** An object from its properties' values, an array from its
+   items' values, a union from the first member that yields one. Each part
+   follows these same rules, so a property's own example is used.
+3. **Synthesized.** A scalar built to satisfy the shape's facets. Pattern
+   support is best effort: the pattern's literal prefix and a fixed list of
+   candidates are tried, and a pattern none of them matches is a
+   `SampleError`.
+
+A supertype's example is never tried. A subtype may narrow a facet or add a
+required property, so nothing guarantees that its parent's example fits, and
+examples are not inherited ([07](07-resolution-and-inheritance.md) § 4). A body
+written `application/json: Book` is an alias of `Book` and carries its
+examples ([07](07-resolution-and-inheritance.md) § 3). One written
+`type: Book` is a subtype, so its value is composed from `Book`'s properties.
+
+`SampleOptions(synthesize=False)` skips step 3. The value is then built from
+declared data alone: an optional property is included only if its value uses
+declared data, and a value with no declared data anywhere in it is a
+`SampleError`. `seed` and `key` choose deterministically among declared
+examples and synthesized variants. `collection_size` sets the array length to
+aim for, and `optional_probability` sets the chance that an optional property
+is included when synthesizing.
+
+`named_example(shape, name)` returns the shape's own `examples:` entry of that
+name, even if it is marked `strict: false`, provided it validates.
+
+Every returned value has been validated against the shape, and none shares a
+container with the model. Tests: `tests/unit/test_samples.py`.
+
 ## 9. Verification
 
 - View boundary: `tests/unit/test_views.py`

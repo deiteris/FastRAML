@@ -9,7 +9,7 @@ import pytest
 
 from fastraml import RamlError
 from fastraml.registry import Raml
-from fastraml.types.examples import make_example
+from fastraml.types.examples import examples_of, make_example
 from fastraml.yamlnode import Node, compose, pairs
 
 LOCATION = 'file:///a.raml'
@@ -129,3 +129,39 @@ class TestIdentity:
         second = make_example(raml, value_of('example: 2\n'), 'b', LOCATION)
         assert first.id != second.id
         assert (first.name, second.name) == ('a', 'b')
+
+
+class TestExamplesOf:
+    """`examples_of` is the one reading of `example` and `examples` (AGENTS.md: `entries()`, never `values`)."""
+
+    API = '#%RAML 1.0\ntitle: T\ntypes:\n  T:\n    type: integer\n'
+
+    def declared(self, workspace, files: dict[str, str]):
+        from fastraml import ParseOptions, parse_from_path
+
+        root = workspace(files)
+        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        return raml.types_in(raml.location)['T']
+
+    def test_named_examples_come_in_declaration_order(self, workspace):
+        shape = self.declared(workspace, {'api.raml': self.API + '    examples:\n      b: 2\n      a: 1\n'})
+        assert [example.name for example in examples_of(shape)] == ['b', 'a']
+
+    def test_the_single_example_is_yielded(self, workspace):
+        shape = self.declared(workspace, {'api.raml': self.API + '    example: 7\n'})
+        assert [example.data.raw for example in examples_of(shape)] == [7]
+
+    def test_an_included_named_example_is_followed(self, workspace):
+        shape = self.declared(
+            workspace,
+            {
+                'api.raml': self.API + '    examples: !include e.raml\n',
+                'e.raml': '#%RAML 1.0 NamedExample\nfirst: 3\n',
+            },
+        )
+        assert shape.examples.values == {}, 'the case this guards: `values` is empty'
+        assert [example.data.raw for example in examples_of(shape)] == [3]
+
+    def test_a_non_strict_example_is_the_callers_to_skip(self, workspace):
+        shape = self.declared(workspace, {'api.raml': self.API + '    example:\n      value: 1\n      strict: false\n'})
+        assert [example.strict.value for example in examples_of(shape)] == [False]

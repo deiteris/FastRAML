@@ -42,6 +42,9 @@ types:
       id:
         type: integer
         minimum: 10
+  PlainItem:
+    type: Item
+    description: A subtype that narrows nothing, so Item's examples would fit it.
   ExampleChoice:
     type: object
     properties:
@@ -91,6 +94,12 @@ types:
         200:
           body:
             application/json: NarrowItem
+  /plain:
+    get:
+      responses:
+        200:
+          body:
+            application/json: PlainItem
   /example-choice:
     get:
       responses:

@@ -8,6 +8,7 @@ the API is somewhere else, or a mock answers instead.
 from __future__ import annotations
 
 import pytest
+import typer
 from conftest import SAMPLE, SAMPLE_ROOT
 from fastmcp import Client
 from typer.testing import CliRunner
@@ -20,6 +21,20 @@ WORKSPACE = ['--workspace', str(SAMPLE_ROOT)]
 
 def run(*arguments: str):
     return CliRunner().invoke(app, [str(SAMPLE), *WORKSPACE, *arguments])
+
+
+def refusal(*arguments: str) -> typer.BadParameter:
+    """The error a refused invocation raises, before Typer renders it.
+
+    Its rendering is a Rich panel, coloured whenever `GITHUB_ACTIONS`,
+    `FORCE_COLOR` or `PY_COLORS` is set and wrapped to the terminal, so a
+    substring of `output` is not a stable thing to assert on. The exception
+    carries the decision: which flag, and what it says.
+    """
+    result = CliRunner().invoke(app, [str(SAMPLE), *WORKSPACE, *arguments], standalone_mode=False)
+    assert isinstance(result.exception, typer.BadParameter), result.output
+    assert result.exception.exit_code == 2
+    return result.exception
 
 
 def client_of(server):
@@ -41,9 +56,9 @@ class TestDescribe:
 
 class TestWhereRequestsGo:
     def test_an_unbound_base_uri_parameter_names_the_flag_that_binds_it(self):
-        result = run()
-        assert result.exit_code == 2
-        assert '--param tenant=' in result.output
+        error = refusal()
+        assert error.param_hint == 'SOURCE'
+        assert '--param tenant=' in error.message
 
     def test_param_binds_the_base_uri(self):
         server = build(SAMPLE, workspace=SAMPLE_ROOT, parameters={'tenant': 'acme'})
@@ -63,14 +78,10 @@ class TestWhereRequestsGo:
         ('flag', 'value'), [('--header', 'no-colon'), ('--param', 'no-equals'), ('--header', ': v')]
     )
     def test_a_malformed_pair_is_refused(self, flag, value):
-        result = run('--describe', flag, value)
-        assert result.exit_code == 2
-        assert flag in result.output
+        assert refusal('--describe', flag, value).param_hint == flag
 
     def test_mock_and_base_url_contradict_each_other(self):
-        result = run('--mock', '--base-url', 'https://x.example')
-        assert result.exit_code == 2
-        assert '--base-url' in result.output
+        assert refusal('--mock', '--base-url', 'https://x.example').param_hint == '--base-url'
 
 
 class TestMock:
@@ -82,9 +93,7 @@ class TestMock:
         assert 'title' in result.structured_content
 
     def test_an_unreadable_mock_config_is_refused(self, tmp_path):
-        result = run('--mock-config', str(tmp_path / 'absent.json'))
-        assert result.exit_code == 2
-        assert '--mock-config' in result.output
+        assert refusal('--mock-config', str(tmp_path / 'absent.json')).param_hint == '--mock-config'
 
 
 def test_a_document_that_does_not_parse_exits_2(tmp_path):

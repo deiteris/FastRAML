@@ -20,6 +20,7 @@ from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.types.scalars import AnyShape, DateTimeOnlyShape, DateTimeShape, FileShape, IntegerShape, NilShape
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
+from fastraml.views.lint.mediatypes import is_json
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -35,14 +36,9 @@ _EXACT: Final = 2**53 - 1
 _WIDE_FORMATS: Final = frozenset({'int64', 'long'})
 
 
-def _is_json(media_type: str) -> bool:
-    essence = media_type.partition(';')[0].strip().casefold()
-    return essence == 'application/json' or essence.endswith('+json')
-
-
 def _json_bodies(ctx: Context) -> Iterator[tuple[str, Body]]:
     for iri, node in ctx.graph.nodes.items():
-        if isinstance(node, PayloadNode) and node.entity.shape is not None and _is_json(node.entity.media_type):
+        if isinstance(node, PayloadNode) and node.entity.shape is not None and is_json(node.entity.media_type):
             yield iri, node.entity
 
 
@@ -104,7 +100,7 @@ class IJsonTopLevel:
 
     def payload(self, ctx: Context, iri: str, body: Body) -> Iterable[Finding]:
         base = body.shape
-        if base is None or not _is_json(body.media_type) or not _is_scalar_top(base):
+        if base is None or not is_json(body.media_type) or not _is_scalar_top(base):
             return ()
         return (
             ctx.on(

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, ClassVar, Final
 
 from fastraml.types.scalars import DateOnlyShape, DateTimeOnlyShape, DateTimeShape, TimeOnlyShape
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
+from fastraml.views.lint.mediatypes import media_essence
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping
@@ -62,10 +63,6 @@ def _scheme_header_maps(definition: SecuritySchemeDefinition) -> Iterator[tuple[
     yield 'request', described.headers
     for code, response in described.responses.items():
         yield code, response.headers
-
-
-def _media_type(value: str) -> str:
-    return value.partition(';')[0].strip().casefold()
 
 
 class HopByHopHeader:
@@ -255,9 +252,9 @@ class ContentTypeHeader:
         declared = next((parameter for name, parameter in headers.items() if name.casefold() == 'content-type'), None)
         if declared is None:
             return
-        media = {_media_type(media_type) for media_type in bodies}
+        media = {media_essence(media_type) for media_type in bodies}
         values = [str(member.raw) for member in declared.base.enum or ()]
-        stray = [value for value in values if _media_type(value) not in media]
+        stray = [value for value in values if media_essence(value) not in media]
         if bodies and not stray:
             return
         yield ctx.on(

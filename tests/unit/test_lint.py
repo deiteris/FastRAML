@@ -1571,3 +1571,26 @@ class TestMetrics:
         assert json.loads(captured.out)['findings']
         assert 'unused-type' in captured.err
         assert str(root / 'api.raml') in captured.err
+
+
+class TestMediaTypes:
+    """One reading of a media type for every rule: names are case-insensitive (RFC 9110 § 8.3.1)."""
+
+    def test_the_essence_drops_parameters_and_case(self):
+        from fastraml.views.lint.mediatypes import media_essence
+
+        assert media_essence(' Application/JSON ; charset=utf-8') == 'application/json'
+
+    def test_parameters_are_keyed_by_casefolded_name_and_unquoted(self):
+        from fastraml.views.lint.mediatypes import split_media_type
+
+        assert split_media_type('Text/Plain; Charset="UTF-8"') == ('text/plain', {'charset': 'UTF-8'})
+
+    @pytest.mark.parametrize(
+        ('media_type', 'expected'),
+        [('application/json', True), ('Application/Problem+JSON; x=1', True), ('text/json', False)],
+    )
+    def test_json_is_the_type_or_its_suffix(self, media_type, expected):
+        from fastraml.views.lint.mediatypes import is_json
+
+        assert is_json(media_type) is expected

@@ -79,6 +79,7 @@ from fastraml.types.scalars import NilShape as NilShape
 from fastraml.types.scalars import NumberShape as NumberShape
 from fastraml.types.scalars import StringShape as StringShape
 from fastraml.types.scalars import TimeOnlyShape as TimeOnlyShape
+from fastraml.types.values import decimal_digits as decimal_digits
 from fastraml.types.values import decimal_text as decimal_text
 from fastraml.types.values import same_value as same_value
 from fastraml.uris import file_uri_to_path as file_uri_to_path
@@ -269,6 +270,7 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'build_tree',
     'compose',
     'configure',
+    'decimal_digits',
     'decimal_text',
     'examples_of',
     'facets_of',

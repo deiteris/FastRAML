@@ -36,6 +36,7 @@ __all__ = [
     'as_exact',
     'as_fraction',
     'check_non_negative',
+    'decimal_digits',
     'decimal_text',
     'failure',
     'index_path',
@@ -190,27 +191,42 @@ def decimal_text(value: Fraction) -> str:
     Numbers never pass through `float` (docs/10 § 5), and a value shown to a
     reader is no exception even though nothing compares it: `1.1` reaching a
     reader as `1.100000000000000088` would be a defect of the view, not of the
-    parser. The graph, the renderer and the compatibility report all use this.
+    parser. The graph, the tree, the renderer and the compatibility report all
+    use this.
     """
-    if value.denominator == 1:
-        return str(value.numerator)
-    residue = value.denominator
-    for factor in (2, 5):
-        while residue % factor == 0:
-            residue //= factor
-    if residue != 1:
+    found = decimal_digits(value)
+    if found is None:
         # Not representable as a terminating decimal, so it is reported exactly
         # as the ratio it is. `multipleOf: 1/3` cannot arise from RAML source,
         # which is decimal, but a merged bound could in principle.
         return f'{value.numerator}/{value.denominator}'
-    digits = 0
-    scaled = value
-    while scaled.denominator != 1:
-        scaled *= 10
-        digits += 1
-    text = str(abs(scaled.numerator)).rjust(digits + 1, '0')
-    sign = '-' if scaled.numerator < 0 else ''
-    return f'{sign}{text[:-digits]}.{text[-digits:]}'
+    digits, scale = found
+    if scale == 0:
+        return str(digits)
+    text = str(abs(digits)).rjust(scale + 1, '0')
+    sign = '-' if digits < 0 else ''
+    return f'{sign}{text[:-scale]}.{text[-scale:]}'
+
+
+def decimal_digits(value: Fraction) -> tuple[int, int] | None:
+    """`(digits, scale)` with `value == digits * 10**-scale` and the least `scale >= 0`.
+
+    `None` when *value* has no terminating decimal expansion: its reduced
+    denominator has a prime factor other than 2 and 5. The one test of that,
+    for every caller that writes a `Fraction` out as a decimal.
+    """
+    denominator = value.denominator
+    twos = fives = 0
+    while denominator % 2 == 0:
+        denominator //= 2
+        twos += 1
+    while denominator % 5 == 0:
+        denominator //= 5
+        fives += 1
+    if denominator != 1:
+        return None
+    scale = max(twos, fives)
+    return value.numerator * 2 ** (scale - twos) * 5 ** (scale - fives), scale
 
 
 # -- dates (docs/10 § 5) -------------------------------------------------------

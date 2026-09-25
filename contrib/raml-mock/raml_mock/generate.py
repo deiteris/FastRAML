@@ -26,6 +26,7 @@ from fastraml import (
     StringShape,
     TimeOnlyShape,
     UnionShape,
+    decimal_digits,
     examples_of,
     projected,
     same_value,
@@ -417,21 +418,12 @@ def _floor(value: Fraction) -> int:
 
 
 def _finite_decimal(value: Fraction) -> Decimal:
-    denominator = value.denominator
-    twos = 0
-    fives = 0
-    while denominator % 2 == 0:
-        denominator //= 2
-        twos += 1
-    while denominator % 5 == 0:
-        denominator //= 5
-        fives += 1
-    if denominator != 1:
+    found = decimal_digits(value)
+    if found is None:
         raise MockGenerationError(f'number has no finite decimal representation: {value}')
-    scale = max(twos, fives)
-    coefficient = abs(value.numerator) * (2 ** (scale - twos)) * (5 ** (scale - fives))
-    digits = tuple(int(digit) for digit in str(coefficient))
-    return Decimal((value.numerator < 0, digits, -scale))
+    digits, scale = found
+    # From text, which `Decimal` takes exactly; arithmetic would round to the context.
+    return Decimal(f'{digits}E-{scale}')
 
 
 def _object(

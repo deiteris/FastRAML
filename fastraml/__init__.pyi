@@ -65,6 +65,7 @@ from fastraml.types.complex_ import UnionShape as UnionShape
 from fastraml.types.complex_ import UnknownShape as UnknownShape
 from fastraml.types.examples import Example as Example
 from fastraml.types.examples import Examples as Examples
+from fastraml.types.examples import examples_of as examples_of
 from fastraml.types.jsonschema_ import JsonShape as JsonShape
 from fastraml.types.jsonschema_ import projected as projected
 from fastraml.types.scalars import AnyShape as AnyShape
@@ -269,6 +270,7 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'compose',
     'configure',
     'decimal_text',
+    'examples_of',
     'facets_of',
     'file_uri_to_path',
     'impact_of',

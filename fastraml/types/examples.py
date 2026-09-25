@@ -27,16 +27,19 @@ from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import NodeKind, node_error, pairs
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from fastraml.datanode import DataNode
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.fragments import NamedExample
     from fastraml.registry import Raml
-    from fastraml.types.base import ScalarFacet
+    from fastraml.types.base import BaseShape, ScalarFacet
     from fastraml.yamlnode import Node
 
 __all__ = [
     'Example',
     'Examples',
+    'examples_of',
     'make_example',
 ]
 
@@ -86,6 +89,20 @@ class Examples:
         if self.link is not None:
             return self.link.examples
         return self.values
+
+
+def examples_of(base: BaseShape) -> Iterator[Example]:
+    """Every example *base* carries: `example`, then each entry of `examples`.
+
+    The one reading of the two facets, so no caller reaches `Examples.values`,
+    which is empty when `examples: !include ...` linked a NamedExample. Yields
+    each example as declared: whether one with `strict: false` or no data
+    counts is the caller's decision.
+    """
+    if base.example is not None:
+        yield base.example
+    if base.examples is not None:
+        yield from base.examples.entries().values()
 
 
 def make_example(raml: Raml, value_node: Node, name: str, location: str) -> Example:

@@ -94,7 +94,8 @@ class TestNarrowing:
 
         A `securedBy:` entry and the scheme it binds, an example on a shape,
         and the constraints a kind carries: `facets_of` is the one listing that
-        stays current as kinds gain facets (`types/base.py`). `projected` and
+        stays current as kinds gain facets (`types/base.py`), as `examples_of` is
+        the one reading of `example` and `examples`. `projected` and
         `decimal_text` are here because consumers that could not import them
         kept private copies, which drifted.
         """
@@ -106,6 +107,7 @@ class TestNarrowing:
             'SecuritySchemeDescription',
             'SecuritySchemeSettings',
             'decimal_text',
+            'examples_of',
             'facets_of',
             'projected',
         }

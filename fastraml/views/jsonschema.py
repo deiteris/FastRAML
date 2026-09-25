@@ -27,6 +27,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from fastraml.types.examples import examples_of
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.types.scalars import (
     AnyShape,
@@ -43,8 +44,6 @@ from fastraml.types.scalars import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from fastraml.types.base import BaseShape
 
 __all__ = ['SCHEMA_VERSION', 'Conversion', 'to_json_schema']
@@ -150,25 +149,12 @@ class Conversion:
             node['description'] = base.description.value
         if base.default is not None:
             node['default'] = base.default.raw
-        examples = [example.data.raw for example in _examples(base)]
+        examples = [example.data.raw for example in examples_of(base) if example.data is not None]
         if examples:
             node['examples'] = examples
         if base.enum:
             node['enum'] = [member.raw for member in base.enum]
         return node
-
-
-def _examples(base: BaseShape) -> Iterator[Any]:
-    """Every example, singular and plural.
-
-    Through `entries()` rather than `values`: with `examples: !include e.raml`
-    the examples live on the fragment and `values` is empty, so reading it does
-    not fail -- it silently sees nothing.
-    """
-    if base.example is not None:
-        yield base.example
-    if base.examples is not None:
-        yield from base.examples.entries().values()
 
 
 # -- per-kind builders --------------------------------------------------------

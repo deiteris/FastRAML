@@ -22,12 +22,14 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from fastraml import examples_of
+
 from .model import plain, target
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from fastraml import BaseShape, Example
+    from fastraml import BaseShape
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,13 +91,7 @@ def _candidates(base: BaseShape) -> Iterator[Chosen]:
 
 
 def _examples(base: BaseShape) -> Iterator[Chosen]:
-    found: list[Example] = []
-    if base.example is not None:
-        found.append(base.example)
-    if base.examples is not None:
-        # `entries()`, never `values` (AGENTS.md).
-        found.extend(base.examples.entries().values())
-    for example in found:
+    for example in examples_of(base):
         strict = example.strict
         if example.data is not None and (strict is None or strict.value):
             yield Chosen(plain(example.data))

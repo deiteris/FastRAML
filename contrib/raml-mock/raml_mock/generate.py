@@ -26,6 +26,7 @@ from fastraml import (
     StringShape,
     TimeOnlyShape,
     UnionShape,
+    examples_of,
     projected,
     same_value,
 )
@@ -114,12 +115,7 @@ def _declared(base: BaseShape, variant: int, policy: _Policy) -> tuple[bool, obj
 
 
 def _example_values(base: BaseShape) -> Iterator[object]:
-    if base.example is not None and base.example.data is not None:
-        yield base.example.data.raw
-    if base.examples is not None:
-        for example in base.examples.entries().values():
-            if example.data is not None:
-                yield example.data.raw
+    return (example.data.raw for example in examples_of(base) if example.data is not None)
 
 
 def _lineage(base: BaseShape) -> Iterator[BaseShape]:

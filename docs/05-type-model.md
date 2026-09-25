@@ -102,7 +102,9 @@ pattern properties.
 may also carry `displayName`, `description`, `strict`, and annotations.
 `examples:` is a named mapping or a `NamedExample` include. `example` and
 `examples` are mutually exclusive. Consumers must use `Examples.entries()` so
-included named examples are included.
+included named examples are included. `examples_of(base)` yields `example`,
+then each entry of `examples`, as declared. Each caller decides whether to skip
+an example marked `strict: false` or one without data.
 
 `facets:` declares properties required or allowed on subtypes. A declared name
 cannot start with `(`. The decoder rejects names known to be built-in common or

@@ -186,3 +186,13 @@ real bug.
 One logical change per commit; present-tense subject with a `type:` prefix (`feat:`,
 `fix:`, `docs:`, `chore:`, `test:`, `refactor:`). Work on a branch; `master` holds
 completed work.
+
+Before every commit, re-review the whole staged diff (`git diff --staged`) as a
+reviewer would, not as its author. Look for:
+
+- repeated logic that should be shared, and code or options nothing uses;
+- a comment, docstring, README or `docs/` claim that the code no longer backs;
+- a case the change handles for one kind of input but not its siblings;
+- a test that would still pass if the behavior it names broke.
+
+Fix what the review finds, rerun the gate, then commit.

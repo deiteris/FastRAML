@@ -50,8 +50,7 @@ message. For a new feature with no base number, use `bench linearity --bench NAM
   a rule the RAML language states, nor invent one it does not; a missing rule is a
   gap in a pass or a view.
 - Generated files, never edited by hand: `viewer/src/tree.d.ts`, `viewer/src/walk.ts`,
-  `contrib/raml-codegen/raml_codegen/tree.py` and `walk.py`, the same two under
-  `contrib/sphinxcontrib-fastraml/sphinxcontrib/fastraml/` (regenerate with
+  `contrib/raml-codegen/raml_codegen/tree.py` and `walk.py` (regenerate with
   `python -m fastraml.views.bindings <language> -o ... --runtime ...`), and the
   committed trees `viewer/public/api.json` (`npm run sample` in `viewer/`) and
   `contrib/raml-codegen/tests/api.json`. `tests/unit/test_bindings.py` fails on a

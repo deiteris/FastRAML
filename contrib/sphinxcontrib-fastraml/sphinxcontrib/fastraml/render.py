@@ -1,86 +1,63 @@
-"""The effective tree as Sphinx content: one entry per addressable item.
+"""The effective model as Sphinx content: one entry per addressable item.
 
 Entries are Sphinx's own object descriptions (`desc` nodes), so any theme
 styles an endpoint or a type the way it styles a Python class, and the lists
 inside them are the field lists a Python function's parameters use. Nothing
 here is HTML: the same nodes build a PDF.
 
-**The tree is the effective document** (docs/16 § 6). Traits and resource
-types are already applied, inheritance is flattened, URI parameters are
-propagated down (docs/08) and each method's `securedBy` is the effective list
-(docs/09 § A4), so what an entry shows is what a caller must send, with no rule
-of RAML's applied here.
+**The model is the effective document.** It is parsed with `unwrap=True`:
+traits and resource types are applied, inheritance is flattened, URI
+parameters are propagated down (docs/08), each method's `securedBy` is the
+effective list (docs/09 § A4) and P9 has marked every cycle with a
+`RecursiveShape`. So what an entry shows is what a caller must send, with no
+rule of RAML's applied here, and a walk that stops at declarations and at
+recursion markers ends.
 
 **A declared type is linked, never repeated.** A body of `Book` links to
 `Book`'s entry; only an anonymous type -- one declared inline -- is spelled
 out where it is used. An anonymous subtype of a declared one shows what it
-adds and links to the rest, because the tree has flattened the supertype's
+adds and links to the rest, because unwrapping has flattened the supertype's
 properties into it and repeating them would bury the addition.
-
-Facet names are the tree's keys in RAML's own spelling: the tree writes
-`max_length` for RAML's `maxLength`, and the camel-case form is the one a
-reader of the RAML file recognises.
 """
 
 from __future__ import annotations
 
 import json
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from docutils import nodes
+from fastraml import ArrayShape, BaseShape, FileShape, JsonShape, ObjectShape, RecursiveShape, UnionShape, facets_of
 from sphinx import addnodes
 from sphinx.util.nodes import make_id
 
 from .domain import LABELS, RamlDomain, Target
 from .markdown import markdown, markdown_sections
-from .walk import is_recursion, is_ref, is_shape
+from .model import plain, scalar, target, text, texts
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     from docutils.nodes import Element, Node
-    from sphinx.util.docutils import SphinxDirective
-
-    from .apis import Api
-    from .catalogue import Declared, Kind
-    from .tree import (
-        Applied,
+    from fastraml import (
+        Body,
+        DomainExtension,
         Example,
-        Json,
         Operation,
         Parameter,
         Property,
         Response,
-        SecuredBy,
         SecurityScheme,
-        Shape,
-        ShapeNode,
+        SecuritySchemeDefinition,
     )
+    from sphinx.util.docutils import SphinxDirective
+
+    from .apis import Api
+    from .catalogue import Declared, Kind
 
 Detail = Literal['summary', 'request', 'full']
 Register = Literal['indexed', 'target', 'none']
 DETAILS: tuple[Detail, ...] = ('summary', 'request', 'full')
-
-#: The facets a reader is told about, in the order they read best.
-FACETS: tuple[str, ...] = (
-    'format',
-    'pattern',
-    'min_length',
-    'max_length',
-    'minimum',
-    'maximum',
-    'multiple_of',
-    'min_items',
-    'max_items',
-    'unique_items',
-    'min_properties',
-    'max_properties',
-    'additional_properties',
-    'discriminator',
-    'discriminator_value',
-    'file_types',
-)
 
 
 class Writer:
@@ -104,20 +81,18 @@ class Writer:
     def overview(self) -> list[Node]:
         entry = self.catalogue.entry
         signature: list[Node] = [addnodes.desc_name(self.catalogue.title, self.catalogue.title)]
-        if entry.get('version'):
-            signature.append(addnodes.desc_annotation('', f' {entry["version"]}'))
+        signature.extend(addnodes.desc_annotation('', f' {version}') for version in self.catalogue.value('version'))
         out, content = self.entry('api', '', signature, self.catalogue.title)
-        content.extend(markdown(entry.get('description'), self.document))
-        base = entry.get('base_uri')
+        content.extend(markdown(text(entry.description) if entry else None, self.document))
         content.extend(
             fields(
                 [
-                    ('Base URI', [nodes.literal(base, base)] if base else []),
+                    ('Base URI', _literals(self.catalogue.value('base_uri'))),
                     ('Base URI parameters', self.parameters(self.catalogue.base_uri_parameters(), addressable=True)),
-                    ('Protocols', _words(entry.get('protocols'))),
-                    ('Media types', _literals(entry.get('media_types'))),
-                    ('Security', self.security(entry.get('secured_by'))),
-                    ('Annotations', self.annotations(entry.get('annotations'))),
+                    ('Protocols', _words([protocol.upper() for protocol in self.catalogue.value('protocols')])),
+                    ('Media types', _literals(self.catalogue.value('media_types'))),
+                    ('Security', self.security(self.catalogue.secured_by())),
+                    ('Annotations', self.annotations(entry.annotations if entry else None)),
                 ]
             )
         )
@@ -129,13 +104,14 @@ class Writer:
         duplicates = self.catalogue.duplicate_titles()
         out: list[Node] = []
         for item in self.catalogue.documentation():
-            if wanted is not None and item['title'] not in wanted:
+            title = text(item.title) or ''
+            if wanted is not None and title not in wanted:
                 continue
             section = nodes.section()
-            section += nodes.title(item['title'], item['title'])
-            if item['title'] not in duplicates:
-                self.target('documentation-item', item['title'], section, item['title'])
-            markdown_sections(item['content'], self.document, section)
+            section += nodes.title(title, title)
+            if title not in duplicates:
+                self.target('documentation-item', title, section, title)
+            markdown_sections(text(item.content), self.document, section)
             out.append(section)
         return out
 
@@ -152,17 +128,17 @@ class Writer:
     def endpoint(self, path: str, detail: Detail, methods: set[str] | None) -> list[Node]:
         endpoint = self.catalogue.endpoints[path]
         out, content = self.entry('endpoint', path, [addnodes.desc_name(path, path)], path)
-        content.extend(self.named(endpoint.get('display_name'), path))
-        content.extend(markdown(endpoint.get('description'), self.document))
+        content.extend(self.named(text(endpoint.display_name), path))
+        content.extend(markdown(text(endpoint.description), self.document))
         content.extend(
             fields(
                 [
-                    ('URI parameters', self.parameters(endpoint.get('uri_parameters', {}))),
-                    ('Annotations', self.annotations(endpoint.get('annotations'))),
+                    ('URI parameters', self.parameters(endpoint.uri_parameters)),
+                    ('Annotations', self.annotations(endpoint.annotations)),
                 ]
             )
         )
-        for method, operation in endpoint['operations'].items():
+        for method, operation in endpoint.operations.items():
             if methods is None or method in methods:
                 content.extend(self.method(path, method, operation, detail))
         return out
@@ -170,13 +146,13 @@ class Writer:
     def endpoint_summary(self, path: str, methods: set[str] | None) -> list[Node]:
         endpoint = self.catalogue.endpoints[path]
         lead = nodes.paragraph('', '', self.xref('endpoint', path, path))
-        lead.extend(_dash(endpoint.get('display_name'), path))
+        lead.extend(_dash(text(endpoint.display_name), path))
         rows = []
-        for method, operation in endpoint['operations'].items():
+        for method, operation in endpoint.operations.items():
             if methods is None or method in methods:
                 key = f'{method.upper()} {path}'
                 row = nodes.paragraph('', '', self.xref('method', key, key))
-                row.extend(_dash(operation.get('display_name'), method))
+                row.extend(_dash(text(operation.display_name), method))
                 rows.append([row])
         return [lead, _bullets(rows)] if rows else [lead]
 
@@ -188,32 +164,33 @@ class Writer:
             addnodes.desc_name(path, path),
         ]
         out, content = self.entry('method', key, signature, key)
-        content.extend(self.named(operation.get('display_name'), method))
-        content.extend(markdown(operation.get('description'), self.document))
+        content.extend(self.named(text(operation.display_name), method))
+        content.extend(markdown(text(operation.description), self.document))
         endpoint = self.catalogue.endpoints[path]
-        bodies = [self.body(media, node) for media, node in operation.get('bodies', {}).items()]
-        query_string = operation.get('query_string')
+        request = operation.request
+        bodies = [self.body(media, body) for media, body in (request.bodies if request else {}).items()]
+        query_string = request.query_string if request else None
         content.extend(
             fields(
                 [
                     # Already the effective list: falling back to the resource's
                     # would re-show a requirement the method removed (docs/09 § A4).
-                    ('Security', self.security(operation.get('secured_by'))),
-                    ('Protocols', _words(operation.get('protocols'))),
-                    ('Annotations', self.annotations(operation.get('annotations'))),
+                    ('Security', self.security(operation.secured_by)),
+                    ('Protocols', _words([protocol.upper() for protocol in operation.protocols])),
+                    ('Annotations', self.annotations(operation.annotations)),
                     ('Base URI parameters', self.base_parameters()),
-                    ('URI parameters', self.parameters(endpoint.get('uri_parameters', {}))),
-                    ('Headers', self.parameters(operation.get('headers', {}))),
-                    ('Query parameters', self.parameters(operation.get('query_parameters', {}))),
-                    ('Query string', self.typed(query_string) if query_string else []),
+                    ('URI parameters', self.parameters(endpoint.uri_parameters)),
+                    ('Headers', self.parameters(request.headers if request else {})),
+                    ('Query parameters', self.parameters(request.query_parameters if request else {})),
+                    ('Query string', self.typed(query_string) if query_string is not None else []),
                     ('Request body', [_bullets(bodies)] if bodies else []),
                 ]
             )
         )
-        if detail == 'full' and operation['responses']:
+        if detail == 'full' and operation.responses:
             content += nodes.rubric('Responses', 'Responses')
-            for status, response in operation['responses'].items():
-                content.extend(self.response(key, status, response))
+            for status, response in operation.responses.items():
+                content.extend(self.response(key, str(status), response))
         return out
 
     def response(self, method: str | None, status: str, response: Response) -> list[Node]:
@@ -224,14 +201,14 @@ class Writer:
             signature.append(addnodes.desc_annotation('', f' {phrase}'))
         key = f'{method} {status}'
         out, content = self.entry('response', key, signature, key, register='target' if method else 'none')
-        content.extend(markdown(response.get('description'), self.document))
-        bodies = [self.body(media, node) for media, node in response.get('bodies', {}).items()]
+        content.extend(markdown(text(response.description), self.document))
+        bodies = [self.body(media, body) for media, body in response.bodies.items()]
         content.extend(
             fields(
                 [
-                    ('Headers', self.parameters(response.get('headers', {}))),
+                    ('Headers', self.parameters(response.headers)),
                     ('Body', [_bullets(bodies)] if bodies else []),
-                    ('Annotations', self.annotations(response.get('annotations'))),
+                    ('Annotations', self.annotations(response.annotations)),
                 ]
             )
         )
@@ -244,8 +221,9 @@ class Writer:
             rows = []
             for key in keys:
                 row = nodes.paragraph('', '', self.xref(kind, key, self.catalogue.label(key)))
-                node = self.catalogue.declaration(kind, key)
-                row.extend(_dash(cast('dict[str, str]', node).get('display_name'), key.partition('#')[2]))
+                declared = self.catalogue.declaration(kind, key)
+                shown = declared if isinstance(declared, BaseShape) else _content(declared)
+                row.extend(_dash(text(getattr(shown, 'display_name', None)), key.partition('#')[2]))
                 rows.append([row])
             return [_bullets(rows)]
         out: list[Node] = []
@@ -259,134 +237,143 @@ class Writer:
         return self.type(kind, key)
 
     def type(self, kind: Declared, key: str) -> list[Node]:
-        node = cast('ShapeNode', self.catalogue.declaration(kind, key))
+        declared = cast('BaseShape', self.catalogue.declaration(kind, key))
         label = self.catalogue.label(key)
         name = f'({label})' if kind == 'annotation-type' else label
         signature: list[Node] = [addnodes.desc_name(name, name)]
-        if is_ref(node):
+        if declared.alias is not None:
             # An alias: it shares its referent's everything (docs/07 § 3).
-            signature.extend([addnodes.desc_sig_punctuation('', ' = '), *self.label(node)])
+            signature.extend([addnodes.desc_sig_punctuation('', ' = '), *self.label(declared.alias)])
             return self.entry(kind, key, signature, label)[0]
-        shape = cast('Shape', node)
-        signature.extend([addnodes.desc_sig_punctuation('', ' : '), *self.shape_label(shape)])
+        signature.extend([addnodes.desc_sig_punctuation('', ' : '), *self.shape_label(declared)])
         out, content = self.entry(kind, key, signature, label)
-        content.extend(self.named(shape.get('display_name'), key.partition('#')[2]))
-        content.extend(markdown(shape.get('description'), self.document))
+        content.extend(self.named(text(declared.display_name), key.partition('#')[2]))
+        content.extend(markdown(text(declared.description), self.document))
         if kind == 'annotation-type':
-            content.extend(fields([('Applies to', _words(shape.get('allowed_targets')))]))
+            targets = [str(where) for where in declared.allowed_targets or []]
+            content.extend(fields([('Applies to', _words(targets))]))
         # A declared object type's properties are entries of their own, so a
         # link can land on one. Anything else -- an array's items, a union's
         # members, an annotation's value -- is listed as an inline type is.
-        if kind == 'type' and shape['type'] == 'object':
-            content.extend(self.details(shape, properties=False))
-            for field, prop in (shape.get('properties') or {}).items():
+        shape = declared.shape
+        if kind == 'type' and isinstance(shape, ObjectShape):
+            content.extend(self.details(declared, properties=False))
+            for field, prop in (shape.properties or {}).items():
                 content.extend(self.property(key, field, prop))
         else:
-            content.extend(self.details(shape))
+            content.extend(self.details(declared))
         return out
 
     def property(self, type_key: str, field: str, prop: Property) -> list[Node]:
         signature: list[Node] = [addnodes.desc_name(field, field), addnodes.desc_sig_punctuation('', ' : ')]
-        signature.extend(self.label(prop['type']))
-        if prop['required']:
+        signature.extend(self.label(prop.base))
+        if prop.required:
             signature.append(addnodes.desc_annotation('', ' required'))
         out, content = self.entry(
             'property', f'{type_key}.{field}', signature, f'{self.catalogue.label(type_key)}.{field}', register='target'
         )
-        content.extend(self.about(prop['type']))
+        content.extend(self.about(prop.base))
         return out
 
     def security_scheme(self, key: str) -> list[Node]:
-        scheme = cast('SecurityScheme', self.catalogue.declaration('security-scheme', key))
+        declared = cast('SecuritySchemeDefinition', self.catalogue.declaration('security-scheme', key))
+        # The name and identity are the declaration's; the content may be an
+        # included SecurityScheme fragment's, which `resolved()` reaches.
+        scheme = _content(declared)
         label = self.catalogue.label(key)
-        signature: list[Node] = [addnodes.desc_name(label, label), addnodes.desc_annotation('', f' {scheme["type"]}')]
+        signature: list[Node] = [addnodes.desc_name(label, label), addnodes.desc_annotation('', f' {scheme.type}')]
         out, content = self.entry('security-scheme', key, signature, label)
-        content.extend(self.named(scheme.get('display_name'), scheme['name']))
-        content.extend(markdown(scheme.get('description'), self.document))
-        settings = [
-            ([nodes.strong(name, name), nodes.Text(': '), *_literals(value if isinstance(value, list) else [value])])
-            for name, value in (scheme.get('settings') or {}).items()
-        ]
-        adds = scheme.get('described_by') or {}
-        query_string = adds.get('query_string')
+        content.extend(self.named(text(scheme.display_name), declared.name))
+        content.extend(markdown(text(scheme.description), self.document))
+        settings: list[list[Node]] = []
+        if scheme.settings is not None:
+            written: dict[str, list[str]] = {
+                name: [scalar(facet.value)] for name, facet in scheme.settings.values.items()
+            }
+            written.update({name: list(items) for name, items in scheme.settings.lists.items()})
+            settings = [
+                [nodes.paragraph('', '', nodes.strong(name, name), nodes.Text(': '), *_literals(values))]
+                for name, values in written.items()
+            ]
+        adds = scheme.described_by
         content.extend(
             fields(
                 [
-                    ('Settings', [_bullets([[nodes.paragraph('', '', *row)] for row in settings])] if settings else []),
-                    ('Adds headers', self.parameters(adds.get('headers', {}))),
-                    ('Adds query parameters', self.parameters(adds.get('query_parameters', {}))),
-                    ('Adds a query string', self.typed(query_string) if query_string else []),
-                    ('Annotations', self.annotations(scheme.get('annotations'))),
+                    ('Settings', [_bullets(settings)] if settings else []),
+                    ('Adds headers', self.parameters(adds.headers if adds else {})),
+                    ('Adds query parameters', self.parameters(adds.query_parameters if adds else {})),
+                    ('Adds a query string', self.typed(adds.query_string) if adds and adds.query_string else []),
+                    ('Annotations', self.annotations(scheme.annotations)),
                 ]
             )
         )
-        responses = adds.get('responses') or {}
-        if responses:
+        if adds is not None and adds.responses:
             content += nodes.rubric('Adds responses', 'Adds responses')
             # Shown as a method's are, but no target: a scheme's response has
             # no method to be named under.
-            for status, response in responses.items():
-                content.extend(self.response(None, status, response))
+            for status, response in adds.responses.items():
+                content.extend(self.response(None, str(status), response))
         return out
 
     # -- shapes ----------------------------------------------------------------
 
-    def link(self, address: str | None, text: str | None = None) -> Node | None:
-        """A link to the declaration at `address`, when that address is one."""
-        declared = self.catalogue.declared_at(address) if address else None
+    def link(self, entity_id: int, text: str | None = None) -> Node | None:
+        """A link to the declaration an entity is, when it is one."""
+        declared = self.catalogue.declared_at(entity_id)
         if declared is None:
             return None
         kind, key = declared
         return self.xref(kind, key, text or self.catalogue.label(key))
 
-    def label(self, node: ShapeNode | None) -> list[Node]:
+    def label(self, base: BaseShape | None) -> list[Node]:
         """A type as one line: a link to a declaration, or what an anonymous one is."""
-        if node is None:
+        if base is None:
             return [nodes.Text('any')]
-        address = _address(node)
-        if address is None:
-            shape = cast('Shape', node)
-            linked = self.link(shape.get('id'))
-            return [linked] if linked is not None else self.shape_label(shape)
-        linked = self.link(address)
+        if base.alias is not None:
+            return self.label(base.alias)
+        linked = self.link(base.id)
         if linked is not None:
             return [linked]
-        found = self.catalogue.tree.at(address)
-        return self.label(found) if found is not None else [nodes.Text('any')]
+        if isinstance(base.shape, RecursiveShape):
+            head = base.shape.head
+            return [self.link(head.id) or nodes.Text(head.name or 'recursive')]
+        return self.shape_label(base)
 
-    def shape_label(self, shape: Shape) -> list[Node]:
+    def shape_label(self, base: BaseShape) -> list[Node]:
         """What a shape is, never itself: `array of Money`, `string | number`, `Entity`.
 
         Apart from `label` so a declaration's own signature can say what it
         is without linking to itself.
         """
-        if shape['type'] == 'array':
-            items = shape.get('items')
-            return [nodes.Text('array of '), *self.label(items)] if items is not None else [nodes.Text('array')]
-        if shape['type'] == 'union':
+        shape = base.shape
+        if isinstance(shape, ArrayShape):
+            return [nodes.Text('array of '), *self.label(shape.items)] if shape.items else [nodes.Text('array')]
+        if isinstance(shape, UnionShape):
             out: list[Node] = []
-            for position, member in enumerate(shape.get('any_of') or []):
+            for position, member in enumerate(shape.any_of or []):
                 if position:
                     out.append(nodes.Text(' | '))
                 out.extend(self.label(member))
             return out or [nodes.Text('union')]
-        if shape['type'] == 'json':
+        if isinstance(shape, JsonShape):
             return [nodes.Text('JSON schema')]
-        return self.supertypes(shape) or [nodes.Text(shape['type'])]
+        return self.supertypes(base) or [nodes.Text(base.type)]
 
-    def supertypes(self, shape: Shape) -> list[Node]:
+    def supertypes(self, base: BaseShape) -> list[Node]:
         """Links to the declared types a shape extends, if it extends any."""
         out: list[Node] = []
-        for parent in shape.get('inherits') or []:
-            linked = self.link(_address(parent))
-            if linked is None:
-                continue
+        for parent in self.declared_parents(base):
             if out:
                 out.append(nodes.Text(', '))
-            out.append(linked)
+            out.append(cast('Node', self.link(parent.id)))
         return out
 
-    def about(self, node: ShapeNode | None) -> list[Node]:
+    def declared_parents(self, base: BaseShape) -> list[BaseShape]:
+        """The declared types a shape extends, through any alias."""
+        parents = [target(parent) for parent in base.inherits]
+        return [parent for parent in parents if self.catalogue.declared_at(parent.id) is not None]
+
+    def about(self, base: BaseShape | None) -> list[Node]:
         """What a use of a type says beyond its label: nothing, for a declared one.
 
         An anonymous subtype of a declared type -- `type: Book` with a facet
@@ -394,17 +381,20 @@ class Writer:
         properties as its own. Only what differs from those is shown; the
         label already links to the rest.
         """
-        if node is None or _address(node) is not None or not is_shape(node):
+        if base is None:
             return []
-        shape = cast('Shape', node)
-        own = shape.get('id')
-        if own and self.catalogue.declared_at(own):
+        base = target(base)
+        if self.catalogue.declared_at(base.id) is not None or isinstance(base.shape, RecursiveShape):
             return []
-        beneath = self.declared_parents(shape)
-        description = None if _inherited(shape, beneath, 'description') else shape.get('description')
-        return [*markdown(description, self.document), *self.details(shape, beneath=beneath)]
+        beneath = self.declared_parents(base)
+        description = text(base.description)
+        if any(text(parent.description) == description for parent in beneath):
+            description = None
+        return [*markdown(description, self.document), *self.details(base, beneath=beneath)]
 
-    def details(self, shape: Shape, *, properties: bool = True, beneath: list[Shape] | None = None) -> list[Node]:
+    def details(
+        self, base: BaseShape, *, properties: bool = True, beneath: list[BaseShape] | None = None
+    ) -> list[Node]:
         """Constraints, allowed values, structure and examples of one shape.
 
         `beneath` are the declared types it extends: what it has from them is
@@ -412,90 +402,89 @@ class Writer:
         """
         beneath = beneath or []
         out: list[Node] = []
+        inherited = [_facets(parent) for parent in beneath]
         facets = [
-            (name, shape.get(name))
-            for name in FACETS
-            if shape.get(name) is not None and not _inherited(shape, beneath, name)
+            (name, value) for name, value in _facets(base).items() if all(p.get(name) != value for p in inherited)
         ]
         if facets:
             row = nodes.paragraph()
             for position, (name, value) in enumerate(facets):
                 if position:
                     row += nodes.Text(', ')
-                row += nodes.emphasis(_camel(name), _camel(name))
+                row += nodes.emphasis(name, name)
                 row += nodes.Text(' ')
-                row.extend(_literals(cast('list[Json]', value if isinstance(value, list) else [value])))
+                row += nodes.literal(value, value)
             out.append(row)
-        enum = None if _inherited(shape, beneath, 'enum') else shape.get('enum')
-        if enum:
+        enum = [plain(member) for member in base.enum or []]
+        if enum and all([plain(member) for member in parent.enum or []] != enum for parent in beneath):
             out.append(nodes.paragraph('', '', nodes.Text('One of: '), *_literals(enum)))
-        if 'default' in shape and not _inherited(shape, beneath, 'default'):
-            out.append(nodes.paragraph('', '', nodes.Text('Default: '), *_literals([cast('Json', shape['default'])])))
-        if not _inherited(shape, beneath, 'annotations'):
-            out.extend(fields([('Annotations', self.annotations(shape.get('annotations')))]))
+        default = plain(base.default)
+        if base.default is not None and all(plain(parent.default) != default for parent in beneath):
+            out.append(nodes.paragraph('', '', nodes.Text('Default: '), *_literals([default])))
+        if all(set(parent.annotations) != set(base.annotations) for parent in beneath):
+            out.extend(fields([('Annotations', self.annotations(base.annotations))]))
         if properties:
-            out.extend(self.structure(shape, beneath))
-        out.extend(self.examples(shape))
+            out.extend(self.structure(base, beneath))
+        out.extend(self.examples(base))
         return out
 
-    def structure(self, shape: Shape, beneath: list[Shape]) -> list[Node]:
+    def structure(self, base: BaseShape, beneath: list[BaseShape]) -> list[Node]:
         """What an anonymous type holds: its own properties, items or members."""
-        if shape['type'] == 'object':
+        shape = base.shape
+        if isinstance(shape, ObjectShape):
             inherited = {
-                name for parent in beneath if parent['type'] == 'object' for name in parent.get('properties') or {}
+                name
+                for parent in beneath
+                if isinstance(parent.shape, ObjectShape)
+                for name in parent.shape.properties or {}
             }
             rows = [
-                self.property_row(name, prop)
-                for name, prop in (shape.get('properties') or {}).items()
+                self.property_row(name, prop.base, required=prop.required)
+                for name, prop in (shape.properties or {}).items()
                 if name not in inherited
             ]
             rows.extend(
-                self.property_row(f'/{pattern["pattern"]}/', cast('Property', {**pattern, 'required': False}))
-                for pattern in (shape.get('pattern_properties') or {}).values()
+                self.property_row(f'/{pattern.pattern.pattern}/', pattern.base, required=False)
+                for pattern in (shape.pattern_properties or {}).values()
             )
             return [_bullets(rows)] if rows else []
-        if shape['type'] == 'array':
-            inner = self.about(shape.get('items'))
+        if isinstance(shape, ArrayShape):
+            inner = self.about(shape.items)
             return [nodes.paragraph('', 'Each item:'), *inner] if inner else []
-        if shape['type'] == 'union':
+        if isinstance(shape, UnionShape):
             rows = [
-                [nodes.paragraph('', '', *self.label(member)), *self.about(member)]
-                for member in shape.get('any_of') or []
+                [nodes.paragraph('', '', *self.label(member)), *self.about(member)] for member in shape.any_of or []
             ]
             return [nodes.paragraph('', 'One of:'), _bullets(rows)] if rows else []
+        if isinstance(shape, JsonShape):
+            # The nearest RAML shape to the schema (docs/10 § 7): its structure
+            # is what a reader of the schema needs, in the same form as the rest.
+            view = shape.as_shape()
+            return self.structure(view, []) if view is not None else []
         return []
 
-    def declared_parents(self, shape: Shape) -> list[Shape]:
-        """The declared types a shape extends, expanded."""
-        out: list[Shape] = []
-        for parent in shape.get('inherits') or []:
-            address = _address(parent)
-            if address is None or self.catalogue.declared_at(address) is None:
-                continue
-            found = self.catalogue.tree.at(address)
-            if found is not None:
-                out.append(found)
-        return out
-
-    def property_row(self, name: str, prop: Property) -> list[Node]:
-        lead = nodes.paragraph('', '', nodes.strong(name, name), nodes.Text(' : '), *self.label(prop['type']))
-        if prop['required']:
+    def property_row(self, name: str, base: BaseShape, *, required: bool) -> list[Node]:
+        lead = nodes.paragraph('', '', nodes.strong(name, name), nodes.Text(' : '), *self.label(base))
+        if required:
             lead += nodes.emphasis(' required', ' required')
-        return [lead, *self.about(prop['type'])]
+        return [lead, *self.about(base)]
 
-    def examples(self, shape: Shape) -> list[Node]:
+    def examples(self, base: BaseShape) -> list[Node]:
         found: list[tuple[str, Example]] = []
-        if 'example' in shape:
-            found.append(('Example', shape['example']))
-        found.extend(
-            (f'Example: {example.get("display_name") or name}', example)
-            for name, example in (shape.get('examples') or {}).items()
-        )
+        if base.example is not None:
+            found.append(('Example', base.example))
+        if base.examples is not None:
+            # `entries()`, never `values`: with `examples: !include` the entries
+            # live on the fragment and `values` is empty (AGENTS.md).
+            found.extend(
+                (f'Example: {text(example.display_name) or name}', example)
+                for name, example in base.examples.entries().items()
+            )
         out: list[Node] = []
         for title, example in found:
             out.append(nodes.rubric(title, title))
-            out.extend(markdown(example.get('description'), self.document))
-            out.append(_code(example['value']))
+            out.extend(markdown(text(example.description), self.document))
+            out.append(_code(plain(example.data)))
         return out
 
     # -- parts of a request ----------------------------------------------------
@@ -503,7 +492,7 @@ class Writer:
     def parameters(self, parameters: dict[str, Parameter], *, addressable: bool = False) -> list[Node]:
         rows = []
         for name, parameter in parameters.items():
-            row = self.property_row(name, cast('Property', parameter))
+            row = self.property_row(name, parameter.base, required=parameter.required)
             if addressable and self.index:
                 self.target('base-uri-parameter', name, cast('Element', row[0]), f'{{{name}}}')
             rows.append(row)
@@ -511,47 +500,50 @@ class Writer:
 
     def base_parameters(self) -> list[Node]:
         """The base URI's parameters, linked: `{tenant}` is required and is not in the path."""
-        names = list(self.catalogue.base_uri_parameters())
         links: list[Node] = []
-        for position, name in enumerate(names):
+        for position, name in enumerate(self.catalogue.base_uri_parameters()):
             if position:
                 links.append(nodes.Text(', '))
             links.append(self.xref('base-uri-parameter', name, f'{{{name}}}'))
         return [nodes.paragraph('', '', *links)] if links else []
 
-    def typed(self, node: ShapeNode) -> list[Node]:
-        return [nodes.paragraph('', '', *self.label(node)), *self.about(node)]
+    def typed(self, base: BaseShape) -> list[Node]:
+        return [nodes.paragraph('', '', *self.label(base)), *self.about(base)]
 
-    def body(self, media: str, node: ShapeNode | None) -> list[Node]:
-        lead = nodes.paragraph('', '', nodes.literal(media, media), nodes.Text(' : '), *self.label(node))
-        return [lead, *self.about(node)]
+    def body(self, media: str, body: Body) -> list[Node]:
+        lead = nodes.paragraph('', '', nodes.literal(media, media), nodes.Text(' : '), *self.label(body.shape))
+        return [lead, *self.about(body.shape)]
 
-    def security(self, secured_by: list[SecuredBy] | None) -> list[Node]:
+    def security(self, secured_by: list[SecurityScheme]) -> list[Node]:
         if not secured_by:
             return []
         row = nodes.paragraph()
         for position, requirement in enumerate(secured_by):
             if position:
                 row += nodes.Text(' or ')
-            if requirement['is_null']:
+            if requirement.is_null:
                 row += nodes.Text('no authentication')
                 continue
-            name = requirement['name']
-            row += self.link(requirement['declaration']) or nodes.literal(name, name)
-            if requirement['scopes']:
+            definition = requirement.definition
+            linked = self.link(definition.id) if definition is not None else None
+            row += linked or nodes.literal(requirement.name, requirement.name)
+            if requirement.compiled_params:
                 row += nodes.Text(' (scopes: ')
-                row.extend(_literals(requirement['scopes']))
+                row.extend(_literals(requirement.compiled_params))
                 row += nodes.Text(')')
         return [row]
 
-    def annotations(self, applied: list[Applied] | None) -> list[Node]:
+    def annotations(self, applied: dict[str, DomainExtension] | None) -> list[Node]:
         rows = []
-        for annotation in applied or []:
-            name = f'({annotation["name"]})'
-            row = nodes.paragraph('', '', self.link(annotation['type'], name) or nodes.literal(name, name))
-            if annotation['value'] is not None:
+        for name, extension in (applied or {}).items():
+            shown = f'({name})'
+            defined_by = extension.defined_by
+            linked = self.link(defined_by.id, shown) if defined_by is not None else None
+            row = nodes.paragraph('', '', linked or nodes.literal(shown, shown))
+            value = plain(extension.value)
+            if value is not None:
                 row += nodes.Text(' ')
-                row.extend(_literals([annotation['value']]))
+                row.extend(_literals([value]))
             rows.append([row])
         return [_bullets(rows)] if rows else []
 
@@ -582,8 +574,8 @@ class Writer:
         if registered:
             anchor = self.target(kind, key, sig, display)
             if register == 'indexed':
-                text = f'{display} ({self.catalogue.title} {LABELS[kind]})'
-                out.append(addnodes.index(entries=[('single', text, anchor, '', None)]))
+                entry = f'{display} ({self.catalogue.title} {LABELS[kind]})'
+                out.append(addnodes.index(entries=[('single', entry, anchor, '', None)]))
         content = addnodes.desc_content()
         desc += sig
         desc += content
@@ -626,6 +618,21 @@ def fields(rows: list[tuple[str, list[Node]]]) -> list[Node]:
     return [out]
 
 
+def _content(declared: SecuritySchemeDefinition | BaseShape | None) -> SecuritySchemeDefinition:
+    """A scheme declaration's content: its own, or the fragment it includes."""
+    return cast('SecuritySchemeDefinition', declared).resolved()
+
+
+def _facets(base: BaseShape) -> dict[str, str]:
+    """A shape's constraints in RAML's spelling, each as the text a reader writes."""
+    shape = base.shape
+    out = {name: scalar(facet.value) for name, facet in facets_of(shape)}
+    if isinstance(shape, FileShape) and shape.file_types:
+        # A list of facets, which `facets_of` does not list.
+        out['fileTypes'] = ', '.join(texts(shape.file_types))
+    return out
+
+
 def _bullets(rows: Iterable[Sequence[Node]]) -> nodes.bullet_list:
     out = nodes.bullet_list()
     for row in rows:
@@ -637,46 +644,26 @@ def _dash(text: str | None, name: str) -> list[Node]:
     return [nodes.Text(f' -- {text}')] if text and text != name else []
 
 
-def _words(values: Sequence[str] | None) -> list[Node]:
+def _words(values: Sequence[str]) -> list[Node]:
     return [nodes.paragraph('', ', '.join(values))] if values else []
 
 
-def _literals(values: Iterable[Json] | None) -> list[Node]:
+def _literals(values: Iterable[Any] | None) -> list[Node]:
     out: list[Node] = []
     for position, value in enumerate(values or []):
         if position:
             out.append(nodes.Text(', '))
-        text = value if isinstance(value, str) else json.dumps(value)
-        out.append(nodes.literal(text, text))
+        shown = value if isinstance(value, str) else json.dumps(value, default=str)
+        out.append(nodes.literal(shown, shown))
     return out
 
 
-def _code(value: Json) -> nodes.literal_block:
+def _code(value: Any) -> nodes.literal_block:
     """An example as a code block: JSON unless it is a string, which is shown as written."""
     if isinstance(value, str):
         return nodes.literal_block(value, value, language='text')
-    text = json.dumps(value, indent=2, ensure_ascii=False)
-    return nodes.literal_block(text, text, language='json')
-
-
-def _address(node: object) -> str | None:
-    """What a link or a recursion marker points at; `None` for anything expanded."""
-    if is_ref(node):
-        return node['$ref']
-    if is_recursion(node):
-        return node['head']['$ref']
-    return None
-
-
-def _inherited(shape: Shape, beneath: list[Shape], key: str) -> bool:
-    """Whether a value is one a declared supertype already has."""
-    value = cast('dict[str, object]', shape).get(key)
-    return any(cast('dict[str, object]', parent).get(key) == value for parent in beneath)
-
-
-def _camel(name: str) -> str:
-    head, *rest = name.split('_')
-    return head + ''.join(part.title() for part in rest)
+    shown = json.dumps(value, indent=2, ensure_ascii=False, default=str)
+    return nodes.literal_block(shown, shown, language='json')
 
 
 def _phrase(status: str) -> str:
@@ -684,6 +671,3 @@ def _phrase(status: str) -> str:
         return HTTPStatus(int(status)).phrase
     except ValueError:
         return ''
-
-
-__all__ = ['DETAILS', 'Detail', 'Writer', 'fields']

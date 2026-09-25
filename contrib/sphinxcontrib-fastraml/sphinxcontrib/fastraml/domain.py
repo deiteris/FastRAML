@@ -136,8 +136,7 @@ class ValueRole(SphinxRole):
             return [nodes.inline(self.rawtext, self.rawtext)], []
         for path in loaded.files:
             self.env.note_dependency(str(path))
-        value = loaded.catalogue.entry.get(self.field)
-        text = ', '.join(value) if isinstance(value, list) else str(value or '')
+        text = ', '.join(loaded.catalogue.value(self.field))
         if not text:
             logger.warning(
                 'RAML API %r declares no %s', chosen, self.field, location=self.get_location(), type='fastraml'

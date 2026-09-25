@@ -342,3 +342,15 @@ def test_a_methods_own_security_list_is_the_one_shown(build, tmp_path):
     get, post = text.index('GET /open'), text.index('POST /open')
     assert 'Security' not in text[get:post]
     assert 'Security : basic' in text[post:]
+
+
+def test_model_values_read_as_the_author_wrote_them(build):
+    built = build(
+        {'index': 'Home\n====\n\n.. raml:type:: Money\n\n.. raml:type:: AnythingAlias\n'},
+        conf='raml_warn_unrendered = False',
+    )
+    text = built.text()
+    # A bound is the decimal the author wrote, not the ratio fastraml keeps it as.
+    assert 'multipleOf 0.01' in text
+    # An alias names what it aliases, and shares everything with it (docs/07 § 3).
+    assert 'AnythingAlias = Anything' in text

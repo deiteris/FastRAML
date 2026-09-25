@@ -10,10 +10,9 @@ belongs in each consumer's README.
 Consumers are downstream of the parser.
 
 ```
-fastraml/  <- viewer/                  through `fastraml tree` JSON
-           <- raml-codegen            through `fastraml tree` JSON
-           <- sphinxcontrib-fastraml  through `fastraml tree` JSON, parsed in-process
-           <- contrib/*               through the public parser API or tree contract
+fastraml/  <- viewer/          through `fastraml tree` JSON
+           <- raml-codegen    through `fastraml tree` JSON
+           <- contrib/*       through the public parser API or tree contract
 ```
 
 Nothing under `fastraml/` may import a consumer. The one packaging exception is
@@ -105,10 +104,11 @@ README for its supported behavior. In particular:
   resulting JSON, so the generator still reads only the contract.
 - `fastraml-viewer` packages the built SPA and server helper without depending on
   `fastraml`.
-- `sphinxcontrib-fastraml` parses with `fastraml` and reads the resulting tree
-  through its own copy of the Python bindings, so what it renders is the
-  contract, not the parser's objects. It is a namespace package, so its
-  `pyproject.toml` names the path `mypy` checks.
+- `sphinxcontrib-fastraml` parses in-process with `unwrap=True` and reads the
+  effective model through the public parser API. The tree is a serialization
+  of that same model for readers that cannot import the parser; this one can.
+  It is a namespace package, so its `pyproject.toml` names the path `mypy`
+  checks.
 
 For most projects, work locally from the project directory:
 
@@ -126,14 +126,13 @@ viewer before their dependency sync when their README or CI job requires it.
 
 ### 4.1 Tree consumers
 
-The viewer, `raml-codegen` and `sphinxcontrib-fastraml` consume tree JSON rather
-than parser objects. The Python bindings and runtime are generated artifacts,
-vendored into each Python consumer:
+The viewer and `raml-codegen` consume tree JSON rather than parser objects. The
+Python codegen bindings and runtime are generated artifacts:
 
-- `contrib/raml-codegen/raml_codegen/tree.py` and `walk.py`
-- `contrib/sphinxcontrib-fastraml/sphinxcontrib/fastraml/tree.py` and `walk.py`
+- `contrib/raml-codegen/raml_codegen/tree.py`
+- `contrib/raml-codegen/raml_codegen/walk.py`
 
-Regenerate a pair from the repository root, naming its directory:
+Regenerate them from the repository root:
 
 ```bash
 python -m fastraml.views.bindings python \
@@ -141,9 +140,9 @@ python -m fastraml.views.bindings python \
   --runtime contrib/raml-codegen/raml_codegen/walk.py
 ```
 
-The root binding suite checks every copy for staleness, and the codegen committed
-tree inputs. The generated module and runtime are contract artifacts, not owned
-by the consumer that vendors them.
+The root binding suite checks these files and the codegen committed tree inputs.
+The generated module and runtime are contract artifacts, not codegen-owned
+source.
 
 ## 5. CI and publishing
 

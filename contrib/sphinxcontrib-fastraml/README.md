@@ -140,7 +140,7 @@ documentation items and base URI parameters.
 A declaration in another file, such as a library's type, is named by that file
 and not through the root file's `uses:` key. `common.Money` is the root file's
 private spelling, and renaming the key would break every link in the prose.
-The file is written as `fastraml tree` names it: relative to the workspace
+The file is written as every fastraml view names it: relative to the workspace
 root, which defaults to the root file's directory. In the ordinary case the
 root file is `api.raml` and a library beside it is `common.raml`.
 
@@ -152,9 +152,9 @@ Endpoints nest by path segment, as in the viewer's navigation:
 
 ## How entries read
 
-The RAML is read as the effective document: traits and resource types are
-applied and inheritance is flattened, so an entry shows what a caller must
-actually send.
+The RAML is parsed with `unwrap=True` and read as fastraml's effective model:
+traits and resource types are applied and inheritance is flattened, so an
+entry shows what a caller must actually send.
 
 - **A declared type is linked, never repeated.** A body of `Book` links to
   `Book`'s entry. An inline type is spelled out where it is used. An inline
@@ -170,13 +170,13 @@ actually send.
 
 ## Not yet
 
-- **Traits and resource types.** `fastraml tree` records neither, nor which
-  methods applied them, so there is nothing to render or link to. They need a
-  change to the tree first.
-- **`{version}` in the base URI.** RAML fills it in from `version:`, but the
-  tree carries `baseUri` as written, so this extension shows it as written.
+- **Traits and resource types** are neither rendered nor addressable. The
+  model keeps their declarations and records which ones each method and
+  resource applied, so this is work for the extension, not the parser.
+- **`{version}` in the base URI.** RAML fills it in from `version:`, but
+  fastraml keeps `baseUri` as written, so this extension shows it as written.
   Filling it in here would be a RAML rule held by a consumer; it belongs in
-  the tree.
+  fastraml.
 - **Applied annotations** are listed with their values, but not rendered
   against their annotation type's shape.
 
@@ -211,14 +211,4 @@ builds the same site, so a change that breaks it fails the suite.
 ```bash
 uv sync --dev
 uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q
-```
-
-`sphinxcontrib/fastraml/tree.py` and `walk.py` are generated from the tree's
-contract. Never edit them by hand. The root gate's `tests/unit/test_bindings.py`
-fails when they are stale and names the command that regenerates them:
-
-```bash
-python -m fastraml.views.bindings python \
-  -o contrib/sphinxcontrib-fastraml/sphinxcontrib/fastraml/tree.py \
-  --runtime contrib/sphinxcontrib-fastraml/sphinxcontrib/fastraml/walk.py
 ```

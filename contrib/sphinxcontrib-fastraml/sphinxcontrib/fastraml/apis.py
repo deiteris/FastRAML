@@ -10,27 +10,25 @@ read, so each is parsed once and its diagnostics are reported once. A parse is
 kept for the life of the process and redone only when a file it read changed,
 which is what an auto-rebuilding server needs.
 
-Parsing is fastraml's; this module holds no rule about RAML. It hands the
-effective tree to `catalogue.py` and reports the parser's diagnostics as Sphinx
-warnings at the RAML file and line they are about, so `sphinx-build -W` fails
-on a broken specification.
+Parsing is fastraml's; this module holds no rule about RAML. It parses with
+`unwrap=True`, so the model `catalogue.py` reads is the effective document, and
+reports the parser's diagnostics as Sphinx warnings at the RAML file and line
+they are about, so `sphinx-build -W` fails on a broken specification.
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import unquote, urlsplit
 from urllib.request import url2pathname
 
-from fastraml import ParseOptions, RamlError, build_tree, parse_lenient
+from fastraml import ParseOptions, RamlError, parse_lenient
 from sphinx.errors import ConfigError
 from sphinx.util import logging
 
 from .catalogue import Catalogue
-from .walk import Tree
 
 if TYPE_CHECKING:
     from fastraml import Raml
@@ -76,7 +74,7 @@ _CACHE: dict[tuple[Path, Path | None], _Parsed] = {}
 def resolve(app: Sphinx, config: Config) -> None:
     """`raml_apis`, checked, with every path made absolute against `conf.py` (`config-inited`).
 
-    Written back as a list of `Source`, so everything after this reads the
+    Written back as absolute paths, so everything after this reads the
     configuration alone and never needs the application for its directory.
     """
     raw = config.raml_apis
@@ -148,12 +146,8 @@ def _parse(source: Source) -> _Parsed | None:
         return None
     if error is not None:
         _report(error)
-    # Through JSON and back, so the tree is exactly what `fastraml tree`
-    # prints -- the contract the bindings describe -- and not the projector's
-    # own Python values, which the contract does not promise anything about.
-    document = json.loads(json.dumps(build_tree(raml)))
     files = _files(raml, source.path)
-    parsed = _Parsed(Catalogue(Tree.of(document), root_file=_root_file(raml)), files, _mtimes(files))
+    parsed = _Parsed(Catalogue(raml), files, _mtimes(files))
     _CACHE[key] = parsed
     return parsed
 
@@ -175,23 +169,6 @@ def _report(error: RamlError) -> None:
         where = str(_path(placed.location) or placed.location)
         location = f'{where}:{placed.position.line}' if placed.position is not None else where
         logger.warning(message, location=location, type='fastraml', subtype='parse')
-
-
-def _root_file(raml: Raml) -> str:
-    """The root file as the tree names files: relative to the workspace root.
-
-    The tree keys every declaration by the file it was written in, relative to
-    the workspace root, which defaults to the entry file's directory
-    (docs/16 § 2). A bare `Book` means the root file's `Book`, so this is the
-    key a bare name is looked up under. For an Overlay or Extension entry,
-    `location` is the root API's, which is the namespace its names are in.
-    """
-    location = raml.location
-    root = raml.workspace_root_uri or location.rsplit('/', 1)[0] + '/'
-    root = root if root.endswith('/') else root + '/'
-    # Not decoded: the tree's keys are cut from the URI as it is, so a file
-    # named `my api.raml` is keyed `my%20api.raml` there and must be here.
-    return location.removeprefix(root) if location.startswith(root) else location
 
 
 def _files(raml: Raml, entry: Path) -> tuple[Path, ...]:

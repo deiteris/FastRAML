@@ -99,3 +99,11 @@ def test_a_repeated_documentation_title_is_no_target(tmp_path):
     assert loaded.catalogue.duplicate_titles() == {'Same'}
     assert loaded.catalogue.documentation_item('Same') is None
     assert ('documentation-item', 'Same') not in set(loaded.catalogue.addressable())
+
+
+def test_a_file_is_named_as_it_is_on_disk(tmp_path):
+    (tmp_path / 'my api.raml').write_text('#%RAML 1.0\ntitle: T\ntypes:\n  A: string\n', encoding='utf-8')
+    loaded = apis._load(apis.Source('t', tmp_path / 'my api.raml', None))
+    assert loaded is not None
+    assert loaded.catalogue.root_file == 'my api.raml'
+    assert loaded.catalogue.exists('type', 'my api.raml#A')

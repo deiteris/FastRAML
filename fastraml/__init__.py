@@ -35,6 +35,7 @@ __version__ = '0.1.0'
 # on first access; `fastraml/__init__.pyi` declares the same surface eagerly for
 # type checkers.
 _EXPORTS = {
+    'bound_base_uri': ('fastraml.views.base_uri', 'bound_base_uri'),
     'Example': ('fastraml.types.examples', 'Example'),
     'Examples': ('fastraml.types.examples', 'Examples'),
     'SecurityScheme': ('fastraml.parser.directives', 'SecurityScheme'),
@@ -313,6 +314,7 @@ __all__ = [  # noqa: RUF022
     'backward',
     'backward_markdown',
     'backward_types',
+    'bound_base_uri',
     'build_graph',
     'build_loader',
     'build_tree',

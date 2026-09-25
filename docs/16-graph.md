@@ -238,8 +238,15 @@ must be unwrapped.
 loss notices. `fastraml openapi` emits YAML by default or JSON with
 `--format json`; notices go to stderr.
 
-Both exports are read-only views. Their detailed mapping tests are
-`tests/unit/test_jsonschema_view.py` and `tests/unit/test_openapi_view.py`.
+`fastraml.bound_base_uri(api)` is `baseUri` with `{version}` bound to the
+root `version:`, the one base URI variable RAML binds itself; every other
+variable stays written for the caller to supply. `version` declared under
+`baseUriParameters` is the caller's too, as the OpenAPI export reads it.
+`APIFragment.base_uri` stays as written.
+
+These are read-only views. Their detailed tests are
+`tests/unit/test_jsonschema_view.py`, `tests/unit/test_openapi_view.py` and
+`tests/unit/test_base_uri_view.py`.
 
 ## 9. Verification
 

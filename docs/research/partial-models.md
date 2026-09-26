@@ -131,20 +131,24 @@ The signals are sparse, so a successful parse pays nothing for them
 
 **S1. Stage.**
 
-```python
-class Pass(IntEnum):
-    P0 = 0
-    ...
-    P10 = 10
+As built (plan M2.1), after the draft below proved unable to express what ran:
 
-Raml.completed: Pass | None    # last pass that finished without error
-Raml.stopped_at: Pass | None   # the pass that raised; None on success
+```python
+class Stage(Enum):  # the driver's steps, in execution order (docs/02 § 1)
+    DECODED, ENDPOINTS, SECURITY, RESOLVED, ANNOTATIONS, UNWRAPPED, VALIDATED
+
+Raml.completed: list[Stage]      # the stages that finished, in order
+Raml.stopped_at: Stage | None    # the stage that raised; None on success
 ```
+
+The draft held one `IntEnum` of pass numbers, the last one completed. That
+cannot say whether P6 ran, because the driver runs P6 before P5, and it
+cannot say whether P9 ran, because P9 is optional while P10 is not.
 
 This resolves A3: a consumer gates each feature on the pass it needs. The
 LSP's feature-to-pass table (`research/language-server.md` § 3.1) reads
-these two fields directly. It also replaces `Raml.unwrapped` as the general
-answer; that field stays as the P9 flag for compatibility.
+these two fields directly. `Raml.unwrapped` became a read-only property
+derived from them.
 
 **S2. Broken entities.**
 
@@ -179,9 +183,9 @@ Inventing a name would make up a declaration.
 
 This is draft text for `docs/13` § 1. When `parse_lenient` returns an error:
 
-1. `completed` and `stopped_at` say which passes ran. Every pass up to and
-   including `completed` finished. Its invariants (`docs/02` § 4) hold for
-   every entity not in `broken`.
+1. `completed` and `stopped_at` say which stages ran. Every stage in
+   `completed` finished, and its invariants (`docs/02` § 4) hold for every
+   entity not in `broken`.
 2. In the pass at `stopped_at`, each entity either satisfies that pass's
    invariant or is in `broken`. No entity is left half-processed and
    unmarked.

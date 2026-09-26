@@ -42,6 +42,15 @@ fragment-kind mismatch, or a non-mapping root raises only when the outer frame's
 location is the entry URI; the same failure in an included fragment is returned
 with the partial model.
 
+A returned model says how far it got. `Raml.completed` lists the stages that
+finished, in order, and `Raml.stopped_at` names the stage that raised, or is
+`None` (docs/02 § 1). Gate a feature on membership, as in
+`Stage.RESOLVED in raml.completed`, never on a later stage having run: P9 is
+optional, so `VALIDATED` can finish without `UNWRAPPED`. A stage that did not
+run leaves its outputs at their defaults; for example, `endpoints` is empty
+until `ENDPOINTS` finishes, which is not the same as an API with no
+resources.
+
 An Overlay or Extension may be the entry document. The returned `Raml` holds
 the target tree of its `extends` chain: `entry_point` is the root API's
 `APIFragment`, `Raml.location` is the root API's URI, and `Raml.extensions`

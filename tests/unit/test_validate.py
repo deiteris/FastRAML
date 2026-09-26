@@ -1000,7 +1000,7 @@ class TestPrivateUnwrap:
         )
         raml = parse_from_path(root / 'api.raml', ParseOptions(validate=True))
         child = raml.types_in(raml.location)['T']
-        assert not raml.is_unwrapped
+        assert not raml.unwrapped
         assert [parent.name for parent in child.inherits] == ['P']
         # Flattening would have copied `a` onto the child.
         assert list(child.shape.properties or {}) == []

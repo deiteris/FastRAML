@@ -52,6 +52,7 @@ from fastraml.parser.security import SecuritySchemeSettings as SecuritySchemeSet
 from fastraml.positions import Position as Position
 from fastraml.registry import ParseCtx as ParseCtx
 from fastraml.registry import Raml as Raml
+from fastraml.registry import Stage as Stage
 from fastraml.types.base import BaseShape as BaseShape
 from fastraml.types.base import Parameter as Parameter
 from fastraml.types.base import PatternProperty as PatternProperty
@@ -252,6 +253,7 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'SecuritySchemeDescription',
     'SecuritySchemeFragment',
     'SecuritySchemeSettings',
+    'Stage',
     'StringShape',
     'Subject',
     'TimeOnlyShape',

@@ -931,7 +931,7 @@ class Linter:
         max_findings_per_rule: int | None,
     ) -> LintRun:
         """One run, measured or not. The single path, so the two cannot drift."""
-        if not raml.is_unwrapped:
+        if not raml.unwrapped:
             raise RuntimeError('lint needs an unwrapped model: parse with ParseOptions(unwrap=True)')
         if any(getattr(rule, 'requires_source', False) for rule in self._enabled) and not raml.retain_source:
             raise RuntimeError('enabled lint rules need retained source: parse with ParseOptions(retain_source=True)')

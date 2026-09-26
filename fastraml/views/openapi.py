@@ -653,7 +653,7 @@ class OpenAPIConversion:
         """Convert an unwrapped API parse to a typed OpenAPI 3.0.3 document."""
         from fastraml.parser.fragments import APIFragment  # noqa: PLC0415 - keeps import-time cost low
 
-        if not raml.is_unwrapped:
+        if not raml.unwrapped:
             msg = 'OpenAPI export needs an unwrapped model: parse with ParseOptions(unwrap=True)'
             raise AssertionError(msg)
         api = raml.entry_point

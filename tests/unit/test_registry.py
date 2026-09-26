@@ -86,4 +86,4 @@ class TestDefaults:
 
     def test_location_is_empty_until_an_entry_point_is_set(self):
         assert Raml().location == ''
-        assert Raml().is_unwrapped is False
+        assert Raml().unwrapped is False

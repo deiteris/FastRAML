@@ -426,7 +426,7 @@ class TestInvariantI6:
             '  Listed: Child[]\n'
             '  Node:\n    properties:\n      next: Node\n',
         )
-        assert raml.is_unwrapped
+        assert raml.unwrapped
         offenders = [
             f'{shape.id} ({shape.name!r})' for shape in raml.shapes if not shape._unwrapped or shape.link is not None
         ]

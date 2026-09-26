@@ -17,6 +17,7 @@ import itertools
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from fastraml.domains import DomainLocation
@@ -52,10 +53,29 @@ __all__ = [
     'DEFAULT_MAX_INCLUDE_SIZE',
     'ParseCtx',
     'Raml',
+    'Stage',
 ]
 
 #: Per-file ceiling for an `!include` target, in bytes. `0` disables the limit.
 DEFAULT_MAX_INCLUDE_SIZE: Final = 65536
+
+
+class Stage(Enum):
+    """One step of the pass driver, in the order it runs them (docs/02 § 1).
+
+    Named for what a finished step settles rather than numbered: P6 runs with
+    P4, before P5, and the discriminator declaration check runs with P7. Two
+    steps are optional, so a consumer asks whether a stage is in
+    `Raml.completed`, not whether a later one is.
+    """
+
+    DECODED = 'decoded'  # P0-P3: fragments, declarations and `uses:`
+    ENDPOINTS = 'endpoints'  # P4 and P6
+    SECURITY = 'security'  # P5
+    RESOLVED = 'resolved'  # P7, and the discriminator declaration check
+    ANNOTATIONS = 'annotations'  # P8
+    UNWRAPPED = 'unwrapped'  # P9, when requested
+    VALIDATED = 'validated'  # P10, when requested
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,12 +188,13 @@ class Raml:
         '_id_counter',
         '_parse_ctx_stack',
         'annotation_type_changes',
+        'completed',
         'entry_point',
         'extensions',
         'source_info',
         'source_nodes',
         'source_texts',
-        'unwrapped',
+        'stopped_at',
     )
 
     def __init__(  # noqa: PLR0913 - the parse's configuration, keyword-only, one field each
@@ -242,7 +263,10 @@ class Raml:
         #: Root annotation types an extension document changed: name ->
         #: (document URI, position of the change) (docs/19 § 4.4).
         self.annotation_type_changes: dict[str, tuple[str, Position]] = {}
-        self.unwrapped = False
+        #: The stages that finished, in order, and the one that raised: how far
+        #: a model `parse_lenient` returned got (docs/13 § 1).
+        self.completed: list[Stage] = []
+        self.stopped_at: Stage | None = None
         self.source_nodes: dict[str, Node] = {}
         self.source_texts: dict[str, str] = {}
         self.source_info: SourceInfo | None = {} if retain_source else None
@@ -280,6 +304,16 @@ class Raml:
         mid-construct must not leave the site behind on the stack.
         """
         return _TargetScope(self, target)
+
+    @contextmanager
+    def stage(self, stage: Stage) -> Iterator[None]:
+        """Run one step of the pass driver, recording whether it finished."""
+        try:
+            yield
+        except BaseException:
+            self.stopped_at = stage
+            raise
+        self.completed.append(stage)
 
     def _scope(self, anchor: ReferenceResolver | None, target: DomainLocation) -> ParseCtx:
         """The one `ParseCtx` for this anchor and target."""
@@ -482,8 +516,9 @@ class Raml:
         return '' if self.entry_point is None else self.entry_point.location
 
     @property
-    def is_unwrapped(self) -> bool:
-        return self.unwrapped
+    def unwrapped(self) -> bool:
+        """Whether P9 finished: `Stage.UNWRAPPED in completed` (docs/02 § 1)."""
+        return Stage.UNWRAPPED in self.completed
 
     def types_in(self, uri: str) -> Mapping[str, BaseShape]:
         return self.fragment_types.get(uri, {})

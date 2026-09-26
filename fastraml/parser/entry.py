@@ -22,7 +22,7 @@ from fastraml.parser.endpoint_build import build_endpoints
 from fastraml.parser.extensions import EXTENSION_KINDS, decode_extension_chain
 from fastraml.parser.fragments import decode_fragment, identify_fragment
 from fastraml.parser.security import apply_security_schemes
-from fastraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml
+from fastraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml, Stage
 from fastraml.types.resolve import resolve_shapes
 from fastraml.types.unwrap import unwrap_shapes
 from fastraml.types.validate import check_declared_discriminators, validate_shapes
@@ -200,57 +200,69 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
 
 
 def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
-    """Each step's precondition is the previous step's result."""
-    # P0 — identify the fragment kind from the first line. Fails fast: a
-    # document with no recognised header is not RAML.
-    head = read_head(text)
-    kind = identify_fragment(head)
-    if kind is None:
-        raise RamlError.new('unknown fragment kind', uri, info={'head': head}, kind=ErrorKind.PARSING)
+    """Each step's precondition is the previous step's result.
 
-    # P1 to P3 — compose, decode, and resolve `uses:` recursively. All three
-    # happen inside decode_fragment, which owns their ordering.
-    #
-    # `decode_fragment` registers the fragment before decoding its body, so
-    # after a failure `parse_lenient` can still find it in `raml.fragments`.
-    #
-    # An Overlay or Extension instead loads its `extends` chain, merges it into
-    # the root API's tree, and decodes that once (docs/19).
-    if kind in EXTENSION_KINDS:
-        raml.entry_point = decode_extension_chain(raml, uri, kind, text)
-    else:
-        raml.entry_point = decode_fragment(raml, uri, kind, text)
+    Each step runs in `raml.stage(...)`, which records whether it finished, so
+    a model `parse_lenient` returns says how far it got (docs/13 § 1).
+    """
+    with raml.stage(Stage.DECODED):
+        # P0 — identify the fragment kind from the first line. Fails fast: a
+        # document with no recognised header is not RAML.
+        head = read_head(text)
+        kind = identify_fragment(head)
+        if kind is None:
+            raise RamlError.new('unknown fragment kind', uri, info={'head': head}, kind=ErrorKind.PARSING)
+
+        # P1 to P3 — compose, decode, and resolve `uses:` recursively. All three
+        # happen inside decode_fragment, which owns their ordering.
+        #
+        # `decode_fragment` registers the fragment before decoding its body, so
+        # after a failure `parse_lenient` can still find it in `raml.fragments`.
+        #
+        # An Overlay or Extension instead loads its `extends` chain, merges it
+        # into the root API's tree, and decodes that once (docs/19).
+        if kind in EXTENSION_KINDS:
+            raml.entry_point = decode_extension_chain(raml, uri, kind, text)
+        else:
+            raml.entry_point = decode_fragment(raml, uri, kind, text)
 
     # P4 — build endpoints from the API's resources, in two stages, and P6 —
     # propagate URI parameters down the tree. API only; a Library has none.
-    build_endpoints(raml)
+    with raml.stage(Stage.ENDPOINTS):
+        build_endpoints(raml)
 
     # P5 — resolve `securedBy:` inheritance and bind every reference to the
     # scheme it names. After P4 because it walks `raml.endpoints`.
-    apply_security_schemes(raml)
+    with raml.stage(Stage.SECURITY):
+        apply_security_schemes(raml)
 
-    # P7 — drain the unknown worklist: every declaration whose kind the document
-    # alone could not settle now gets one. After this, invariant I5 holds.
-    resolve_shapes(raml)
+    with raml.stage(Stage.RESOLVED):
+        # P7 — drain the unknown worklist: every declaration whose kind the
+        # document alone could not settle now gets one. After this, invariant
+        # I5 holds.
+        resolve_shapes(raml)
 
-    # The one declaration rule that cannot wait for P10: a discriminator is
-    # inherited, so after P9 every subtype of a discriminated type looks like an
-    # inline declaration that wrote one (docs/05 § 6).
-    check_declared_discriminators(raml)
+        # The one declaration rule that cannot wait for P10: a discriminator is
+        # inherited, so after P9 every subtype of a discriminated type looks
+        # like an inline declaration that wrote one (docs/05 § 6).
+        check_declared_discriminators(raml)
 
     # P8 — bind every `(annotation)` application to the type it names.
     # Unconditional: an undeclared annotation is malformed input whether or not
     # the caller asked to unwrap or validate.
-    resolve_domain_extensions(raml)
+    with raml.stage(Stage.ANNOTATIONS):
+        resolve_domain_extensions(raml)
 
     # P9 — flatten every inheritance chain, then mark the cycles. Opt-in: the
     # un-flattened model is what a formatter or a doc generator wants.
     if options.unwrap:
-        unwrap_shapes(raml)
+        with raml.stage(Stage.UNWRAPPED):
+            unwrap_shapes(raml)
 
     # P10 — check every declaration and validate every example, default,
     # custom facet and annotation value. Opt-in; when P9 did not run, each
     # declaration is validated against a private unwrapped copy of itself.
     if options.validate:
-        validate_shapes(raml)
+        with raml.stage(Stage.VALIDATED):
+            validate_shapes(raml)
     return raml

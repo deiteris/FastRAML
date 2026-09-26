@@ -23,6 +23,20 @@ precedes P9 because inheritance cannot merge an unresolved shape. P9 and P10
 are optional parser passes: validation without public unwrapping uses private
 unwrapped copies.
 
+The driver (`parser/entry.py`) runs the passes as seven stages, in this order,
+and records each one that finishes in `Raml.completed` and the one that raised
+in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
+
+| Stage | Passes |
+|---|---|
+| `DECODED` | P0-P3 |
+| `ENDPOINTS` | P4, P6 |
+| `SECURITY` | P5 |
+| `RESOLVED` | P7, and the discriminator declaration check (docs/05 § 6) |
+| `ANNOTATIONS` | P8 |
+| `UNWRAPPED` | P9, when requested |
+| `VALIDATED` | P10, when requested |
+
 ## 2. Package ownership
 
 | Area | Modules | Owning document |
@@ -62,7 +76,8 @@ One `Raml` instance owns one parse. It holds:
 - fragment, include-node, expression, and JSON Schema caches;
 - declaration, resolver, endpoint, shape, annotation, and include-reference
   indices;
-- the unresolved-shape worklist and parse-context/provenance state; and
+- the unresolved-shape worklist and parse-context/provenance state;
+- the stages that finished and the one that raised (§ 1); and
 - optional retained source nodes, text, and entity-to-source information.
 
 Every model entity receives a parse-local monotonically increasing integer ID.

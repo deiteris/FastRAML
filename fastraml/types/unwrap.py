@@ -125,7 +125,6 @@ def unwrap_shapes(raml: Raml) -> None:
     except RamlError as err:
         accumulator.add(err)
     accumulator.raise_if_any()
-    raml.unwrapped = True
 
 
 def unwrap_shape(raml: Raml, base: BaseShape) -> BaseShape:

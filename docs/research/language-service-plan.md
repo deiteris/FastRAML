@@ -1,6 +1,6 @@
 # Plan: partial models, then the language service
 
-**Status: accepted; M1 in progress.** This document orders the work proposed in
+**Status: accepted; M1 done, M2 in progress.** This document orders the work proposed in
 `research/partial-models.md` (PM) and `research/language-server.md` (LS). It
 is not normative. Each milestone amends its owning numbered document in the
 same commit, as `AGENTS.md` requires. When the service lands, a normative
@@ -100,11 +100,21 @@ Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
 
 **M2.1 Stage (S1).**
 
-- Code: `registry.py` (`completed`, `stopped_at`, and an `IntEnum` named
-  `Pass`), and `parser/entry.py` (`_run_passes` sets both).
-- Documents: `docs/02` § 1 and § 3, and `docs/13` § 1.
-- Tests: a failure at each pass sets the matching stage, and a clean parse
-  sets `completed = P10`, or the last pass the options requested.
+- Finding: an `IntEnum` of pass numbers, holding the last pass that
+  completed, cannot answer "did P6 run". The driver runs P6 with P4, before
+  P5, and P9 is optional while P10 is not, so a later stage can finish
+  without an earlier one.
+- Code, as done: `Stage` in `registry.py` names the driver's seven steps in
+  execution order. `Raml.completed: list[Stage]` lists the steps that
+  finished and `Raml.stopped_at: Stage | None` names the one that raised.
+  `Raml.stage(...)` is a context manager that records both, and
+  `_run_passes` runs each step inside it. `Stage` is exported.
+- Documents: `docs/02` § 1 (the stage table) and `docs/13` § 1.
+- Tests: a failure at each stage names it and lists every earlier stage; a
+  clean parse lists exactly the stages its options ran.
+- `Raml.unwrapped` is now a read-only property, `Stage.UNWRAPPED in completed`,
+  rather than a second record of the same fact. `Raml.is_unwrapped`, which
+  only returned it, is removed.
 
 **M2.2 Broken entities (S2),** one commit per entity kind:
 
@@ -120,7 +130,6 @@ Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
   that can keep a partly built entity keeps it and marks it.
 - Documents: `docs/13` § 1 (the contract text from PM § 5) and `docs/02` § 4
   (invariants hold for entities that are not broken).
-- Views: effective views check `completed` rather than `unwrapped`.
 
 **M2.3 Mutation corpus** (PM § 8).
 

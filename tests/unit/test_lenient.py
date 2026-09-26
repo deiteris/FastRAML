@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path, parse_lenient
+from fastraml import ParseOptions, RamlError, Stage, parse_from_path, parse_lenient
 
 API = '#%RAML 1.0\ntitle: T\n'
 LIB = '#%RAML 1.0 Library\n'
@@ -87,6 +87,60 @@ class TestPartialModel:
         assert error is not None
         assert raml.entry_point is not None
         assert raml.entry_point.types['T'].type == 'string'
+
+
+class TestTheModelSaysHowFarItGot:
+    """docs/13 § 1 — `completed` and `stopped_at`.
+
+    "The API has no endpoints" and "endpoints were never built" both read as
+    `endpoints == {}`; only the stage tells them apart.
+    """
+
+    ORDER = (
+        Stage.DECODED,
+        Stage.ENDPOINTS,
+        Stage.SECURITY,
+        Stage.RESOLVED,
+        Stage.ANNOTATIONS,
+        Stage.UNWRAPPED,
+        Stage.VALIDATED,
+    )
+
+    #: One mistake that fails at each stage.
+    FAILURES = {  # noqa: RUF012 - a table, read once per parametrize
+        Stage.DECODED: 'types:\n  Bad:\n    minLength: two\n',
+        Stage.ENDPOINTS: '/r:\n  get:\n    is: [nosuch]\n',
+        Stage.SECURITY: 'securedBy: [nope]\n',
+        Stage.RESOLVED: 'types:\n  Bad: NoSuch\n',
+        Stage.ANNOTATIONS: '(nosuch): x\n',
+        Stage.UNWRAPPED: 'types:\n  N: integer\n  C:\n    type: [string, N]\n',
+        Stage.VALIDATED: 'types:\n  E:\n    type: integer\n    example: nope\n',
+    }
+
+    @pytest.mark.parametrize('stage', list(FAILURES), ids=[stage.value for stage in FAILURES])
+    def test_a_failure_names_its_stage_and_everything_before_it(self, workspace, stage):
+        root = workspace({'api.raml': API + self.FAILURES[stage]})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert raml.stopped_at is stage
+        assert raml.completed == list(self.ORDER[: self.ORDER.index(stage)])
+
+    @pytest.mark.parametrize(
+        ('options', 'expected'),
+        [
+            (ParseOptions(), ORDER[:5]),
+            (ParseOptions(validate=True), (*ORDER[:5], Stage.VALIDATED)),
+            (BOTH, ORDER),
+        ],
+        ids=['neither', 'validate only', 'both'],
+    )
+    def test_a_clean_parse_lists_the_stages_it_ran(self, workspace, options, expected):
+        """An optional stage that did not run is absent, not implied by a later one."""
+        root = workspace({'api.raml': API + 'types:\n  T: string\n'})
+        raml, error = parse_lenient(root / 'api.raml', options)
+        assert error is None
+        assert raml.stopped_at is None
+        assert raml.completed == list(expected)
 
 
 class TestOneBadDeclarationKeepsItsSiblings:

@@ -180,7 +180,7 @@ class TestI6:
         assert unwrapped_corpus, 'no fixture parsed; the check would be vacuous'
         offenders: list[str] = []
         for name, raml in unwrapped_corpus:
-            if not raml.is_unwrapped:
+            if not raml.unwrapped:
                 offenders.append(f'{name}: registry not marked unwrapped')
             offenders += [
                 f'{name}: shape {shape.id} ({shape.name!r}) unwrapped={shape._unwrapped} link={shape.link}'

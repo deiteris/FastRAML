@@ -388,6 +388,32 @@ kbd {
   outline: none;
 }
 
+/* The browser's own clear button is drawn in its colours, not the theme's;
+   `.search-clear` replaces it. */
+.search-field::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.search-clear:hover {
+  background: var(--line-soft);
+  color: var(--ink);
+}
+
 .search-results {
   overflow-y: auto;
   padding: 4px 8px 8px;

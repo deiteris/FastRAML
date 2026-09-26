@@ -27,6 +27,7 @@ from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, NodeKind, mark_
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
+    from fastraml.errors import RamlError
     from fastraml.loaders import ResourceLoader
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.fragments import ExtensionFragment, Fragment, ReferenceResolver
@@ -188,6 +189,7 @@ class Raml:
         '_id_counter',
         '_parse_ctx_stack',
         'annotation_type_changes',
+        'broken',
         'completed',
         'entry_point',
         'extensions',
@@ -267,6 +269,10 @@ class Raml:
         #: a model `parse_lenient` returned got (docs/13 § 1).
         self.completed: list[Stage] = []
         self.stopped_at: Stage | None = None
+        #: Entity id -> why it is incomplete. The entity is in the model and
+        #: its identity (name, positions) is sound; its content is partial
+        #: (docs/13 § 1).
+        self.broken: dict[int, RamlError] = {}
         self.source_nodes: dict[str, Node] = {}
         self.source_texts: dict[str, str] = {}
         self.source_info: SourceInfo | None = {} if retain_source else None

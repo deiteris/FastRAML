@@ -101,6 +101,10 @@ serialized views; they are not content hashes.
 | I11 | Addresses are assigned by the shared view traversal; an address can be shared by linked entities. | views |
 | I12 | P10 validates unwrapped shapes, either public P9 results or private copies. | P10 |
 
+A model `parse_lenient()` returns holds these for the stages in
+`Raml.completed`, and only for entities not marked in `Raml.broken`
+(docs/13 § 1).
+
 ## 5. Errors and recovery
 
 Strict entry points raise accumulated errors. `parse_lenient()` returns a partial

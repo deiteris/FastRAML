@@ -17,7 +17,8 @@ inheritance all leave an `UnknownShape` on `Raml.unresolved_shapes` for P7.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from functools import partial
+from typing import TYPE_CHECKING, Final, cast
 
 from fastraml.datanode import make_data_node
 from fastraml.domains import DomainLocation
@@ -68,6 +69,7 @@ from fastraml.types.xml import decode_xml_serialization
 from fastraml.yamlnode import TAG_INCLUDE, TAG_NULL, TAG_STR, NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Any
 
     from fastraml.parser.fragments import DataTypeFragment, NamedExample
@@ -149,34 +151,42 @@ TYPE_SPECIFIC_FACETS: Final[dict[str, frozenset[str]]] = {
 }
 
 
-def make_shape(
+def make_shape(  # noqa: PLR0913 - the declaration, plus where to attach it
     raml: Raml,
     key_node: Node | None,
     value_node: Node,
     location: str,
     default_type: str = TYPE_STRING,
+    *,
+    attach: Callable[[BaseShape], None] | None = None,
 ) -> BaseShape:
-    """Build one declaration. `default_type` applies when nothing else settles it."""
+    """Build one declaration. `default_type` applies when nothing else settles it.
+
+    `attach` puts the shape where it belongs as soon as it exists, before its
+    content is decoded. A shape that then fails stays there, marked in
+    `Raml.broken` (docs/13 § 1); without `attach`, a failure leaves nothing.
+    """
     scope = raml.scope_for(value_node)
     if scope is None:
-        return _make_shape(raml, key_node, value_node, raml.location_of(value_node, location), default_type)
+        return _make_shape(raml, key_node, value_node, raml.location_of(value_node, location), default_type, attach)
     # A node produced by parameter substitution, or grafted from a trait or a
     # resource type, resolves its unqualified names in the namespace recorded
     # for it — not the applying document's (docs/08 § 4.2). Pushed around
     # the whole build, so nested facets inherit it.
     raml.push_ctx(scope)
     try:
-        return _make_shape(raml, key_node, value_node, raml.location_of(value_node, location), default_type)
+        return _make_shape(raml, key_node, value_node, raml.location_of(value_node, location), default_type, attach)
     finally:
         raml.pop_ctx()
 
 
-def _make_shape(
+def _make_shape(  # noqa: PLR0913, PLR0917 - make_shape's arguments, resolved
     raml: Raml,
     key_node: Node | None,
     value_node: Node,
     location: str,
     default_type: str,
+    attach: Callable[[BaseShape], None] | None,
 ) -> BaseShape:
     position_node = key_node if key_node is not None else value_node
     base = BaseShape(
@@ -189,7 +199,25 @@ def _make_shape(
         anchor=raml.current_ctx().anchor,
     )
     raml.put_source_info(base.id, key_node, value_node)
+    if attach is None:
+        return _decode_shape(raml, base, value_node, location, default_type)
 
+    attach(base)
+    try:
+        return _decode_shape(raml, base, value_node, location, default_type)
+    except RamlError as err:
+        # Attached, so it stays in the model: marked, registered, and never
+        # without a kind. A failure before one was settled leaves the same
+        # `UnknownShape` an unresolved name does (docs/13 § 1).
+        if base.shape is None:
+            base.shape = UnknownShape(base, from_mapping=value_node.kind is NodeKind.MAPPING)
+        raml.broken[base.id] = err
+        raml.put_shape(base)
+        raise
+
+
+def _decode_shape(raml: Raml, base: BaseShape, value_node: Node, location: str, default_type: str) -> BaseShape:
+    """Everything `make_shape` reads from the declaration's value."""
     type_node, facets = _decode(raml, base, value_node)
     if type_node is None:
         kind = identify_shape_type(facets, default_type, location)
@@ -244,17 +272,24 @@ def unmarshal_types(
                     raise node_error('cannot redefine a built-in type', location, key, info={'type': name})
                 if name in declared:
                     raise node_error('duplicate type name', location, key, info={'type': name})
-                base = make_shape(raml, key, value, location)
-                base.is_annotation_type = is_annotation
-                declared[name] = base
-                if is_annotation:
-                    raml.put_annotation_type(name, location, base)
-                else:
-                    raml.put_type(name, location, base)
-                raml.put_typedef(location, base)
+                make_shape(
+                    raml, key, value, location, attach=partial(_declare, raml, declared, location, is_annotation)
+                )
             except RamlError as err:
                 accumulator.add(err)
     accumulator.raise_if_any()
+
+
+def _declare(raml: Raml, declared: dict[str, BaseShape], location: str, is_annotation: bool, base: BaseShape) -> None:  # noqa: FBT001 - bound by `partial`
+    """Register a declaration under its name, before its content is decoded."""
+    name = cast('str', base.name)
+    base.is_annotation_type = is_annotation
+    declared[name] = base
+    if is_annotation:
+        raml.put_annotation_type(name, location, base)
+    else:
+        raml.put_type(name, location, base)
+    raml.put_typedef(location, base)
 
 
 def make_body_shape(raml: Raml, key_node: Node | None, value_node: Node, location: str) -> BaseShape:

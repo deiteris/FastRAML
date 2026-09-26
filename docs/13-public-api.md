@@ -51,6 +51,24 @@ run leaves its outputs at their defaults; for example, `endpoints` is empty
 until `ENDPOINTS` finishes, which is not the same as an API with no
 resources.
 
+`Raml.broken` maps an entity's id to the `RamlError` that left it incomplete.
+A marked entity is in the model, and its identity (name, `key_pos`,
+`value_pos`, `location`) is sound; its content is partial. Read a marked
+entity as "present, not whole": show it, and do not treat its content as
+complete. The invariants of docs/02 § 4 hold for every entity that is not
+marked. An entity is marked if its own content failed or if the failure
+passed through it from something it contains, so a marked entity may hold
+sound and marked children. The mark carries that entity's chain; the
+returned error is still the one a strict parse raises. What is kept and
+marked today:
+
+| Entity | Kept as |
+|---|---|
+| A type or annotation type declaration | Its decoded facets. A failure before its kind was settled leaves an `UnknownShape`, never `shape is None` |
+
+Anything else that fails is absent (docs/11 § 2). On success, `broken` is
+empty.
+
 An Overlay or Extension may be the entry document. The returned `Raml` holds
 the target tree of its `extends` chain: `entry_point` is the root API's
 `APIFragment`, `Raml.location` is the root API's URI, and `Raml.extensions`

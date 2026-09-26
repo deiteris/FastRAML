@@ -118,7 +118,12 @@ Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
 
 **M2.2 Broken entities (S2),** one commit per entity kind:
 
-1. declarations with a bad facet;
+1. type and annotation type declarations. Done: `make_shape(attach=...)`
+   registers the declaration before decoding it, and one `except` marks it
+   and gives it an `UnknownShape` if no kind was settled, so a kept shape is
+   never kindless. The mark is (a): every entity a failure passes through;
+1a. trait, resource type and security scheme definitions, which are still
+   absent when they fail;
 2. responses, methods and resources: an operation or endpoint enclosing a
    failed child is kept and marked, which resolves A2;
 3. `DirectiveRef` and `SecurityScheme`;
@@ -126,8 +131,11 @@ Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
 5. P8 extensions;
 6. P9 shapes.
 
-- Code: `Raml.broken: dict[int, RamlError]` and `is_broken()`. Each decoder
-  that can keep a partly built entity keeps it and marks it.
+- Code: `Raml.broken: dict[int, RamlError]`, read by membership; no
+  `is_broken()` accessor, which would only repeat it. Each builder takes an
+  `attach` callback, attaches the entity as soon as it has an identity, and
+  marks it in the one `except` around its content (decisions of 2026-09-26:
+  attach first; mark every entity the failure passes through).
 - Documents: `docs/13` § 1 (the contract text from PM § 5) and `docs/02` § 4
   (invariants hold for entities that are not broken).
 

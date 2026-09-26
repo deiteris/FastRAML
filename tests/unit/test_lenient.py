@@ -165,13 +165,16 @@ class TestOneBadDeclarationKeepsItsSiblings:
         root = workspace({'api.raml': header + f'{key}:\n  {bad}\n  {good}\n'})
         raml, error = parse_lenient(root / 'api.raml', BOTH)
         assert error is not None
-        assert list(getattr(raml.fragments[raml.location], attribute)) == [good.split(':')[0]]
+        declared = getattr(raml.fragments[raml.location], attribute)
+        name = good.split(':')[0]
+        assert name in declared
+        assert declared[name].id not in raml.broken
 
     def test_the_fragment_and_the_registry_agree(self, workspace):
         root = workspace({'api.raml': API + 'types:\n  Good: string\n  Bad:\n    minLength: two\n  User: object\n'})
         raml, error = parse_lenient(root / 'api.raml', BOTH)
         assert error is not None
-        assert list(raml.entry_point.types) == list(raml.types_in(raml.location)) == ['Good', 'User']
+        assert list(raml.entry_point.types) == list(raml.types_in(raml.location)) == ['Good', 'Bad', 'User']
 
     def test_the_error_is_the_strict_one(self, workspace):
         root = workspace({'api.raml': API + 'types:\n  Bad:\n    minLength: two\n  Good: string\n'})
@@ -180,6 +183,57 @@ class TestOneBadDeclarationKeepsItsSiblings:
         _, error = parse_lenient(root / 'api.raml', BOTH)
         assert error is not None
         assert messages(error) == messages(caught.value)
+
+
+class TestABrokenTypeDeclarationIsKeptAndMarked:
+    """docs/13 § 1 — a type declaration is attached before its content is
+    decoded, so one that fails stays in the model, marked in `Raml.broken`.
+    """
+
+    #: A failure after the kind is settled, one before it, and one inside a
+    #: property, with the kind each declaration is left holding.
+    CASES = {  # noqa: RUF012 - a table, read once per parametrize
+        'kind facet': ('Bad:\n    type: string\n    minLength: two', 'StringShape'),
+        'common facet': ('Bad:\n    displayName: {a: 1}', 'UnknownShape'),
+        'nested property': ('Bad:\n    properties:\n      p:\n        minLength: two', 'UnknownShape'),
+    }
+
+    @pytest.mark.parametrize('header', [API, LIB], ids=['api', 'library'])
+    @pytest.mark.parametrize(('body', 'kind'), CASES.values(), ids=list(CASES))
+    def test_it_is_declared_registered_and_marked(self, workspace, header, body, kind):
+        root = workspace({'api.raml': header + f'types:\n  Good: string\n  {body}\n'})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        bad = raml.fragments[raml.location].types['Bad']
+        assert raml.types_in(raml.location)['Bad'] is bad
+        assert bad in raml.shapes
+        assert type(bad.shape).__name__ == kind, 'never without a kind'
+        assert set(raml.broken) == {bad.id}
+
+    def test_the_mark_holds_the_declarations_own_failure(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  Bad:\n    minLength: two\n  Worse:\n    maxLength: x\n'})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        types = raml.entry_point.types
+        assert [[chain[-1].message for chain in raml.broken[types[name].id].chains()] for name in types] == [
+            ['expected an integer value'],
+            ['expected an integer value'],
+        ]
+        assert [raml.broken[types[name].id].head.position.line for name in types] == [5, 7]
+
+    def test_an_annotation_type_is_kept_the_same_way(self, workspace):
+        root = workspace({'api.raml': API + 'annotationTypes:\n  bad:\n    minLength: two\n'})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        bad = raml.entry_point.annotation_types['bad']
+        assert bad.is_annotation_type
+        assert set(raml.broken) == {bad.id}
+
+    def test_a_valid_parse_marks_nothing(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  Good: string\n'})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is None
+        assert raml.broken == {}
 
 
 class TestItStopsWhereStrictStops:

@@ -17,7 +17,7 @@
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
-import { Pages } from './App';
+import { Pages } from './pages/Routes';
 import { highlightCode } from './components/highlighting';
 import { renderMarkdown } from './components/markdown';
 import {

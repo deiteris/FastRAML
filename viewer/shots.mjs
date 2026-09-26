@@ -198,7 +198,7 @@ try {
   /** Per nesting construct, every indent it was drawn at and where. */
   const levels = {};
   const firstLine = (text) => String(text).split(/\r?\n/)[0];
-  page.on('pageerror', (error) => failures.push(`${route}: ${firstLine(error.message)}`));
+  page.on('pageerror', (error) => failures.push(`${route}: ${firstLine(error.message ?? String(error))}`));
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
     // React's warnings are `console.error(format, ...args)`, and `text()`
@@ -214,6 +214,59 @@ try {
     );
   });
   let route = '(startup)';
+
+  // Component embedding: global element styles must leave the host alone, and
+  // a host's token override must reach the viewer in either colour scheme.
+  for (const theme of ['light', 'dark']) {
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: theme }]);
+    await open(page, '/endpoints/%2Fbooks%2F%7Bisbn%7D/get', false);
+    for (const failure of await embeddingFails(page)) failures.push(`embedding (${theme}): ${failure}`);
+  }
+  route = '(host integration)';
+  let apiRequests = 0;
+  const countApi = (request) => {
+    if (new URL(request.url()).pathname === '/api.json') apiRequests += 1;
+  };
+  page.on('request', countApi);
+  await page.setViewport({ width: 1400, height: 900 });
+  await page.goto(`http://localhost:${PORT}/examples/host.html`, { waitUntil: 'networkidle0' });
+  await page.waitForSelector('.fastraml-viewer .brand');
+  const hosted = await page.evaluate(() => {
+    const viewer = document.querySelector('.fastraml-viewer');
+    const host = document.querySelector('.app');
+    return {
+      hostTitle: document.title,
+      hostLayout: host ? getComputedStyle(host).display : '',
+      drawer: getComputedStyle(viewer?.querySelector('.topbar')).display,
+      sidebar: getComputedStyle(viewer?.querySelector('.sidebar')).display,
+    };
+  });
+  if (hosted.hostTitle !== 'Host application') failures.push('embedding changes the host title');
+  if (hosted.hostLayout !== 'block') failures.push('viewer layout changes the host .app');
+  if (hosted.drawer !== 'flex' || hosted.sidebar !== 'none') failures.push('viewer does not respond to a narrow host container');
+  await page.click('.app > button');
+  await page.waitForFunction(() => document.querySelector('.fastraml-viewer .brand')?.textContent === 'Alternate API');
+  await page.keyboard.press('/');
+  if (await page.$('dialog[open]')) failures.push('embedded viewer intercepts the host search shortcut');
+  await page.click('.fastraml-viewer .topbar button[aria-label="Menu"]');
+  await page.click('.fastraml-viewer a[href="/types"]');
+  await page.waitForFunction(() => document.querySelector('.fastraml-viewer main h1')?.textContent === 'Types');
+  await page.click('.fastraml-viewer main a[href$="/Book"]');
+  await page.waitForFunction(() => document.querySelector('.fastraml-viewer main article')?.textContent?.includes('An alternate book definition.'));
+  await page.click('.app > button:nth-of-type(3)');
+  await page.waitForSelector('.fastraml-viewer .error');
+  await page.click('.app > button:nth-of-type(3)');
+  await page.waitForFunction(() => document.querySelector('.fastraml-viewer main article')?.textContent?.includes('An alternate book definition.'));
+  await page.click('.app > button:nth-of-type(1)');
+  await page.waitForFunction(() => document.querySelector('.fastraml-viewer main article')?.textContent?.includes('One book in the catalogue.'));
+  await page.click('.app > button:nth-of-type(1)');
+  await page.waitForFunction(() => document.querySelector('.fastraml-viewer main article')?.textContent?.includes('An alternate book definition.'));
+  await page.click('.app > button:nth-of-type(2)');
+  await page.waitForFunction(() => document.querySelector('.fastraml-viewer .brand')?.textContent === 'Alternate API');
+  await page.click('.app > button:nth-of-type(1)');
+  await page.waitForFunction(() => document.querySelector('.fastraml-viewer .brand')?.textContent === 'Bookstore API');
+  if (apiRequests !== 1) failures.push(`switching direct contents requested api.json ${apiRequests} times`);
+  page.off('request', countApi);
 
   for (const theme of only) {
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: theme }]);
@@ -282,6 +335,43 @@ try {
   }
 } finally {
   server.kill();
+}
+
+async function embeddingFails(page) {
+  const failures = await page.evaluate(() => {
+    const hostHeading = document.createElement('h4');
+    hostHeading.textContent = 'Host heading';
+    const hostApp = document.createElement('div');
+    hostApp.className = 'app';
+    hostApp.append(hostHeading);
+    document.body.append(hostApp);
+    const override = document.createElement('style');
+    override.textContent = '#root .fastraml-viewer { --accent: rgb(12, 34, 56); }';
+    document.head.append(override);
+    const failures = [];
+    const viewer = document.querySelector('.fastraml-viewer');
+    const viewerHeading = viewer?.querySelector('h4');
+    const viewerLink = document.createElement('a');
+    viewer?.append(viewerLink);
+    if (getComputedStyle(hostHeading).display !== 'block') failures.push('viewer heading style leaks onto the host');
+    if (getComputedStyle(hostApp).display !== 'block') failures.push('viewer layout leaks onto a host .app');
+    if (!viewerHeading || getComputedStyle(viewerHeading).display !== 'flex') failures.push('viewer heading lost its style');
+    if (!viewer || getComputedStyle(viewerLink).color !== 'rgb(12, 34, 56)') failures.push('host accent override is ignored');
+    viewerLink.remove();
+    override.remove();
+    hostApp.remove();
+    return failures;
+  });
+  await page.click('.theme');
+  await page.waitForFunction(() => document.querySelector('.fastraml-viewer')?.hasAttribute('data-theme'));
+  const changedHost = await page.evaluate(() => {
+    const choice = document.querySelector('.fastraml-viewer')?.getAttribute('data-theme');
+    return document.documentElement.hasAttribute('data-theme') || localStorage.getItem('fastraml-viewer-theme') !== choice;
+  });
+  if (changedHost) failures.push('theme switch changes the host or does not save the viewer choice');
+  await page.click('.theme');
+  await page.waitForFunction(() => !document.querySelector('.fastraml-viewer')?.hasAttribute('data-theme'));
+  return failures;
 }
 
 /**

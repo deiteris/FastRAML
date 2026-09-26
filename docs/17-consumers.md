@@ -54,7 +54,10 @@ Regenerate and inspect every affected artifact and golden in the same change.
 
 `viewer/` is a React SPA that reads `fastraml tree` output. It is not part of
 the Python package gate and decides no RAML rule. See `viewer/README.md` for UI
-behavior and local development.
+behavior and local development. The standalone app loads `api.json` by default;
+both `App` and the source-level `Viewer` component accept tree JSON contents
+directly. `Viewer` also accepts a decoded document from a frontend with its own
+HTML entry and router. The viewer is not an npm library build.
 
 The viewer's checked-in contract artifacts are generated:
 

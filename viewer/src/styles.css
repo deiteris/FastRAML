@@ -1,130 +1,19 @@
-/*
- * One stylesheet, no framework.
- *
- * The app exists to show what the tree carries; a utility framework would put a
- * build step and a class vocabulary between a reader of this repository and
- * that. Everything below is named after the thing it styles.
- *
- * Both themes are tokens on `:root`. Dark follows the system by default and is
- * overridden by `data-theme` on `<html>` when a reader picks one, so the toggle
- * is three lines of JavaScript and no component knows a theme exists.
- */
-
-:root {
-  /* Both, so the browser's own parts -- scrollbars, form controls -- follow
-     the system as the tokens do. Only a reader's explicit choice below named
-     a scheme, so a system-dark page kept light scrollbars. */
-  color-scheme: light dark;
-  --bg: #ffffff;
-  --panel: #f4f7fa;
-  --raised: #ffffff;
-  --line: #e3e8ee;
-  --line-soft: #eef1f6;
-  --ink: #1a2c44;
-  --dim: #3c4257;
-  --faint: #8c99ad;
-  --accent: #533afd;
-  --type: #0e7c6b;
-  --required: #b3261e;
-  --warn: #8a5a00;
-  --recursive: #6b3fb5;
-  --enum: #5a4b9c;
-  --syntax-keyword: #8b31a8;
-  --syntax-name: #075985;
-  --syntax-literal: #a23a20;
-  --syntax-string: #187153;
-  --syntax-comment: #718096;
-  --shadow: none;
-  --mono: 'Source Code Pro', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Ubuntu, sans-serif;
+/* The frame supplies a width for container queries, including inside a host panel. */
+.fastraml-viewer-frame {
+  container-type: inline-size;
+  min-width: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-  --bg: #12161c;
-  --panel: #1b1e25;
-  --raised: #171c23;
-  --line: #2a323d;
-  --line-soft: #212831;
-  --ink: #eceef1;
-  --dim: #b6bfcc;
-  --faint: #8c99ad;
-  --accent: #9d8cff;
-  --type: #4fbfa8;
-  --required: #f08b7d;
-  --warn: #d8ab5e;
-  --recursive: #b394f0;
-  --enum: #a396e8;
-  --syntax-keyword: #d2a8ff;
-  --syntax-name: #79c0ff;
-  --syntax-literal: #ffa657;
-  --syntax-string: #7ee787;
-  --syntax-comment: #8b949e;
-  --shadow: none;
-  }
-}
-
-:root[data-theme='light'] {
-  color-scheme: light;
-
-  --bg: #ffffff;
-  --panel: #f4f7fa;
-  --raised: #ffffff;
-  --line: #e3e8ee;
-  --line-soft: #eef1f6;
-  --ink: #1a2c44;
-  --dim: #3c4257;
-  --faint: #8c99ad;
-  --accent: #533afd;
-  --type: #0e7c6b;
-  --required: #b3261e;
-  --warn: #8a5a00;
-  --recursive: #6b3fb5;
-  --enum: #5a4b9c;
-  --syntax-keyword: #8b31a8;
-  --syntax-name: #075985;
-  --syntax-literal: #a23a20;
-  --syntax-string: #187153;
-  --syntax-comment: #718096;
-  --shadow: none;
-  --mono: 'Source Code Pro', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Ubuntu, sans-serif;
-}
-
-:root[data-theme='dark'] {
-  color-scheme: dark;
-  --bg: #12161c;
-  --panel: #1b1e25;
-  --raised: #171c23;
-  --line: #2a323d;
-  --line-soft: #212831;
-  --ink: #eceef1;
-  --dim: #b6bfcc;
-  --faint: #8c99ad;
-  --accent: #9d8cff;
-  --type: #4fbfa8;
-  --required: #f08b7d;
-  --warn: #d8ab5e;
-  --recursive: #b394f0;
-  --enum: #a396e8;
-  --syntax-keyword: #d2a8ff;
-  --syntax-name: #79c0ff;
-  --syntax-literal: #ffa657;
-  --syntax-string: #7ee787;
-  --syntax-comment: #8b949e;
-  --shadow: none;
-}
-
-* {
+/* Component styles are nested under the viewer root, not the host page. */
+.fastraml-viewer {
   box-sizing: border-box;
-}
-
-body {
-  margin: 0;
   background: var(--bg);
   color: var(--ink);
   font: 14px/22px var(--sans);
   -webkit-font-smoothing: antialiased;
+
+* {
+  box-sizing: border-box;
 }
 
 code,
@@ -149,14 +38,22 @@ button {
 
 /* -- layout ---------------------------------------------------------------- */
 
-.app {
+& {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
-  min-height: 100vh;
   /* Paints the nav column for the page's whole height. The sidebar itself is
      sticky and one viewport tall, so on a long page the column below it would
      otherwise fall back to the body background. */
   background: linear-gradient(to right, var(--panel) 0 320px, var(--bg) 320px);
+}
+
+&.viewer-standalone {
+  min-height: 100vh;
+}
+
+&.viewer-loading {
+  display: block;
+  background: var(--bg);
 }
 
 main {
@@ -177,7 +74,7 @@ main:focus {
   padding: 72px;
 }
 
-/* The bar that opens the nav on a narrow window; absent otherwise. */
+/* The bar that opens the nav in a narrow container; absent otherwise. */
 .topbar {
   display: none;
 }
@@ -217,6 +114,9 @@ h4 {
   padding-bottom: 8px;
   border-bottom: 1px solid var(--line);
   color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .subtitle {
@@ -590,10 +490,6 @@ kbd {
   width: 18px;
 }
 
-.nav-toggle:hover {
-  color: var(--ink);
-}
-
 .nav-row {
   display: flex;
   align-items: center;
@@ -787,6 +683,7 @@ kbd {
  * converged on, so they carry meaning a reader arrives with.
  */
 .verb {
+  --verb: var(--verb-default);
   display: inline-block;
   min-width: 44px;
   padding: 1px 5px;
@@ -798,14 +695,14 @@ kbd {
   letter-spacing: 0.05em;
   text-align: center;
   color: #fff;
-  background: var(--verb, #5a6472);
+  background: var(--verb);
 }
 
-.verb-get { --verb: #1a7f5a; }
-.verb-post { --verb: #2b6cb0; }
-.verb-put { --verb: #9a6700; }
-.verb-patch { --verb: #7c5295; }
-.verb-delete { --verb: #b3261e; }
+.verb-get { --verb: var(--verb-get); }
+.verb-post { --verb: var(--verb-post); }
+.verb-put { --verb: var(--verb-put); }
+.verb-patch { --verb: var(--verb-patch); }
+.verb-delete { --verb: var(--verb-delete); }
 
 .verb-lg {
   min-width: 50px;
@@ -1019,6 +916,7 @@ h4 + .tabs > .tabs-bar,
 
 .attr-name {
   font-weight: 700;
+  font-family: var(--mono);
   color: var(--ink);
   font-size: 14px;
   line-height: 20px;
@@ -1314,10 +1212,10 @@ h4 + .tabs > .tabs-bar,
   vertical-align: middle;
 }
 
-.tab-2::before { background: #1a7f5a; }
-.tab-3::before { background: #2b6cb0; }
-.tab-4::before { background: #9a6700; }
-.tab-5::before { background: #b3261e; }
+.tab-2::before { background: var(--verb-get); }
+.tab-3::before { background: var(--verb-post); }
+.tab-4::before { background: var(--verb-put); }
+.tab-5::before { background: var(--verb-delete); }
 
 .reference {
   display: inline-flex;
@@ -1657,12 +1555,6 @@ h4 .lock {
   height: 15px;
 }
 
-h4 {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
 .security .requirement > .shape-line:first-child {
   margin-top: 0;
 }
@@ -1907,14 +1799,14 @@ table.properties td {
 }
 
 /*
- * A narrow window: one column, and the nav as a drawer over it.
+ * A narrow viewer: one column, and the nav as a drawer over it.
  *
  * Below 720px a 320px nav column leaves the page too little to set an attribute
- * row in. The breakpoint sits under the 760px `shots.mjs` checks as "a window
- * split beside an editor", which keeps the column there.
+ * row in. The breakpoint sits under the 760px `shots.mjs` check, where the
+ * standalone viewer still has room for a sidebar.
  */
-@media (max-width: 720px) {
-  .app {
+@container (max-width: 720px) {
+  & {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto 1fr;
     background: var(--bg);
@@ -1968,7 +1860,7 @@ table.properties td {
     display: none;
   }
 
-  .nav-is-open .sidebar {
+  &.nav-is-open .sidebar {
     display: flex;
     position: fixed;
     inset: 0 auto 0 0;
@@ -2020,4 +1912,5 @@ table.properties td {
   table.properties td.property-description {
     grid-column: 1 / -1;
   }
+}
 }

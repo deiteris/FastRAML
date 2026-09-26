@@ -27,7 +27,117 @@ app's: `tests/unit/test_bindings.py` holds `public/api.json` to it, and
 `contrib/fastmcp-raml` builds MCP tools while `contrib/raml-mock` runs HTTP
 routes from the same file. Editing it moves every consumer `AGENTS.md` lists under `fixtures/`.
 
+## Use the viewer in another frontend
+
+The standalone entry (`src/App.tsx` and `src/main.tsx`) fetches `api.json` by
+default and owns a `HashRouter`. To supply the JSON contents directly, render
+`<App contents={jsonText} />`; changing `jsonText` replaces the displayed API
+without another fetch or page reload. For an application with its own API picker,
+render `Viewer` with the selected `fastraml tree` JSON instead. The host supplies
+one React Router; **do not nest another router around `Viewer` if the host
+already has one**. Viewer links use routes such as `/types` and `/endpoints/…`,
+so keep the viewer mounted for those routes (or configure the host router's
+basename for a dedicated viewer path).
+
+```tsx
+import { MemoryRouter } from 'react-router';
+import type { ReactNode } from 'react';
+import { Viewer } from './viewer/src/Viewer';
+import './viewer/src/tokens.css';
+import './viewer/src/styles.css';
+
+function ApiWorkspace({ contents, picker }: { contents: string; picker: ReactNode }) {
+  return (
+    <MemoryRouter>
+      {picker}
+      <Viewer contents={contents} />
+    </MemoryRouter>
+  );
+}
+```
+
+`MemoryRouter` keeps this example's viewer routes in memory. Use the host's
+existing router instead if it has one; a `HashRouter` or `BrowserRouter` makes
+viewer routes shareable. `contents` can come from a backend response or local
+state; when it changes, `Viewer` parses the new text and reinitializes its
+pages, index and search. Invalid JSON shows an error in the viewer, and a later
+valid value recovers it. Parsing uses the exact-number handling in
+`src/numbers.ts`, so large example integers are not rounded. You can also pass
+an already decoded tree as `<Viewer document={selected} />`. If fetching belongs
+to the viewer, use `<LoadedViewer load={stableLoader} />` under the same router;
+give it a stable callback, since a changed loader starts a new request. Both
+forms leave the host's document title, route-change scrolling and global `/` /
+Ctrl+K shortcuts alone.
+The standalone `App` opts into those page-wide behaviours with `managePage`.
+
+The host provides its own HTML entry and imports the two viewer stylesheets.
+`Viewer` does not import `main.tsx` or require a `#root` element. Its styles are
+scoped under `.fastraml-viewer`, and the drawer follows its container width;
+the host can style its surrounding page independently. For a running example
+with a narrow host panel and an API switcher, open `examples/host.html` through
+the Vite dev server. It switches JSON text between `Viewer` and `App` and
+exercises error recovery. This is source-level integration, not an npm library
+build.
+
 ## Style
+
+### Reuse and customize the design system
+
+`src/tokens.css` defines the viewer's colours and font stacks. `src/styles.css`
+defines its typography, layout, and component styles. `src/main.tsx` imports
+them in that order. If you render `Viewer` in another app, import both
+stylesheets once alongside it; you do not need the standalone `index.html`.
+Styles in `styles.css` are nested under `.fastraml-viewer`, the viewer's root,
+so element rules such as `h4`, `button`, and `main` do not style the host app.
+The standalone page sets its own body margin in `index.html`.
+
+The tokens are CSS custom properties on `.fastraml-viewer`:
+
+| Tokens | Purpose |
+|---|---|
+| `--bg`, `--panel`, `--raised` | Page, inset surface, and raised control backgrounds |
+| `--ink`, `--dim`, `--faint` | Primary, secondary, and quiet text |
+| `--line`, `--line-soft` | Container and row dividers |
+| `--accent` | Links, selected tabs, and active controls |
+| `--required`, `--warn`, `--recursive`, `--enum` | Semantic markers; keep these distinct from links |
+| `--syntax-keyword`, `--syntax-name`, `--syntax-literal`, `--syntax-string`, `--syntax-comment` | Highlighted code |
+| `--verb-default`, `--verb-get`, `--verb-post`, `--verb-put`, `--verb-patch`, `--verb-delete` | Method badges; success/info/warning/error status dots share the GET/POST/PUT/DELETE colours |
+| `--sans`, `--mono` | Body and code/type/attribute-name font stacks |
+
+Light is the default; when the system prefers dark, the viewer uses dark tokens
+unless it has an explicit `data-theme`. The switch sets that attribute **on
+`.fastraml-viewer`**, not on the document, and saves a preference under
+`fastraml-viewer-theme` in local storage. A host can customize either theme
+with selectors more specific than the viewer's defaults, loaded after the two
+viewer stylesheets. For example, given `<div id="reference"><Viewer document={selected} /></div>`:
+
+```css
+#reference .fastraml-viewer {
+  --accent: #2447a5;
+  --sans: 'Inter', sans-serif;
+}
+
+#reference .fastraml-viewer[data-theme='dark'] {
+  --accent: #a7c2ff;
+}
+
+@media (prefers-color-scheme: dark) {
+  #reference .fastraml-viewer:not([data-theme]) {
+    --accent: #a7c2ff;
+  }
+}
+```
+
+Change the token values for brand/theme changes, then extend `styles.css` for
+structure: `.chip` and its tone classes distinguish markers from muted type
+names, `.verb` labels methods, `.tabs` groups alternative panels, `.attributes`
+holds rows with one indentation rail per nesting level, and `.prose` handles
+rendered Markdown. Use the existing primitives in `src/components/ui.tsx` for
+new viewer sections; scope added selectors to `.fastraml-viewer` and use tokens
+rather than duplicating colours. The layout uses a 320px sidebar and a drawer
+when the viewer's container is at most 720px wide. `styles.css` also holds
+narrow styles for headings, rows, tabs, search, and code blocks. Check both
+themes at wide and phone widths with `npm run shots`.
 
 Measured off `docs.stripe.com`, not eyeballed: `shots.mjs`'s sibling probe loads
 the page in the same headless browser and reads computed styles. What came back
@@ -102,10 +212,10 @@ label and a rule around one word was three lines of chrome, and for `Book[]` it
 repeated what had just been read. An item with structure of its own still gets a
 nested block.
 
-Below 720px the nav is a **drawer** behind a Menu bar, and a listing row stacks
-its description under its name: a fixed 320px column left a phone a third of
-its width, and a three-column table broke `object` into `objec t`. `shots`
-checks a phone width alongside the split-window 760.
+Below 720px of viewer width the nav is a **drawer** behind a Menu bar, and a
+listing row stacks its description under its name: a fixed 320px column left
+a phone a third of its width, and a three-column table broke `object` into
+`objec t`. `shots` checks a phone width alongside the split-window 760.
 
 **Search is a dialog, not a filter.** The nav's field used to narrow the tree
 by name, which could not find `Book` from a word in its description and could
@@ -132,7 +242,7 @@ one with two silently makes the choice for a reader who never made it.
 
 ## Where the document comes from
 
-Always `api.json`, beside the bundle:
+By default, the standalone app reads `api.json` beside the bundle:
 
 | | for |
 |---|---|
@@ -263,10 +373,13 @@ src/
   model.ts             index, addresses, path nesting, facet spelling
   numbers.ts           JSON parsing that keeps integers a double cannot hold
   load.ts              fetch api.json
+  tokens.css           light/dark theme tokens and font stacks
+  styles.css           scoped layout and component styles
   search.ts            the search index: entries, Fuse options, prose as text
-  App.tsx              shell, routes, scroll and title on arrival
+  App.tsx              standalone api.json loader and hash router
+  Viewer.tsx           document/loader integration and optional page behavior
   smoke.tsx            render every page, then the checks rendering cannot make
-  pages/               one module per page, re-exported by index.ts
+  pages/               page modules, route table and index.ts exports
   components/
     Shape.tsx          the type renderer -- the traversal law, directly
     Sidebar.tsx        the nav: the title with the theme switch, search button,

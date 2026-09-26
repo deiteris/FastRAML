@@ -218,11 +218,11 @@ function Marked({ runs }: { runs: Runs }) {
  * A button and not an input, because typing into a field that then jumps to a
  * dialog moves the caret out from under the reader.
  */
-export function SearchButton({ onOpen }: { onOpen: () => void }) {
+export function SearchButton({ onOpen, shortcuts = true }: { onOpen: () => void; shortcuts?: boolean }) {
   return (
-    <button type="button" className="search-open" onClick={onOpen} aria-keyshortcuts="/ Control+K" aria-haspopup="dialog">
+    <button type="button" className="search-open" onClick={onOpen} aria-keyshortcuts={shortcuts ? '/ Control+K' : undefined} aria-haspopup="dialog">
       <span>Search…</span>
-      <kbd>/</kbd>
+      {shortcuts && <kbd>/</kbd>}
     </button>
   );
 }

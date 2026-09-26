@@ -311,6 +311,13 @@ class TestRecursionMarking:
         assert marker.shape.head is node
         assert marker.type == 'recursive'
 
+    def test_the_marker_is_placed_where_the_slot_was_written(self, workspace):
+        # `next: Node` is the property's key, not `Node`'s declaration: the
+        # occurrence index reads the property's definition from it (docs/16 § 9).
+        _raml, types = unwrapped(workspace, '  Node:\n    properties:\n      next: Node\n')
+        marker = types['Node'].shape.properties['next'].base
+        assert (marker.key_pos.line, marker.key_pos.column) == (5, 7)
+
     def test_the_marker_is_not_the_head_itself(self, workspace):
         _raml, types = unwrapped(workspace, '  Node:\n    properties:\n      next: Node\n')
         node = types['Node']

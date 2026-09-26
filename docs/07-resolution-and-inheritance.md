@@ -135,7 +135,8 @@ validated against the union as a whole ([10](10-validation.md) § 3).
 After flattening, `finish_unwrap()` replaces every child edge that closes a
 cycle with `RecursiveShape(head)`. It covers array items, object and pattern
 properties, union members, and custom-facet declaration shapes. Validation of a
-marker delegates to its head. Alias edges are resolved before recursion marking
+marker delegates to its head. A marker is placed where the edge it replaces was
+written, so `next: Node` keeps the property's key position, not `Node`'s. Alias edges are resolved before recursion marking
 so a shared alias container is not corrupted. Recursive walks use the parse's
 shared depth limit.
 

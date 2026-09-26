@@ -600,14 +600,14 @@ def _finish(raml: Raml, base: BaseShape, depth: int, max_depth: int, unions: lis
     as a side effect of the descent rather than by a second walk.
     """
     if base._visiting:  # noqa: SLF001 - unwrap and this pass co-own the flag
-        return _make_recursive(raml, base)
+        return _make_recursive(raml, base, base)
     if base.alias is not None and base.alias._visiting:  # noqa: SLF001 - see above
         # A bare reference is an alias, so what stands here is a *copy* of the
         # referent rather than the referent itself, and the cycle would
         # otherwise close one level further in with the copy as its head. The
         # cycle a reader means is the one back to the referent, so follow the
         # alias edge `alias_to` left in place and mark against that.
-        return _make_recursive(raml, base.alias)
+        return _make_recursive(raml, base.alias, base)
     if depth > max_depth:
         raise RamlError.new(
             'type nesting too deep',
@@ -657,17 +657,20 @@ def _finish_children(raml: Raml, shape: Shape, depth: int, max_depth: int, union
                 pattern_prop.base = marked
 
 
-def _make_recursive(raml: Raml, head: BaseShape) -> BaseShape:
+def _make_recursive(raml: Raml, head: BaseShape, slot: BaseShape) -> BaseShape:
     """The back-edge itself. Validation delegates to `head`, so behaviour is
     unchanged; only the object graph becomes a DAG.
+
+    Placed where `slot`, the shape it replaces, was written: `parent: Parent`
+    is the property's key, not `Parent`'s declaration.
     """
     base = BaseShape(
         id=raml.next_id(),
         raml=raml,
-        location=head.location,
+        location=slot.location,
         name=head.name,
-        key_pos=head.key_pos,
-        value_pos=head.value_pos,
+        key_pos=slot.key_pos,
+        value_pos=slot.value_pos,
         anchor=head.anchor,
     )
     base.type = TYPE_RECURSIVE

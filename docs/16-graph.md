@@ -320,11 +320,8 @@ target.
 **The law.** A candidate is kept only if the retained text at its span equals
 the name it records. For a reference, that is the name its target is declared
 under, so a wrong position and a wrong binding both fail. A rejected candidate
-is kept in `Occurrences.dropped`. The known causes are:
-
-- a template substitution, which keeps the template's position (docs/11 § 3);
-- a property the unwrap replaced with a recursion marker, which carries the
-  head's position.
+is kept in `Occurrences.dropped`. The known cause is a template substitution,
+which keeps the template's position (docs/11 § 3).
 
 The law checks only the candidates the index finds. A name nothing records is
 not a candidate: a built-in written alone, such as `type: string`, is settled

@@ -42,10 +42,8 @@ _SUBSTITUTED: Final = {
 
 DROPPED: Final = {
     **_SUBSTITUTED,
-    # A property unwrap replaced with a recursion marker has the head's position.
-    'Libraries/recursive-types/valid-recursive-type.raml': 1,
-    # One substitution, and one recursion marker.
-    'fixtures/sample/api.raml': 2,
+    # A substitution.
+    'fixtures/sample/api.raml': 1,
 }
 
 

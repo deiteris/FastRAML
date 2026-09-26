@@ -146,3 +146,19 @@ class TestTunedOperations:
         to_openapi(raml)
         assert seen == [('graph', TUNED), ('lint', TUNED), ('openapi', TUNED)]
         assert gc.get_threshold() == HOST
+
+    def test_occurrences(self, monkeypatch, tmp_path):
+        from fastraml.views import occurrences
+
+        raml = parse_from_string(API, file_name='api.raml', base_dir=tmp_path, options=SOURCE)
+        seen = []
+        original = occurrences._Index.shapes
+
+        def spy(self, model):
+            seen.append(gc.get_threshold())
+            return original(self, model)
+
+        monkeypatch.setattr(occurrences._Index, 'shapes', spy)
+        occurrences.build_occurrences(raml)
+        assert seen == [TUNED]
+        assert gc.get_threshold() == HOST

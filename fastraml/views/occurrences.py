@@ -22,6 +22,7 @@ from enum import StrEnum
 from operator import attrgetter
 from typing import TYPE_CHECKING, Final
 
+from fastraml.gctuning import tuned_gc
 from fastraml.parser.fragments import APIFragment, Library
 from fastraml.positions import Position
 from fastraml.types.base import BUILTIN_TYPES
@@ -153,6 +154,7 @@ class Occurrences:
         return self._by_target.get(target, ())
 
 
+@tuned_gc()
 def build_occurrences(raml: Raml) -> Occurrences:
     """The occurrences of a model parsed with `ParseOptions(retain_text=True)`.
 

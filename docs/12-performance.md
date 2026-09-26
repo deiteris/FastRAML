@@ -149,9 +149,9 @@ profiler for elapsed-time evidence.
 
 ## 6. Garbage collection
 
-A parse, a graph, a lint run and an OpenAPI export each build a large set of
-long-lived objects, and none of them creates cyclic garbage: at 2000
-resources no collection during a parse freed anything. CPython's young
+A parse, a graph, a lint run, an OpenAPI export and an occurrence index each
+build a large set of long-lived objects, and none of them creates cyclic
+garbage: at 2000 resources no collection during a parse freed anything. CPython's young
 collections scan only new objects, so their cost is linear. A full collection
 re-scans every tracked object, and the heap grows throughout the operation,
 so repeated full collections make the operation superlinear. At the default

@@ -160,8 +160,26 @@ class TestSnapshots:
 
     def test_what_a_change_moves_is_every_root_that_read_it(self, tmp_path):
         workspace, folder = _workspace(tmp_path, {**self.FILES, 'second.raml': self.FILES['api.raml']})
-        assert workspace.affected(f'{folder}/lib.raml') == [f'{folder}/api.raml', f'{folder}/second.raml']
-        assert workspace.affected(f'{folder}/other.raml') == [f'{folder}/other.raml']
+        readers = workspace.readers()
+        assert readers[f'{folder}/lib.raml'] == [f'{folder}/api.raml', f'{folder}/second.raml']
+        assert readers[f'{folder}/other.raml'] == [f'{folder}/other.raml']
+
+    def test_a_buffers_lines_are_split_once_per_version(self, tmp_path):
+        workspace, folder = _workspace(tmp_path, self.FILES)
+        uri = f'{folder}/api.raml'
+        workspace.open(uri, API, 1)
+        first = workspace.lines(uri)
+        assert workspace.lines(uri) is first
+        workspace.change(uri, API + 'version: v1\n', 2)
+        assert workspace.lines(uri) is not first
+
+    def test_a_closed_files_text_is_the_one_its_snapshot_read(self, tmp_path):
+        # Positions in a snapshot are in the text it read, even if the disk
+        # moved on without a notification.
+        workspace, folder = _workspace(tmp_path, self.FILES)
+        workspace.snapshot(f'{folder}/api.raml')
+        (tmp_path / 'lib.raml').write_text('changed', encoding='utf-8')
+        assert workspace.text(f'{folder}/lib.raml') == LIBRARY
 
     @pytest.mark.parametrize(
         'text',

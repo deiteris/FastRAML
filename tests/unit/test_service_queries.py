@@ -225,11 +225,9 @@ class TestDiagnostics:
         assert found.info.get('type') == 'lib.Nobody'
         assert found.source == queries.SOURCE
 
-    def test_every_file_read_has_an_entry_so_its_old_ones_clear(self, parsed):
-        snapshot, folder = parsed
-        found = queries.diagnostics(snapshot, lint=False)
-        assert {f'{folder}/{name}' for name in ('api.raml', 'lib.raml', 'cover.raml')} <= set(found)
-        assert not any(found.values())
+    def test_a_file_without_problems_has_no_entry(self, parsed):
+        snapshot, _ = parsed
+        assert queries.diagnostics(snapshot, lint=False) == {}
 
     def test_a_finding_is_a_diagnostic_with_its_rule_as_the_code(self, parsed):
         snapshot, folder = parsed
@@ -242,10 +240,10 @@ class TestDiagnostics:
         (finding,) = (d for d in queries.diagnostics(snapshot)[root] if d.source == queries.LINT_SOURCE)
         lines = API.splitlines(keepends=True)
         line = finding.site.span.line
-        lines.insert(line - 1, queries.suppression(API, line, finding.code))
+        lines.insert(line - 1, queries.suppression(lines[line - 1], finding.code))
         workspace = Workspace([folder])
         workspace.change(root, ''.join(lines), 2)
-        assert not [d for d in queries.diagnostics(workspace.snapshot(root))[root] if d.source == queries.LINT_SOURCE]
+        assert root not in queries.diagnostics(workspace.snapshot(root))
 
 
 #: One mistake that stops the parse at each stage.

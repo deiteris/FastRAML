@@ -27,6 +27,7 @@ from fastraml.errors import RamlError
 from fastraml.loaders import SafeFileLoader
 from fastraml.parser.entry import ParseOptions, parse_lenient
 from fastraml.parser.fragments import FragmentKind, identify_fragment
+from fastraml.service.text import Lines
 from fastraml.uris import file_uri_to_path, path_to_file_uri, relative_to
 from fastraml.views.lint import Linter, builtin_registry, discover_plugins, parse_config
 from fastraml.views.occurrences import build_occurrences
@@ -60,12 +61,21 @@ def canonical(uri: str) -> str:
     return path_to_file_uri(file_uri_to_path(uri))
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True, eq=False)
 class Buffer:
-    """An open document's text, as the editor holds it."""
+    """An open document's text, as the editor holds it, and its lines, split
+    when a position is first converted in this version.
+    """
 
     text: str
     version: int
+    _lines: Lines | None = field(default=None, repr=False)
+
+    @property
+    def lines(self) -> Lines:
+        if self._lines is None:
+            self._lines = Lines(self.text)
+        return self._lines
 
 
 @dataclass(slots=True, eq=False)
@@ -171,11 +181,16 @@ class Workspace:
         self._touched(canonical(uri), appeared=True)
 
     def text(self, uri: str) -> str | None:
-        """The text a parse would read for `uri`: its buffer, or the file."""
+        """The text a parse reads for `uri`: its buffer, or else the file, as
+        a current snapshot kept it or as the disk holds it.
+        """
         uri = canonical(uri)
         buffer = self.buffers.get(uri)
         if buffer is not None:
             return buffer.text
+        for snapshot in self._snapshots.values():
+            if snapshot.raml is not None and (kept := snapshot.raml.source_texts.get(uri)) is not None:
+                return kept
         disk = self._disk(uri)
         if disk is None:
             return None
@@ -183,6 +198,13 @@ class Workspace:
             return disk.load(uri).decode('utf-8-sig')
         except (OSError, UnicodeDecodeError):
             return None
+
+    def lines(self, uri: str) -> Lines:
+        """The lines of `uri`'s text, for converting positions in it: split once
+        per version of a buffer, and on each call for any other file.
+        """
+        buffer = self.buffers.get(canonical(uri))
+        return buffer.lines if buffer is not None else Lines(self.text(uri) or '')
 
     def _put(self, uri: str, buffer: Buffer, *, appeared: bool) -> None:
         old = self.buffers.get(uri)
@@ -240,10 +262,15 @@ class Workspace:
             gc.collect()
             self._garbage = False
 
-    def affected(self, uri: str) -> list[str]:
-        """The roots whose diagnostics a change to `uri` can move."""
-        uri = canonical(uri)
-        return [root for root in self.roots() if root == uri or uri in self.snapshot(root).read]
+    def readers(self) -> dict[str, list[str]]:
+        """Every file a root read, with the roots that read it: those whose
+        diagnostics a change to the file can move.
+        """
+        found: dict[str, list[str]] = {}
+        for root in self.roots():
+            for uri in self.snapshot(root).read:
+                found.setdefault(uri, []).append(root)
+        return found
 
     def _parse(self, root: str) -> Snapshot:
         disk = self._disk(root)
@@ -310,7 +337,7 @@ class Workspace:
     def _is_root(self, uri: str) -> bool:
         buffer = self.buffers.get(uri)
         if buffer is not None:
-            head = buffer.text[:_HEAD_BYTES]
+            head = buffer.text
         else:
             disk = self._disk(uri)
             try:
@@ -321,8 +348,10 @@ class Workspace:
 
 
 def _head(text: str) -> str:
-    """The header line, as the parser matches it (docs/03 § 3)."""
-    return text.lstrip(BOM).split('\n', 1)[0].rstrip()
+    """The header line, as the parser matches it (docs/03 § 3), from the first
+    `_HEAD_BYTES` only: a buffer's is compared on every change.
+    """
+    return text[:_HEAD_BYTES].lstrip(BOM).split('\n', 1)[0].rstrip()
 
 
 def _read(raml: Raml, root: str) -> frozenset[str]:

@@ -94,7 +94,7 @@ class _Positions:
     def lines(self, uri: str) -> Lines:
         found = self._lines.get(uri)
         if found is None:
-            found = self._lines[uri] = Lines(self._workspace.text(uri) or '')
+            found = self._lines[uri] = self._workspace.lines(uri)
         return found
 
     def to_server(self, uri: str, position: types.Position) -> tuple[int, int]:
@@ -123,7 +123,7 @@ class RamlServer(LanguageServer):
         #: Files whose diagnostics wait for the pause after a change.
         self._pending: set[str] = set()
         self._timer: asyncio.TimerHandle | None = None
-        #: The files each root last published diagnostics for, to clear them.
+        #: The files each root last published diagnostics in, to clear them.
         self._shown: dict[str, frozenset[str]] = {}
         #: The client's spelling of each URI it opened.
         self._spelling: dict[str, str] = {}
@@ -174,9 +174,15 @@ class RamlServer(LanguageServer):
         """Publish the diagnostics of every file the roots serving `uris` read.
 
         A file shows the diagnostics of every root that reads it, and a file
-        no root reads shows its own only while it is open. A file a root
-        stopped reading is cleared.
+        no root reads shows its own only while it is open. Only a file that
+        holds diagnostics, or held some when last published, is sent, so a
+        file a root stopped reading is cleared and a clean one costs nothing.
         """
+        readers = self.service.readers()
+
+        def serving(uri: str) -> list[str]:
+            return readers.get(uri) or ([uri] if uri in self.service.buffers else [])
+
         found: dict[str, dict[str, list[queries.Diagnostic]]] = {}
 
         def of(root: str) -> dict[str, list[queries.Diagnostic]]:
@@ -188,11 +194,11 @@ class RamlServer(LanguageServer):
         for uri in uris:
             # What a file showed as its own root, if it no longer is one.
             files |= self._shown.pop(uri, frozenset())
-            for root in self._serving(uri):
+            for root in serving(uri):
                 files |= self._shown.get(root, frozenset()) | of(root).keys()
         positions = self.positions()
         for file in sorted(files):
-            merged = {(d.site, d.code, d.message): d for root in self._serving(file) for d in of(root).get(file, ())}
+            merged = {(d.site, d.code, d.message): d for root in serving(file) for d in of(root).get(file, ())}
             self.text_document_publish_diagnostics(
                 types.PublishDiagnosticsParams(
                     uri=self._client(file),
@@ -201,10 +207,6 @@ class RamlServer(LanguageServer):
             )
         for root, diagnostics in found.items():
             self._shown[root] = frozenset(diagnostics)
-
-    def _serving(self, uri: str) -> list[str]:
-        roots = self.service.affected(uri)
-        return roots or ([uri] if uri in self.service.buffers else [])
 
     def _client(self, uri: str) -> str:
         return self._spelling.get(uri, uri)
@@ -344,9 +346,9 @@ class RamlServer(LanguageServer):
 
         @feature(types.TEXT_DOCUMENT_DOCUMENT_SYMBOL)
         def document_symbols(params: types.DocumentSymbolParams) -> list[types.DocumentSymbol] | None:
-            if (uri := _file(params.text_document.uri)) is None:
+            if (at := self._in(params.text_document.uri)) is None:
                 return None
-            positions = self.positions()
+            uri, positions = at
             snapshot = self.service.snapshots(uri)[0]
             return [self._symbol(positions, symbol) for symbol in queries.document_symbols(snapshot, uri)]
 
@@ -365,9 +367,9 @@ class RamlServer(LanguageServer):
 
         @feature(types.TEXT_DOCUMENT_DOCUMENT_LINK)
         def links(params: types.DocumentLinkParams) -> list[types.DocumentLink] | None:
-            if (uri := _file(params.text_document.uri)) is None:
+            if (at := self._in(params.text_document.uri)) is None:
                 return None
-            positions = self.positions()
+            uri, positions = at
             return [
                 types.DocumentLink(positions.range(uri, site.span), target=self._client(site.uri))
                 for site in queries.links(self.service.snapshots(uri)[0], uri)
@@ -382,9 +384,9 @@ class RamlServer(LanguageServer):
 
         @feature(types.TEXT_DOCUMENT_SELECTION_RANGE)
         def selection(params: types.SelectionRangeParams) -> list[types.SelectionRange] | None:
-            if (uri := _file(params.text_document.uri)) is None:
+            if (at := self._in(params.text_document.uri)) is None:
                 return None
-            positions = self.positions()
+            uri, positions = at
             text = self.service.text(uri) or ''
             found: list[types.SelectionRange] = []
             for position in params.positions:
@@ -418,10 +420,9 @@ class RamlServer(LanguageServer):
             types.CodeActionOptions(code_action_kinds=[types.CodeActionKind.QuickFix]),
         )
         def code_actions(params: types.CodeActionParams) -> list[types.CodeAction] | None:
-            if (uri := _file(params.text_document.uri)) is None:
+            if (at := self._in(params.text_document.uri)) is None:
                 return None
-            positions = self.positions()
-            text = self.service.text(uri) or ''
+            uri, positions = at
             found: list[types.CodeAction] = []
             for diagnostic in params.context.diagnostics:
                 # A parser diagnostic cannot be suppressed (docs/21 § 4.1).
@@ -429,7 +430,8 @@ class RamlServer(LanguageServer):
                     continue
                 line, _ = positions.to_server(uri, diagnostic.range.start)
                 start = types.Position(line - 1, 0)
-                edit = types.TextEdit(types.Range(start, start), queries.suppression(text, line, str(diagnostic.code)))
+                directive = queries.suppression(positions.lines(uri).line(line), str(diagnostic.code))
+                edit = types.TextEdit(types.Range(start, start), directive)
                 found.append(
                     types.CodeAction(
                         title=f'Suppress {diagnostic.code} on this line',
@@ -442,14 +444,19 @@ class RamlServer(LanguageServer):
 
     # -- helpers the handlers share ---------------------------------------------
 
+    def _in(self, uri: str) -> tuple[str, _Positions] | None:
+        """The file a request is about, and a converter for it; `None` if it
+        is not a file the service reads.
+        """
+        file = _file(uri)
+        return None if file is None else (file, self.positions())
+
     def _at(self, params: _AtPosition) -> tuple[str, int, int, _Positions] | None:
         """The file and fastRAML position a request is about."""
-        uri = _file(params.text_document.uri)
-        if uri is None:
+        if (at := self._in(params.text_document.uri)) is None:
             return None
-        positions = self.positions()
-        line, column = positions.to_server(uri, params.position)
-        return uri, line, column, positions
+        uri, positions = at
+        return uri, *positions.to_server(uri, params.position), positions
 
     def _sites(self, params: _AtPosition, query: SiteQuery) -> list[types.Location] | None:
         """A query answering sites, over every snapshot serving the file, once each."""
@@ -465,9 +472,9 @@ class RamlServer(LanguageServer):
         """Supertypes or subtypes of an item, found again by where its name is
         written: the item may come from an earlier snapshot (docs/21 § 4).
         """
-        if (uri := _file(item.uri)) is None:
+        if (at := self._in(item.uri)) is None:
             return None
-        positions = self.positions()
+        uri, positions = at
         selection = positions.span(uri, item.selection_range)
         symbol = queries.Symbol(item.name, queries.SymbolKind.TYPE, uri, selection, selection)
         found = {

@@ -126,13 +126,14 @@ class Symbol:
 
 
 def diagnostics(snapshot: Snapshot, *, lint: bool = True) -> dict[str, list[Diagnostic]]:
-    """Every problem the snapshot holds, by the file it is in.
+    """Every problem the snapshot holds, by the file it is in; a file with
+    none has no entry.
 
     A chain is reported at its innermost frame with a position, with the outer
     frames as related information (docs/21 § 4.1). A chain with no position is
     reported at the start of its innermost frame's file.
     """
-    found: dict[str, list[Diagnostic]] = {uri: [] for uri in snapshot.read}
+    found: dict[str, list[Diagnostic]] = {}
     if snapshot.error is not None:
         for chain in snapshot.error.chains():
             diagnostic = _from_chain(chain)
@@ -183,18 +184,15 @@ _START: Final = Position(1, 1, 1, 1)
 _DIRECTIVE: Final = '# fastraml: ignore '
 
 
-def suppression(text: str, line: int, rule: str) -> str:
-    """The line to insert before the 1-based `line` of `text` to suppress the
-    lint rule `rule` there. Only a lint finding can be suppressed: its source
-    is `LINT_SOURCE`.
+def suppression(line: str, rule: str) -> str:
+    """The line to insert before `line`, the text of a finding's line, to
+    suppress the lint rule `rule` there. Only a lint finding can be
+    suppressed: its source is `LINT_SOURCE`.
 
-    The directive takes the finding line's indentation, so it stays in the
-    block it annotates.
+    The directive takes the line's indentation, so it stays in the block it
+    annotates.
     """
-    lines = text.splitlines()
-    source = lines[line - 1] if 0 < line <= len(lines) else ''
-    indent = source[: len(source) - len(source.lstrip())]
-    return f'{indent}{_DIRECTIVE}{rule}\n'
+    return f'{line[: len(line) - len(line.lstrip())]}{_DIRECTIVE}{rule}\n'
 
 
 # -- names ----------------------------------------------------------------------
@@ -367,14 +365,7 @@ def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
     fragment = None if raml is None else raml.fragments.get(uri)
     if raml is None or fragment is None:
         return []
-    found: list[Symbol] = []
-    if isinstance(fragment, (Library, APIFragment)):
-        for kind, table in zip(_TABLE_KINDS, _tables(fragment), strict=True):
-            found += [
-                symbol
-                for name, entity in table.items()
-                if (symbol := _symbol(name, kind, entity.location, entity.key_pos, entity.value_pos)) is not None
-            ]
+    found = list(_declarations(fragment))
     if isinstance(fragment, APIFragment):
         for item in fragment.documentation:
             title = '' if item.title is None else str(item.title.value)
@@ -383,6 +374,20 @@ def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
                 found.append(symbol)
         found += _resources((e for e in raml.endpoints.values() if e.full_uri == e.uri), uri)
     return sorted(found, key=lambda symbol: (symbol.span.line, symbol.span.column))
+
+
+def _declarations(fragment: object, wanted: str = '') -> Iterator[Symbol]:
+    """The symbols of a fragment's declaration tables whose names hold
+    `wanted`, casefolded, if one is given.
+    """
+    if not isinstance(fragment, (Library, APIFragment)):
+        return
+    for kind, table in zip(_TABLE_KINDS, _tables(fragment), strict=True):
+        for name, entity in table.items():
+            if wanted in name.casefold():
+                symbol = _symbol(name, kind, entity.location, entity.key_pos, entity.value_pos)
+                if symbol is not None:
+                    yield symbol
 
 
 def _resources(endpoints: Iterable[EndPoint], uri: str) -> list[Symbol]:
@@ -430,10 +435,10 @@ def workspace_symbols(snapshots: Iterable[Snapshot], query: str) -> list[Symbol]
         raml = snapshot.raml
         if raml is None:
             continue
-        for uri in raml.fragments:
-            for symbol in document_symbols(snapshot, uri):
+        for fragment in raml.fragments.values():
+            for symbol in _declarations(fragment, wanted):
                 key = (symbol.uri, symbol.selection.line, symbol.selection.column)
-                if symbol.kind in _TABLE_KINDS and wanted in symbol.name.casefold() and key not in seen:
+                if key not in seen:
                     seen.add(key)
                     found.append(symbol)
     return found
@@ -447,35 +452,31 @@ def links(snapshot: Snapshot, uri: str) -> list[Site]:
 
     The target is the file the path resolves to, found or not.
     """
-    raml = snapshot.raml
-    if raml is None:
+    raml, occurrences = snapshot.raml, snapshot.occurrences
+    if raml is None or occurrences is None:
         return []
+    # Each path written in the file, as the occurrence index placed it.
+    written: dict[str, list[Position]] = {}
+    for occurrence in occurrences.in_file(uri):
+        if occurrence.role is Role.LINK:
+            written.setdefault(occurrence.written, []).append(occurrence.span)
+
+    def span(at: Position, path: str) -> Position | None:
+        if not at.is_known:
+            return None
+        return next((found for found in written.get(path, ()) if at.line <= found.line <= at.end_line), None)
+
     # A template applied twice records its includes twice.
-    found = list(
-        dict.fromkeys(
-            Site(ref.abs_uri, span)
-            for ref in raml.include_refs.get(uri, ())
-            if (span := _path_span(snapshot, uri, ref.position, ref.path)) is not None
-        )
+    sites = dict.fromkeys(
+        Site(ref.abs_uri, place)
+        for ref in raml.include_refs.get(uri, ())
+        if (place := span(ref.position, ref.path)) is not None
     )
     fragment = raml.fragments.get(uri)
-    found += [
-        Site(link.link.location, span)
-        for link in ([] if fragment is None else fragment.uses.values())
-        if link.link is not None and (span := _path_span(snapshot, uri, link.value_pos, link.value)) is not None
-    ]
-    return found
-
-
-def _path_span(snapshot: Snapshot, uri: str, at: Position, path: str) -> Position | None:
-    """The span of `path`, as the occurrence index placed it."""
-    occurrences = snapshot.occurrences
-    if occurrences is None or not at.is_known:
-        return None
-    for occurrence in occurrences.in_file(uri):
-        if occurrence.role is Role.LINK and occurrence.written == path and at.line <= occurrence.line <= at.end_line:
-            return occurrence.span
-    return None
+    for link in () if fragment is None else fragment.uses.values():
+        if link.link is not None and (place := span(link.value_pos, link.value)) is not None:
+            sites[Site(link.link.location, place)] = None
+    return list(sites)
 
 
 def folding_ranges(text: str, uri: str) -> list[tuple[int, int]]:
@@ -569,8 +570,7 @@ def supertypes(snapshot: Snapshot, item: Symbol) -> list[Symbol]:
     base = _declared(snapshot, item)
     if base is None:
         return []
-    parents = [*base.inherits, *([] if base.alias is None else [base.alias])]
-    return [symbol for parent in parents if (symbol := _type_symbol(parent)) is not None]
+    return [symbol for parent in _parents(base) if (symbol := _type_symbol(parent)) is not None]
 
 
 def subtypes(snapshot: Snapshot, item: Symbol) -> list[Symbol]:
@@ -579,15 +579,21 @@ def subtypes(snapshot: Snapshot, item: Symbol) -> list[Symbol]:
     raml = snapshot.raml
     if base is None or raml is None:
         return []
-    found: list[Symbol] = []
-    for fragment in raml.fragments.values():
-        if isinstance(fragment, (Library, APIFragment)):
-            for table in (fragment.types, fragment.annotation_types):
-                for child in table.values():
-                    parents = [*child.inherits, *([] if child.alias is None else [child.alias])]
-                    if any(parent.id == base.id for parent in parents) and (symbol := _type_symbol(child)):
-                        found.append(symbol)
-    return found
+    return [
+        symbol
+        for fragment in raml.fragments.values()
+        if isinstance(fragment, (Library, APIFragment))
+        for table in (fragment.types, fragment.annotation_types)
+        for child in table.values()
+        if any(parent.id == base.id for parent in _parents(child)) and (symbol := _type_symbol(child)) is not None
+    ]
+
+
+def _parents(base: BaseShape) -> Iterator[BaseShape]:
+    """The named types `base` names in its `type:`, an alias's referent among them."""
+    yield from base.inherits
+    if base.alias is not None:
+        yield base.alias
 
 
 def _declared(snapshot: Snapshot, item: Symbol) -> BaseShape | None:

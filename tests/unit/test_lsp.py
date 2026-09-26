@@ -146,6 +146,8 @@ class TestDiagnostics:
         (spare,) = [d for d in _lint(found) if d.code == 'unused-trait']
         assert spare.range.start.line == _position(API, 'spare:').line
         assert [d for d in found if d.source == 'fastraml'] == []
+        # A file with nothing to show is never sent.
+        assert _uri(lsp, 'lib.raml') not in lsp.published
 
     def test_an_error_is_published_under_its_message_key_and_cleared_when_fixed(self, lsp):
         uri = _uri(lsp, 'api.raml')

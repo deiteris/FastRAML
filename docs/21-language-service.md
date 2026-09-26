@@ -59,8 +59,8 @@ collection is on. Without that, the model an edit replaced stays alive beside
 the next one: on `large`, a run of edits settles at 98 MB instead of 75 MB.
 
 `snapshots(uri)` serves a file from every root that read it, or else from a
-parse of the file alone. `affected(uri)` names the roots whose diagnostics a
-change to `uri` can move.
+parse of the file alone. `readers()` maps every file a root read to those
+roots: the ones whose diagnostics a change to it can move.
 
 A snapshot whose entry is not RAML at all, one `parse_lenient` re-raises for
 (`docs/13` § 1), has `raml is None` and the error.
@@ -76,6 +76,12 @@ fastRAML counts lines and columns from 1, in code points, with exclusive ends
 encoding: UTF-16 code units by default in LSP, or UTF-8 or UTF-32 when
 negotiated. `Lines(text)` converts both ways. A protocol offset inside a code
 point lands on that code point, and one past the end of a line on its end.
+
+`Workspace.lines(uri)` gives them for the text a parse reads: a buffer's,
+split once per version and only when a position in it is first converted, or
+a closed file's, split per call. A closed file's text is the one a current
+snapshot kept, so its positions convert against what was parsed, without a
+read from the disk.
 
 LSP breaks lines at `\n`, `\r\n` and `\r`. YAML also breaks at NEL, LS and PS,
 so on a line holding one of those the two number lines differently. That is a
@@ -120,12 +126,15 @@ is the innermost message key and `info` its variables (`docs/11` § 6). A chain
 with no position is placed at the start of its innermost frame's file.
 
 A lint finding becomes a diagnostic with its rule as `code` and its severity,
-under the source `fastraml-lint`. `suppression` gives the line that suppresses
-it: the directive of `docs/18` § 4, at the finding line's indentation, inserted
-before it. A parser diagnostic cannot be suppressed.
+under the source `fastraml-lint`. `suppression(line, rule)` gives the line
+that suppresses it, from the text of the finding's line: the directive of
+`docs/18` § 4, at that line's indentation, inserted before it. The caller has
+the line from `Lines`, so the document is not split again, and its lines are
+numbered as the protocol numbers them. A parser diagnostic cannot be
+suppressed.
 
-`diagnostics(snapshot)` has an entry for every file the snapshot read, empty
-where it holds none, so a client clears what it showed before.
+`diagnostics(snapshot)` has an entry only for a file holding a diagnostic.
+Clearing what a client showed before is the adapter's (§ 5).
 
 ## 5. The LSP adapter
 
@@ -149,10 +158,12 @@ diagnostics go first; the lint tier follows on the next turn of the loop, and
 a change that comes in between postpones it. A request never waits: a query
 parses whatever is stale.
 
-A file shows the diagnostics of every root that reads it (`affected`),
+A file shows the diagnostics of every root that reads it (`readers`),
 merged and deduplicated; a file no root reads shows its own only while it is
-open. Each root remembers the files it published, so a file it stopped
-reading is cleared. `data` is the diagnostic's `info`.
+open. Each root remembers the files it published diagnostics in. A file is
+sent only if it holds diagnostics now or held some then, so a file a root
+stopped reading is cleared and a clean file is never sent. `data` is the
+diagnostic's `info`.
 
 **Quick fix.** A code action on a lint diagnostic inserts `suppression`'s line
 (§ 4.1). A parser diagnostic gets none.

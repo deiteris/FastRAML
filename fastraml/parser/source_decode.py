@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import re
 from contextlib import contextmanager
+from functools import partial
+from operator import setitem
 from typing import TYPE_CHECKING, Final, Protocol
 
 from fastraml.domains import DomainLocation
@@ -34,7 +36,7 @@ from fastraml.types.shape import make_body_shape, make_parameter_map, make_shape
 from fastraml.yamlnode import NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from fastraml.parser.directives import SecurityScheme
     from fastraml.parser.source_ir import SourceEndPoint, SourceOperation
@@ -185,7 +187,12 @@ def _is_status_code(value: str) -> bool:
     return _STATUS_CODE.match(value) is not None
 
 
-def _decode_response(raml: Raml, key: Node, value: Node, location: str) -> Response:
+def _decode_response(raml: Raml, key: Node, value: Node, location: str, attach: Callable[[Response], None]) -> None:
+    """One response, attached before its content is decoded.
+
+    A response whose content fails stays attached, marked in `Raml.broken`
+    (docs/13 § 1).
+    """
     location = raml.location_of(value, location)
     response = Response(
         id=raml.next_id(),
@@ -194,8 +201,17 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str) -> Respo
         key_pos=key.position,
         value_pos=value.full_position,
     )
+    attach(response)
+    try:
+        _decode_response_content(raml, response, key, value, location)
+    except RamlError as err:
+        raml.broken[response.id] = err
+        raise
+
+
+def _decode_response_content(raml: Raml, response: Response, key: Node, value: Node, location: str) -> None:
     if is_null(value):
-        return response
+        return
     if value.kind is not NodeKind.MAPPING:
         raise node_error('response must be a mapping', location, value, info={'response': key.value})
 
@@ -219,17 +235,17 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str) -> Respo
             except RamlError as err:
                 accumulator.add(err)
     accumulator.raise_if_any()
-    return response
 
 
-def decode_responses(raml: Raml, node: Node, location: str) -> dict[str, Response]:
-    """A `responses:` map. Public because `describedBy:` reuses it verbatim."""
+def decode_responses(raml: Raml, node: Node, location: str, responses: dict[str, Response]) -> None:
+    """A `responses:` map, into the holder's own. Public because `describedBy:`
+    reuses it verbatim.
+    """
     if is_null(node):
-        return {}
+        return
     location = raml.location_of(node, location)
     if node.kind is not NodeKind.MAPPING:
         raise node_error('responses must be a mapping', location, node)
-    responses: dict[str, Response] = {}
     accumulator = Accumulator()
     for key, value in pairs(node):
         try:
@@ -237,11 +253,10 @@ def decode_responses(raml: Raml, node: Node, location: str) -> dict[str, Respons
                 raise node_error('status code must be a 3-digit number', location, key, info={'code': key.value})
             if key.value in responses:
                 raise node_error('duplicate response', location, key, info={'response': key.value})
-            responses[key.value] = _decode_response(raml, key, value, location)
+            _decode_response(raml, key, value, location, partial(setitem, responses, key.value))
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()
-    return responses
 
 
 # -- the request half, shared with `describedBy:` --------------------------------
@@ -295,15 +310,18 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
     elif name == FACET_BODY:
         request.bodies = _decode_bodies(raml, value, location, DomainLocation.REQUEST_BODY)
     elif name == FACET_RESPONSES:
-        operation.responses = decode_responses(raml, value, location)
+        decode_responses(raml, value, location, operation.responses)
     elif is_annotation_key(name):
         add_domain_extension(raml, operation.annotations, location, key, value)
     else:
         raise node_error('unknown field', location, key, info={'field': name})
 
 
-def decode_source_operation(raml: Raml, source: SourceOperation) -> Operation:
-    """One method's retained tree into an `Operation`."""
+def decode_source_operation(raml: Raml, source: SourceOperation, attach: Callable[[Operation], None]) -> None:
+    """One method's retained tree into an `Operation`, attached before its
+    content is decoded. One whose content fails stays attached,
+    marked in `Raml.broken` (docs/13 § 1).
+    """
     operation = Operation(
         id=raml.next_id(),
         method=source.method,
@@ -314,8 +332,17 @@ def decode_source_operation(raml: Raml, source: SourceOperation) -> Operation:
         key_pos=source.key_pos,
         value_pos=source.value_pos,
     )
+    attach(operation)
+    try:
+        _decode_operation_content(raml, operation, source)
+    except RamlError as err:
+        raml.broken[operation.id] = err
+        raise
+
+
+def _decode_operation_content(raml: Raml, operation: Operation, source: SourceOperation) -> None:
     if source.body is None:
-        return operation
+        return
 
     location = source.location
     request = Request(id=raml.next_id(), location=location, value_pos=source.value_pos)
@@ -335,7 +362,6 @@ def decode_source_operation(raml: Raml, source: SourceOperation) -> Operation:
     accumulator.add(query_exclusion_error(request, location, source.body))
     operation.request = request
     accumulator.raise_if_any()
-    return operation
 
 
 # -- endpoints -----------------------------------------------------------------
@@ -355,8 +381,12 @@ def _decode_endpoint_field(raml: Raml, endpoint: EndPoint, key: Node, value: Nod
         raise node_error('unknown field', location, key, info={'field': name})
 
 
-def decode_source_endpoint(raml: Raml, source: SourceEndPoint) -> EndPoint:
+def decode_source_endpoint(raml: Raml, source: SourceEndPoint, attach: Callable[[EndPoint], None]) -> None:
     """One resource's retained tree into an `EndPoint`, recursing into children.
+
+    The endpoint is attached before its content is decoded. One whose content
+    fails, or holds something that failed, stays attached, marked in
+    `Raml.broken` (docs/13 § 1).
 
     URI parameters are decoded here but not yet propagated: P6 rewrites each
     map to ancestor-declared parameters first (docs/08 § 6.2), after the whole
@@ -374,6 +404,15 @@ def decode_source_endpoint(raml: Raml, source: SourceEndPoint) -> EndPoint:
         key_pos=source.key_pos,
         value_pos=source.value_pos,
     )
+    attach(endpoint)
+    try:
+        _decode_endpoint_content(raml, endpoint, source)
+    except RamlError as err:
+        raml.broken[endpoint.id] = err
+        raise
+
+
+def _decode_endpoint_content(raml: Raml, endpoint: EndPoint, source: SourceEndPoint) -> None:
     location = source.location
     accumulator = Accumulator()
 
@@ -392,15 +431,14 @@ def decode_source_endpoint(raml: Raml, source: SourceEndPoint) -> EndPoint:
 
     for method, operation_source in source.operations.items():
         try:
-            endpoint.operations[method] = decode_source_operation(raml, operation_source)
+            decode_source_operation(raml, operation_source, partial(setitem, endpoint.operations, method))
         except RamlError as err:
             accumulator.add(err)
 
     for uri, child in source.endpoints.items():
         try:
-            endpoint.endpoints[uri] = decode_source_endpoint(raml, child)
+            decode_source_endpoint(raml, child, partial(setitem, endpoint.endpoints, uri))
         except RamlError as err:
             accumulator.add(err)
 
     accumulator.raise_if_any()
-    return endpoint

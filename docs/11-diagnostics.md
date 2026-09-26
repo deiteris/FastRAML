@@ -104,11 +104,15 @@ or annotation type declaration is kept in both and marked in `Raml.broken`
 (docs/13 § 1); a failed trait, resource type or security scheme definition is
 absent from both. A declaration key written twice in one
 document, which YAML leaves in the tree (docs/03 § 1), fills the same map
-both times, as the registry always did. Below a declaration, and in the endpoint
-tree, a failed child still drops each construct enclosing it up to the nearest
-loop: a bad key in one response drops that response's operation and every
-enclosing endpoint, with everything they contain, while the other top-level
-resources remain.
+both times, as the registry always did.
+
+The endpoint tree retains everything: a resource, an operation and a response
+are attached before their content is decoded. A bad key in one response keeps
+the response, its operation and every enclosing resource, each marked in
+`Raml.broken`, and leaves their siblings unmarked (docs/13 § 1). P6 still runs
+over a kept resource, so an unused URI parameter on it is reported as its own
+mistake. Below a declaration, a failed child is absent from its declaration,
+which is marked.
 
 `parse_lenient()` runs the same passes as `parse_from_path()` and stops at the
 same failing pass. It returns the registry built up to that point and the error

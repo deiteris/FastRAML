@@ -228,7 +228,7 @@ def _decode_described_by(raml: Raml, node: Node, location: str) -> SecuritySchem
             if decode_request_facet(raml, description, key, value, location):
                 continue
             if name == 'responses':
-                description.responses = decode_responses(raml, value, location)
+                decode_responses(raml, value, location, description.responses)
             elif is_annotation_key(name):
                 add_domain_extension(raml, description.annotations, location, key, value)
             else:

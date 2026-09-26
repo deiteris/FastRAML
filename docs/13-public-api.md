@@ -65,6 +65,7 @@ marked today:
 | Entity | Kept as |
 |---|---|
 | A type or annotation type declaration | Its decoded facets. A failure before its kind was settled leaves an `UnknownShape`, never `shape is None` |
+| A resource, an operation, a response | Every key that decoded, and every child, sound or marked |
 
 Anything else that fails is absent (docs/11 § 2). On success, `broken` is
 empty.

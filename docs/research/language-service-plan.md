@@ -125,7 +125,11 @@ Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
 1a. trait, resource type and security scheme definitions, which are still
    absent when they fail;
 2. responses, methods and resources: an operation or endpoint enclosing a
-   failed child is kept and marked, which resolves A2;
+   failed child is kept and marked, which resolves A2. Done:
+   `decode_source_endpoint`, `decode_source_operation` and `_decode_response`
+   take an `attach` callable, and `decode_responses` fills the holder's map.
+   P6 now also runs over a kept resource, so a strict parse can report an
+   unused URI parameter beside the key that failed;
 3. `DirectiveRef` and `SecurityScheme`;
 4. P7 shapes;
 5. P8 extensions;

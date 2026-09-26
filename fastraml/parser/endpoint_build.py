@@ -71,12 +71,17 @@ def build_endpoints(raml: Raml) -> None:
         for source in sources:
             _resolve_directives(raml, source, accumulator)
 
-        # Stage 2, over the whole tree.
+        # Stage 2, over the whole tree. A resource is attached before its
+        # content is decoded, so one that failed is still walked: it is in the
+        # model, marked (docs/13 § 1).
         for source in sources:
+            decoded: list[EndPoint] = []
             try:
-                _walk(raml, decode_source_endpoint(raml, source), accumulator, inherited={})
+                decode_source_endpoint(raml, source, decoded.append)
             except RamlError as err:
                 accumulator.add(err)
+            for endpoint in decoded:
+                _walk(raml, endpoint, accumulator, inherited={})
     finally:
         raml.pop_ctx()
 

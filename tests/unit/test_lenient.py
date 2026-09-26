@@ -236,6 +236,75 @@ class TestABrokenTypeDeclarationIsKeptAndMarked:
         assert raml.broken == {}
 
 
+class TestTheEndpointTreeKeepsWhatFailed:
+    """docs/13 § 1 — responses, operations and resources are attached before
+    their content is decoded. A failure marks the entity it happened in and
+    every entity it passed through; everything beside it stays unmarked.
+    """
+
+    DOCUMENT = (
+        '/a:\n  get:\n  /b:\n    get:\n    post:\n      responses:\n'
+        '        200:\n          foo: 1\n        201:\n  /c:\n    get:\n/d:\n  get:\n'
+    )
+
+    @staticmethod
+    def marked(raml) -> set[str]:
+        names = set()
+        for uri, endpoint in raml.endpoints.items():
+            if endpoint.id in raml.broken:
+                names.add(uri)
+            for method, operation in endpoint.operations.items():
+                if operation.id in raml.broken:
+                    names.add(f'{uri} {method}')
+                names.update(
+                    f'{uri} {method} {code}'
+                    for code, response in operation.responses.items()
+                    if response.id in raml.broken
+                )
+        return names
+
+    def test_a_bad_response_key_keeps_the_whole_tree(self, workspace):
+        root = workspace({'api.raml': API + self.DOCUMENT})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert list(raml.endpoints) == ['/a', '/a/b', '/a/c', '/d']
+        assert list(raml.endpoints['/a/b'].operations) == ['get', 'post']
+        assert list(raml.endpoints['/a/b'].operations['post'].responses) == ['200', '201']
+
+    def test_it_marks_the_response_and_everything_enclosing_it(self, workspace):
+        root = workspace({'api.raml': API + self.DOCUMENT})
+        raml, _ = parse_lenient(root / 'api.raml', BOTH)
+        assert self.marked(raml) == {'/a', '/a/b', '/a/b post', '/a/b post 200'}
+
+    def test_a_bad_operation_key_marks_the_operation_and_its_resource(self, workspace):
+        root = workspace({'api.raml': API + '/a:\n  get:\n    foo: 1\n  post:\n'})
+        raml, _ = parse_lenient(root / 'api.raml', BOTH)
+        assert list(raml.endpoints['/a'].operations) == ['get', 'post']
+        assert self.marked(raml) == {'/a', '/a get'}
+
+    def test_a_bad_resource_key_keeps_its_children(self, workspace):
+        root = workspace({'api.raml': API + '/a:\n  foo: 1\n  get:\n  /b:\n    get:\n'})
+        raml, _ = parse_lenient(root / 'api.raml', BOTH)
+        assert list(raml.endpoints) == ['/a', '/a/b']
+        assert list(raml.endpoints['/a'].operations) == ['get']
+        assert self.marked(raml) == {'/a'}
+
+    def test_the_error_is_the_strict_one(self, workspace):
+        root = workspace({'api.raml': API + self.DOCUMENT})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml', BOTH)
+        _, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert messages(error) == messages(caught.value)
+
+    def test_a_kept_resource_still_gets_its_uri_parameters_checked(self, workspace):
+        """P6 runs over a kept resource: an unused parameter is its own mistake."""
+        root = workspace({'api.raml': API + '/a/{id}:\n  uriParameters:\n    other: string\n  foo: 1\n'})
+        _, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert [chain[-1].message for chain in error.chains()] == ['unknown field', 'uri parameter is not used']
+
+
 class TestItStopsWhereStrictStops:
     """The design decision, pinned with the measurement that produced it.
 

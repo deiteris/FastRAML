@@ -18,7 +18,7 @@ import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 
 import { useNavigate } from 'react-router';
 import type { Document, Index } from '../model';
 import { type Runs, type SearchEntry, searchIndexOf } from '../search';
-import { Verb } from './ui';
+import { CrossIcon, Verb } from './ui';
 
 export function SearchDialog({
   document,
@@ -130,6 +130,22 @@ export function SearchDialog({
             autoComplete="off"
             spellCheck={false}
           />
+          {/* Ours and not the browser's, which is drawn in its own colours
+              whatever the theme; the stylesheet hides that one. */}
+          {query !== '' && (
+            <button
+              type="button"
+              className="search-clear"
+              aria-label="Clear search"
+              onClick={() => {
+                onQuery('');
+                setActive(0);
+                field.current?.focus();
+              }}
+            >
+              <CrossIcon />
+            </button>
+          )}
           {/* On a phone the dialog is the whole screen and there is no Escape
               key, so without this the only way out was choosing a result. */}
           <button type="button" className="plain-button" onClick={onClose}>

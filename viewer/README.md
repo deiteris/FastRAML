@@ -269,7 +269,8 @@ src/
   pages/               one module per page, re-exported by index.ts
   components/
     Shape.tsx          the type renderer -- the traversal law, directly
-    Sidebar.tsx        the nav: path tree, declarations, search button
+    Sidebar.tsx        the nav: the title with the theme switch, search button,
+                       path tree, declarations, and a footer linking the project
     Search.tsx         the search dialog
     Parameters.tsx, Bodies.tsx, Responses.tsx, Security.tsx, Borrowed.tsx
                        the parts of an operation page
@@ -280,7 +281,7 @@ src/
     json.tsx, highlighting.ts
                        values and code blocks
     ui.tsx             chips, tabs, sections, linkable headings, copy buttons,
-                       error boundaries, the theme toggle
+                       error boundaries, the theme switch, icons
 layers.mjs             the import layering, asserted
 shots.mjs              screenshot every page; fail on console errors and overflow
 ```

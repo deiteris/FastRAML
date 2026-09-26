@@ -11,6 +11,10 @@
  */
 
 :root {
+  /* Both, so the browser's own parts -- scrollbars, form controls -- follow
+     the system as the tokens do. Only a reader's explicit choice below named
+     a scheme, so a system-dark page kept light scrollbars. */
+  color-scheme: light dark;
   --bg: #ffffff;
   --panel: #f4f7fa;
   --raised: #ffffff;
@@ -242,21 +246,37 @@ h4 {
 
 /* -- sidebar --------------------------------------------------------------- */
 
+/* One viewport tall, in two parts: the lists, which scroll, and the footer,
+   which does not, so it is always in view. */
 .sidebar {
+  display: flex;
+  flex-direction: column;
   border-right: 1px solid var(--line);
-  padding: 22px 14px 60px;
-  overflow-y: auto;
-  max-height: 100vh;
+  height: 100vh;
   position: sticky;
   top: 0;
 }
 
+.sidebar-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 14px 28px;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .brand {
-  display: block;
+  min-width: 0;
   font-weight: 650;
   font-size: 15px;
   color: var(--ink);
-  margin-bottom: 14px;
 }
 
 /* Drawn as the field it opens, so it reads as the place to search. */
@@ -312,10 +332,20 @@ kbd {
   background: rgb(0 0 0 / 35%);
 }
 
+/* The dialog sizes its body, so only the results scroll. The body used to copy
+   the dialog's `max-height`, which the dialog's border then overflowed by 2px:
+   a second scrollbar, on the dialog, whenever the results reached the cap.
+   `[open]`, or the flex display would show the closed dialog too. */
+.search[open] {
+  display: flex;
+  flex-direction: column;
+}
+
 .search-body {
   display: flex;
   flex-direction: column;
-  max-height: inherit;
+  flex: 1;
+  min-height: 0;
 }
 
 .search-head {
@@ -326,7 +356,7 @@ kbd {
   border-bottom: 1px solid var(--line);
 }
 
-/* A small bordered button: Menu, Search in the top bar, Close in the dialog. */
+/* A small bordered button: the menu and Search in the top bar, Close in the dialog. */
 .plain-button {
   padding: 4px 10px;
   border: 1px solid var(--line);
@@ -335,6 +365,14 @@ kbd {
   color: var(--dim);
   font-size: 13px;
   cursor: pointer;
+}
+
+/* An icon in place of the label; square, and as tall as its labelled peers. */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 8px;
 }
 
 .search-field {
@@ -348,6 +386,32 @@ kbd {
   font-size: 18px;
   line-height: 26px;
   outline: none;
+}
+
+/* The browser's own clear button is drawn in its colours, not the theme's;
+   `.search-clear` replaces it. */
+.search-field::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.search-clear:hover {
+  background: var(--line-soft);
+  color: var(--ink);
 }
 
 .search-results {
@@ -584,29 +648,73 @@ kbd {
 }
 
 .sidebar-foot {
-  margin-top: 28px;
-  padding-top: 14px;
+  flex: none;
+  padding: 12px 14px;
   border-top: 1px solid var(--line);
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: flex-start;
+  align-items: center;
 }
 
-.theme {
-  display: inline-block;
-  padding: 5px 10px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--bg);
+.sidebar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   color: var(--dim);
+}
+
+.sidebar-link:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* A switch: the track takes the accent when dark is on, and the knob carries a
+   sun or a moon, so the state reads without a label. */
+.theme {
+  flex: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--line);
   cursor: pointer;
 }
 
-.theme:hover {
+.theme[aria-checked='true'] {
   border-color: var(--accent);
+  background: var(--accent);
+}
+
+.theme-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--dim);
+  transition: transform 0.15s ease;
+}
+
+.theme[aria-checked='true'] .theme-knob {
+  transform: translateX(16px);
   color: var(--accent);
+}
+
+.theme:hover .theme-knob {
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-knob {
+    transition: none;
+  }
 }
 
 /* -- chips ------------------------------------------------------------------ */
@@ -1284,19 +1392,15 @@ h4 + .tabs > .tabs-bar,
  * Every RAML description is Markdown, so this styles what a description can
  * contain rather than assuming a paragraph.
  *
- * Full width by default. A `description:` is a caption on the structure under
+ * Full width everywhere. A `description:` is a caption on the structure under
  * it, and a caption that stops short of the attribute rows it belongs to reads
- * as a column that does not line up with anything. The measure is capped only
- * on `.reading`, where prose *is* the page: a documentation item is many
- * paragraphs meant to be read in sequence, and that wants a measure.
+ * as a column that does not line up with anything. A documentation item's
+ * prose had a narrower measure of its own, which left it the one block on any
+ * page not reaching the edge the rest share; `main`'s width bounds it instead.
  */
 .prose {
   color: var(--dim);
   margin: 6px 0;
-}
-
-.reading .prose {
-  max-width: 70ch;
 }
 
 .prose > :first-child {
@@ -1855,10 +1959,6 @@ table.properties td {
     border-radius: 0;
   }
 
-  .search-body {
-    max-height: 100dvh;
-  }
-
   /* Keys a touch screen does not have. */
   .search-keys {
     display: none;
@@ -1869,12 +1969,12 @@ table.properties td {
   }
 
   .nav-is-open .sidebar {
-    display: block;
+    display: flex;
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 20;
     width: min(320px, 85vw);
-    max-height: none;
+    height: auto;
     background: var(--panel);
   }
 

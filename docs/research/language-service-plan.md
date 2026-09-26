@@ -221,8 +221,14 @@ Met.
   as a ratchet, `DROPPED`, so each M3.3 fix removes its entries. The mutation
   corpus also builds the index on every partial model and checks the round
   trip. The bench configuration is `unwrap+occurrences`, which runs on every
-  workload. On `large`, the index costs 93 ms and a 13 MB peak on top of the
-  parse, for 24,854 occurrences.
+  workload.
+- Cost, after review: the first index took 91 ms on `large`, more than
+  `build_graph` (82 ms), and needed `retain_source`, which keeps every YAML
+  tree. `ParseOptions(retain_text=True)` now keeps the texts alone, and the
+  index builds each candidate once, with no generators and no `Position`
+  until one is asked for: 46 ms against the graph's 89 ms, for 24,854
+  occurrences. `unwrap+occurrences` on `large` is 394 ms and 37.3 MB
+  allocated, against 460 ms and 48.4 MB for `unwrap+graph`.
 - Found: P7 places the name in a dotted type name, `Dot.Type`, past a dot
   that names no library (`Types/dot-notation-types`). For M3.3.
 

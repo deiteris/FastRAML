@@ -53,10 +53,12 @@ in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
 | Type system | `types/` | [05](05-type-model.md) through [10](10-validation.md) |
 | Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, value samples, occurrences, and linting | [16](16-graph.md), [18](18-linting.md) |
 | Joining API documents | `join/` | [20](20-join.md) |
+| Language service | `service/` | [21](21-language-service.md) |
 | CLI | `cli.py` | [13](13-public-api.md) |
 
 `views/` is a consumer layer, not a parser pass. Nothing under `parser/` or
-`types/` may import `fastraml.views`; outside `views/`, only `cli.py` may do so.
+`types/` may import `fastraml.views`; outside `views/`, only the composition
+roots `cli.py` and `service/` may do so, and only `cli.py` imports `service/`.
 Views requiring effective types require their caller to provide an unwrapped
 model; CLI commands do this through `ParseOptions(unwrap=True)`.
 

@@ -185,6 +185,36 @@ class TestSafeFileLoader:
         assert data.endswith(b'title: X\n')
 
 
+class TestListing:
+    """`contains` and `files`: what the language service reads the folder
+    through (docs/03 § 5, docs/21 § 2).
+    """
+
+    def test_contains_is_the_lexical_check(self, workspace):
+        loader = SafeFileLoader(workspace)
+        assert loader.contains(path_to_file_uri(workspace / 'types' / 'user.raml'))
+        assert not loader.contains(path_to_file_uri(workspace / '..' / 'secret.txt'))
+        assert not loader.contains('https://example.com/api.raml')
+
+    def test_files_lists_by_suffix_in_path_order(self, workspace):
+        (workspace / 'notes.md').write_bytes(b'')
+        found = SafeFileLoader(workspace).files('.raml')
+        assert found == [path_to_file_uri(workspace / 'api.raml'), path_to_file_uri(workspace / 'types' / 'user.raml')]
+
+    def test_files_does_not_enter_a_hidden_folder(self, workspace):
+        (workspace / '.cache').mkdir()
+        (workspace / '.cache' / 'old.raml').write_bytes(b'')
+        assert all('.cache' not in uri for uri in SafeFileLoader(workspace).files('.raml'))
+
+    def test_files_does_not_follow_a_symlink(self, workspace, tmp_path):
+        outside = tmp_path / 'outside'
+        outside.mkdir()
+        (outside / 'leaked.raml').write_bytes(b'')
+        if not _symlink(outside, workspace / 'linked'):
+            pytest.skip('platform does not permit symlink creation')
+        assert all('leaked' not in uri for uri in SafeFileLoader(workspace).files('.raml'))
+
+
 class TestFileLoader:
     def test_reads_without_a_sandbox(self, workspace, tmp_path):
         # Documented behaviour: no containment check at all.

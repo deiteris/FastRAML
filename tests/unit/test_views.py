@@ -67,17 +67,31 @@ class TestTheModelDoesNotSeeTheViews:
         ]
         assert not offenders, '\n'.join(offenders)
 
-    def test_no_module_outside_the_package_reaches_a_view_except_the_cli(self):
+    def test_no_module_outside_the_package_reaches_a_view_but_the_composition_roots(self):
         # The lazy table in `fastraml/__init__.py` names them by string, not by
         # import, so it does not appear here and must not: importing `fastraml`
-        # would then build a graph module nobody asked for.
-        allowed = {pathlib.Path('fastraml/cli.py')}
+        # would then build a graph module nobody asked for. The CLI and the
+        # language service compose views; nothing else does (docs/02 § 2).
         offenders = [
             f'{path}:{line} imports {module}'
             for path in _sources('fastraml')
-            if path not in allowed and 'views' not in path.parts
+            if path != pathlib.Path('fastraml/cli.py') and not {'views', 'service'} & set(path.parts)
             for line, module in _imports(path)
             if module.startswith('fastraml.views')
+        ]
+        assert not offenders, '\n'.join(offenders)
+
+
+class TestTheServiceIsACompositionRoot:
+    """`fastraml/service/` composes the views for an editor (docs/21 § 1)."""
+
+    def test_nothing_but_the_cli_imports_the_service(self):
+        offenders = [
+            f'{path}:{line} imports {module}'
+            for path in _sources('fastraml')
+            if path != pathlib.Path('fastraml/cli.py') and 'service' not in path.parts
+            for line, module in _imports(path)
+            if module == 'fastraml.service' or module.startswith('fastraml.service.')
         ]
         assert not offenders, '\n'.join(offenders)
 

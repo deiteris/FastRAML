@@ -59,6 +59,7 @@ architecture. The implementation and these documents must agree.
 | 18 | [Linting](18-linting.md) | Rule engine, built-in policy, configuration, plugins, and output |
 | 19 | [Overlays and Extensions](19-overlays-and-extensions.md) | `extends` chains, the extension merge, overlay restrictions, and document provenance |
 | 20 | [Join](20-join.md) | Combining API documents: conflicts, root defaults, the common base URI, and output |
+| 21 | [Language service](21-language-service.md) | Workspace, roots, snapshots, and the queries an editor asks |
 
 ## Supporting material
 

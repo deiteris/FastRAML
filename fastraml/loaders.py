@@ -17,7 +17,7 @@ import os
 import stat
 from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
-from fastraml.uris import file_uri_to_path, uri_scheme
+from fastraml.uris import file_uri_to_path, path_to_file_uri, uri_scheme
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -141,6 +141,35 @@ class SafeFileLoader:
 
     def __repr__(self) -> str:
         return f'SafeFileLoader({self.root!r})'
+
+    def contains(self, uri: str) -> bool:
+        """Whether `uri` is lexically beneath the root: a `file://` URI that
+        `load` would not refuse for its path alone.
+        """
+        try:
+            self._check_beneath(file_uri_to_path(uri), self.root, uri)
+        except (ValueError, WorkspaceEscapeError):
+            return False
+        return True
+
+    def files(self, suffix: str) -> list[str]:
+        """The URI of every regular file beneath the root whose name ends in
+        `suffix`, in path order.
+
+        A symlink, and a directory whose name starts with `.`, is not entered:
+        what the listing finds is what `load` would read.
+        """
+        found: list[str] = []
+        for directory, names, files in os.walk(self.root):
+            names[:] = sorted(
+                name for name in names if not name.startswith('.') and not os.path.islink(os.path.join(directory, name))
+            )
+            found.extend(
+                path_to_file_uri(path)
+                for name in sorted(files)
+                if name.endswith(suffix) and not os.path.islink(path := os.path.join(directory, name))
+            )
+        return found
 
     def load(self, uri: str, *, max_bytes: int | None = None) -> bytes:
         path = file_uri_to_path(uri)

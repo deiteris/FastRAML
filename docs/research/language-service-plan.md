@@ -1,6 +1,6 @@
 # Plan: partial models, then the language service
 
-**Status: accepted; M1, M2, M3.1 and M3.2 done, M3.3 next.** This document orders the work proposed in
+**Status: accepted; M1 to M3 done, M4 in progress.** This document orders the work proposed in
 `research/partial-models.md` (PM) and `research/language-server.md` (LS). It
 is not normative. Each milestone amends its owning numbered document in the
 same commit, as `AGENTS.md` requires. When the service lands, a normative
@@ -296,8 +296,21 @@ which are written nowhere. M3.3 is done.
 - Documents: new `docs/21-language-service.md`. LS moves to `archive/`.
 - Tests:
   - pygls' test client over the fixtures;
-  - features gated by stage over the mutation corpus, never raising;
+  - every query on a parse stopped at each stage, never raising (not the
+    mutation corpus, which is an exploration outside the gate);
   - latency measured on `large`, to decide whether G8 is needed.
+
+As done so far:
+
+- The service core, protocol-free (`docs/21`): the workspace, root discovery
+  by header or by `roots` globs, the overlay loader inside the folder's
+  sandbox, lazy snapshots dropped when a file they read changes, position
+  conversion for UTF-8, UTF-16 and UTF-32, and the queries. The folder is
+  listed through `SafeFileLoader.files`, an early part of G6, so OS paths stay
+  in `loaders.py`.
+- Found on the way: `type: !include` was recorded twice in `include_refs`.
+  Fixed in its own commit.
+- Next: the pygls adapter behind `fastraml lsp`, and the latency on `large`.
 
 ## M5: Completion
 

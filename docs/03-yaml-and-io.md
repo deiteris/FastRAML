@@ -143,7 +143,10 @@ class ResourceLoader(Protocol):
 
 `SafeFileLoader` rejects lexical traversal, final-component symlinks where the
 platform supports `O_NOFOLLOW`, paths resolving outside the root, and
-non-regular files. It protects against document-controlled path escape, but it
+non-regular files. `contains(uri)` is its lexical check alone, and
+`files(suffix)` lists the regular files beneath the root, entering no symlink
+and no directory whose name starts with `.`; the language service reads a
+folder through these (`docs/21` § 2). It protects against document-controlled path escape, but it
 cannot provide the atomic filesystem guarantees of `openat2` against concurrent
 local filesystem mutation.
 

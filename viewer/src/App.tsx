@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HashRouter, Route, Routes, useLocation, useNavigationType } from 'react-router';
 import { SearchDialog } from './components/Search';
 import { Sidebar } from './components/Sidebar';
-import { Boundary } from './components/ui';
+import { Boundary, MenuIcon } from './components/ui';
 import { DEFAULT_SOURCE, loadDocument } from './load';
 import { type Document, Index, Tree } from './model';
 import {
@@ -99,12 +99,13 @@ function Shell() {
         <button
           ref={menu}
           type="button"
-          className="plain-button"
+          className="plain-button icon-button"
+          aria-label="Menu"
           aria-expanded={navOpen}
           aria-controls="sidebar"
           onClick={() => setNavOpen(!navOpen)}
         >
-          Menu
+          <MenuIcon />
         </button>
         <span className="topbar-title">{document.entry_point?.title ?? 'API reference'}</span>
         <button type="button" className="plain-button topbar-search" aria-haspopup="dialog" onClick={openSearch}>

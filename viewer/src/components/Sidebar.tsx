@@ -14,7 +14,10 @@ import { useMemo, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { type Document, type Index, type PathNode, type PathOrder, declarations, methodsOf, pathTree } from '../model';
 import { SearchButton } from './Search';
-import { Chevron, ThemeToggle, Verb } from './ui';
+import { Chevron, GitHubMark, ThemeToggle, Verb } from './ui';
+
+/** The project that renders this page, not the API it documents. */
+const REPOSITORY = 'https://github.com/deiteris/FastRAML';
 
 export function Sidebar({
   document,
@@ -37,72 +40,82 @@ export function Sidebar({
 
   return (
     <nav className="sidebar" id="sidebar">
-      <Link to="/" className="brand">
-        {document.entry_point?.title ?? 'API reference'}
-      </Link>
-      <SearchButton onOpen={onSearch} />
+      <div className="sidebar-body">
+        <div className="sidebar-head">
+          <Link to="/" className="brand">
+            {document.entry_point?.title ?? 'API reference'}
+          </Link>
+          <ThemeToggle />
+        </div>
+        <SearchButton onOpen={onSearch} />
 
-      {/* A destination among the others, not only the thing the title happens
-          to link to. What the API is -- its base URI, its media types, its
-          default security, its counts -- is a page, and the only way to reach
-          it was a control that does not read as navigation and never shows as
-          current, so a reader who followed any link could not find the way
-          back. Aligned with the toggled headings by a spacer, having nothing
-          to collapse. */}
-      <h3 className="nav-heading">
-        <span className="nav-spacer" />
-        {/* `end`, or `/` is a prefix of every route and the row is always
-            current. */}
-        <NavLink to="/" end>
-          Overview
-        </NavLink>
-      </h3>
+        {/* A destination among the others, not only the thing the title happens
+            to link to. What the API is -- its base URI, its media types, its
+            default security, its counts -- is a page, and the only way to reach
+            it was a control that does not read as navigation and never shows as
+            current, so a reader who followed any link could not find the way
+            back. Aligned with the toggled headings by a spacer, having nothing
+            to collapse. */}
+        <h3 className="nav-heading">
+          <span className="nav-spacer" />
+          {/* `end`, or `/` is a prefix of every route and the row is always
+              current. */}
+          <NavLink to="/" end>
+            Overview
+          </NavLink>
+        </h3>
 
-      {/* First, because it is the part meant to be read rather than looked up.
-          Keyed by position, because the route is the position. */}
-      {docs.length > 0 && (
-        <NavGroup title="Documentation" href="/documentation">
-          {docs.map(({ item, at }) => (
-            <NavItem key={at} to={`/documentation/${at}`} label={item.title} />
+        {/* First, because it is the part meant to be read rather than looked up.
+            Keyed by position, because the route is the position. */}
+        {docs.length > 0 && (
+          <NavGroup title="Documentation" href="/documentation">
+            {docs.map(({ item, at }) => (
+              <NavItem key={at} to={`/documentation/${at}`} label={item.title} />
+            ))}
+          </NavGroup>
+        )}
+
+        <NavGroup title="Endpoints">
+          {roots.map((node) => (
+            <PathBranch key={node.path} node={node} />
           ))}
         </NavGroup>
-      )}
 
-      <NavGroup title="Endpoints">
-        {roots.map((node) => (
-          <PathBranch key={node.path} node={node} />
-        ))}
-      </NavGroup>
-
-      <NavGroup title="Types" href="/types">
-        {types.map(({ file, name, value }) => (
-          <NavItem key={`${file}/${name}`} to={index.declaration(value)?.href ?? '/types'} label={name} />
-        ))}
-      </NavGroup>
-
-      {annotationTypes.length > 0 && (
-        <NavGroup title="Annotation types" href="/annotation-types">
-          {annotationTypes.map(({ file, name, value }) => (
-            <NavItem
-              key={`${file}/${name}`}
-              to={index.declaration(value)?.href ?? '/annotation-types'}
-              label={`(${name})`}
-            />
+        <NavGroup title="Types" href="/types">
+          {types.map(({ file, name, value }) => (
+            <NavItem key={`${file}/${name}`} to={index.declaration(value)?.href ?? '/types'} label={name} />
           ))}
         </NavGroup>
-      )}
 
-      {schemes.length > 0 && (
-        <NavGroup title="Security" href="/security">
-          {schemes.map(({ file, name, value }) => (
-            <NavItem key={`${file}/${name}`} to={index.get(value.id)?.href ?? '/security'} label={name} />
-          ))}
-        </NavGroup>
-      )}
+        {annotationTypes.length > 0 && (
+          <NavGroup title="Annotation types" href="/annotation-types">
+            {annotationTypes.map(({ file, name, value }) => (
+              <NavItem
+                key={`${file}/${name}`}
+                to={index.declaration(value)?.href ?? '/annotation-types'}
+                label={`(${name})`}
+              />
+            ))}
+          </NavGroup>
+        )}
 
-      <div className="sidebar-foot">
-        <ThemeToggle />
+        {schemes.length > 0 && (
+          <NavGroup title="Security" href="/security">
+            {schemes.map(({ file, name, value }) => (
+              <NavItem key={`${file}/${name}`} to={index.get(value.id)?.href ?? '/security'} label={name} />
+            ))}
+          </NavGroup>
+        )}
       </div>
+
+      {/* Outside the scrolling part, so it is always in view however long the
+          lists above run. */}
+      <footer className="sidebar-foot">
+        <a className="sidebar-link" href={REPOSITORY}>
+          <GitHubMark />
+          fastRAML on GitHub
+        </a>
+      </footer>
     </nav>
   );
 }

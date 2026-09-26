@@ -1,6 +1,6 @@
 /** Small pieces every page uses. Nothing here knows about RAML. */
 
-import { Component, type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Component, type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useLocation } from 'react-router';
 
 export function Chip({ tone = 'plain', title, children }: { tone?: Tone; title?: string; children: ReactNode }) {
@@ -33,6 +33,27 @@ export function Chevron({ open }: { open: boolean }) {
         strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Three bars: the control that opens the nav drawer. Its button carries the name. */
+export function MenuIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** GitHub's mark, from its Octicons set. The link beside it carries the name. */
+export function GitHubMark() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"
       />
     </svg>
   );
@@ -348,48 +369,77 @@ export interface Tab {
 }
 
 /**
- * Light, dark, or whatever the system says.
+ * A light/dark switch, showing the theme in effect.
  *
- * Three states and not two: a reader who has not chosen should follow the
- * system, and a toggle with two states silently makes that choice for them the
- * first time they use it. `data-theme` is absent in the third state, which is
- * how the stylesheet's media query stays in charge.
+ * A reader who has not chosen follows the system: nothing is stored, and
+ * `data-theme` is absent, which is how the stylesheet's media query stays in
+ * charge. Switching to the theme the system prefers forgets the choice rather
+ * than storing it, so following the system again needs no third position.
  */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(storedTheme);
+  const [chosen, setChosen] = useState<Theme | null>(storedTheme);
+  const systemDark = useSyncExternalStore(watchSystemDark, systemPrefersDark, () => false);
+  const system: Theme = systemDark ? 'dark' : 'light';
+  const dark = (chosen ?? system) === 'dark';
 
   // `index.html` applies the stored choice before the first paint; this keeps
-  // the attribute and the store in step with the toggle after that.
+  // the attribute and the store in step with the switch after that.
   useEffect(() => {
     const root = window.document.documentElement;
-    if (theme === 'system') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', theme);
+    if (chosen === null) root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', chosen);
     try {
-      if (theme === 'system') localStorage.removeItem('theme');
-      else localStorage.setItem('theme', theme);
+      if (chosen === null) localStorage.removeItem('theme');
+      else localStorage.setItem('theme', chosen);
     } catch {
       // Storage refused (a file:// page, a private window): the choice lasts
       // until the page closes, which is all that can be offered.
     }
-  }, [theme]);
+  }, [chosen]);
 
-  const next: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' };
-  const shown: Record<Theme, string> = { system: 'Theme: system', light: 'Theme: light', dark: 'Theme: dark' };
+  const flip = () => {
+    const next: Theme = dark ? 'light' : 'dark';
+    setChosen(next === system ? null : next);
+  };
   return (
-    <button type="button" className="theme" onClick={() => setTheme(next[theme])}>
-      {shown[theme]}
+    <button type="button" role="switch" aria-checked={dark} aria-label="Dark theme" className="theme" onClick={flip}>
+      <span className="theme-knob">
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+          {dark ? (
+            <path d="M13.5 9.8A5.75 5.75 0 0 1 6.2 2.5a5.75 5.75 0 1 0 7.3 7.3z" fill="currentColor" />
+          ) : (
+            <g fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <circle cx="8" cy="8" r="2.75" fill="currentColor" stroke="none" />
+              <path d="M8 1.5v1.25M8 13.25v1.25M1.5 8h1.25M13.25 8h1.25M3.4 3.4l.9.9M11.7 11.7l.9.9M3.4 12.6l.9-.9M11.7 4.3l.9-.9" />
+            </g>
+          )}
+        </svg>
+      </span>
     </button>
   );
 }
 
-type Theme = 'system' | 'light' | 'dark';
+type Theme = 'light' | 'dark';
 
 /** The stored choice, if it is one; anything else in the store means none was made. */
-function storedTheme(): Theme {
+function storedTheme(): Theme | null {
   try {
     const stored = localStorage.getItem('theme');
-    return stored === 'light' || stored === 'dark' ? stored : 'system';
+    return stored === 'light' || stored === 'dark' ? stored : null;
   } catch {
-    return 'system';
+    return null;
   }
+}
+
+const DARK = '(prefers-color-scheme: dark)';
+
+function systemPrefersDark(): boolean {
+  return window.matchMedia(DARK).matches;
+}
+
+/** The system can change theme while the page is open, at dusk say; the switch follows it. */
+function watchSystemDark(changed: () => void): () => void {
+  const query = window.matchMedia(DARK);
+  query.addEventListener('change', changed);
+  return () => query.removeEventListener('change', changed);
 }

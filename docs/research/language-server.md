@@ -219,7 +219,7 @@ location, a position with its end, a stable message key and `info`
 `source_info` (ID to key and value nodes), but `source_info` covers **shapes
 only** (G9). Ranges for traits, resource types, security schemes, endpoints,
 operations, responses and bodies come only from their `key_pos` and
-`value_pos`.
+`value_pos`, which carry the full span; M3.3 closed G9 on that.
 
 ### 3.10 Cost and concurrency
 

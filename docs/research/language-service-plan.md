@@ -264,10 +264,15 @@ As done so far, one commit each:
   value is not, because it is written nowhere;
 - a substituted annotation name, `(<<tag>>)`, is placed where the caller
   wrote it: the decoder reads the record into `DomainExtension.name_site`,
-  and P8 reports there (`docs/09` § B1).
+  and P8 reports there (`docs/09` § B1);
+- G9 is closed without parser work. Every trait, resource type and security
+  scheme definition, endpoint, operation, response, body and documentation
+  item already carries `key_pos` and a full-span `value_pos`, which is what
+  symbol and folding ranges need (`language-server.md` § 8, G9).
+  `tests/unit/test_entity_spans.py` pins them.
 
 Remaining drops over the TCK, each a known limit: eight transformed values,
-which are written nowhere. G9 is next.
+which are written nowhere. M3.3 is done.
 
 ## M4: Service and a read-only LSP
 

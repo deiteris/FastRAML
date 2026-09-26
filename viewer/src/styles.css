@@ -58,9 +58,11 @@ button {
 
 main {
   padding: 40px 56px 120px;
-  /* Wide: nesting runs downward now, so the page uses its width for prose and
-     long type expressions instead of leaving half of it blank. */
+  /* Center the readable column beside the sidebar, but use all available
+     width when the viewer's container is narrower than the column. */
+  width: 100%;
   max-width: 1000px;
+  margin-inline: auto;
   min-width: 0;
 }
 

@@ -139,6 +139,10 @@ when the viewer's container is at most 720px wide. `styles.css` also holds
 narrow styles for headings, rows, tabs, search, and code blocks. Check both
 themes at wide and phone widths with `npm run shots`.
 
+The page content is capped at 1000px and centered in the space beside the
+sidebar. In a narrower viewer it takes the available width; the sidebar still
+becomes a drawer at the container breakpoint.
+
 Measured off `docs.stripe.com`, not eyeballed: `shots.mjs`'s sibling probe loads
 the page in the same headless browser and reads computed styles. What came back
 and is used here — ink `#1a2c44`, muted `#8c99ad`, page `#f4f7fa` on white,

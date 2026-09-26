@@ -276,6 +276,18 @@ try {
         if (!wanted(name, view)) continue;
         route = `${at}${view.suffix}`;
         await open(page, at, false);
+        if (view.name === 'wide' && name === 'type-object') {
+          const offset = await page.evaluate(() => {
+            const viewer = document.querySelector('.fastraml-viewer');
+            const sidebar = viewer?.querySelector('.sidebar');
+            const main = viewer?.querySelector('main');
+            if (!viewer || !sidebar || !main) return null;
+            const left = main.getBoundingClientRect().left - sidebar.getBoundingClientRect().right;
+            const right = viewer.getBoundingClientRect().right - main.getBoundingClientRect().right;
+            return Math.abs(left - right);
+          });
+          if (offset === null || offset > 1) failures.push(`${route}: content is not centered beside the sidebar`);
+        }
         for (const spill of await overflowing(page)) failures.push(`${route}: ${spill}`);
         const file = `shots/${name}${view.suffix}${only.length > 1 ? `-${theme}` : ''}.png`;
         await page.screenshot({ path: file, fullPage: true });

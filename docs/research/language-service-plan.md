@@ -23,7 +23,7 @@ tries (b) first and falls back to (a) if the TCK ratchet moves.
 
 | # | Decision | Taken | Needed before |
 |---|---|---|---|
-| D1 | How duplicate chains collapse (PM § 6.1) | (b): keep one chain and record the other sites on it | M1.2 |
+| D1 | How duplicate chains collapse (PM § 6.1) | (b) was taken, then found moot: the duplicates are identical in every frame, so there are no other sites to record. Identical chains collapse; see M1.2 | M1.2 |
 | D2 | Where the partial-model contract lives | `docs/13` § 1, with `docs/11` § 2 split into *reported* and *retained* | M2 |
 | D3 | Whole-value template substitution (LS O5) | give the substitution the caller's node position if the TCK allows it, else keep a map from the substitution to the caller's node | M3.3 |
 | D4 | Where the server lives (LS O1) | `fastraml/service/`, with the extras `fastraml[lsp]` and `fastraml[mcp]` | M4 |
@@ -53,17 +53,24 @@ No new API. This fixes defects that affect current users of `parse_lenient`,
 
 **M1.2 One mistake, one chain** (PM A5, D1).
 
-- Code: `errors.py` (`Accumulator` and `RamlError.append` collapse on the
-  innermost frame and keep the other sites), and `parser/security.py` (bind
-  once per written site).
-- Documents: `docs/11` § 1 and § 2.
-- Tests:
-  - a trait applied N times gives one chain with N sites;
-  - a root `securedBy` inherited over three levels gives one chain;
-  - distinct mistakes at one position with different `info` stay distinct;
-  - pickling round-trips the new slot.
-- Check: the TCK ratchet is unchanged; `fastraml validate --json` output is
-  reviewed for any consumer-visible change.
+- Finding: the duplicate chains are identical in every frame, including the
+  outer ones. No frame names the application or the inheriting level, so
+  there are no sites to record, and a new `RamlError` slot would stay empty.
+  Where the LSP wants them as related information, it reads the trait's or
+  resource type's applications from the model (M3), not from the error.
+- Code: `errors.py`. `Accumulator.result` drops a chain equal frame for frame
+  to one already kept. It is the only place independent failures meet;
+  `RamlError.append` has one caller, which appends a distinct detail.
+  `parser/security.py` still binds an inherited scheme once per level. Only
+  the report was wrong, so the binding is unchanged.
+- Documents: `docs/11` § 2.
+- Tests: a trait applied three times, a resource type applied twice, and a
+  root `securedBy` inherited over three levels each give one chain, in strict
+  and in lenient parsing. Chains that differ in position or `info` stay
+  distinct, and the collapsed error pickles.
+- Found on the way: an unresolved `securedBy` name puts the name into the
+  message text (`reference not found: nope`), not into `info`, because
+  `UnresolvedReferenceError` is wrapped as text (`docs/11` § 6).
 
 **M1.3 Siblings retained** (PM A1, A2).
 

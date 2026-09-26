@@ -244,16 +244,37 @@ class Accumulator:
         """All recorded failures as one error, or `None` if there were none.
 
         A single failure is returned unchanged; several are returned as the
-        first with the rest attached as siblings.
+        first chain with the rest attached as siblings, in `chains()` order.
+
+        A chain identical to one already kept, frame for frame, is dropped
+        (docs/11 § 2). One mistake reaches a pass once per copy of the
+        construct that holds it: a trait applied three times resolves three
+        shapes, all written at the trait's line. Nothing but the count tells
+        the copies apart.
         """
         if not self._errors:
             return None
-        first, *rest = self._errors
-        if not rest:
-            return first
-        return RamlError(first.head, (*first.siblings, *rest))
+        if len(self._errors) == 1:
+            return self._errors[0]
+        seen: set[tuple[Any, ...]] = set()
+        heads: list[Trace] = []
+        for error in self._errors:
+            for chain in error.chains():
+                key = tuple(_frame_key(frame) for frame in chain)
+                if key not in seen:
+                    seen.add(key)
+                    heads.append(chain[0])
+        return RamlError(heads[0], tuple(RamlError(head) for head in heads[1:]))
 
     def raise_if_any(self) -> None:
         error = self.result()
         if error is not None:
             raise error
+
+
+def _frame_key(frame: Trace) -> tuple[Any, ...]:
+    """What makes two frames the same report. `info` values are compared by
+    `repr`, because some are lists and a key must hash.
+    """
+    info = tuple((key, repr(value)) for key, value in frame.info.items())
+    return (frame.message, frame.location, frame.position, frame.kind, info)

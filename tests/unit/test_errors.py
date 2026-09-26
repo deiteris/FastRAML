@@ -204,3 +204,63 @@ class TestAccumulator:
         result = acc.result()
         assert result is not None
         assert result.messages() == ['a', 'b', 'c']
+
+
+class TestOneMistakeOneChain:
+    """docs/11 § 2 — a chain identical to one already kept is dropped."""
+
+    @staticmethod
+    def _missing(info: dict | None = None, position: Position | None = None) -> RamlError:
+        cause = RamlError.new('reference not found', LOC, position or Position(6, 10), info=info or {'missing': 'X'})
+        return RamlError.wrap('resolve shape', cause, LOC, Position(6, 7))
+
+    def test_identical_chains_collapse_to_one(self):
+        acc = Accumulator()
+        for _ in range(3):
+            acc.add(self._missing())
+        result = acc.result()
+        assert result is not None
+        assert [[frame.message for frame in chain] for chain in result.chains()] == [
+            ['resolve shape', 'reference not found']
+        ]
+
+    def test_a_duplicate_among_siblings_collapses_too(self):
+        acc = Accumulator()
+        acc.add(self._missing().append(RamlError.new('other', LOC)))
+        acc.add(self._missing())
+        result = acc.result()
+        assert result is not None
+        assert result.messages() == ['reference not found: missing: X', 'other']
+
+    @pytest.mark.parametrize(
+        'other',
+        [
+            pytest.param({'info': {'missing': 'Y'}}, id='info'),
+            pytest.param({'position': Position(7, 10)}, id='position'),
+        ],
+    )
+    def test_chains_that_differ_in_any_frame_stay_distinct(self, other):
+        acc = Accumulator()
+        acc.add(self._missing())
+        acc.add(self._missing(**other))
+        result = acc.result()
+        assert result is not None
+        assert len(list(result.chains())) == 2
+
+    def test_unhashable_info_values_are_compared(self):
+        acc = Accumulator()
+        acc.add(RamlError.new('bad', LOC, info={'values': [1, 2]}))
+        acc.add(RamlError.new('bad', LOC, info={'values': [1, 2]}))
+        acc.add(RamlError.new('bad', LOC, info={'values': [1, 3]}))
+        result = acc.result()
+        assert result is not None
+        assert len(list(result.chains())) == 2
+
+    def test_the_collapsed_error_pickles(self):
+        acc = Accumulator()
+        acc.add(self._missing())
+        acc.add(self._missing())
+        acc.add(RamlError.new('other', LOC))
+        result = acc.result()
+        assert result is not None
+        assert pickle.loads(pickle.dumps(result)).to_dict() == result.to_dict()  # noqa: S301 - our own bytes

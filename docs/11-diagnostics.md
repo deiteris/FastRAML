@@ -69,6 +69,14 @@ caller-built error with an unpicklable `info` value does not.
 `None`, the single original error, or one error whose siblings contain the other
 failures. `raise_if_any()` raises that combined result.
 
+When it combines several errors, `result()` keeps a chain only if no chain
+already kept equals it frame for frame (message, location, position, kind and
+`info`). One mistake reaches a pass once per copy of the construct that holds
+it: a trait applied three times resolves three shapes written at the trait's
+line, and a root `securedBy:` is bound once per level that inherits it. Those
+chains are identical, so only the first is reported. Chains that differ in any
+frame stay distinct.
+
 Accumulation is local and nested. A decoder catches a failure only when it can
 continue without misreading the enclosing construct. The current boundaries are:
 

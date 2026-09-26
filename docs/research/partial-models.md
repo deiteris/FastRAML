@@ -254,7 +254,12 @@ scheme. Those frames are useful, for example as the LSP's
   The model keeps N chains, and every consumer has to remember to collapse
   them.
 
-*Decided (plan D1): (b), applied where accumulators merge* (`Accumulator.result`
+*Outcome.* Measured, the duplicates are identical in every frame. No outer
+frame names the application or the inheriting level, so (b) has nothing to
+record and reduces to (a) with no loss. `Accumulator.result` drops a chain
+equal frame for frame to one already kept (plan M1.2).
+
+*Originally decided (plan D1): (b), applied where accumulators merge* (`Accumulator.result`
 or `RamlError.append`). `docs/11` § 2 owns it. The TCK ratchet records
 pass or fail per fixture, not chain counts, so it should not move.
 

@@ -135,6 +135,54 @@ class TestItStopsWhereStrictStops:
         assert len(list(error.chains())) == 1
 
 
+class TestOneMistakeOneChain:
+    """docs/11 § 2 — one mistake reaches a pass once per copy of the construct
+    holding it, and every copy reports the same chain at the same place.
+    """
+
+    CASES = {  # noqa: RUF012 - a table, read once per parametrize
+        'trait applied three times': (
+            (
+                'traits:\n  q:\n    queryParameters:\n      a: NoSuch\n'
+                '/a:\n  get:\n    is: [q]\n  post:\n    is: [q]\n/b:\n  get:\n    is: [q]\n'
+            ),
+            'resolve shape',
+        ),
+        'resource type applied twice': (
+            (
+                'resourceTypes:\n  c:\n    get:\n      body:\n        application/json: NoSuch\n'
+                '/a:\n  type: c\n/b:\n  type: c\n'
+            ),
+            'resolve shape',
+        ),
+        'root securedBy inherited three levels': (
+            'securedBy: [nope]\n/a:\n  /b:\n    get:\n',
+            'get security scheme definition',
+        ),
+    }
+
+    @pytest.mark.parametrize(('body', 'message'), CASES.values(), ids=list(CASES))
+    def test_in_a_strict_parse(self, workspace, body, message):
+        root = workspace({'api.raml': API + body})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml', BOTH)
+        assert [chain[0].message for chain in caught.value.chains()] == [message]
+
+    @pytest.mark.parametrize(('body', 'message'), CASES.values(), ids=list(CASES))
+    def test_in_a_lenient_parse(self, workspace, body, message):
+        root = workspace({'api.raml': API + body})
+        _, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert [chain[0].message for chain in error.chains()] == [message]
+
+    def test_two_uses_of_one_missing_name_are_two_mistakes(self, workspace):
+        """Written twice, at two places: both are reported."""
+        root = workspace({'api.raml': API + 'types:\n  A: NoSuch\n  B: NoSuch\n'})
+        _, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert len(list(error.chains())) == 2
+
+
 class TestStillFatal:
     """The four cases docs/13 § 1 keeps fail-fast: nothing to hand back."""
 

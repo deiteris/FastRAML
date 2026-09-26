@@ -1,8 +1,9 @@
 # contrib
 
 Distributions that sit on fastRAML. Each is a separate `uv` project with its own
-lock and its own gate; none is packaged from the root `pyproject.toml`, and the
-root gate does not see them. `docs/17-consumers.md` settles the boundary.
+lock and its own gate, but for the npm project `fastraml-vscode`; none is
+packaged from the root `pyproject.toml`, and the root gate does not see them.
+`docs/17-consumers.md` settles the boundary.
 
 | Distribution | Direction | What it does |
 |---|---|---|
@@ -14,6 +15,7 @@ root gate does not see them. `docs/17-consumers.md` settles the boundary.
 | [`fastraml-viewer`](fastraml-viewer/) | neither | The built `viewer/` bundle as static assets, and `serve(document)`. Depends on nothing, including `fastraml`. |
 | [`raml-codegen`](raml-codegen/) | tree → code | Generates source from a `fastraml tree` document, or from RAML with the `raml` extra. Two targets: `python-httpx`, a typed client, and `python-fastapi`, a server interface to implement. |
 | [`sphinxcontrib-fastraml`](sphinxcontrib-fastraml/) | RAML → docs | Renders a RAML API as native Sphinx content, with a `raml` domain whose roles link prose to endpoints, methods and types. |
+| [`fastraml-vscode`](fastraml-vscode/) | RAML → editor | The VS Code client of `fastraml lsp`, with the viewer as a preview. An npm project, not a `uv` one; it is not published. |
 
 `raml-document` is the part the two framework integrations share, so that they
 cannot disagree about what a RAML document is. The second one earned its keep

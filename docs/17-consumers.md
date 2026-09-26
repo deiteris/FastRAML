@@ -101,6 +101,13 @@ CI runs `npm run ci`; screenshots are not a CI gate.
 own lock, dependencies, and test gate. The root `pyproject.toml` does not package
 them; CI runs their gates as a matrix.
 
+It also holds `fastraml-vscode`, an npm project: the VS Code client of
+`fastraml lsp` ([21](21-language-service.md) § 5). It starts the server, and
+its preview is a webview page, the package `webview/`, which depends on
+`fastraml-viewer` and renders its `App` from the server's `fastraml/tree`
+answer. It is not published and has no test suite; CI type-checks both and
+builds the page.
+
 See `contrib/README.md` for the current project inventory and each project's
 README for its supported behavior. In particular:
 
@@ -160,6 +167,7 @@ source.
 - optional-extra, bindings, benchmark-linearity, and TCK jobs
 - the eight-project contrib matrix
 - the viewer production gate
+- the VS Code extension's type check and preview build
 
 The `bindings` job installs Go and Node and rejects skipped binding or
 cross-language conformance checks. The `contrib` job runs each project with its

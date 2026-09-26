@@ -46,7 +46,8 @@ message. For a new feature with no base number, use `bench linearity --bench NAM
   `tests/unit/test_conformance.py` compares them.
 - Consumers (`docs/17-consumers.md`): `viewer/` (React SPA, `npm run check`) and
   `contrib/` (eight separate `uv` projects, each with its own lock and gate, run by CI
-  as a matrix). Nothing under `fastraml/` imports a consumer. A consumer may not hold
+  as a matrix, and the npm project `fastraml-vscode`, the editor client). Nothing
+  under `fastraml/` imports a consumer. A consumer may not hold
   a rule the RAML language states, nor invent one it does not; a missing rule is a
   gap in a pass or a view.
 - Generated files, never edited by hand: `viewer/src/tree.d.ts`, `viewer/src/walk.ts`,

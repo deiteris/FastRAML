@@ -1,0 +1,115 @@
+{
+    "name": "fastraml-vscode",
+    "displayName": "fastRAML",
+    "description": "RAML 1.0 language support through the fastRAML language server.",
+    "version": "0.1.0",
+    "license": "MIT",
+    "publisher": "fastraml",
+    "private": true,
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/deiteris/FastRAML",
+        "directory": "contrib/fastraml-vscode"
+    },
+    "engines": {
+        "vscode": "^1.80.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Linters"
+    ],
+    "keywords": ["raml", "api", "lsp"],
+    "main": "./dist/extension.js",
+    "activationEvents": [
+        "workspaceContains:**/*.raml"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "raml",
+                "aliases": ["RAML", "raml"],
+                "extensions": [".raml"],
+                "configuration": "./language-configs/raml.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "raml",
+                "scopeName": "source.raml",
+                "path": "./syntaxes/raml.tmLanguage.json"
+            }
+        ],
+        "configuration": {
+            "title": "fastRAML",
+            "properties": {
+                "fastraml.server.command": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "default": ["fastraml"],
+                    "markdownDescription": "The `fastraml` executable and any arguments before `lsp`, e.g. `[\"uv\", \"run\", \"--project\", \"/path/to/pyRAML\", \"fastraml\"]`. It runs in the first workspace folder."
+                },
+                "fastraml.config": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "A fastRAML configuration file (`--config`), relative to the first workspace folder."
+                },
+                "fastraml.remote": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "Allow `http(s)` includes (`--remote`)."
+                },
+                "fastraml.roots": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "default": [],
+                    "markdownDescription": "Globs over folder-relative paths naming the root documents. Empty: every API, Overlay and Extension document found by its header."
+                },
+                "fastraml.trace.server": {
+                    "type": "string",
+                    "enum": ["off", "messages", "verbose"],
+                    "default": "off",
+                    "description": "Traces the messages between VS Code and the server."
+                }
+            }
+        },
+        "commands": [
+            {
+                "command": "fastraml.restart",
+                "title": "Restart Language Server",
+                "category": "fastRAML"
+            },
+            {
+                "command": "fastraml.preview",
+                "title": "Preview",
+                "category": "fastRAML",
+                "icon": "$(open-preview)"
+            }
+        ],
+        "menus": {
+            "editor/title": [
+                {
+                    "command": "fastraml.preview",
+                    "when": "resourceLangId == raml",
+                    "group": "navigation"
+                }
+            ]
+        }
+    },
+    "dependencies": {
+        "vscode-languageclient": "^9.0.1"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "@types/vscode": "~1.80.0",
+        "@vscode/vsce": "^3.2.0",
+        "typescript": "^5.4.0"
+    },
+    "scripts": {
+        "compile": "tsc -p .",
+        "watch": "tsc -p . --watch",
+        "check": "tsc -p . --noEmit && npm --prefix webview run check",
+        "webview": "npm --prefix webview run build",
+        "vscode:prepublish": "npm run webview && tsc -p .",
+        "package": "vsce package"
+    }
+}

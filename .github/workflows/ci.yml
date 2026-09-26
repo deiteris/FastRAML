@@ -256,6 +256,23 @@ jobs:
       - run: npm run ci
         working-directory: viewer
 
+  # The VS Code extension: its type check, and its preview page, a package
+  # depending on the viewer's.
+  vscode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            contrib/fastraml-vscode/package-lock.json
+            contrib/fastraml-vscode/webview/package-lock.json
+      - run: npm ci && npm ci --prefix webview && npm run check && npm run webview
+        working-directory: contrib/fastraml-vscode
+
   tck:
     runs-on: ubuntu-latest
     timeout-minutes: 15

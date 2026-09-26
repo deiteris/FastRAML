@@ -45,8 +45,11 @@ No new API. This fixes defects that affect current users of `parse_lenient`,
 - Tests:
   - a recursive type next to an unrelated failing merge ends in
     `RecursiveShape`;
-  - the failed shape is neither flagged unwrapped nor half-merged;
-  - `test_consumer_traversal.py` gains a lenient model with a P9 failure.
+  - the failed shape, and each shape enclosing it, is neither flagged
+    unwrapped nor merged.
+- Done. `test_consumer_traversal.py` gained no case: the tree links named
+  types by `$ref`, so its walk terminates with or without marking. The defect
+  is in the object model, which `test_unwrap.py` walks.
 
 **M1.2 One mistake, one chain** (PM A5, D1).
 

@@ -139,6 +139,13 @@ marker delegates to its head. Alias edges are resolved before recursion marking
 so a shared alias container is not corrupted. Recursive walks use the parse's
 shared depth limit.
 
+Marking runs even when a declaration fails to flatten, before P9 reports the
+failure, because `parse_lenient()` returns that model and its consumers walk it
+(docs/11 § 2). A declaration the failure passed through, and every shape
+enclosing it, is left unmerged: its `_unwrapped` flag is cleared and it is
+added to `Raml.shapes` as it stands. A second route to it during the walk
+returns it without failing again.
+
 `clone(memo)` makes a structure-preserving copy keyed by `BaseShape.id`; cycles
 and diamonds remain cycles and diamonds, and the clone retains IDs. A caller that
 needs a fresh identity assigns one. `clone_detached()` uses a fresh memo for an

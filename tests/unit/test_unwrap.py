@@ -11,8 +11,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError, parse_from_path, parse_lenient
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from fastraml.types.unwrap import unwrap_shape
 
 LIB = '#%RAML 1.0 Library\n'
 UNWRAP = ParseOptions(unwrap=True)
@@ -353,6 +354,67 @@ class TestRecursionMarking:
             return 1
 
         assert walk(types['Node']) == 2
+
+
+#: A merge P9 rejects: a string and an integer have no common kind.
+FAILING_MERGE = '  N: integer\n  C:\n    type: [string, N]\n'
+RECURSIVE = '  Node:\n    properties:\n      next?: Node\n'
+
+
+def lenient(workspace, body: str):
+    root = workspace({'lib.raml': LIB + 'types:\n' + body})
+    raml, error = parse_lenient(root / 'lib.raml', UNWRAP)
+    assert error is not None
+    return raml, raml.types_in(raml.location), error
+
+
+class TestAFailedMerge:
+    """docs/11 § 2 — what P9 leaves behind when one declaration fails.
+
+    `parse_lenient` returns this model, and the Sphinx extension walks it.
+    """
+
+    @pytest.mark.parametrize('body', [FAILING_MERGE + RECURSIVE, RECURSIVE + FAILING_MERGE], ids=['after', 'before'])
+    def test_recursion_is_still_marked(self, workspace, body):
+        """Unmarked, the cycle closes two levels down and a walker never stops."""
+        _raml, types, _error = lenient(workspace, body)
+        assert isinstance(types['Node'].shape.properties['next'].base.shape, RecursiveShape)
+
+    def test_the_failed_shape_is_not_flagged_unwrapped(self, workspace):
+        raml, types, _error = lenient(workspace, FAILING_MERGE)
+        assert not types['C']._unwrapped
+        assert [parent.name for parent in types['C'].inherits] == ['string', 'N']
+        assert types['N']._unwrapped
+        assert not raml.unwrapped
+
+    def test_a_shape_the_failure_was_nested_in_is_not_flagged_either(self, workspace):
+        raml, types, _error = lenient(
+            workspace, '  N: integer\n  Outer:\n    properties:\n      c:\n        type: [string, N]\n'
+        )
+        assert not types['Outer']._unwrapped
+        assert not types['Outer'].shape.properties['c'].base._unwrapped
+        assert types['Outer'] in raml.shapes
+
+    def test_the_error_is_the_strict_one(self, workspace):
+        _raml, _types, error = lenient(workspace, FAILING_MERGE + RECURSIVE)
+        assert [trace.message for chain in error.chains() for trace in chain] == failure(
+            workspace, FAILING_MERGE + RECURSIVE
+        )
+
+    def test_a_second_route_to_the_failed_shape_reports_nothing_more(self, workspace):
+        _raml, _types, error = lenient(
+            workspace, FAILING_MERGE + '  D:\n    type: C\n  E:\n    properties:\n      c: C\n'
+        )
+        assert len(list(error.chains())) == 1
+
+    def test_unwrap_shape_leaves_a_failed_clone_unflagged(self, workspace):
+        """The one-declaration entry point, which P10 calls on a detached clone."""
+        root = workspace({'lib.raml': LIB + 'types:\n' + FAILING_MERGE})
+        raml = parse_from_path(root / 'lib.raml')
+        clone = raml.types_in(raml.location)['C'].clone_detached()
+        with pytest.raises(RamlError):
+            unwrap_shape(raml, clone)
+        assert not clone._unwrapped
 
 
 class TestInvariantI6:

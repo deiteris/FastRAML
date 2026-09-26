@@ -92,6 +92,11 @@ same failing pass. It returns the registry built up to that point and the error
 that strict parsing would raise. Successfully decoded siblings remain available;
 the construct that failed can be absent or incomplete.
 
+When P9 fails, recursion is still marked over every declaration, so a
+consumer's walk of the returned model terminates. A declaration whose merge
+failed is not flagged unwrapped, and `Raml.unwrapped` stays `False`
+(docs/07 § 6).
+
 `parse_lenient()` re-raises an entry-level failure when no trustworthy entry
 model can be returned. An entry load failure raises before parsing starts.
 During parsing, fatal classification requires both an outermost message key and

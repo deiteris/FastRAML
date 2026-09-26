@@ -64,9 +64,12 @@ class _Walk:
     has to end up pointing at the replacement. Keyed on `BaseShape.id` — the
     model's own identity, not `id()`, which neither keeps the object alive nor
     stays unique.
+
+    `failed` is the ids of every shape an error passed through, so that a
+    second route to one returns it instead of failing, and reporting, again.
     """
 
-    __slots__ = ('done', 'max_depth', 'raml')
+    __slots__ = ('done', 'failed', 'max_depth', 'raml')
 
     def __init__(self, raml: Raml) -> None:
         self.raml = raml
@@ -75,6 +78,7 @@ class _Walk:
         # recursive path.
         self.max_depth = raml.max_depth
         self.done: dict[int, BaseShape] = {}
+        self.failed: set[int] = set()
 
 
 def unwrap_shapes(raml: Raml) -> None:
@@ -85,6 +89,11 @@ def unwrap_shapes(raml: Raml) -> None:
     been replaced by a merged copy, and a shape may have been dropped from the
     graph entirely — so keeping them would leave the index describing shapes no
     consumer can reach.
+
+    A failed declaration does not stop the pass from finishing (docs/11 § 2).
+    Recursion is marked over everything that did flatten, because a consumer of
+    the lenient model walks it too, and a failed shape is left unmerged rather
+    than claiming to be flattened (docs/07 § 6). `Raml.unwrapped` stays `False`.
     """
     walk = _Walk(raml)
     raml.shapes = []
@@ -111,8 +120,11 @@ def unwrap_shapes(raml: Raml) -> None:
         if extension.defined_by is not None:
             extension.defined_by = walk.done.get(extension.defined_by.id, extension.defined_by)
 
+    try:
+        finish_unwrap(raml)
+    except RamlError as err:
+        accumulator.add(err)
     accumulator.raise_if_any()
-    finish_unwrap(raml)
     raml.unwrapped = True
 
 
@@ -132,6 +144,8 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
         raise RamlError.new('declaration has no shape', base.location, base.key_pos, kind=ErrorKind.UNWRAPPING)
     if base._unwrapped:  # noqa: SLF001 - this pass is the field's declared owner
         return walk.done.get(base.id, base)
+    if base.id in walk.failed:
+        return base
     if depth > walk.max_depth:
         raise RamlError.new(
             'type nesting too deep',
@@ -141,27 +155,31 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
             info={'limit': walk.max_depth},
         )
     base._unwrapped = True  # noqa: SLF001 - see above
+    try:
+        if base.link is not None:
+            _link_to_inherits(base)
 
-    if base.link is not None:
-        _link_to_inherits(base)
+        if base.alias is not None:
+            # An alias is not a source and is not merged into anything: it is
+            # resolved and returned as it stands (docs/07 § 3).
+            result = alias_to(base, _unwrap(walk, base.alias, depth + 1))
+        else:
+            source = _unwrap_parents(walk, base, depth)
+            _unwrap_children(walk, base.shape, depth)
+            _unwrap_custom_facet_defs(walk, base, depth)
 
-    if base.alias is not None:
-        # An alias is not a source and is not merged into anything: it is
-        # resolved and returned as it stands (docs/07 § 3).
-        result = alias_to(base, _unwrap(walk, base.alias, depth + 1))
-        walk.done[base.id] = result
-        walk.raml.put_shape(result)
-        return result
-
-    source = _unwrap_parents(walk, base, depth)
-    _unwrap_children(walk, base.shape, depth)
-    _unwrap_custom_facet_defs(walk, base, depth)
-
-    result = inherit(base, source) if source is not None else base
-    # After the merge, never before: the "both unions" branch adopts the
-    # parent's `anyOf`, so a child that merely narrows a union has no members of
-    # its own until `inherit` has run (docs/07 § 5).
-    _distribute_union_facets(walk, result, depth)
+            result = inherit(base, source) if source is not None else base
+            # After the merge, never before: the "both unions" branch adopts the
+            # parent's `anyOf`, so a child that merely narrows a union has no
+            # members of its own until `inherit` has run (docs/07 § 5).
+            _distribute_union_facets(walk, result, depth)
+    except RamlError:
+        # Every shape the error passes through is left unmerged, and must not
+        # claim to be flattened (docs/07 § 6).
+        base._unwrapped = False  # noqa: SLF001 - see above
+        walk.failed.add(base.id)
+        walk.raml.put_shape(base)
+        raise
     walk.done[base.id] = result
     walk.raml.put_shape(result)
     return result

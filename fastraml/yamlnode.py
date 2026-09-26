@@ -36,7 +36,6 @@ __all__ = [
     'backend_name',
     'compose',
     'decode_source',
-    'duplicate_keys',
     'end_column',
     'end_line',
     'is_null',
@@ -384,25 +383,6 @@ def is_null(node: Node) -> bool:
     return node.tag == TAG_NULL
 
 
-def duplicate_keys(node: Node) -> list[tuple[str, Node]]:
-    """Keys appearing more than once in a mapping, with their later key nodes.
-
-    YAML permits duplicates; RAML does not, and no RAML construct gives them a
-    meaning. `compose` records rather than rejects them so that each decoder can
-    report the duplicate at the right position with the right message.
-    """
-    if node.kind is not NodeKind.MAPPING:
-        return []
-    seen: set[str] = set()
-    found: list[tuple[str, Node]] = []
-    for key, _value in pairs(node):
-        if key.value in seen:
-            found.append((key.value, key))
-        else:
-            seen.add(key.value)
-    return found
-
-
 def node_error(
     message: str,
     location: str,
@@ -539,11 +519,24 @@ class _Converter:
         try:
             if isinstance(node, yaml.MappingNode):
                 content: list[Node] = []
+                seen: set[str] = set()
                 for key, value in node.value:
                     key_node = self.convert(key, depth + 1)
                     # Decoders compare and hash mapping keys constantly;
                     # interning makes equal keys share one object.
-                    key_node.value = sys.intern(key_node.value)
+                    name = key_node.value = sys.intern(key_node.value)
+                    if key_node.kind is NodeKind.SCALAR:
+                        # YAML 1.2 requires unique keys. Compared as text, so
+                        # `200` and `'200'` are one key, as RAML reads them.
+                        if name in seen:
+                            raise RamlError.new(
+                                'duplicate key',
+                                self._uri,
+                                key_node.position,
+                                kind=ErrorKind.PARSING,
+                                info={'key': name},
+                            )
+                        seen.add(name)
                     content.append(key_node)
                     content.append(self.convert(value, depth + 1))
                 kind = NodeKind.MAPPING

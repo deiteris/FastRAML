@@ -30,15 +30,18 @@ class Node:
   endpoint provenance overlay is keyed by node identity.
 - YAML aliases are expanded to independent nodes. Recursive anchors are
   rejected, and alias expansion is bounded by the document node limit.
-- Duplicate keys remain in the tree. Decoders call `duplicate_keys()` where
-  their RAML construct forbids duplicates.
+- A mapping key written twice is rejected as `duplicate key` at the repeat,
+  with `info['key']`, as YAML 1.2 requires. Keys compare as text, so `200` and
+  `'200'` are one key, which is how RAML reads a status code. A file with a
+  repeated key composes to nothing, as one with a syntax error does. go-raml
+  accepts a repeated key.
 
 ## 2. Composition and source decoding
 
 `compose(text, uri=...)` uses a PyYAML loader configured for YAML 1.2 scalar
 resolution, then converts the result to `Node`. It rejects unknown local tags,
-syntax errors, excessive nesting, recursive anchors, and excessive alias
-expansion.
+syntax errors, repeated mapping keys, excessive nesting, recursive anchors, and
+excessive alias expansion.
 
 `decode_source(data)` decodes source bytes as UTF-8 with an optional BOM. Other
 encodings raise `UnicodeDecodeError`.

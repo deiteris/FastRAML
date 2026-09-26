@@ -246,9 +246,9 @@ def unmarshal_types(
 ) -> None:
     """Decode a `types:`, `schemas:` or `annotationTypes:` mapping into `declared`.
 
-    Per name: reject a built-in name, reject a duplicate in the same map, build
-    the shape, register it under the file, and append it to the flat per-file
-    index that unwrap and validation iterate (docs/04 § 5).
+    Per name: reject a built-in name, build the shape, register it under the
+    file, and append it to the flat per-file index that unwrap and validation
+    iterate (docs/04 § 5).
 
     Errors accumulate, so one bad declaration does not hide the rest. The
     fragment's own map is filled before they are raised, so it lists the same
@@ -270,8 +270,6 @@ def unmarshal_types(
             try:
                 if name in BUILTIN_TYPES:
                     raise node_error('cannot redefine a built-in type', location, key, info={'type': name})
-                if name in declared:
-                    raise node_error('duplicate type name', location, key, info={'type': name})
                 make_shape(
                     raml, key, value, location, attach=partial(_declare, raml, declared, location, is_annotation)
                 )

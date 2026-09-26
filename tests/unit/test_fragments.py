@@ -197,15 +197,6 @@ class TestApiDecoding:
         assert list(api.resource_types) == ['r']
         assert list(api.security_schemes) == ['s']
 
-    def test_a_repeated_declaration_key_adds_to_one_map_as_the_registry_does(self, workspace):
-        """YAML duplicate keys stay in the tree (docs/03 § 1). The fragment used
-        to keep only the last map while the registry held both (docs/11 § 2).
-        """
-        root = workspace({'api.raml': API + 'annotationTypes:\n  B: string\n'})
-        raml = parse_from_path(root / 'api.raml')
-        assert list(raml.entry_point.annotation_types) == ['a', 'here', 'B']
-        assert list(raml.entry_point.annotation_types) == list(raml.fragment_annotations[raml.location])
-
 
 class TestGlobalPrePass:
     def test_globals_are_harvested_before_the_main_loop(self, workspace):
@@ -446,7 +437,8 @@ class TestUsesResolution:
         root = workspace({'api.raml': API + 'uses:\n  l: a.raml\n  l: b.raml\n'})
         with pytest.raises(RamlError) as caught:
             parse_from_path(root / 'api.raml')
-        assert 'duplicate library name' in messages(caught.value)[0]
+        assert caught.value.head.message == 'duplicate key'
+        assert caught.value.head.info == {'key': 'l'}
 
     def test_uses_may_be_empty(self, workspace):
         root = workspace({'api.raml': API + 'uses:\n'})

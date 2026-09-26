@@ -207,12 +207,8 @@ def make_source_endpoint(raml: Raml, key: Node, value: Node, location: str, *, p
                 )
                 endpoint.explicit_secured_by = True
             elif name in METHODS:
-                if name in endpoint.operations:
-                    raise node_error('duplicate method', location, child_key, info={'method': name})
                 endpoint.operations[name] = make_source_operation(raml, name, child_key, child_value, location)
             elif name.startswith('/'):
-                if name in endpoint.endpoints:
-                    raise node_error('duplicate resource', location, child_key, info={'resource': name})
                 endpoint.endpoints[name] = make_source_endpoint(
                     raml, child_key, child_value, location, parent_uri=endpoint.full_uri
                 )

@@ -248,8 +248,6 @@ def unmarshal_uses(raml: Raml, value_node: Node, location: str) -> dict[str, Lib
 
     uses: dict[str, LibraryLink] = {}
     for key, value in pairs(value_node):
-        if key.value in uses:
-            raise node_error('duplicate library name', location, key, info={'library': key.value})
         uses[key.value] = LibraryLink(
             id=raml.next_id(),
             value=value.value,
@@ -1001,7 +999,7 @@ class _Declarations:
         self._seen = ''
 
     def types(self, key: Node, value: Node) -> Node:
-        if self._seen and self._seen != key.value:
+        if self._seen:
             raise node_error(
                 'types and schemas are mutually exclusive', self._location, value, info={'field': key.value}
             )

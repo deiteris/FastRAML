@@ -146,7 +146,8 @@ class TestResponses:
     def test_numeric_and_quoted_forms_are_duplicate_response_keys(self, workspace):
         error = fails(workspace, '/users:\n  get:\n    responses:\n      200:\n      "200":\n')
         assert error is not None
-        assert 'duplicate response' in messages(error)
+        assert error.head.message == 'duplicate key'
+        assert error.head.info == {'key': '200'}
 
     @pytest.mark.parametrize('code', ['2xx', 'default', '099', '600'])
     def test_response_code_must_be_a_concrete_100_to_599_status(self, workspace, code):

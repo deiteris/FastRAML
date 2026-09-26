@@ -23,7 +23,6 @@ from fastraml.yamlnode import (
     backend_name,
     compose,
     decode_source,
-    duplicate_keys,
     end_column,
     end_line,
     is_null,
@@ -249,17 +248,33 @@ class TestEmptyDocuments:
 
 
 class TestDuplicateKeys:
-    def test_duplicates_are_recorded_not_rejected(self):
-        root = parse('a: 1\nb: 2\na: 3\n')
-        found = duplicate_keys(root)
-        assert [name for name, _ in found] == ['a']
-        assert found[0][1].line == 3
+    """docs/03 § 1: YAML 1.2 requires a mapping's keys to be unique.
 
-    def test_no_duplicates_reports_nothing(self):
-        assert duplicate_keys(parse('a: 1\nb: 2\n')) == []
+    A repeated key used to stay in the tree, and most decoders let the later
+    one win silently: what the earlier one held was resolved and reported,
+    then dropped from the model.
+    """
 
-    def test_a_scalar_has_no_duplicates(self):
-        assert duplicate_keys(Node(NodeKind.SCALAR, TAG_STR, 'x')) == []
+    @pytest.mark.parametrize(
+        ('source', 'line'),
+        [
+            pytest.param('a: 1\nb: 2\na: 3\n', 3, id='top level'),
+            pytest.param('t:\n  properties:\n    x: string\n  properties:\n    y: string\n', 4, id='nested'),
+            pytest.param('r:\n  200:\n  "200":\n', 3, id='a number and its quoted form'),
+            pytest.param('- {a: 1, a: 2}\n', 1, id='flow'),
+        ],
+    )
+    def test_a_repeated_key_is_rejected_at_the_repeat(self, source, line):
+        with pytest.raises(RamlError) as caught:
+            parse(source)
+        assert caught.value.head.message == 'duplicate key'
+        assert caught.value.head.position.line == line
+        assert caught.value.head.info is not None
+        assert set(caught.value.head.info) == {'key'}
+
+    def test_the_same_key_in_sibling_mappings_is_not_a_repeat(self):
+        root = parse('a: {k: 1}\nb: {k: 2}\n')
+        assert [key.value for key, _ in pairs(root)] == ['a', 'b']
 
 
 class TestReadHead:

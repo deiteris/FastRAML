@@ -251,8 +251,6 @@ def decode_responses(raml: Raml, node: Node, location: str, responses: dict[str,
         try:
             if not _is_status_code(key.value):
                 raise node_error('status code must be a 3-digit number', location, key, info={'code': key.value})
-            if key.value in responses:
-                raise node_error('duplicate response', location, key, info={'response': key.value})
             _decode_response(raml, key, value, location, partial(setitem, responses, key.value))
         except RamlError as err:
             accumulator.add(err)

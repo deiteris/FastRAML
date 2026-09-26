@@ -101,9 +101,8 @@ the model. The five declaration maps (`types:` or `schemas:`,
 them: each decoder fills the fragment's own map before it raises, so the good
 declarations stay in the fragment and agree with the registry. A failed
 declaration of any of the five kinds is kept there too, marked in
-`Raml.broken` (docs/13 § 1). A declaration key written twice in one
-document, which YAML leaves in the tree (docs/03 § 1), fills the same map
-both times, as the registry always did.
+`Raml.broken` (docs/13 § 1). A declaration key written twice is a
+`duplicate key` (docs/03 § 1).
 
 The endpoint tree retains everything: a resource, an operation and a response
 are attached before their content is decoded. A bad key in one response keeps
@@ -217,9 +216,10 @@ not only the enclosing mapping.
   copied because the trace already carries the location and position.
 
 An unmarked `yaml.YAMLError` keeps its raw text and has no source position.
-Additional YAML-layer diagnostics cover recursive anchors, depth and alias
-expansion limits, unknown local tags, and unsupported unquoted line-separator
-characters. [YAML layer and I/O](03-yaml-and-io.md) defines those rules.
+Additional YAML-layer diagnostics cover repeated mapping keys, recursive
+anchors, depth and alias expansion limits, unknown local tags, and unsupported
+unquoted line-separator characters. [YAML layer and I/O](03-yaml-and-io.md)
+defines those rules.
 
 ## 6. Message conventions
 

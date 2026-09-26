@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from fastraml import ParseOptions, parse_from_path, parse_lenient
+from fastraml import ParseOptions
 from fastraml.uris import path_to_file_uri
 from fastraml.views.occurrences import Kind, Role, build_occurrences
 
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     from fastraml.registry import Raml
     from fastraml.views.occurrences import Occurrence, Occurrences
+    from tests.unit.conftest import MemoryWorkspace
 
 API = """#%RAML 1.0
 title: Demo
@@ -75,18 +76,19 @@ type: number
 """
 
 
-def _write(tmp_path: Path, api: str = API) -> Path:
-    (tmp_path / 'lib.raml').write_text(LIBRARY, encoding='utf-8')
-    (tmp_path / 'money.raml').write_text(MONEY, encoding='utf-8')
-    (tmp_path / 'readme.md').write_text('Read me.', encoding='utf-8')
-    entry = tmp_path / 'api.raml'
-    entry.write_text(api, encoding='utf-8')
-    return entry
+@pytest.fixture
+def workspace(memory_workspace: MemoryWorkspace) -> MemoryWorkspace:
+    return memory_workspace
 
 
-def _parsed(tmp_path: Path, api: str = API) -> tuple[Raml, Occurrences, str]:
-    entry = _write(tmp_path, api)
-    raml = parse_from_path(entry, ParseOptions(unwrap=True, retain_text=True))
+def _write(workspace: MemoryWorkspace, api: str = API) -> Path:
+    files = {'lib.raml': LIBRARY, 'money.raml': MONEY, 'readme.md': 'Read me.', 'api.raml': api}
+    return workspace(files) / 'api.raml'
+
+
+def _parsed(workspace: MemoryWorkspace, api: str = API) -> tuple[Raml, Occurrences, str]:
+    entry = _write(workspace, api)
+    raml = workspace.parse(entry, ParseOptions(unwrap=True, retain_text=True))
     return raml, build_occurrences(raml), path_to_file_uri(entry)
 
 
@@ -140,29 +142,29 @@ class TestEachNameIsAnOccurrence:
             pytest.param((Role.LINK, Kind.FILE, 'money.raml'), ('money.raml', 0), id='!include'),
         ],
     )
-    def test_the_name_is_found_where_it_is_written(self, tmp_path, expected, site):
-        _, occurrences, uri = _parsed(tmp_path)
+    def test_the_name_is_found_where_it_is_written(self, workspace, expected, site):
+        _, occurrences, uri = _parsed(workspace)
         assert (*expected, *_where(API, *site)) in _found(occurrences, uri)
 
-    def test_nothing_is_dropped_from_a_document_the_law_can_read(self, tmp_path):
-        _, occurrences, _ = _parsed(tmp_path)
+    def test_nothing_is_dropped_from_a_document_the_law_can_read(self, workspace):
+        _, occurrences, _ = _parsed(workspace)
         assert occurrences.dropped == ()
 
-    def test_a_declaration_in_a_library_is_found_in_its_file(self, tmp_path):
-        _, occurrences, uri = _parsed(tmp_path)
+    def test_a_declaration_in_a_library_is_found_in_its_file(self, workspace):
+        _, occurrences, uri = _parsed(workspace)
         library = uri.rsplit('/', 1)[0] + '/lib.raml'
         assert (Role.DEFINITION, Kind.TYPE, 'Person', *_where(LIBRARY, 'Person')) in _found(occurrences, library)
 
 
 class TestTargets:
-    def test_a_reference_meets_its_definition_on_the_target(self, tmp_path):
-        raml, occurrences, uri = _parsed(tmp_path)
+    def test_a_reference_meets_its_definition_on_the_target(self, workspace):
+        raml, occurrences, uri = _parsed(workspace)
         person = raml.types_in(uri.rsplit('/', 1)[0] + '/lib.raml')['Person']
         roles = sorted(o.role for o in occurrences.of(person.id))
         assert roles == [Role.DEFINITION, Role.REFERENCE]
 
-    def test_a_prefix_names_the_uses_entry(self, tmp_path):
-        raml, occurrences, uri = _parsed(tmp_path)
+    def test_a_prefix_names_the_uses_entry(self, workspace):
+        raml, occurrences, uri = _parsed(workspace)
         link = raml.fragments[uri].uses['lib']
         found = {(o.role, o.span.line) for o in occurrences.of(link.id)}
         assert found == {
@@ -171,20 +173,20 @@ class TestTargets:
             (Role.ALIAS_PREFIX, _where(API, 'lib.audited')[0]),
         }
 
-    def test_a_link_names_the_fragment_it_decoded_to(self, tmp_path):
-        raml, occurrences, uri = _parsed(tmp_path)
+    def test_a_link_names_the_fragment_it_decoded_to(self, workspace):
+        raml, occurrences, uri = _parsed(workspace)
         money = raml.fragments[uri.rsplit('/', 1)[0] + '/money.raml']
         link = _only(occurrences.at(uri, *_where(API, 'money.raml')))
         assert link.target == money.id
 
-    def test_a_link_to_a_file_that_is_no_fragment_has_no_target(self, tmp_path):
-        _, occurrences, uri = _parsed(tmp_path)
+    def test_a_link_to_a_file_that_is_no_fragment_has_no_target(self, workspace):
+        _, occurrences, uri = _parsed(workspace)
         link = _only(occurrences.at(uri, *_where(API, 'readme.md')))
         assert (link.role, link.target) == (Role.LINK, None)
 
-    def test_a_dotted_scheme_name_is_one_token(self, tmp_path):
+    def test_a_dotted_scheme_name_is_one_token(self, workspace):
         # `basic.v1` names no library: only the declared name splits a prefix off.
-        _, occurrences, uri = _parsed(tmp_path)
+        _, occurrences, uri = _parsed(workspace)
         line, column = _where(API, 'basic.v1]')
         found = [o for o in occurrences.in_file(uri) if o.span.line == line]
         assert [(o.role, o.written, o.span.column) for o in found] == [(Role.REFERENCE, 'basic.v1', column)]
@@ -232,28 +234,28 @@ class TestQuotedScalars:
             pytest.param(Role.REFERENCE, 'note', 'note)', id='annotation'),
         ],
     )
-    def test_the_name_is_found_past_the_quote(self, tmp_path, role, written, needle):
-        _, occurrences, uri = _parsed(tmp_path, QUOTED)
+    def test_the_name_is_found_past_the_quote(self, workspace, role, written, needle):
+        _, occurrences, uri = _parsed(workspace, QUOTED)
         found = {(o.role, o.written, o.line, o.column) for o in occurrences.in_file(uri)}
         assert (role, written, *_where(QUOTED, needle)) in found
 
-    def test_nothing_is_dropped(self, tmp_path):
-        _, occurrences, _ = _parsed(tmp_path, QUOTED)
+    def test_nothing_is_dropped(self, workspace):
+        _, occurrences, _ = _parsed(workspace, QUOTED)
         assert occurrences.dropped == ()
 
 
 class TestTemplates:
-    def test_a_name_in_a_template_applied_twice_is_one_occurrence(self, tmp_path):
-        _, occurrences, uri = _parsed(tmp_path)
+    def test_a_name_in_a_template_applied_twice_is_one_occurrence(self, workspace):
+        _, occurrences, uri = _parsed(workspace)
         assert _only(occurrences.at(uri, *_where(API, 'User\n'))).role is Role.REFERENCE
 
-    def test_a_substituted_name_is_found_where_the_caller_wrote_it(self, tmp_path):
+    def test_a_substituted_name_is_found_where_the_caller_wrote_it(self, workspace):
         # docs/08 § 5.1: the template's scalar reads `<<item>>`; `User` is
         # written in the application.
         api = API.replace('type: User\n', 'type: <<item>>[]\n').replace(
             '  type: collection\n', '  type: {collection: {item: User}}\n'
         )
-        _, occurrences, uri = _parsed(tmp_path, api)
+        _, occurrences, uri = _parsed(workspace, api)
         found = _only(occurrences.at(uri, *_where(api, 'User}')))
         assert (found.role, found.written, found.target) == (
             Role.REFERENCE,
@@ -268,32 +270,32 @@ class TestTemplates:
             '  type: collection\n', f'  type: {{collection: {{tag: {value}}}}}\n'
         )
 
-    def test_a_substituted_annotation_name_is_found_where_the_caller_wrote_it(self, tmp_path):
+    def test_a_substituted_annotation_name_is_found_where_the_caller_wrote_it(self, workspace):
         api = self._annotated('<<tag>>', 'note')
-        _, occurrences, uri = _parsed(tmp_path, api)
+        _, occurrences, uri = _parsed(workspace, api)
         found = _only(occurrences.at(uri, *_where(api, 'note}')))
         assert (found.role, found.kind, found.written) == (Role.REFERENCE, Kind.ANNOTATION_TYPE, 'note')
         assert occurrences.dropped == ()
 
-    def test_an_annotation_name_only_partly_substituted_is_dropped(self, tmp_path):
+    def test_an_annotation_name_only_partly_substituted_is_dropped(self, workspace):
         # `<<tag>>te` is written in two places, so neither is where `note` is.
         api = self._annotated('<<tag>>te', 'no')
-        _, occurrences, uri = _parsed(tmp_path, api)
+        _, occurrences, uri = _parsed(workspace, api)
         dropped = _only([o for o in occurrences.dropped if o.written == 'note'])
         assert (dropped.uri, dropped.line) == (uri, _where(api, '<<tag>>te')[0])
 
-    def test_a_transformed_name_is_written_nowhere_and_is_dropped(self, tmp_path):
+    def test_a_transformed_name_is_written_nowhere_and_is_dropped(self, workspace):
         api = API.replace('type: User\n', 'type: <<item | !uppercamelcase>>\n').replace(
             '  type: collection\n', '  type: {collection: {item: user}}\n'
         )
-        _, occurrences, uri = _parsed(tmp_path, api)
+        _, occurrences, uri = _parsed(workspace, api)
         dropped = _only([o for o in occurrences.dropped if o.written == 'User'])
         assert (dropped.role, dropped.uri, dropped.line) == (Role.REFERENCE, uri, _where(api, '<<item')[0])
 
 
 class TestHitTest:
-    def test_a_cursor_inside_the_name_finds_it(self, tmp_path):
-        _, occurrences, uri = _parsed(tmp_path)
+    def test_a_cursor_inside_the_name_finds_it(self, workspace):
+        _, occurrences, uri = _parsed(workspace)
         line, column = _where(API, 'Person')
         assert _only(occurrences.at(uri, line, column + 3)).written == 'Person'
 
@@ -305,26 +307,26 @@ class TestHitTest:
             pytest.param('friend?', len('friend'), id='on the question mark'),
         ],
     )
-    def test_a_cursor_outside_every_name_finds_nothing(self, tmp_path, needle, shift):
-        _, occurrences, uri = _parsed(tmp_path)
+    def test_a_cursor_outside_every_name_finds_nothing(self, workspace, needle, shift):
+        _, occurrences, uri = _parsed(workspace)
         line, column = _where(API, needle)
         assert occurrences.at(uri, line, column + shift) == []
 
-    def test_a_file_with_no_occurrences_finds_nothing(self, tmp_path):
-        _, occurrences, _ = _parsed(tmp_path)
+    def test_a_file_with_no_occurrences_finds_nothing(self, workspace):
+        _, occurrences, _ = _parsed(workspace)
         assert occurrences.at('file:///elsewhere.raml', 1, 1) == []
 
 
 class TestTheModelItReads:
-    def test_it_needs_the_retained_source(self, tmp_path):
-        raml = parse_from_path(_write(tmp_path), ParseOptions())
+    def test_it_needs_the_retained_source(self, workspace):
+        raml = workspace.parse(_write(workspace))
         with pytest.raises(ValueError, match='retain_text'):
             build_occurrences(raml)
 
-    def test_a_lenient_model_gives_what_its_stages_bound(self, tmp_path):
+    def test_a_lenient_model_gives_what_its_stages_bound(self, workspace):
         # P4 stops at the unknown trait, before P7 reads a type expression.
-        entry = _write(tmp_path, API.replace('is: [paged,', 'is: [nope, paged,'))
-        raml, error = parse_lenient(entry, ParseOptions(retain_text=True))
+        entry = _write(workspace, API.replace('is: [paged,', 'is: [nope, paged,'))
+        raml, error = workspace.lenient(entry, ParseOptions(retain_text=True))
         assert error is not None
         found = _found(build_occurrences(raml), path_to_file_uri(entry))
         assert (Role.DEFINITION, Kind.TYPE, 'User', *_where(API, 'User:')) in found

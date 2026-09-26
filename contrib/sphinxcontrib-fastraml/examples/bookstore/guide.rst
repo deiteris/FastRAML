@@ -21,13 +21,16 @@ scheme. Server-to-server integrations can use a
 Add a book
 ----------
 
+Send the whole book as JSON. You choose its ``id`` and ``createdAt``.
+
 .. raml:send:: POST /books
    :values:
       tenant = acme
       Authorization = Bearer <your token>
    :body: new-book.json
 
-   Send the whole book as JSON. You choose its ``id`` and ``createdAt``.
+The store answers with the book as it stored it, whose fields are the ones
+you just sent. ``Location`` says where it now lives.
 
 .. raml:expect:: POST /books 201
    :values:
@@ -35,11 +38,10 @@ Add a book
    :body: new-book.json
    :fields: none
 
-   The store answers with the book as it stored it, whose fields are the ones
-   you just sent. ``Location`` says where it now lives.
-
 Read it back
 ------------
+
+Ask for the book by its ISBN.
 
 .. raml:send:: GET /books/{isbn}
    :values:
@@ -47,12 +49,10 @@ Read it back
       Authorization = Bearer <your token>
       isbn = 9780061054884
 
-   Ask for the book by its ISBN.
+The book comes back as JSON.
 
 .. raml:expect:: GET /books/{isbn} 200
    :body: new-book.json
-
-   The book comes back as JSON.
 
 Next steps
 ----------

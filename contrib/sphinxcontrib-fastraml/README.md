@@ -106,36 +106,36 @@ the opposite: only what this step takes, spelled out where they are reading.
 Two directives write that:
 
 ```rst
+Send the whole book as JSON.
+
 .. raml:send:: POST /books
    :values:
       tenant = acme
       Authorization = Bearer <your token>
    :body: new-book.json
 
-   Send the whole book as JSON.
+The store answers with the book as it stored it.
 
 .. raml:expect:: POST /books 201
    :body: new-book.json
-
-   The store answers with the book as it stored it.
 ```
 
-A step renders, in this order:
+The step's instruction is an ordinary paragraph above it: a step takes no
+content of its own. A step renders, in this order:
 
-1. the directive's own text, which is the step's instruction;
-2. for `raml:send`, which scheme to authenticate with;
-3. a table of inputs, one row each, with whether it is required and what it
+1. for `raml:send`, which scheme to authenticate with;
+2. a table of inputs, one row each, with whether it is required and what it
    means, its constraints in words. `In` says where it goes: the `URL` (host or
    path), a `header` (including those the security scheme adds) or the
    `query`. For `raml:expect`, the response headers the specification
    explains;
-4. a table of the body's fields, one level deep, each marked required or
+3. a table of the body's fields, one level deep, each marked required or
    not: an example body carries optional fields too. Where a response only
    echoes a body a step above has explained, `:fields: none` leaves the table
    out;
-5. the concrete HTTP request or response, whose first line is the method and
+4. the concrete HTTP request or response, whose first line is the method and
    path, or the status;
-6. a link to the full reference entry.
+5. a link to the full reference entry.
 
 A declared type -- the body's `Book`, a field's `Money` -- links to its own
 entry, as it does in the reference.

@@ -297,6 +297,57 @@ class TestABrokenDefinitionIsKeptAndMarked:
         assert fragment.definition.id in raml.broken
 
 
+class TestALaterStageMarksWhatItCouldNotSettle:
+    """docs/13 § 1 — P5, P7, P8 and P9 fail on entities already in the model;
+    each such entity, and each one the failure passed through, is marked.
+    """
+
+    @staticmethod
+    def parse(workspace, body: str):
+        root = workspace({'api.raml': API + body})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        return raml
+
+    def test_an_unknown_security_scheme(self, workspace):
+        raml = self.parse(workspace, 'securedBy: [nope]\n/a:\n  get:\n')
+        (scheme,) = raml.global_secured_by
+        assert scheme.definition is None
+        assert set(raml.broken) == {scheme.id}
+
+    def test_an_unknown_type_name_stays_unknown(self, workspace):
+        raml = self.parse(workspace, 'types:\n  Bad: NoSuch\n  Good: string\n')
+        types = raml.entry_point.types
+        assert type(types['Bad'].shape).__name__ == 'UnknownShape'
+        assert set(raml.broken) == {types['Bad'].id}
+
+    def test_a_referrer_the_failure_passed_through_is_marked_too(self, workspace):
+        raml = self.parse(workspace, 'types:\n  A: B\n  B: NoSuch\n')
+        types = raml.entry_point.types
+        assert set(raml.broken) == {types['A'].id, types['B'].id}
+
+    def test_a_bad_property_type_marks_the_property_not_its_holder(self, workspace):
+        """The worklist resolves the property's own shape; the failure never
+        passes through the object that holds it.
+        """
+        raml = self.parse(workspace, 'types:\n  User:\n    properties:\n      p: NoSuch\n')
+        user = raml.entry_point.types['User']
+        assert set(raml.broken) == {user.shape.properties['p'].base.id}
+
+    def test_an_unknown_annotation(self, workspace):
+        raml = self.parse(workspace, '(nosuch): x\n')
+        (extension,) = raml.domain_extensions
+        assert extension.defined_by is None
+        assert set(raml.broken) == {extension.id}
+
+    def test_a_failed_merge_marks_it_and_every_shape_enclosing_it(self, workspace):
+        raml = self.parse(
+            workspace, 'types:\n  N: integer\n  Outer:\n    properties:\n      c:\n        type: [string, N]\n'
+        )
+        outer = raml.entry_point.types['Outer']
+        assert set(raml.broken) == {outer.id, outer.shape.properties['c'].base.id}
+
+
 class TestTheEndpointTreeKeepsWhatFailed:
     """docs/13 § 1 — responses, operations and resources are attached before
     their content is decoded. A failure marks the entity it happened in and

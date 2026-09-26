@@ -172,10 +172,11 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
             # parent's `anyOf`, so a child that merely narrows a union has no
             # members of its own until `inherit` has run (docs/07 § 5).
             _distribute_union_facets(walk, result, depth)
-    except RamlError:
+    except RamlError as err:
         # Every shape the error passes through is left unmerged, and must not
-        # claim to be flattened (docs/07 § 6).
+        # claim to be flattened (docs/07 § 6). It is marked (docs/13 § 1).
         base._unwrapped = False  # noqa: SLF001 - see above
+        walk.raml.broken[base.id] = err
         walk.failed.add(base.id)
         walk.raml.put_shape(base)
         raise

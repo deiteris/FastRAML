@@ -412,6 +412,9 @@ def apply_security_schemes(raml: Raml) -> None:
         try:
             _bind(raml, scheme, extensions.get(scheme.location, resolver))
         except RamlError as err:
+            # Stays where it was written, marked (docs/13 § 1). An inherited
+            # copy is the same object, so it is marked once.
+            raml.broken[scheme.id] = err
             accumulator.add(err)
     accumulator.raise_if_any()
 

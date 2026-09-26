@@ -121,20 +121,25 @@ def resolve_domain_extensions(raml: Raml) -> None:
         # the decoder fills, exactly as P7 does for a shape.
         anchor = extension.anchor or raml.resolver_at(extension.location)
         if anchor is None:
-            accumulator.add(_unresolved(extension, 'annotation type not found'))
+            accumulator.add(_unresolved(raml, extension, 'annotation type not found'))
             continue
         try:
             extension.defined_by = anchor.reference_annotation_type(extension.name)
         except UnresolvedReferenceError as err:
-            accumulator.add(_unresolved(extension, err.reason))
+            accumulator.add(_unresolved(raml, extension, err.reason))
     accumulator.raise_if_any()
 
 
-def _unresolved(extension: DomainExtension, reason: str) -> RamlError:
-    return RamlError.new(
+def _unresolved(raml: Raml, extension: DomainExtension, reason: str) -> RamlError:
+    """The failure, recorded on the application too: it stays in the model
+    with `defined_by is None`, marked (docs/13 § 1).
+    """
+    error = RamlError.new(
         reason,
         extension.location,
         extension.key_pos,
         kind=ErrorKind.RESOLVING,
         info={'annotation': extension.name},
     )
+    raml.broken[extension.id] = error
+    return error

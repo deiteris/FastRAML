@@ -67,6 +67,10 @@ marked today:
 | A type or annotation type declaration | Its decoded facets. A failure before its kind was settled leaves an `UnknownShape`, never `shape is None` |
 | A trait, resource type or security scheme definition | Every key that decoded; a security scheme's `describedBy` and its responses as a resource's. One whose `!include` failed has `link is None` |
 | A resource, an operation, a response | Every key that decoded, and every child, sound or marked |
+| A `securedBy:` entry whose scheme did not bind (P5) | `definition is None` |
+| A shape whose kind P7 could not settle, and each shape the failure passed through | An `UnknownShape` |
+| An annotation application whose type P8 could not find | `defined_by is None` |
+| A shape whose merge P9 rejected, and each shape enclosing it | Its declared, unmerged form, not flagged unwrapped (docs/07 § 6) |
 
 Anything else that fails is absent (docs/11 § 2). On success, `broken` is
 empty.

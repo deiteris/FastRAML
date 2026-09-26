@@ -137,6 +137,11 @@ eagerly resolves `$ref` through the parse's `ResourceLoader`, and caches fetched
 resources in one `SchemaRegistry` per parse. Schema instance validation delegates
 to the compiled validator.
 
+A schema file is one document per parse: the one it compiles from and the one
+a `$ref` into it retrieves are the same resource, so every walk recognises a
+reference back into it. An inline schema is not the RAML file it is written
+in and is not registered under that file's URI.
+
 RAML sibling facets that reach `JsonShape.decode_facets()` are rejected. Common
 facets are removed earlier by `make_shape()` and are therefore currently
 accepted, including `displayName`, `description`, `default`, `required`,
@@ -149,7 +154,9 @@ declarations. A JSON Schema type may be aliased, but RAML inheritance can only
 merge an identical schema; attempts to specialize it with RAML constraints fail.
 
 `JsonShape.as_schema()` returns a cached self-contained schema view with external
-references bundled locally. `JsonShape.as_shape()` returns a cached nearest-RAML
+references bundled locally. A reference back into the bundled file, from a
+document pulled in, points into the result (`#`, `#/definitions/line`) rather
+than pulling in a copy of it. `JsonShape.as_shape()` returns a cached nearest-RAML
 shape projection for consumers. Projection shapes are unregistered, positionless,
 already unwrapped view objects and must not re-enter parser passes. The projection
 can lose semantics: `oneOf` becomes a union, unsupported conditionals,

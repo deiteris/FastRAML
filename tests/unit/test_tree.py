@@ -540,7 +540,12 @@ types:
   "definitions": {
     "Amount": {
       "type": "object",
-      "properties": { "minor": { "type": "integer" }, "of": { "$ref": "#/definitions/Amount" } }
+      "properties": {
+        "minor": { "type": "integer" },
+        "of": { "$ref": "#/definitions/Amount" },
+        "invoice": { "$ref": "invoice.json" },
+        "line": { "$ref": "invoice.json#/definitions/line" }
+      }
     },
     "Currency": { "type": "string", "enum": ["GBP", "USD"] }
   }
@@ -595,6 +600,14 @@ class TestASchemaArrivesSelfContained:
         # `money.json`'s own `#/definitions/Amount` is local to *that* file, so
         # it has to be rewritten against where the subschema now lives.
         assert schema['definitions']['Amount2']['properties']['of'] == {'$ref': '#/definitions/Amount2'}
+
+    def test_a_reference_back_into_the_bundled_file_points_into_it(self, schema):
+        # docs/10 § 7: the file is one document per parse, so `money.json`'s
+        # way back into it lands on the bundle's own root and its own
+        # `line`, not on copies pulled in beside them.
+        back = schema['definitions']['Amount2']['properties']
+        assert back['invoice'] == {'$ref': '#'}
+        assert back['line'] == {'$ref': '#/definitions/line'}
 
     def test_nothing_names_a_file(self, schema):
         text = json.dumps(schema)

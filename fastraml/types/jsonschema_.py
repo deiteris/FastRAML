@@ -175,10 +175,18 @@ class SchemaRegistry:
                 info={'error': err.message, 'path': '/'.join(str(part) for part in err.absolute_path)},
             ) from err
 
+        entry = Resource.from_contents(contents, default_specification=specification)
+        if _is_one_schema(self._raml, document_uri):
+            # One document, one resource, per parse: a `$ref` back into this
+            # file is then this very document, which the bundle and the
+            # projection recognise by identity. An inline schema is not the
+            # document it is written in, and stays out.
+            entry = self._resources.setdefault(document_uri, entry)
+            contents = entry.contents
         # `retrieve` is the init alias of the private `_retrieve` field, which
         # mypy's attrs plugin does not derive.
         registry: Registry[Any] = Registry(retrieve=self._retrieve).with_resource(  # type: ignore[call-arg]
-            document_uri, Resource.from_contents(contents, default_specification=specification)
+            document_uri, entry
         )
         resolver = registry.resolver(document_uri)
         if pointer:
@@ -235,13 +243,15 @@ class SchemaRegistry:
                 stack.extend((item, depth + 1) for item in node)
 
     def _retrieve(self, uri: str) -> Resource[Any]:
-        """`referencing`'s hook: every `$ref` target is read through the loader."""
+        """`referencing`'s hook: every `$ref` target is read through the loader,
+        once per parse.
+        """
+        return self._resources.get(uri) or self._load(uri)
+
+    def _load(self, uri: str) -> Resource[Any]:
         from referencing import Resource  # noqa: PLC0415 - deferred for startup cost
         from referencing.jsonschema import DRAFT7  # noqa: PLC0415
 
-        cached = self._resources.get(uri)
-        if cached is not None:
-            return cached
         raml = self._raml
         limit = raml.max_include_size
         try:
@@ -544,7 +554,7 @@ class JsonShape(ComplexKind):
         if self._compiled is None:
             return None
         if self._cached_schema is None:
-            self._cached_schema = _bundle(self._compiled)
+            self._cached_schema = _bundle(self._compiled, self.canonical_uri)
         return self._cached_schema
 
 
@@ -1118,20 +1128,29 @@ class _Bundling:
     #: alone it names whatever the result happens to have at that path, and a
     #: schema that validates something else is worse than one that is opaque.
     root: bool
+    #: The file the bundle is of, where it is a whole file of its own: a
+    #: reference back into it, from anywhere, is a pointer into the result.
+    document: str | None = None
 
     def at(self, resolver: Resolver[Any]) -> _Bundling:
-        return _Bundling(resolver, self.pulled, self.named, self.taken, root=False)
+        return _Bundling(resolver, self.pulled, self.named, self.taken, root=False, document=self.document)
 
 
-def _bundle(compiled: CompiledSchema) -> Any:
-    """`compiled`'s document with every reference out of it pulled in."""
+def _bundle(compiled: CompiledSchema, canonical: str | None) -> Any:
+    """`compiled`'s document with every reference out of it pulled in.
+
+    `canonical` is the schema's identity (`JsonShape.canonical_uri`); without
+    a pointer it names the whole file, which references back into it then
+    point into rather than copy.
+    """
     document = compiled.contents
     taken = (
         set(document[_BUNDLE_KEY])
         if isinstance(document, dict) and isinstance(document.get(_BUNDLE_KEY), dict)
         else set()
     )
-    context = _Bundling(compiled.resolver, {}, {}, taken, root=True)
+    whole, _, pointer = (canonical or '').partition('#')
+    context = _Bundling(compiled.resolver, {}, {}, taken, root=True, document=None if pointer else whole or None)
     aliases = _definition_aliases(context, document)
     bundled = _bundle_root(context, document, aliases)
     if not context.pulled or not isinstance(bundled, dict):
@@ -1203,17 +1222,19 @@ def _bundle_node(context: _Bundling, node: Any) -> Any:
     reference = node.get('$ref')
     if not isinstance(reference, str) or (context.root and reference.startswith('#')):
         return {key: _bundle_node(context, value) for key, value in node.items()}
-    name = _pull(context, reference)
-    if name is None:
+    local = _pull(context, reference)
+    if local is None:
         return {key: _bundle_node(context, value) for key, value in node.items()}
     # `$ref` first, where the author wrote it, and its siblings after: draft 2019
     # onward gives a schema beside a `$ref` meaning, so they are not dropped.
     rest = {key: _bundle_node(context, value) for key, value in node.items() if key != '$ref'}
-    return {'$ref': f'#/{_BUNDLE_KEY}/{name}', **rest}
+    return {'$ref': local, **rest}
 
 
 def _pull(context: _Bundling, reference: str) -> str | None:
-    """Resolve `reference`, register what it names, and answer with that name.
+    """Resolve `reference` and answer with the local reference that replaces
+    it: a pointer into the result where it lands in the bundled file itself,
+    else a `definitions` entry holding what it names, registered on first use.
 
     `None` where it does not resolve, which leaves the reference as the author
     wrote it. `_prefetch` has already resolved every reference in the schema by
@@ -1222,20 +1243,23 @@ def _pull(context: _Bundling, reference: str) -> str | None:
     """
     from referencing.exceptions import Unresolvable  # noqa: PLC0415 - deferred for startup cost
 
+    document, fragment = urldefrag(urljoin(_document_of(context.resolver) or '', reference))
+    if document == context.document:
+        return f'#{fragment}'
     try:
         resolved = context.resolver.lookup(reference)
     except Unresolvable:
         return None
     known = context.named.get(id(resolved.contents))
     if known is not None:
-        return known
+        return f'#/{_BUNDLE_KEY}/{known}'
     name = _bundle_name(reference, context.taken)
     # Registered before the walk into it, so a reference that leads back here
     # finds the name rather than descending again.
     context.named[id(resolved.contents)] = name
     context.pulled[name] = None
     context.pulled[name] = _bundle_node(context.at(resolved.resolver), resolved.contents)
-    return name
+    return f'#/{_BUNDLE_KEY}/{name}'
 
 
 def _bundle_name(reference: str, taken: set[str]) -> str:

@@ -91,12 +91,16 @@ def build_endpoints(raml: Raml) -> None:
     raw.clear()
 
 
-def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) -> None:
+def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) -> RamlError | None:
     """Apply the resource-type chain, then the traits, then recurse.
 
     Resource types first: they contribute `is:` entries of their own, which
     `apply_traits` then orders behind the resource's and the method's
     (docs/08 § 3.2).
+
+    Returns what failed here or below, so the enclosing resource notes it
+    too: a failure passes through every resource that holds it
+    (docs/13 § 1).
     """
     if source.resource_type is not None:
         try:
@@ -119,7 +123,10 @@ def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) ->
         note_failure(source, err)
         acc.add(err)
     for child in source.endpoints.values():
-        _resolve_directives(raml, child, acc)
+        failure = _resolve_directives(raml, child, acc)
+        if failure is not None:
+            note_failure(source, failure)
+    return source.failure
 
 
 def _walk(raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[str, Parameter]) -> None:

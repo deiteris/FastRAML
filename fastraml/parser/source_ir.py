@@ -105,8 +105,9 @@ class SourceEndPoint:
     provenance: dict[Node, ParseCtx] = field(default_factory=dict)
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
-    #: Set by P4 when a trait or resource type failed to apply here. Stage 2
-    #: marks the entity this becomes (docs/13 § 1).
+    #: Set by P4 when a trait or resource type failed to apply here, or to
+    #: anything this resource holds. Stage 2 marks the entity this becomes
+    #: (docs/13 § 1).
     failure: RamlError | None = None
 
     def __repr__(self) -> str:

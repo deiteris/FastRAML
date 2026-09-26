@@ -393,6 +393,11 @@ class TestATemplateThatFailsToApplyMarksWhatLacksIt:
         mark = raml.broken[raml.endpoints['/a'].operations['get'].id]
         assert [chain[0].info for chain in mark.chains()] == [{'trait': 'one'}, {'trait': 'two'}]
 
+    def test_the_failure_marks_every_enclosing_resource(self, workspace):
+        # As a failure in content does: it passes through each of them.
+        _, marked = self.marked(workspace, '/a:\n  /b:\n    get:\n      is: [nosuch]\n  /c:\n    get:\n')
+        assert marked == {'/a', '/a/b', '/a/b get'}
+
     def test_an_unknown_resource_type_marks_the_resource(self, workspace):
         _, marked = self.marked(workspace, '/a:\n  type: nosuch\n  get:\n')
         assert marked == {'/a'}

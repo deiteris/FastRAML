@@ -315,7 +315,9 @@ The index reads what the passes bound and resolves no name itself:
 - **Links.** Each `!include` argument and each `uses:` value. The target is
   the fragment the file decoded to, or `None` for a file that is not one.
 
-A lenient model gives the occurrences of the stages it completed. A span met
+A name in a quoted scalar is placed past its quote, as diagnostics are
+(docs/11 § 3). A lenient model gives the occurrences of the stages it
+completed. A span met
 more than once, for example in a template applied twice, is kept once per
 target.
 

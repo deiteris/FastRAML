@@ -190,6 +190,58 @@ class TestTargets:
         assert [(o.role, o.written, o.span.column) for o in found] == [(Role.REFERENCE, 'basic.v1', column)]
 
 
+QUOTED = """#%RAML 1.0
+title: Demo
+uses:
+  "lib": "lib.raml"
+types:
+  "User":
+    properties:
+      "friend?": "lib.Person | string"
+annotationTypes:
+  "note": string
+securitySchemes:
+  "basic.v1":
+    type: Basic Authentication
+traits:
+  'paged': {}
+/users:
+  is: ["paged"]
+  securedBy: ['basic.v1']
+  "(note)": hi
+  get:
+"""
+
+
+class TestQuotedScalars:
+    """docs/11 § 3: a name in a quoted scalar starts one column past the quote."""
+
+    @pytest.mark.parametrize(
+        ('role', 'written', 'needle'),
+        [
+            pytest.param(Role.DEFINITION, 'lib', 'lib":', id='uses entry'),
+            pytest.param(Role.LINK, 'lib.raml', 'lib.raml', id='uses: value'),
+            pytest.param(Role.DEFINITION, 'User', 'User', id='type'),
+            pytest.param(Role.DEFINITION, 'friend', 'friend?', id='optional property'),
+            pytest.param(Role.ALIAS_PREFIX, 'lib', 'lib.Person', id='prefix in an expression'),
+            pytest.param(Role.REFERENCE, 'Person', 'Person', id='name in an expression'),
+            pytest.param(Role.BUILTIN, 'string', 'string"', id='keyword in an expression'),
+            pytest.param(Role.DEFINITION, 'paged', "paged'", id='single-quoted trait'),
+            pytest.param(Role.REFERENCE, 'paged', 'paged"', id='is:'),
+            pytest.param(Role.REFERENCE, 'basic.v1', "basic.v1'", id='securedBy:'),
+            pytest.param(Role.REFERENCE, 'note', 'note)', id='annotation'),
+        ],
+    )
+    def test_the_name_is_found_past_the_quote(self, tmp_path, role, written, needle):
+        _, occurrences, uri = _parsed(tmp_path, QUOTED)
+        found = {(o.role, o.written, o.line, o.column) for o in occurrences.in_file(uri)}
+        assert (role, written, *_where(QUOTED, needle)) in found
+
+    def test_nothing_is_dropped(self, tmp_path):
+        _, occurrences, _ = _parsed(tmp_path, QUOTED)
+        assert occurrences.dropped == ()
+
+
 class TestTemplates:
     def test_a_name_in_a_template_applied_twice_is_one_occurrence(self, tmp_path):
         _, occurrences, uri = _parsed(tmp_path)

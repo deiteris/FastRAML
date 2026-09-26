@@ -284,6 +284,13 @@ class TestErrorPositions:
         trace = next(iter(caught.value.chains()))[-1]
         assert (trace.position.line, trace.position.column) == (3, 6), 'the column of `Nope`, not of `A`'
 
+    def test_an_error_in_a_quoted_expression_points_past_the_quote(self, workspace):
+        root = workspace({'lib.raml': LIB + 'types:\n  A: "Nope"\n'})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'lib.raml')
+        trace = next(iter(caught.value.chains()))[-1]
+        assert (trace.position.line, trace.position.column) == (3, 7), 'the column of `Nope`, not of the quote'
+
     def test_one_cached_parse_still_yields_two_located_diagnostics(self, workspace):
         # docs/06 § 2: the AST is memoised on text alone, so the location and
         # the rebased column have to come from the caller. Two files, one parse.

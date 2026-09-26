@@ -43,6 +43,18 @@ class Position:
         column = self.column + offset
         return Position(line=self.line, column=column, end_line=self.line, end_column=column + 1)
 
+    def within(self, text: str) -> Position:
+        """Where `text` starts inside the scalar this position spans.
+
+        A quoted flow scalar on one line spans its text and two quotes, so the
+        text starts one column in; a plain one starts where it is. A scalar
+        whose span fits neither, such as one with an escape or a tag, is
+        returned unchanged (docs/11 § 3).
+        """
+        if self.end_line == self.line and self.end_column - self.column == len(text) + 2:
+            return Position(self.line, self.column + 1, self.line, self.end_column - 1)
+        return self
+
     def with_end(self, end_line: int, end_column: int) -> Position:
         return replace(self, end_line=end_line, end_column=end_column)
 

@@ -212,11 +212,15 @@ class _Index:
         role: Role,
         kind: Kind,
         target: int | None,
+        text: str | None = None,
         offset: int = 0,
     ) -> None:
-        """`written`, starting `offset` characters into `at`; nothing where the source gave no position."""
+        """`written`, `offset` characters into the scalar at `at`, whose text is
+        `text`, or `written` itself. Nothing where the source gave no position.
+        """
         if at is not None and at.is_known:
-            self.add(uri, at.line, at.column + offset, written, role=role, kind=kind, target=target)
+            start = at.within(written if text is None else text)
+            self.add(uri, start.line, start.column + offset, written, role=role, kind=kind, target=target)
 
     def _holds(self, uri: str, line: int, column: int, end: int, written: str) -> bool:
         """The law: the retained text at the span is `written`."""
@@ -261,7 +265,13 @@ class _Index:
             for name, prop in base.custom_facet_defs.items():
                 member = prop.base
                 self.add_at(
-                    member.location, member.key_pos, name, role=Role.DEFINITION, kind=Kind.FACET, target=member.id
+                    member.location,
+                    member.key_pos,
+                    name,
+                    role=Role.DEFINITION,
+                    kind=Kind.FACET,
+                    target=member.id,
+                    text=member.name,
                 )
             if isinstance(base.shape, ObjectShape) and base.shape.properties:
                 for name, prop in base.shape.properties.items():
@@ -276,14 +286,14 @@ class _Index:
                         role=Role.DEFINITION,
                         kind=Kind.PROPERTY,
                         target=member.id,
+                        text=member.name,
                     )
             uri = base.location
             written = base.type_expr
             if not base.type_expr_refs and written is not None and written.value in BUILTIN_TYPES:
                 # A built-in written alone is settled at decode, so P7 records
                 # nothing for it; the node the shape keeps says where it is.
-                at = written.position
-                self.add(uri, at.line, at.column, written.value, role=Role.BUILTIN, kind=Kind.TYPE, target=None)
+                self.add_at(uri, written.position, written.value, role=Role.BUILTIN, kind=Kind.TYPE, target=None)
             for ref in base.type_expr_refs:
                 if ref.builtin is not None:
                     self.add(uri, ref.line, ref.column, ref.builtin, role=Role.BUILTIN, kind=Kind.TYPE, target=None)
@@ -356,6 +366,7 @@ class _Index:
                     kind=_type_kind(defined_by),
                     target=defined_by.id,
                     resolver=extension.anchor,
+                    text=f'({extension.name})',
                     offset=1,
                 )
 
@@ -376,27 +387,34 @@ class _Index:
         kind: Kind,
         target: int,
         resolver: ReferenceResolver | None,
+        text: str | None = None,
         offset: int = 0,
     ) -> None:
-        """A reference written as `name`, which is `declared` or `lib.declared`.
+        """A reference written as `name`, which is `declared` or `lib.declared`,
+        `offset` characters into the scalar whose text is `text`, or `name`.
 
         Split by the declared name rather than at a dot: `oauth2.0` is one name.
         """
+        text = name if text is None else text
         prefix = name[: -len(declared) - 1] if name != declared and name.endswith(f'.{declared}') else ''
         if prefix:
             link = None if resolver is None else resolver.library_link(prefix)
             if link is not None:
-                self.add_at(uri, at, prefix, role=Role.ALIAS_PREFIX, kind=Kind.LIBRARY, target=link.id, offset=offset)
+                self.add_at(
+                    uri, at, prefix, role=Role.ALIAS_PREFIX, kind=Kind.LIBRARY, target=link.id, text=text, offset=offset
+                )
             offset += len(prefix) + 1
-        self.add_at(uri, at, declared, role=Role.REFERENCE, kind=kind, target=target, offset=offset)
+        self.add_at(uri, at, declared, role=Role.REFERENCE, kind=kind, target=target, text=text, offset=offset)
 
     def _path(self, uri: str, at: Position, path: str, target: int | None) -> None:
-        """A path to a file, placed by where its node ends.
-
-        A node's position starts at its tag, and `uses:` may write `!include`
-        too, so the path is the text that finishes the node.
+        """A path to a file: the text of a quoted scalar, or else what finishes
+        the node, whose position starts at its tag (`uses:` may write
+        `!include` too).
         """
-        if at.end_line == at.line:
+        start = at.within(path)
+        if start is not at:
+            self.add(uri, start.line, start.column, path, role=Role.LINK, kind=Kind.FILE, target=target)
+        elif at.end_line == at.line:
             self.add(uri, at.line, at.end_column - len(path), path, role=Role.LINK, kind=Kind.FILE, target=target)
 
 

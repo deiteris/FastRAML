@@ -116,6 +116,7 @@ def extract_uri_template_params(uri: str, location: str, uri_pos: Position) -> l
     an invalid character in a variable name, and a malformed percent-encoded
     sequence. See docs/08-templates-and-endpoints.md § 6.2.
     """
+    uri_pos = uri_pos.within(uri)
     expressions: list[UriTemplateExpression] = []
     length = len(uri)
     i = 0
@@ -161,6 +162,7 @@ def check_uri_reference(uri: str, location: str, uri_pos: Position) -> None:
     `//api.test.com//common//` is one. Run after `extract_uri_template_params`,
     which has already rejected a malformed expression.
     """
+    uri_pos = uri_pos.within(uri)
     for match in _URI_REFERENCE_FAULT.finditer(uri):
         fault = match.group()
         if fault[0] == '{':

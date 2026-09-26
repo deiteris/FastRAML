@@ -78,6 +78,13 @@ class TestMalformedVarnames:
             'invalid pct-encoded sequence in variable name',
         }
 
+    def test_a_quoted_uri_is_placed_past_its_quote(self):
+        # docs/11 § 3: the key `"/{.a}":` spans the URI and its two quotes.
+        uri = '/{.a}'
+        with pytest.raises(RamlError) as excinfo:
+            extract_uri_template_params(uri, LOC, Position(4, 3, 4, 3 + len(uri) + 2))
+        assert excinfo.value.head.position.column == 3 + 1 + uri.index('.')
+
     def test_leading_dot_points_at_the_dot(self):
         uri = '/{.a}'
         with pytest.raises(RamlError) as excinfo:

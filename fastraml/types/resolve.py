@@ -325,12 +325,12 @@ def _nil(raml: Raml, template: BaseShape) -> BaseShape:
 def _column(base: BaseShape, offset: int) -> Position:
     """A file position for a 0-based offset inside the type expression.
 
-    Exact for a plain scalar. A quoted or block scalar shifts the text right of
-    the position the composer reports, and the offset is not adjusted for it.
+    Exact for a plain scalar and a quoted one on one line (docs/11 § 3).
     """
-    if base.type_expr is None:
+    expression = base.type_expr
+    if expression is None:
         return base.key_pos
-    return base.type_expr.position.shifted(offset)
+    return expression.position.within(expression.value).shifted(offset)
 
 
 def _note(base: BaseShape, col: int, *, builtin: str) -> None:

@@ -158,11 +158,15 @@ YAML node spans come from the composer's marks. Some parsers derive a more
 specific position within a scalar:
 
 - URI-template diagnostics add a Python character offset to the URI scalar's
-  start position.
+  text.
 - Type-expression diagnostics rebase a lexer token's zero-based column onto the
-  type-expression scalar. This is exact for plain scalars. Quoting and block
-  scalar prefixes can shift the reported column because the YAML composer does
-  not expose their content offset.
+  type-expression scalar's text.
+
+Both find the text with `Position.within(text)`. A quoted flow scalar on one
+line spans its text plus two quotes, so its text starts one column in. The
+composer does not report a scalar's style, so a scalar whose span fits neither
+form, such as a block scalar or a quoted one with an escape, keeps its node's
+start, and a column inside it can be off.
 
 `Position.shifted(offset)` returns a one-character span at the shifted column.
 

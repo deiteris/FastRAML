@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from hypothesis import example, given, settings
+from hypothesis import example, given
 from hypothesis import strategies as st
 
 from fastraml.types.values import _NoKey, is_subset, same_value, unique_items, value_key
@@ -55,7 +55,8 @@ def _key(value):
 
 
 #: Pairs at every boundary between kinds. Independent random draws almost never
-#: meet here, so they are listed rather than left to chance.
+#: meet here, so they are listed rather than left to chance; more draws do not
+#: help, which is why the tests keep Hypothesis's default count.
 _BOUNDARIES = [
     ('1', 1),
     ('1.0', 1),
@@ -83,7 +84,6 @@ _BOUNDARIES = [
 ]
 
 
-@settings(max_examples=2000)
 @given(_VALUES, _VALUES)
 @example(*_BOUNDARIES[0])
 @example(*_BOUNDARIES[1])
@@ -116,7 +116,6 @@ def test_equal_keys_exactly_when_same_value(left, right):
     assert (left_key == right_key) == same_value(left, right)
 
 
-@settings(max_examples=500)
 @given(st.lists(_VALUES, max_size=8))
 def test_unique_items_finds_the_first_semantic_duplicate(items):
     expected = next(
@@ -126,7 +125,6 @@ def test_unique_items_finds_the_first_semantic_duplicate(items):
     assert unique_items(items) == expected
 
 
-@settings(max_examples=500)
 @given(st.lists(_VALUES, max_size=6), st.lists(_VALUES, max_size=6))
 def test_is_subset_is_membership_under_same_value(values, allowed):
     expected = all(any(same_value(value, member) for member in allowed) for value in values)

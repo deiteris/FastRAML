@@ -52,6 +52,7 @@ from fastraml.views.bindings.python import python_runtime
 from fastraml.views.bindings.schema import Container, Holds, Structural, contract_schema
 from fastraml.views.bindings.typescript import typescript_runtime
 from fastraml.views.tree import build_tree
+from tests.unit.conftest import MemoryWorkspace
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 TYPESCRIPT_DESTINATION = 'viewer/src/tree.d.ts'
@@ -1073,10 +1074,15 @@ class TestTheGeneratedGoCompilesAndReadsTheTree:
     runtime. No check that reads generated output can settle any of them.
     """
 
-    @pytest.fixture
-    def decoded(self, tmp_path, workspace):
-        """Both documents, decoded by the generated Go and written back."""
-        module = _go_module(tmp_path, ('contract_test.go', GO_TEST))
+    @pytest.fixture(scope='class')
+    @staticmethod
+    def decoded(tmp_path_factory):
+        """Both documents, decoded by the generated Go and written back.
+
+        Once per class: each `go test` run compiles and links anew.
+        """
+        module = _go_module(tmp_path_factory.mktemp('go'), ('contract_test.go', GO_TEST))
+        workspace = MemoryWorkspace(module / 'documents')
         root = workspace({'api.raml': DOCUMENT})
         trees = {
             'kinds': build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))),

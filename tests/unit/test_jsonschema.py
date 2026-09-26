@@ -206,6 +206,26 @@ class TestReferences:
 class TestInstanceValidation:
     """Section 5's `json` row: the compiled validator decides."""
 
+    def test_validating_through_a_ref_to_another_file_neither_crawls_nor_retrieves(self, workspace, monkeypatch):
+        # docs/10 § 7: the validator's registry already holds every document
+        # the schema reaches, so each validation does not rebuild one.
+        from referencing import Registry
+
+        from fastraml.types.jsonschema_ import SchemaRegistry
+
+        holder = json.dumps({'type': 'object', 'properties': {'p': {'$ref': 'person.json'}}})
+        files = {'api.raml': API + 'types:\n  Holder: !include holder.json\n', 'holder.json': holder}
+        raml = parsed(workspace, {**files, 'person.json': PERSON})
+        shape = raml.types_in(raml.location)['Holder'].shape
+        calls: list[str] = []
+        crawl, retrieve = Registry.crawl, SchemaRegistry._retrieve
+        monkeypatch.setattr(Registry, 'crawl', lambda self: calls.append('crawl') or crawl(self))
+        monkeypatch.setattr(SchemaRegistry, '_retrieve', lambda self, uri: calls.append(uri) or retrieve(self, uri))
+        shape.validate({'p': {'name': 'n'}}, '')
+        with pytest.raises(RamlError):
+            shape.validate({'p': {'age': 1}}, '')
+        assert calls == []
+
     def test_a_conforming_example_passes(self, workspace):
         body = 'types:\n' + declaration('Person', PERSON, 'example:', '  name: Ada', '  age: 36')
         assert parse(workspace, {'api.raml': API + body}) is None

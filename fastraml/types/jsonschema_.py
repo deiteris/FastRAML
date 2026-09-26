@@ -126,11 +126,13 @@ class SchemaRegistry:
     them, so the memo has to live here.
     """
 
-    __slots__ = ('_projections', '_raml', '_resources')
+    __slots__ = ('_projections', '_raml', '_reached', '_resources')
 
     def __init__(self, raml: Raml) -> None:
         self._raml = raml
         self._resources: dict[str, Resource[Any]] = {}
+        #: The documents the schema being compiled reached, by URI.
+        self._reached: set[str] = set()
         #: Projections by the subschema's canonical URI, with the named
         #: definitions a walk of the whole document collected.
         #:
@@ -184,21 +186,43 @@ class SchemaRegistry:
             entry = self._resources.setdefault(document_uri, entry)
             contents = entry.contents
         # `retrieve` is the init alias of the private `_retrieve` field, which
-        # mypy's attrs plugin does not derive.
-        registry: Registry[Any] = Registry(retrieve=self._retrieve).with_resource(  # type: ignore[call-arg]
-            document_uri, entry
+        # mypy's attrs plugin does not derive. Crawled now: a lookup that
+        # misses crawls whatever is uncrawled, so an uncrawled entry would be
+        # crawled again for every document it names.
+        registry: Registry[Any] = (
+            Registry(retrieve=self._retrieve).with_resource(document_uri, entry).crawl()  # type: ignore[call-arg]
         )
-        resolver = registry.resolver(document_uri)
-        if pointer:
-            resolved = self._lookup(resolver, '#' + pointer, location, position)
-            contents, resolver = resolved.contents, resolved.resolver
-        self._prefetch(contents, resolver, specification, location, position, set())
+        self._reached = set()
+        selected, resolver = self._select(registry, document_uri, pointer, contents, location, position)
+        self._prefetch(selected, resolver, specification, location, position, set())
+        # The schema's own registry: every document it reaches, crawled once.
+        # `referencing` keeps what a lookup retrieves only in the registry that
+        # lookup returns, so on the registry above the validator and both views
+        # would re-crawl and re-retrieve each other document at every `$ref`.
+        registry = registry.with_resources((uri, self._resources[uri]) for uri in self._reached).crawl()
+        contents, resolver = self._select(registry, document_uri, pointer, contents, location, position)
         return CompiledSchema(
             validator=validator_class(contents, registry=registry, _resolver=resolver),
             contents=contents,
             resolver=resolver,
             uri=f'{_document_of(resolver) or document_uri}#{pointer}',
         )
+
+    def _select(  # noqa: PLR0913, PLR0917 - a lookup with its diagnostic context
+        self,
+        registry: Registry[Any],
+        document_uri: str,
+        pointer: str,
+        contents: Any,
+        location: str,
+        position: Position | None,
+    ) -> tuple[Any, Resolver[Any]]:
+        """The subschema `pointer` selects in the document, and its resolver."""
+        resolver = registry.resolver(document_uri)
+        if not pointer:
+            return contents, resolver
+        resolved = self._lookup(resolver, '#' + pointer, location, position)
+        return resolved.contents, resolved.resolver
 
     # -- reading --------------------------------------------------------------
 
@@ -244,9 +268,11 @@ class SchemaRegistry:
 
     def _retrieve(self, uri: str) -> Resource[Any]:
         """`referencing`'s hook: every `$ref` target is read through the loader,
-        once per parse.
+        once per parse, and recorded as reached by the schema being compiled.
         """
-        return self._resources.get(uri) or self._load(uri)
+        resource = self._resources.get(uri) or self._load(uri)
+        self._reached.add(uri)
+        return resource
 
     def _load(self, uri: str) -> Resource[Any]:
         from referencing import Resource  # noqa: PLC0415 - deferred for startup cost

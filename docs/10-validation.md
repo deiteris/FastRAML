@@ -142,6 +142,14 @@ a `$ref` into it retrieves are the same resource, so every walk recognises a
 reference back into it. An inline schema is not the RAML file it is written
 in and is not registered under that file's URI.
 
+Each schema has its own registry: its document and every document the eager
+walk reached, crawled once at compilation. The validator, the projection and
+the bundle all resolve through it. `referencing` keeps a retrieved document
+only in the registry the lookup returns, so on the entry document alone each
+of them would re-crawl it and re-retrieve every other document at each `$ref`.
+Only what the schema reaches is in it: a parse-wide registry would let one
+schema resolve another's `$id` depending on parse order.
+
 RAML sibling facets that reach `JsonShape.decode_facets()` are rejected. Common
 facets are removed earlier by `make_shape()` and are therefore currently
 accepted, including `displayName`, `description`, `default`, `required`,

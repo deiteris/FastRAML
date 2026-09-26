@@ -329,6 +329,11 @@ class TestTypeExprRefs:
         # Past `models` and the dot it is written with.
         assert (name.resolved.name, name.column) == ('Thing', 13)
 
+    def test_a_dot_that_names_no_library_is_part_of_the_name(self, workspace):
+        types = library(workspace, '  Dot.Type: string\n  T: Dot.Type\n')
+        refs = types['T'].type_expr_refs
+        assert [(ref.resolved.name, ref.column, ref.library_link) for ref in refs] == [('Dot.Type', 6, None)]
+
     def test_an_unqualified_name_emits_one_ref(self, workspace):
         types = library(workspace, '  Thing: string\n  T: Thing\n')
         refs = types['T'].type_expr_refs

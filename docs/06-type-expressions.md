@@ -69,7 +69,9 @@ original YAML form is no longer available then.
 
 P7 records `TypeExprRef` entries for primitive keywords and resolved names.
 Qualified names produce one entry for the library prefix and one for the
-referenced declaration.
+referenced declaration. A name is qualified only when its prefix names a
+`uses:` entry: `Dot.Type`, declared under that name, is one entry at the
+name's start.
 
 ## 4. JSON Schema operands
 

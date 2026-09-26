@@ -345,24 +345,19 @@ def _note_reference(base: BaseShape, node: Reference, ref: BaseShape, resolver: 
     """Record a type name, so go-to-definition lands on the declaration.
 
     `lib.Type` emits two: the prefix navigates to the library file, the name to
-    the declaration inside it (docs/06 § 3).
+    the declaration inside it (docs/06 § 3). A dot that names no library is
+    part of the name: `Dot.Type` is one.
     """
     if base.type_expr is None:
         return
     position = _column(base, node.col)
     prefix, _name, dotted = cut_last(node.name, '.')
-    if not dotted:
+    link = resolver.library_link(prefix) if dotted and resolver is not None else None
+    if link is None:
         base.type_expr_refs.append(TypeExprRef(line=position.line, column=position.column, resolved=ref))
         return
-    link = resolver.library_link(prefix) if resolver is not None else None
-    if link is not None:
-        base.type_expr_refs.append(
-            TypeExprRef(
-                line=position.line,
-                column=position.column,
-                library_link=link,
-                library_alias=prefix,
-            )
-        )
+    base.type_expr_refs.append(
+        TypeExprRef(line=position.line, column=position.column, library_link=link, library_alias=prefix)
+    )
     # Past the prefix and the dot it is written with.
     base.type_expr_refs.append(TypeExprRef(line=position.line, column=position.column + len(prefix) + 1, resolved=ref))

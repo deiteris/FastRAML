@@ -46,8 +46,6 @@ DROPPED: Final = {
     'Libraries/recursive-types/valid-recursive-type.raml': 1,
     # A `securedBy:` entry with parameters keeps no position for its name.
     'SecuritySchemes/scopes/valid.raml': 1,
-    # P7 places the name in `Dot.Type` past a dot that names no library.
-    'Types/dot-notation-types/valid.raml': 1,
     # Five `securedBy:` entries with parameters, one substitution, and one
     # recursion marker.
     'fixtures/sample/api.raml': 7,

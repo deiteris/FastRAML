@@ -16,6 +16,7 @@ See docs/09-security-and-annotations.md § A. Three rules carry the design:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlparse
 
@@ -28,7 +29,7 @@ from fastraml.parser.source_decode import decode_request_facet, decode_responses
 from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.directives import SecurityScheme
@@ -157,10 +158,19 @@ class SecuritySchemeDefinition:
 # -- decoding a declaration ---------------------------------------------------
 
 
-def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declaration's key vocabulary
-    raml: Raml, key_node: Node | None, value_node: Node, location: str
+def make_security_scheme_definition(
+    raml: Raml,
+    key_node: Node | None,
+    value_node: Node,
+    location: str,
+    *,
+    attach: Callable[[SecuritySchemeDefinition], None],
 ) -> SecuritySchemeDefinition:
-    """Decode one security-scheme declaration."""
+    """Decode one security-scheme declaration.
+
+    `attach` places the definition before its content is read; one whose
+    content fails stays placed, marked in `Raml.broken` (docs/13 § 1).
+    """
     location = raml.document_location(value_node, location)
     definition = SecuritySchemeDefinition(
         id=raml.next_id(),
@@ -169,9 +179,21 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
         key_pos=(key_node if key_node is not None else value_node).position,
         value_pos=value_node.full_position,
     )
+    attach(definition)
+    try:
+        _decode_scheme_content(raml, definition, value_node, location)
+    except RamlError as err:
+        raml.broken[definition.id] = err
+        raise
+    return definition
+
+
+def _decode_scheme_content(  # noqa: PLR0912 - one pass over the declaration's key vocabulary
+    raml: Raml, definition: SecuritySchemeDefinition, value_node: Node, location: str
+) -> None:
     if value_node.tag == TAG_INCLUDE:
         definition.link_uri = note_include_ref(raml, value_node, location)
-        return definition
+        return
     if is_null(value_node):
         raise node_error('security scheme must declare a type', location, value_node)
     if value_node.kind is not NodeKind.MAPPING:
@@ -192,7 +214,7 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
                 elif name == FACET_DESCRIPTION:
                     definition.description = make_string_facet(raml, key, value, location)
                 elif name == FACET_DESCRIBED_BY:
-                    definition.described_by = _decode_described_by(raml, value, location)
+                    _decode_described_by(raml, value, location, partial(setattr, definition, 'described_by'))
                 elif name == FACET_SETTINGS:
                     settings_node = value
                 elif is_annotation_key(name):
@@ -210,14 +232,27 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()
-    return definition
 
 
-def _decode_described_by(raml: Raml, node: Node, location: str) -> SecuritySchemeDescription:
-    """`describedBy:` — headers, query, responses, decoded exactly as a method's."""
+def _decode_described_by(
+    raml: Raml, node: Node, location: str, attach: Callable[[SecuritySchemeDescription], None]
+) -> None:
+    """`describedBy:` — headers, query, responses, decoded exactly as a method's.
+
+    Attached before its content is decoded, and marked if that fails.
+    """
     description = SecuritySchemeDescription(id=raml.next_id(), location=location, value_pos=node.full_position)
+    attach(description)
+    try:
+        _decode_description_content(raml, description, node, location)
+    except RamlError as err:
+        raml.broken[description.id] = err
+        raise
+
+
+def _decode_description_content(raml: Raml, description: SecuritySchemeDescription, node: Node, location: str) -> None:
     if is_null(node):
-        return description
+        return
     if node.kind is not NodeKind.MAPPING:
         raise node_error('describedBy must be a mapping', location, node)
 
@@ -238,7 +273,6 @@ def _decode_described_by(raml: Raml, node: Node, location: str) -> SecuritySchem
 
     accumulator.add(query_exclusion_error(description, location, node))
     accumulator.raise_if_any()
-    return description
 
 
 def _make_settings(

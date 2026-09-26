@@ -42,7 +42,7 @@ from fastraml.parser.uritemplates import resource_path_name
 from fastraml.registry import ParseCtx
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.source_ir import SourceEndPoint, SourceOperation
@@ -65,9 +65,11 @@ class TraitDefinition(TemplateDefinition):
     """
 
 
-def make_trait_definition(raml: Raml, key_node: Node | None, value_node: Node, location: str) -> TraitDefinition:
+def make_trait_definition(
+    raml: Raml, key_node: Node | None, value_node: Node, location: str, *, attach: Callable[[TraitDefinition], None]
+) -> TraitDefinition:
     """Decode one trait declaration. Everything but `usage:` is kept as YAML."""
-    return make_template_definition(TraitDefinition, raml, key_node, value_node, location, what='trait')
+    return make_template_definition(TraitDefinition, raml, key_node, value_node, location, what='trait', attach=attach)
 
 
 # -- applying traits (docs/08 § 3.2) ------------------------------------------

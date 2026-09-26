@@ -199,7 +199,9 @@ class TestDecodingSites:
         root = tree('paged:\n  queryParameters:\n    page: integer\n')
         raml.mark_authored(root, author)
         key, value = root.content
-        definition = make_template_definition(TraitDefinition, raml, key, value, MASTER, what='trait')
+        definition = make_template_definition(
+            TraitDefinition, raml, key, value, MASTER, what='trait', attach=lambda _: None
+        )
         assert definition.location == EXTENSION
         assert definition.anchor is author
 
@@ -208,7 +210,7 @@ class TestDecodingSites:
         root = tree('basic:\n  type: Basic Authentication\n')
         raml.mark_authored(root, Document(EXTENSION))
         key, value = root.content
-        assert make_security_scheme_definition(raml, key, value, MASTER).location == EXTENSION
+        assert make_security_scheme_definition(raml, key, value, MASTER, attach=lambda _: None).location == EXTENSION
 
     def test_a_resource_an_extension_added_is_the_extensions(self):
         raml = Raml()

@@ -236,6 +236,67 @@ class TestABrokenTypeDeclarationIsKeptAndMarked:
         assert raml.broken == {}
 
 
+class TestABrokenDefinitionIsKeptAndMarked:
+    """docs/13 § 1 — traits, resource types and security schemes are attached
+    before their body is read, like type declarations.
+    """
+
+    CASES = {  # noqa: RUF012 - a table, read once per parametrize
+        'trait': ('traits', 'traits:\n  bad: 5\n  good:\n    description: d\n'),
+        'resource type': ('resource_types', 'resourceTypes:\n  bad:\n    nope: {}\n  good:\n    get:\n'),
+        'security scheme': (
+            'security_schemes',
+            'securitySchemes:\n  bad:\n    type: Nope\n  good:\n    type: Basic Authentication\n',
+        ),
+    }
+
+    @pytest.mark.parametrize('header', [API, LIB], ids=['api', 'library'])
+    @pytest.mark.parametrize(('attribute', 'body'), CASES.values(), ids=list(CASES))
+    def test_it_is_declared_and_marked(self, workspace, header, attribute, body):
+        root = workspace({'api.raml': header + body})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        declared = getattr(raml.fragments[raml.location], attribute)
+        assert list(declared) == ['bad', 'good']
+        assert set(raml.broken) == {declared['bad'].id}
+
+    def test_a_bad_described_by_response_marks_the_path_to_it(self, workspace):
+        """Every mark names an entity in the model: the response, the
+        description holding it and the scheme holding that.
+        """
+        root = workspace(
+            {
+                'api.raml': API + 'securitySchemes:\n  s:\n    type: Basic Authentication\n'
+                '    describedBy:\n      responses:\n        401:\n          foo: 1\n        403:\n'
+            }
+        )
+        raml, _ = parse_lenient(root / 'api.raml', BOTH)
+        scheme = raml.entry_point.security_schemes['s']
+        responses = scheme.described_by.responses
+        assert list(responses) == ['401', '403']
+        assert set(raml.broken) == {scheme.id, scheme.described_by.id, responses['401'].id}
+
+    def test_an_include_that_fails_marks_the_definition_naming_it(self, workspace):
+        root = workspace({'api.raml': API + 'traits:\n  t: !include missing.raml\n'})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        trait = raml.entry_point.traits['t']
+        assert trait.link is None
+        assert set(raml.broken) == {trait.id}
+
+    def test_a_definition_fragment_that_fails_keeps_its_name(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API + 'securitySchemes:\n  s: !include scheme.raml\n',
+                'scheme.raml': '#%RAML 1.0 SecurityScheme\ntype: Nope\n',
+            }
+        )
+        raml, _ = parse_lenient(root / 'api.raml', BOTH)
+        fragment = raml.fragments[raml.entry_point.security_schemes['s'].link_uri]
+        assert fragment.definition.name == 'scheme.raml', 'named after the file, as on success'
+        assert fragment.definition.id in raml.broken
+
+
 class TestTheEndpointTreeKeepsWhatFailed:
     """docs/13 § 1 — responses, operations and resources are attached before
     their content is decoded. A failure marks the entity it happened in and

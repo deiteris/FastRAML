@@ -122,6 +122,7 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
     location: str,
     *,
     what: str,
+    attach: Callable[[T], None],
     retain: Callable[[T, Node], Node] | None = None,
 ) -> T:
     """Decode one template declaration. Everything but `usage:` is kept as YAML.
@@ -130,6 +131,9 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
     where a resource type checks its keys and chomps `?` off an optional method.
     The body is a fresh mapping, so a merge into it cannot reach the declaring
     document — the same reason stage 1 rebuilds an endpoint's body.
+
+    `attach` places the definition before its body is read; one whose body
+    fails stays placed, marked in `Raml.broken` (docs/13 § 1).
     """
     # A declaration an extension document added is that document's, body and
     # all; one it only amended stays the declaring document's (docs/19 § 5.3).
@@ -142,11 +146,28 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
         key_pos=(key_node if key_node is not None else value_node).position,
         value_pos=value_node.full_position,
     )
+    attach(definition)
+    try:
+        _decode_template_body(raml, definition, value_node, location, what, retain)
+    except RamlError as err:
+        raml.broken[definition.id] = err
+        raise
+    return definition
+
+
+def _decode_template_body[T: TemplateDefinition](  # noqa: PLR0913, PLR0917 - make_template_definition's arguments
+    raml: Raml,
+    definition: T,
+    value_node: Node,
+    location: str,
+    what: str,
+    retain: Callable[[T, Node], Node] | None,
+) -> None:
     if is_null(value_node):
-        return definition
+        return
     if value_node.tag == TAG_INCLUDE:
         definition.link_uri = note_include_ref(raml, value_node, location)
-        return definition
+        return
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error(f'{what} definition must be a mapping', location, value_node)
 
@@ -160,7 +181,6 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
     if kept:
         definition.source = with_content(value_node, kept)
         definition.declared_variables, definition.variable_index = collect_variables_index(definition.source, location)
-    return definition
 
 
 def find_template_definition[T: TemplateDefinition](

@@ -43,6 +43,8 @@ from fastraml.registry import ParseCtx
 from fastraml.yamlnode import TAG_STR, Node, NodeKind, node_error, pairs, with_content, with_value
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.source_ir import SourceEndPoint
     from fastraml.parser.structural_merge import ProvenanceOverlay
@@ -74,11 +76,23 @@ class ResourceTypeDefinition(TemplateDefinition):
 
 
 def make_resource_type_definition(
-    raml: Raml, key_node: Node | None, value_node: Node, location: str
+    raml: Raml,
+    key_node: Node | None,
+    value_node: Node,
+    location: str,
+    *,
+    attach: Callable[[ResourceTypeDefinition], None],
 ) -> ResourceTypeDefinition:
     """Decode one resource-type declaration, checking the keys it may carry."""
     return make_template_definition(
-        ResourceTypeDefinition, raml, key_node, value_node, location, what='resource type', retain=_retained_key
+        ResourceTypeDefinition,
+        raml,
+        key_node,
+        value_node,
+        location,
+        what='resource type',
+        attach=attach,
+        retain=_retained_key,
     )
 
 

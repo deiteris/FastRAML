@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import collections.abc
 from enum import StrEnum
+from functools import partial
+from operator import setitem
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, runtime_checkable
 
 from fastraml.domains import DomainLocation
@@ -880,8 +882,12 @@ class _DefinitionFragment(_UsesOnlyFragment):
 
     def decode(self, node: Node) -> None:
         filtered, self.uses = filter_fragment_uses(self._raml, node, self.location)
-        self.definition = _one_definition(self._raml, None, filtered, self.location, self._KIND)
-        self.definition.name = uri_base(self.location)
+        _one_definition(self._raml, None, filtered, self.location, self._KIND, attach=self._attach)
+
+    def _attach(self, definition: Any) -> None:
+        """The definition is named after the file, which is part of its identity."""
+        definition.name = uri_base(self.location)
+        self.definition = definition
 
 
 class TraitFragment(_DefinitionFragment):
@@ -917,21 +923,36 @@ class SecuritySchemeFragment(_DefinitionFragment):
 # would be a cycle (docs/02 § 2).
 
 
+class _DefinitionBuilder(Protocol):
+    def __call__(
+        self, raml: Raml, key_node: Node | None, value_node: Node, location: str, *, attach: Callable[[Any], None]
+    ) -> Any: ...
+
+
 #: The builder for each kind a definition fragment or declaration map holds.
-_DEFINITION_BUILDERS: Final[Mapping[FragmentKind, Callable[[Raml, Node | None, Node, str], Any]]] = {
+_DEFINITION_BUILDERS: Final[Mapping[FragmentKind, _DefinitionBuilder]] = {
     FragmentKind.TRAIT: make_trait_definition,
     FragmentKind.RESOURCE_TYPE: make_resource_type_definition,
     FragmentKind.SECURITY_SCHEME: make_security_scheme_definition,
 }
 
 
-def _one_definition(raml: Raml, key: Node | None, value: Node, location: str, kind: FragmentKind) -> Any:
-    """Build one definition, following an `!include` to the linked fragment's."""
-    definition = _DEFINITION_BUILDERS[kind](raml, key, value, location)
+def _one_definition(  # noqa: PLR0913 - the declaration, its kind, and where to attach it
+    raml: Raml, key: Node | None, value: Node, location: str, kind: FragmentKind, *, attach: Callable[[Any], None]
+) -> None:
+    """Build one definition, following an `!include` to the linked fragment's.
+
+    The builder attaches it and marks a failure in its own content. A linked
+    fragment that fails marks it here (docs/13 § 1).
+    """
+    definition = _DEFINITION_BUILDERS[kind](raml, key, value, location, attach=attach)
     if definition.link_uri:
-        fragment = parse_fragment(raml, definition.link_uri, kind)
+        try:
+            fragment = parse_fragment(raml, definition.link_uri, kind)
+        except RamlError as err:
+            raml.broken[definition.id] = err
+            raise
         definition.link = getattr(fragment, 'definition', None)
-    return definition
 
 
 def _definitions(raml: Raml, node: Node, location: str, kind: FragmentKind, declared: dict[str, Any]) -> None:
@@ -948,7 +969,7 @@ def _definitions(raml: Raml, node: Node, location: str, kind: FragmentKind, decl
     accumulator = Accumulator()
     for key, value in pairs(node):
         try:
-            declared[key.value] = _one_definition(raml, key, value, location, kind)
+            _one_definition(raml, key, value, location, kind, attach=partial(setitem, declared, key.value))
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()

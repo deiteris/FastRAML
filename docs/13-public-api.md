@@ -65,6 +65,7 @@ marked today:
 | Entity | Kept as |
 |---|---|
 | A type or annotation type declaration | Its decoded facets. A failure before its kind was settled leaves an `UnknownShape`, never `shape is None` |
+| A trait, resource type or security scheme definition | Every key that decoded; a security scheme's `describedBy` and its responses as a resource's. One whose `!include` failed has `link is None` |
 | A resource, an operation, a response | Every key that decoded, and every child, sound or marked |
 
 Anything else that fails is absent (docs/11 § 2). On success, `broken` is

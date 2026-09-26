@@ -122,8 +122,12 @@ Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
    registers the declaration before decoding it, and one `except` marks it
    and gives it an `UnknownShape` if no kind was settled, so a kept shape is
    never kindless. The mark is (a): every entity a failure passes through;
-1a. trait, resource type and security scheme definitions, which are still
-   absent when they fail;
+1a. trait, resource type and security scheme definitions. Done: each builder
+   takes `attach`; `_one_definition` also marks a definition whose `!include`
+   fails; a definition fragment attaches through a method that names it
+   first; `describedBy:` attaches its description. Found while doing item 2:
+   without this, a failed `describedBy` response was marked inside a scheme
+   the model dropped;
 2. responses, methods and resources: an operation or endpoint enclosing a
    failed child is kept and marked, which resolves A2. Done:
    `decode_source_endpoint`, `decode_source_operation` and `_decode_response`

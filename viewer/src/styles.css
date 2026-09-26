@@ -328,10 +328,20 @@ kbd {
   background: rgb(0 0 0 / 35%);
 }
 
+/* The dialog sizes its body, so only the results scroll. The body used to copy
+   the dialog's `max-height`, which the dialog's border then overflowed by 2px:
+   a second scrollbar, on the dialog, whenever the results reached the cap.
+   `[open]`, or the flex display would show the closed dialog too. */
+.search[open] {
+  display: flex;
+  flex-direction: column;
+}
+
 .search-body {
   display: flex;
   flex-direction: column;
-  max-height: inherit;
+  flex: 1;
+  min-height: 0;
 }
 
 .search-head {
@@ -1921,10 +1931,6 @@ table.properties td {
     margin: 0;
     border: 0;
     border-radius: 0;
-  }
-
-  .search-body {
-    max-height: 100dvh;
   }
 
   /* Keys a touch screen does not have. */

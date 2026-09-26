@@ -127,6 +127,24 @@ class TestFeatureCorporaReachTheirCode:
         assert facets >= {'properties', 'items'}
         assert any(depth > 0 for depth in nested), 'a nested union must distribute in turn'
 
+    def test_jsonschema_validates_every_example_through_its_references(self, tmp_path, monkeypatch):
+        from fastraml.types.jsonschema_ import JsonShape
+
+        validated: list[object] = []
+        original = JsonShape.validate
+
+        def counting(self, value, path):
+            validated.append(value)
+            return original(self, value, path)
+
+        monkeypatch.setattr(JsonShape, 'validate', counting)
+        count = 6
+        entry = corpus.write_jsonschema(tmp_path, schema_count=count, shared_count=2)
+        parse_from_path(entry, ParseOptions(unwrap=True, validate=True))
+        assert len(validated) == count * corpus.EXAMPLES_PER_SCHEMA
+        # Each example reaches both `$ref` targets, in another file.
+        assert all({'detail', 'more'} <= value.keys() for value in validated)
+
     def test_facets_walks_every_parent_count(self, tmp_path, monkeypatch):
         import fastraml.types.validate as validate_module
 

@@ -70,7 +70,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `endpoints` | template and endpoint construction |
 | `extensions` | the `endpoints` corpus under an Overlay and an Extension: chain load, merge, overlay check, and document provenance |
 | `validate` | declaration and example validation |
-| `jsonschema` | shared JSON Schema references |
+| `jsonschema` | shared JSON Schema references, and five examples per schema validated through them |
 | `enums` | enum narrowing and enum membership at 5, 20, 100, and 1000 values, and `uniqueItems` examples at 10, 50, and 500 items, for string, integer, and number |
 | `unions` | `properties` and `items` beside unions of 2, 4, and 8 members, flat and nested, with an enum each member narrows differently ([07](07-resolution-and-inheritance.md) § 5) |
 | `facets` | custom facets declared up every parent of types that inherit from 2, 4, and 8 parents, and a diamond ([10](10-validation.md) § 4) |

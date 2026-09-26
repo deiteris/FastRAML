@@ -538,13 +538,18 @@ def write_facets(root: Path, *, family_count: int = 150) -> Path:
 
 # -- JSON Schema --------------------------------------------------------------
 
+#: Examples per schema: about what a real API with example-rich schemas holds.
+EXAMPLES_PER_SCHEMA: int = 5
+
 
 def write_jsonschema(root: Path, *, schema_count: int = 200, shared_count: int = 20) -> Path:
-    """`schema_count` schemas over `shared_count` shared `$ref` targets.
+    """`schema_count` schemas over `shared_count` shared `$ref` targets, each
+    with `EXAMPLES_PER_SCHEMA` examples validated through its references.
 
     Measures the per-parse registry (docs/10 § 7). Without it each of the
     200 schemas compiles its own copy of the definition it points at, and the
-    curve against `shared_count` is flat instead of falling.
+    curve against `shared_count` is flat instead of falling. The examples
+    measure validation across files, which resolves each `$ref` again.
     """
     files: dict[str, str] = {}
     for index in range(shared_count):
@@ -572,7 +577,14 @@ def write_jsonschema(root: Path, *, schema_count: int = 200, shared_count: int =
             '}\n'
         )
     lines = ['#%RAML 1.0 Library', 'types:']
-    lines.extend(f'  S{index}: !include schemas/s{index}.json' for index in range(schema_count))
+    for index in range(schema_count):
+        target, more = index % shared_count, (index % shared_count + 1) % shared_count
+        lines += [f'  S{index}:', f'    type: !include schemas/s{index}.json', '    examples:']
+        lines += [
+            f'      e{number}: {{"id": "i{number}", "detail": {{"d{target}Name": "n", "d{target}Size": {number}}}, '
+            f'"more": {{"d{more}Name": "m"}}}}'
+            for number in range(EXAMPLES_PER_SCHEMA)
+        ]
     files['lib.raml'] = '\n'.join(lines) + '\n'
     _write(root, files)
     return root / 'lib.raml'

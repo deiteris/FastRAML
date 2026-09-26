@@ -11,6 +11,10 @@
  */
 
 :root {
+  /* Both, so the browser's own parts -- scrollbars, form controls -- follow
+     the system as the tokens do. Only a reader's explicit choice below named
+     a scheme, so a system-dark page kept light scrollbars. */
+  color-scheme: light dark;
   --bg: #ffffff;
   --panel: #f4f7fa;
   --raised: #ffffff;

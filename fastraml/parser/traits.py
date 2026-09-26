@@ -43,7 +43,7 @@ from fastraml.parser.uritemplates import resource_path_name
 from fastraml.registry import ParseCtx
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.source_ir import SourceEndPoint, SourceOperation
@@ -92,6 +92,7 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
     path_name = parameter_node(resource_path_name(endpoint.full_uri))
 
     accumulator = Accumulator()
+    looked_up: set[DirectiveRef] = set()
     for method, operation in endpoint.operations.items():
         method_name = parameter_node(method)
         seen: set[str] = set()
@@ -102,6 +103,7 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
                 # and the trait is applied exactly once.
                 continue
             seen.add(ref.name)
+            looked_up.add(ref)
             params = {
                 **ref.params,
                 'resourcePath': path,
@@ -119,16 +121,29 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
 
     # A reference the name rule skipped, or one on a resource with no methods,
     # is applied nowhere but still names a trait: bind it, so a consumer can
-    # follow it, and report a name that matches nothing (docs/08 § 3.2). A
-    # lookup that already failed above fails identically and is reported once.
-    operation_refs = (chain(operation.traits, operation.rt_traits) for operation in endpoint.operations.values())
-    for ref in chain(endpoint.traits, endpoint.rt_traits, *operation_refs):
-        if ref.resolved is None:
-            try:
-                _definition_for(ref)
-            except RamlError as err:
-                accumulator.add(_wrap(ref, err))
+    # follow it, and report a name that matches nothing (docs/08 § 3.2). One
+    # written on an operation is noted there; the caller notes the resource.
+    for operation in endpoint.operations.values():
+        _bind_unapplied(chain(operation.traits, operation.rt_traits), looked_up, accumulator, operation)
+    _bind_unapplied(chain(endpoint.traits, endpoint.rt_traits), looked_up, accumulator, None)
     accumulator.raise_if_any()
+
+
+def _bind_unapplied(
+    refs: Iterable[DirectiveRef], looked_up: set[DirectiveRef], acc: Accumulator, operation: SourceOperation | None
+) -> None:
+    for ref in refs:
+        if ref in looked_up:
+            continue
+        # Once: a resource's reference is reached from each of its operations.
+        looked_up.add(ref)
+        try:
+            _definition_for(ref)
+        except RamlError as err:
+            wrapped = _wrap(ref, err)
+            if operation is not None:
+                note_failure(operation, wrapped)
+            acc.add(wrapped)
 
 
 def _wrap(ref: DirectiveRef, err: RamlError) -> RamlError:

@@ -987,20 +987,24 @@ def decode_security_scheme_definitions(
 
 
 class _Declarations:
-    """Tracks the `types:` / `schemas:` mutual exclusion within one document."""
+    """Tracks the `types:` / `schemas:` mutual exclusion within one document.
+
+    Composition rejects a key written twice (docs/03 § 1), so a second call
+    here is always the other key.
+    """
 
     __slots__ = ('_location', '_seen')
 
     def __init__(self, location: str) -> None:
         self._location = location
-        self._seen = ''
+        self._seen = False
 
     def types(self, key: Node, value: Node) -> Node:
         if self._seen:
             raise node_error(
                 'types and schemas are mutually exclusive', self._location, value, info={'field': key.value}
             )
-        self._seen = key.value
+        self._seen = True
         return value
 
 

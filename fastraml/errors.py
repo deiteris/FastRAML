@@ -254,16 +254,23 @@ class Accumulator:
         """
         if not self._errors:
             return None
-        if len(self._errors) == 1:
-            return self._errors[0]
+        first, *rest = self._errors
+        if not rest:
+            return first
         seen: set[tuple[Any, ...]] = set()
         heads: list[Trace] = []
+        dropped = False
         for error in self._errors:
             for chain in error.chains():
                 key = tuple(_frame_key(frame) for frame in chain)
-                if key not in seen:
+                if key in seen:
+                    dropped = True
+                else:
                     seen.add(key)
                     heads.append(chain[0])
+        if not dropped:
+            # The errors themselves, so a sibling keeps its own class.
+            return RamlError(first.head, (*first.siblings, *rest))
         return RamlError(heads[0], tuple(RamlError(head) for head in heads[1:]))
 
     def raise_if_any(self) -> None:

@@ -154,18 +154,19 @@ derived from them.
 
 ```python
 Raml.broken: dict[int, RamlError]   # entity id -> why it is incomplete
-def is_broken(entity) -> bool: ...
 ```
 
-Keyed by ID, because IDs survive `clone` (`docs/07` § 6) and object references
+Read by membership: no `is_broken()` accessor, which would only repeat it
+(plan M2.2). Keyed by ID, because IDs survive `clone` (`docs/07` § 6) and object references
 do not survive P9. An entry means the entity exists and its identity (name,
-`key_pos`) is valid, but its content is partial. What each pass marks:
+`key_pos`) is valid, but its content is partial. As first proposed, per pass;
+what is marked as built is the table in `docs/13` § 1:
 
 | Pass | Marked entity | What it retains |
 |---|---|---|
 | P2 | a declaration with a bad facet | everything except the facet |
 | P2, P4 | a response, method or resource with a bad key | everything except that key |
-| P4, P5 | a `DirectiveRef` or `SecurityScheme` that resolves to nothing | `resolved` or `definition` is `None` |
+| P4, P5 | a `DirectiveRef` or `SecurityScheme` that resolves to nothing | `resolved` or `definition` is `None`. As built, a `DirectiveRef` has no id, so the operation or resource that lacks the template's contribution is marked instead (plan M2.2 item 3) |
 | P7 | a shape whose kind could not be settled | stays an `UnknownShape` |
 | P8 | an unbound `DomainExtension` | `defined_by` is `None` |
 | P9 | a shape whose merge failed | the declared, *unflattened* form. It must not be flagged unwrapped |
@@ -316,7 +317,7 @@ passes").
 
 ## 9. Notes
 
-- `TestItStopsWhereStrictStops` refers to an "After-v1 item in docs/15" that
-  `docs/15` no longer lists. § 7 of this document would be that item.
+- `TestItStopsWhereStrictStops` referred to an "After-v1 item in docs/15"
+  that `docs/15` no longer lists; it now names § 7 of this document.
 - The Sphinx extension already reads a lenient model. The contract in § 5 is
   what makes its "render what parsed" behaviour defensible.

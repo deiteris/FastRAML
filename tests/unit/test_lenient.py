@@ -398,6 +398,16 @@ class TestATemplateThatFailsToApplyMarksWhatLacksIt:
         _, marked = self.marked(workspace, '/a:\n  /b:\n    get:\n      is: [nosuch]\n  /c:\n    get:\n')
         assert marked == {'/a', '/a/b', '/a/b get'}
 
+    def test_a_skipped_reference_that_names_nothing_marks_its_operation(self, workspace):
+        # The method's own `nosuch` is applied; the resource type's, written on
+        # the same method, is skipped by the name rule, then bound and failed.
+        raml, _ = self.marked(
+            workspace,
+            'resourceTypes:\n  rt:\n    get:\n      is: [nosuch]\n/a:\n  type: rt\n  get:\n    is: [nosuch]\n',
+        )
+        mark = raml.broken[raml.endpoints['/a'].operations['get'].id]
+        assert [chain[0].position.line for chain in mark.chains()] == [10, 6]
+
     def test_an_unknown_resource_type_marks_the_resource(self, workspace):
         _, marked = self.marked(workspace, '/a:\n  type: nosuch\n  get:\n')
         assert marked == {'/a'}
@@ -549,7 +559,7 @@ class TestItStopsWhereStrictStops:
     So the error is exactly what a strict parse would have raised, and the
     model is the difference. Recovering the genuinely independent diagnostics
     means skipping the broken *entities* inside P9 and P10, not the passes;
-    that is an After-v1 item in docs/15.
+    `docs/research/partial-models.md` § 7 proposes it, gated on measurement.
     """
 
     CASES = {  # noqa: RUF012 - a table, read once per parametrize

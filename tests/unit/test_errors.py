@@ -224,6 +224,18 @@ class TestOneMistakeOneChain:
             ['resolve shape', 'reference not found']
         ]
 
+    def test_distinct_errors_are_kept_as_they_are(self):
+        class SpecialError(RamlError):
+            pass
+
+        special = SpecialError.new('other', LOC)
+        acc = Accumulator()
+        acc.add(self._missing())
+        acc.add(special)
+        result = acc.result()
+        assert result is not None
+        assert result.siblings == (special,)
+
     def test_a_duplicate_among_siblings_collapses_too(self):
         acc = Accumulator()
         acc.add(self._missing().append(RamlError.new('other', LOC)))

@@ -26,6 +26,7 @@ from fastraml.errors import Accumulator, RamlError
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import compile_pattern, make_bool_facet, make_string_facet, scalar_str
 from fastraml.parser.includes import note_include_ref
+from fastraml.parser.templates import substituted_site
 from fastraml.types.base import (
     BUILTIN_TYPES,
     TYPE_ANY,
@@ -41,6 +42,7 @@ from fastraml.types.base import (
     PatternProperty,
     Property,
     Shape,
+    TypeExprRef,
     declaration_facets,
 )
 from fastraml.types.complex_ import (
@@ -458,6 +460,13 @@ def _decode_type_node(
         # An inline JSON Schema. `decode_json_schema` has already wrapped an
         # external .json file into this same form (docs/04 § 5).
         return TYPE_JSON, JsonShape(base, raw=text)
+    if text in BUILTIN_TYPES:
+        site = substituted_site(raml.substitutions, type_node, 0)
+        if site is not None:
+            # A built-in P7 never reads, which a caller wrote: the view finds
+            # every other built-in written alone at its node (docs/16 § 9).
+            location, at = site
+            base.type_expr_refs.append(TypeExprRef(line=at.line, column=at.column, location=location, builtin=text))
     return text, None
 
 

@@ -234,6 +234,36 @@ class TestProvenance:
     def test_a_trait_contributed_shape_is_attributed_to_the_trait_file(self, three_way_body):
         assert three_way_body.shape.location.endswith('traits/paged.raml')
 
+    def test_a_substituted_name_is_recorded_where_the_caller_wrote_it(self, three_way_body):
+        # docs/08 § 5.1: the trait's scalar is `<<responseType>>`; the prefix and
+        # the name are written in api.raml, in the `is:` entry.
+        line = self.THREE_WAY['api.raml'].splitlines().index('    is: [{paged: {responseType: types.PagedResult}}]')
+        column = len('    is: [{paged: {responseType: ') + 1
+        refs = three_way_body.shape.type_expr_refs
+        assert [(ref.location.rsplit('/', 1)[-1], ref.line, ref.column) for ref in refs] == [
+            ('api.raml', line + 1, column),
+            ('api.raml', line + 1, column + len('types.')),
+        ]
+
+    def test_the_record_of_substitutions_is_dropped_after_resolution(self, workspace):
+        # Only P7 reads it; kept, it would hold every application's values.
+        assert parse(workspace(dict(self.THREE_WAY))).substitutions == {}
+
+    def test_a_substituted_name_that_resolves_nowhere_is_reported_where_it_was_written(self, workspace):
+        files = dict(self.THREE_WAY)
+        files['api.raml'] = files['api.raml'].replace('types.PagedResult', 'types.Nope')
+        with pytest.raises(RamlError) as caught:
+            parse(workspace(files))
+        frames = {
+            (frame.location.rsplit('/', 1)[-1], frame.position.line)
+            for chain in caught.value.chains()
+            for frame in chain
+            if frame.info.get('type') == 'types.Nope'
+        }
+        assert frames == {
+            ('api.raml', files['api.raml'].splitlines().index('    is: [{paged: {responseType: types.Nope}}]') + 1)
+        }
+
     def test_static_trait_content_resolves_in_the_trait_not_the_caller(self, workspace):
         # api.raml declares a `Thing` of its own. The trait's unqualified
         # `Thing` must not find it: the trait fragment declares no such name and

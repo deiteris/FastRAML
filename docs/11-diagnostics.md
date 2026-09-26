@@ -162,6 +162,11 @@ specific position within a scalar:
 - Type-expression diagnostics rebase a lexer token's zero-based column onto the
   type-expression scalar's text.
 
+Inside a caller's value that a template substituted, a type-expression
+diagnostic is placed where the caller wrote the value, in the application's
+file ([08](08-templates-and-endpoints.md) § 5.1). A transformed value is
+written nowhere, so it is placed at the template's `<<...>>`.
+
 Both find the text with `Position.within(text)`. A quoted flow scalar on one
 line spans its text plus two quotes, so its text starts one column in. The
 composer does not report a scalar's style, so a scalar whose span fits neither

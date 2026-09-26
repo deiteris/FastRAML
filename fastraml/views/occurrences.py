@@ -288,13 +288,15 @@ class _Index:
                         target=member.id,
                         text=member.name,
                     )
-            uri = base.location
             written = base.type_expr
             if not base.type_expr_refs and written is not None and written.value in BUILTIN_TYPES:
                 # A built-in written alone is settled at decode, so P7 records
                 # nothing for it; the node the shape keeps says where it is.
-                self.add_at(uri, written.position, written.value, role=Role.BUILTIN, kind=Kind.TYPE, target=None)
+                self.add_at(
+                    base.location, written.position, written.value, role=Role.BUILTIN, kind=Kind.TYPE, target=None
+                )
             for ref in base.type_expr_refs:
+                uri = ref.location
                 if ref.builtin is not None:
                     self.add(uri, ref.line, ref.column, ref.builtin, role=Role.BUILTIN, kind=Kind.TYPE, target=None)
                 elif ref.library_link is not None and ref.library_alias is not None:

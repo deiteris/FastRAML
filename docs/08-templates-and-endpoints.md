@@ -217,6 +217,29 @@ substitution.
 
 Code: `parser/templates.py`. Tests: `tests/unit/test_templates.py`.
 
+### 5.1 Where a substituted value was written
+
+A substituted scalar keeps the template's position, which is where
+`<<item>>` is written, and resolves in the caller's scope (§ 4.1). The
+caller's value is written somewhere else: `item: User`, in the file of the
+application. `Raml.substitutions` records, for each scalar a substitution
+produced, where each caller's value lies in its text: the offsets, the
+caller's node, and the file the application is written in. A value that was
+itself substituted, one template applying another, brings its own records.
+
+A value is recorded only when its text is the caller's text:
+
+- A transformed value, `<<item | !pluralize>>`, is not recorded.
+- The parameters the parser supplies, `resourcePath`, `resourcePathName` and
+  `methodName`, are not recorded.
+
+P7 reads the record, so a name inside a caller's value is reported and
+recorded where the caller wrote it ([06](06-type-expressions.md) § 3). In
+`type: <<item>>[]`, `User` is placed at `item: User`, and the `[]` at the
+template. The decoder reads it for a built-in P7 never sees,
+`type: <<item>>` with `item: string`. Nothing reads it after P7, which drops
+it.
+
 ## 6. Endpoint construction
 
 ### 6.1 URIs and responses

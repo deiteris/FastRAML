@@ -68,6 +68,10 @@ A mapping declaration inherits even when it contains only `type:`:
 original YAML form is no longer available then.
 
 P7 records `TypeExprRef` entries for primitive keywords and resolved names.
+Each entry holds the file its name is written in: the shape's own, or, for a
+name inside a caller's value a template substituted, the application's, at
+the caller's text ([08](08-templates-and-endpoints.md) § 5.1). A diagnostic
+about that name is placed there too.
 Qualified names produce one entry for the library prefix and one for the
 referenced declaration. A name is qualified only when its prefix names a
 `uses:` entry: `Dot.Type`, declared under that name, is one entry at the

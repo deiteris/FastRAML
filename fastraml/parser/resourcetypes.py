@@ -148,6 +148,7 @@ def apply_resource_type(raml: Raml, endpoint: SourceEndPoint, ref: DirectiveRef,
         params,
         existing_methods=set(endpoint.operations),
         caller_scope=endpoint.scope,
+        written_in=ref.location,
         location=endpoint.location,
         uri=endpoint.uri,
         parent_uri=endpoint.full_uri[: len(endpoint.full_uri) - len(endpoint.uri)],
@@ -185,6 +186,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
     *,
     existing_methods: set[str],
     caller_scope: ParseCtx | None,
+    written_in: str,
     location: str,
     uri: str,
     parent_uri: str,
@@ -200,6 +202,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
             params,
             existing_methods=existing_methods,
             caller_scope=caller_scope,
+            written_in=written_in,
             location=definition.link.location,
             uri=uri,
             parent_uri=parent_uri,
@@ -218,7 +221,13 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
 
     overlay: ProvenanceOverlay = {}
     compiled = compile_source_provenance(
-        source, params, definition.variable_index, caller_scope if caller_scope is not None else ParseCtx(), overlay
+        source,
+        params,
+        definition.variable_index,
+        caller_scope if caller_scope is not None else ParseCtx(),
+        overlay,
+        written_in=written_in,
+        substitutions=raml.substitutions,
     )
 
     key = Node(NodeKind.SCALAR, TAG_STR, uri, None, compiled.line, compiled.column, compiled.line, compiled.column)

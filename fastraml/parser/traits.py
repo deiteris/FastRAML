@@ -47,6 +47,7 @@ if TYPE_CHECKING:
 
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.source_ir import SourceEndPoint, SourceOperation
+    from fastraml.parser.templates import Substitutions
     from fastraml.registry import Raml
     from fastraml.yamlnode import Node
 
@@ -76,13 +77,13 @@ def make_trait_definition(
 # -- applying traits (docs/08 § 3.2) ------------------------------------------
 
 
-def apply_traits(endpoint: SourceEndPoint) -> None:
+def apply_traits(raml: Raml, endpoint: SourceEndPoint) -> None:
     """Apply every trait that reaches each of `endpoint`'s operations.
 
-    No registry parameter: every name resolves through its own reference's
-    scope, and every merge target is reachable from `endpoint`. Errors
-    accumulate — one unresolvable trait must not discard the rest of the
-    resource.
+    Every name resolves through its own reference's scope, and every merge
+    target is reachable from `endpoint`; `raml` only records where each
+    substituted value came from (docs/08 § 5.1). Errors accumulate — one
+    unresolvable trait must not discard the rest of the resource.
     """
     # `resourcePath` and `resourcePathName` are constant across every operation
     # and every trait of this resource, so their nodes are built once. They are
@@ -112,7 +113,14 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
             }
             try:
                 definition = _definition_for(ref)
-                merge_trait_into(operation, definition, params, caller_scope=endpoint.scope)
+                merge_trait_into(
+                    operation,
+                    definition,
+                    params,
+                    caller_scope=endpoint.scope,
+                    written_in=ref.location,
+                    substitutions=raml.substitutions,
+                )
             except RamlError as err:
                 wrapped = _wrap(ref, err)
                 # The operation it was merging into lacks its contribution.
@@ -173,14 +181,18 @@ def _definition_for(ref: DirectiveRef) -> TraitDefinition:
     return definition
 
 
-def merge_trait_into(
+def merge_trait_into(  # noqa: PLR0913 - the application, and where its values are recorded
     operation: SourceOperation,
     definition: TraitDefinition,
     params: dict[str, Node],
     *,
     caller_scope: ParseCtx | None,
+    written_in: str,
+    substitutions: Substitutions,
 ) -> None:
-    """Substitute `params` into the trait body and merge it under the operation."""
+    """Substitute `params`, written in `written_in`, into the trait body and
+    merge it under the operation.
+    """
     definition = definition.resolved()
     if definition.source is None:
         return
@@ -192,6 +204,8 @@ def merge_trait_into(
         definition.variable_index,
         caller_scope if caller_scope is not None else ParseCtx(),
         operation.provenance,
+        written_in=written_in,
+        substitutions=substitutions,
     )
     trait_scope = ParseCtx(anchor=definition.anchor, target=DomainLocation.TRAIT)
     operation.body = merge_structural(operation.body, compiled, trait_scope, operation.provenance)

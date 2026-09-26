@@ -40,6 +40,8 @@ __all__ = [
     'KNOWN_ACTIONS',
     'RESERVED_PARAMETERS',
     'TEMPLATE_ACTIONS',
+    'Substitution',
+    'Substitutions',
     'TemplateDefinition',
     'VariableIndex',
     'VariableInfo',
@@ -53,6 +55,7 @@ __all__ = [
     'make_template_definition',
     'parameter_node',
     'parse_template_variables',
+    'substituted_site',
 ]
 
 #: The three parameters the parser injects at every application site. They are
@@ -72,6 +75,26 @@ def parameter_node(value: str) -> Node:
 #: What one scan of a template body produces: every `<<...>>` bearing scalar,
 #: keyed by the node itself.
 type VariableIndex = dict[Node, list[VariableInfo]]
+
+
+@dataclass(frozen=True, slots=True)
+class Substitution:
+    """A caller's value inside a substituted scalar, and where it was written.
+
+    `start` and `end` are offsets into the scalar's text. `node` is the value
+    as the caller wrote it, in the file `location` (docs/08 § 5.1).
+    """
+
+    start: int
+    end: int
+    location: str
+    node: Node
+
+
+#: Every scalar a substitution produced, with the caller's values it holds
+#: verbatim; empty where it holds none. Only P7 reads it, and it is dropped
+#: when P7 ends (docs/08 § 5.1).
+type Substitutions = dict[Node, tuple[Substitution, ...]]
 
 FACET_USAGE: Final = 'usage'
 
@@ -478,12 +501,15 @@ def collect_required_variables(node: Node, index: VariableIndex) -> set[str]:
 # -- substitution, recording where each value came from (docs/08 § 4.1) -------
 
 
-def compile_source_provenance(
+def compile_source_provenance(  # noqa: PLR0913 - the body, its values, and where each is recorded
     node: Node,
     params: dict[str, Node],
     index: VariableIndex,
     caller_scope: ParseCtx,
     overlay: ProvenanceOverlay,
+    *,
+    written_in: str,
+    substitutions: Substitutions,
 ) -> Node:
     """Substitute `params` into a template body, marking what the caller supplied.
 
@@ -492,16 +518,22 @@ def compile_source_provenance(
     `caller_scope`: static content resolves at its declaration and substituted
     values resolve at their application site (docs/08 § 4.1).
 
+    Each substituted scalar is also recorded in `substitutions`, with where
+    in `written_in`, the file the application is written in, each value came
+    from (docs/08 § 5.1).
+
     Unchanged node pointers are shared with the input, so the result is still a
     valid key set for the overlay and for the merge that follows.
     """
     if node.kind is NodeKind.SCALAR:
-        return _compile_scalar(node, params, index, caller_scope, overlay)
+        return _compile_scalar(node, params, index, caller_scope, overlay, written_in, substitutions)
 
     modified = False
     content: list[Node] = []
     for child in node.content:
-        compiled = compile_source_provenance(child, params, index, caller_scope, overlay)
+        compiled = compile_source_provenance(
+            child, params, index, caller_scope, overlay, written_in=written_in, substitutions=substitutions
+        )
         modified = modified or compiled is not child
         content.append(compiled)
     if not modified:
@@ -511,12 +543,14 @@ def compile_source_provenance(
     return with_content(node, content)
 
 
-def _compile_scalar(
+def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arguments
     node: Node,
     params: dict[str, Node],
     index: VariableIndex,
     caller_scope: ParseCtx,
     overlay: ProvenanceOverlay,
+    written_in: str,
+    substitutions: Substitutions,
 ) -> Node:
     variables = index.get(node)
     if not variables:
@@ -531,8 +565,13 @@ def _compile_scalar(
             overlay[param] = caller_scope
             return param
 
-    text = node.value
-    substituted = False
+    # One pass substitutes and places each caller's value (docs/08 § 5.1).
+    # `str.replace` puts a value where a walk left to right does unless an
+    # earlier value held a `<<` of its own; then nothing is placed.
+    template = text = node.value
+    placed: list[Substitution] = []
+    substituted, exact = False, True
+    start = shift = 0
     for variable in variables:
         param = params.get(variable.name)
         if param is None:
@@ -542,10 +581,38 @@ def _compile_scalar(
             value = apply_template_action(value, action)
         text = text.replace(variable.substring, value, 1)
         substituted = True
+        at = template.find(variable.substring, start)
+        start = at + len(variable.substring)
+        if not variable.actions and variable.name not in RESERVED_PARAMETERS:
+            # A transformed value and a parameter the parser supplies are not
+            # the caller's text; a value that was itself substituted brings
+            # its own placements.
+            begin = at + shift
+            inner = substitutions.get(param)
+            if inner is None:
+                placed.append(Substitution(begin, begin + len(value), written_in, param))
+            else:
+                placed += [
+                    Substitution(begin + part.start, begin + part.end, part.location, part.node) for part in inner
+                ]
+        shift += len(value) - len(variable.substring)
+        exact = exact and '<<' not in value
     if not substituted:
         # An unsubstituted scalar is static: it keeps the declaration scope.
         return node
 
     compiled = with_value(node, text)
     overlay[compiled] = caller_scope
+    substitutions[compiled] = tuple(placed) if exact and placed else ()
     return compiled
+
+
+def substituted_site(substitutions: Substitutions, node: Node, offset: int) -> tuple[str, Position] | None:
+    """Where the character at `offset` in `node`'s text was written, if a
+    caller wrote it: the file, and the caller's own position (docs/08 § 5.1).
+    """
+    for part in substitutions.get(node, ()):
+        if part.start <= offset < part.end:
+            written = part.node
+            return part.location, written.position.within(written.value).shifted(offset - part.start)
+    return None

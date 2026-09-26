@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from fastraml.parser.fragments import ExtensionFragment, Fragment, ReferenceResolver
     from fastraml.parser.includes import IncludeRef
     from fastraml.parser.structural_merge import ProvenanceOverlay
+    from fastraml.parser.templates import Substitutions
     from fastraml.positions import Position
     from fastraml.types.expressions import ExprCache
     from fastraml.types.jsonschema_ import SchemaRegistry
@@ -202,6 +203,7 @@ class Raml:
         'fragment_types',
         'include_refs',
         'shapes',
+        'substitutions',
         # --- work queues -----------------------------------------------------
         '_discriminator_shapes',
         'unresolved_shapes',
@@ -267,6 +269,9 @@ class Raml:
         self.shapes: list[BaseShape] = []
         self.domain_extensions: list[DomainExtension] = []
         self.include_refs: dict[str, list[IncludeRef]] = {}
+        #: Each scalar a template substitution produced, and the caller's
+        #: values in it: where a name in it was written (docs/08 § 5.1).
+        self.substitutions: Substitutions = {}
 
         # A worklist, drained from the left in P7 while resolution appends to
         # the right; a deque keeps both ends O(1).

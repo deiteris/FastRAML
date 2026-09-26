@@ -27,24 +27,15 @@ if TYPE_CHECKING:
 
 _FIXTURES = Path(__file__).resolve().parents[2] / 'fixtures'
 
-#: A template substitution keeps the template's position (G2).
-_SUBSTITUTED: Final = {
-    'Annotations/complex-06/valid-params.raml': 1,
-    'EdgeCases/inclusion-paths/valid.raml': 1,
-    'EdgeCases/missing-subtypes/valid.raml': 12,
-    'EdgeCases/parsing-param-array-type/valid-parsing-param-array-type.raml': 6,
-    'Resources/request-datatype-property/valid.raml': 1,
-    **{f'Resources/restype-datatype-property-0{n}/valid.raml': 1 for n in range(1, 9)},
-    'ResourceTypes/chaining-functions/valid.raml': 1,
-    'Traits/with-params/valid.raml': 1,
-    **{f'ResourceTypes/datatype-properties-0{n}/valid.raml': 1 for n in range(1, 10)},
-    **{f'Traits/datatype-properties-0{n}/valid.raml': 1 for n in range(1, 5)},
-}
-
 DROPPED: Final = {
-    **_SUBSTITUTED,
-    # A substitution.
-    'fixtures/sample/api.raml': 1,
+    # A transformed value, `<<resourcePathName | !singularize>>`, is written
+    # nowhere: the template's text is `<<...>>` (docs/08 § 5.1).
+    'EdgeCases/inclusion-paths/valid.raml': 1,
+    'EdgeCases/parsing-param-array-type/valid-parsing-param-array-type.raml': 6,
+    'ResourceTypes/chaining-functions/valid.raml': 1,
+    # A substituted annotation key, `(<<annotation>>)`: a `DomainExtension`
+    # keeps the key's position but not its node, so the record is not read.
+    'Annotations/complex-06/valid-params.raml': 1,
 }
 
 

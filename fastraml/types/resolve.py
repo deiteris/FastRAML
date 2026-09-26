@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, cast
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.parser.references import UnresolvedReferenceError, cut_last
+from fastraml.parser.templates import substituted_site
 from fastraml.types.base import (
     TYPE_ARRAY,
     TYPE_COMPOSITE,
@@ -74,6 +75,9 @@ def resolve_shapes(raml: Raml) -> None:
             resolve_shape(raml, base)
         except RamlError as err:
             accumulator.add(RamlError.wrap('resolve shape', err, base.location, base.key_pos, kind=ErrorKind.RESOLVING))
+    # Every name in a substituted scalar is now recorded where it was written,
+    # so the record of the substitutions is read by nothing further.
+    raml.substitutions.clear()
     accumulator.raise_if_any()
 
 
@@ -163,8 +167,7 @@ def _parse(raml: Raml, base: BaseShape) -> RdtNode:
         info = dict(err.head.info or {})
         raise RamlError.new(
             err.head.message,
-            base.location,
-            _column(base, cast('int', info.get('column', 0))),
+            *_site(raml, base, cast('int', info.get('column', 0))),
             kind=ErrorKind.RESOLVING,
             info={**info, 'type': base.type},
         ) from err
@@ -186,7 +189,7 @@ def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
     match node:
         case Primitive():
             attach_kind(raml, base, node.name, facets, from_mapping=from_mapping)
-            _note(base, node.col, builtin=node.name)
+            _note(raml, base, node.col, builtin=node.name)
 
         case Reference():
             _build_reference(raml, base, node, facets, from_mapping=from_mapping)
@@ -222,12 +225,11 @@ def _build_reference(raml: Raml, base: BaseShape, node: Reference, facets: list[
     scalar one aliases it, sharing its facets (docs/06 § 3).
     """
     resolver = base.anchor if base.anchor is not None else raml.resolver_at(base.location)
-    ref = _lookup(base, node, resolver)
+    ref = _lookup(raml, base, node, resolver)
     if ref is base:
         raise RamlError.new(
             'self-referential type',
-            base.location,
-            _column(base, node.col),
+            *_site(raml, base, node.col),
             kind=ErrorKind.RESOLVING,
             info={'type': node.name},
         )
@@ -239,16 +241,15 @@ def _build_reference(raml: Raml, base: BaseShape, node: Reference, facets: list[
         base.inherits.append(ref)
     else:
         base.alias = ref
-    _note_reference(base, node, ref, resolver)
+    _note_reference(raml, base, node, ref, resolver)
 
 
-def _lookup(base: BaseShape, node: Reference, resolver: ReferenceResolver | None) -> BaseShape:
+def _lookup(raml: Raml, base: BaseShape, node: Reference, resolver: ReferenceResolver | None) -> BaseShape:
     """Bind one name in the scope the declaration captured (docs/04 § 4)."""
     if resolver is None:
         raise RamlError.new(
             'no scope to resolve a type name in',
-            base.location,
-            _column(base, node.col),
+            *_site(raml, base, node.col),
             kind=ErrorKind.RESOLVING,
             info={'type': node.name},
         )
@@ -259,8 +260,7 @@ def _lookup(base: BaseShape, node: Reference, resolver: ReferenceResolver | None
     except UnresolvedReferenceError as err:
         raise RamlError.new(
             err.reason,
-            base.location,
-            _column(base, node.col),
+            *_site(raml, base, node.col),
             kind=ErrorKind.RESOLVING,
             info={'type': node.name, 'missing': err.name},
         ) from err
@@ -322,26 +322,35 @@ def _nil(raml: Raml, template: BaseShape) -> BaseShape:
 # -- positions and tooling references (docs/06 § 2 and § 3) -------------------
 
 
-def _column(base: BaseShape, offset: int) -> Position:
-    """A file position for a 0-based offset inside the type expression.
+def _site(raml: Raml, base: BaseShape, offset: int) -> tuple[str, Position]:
+    """The file and position of a 0-based offset inside `base`'s type expression.
 
-    Exact for a plain scalar and a quoted one on one line (docs/11 § 3).
+    Inside a caller's value a template substituted, where the caller wrote it
+    (docs/08 § 5.1); elsewhere, in the expression's own scalar. Exact for a
+    plain scalar and a quoted one on one line (docs/11 § 3).
     """
     expression = base.type_expr
     if expression is None:
-        return base.key_pos
-    return expression.position.within(expression.value).shifted(offset)
+        return base.location, base.key_pos
+    site = substituted_site(raml.substitutions, expression, offset)
+    if site is not None:
+        return site
+    return base.location, expression.position.within(expression.value).shifted(offset)
 
 
-def _note(base: BaseShape, col: int, *, builtin: str) -> None:
+def _note(raml: Raml, base: BaseShape, col: int, *, builtin: str) -> None:
     """Record a primitive keyword, so hover can show its documentation."""
     if base.type_expr is None:
         return
-    position = _column(base, col)
-    base.type_expr_refs.append(TypeExprRef(line=position.line, column=position.column, builtin=builtin))
+    location, position = _site(raml, base, col)
+    base.type_expr_refs.append(
+        TypeExprRef(line=position.line, column=position.column, location=location, builtin=builtin)
+    )
 
 
-def _note_reference(base: BaseShape, node: Reference, ref: BaseShape, resolver: ReferenceResolver | None) -> None:
+def _note_reference(
+    raml: Raml, base: BaseShape, node: Reference, ref: BaseShape, resolver: ReferenceResolver | None
+) -> None:
     """Record a type name, so go-to-definition lands on the declaration.
 
     `lib.Type` emits two: the prefix navigates to the library file, the name to
@@ -350,14 +359,15 @@ def _note_reference(base: BaseShape, node: Reference, ref: BaseShape, resolver: 
     """
     if base.type_expr is None:
         return
-    position = _column(base, node.col)
+    location, position = _site(raml, base, node.col)
+    line, column = position.line, position.column
     prefix, _name, dotted = cut_last(node.name, '.')
     link = resolver.library_link(prefix) if dotted and resolver is not None else None
     if link is None:
-        base.type_expr_refs.append(TypeExprRef(line=position.line, column=position.column, resolved=ref))
+        base.type_expr_refs.append(TypeExprRef(line=line, column=column, location=location, resolved=ref))
         return
     base.type_expr_refs.append(
-        TypeExprRef(line=position.line, column=position.column, library_link=link, library_alias=prefix)
+        TypeExprRef(line=line, column=column, location=location, library_link=link, library_alias=prefix)
     )
     # Past the prefix and the dot it is written with.
-    base.type_expr_refs.append(TypeExprRef(line=position.line, column=position.column + len(prefix) + 1, resolved=ref))
+    base.type_expr_refs.append(TypeExprRef(line=line, column=column + len(prefix) + 1, location=location, resolved=ref))

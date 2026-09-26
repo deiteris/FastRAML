@@ -116,7 +116,7 @@ def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) ->
             note_failure(source, wrapped)
             acc.add(wrapped)
     try:
-        apply_traits(source)
+        apply_traits(raml, source)
     except RamlError as err:
         # Each operation a trait failed on has noted it; the failure passed
         # through this resource too (docs/13 § 1).

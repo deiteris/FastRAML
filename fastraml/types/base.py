@@ -161,10 +161,14 @@ class TypeExprRef:
     re-lexing. See docs/06-type-expressions.md § 3.
     """
 
-    #: 1-based, in the file that wrote the expression.
+    #: 1-based, in `location`.
     line: int
     #: 1-based file column, already rebased off the expression's own column.
     column: int
+    #: The file the name is written in. The shape's own, or, for a name a
+    #: template substituted, the file of the application that supplied it
+    #: (docs/08 § 5.1). Empty for a record built outside a parse.
+    location: str = ''
     #: The declaration a type name refers to.
     resolved: BaseShape | None = None
     #: The `lib` half of `lib.Type`, and the alias exactly as written.

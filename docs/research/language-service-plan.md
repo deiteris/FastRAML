@@ -243,6 +243,30 @@ removes:
 Exit criteria: the law's drop count over the TCK is zero, or each remaining
 drop is listed as a known limit (such as a partial template substitution).
 
+As done so far, one commit each:
+
+- the law's own findings: a dot that names no library is part of a type
+  name; a `securedBy:` entry keeps where its name is written; a recursion
+  marker is placed where the edge it replaces was written;
+- a built-in written alone is found by the index, from the `type:` node the
+  shape keeps. Recording it in the decoder cost every parse 5.9 % in
+  allocation on `large`, so it is not recorded there;
+- G3: `Position.within(text)` places a column past the quote of a quoted
+  scalar on one line, for P7, the URI-template checks and the index;
+- G2 by D3: (b) was tried first and fails. A `Node` does not know its file,
+  so a substitution placed at the caller's node disagrees with the shape's
+  `location` whenever the template is in another file, and a key would start
+  after its own value. (a) is done instead: P4 records, for each substituted
+  scalar, where each caller's value lies in it and where it was written
+  (`docs/08` § 5.1). P7 places names and diagnostics there, and
+  `TypeExprRef.location` names the file. The record is dropped when P7 ends.
+  A partial substitution, `<<item>>[]`, is placed too; only a transformed
+  value is not, because it is written nowhere.
+
+Remaining drops over the TCK, each a known limit for now: eight transformed
+values, and one substituted annotation key, `(<<annotation>>)`, whose
+`DomainExtension` keeps the key's position but not its node. G9 is next.
+
 ## M4: Service and a read-only LSP
 
 - Code:

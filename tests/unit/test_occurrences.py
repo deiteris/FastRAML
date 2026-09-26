@@ -247,16 +247,28 @@ class TestTemplates:
         _, occurrences, uri = _parsed(tmp_path)
         assert _only(occurrences.at(uri, *_where(API, 'User\n'))).role is Role.REFERENCE
 
-    def test_a_substituted_name_fails_the_law_and_is_dropped(self, tmp_path):
-        # The substituted scalar keeps the template's position, where
-        # `<<item>>` is written, not `User` (docs/11 § 3).
-        api = API.replace('type: User\n', 'type: <<item>>\n').replace(
-            'type: collection\n', 'type: {collection: {item: User}}\n'
+    def test_a_substituted_name_is_found_where_the_caller_wrote_it(self, tmp_path):
+        # docs/08 § 5.1: the template's scalar reads `<<item>>`; `User` is
+        # written in the application.
+        api = API.replace('type: User\n', 'type: <<item>>[]\n').replace(
+            '  type: collection\n', '  type: {collection: {item: User}}\n'
+        )
+        _, occurrences, uri = _parsed(tmp_path, api)
+        found = _only(occurrences.at(uri, *_where(api, 'User}')))
+        assert (found.role, found.written, found.target) == (
+            Role.REFERENCE,
+            'User',
+            occurrences.at(uri, *_where(api, 'User:'))[0].target,
+        )
+        assert occurrences.dropped == ()
+
+    def test_a_transformed_name_is_written_nowhere_and_is_dropped(self, tmp_path):
+        api = API.replace('type: User\n', 'type: <<item | !uppercamelcase>>\n').replace(
+            '  type: collection\n', '  type: {collection: {item: user}}\n'
         )
         _, occurrences, uri = _parsed(tmp_path, api)
         dropped = _only([o for o in occurrences.dropped if o.written == 'User'])
-        assert (dropped.role, dropped.uri, dropped.span.line) == (Role.REFERENCE, uri, _where(api, '<<item>>')[0])
-        assert not occurrences.at(uri, *_where(api, '<<item>>'))
+        assert (dropped.role, dropped.uri, dropped.line) == (Role.REFERENCE, uri, _where(api, '<<item')[0])
 
 
 class TestHitTest:

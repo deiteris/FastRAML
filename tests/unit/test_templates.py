@@ -31,6 +31,7 @@ from fastraml.yamlnode import TAG_STR, Node, NodeKind, compose, pairs
 
 LOCATION = 'file:///t/api.raml'
 CALLER = ParseCtx()
+CALLER_FILE = 'file:///t/caller.raml'
 
 
 def parse(text: str) -> Node:
@@ -309,7 +310,11 @@ class TestCompileSourceProvenance:
         nodes = {name: Node(NodeKind.SCALAR, TAG_STR, value) for name, value in (params or {}).items()}
         nodes.update(complex_params or {})
         overlay: dict = {}
-        return root, compile_source_provenance(root, nodes, index, CALLER, overlay), overlay
+        self.substitutions: dict = {}
+        compiled = compile_source_provenance(
+            root, nodes, index, CALLER, overlay, written_in=CALLER_FILE, substitutions=self.substitutions
+        )
+        return root, compiled, overlay
 
     def test_a_variable_is_replaced_in_place(self):
         _root, compiled, _overlay = self.compile('description: about <<what>>\n', {'what': 'queues'})
@@ -352,3 +357,57 @@ class TestCompileSourceProvenance:
         _root, compiled, overlay = self.compile('a: <<x>>\n', complex_params={'x': value})
         assert compiled.content[1] is value
         assert overlay[value] is CALLER
+
+
+class TestWhereAValueWasWritten:
+    """docs/08 § 5.1: each caller's value, where it lies in the result, and where it was written."""
+
+    def compile(self, text: str, params: dict[str, Node], substitutions: dict | None = None) -> tuple[Node, dict]:
+        root = parse(text)
+        _declared, index = collect_variables_index(root, LOCATION)
+        substitutions = {} if substitutions is None else substitutions
+        compiled = compile_source_provenance(
+            root, params, index, CALLER, {}, written_in=CALLER_FILE, substitutions=substitutions
+        )
+        return compiled.content[1], substitutions
+
+    def test_a_whole_value_is_recorded_at_the_callers_node(self):
+        item = Node(NodeKind.SCALAR, TAG_STR, 'User')
+        compiled, substitutions = self.compile('type: <<item>>\n', {'item': item})
+        assert [(p.start, p.end, p.location, p.node) for p in substitutions[compiled]] == [(0, 4, CALLER_FILE, item)]
+
+    def test_each_value_is_placed_in_the_substituted_text(self):
+        # `<<a>>` grows by one character, so `<<b>>`'s value starts one later.
+        values = {'a': Node(NodeKind.SCALAR, TAG_STR, 'Person'), 'b': Node(NodeKind.SCALAR, TAG_STR, 'Id')}
+        compiled, substitutions = self.compile('type: <<a>> | <<b>>[]\n', values)
+        assert compiled.value == 'Person | Id[]'
+        assert [(p.start, p.end, p.node.value) for p in substitutions[compiled]] == [
+            (0, 6, 'Person'),
+            (9, 11, 'Id'),
+        ]
+
+    @pytest.mark.parametrize(
+        ('text', 'name'),
+        [
+            pytest.param('type: <<item | !pluralize>>\n', 'item', id='a transformed value'),
+            pytest.param('type: <<resourcePathName>>\n', 'resourcePathName', id='a value the parser supplies'),
+        ],
+    )
+    def test_a_value_that_is_not_the_callers_text_is_not_recorded(self, text, name):
+        compiled, substitutions = self.compile(text, {name: Node(NodeKind.SCALAR, TAG_STR, 'user')})
+        assert substitutions[compiled] == ()
+
+    def test_a_substituted_value_brings_its_own_record(self):
+        # One template applying another: the inner value is the outer caller's.
+        item = Node(NodeKind.SCALAR, TAG_STR, 'User')
+        outer, substitutions = self.compile('item: <<item>>\n', {'item': item})
+        inner, _ = self.compile('type: <<item>>[]\n', {'item': outer}, substitutions)
+        assert [(p.start, p.end, p.node) for p in substitutions[inner]] == [(0, 4, item)]
+
+    def test_a_value_holding_a_placeholder_records_nothing(self):
+        # `str.replace` then substitutes into the inserted value, and a walk of
+        # the template's text would place `b` wrongly.
+        values = {'a': Node(NodeKind.SCALAR, TAG_STR, '<<b>>'), 'b': Node(NodeKind.SCALAR, TAG_STR, 'X')}
+        compiled, substitutions = self.compile('type: <<a>> <<b>>\n', values)
+        assert compiled.value == 'X <<b>>'
+        assert substitutions[compiled] == ()

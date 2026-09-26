@@ -309,7 +309,8 @@ The index reads what the passes bound and resolves no name itself:
 - **References.** The names in type expressions, which P7 records
   ([06](06-type-expressions.md) § 3). A built-in written alone, such as
   `type: string`, never reaches P7; it is read from the `type:` node the
-  shape keeps. The `type:` and `is:` entries of every
+  shape keeps, or, where a caller's value supplied it, recorded where the
+  caller wrote it. The `type:` and `is:` entries of every
   resource and method. `securedBy:` names, and the name in each
   `(annotation)` key.
 - **Links.** Each `!include` argument and each `uses:` value. The target is
@@ -324,8 +325,12 @@ target.
 **The law.** A candidate is kept only if the retained text at its span equals
 the name it records. For a reference, that is the name its target is declared
 under, so a wrong position and a wrong binding both fail. A rejected candidate
-is kept in `Occurrences.dropped`. The known cause is a template substitution,
-which keeps the template's position (docs/11 § 3).
+is kept in `Occurrences.dropped`. A name a template substituted is placed
+where the caller wrote it (docs/08 § 5.1). Two known causes remain:
+
+- a transformed value, `<<item | !pluralize>>`, which is written nowhere;
+- a substituted annotation key, `(<<annotation>>)`: a `DomainExtension`
+  keeps the key's position but not its node, so the record is not read.
 
 The law checks only the candidates the index finds. A name nothing records is
 not a candidate, and nothing checks for one.

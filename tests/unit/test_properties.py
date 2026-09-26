@@ -22,7 +22,10 @@ def value_of(text: str) -> Node:
 
 def declarations(text: str):
     """`properties:` split into its named and its pattern halves."""
-    return make_declarations(Raml(), value_of(text), LOCATION)
+    properties: dict = {}
+    patterns: dict = {}
+    make_declarations(Raml(), value_of(text), LOCATION, properties, patterns)
+    return properties, patterns
 
 
 def one_property(text: str):

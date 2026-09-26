@@ -52,8 +52,10 @@ reference or inline declaration, not a bare sequence; use
 
 `make_shape()` is the general declaration constructor. It records common facets
 on the base, keeps remaining YAML key/value pairs flat, determines or defers the
-kind, builds declaration facets, and lets the concrete kind decode remaining
-facets. An unrecognised facet becomes a custom-facet value until P10 determines
+kind, attaches it, builds the declaration facets (`properties`, `items`,
+`anyOf`) into it, and lets the concrete kind decode remaining facets. A child
+that fails to build is absent and its siblings stay; the failures are raised
+before the remaining facets are decoded. An unrecognised facet becomes a custom-facet value until P10 determines
 whether an ancestor declared it.
 
 The input form determines the initial kind:

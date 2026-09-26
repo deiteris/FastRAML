@@ -109,8 +109,9 @@ are attached before their content is decoded. A bad key in one response keeps
 the response, its operation and every enclosing resource, each marked in
 `Raml.broken`, and leaves their siblings unmarked (docs/13 § 1). P6 still runs
 over a kept resource, so an unused URI parameter on it is reported as its own
-mistake. Below a declaration, a failed child is absent from its declaration,
-which is marked.
+mistake. Below a declaration, a failed property, `items` or `anyOf` member
+is absent from its declaration, which keeps its kind and the children that
+built, and is marked.
 
 `parse_lenient()` runs the same passes as `parse_from_path()` and stops at the
 same failing pass. It returns the registry built up to that point and the error

@@ -2,8 +2,8 @@
 
 `object`, `array` and `union` hold declarations, so each publishes a
 `DECLARATION_FACETS` table naming the facets whose values are declarations.
-`make_shape` reads the table off the class, builds those children itself and
-passes them to the constructor; nothing here calls back into `shape.py`.
+`make_shape` reads the table off the class and builds those children into
+the constructed kind; nothing here calls back into `shape.py`.
 
 `UnknownShape` and `RecursiveShape` are not names a document may write.
 `UnknownShape` is what a decoder produces for a declaration whose kind cannot

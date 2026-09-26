@@ -8,8 +8,8 @@ kind to read.
 
 Kind dispatch lives here too, so this module imports the kind modules and they
 must not import it back. A kind that holds declarations publishes a
-`DECLARATION_FACETS` table; this module reads it, builds those children, and
-passes them to the constructor.
+`DECLARATION_FACETS` table; this module reads it, constructs the kind, and
+builds those children into it.
 
 Nothing here resolves. A type expression, a named reference and multiple
 inheritance all leave an `UnknownShape` on `Raml.unresolved_shapes` for P7.
@@ -36,6 +36,7 @@ from fastraml.types.base import (
     TYPE_STRING,
     BaseShape,
     Binding,
+    KindBase,
     Parameter,
     PatternProperty,
     Property,
@@ -70,7 +71,6 @@ from fastraml.yamlnode import TAG_INCLUDE, TAG_NULL, TAG_STR, NodeKind, is_null,
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any
 
     from fastraml.parser.fragments import DataTypeFragment, NamedExample
     from fastraml.registry import Raml
@@ -92,7 +92,7 @@ __all__ = [
 
 #: Kind name to the class that implements it. A name absent from this table is
 #: a reference or a type expression, and becomes an `UnknownShape` for P7.
-KIND_TO_CLASS: Final[dict[str, type[Shape]]] = {
+KIND_TO_CLASS: Final[dict[str, type[KindBase]]] = {
     'any': AnyShape,
     'nil': NilShape,
     'null': NilShape,
@@ -474,25 +474,26 @@ def _inherited(raml: Raml, item: Node, location: str) -> BaseShape:
 
 
 def attach_kind(raml: Raml, base: BaseShape, kind: str, facets: list[Node], *, from_mapping: bool) -> None:
-    """Construct the kind object, giving it any children it holds.
+    """Construct the kind object, then build the declarations it holds into it.
+
+    The kind is attached first, so a declaration facet that fails leaves the
+    kind with every child that did build. The failures are raised before the
+    other facets are decoded (docs/13 § 1).
 
     P7 calls this too, to swap the real kind in for an `UnknownShape` once the
     type expression has been resolved (docs/07 § 2).
     """
     base.type = kind
-    cls: type[Shape] = KIND_TO_CLASS.get(kind, UnknownShape)
-    rest, built = _split_declarations(raml, cls, facets, base.location)
+    cls: type[KindBase] = KIND_TO_CLASS.get(kind, UnknownShape)
     shape: Shape
-    if cls is UnknownShape:  # noqa: SIM108 - a ternary loses both comments and widens the `type: ignore`
-        # An UnknownShape holds no declarations, so `built` is empty; the one
-        # thing it needs is the flag P7 tells an alias from a subtype by.
+    if cls is UnknownShape:  # noqa: SIM108 - a ternary loses the comment
+        # An UnknownShape holds no declarations; the one thing it needs is the
+        # flag P7 tells an alias from a subtype by.
         shape = UnknownShape(base, from_mapping=from_mapping)
     else:
-        # Each DECLARATION_FACETS table names its own constructor keywords, which
-        # is a correspondence a checker cannot see.
-        shape = cls(base, **built)  # type: ignore[call-arg]
+        shape = cls(base)
     base.shape = shape
-    shape.decode_facets(rest)
+    shape.decode_facets(_decode_declarations(raml, shape, facets, base.location))
     if isinstance(shape, UnionShape):
         _build_member_declarations(raml, shape)
     _check_custom_facet_names(base)
@@ -500,7 +501,7 @@ def attach_kind(raml: Raml, base: BaseShape, kind: str, facets: list[Node], *, f
 
 #: The declaration facets a union's members may take from beside `type: A | B`,
 #: and the kind whose table defines each (docs/07 § 5).
-_MEMBER_DECLARATION_KINDS: Final[dict[str, tuple[str, type[Shape]]]] = {
+_MEMBER_DECLARATION_KINDS: Final[dict[str, tuple[str, type[KindBase]]]] = {
     'properties': (TYPE_OBJECT, ObjectShape),
     'items': (TYPE_ARRAY, ArrayShape),
 }
@@ -517,6 +518,7 @@ def _build_member_declarations(raml: Raml, union: UnionShape) -> None:
     location = union.base.location
     pending = union.pending_facets
     holders: dict[str, BaseShape] = {}
+    accumulator = Accumulator()
     for index in range(0, len(pending), 2):
         key, value = pending[index], pending[index + 1]
         entry = _MEMBER_DECLARATION_KINDS.get(key.value)
@@ -532,21 +534,29 @@ def _build_member_declarations(raml: Raml, union: UnionShape) -> None:
             anchor=union.base.anchor,
         )
         holder.type = kind
-        _, built = _split_declarations(raml, cls, [key, value], location)
-        holder.shape = cls(holder, **built)  # type: ignore[call-arg]
+        holder.shape = cls(holder)
         holders[key.value] = holder
+        try:
+            _decode_declarations(raml, holder.shape, [key, value], location)
+        except RamlError as err:
+            accumulator.add(err)
     union.member_declarations = holders
+    accumulator.raise_if_any()
 
 
-def _split_declarations(
-    raml: Raml, cls: type[Shape], facets: list[Node], location: str
-) -> tuple[list[Node], dict[str, Any]]:
-    """Build the facets whose values are declarations; return the rest."""
-    table = declaration_facets(cls)
+def _decode_declarations(raml: Raml, shape: Shape, facets: list[Node], location: str) -> list[Node]:
+    """Build the facets whose values are declarations into `shape`; return the rest.
+
+    Each child lands in `shape` as it is built, so one that fails is absent
+    and its siblings stay. The failures are raised after all of them. Each
+    DECLARATION_FACETS table names the kind's own fields, which is a
+    correspondence a checker cannot see; hence `setattr`.
+    """
+    table = declaration_facets(type(shape))
     if not table:
-        return facets, {}
+        return facets
     rest: list[Node] = []
-    built: dict[str, Any] = {}
+    accumulator = Accumulator()
     for index in range(0, len(facets), 2):
         key, value = facets[index], facets[index + 1]
         spec = table.get(key.value)
@@ -554,33 +564,45 @@ def _split_declarations(
             rest.append(key)
             rest.append(value)
             continue
-        match spec.kind:
-            case 'shape':
-                if value.kind is NodeKind.SEQUENCE:
-                    # `items: [Foo, Bar]`. A sequence in a `type:` position is
-                    # multiple inheritance, and `items:` *holds* a type
-                    # declaration — so reading it that way is tempting and
-                    # wrong. The spec's `items` facet says "a reference to an
-                    # existing type or an inline type declaration", and a
-                    # sequence is neither; go-raml rejects it here too. The
-                    # multiply-inheriting form stays available one level in, as
-                    # `items: {type: [Foo, Bar]}`.
-                    raise node_error(
-                        'items must be a reference or an inline type declaration',
-                        location,
-                        value,
-                        info={'facet': key.value},
-                    )
-                built[spec.fields[0]] = make_shape(raml, key, value, location)
-            case 'shape_list':
-                if value.kind is not NodeKind.SEQUENCE:
-                    raise node_error('anyOf must be a sequence', location, value)
-                built[spec.fields[0]] = [make_shape(raml, None, item, location) for item in value.content]
-            case 'properties':
-                properties, patterns = make_declarations(raml, value, location)
-                built[spec.fields[0]] = properties
-                built[spec.fields[1]] = patterns
-    return rest, built
+        try:
+            match spec.kind:
+                case 'shape':
+                    if value.kind is NodeKind.SEQUENCE:
+                        # `items: [Foo, Bar]`. A sequence in a `type:` position is
+                        # multiple inheritance, and `items:` *holds* a type
+                        # declaration — so reading it that way is tempting and
+                        # wrong. The spec's `items` facet says "a reference to an
+                        # existing type or an inline type declaration", and a
+                        # sequence is neither; go-raml rejects it here too. The
+                        # multiply-inheriting form stays available one level in, as
+                        # `items: {type: [Foo, Bar]}`.
+                        raise node_error(
+                            'items must be a reference or an inline type declaration',
+                            location,
+                            value,
+                            info={'facet': key.value},
+                        )
+                    setattr(shape, spec.fields[0], make_shape(raml, key, value, location))
+                case 'shape_list':
+                    if value.kind is not NodeKind.SEQUENCE:
+                        raise node_error('anyOf must be a sequence', location, value)
+                    members: list[BaseShape] = []
+                    setattr(shape, spec.fields[0], members)
+                    for item in value.content:
+                        try:
+                            members.append(make_shape(raml, None, item, location))
+                        except RamlError as err:
+                            accumulator.add(err)
+                case 'properties':
+                    properties: dict[str, Property] = {}
+                    patterns: dict[str, PatternProperty] = {}
+                    setattr(shape, spec.fields[0], properties)
+                    setattr(shape, spec.fields[1], patterns)
+                    make_declarations(raml, value, location, properties, patterns)
+        except RamlError as err:
+            accumulator.add(err)
+    accumulator.raise_if_any()
+    return rest
 
 
 def _check_custom_facet_names(base: BaseShape) -> None:
@@ -621,25 +643,35 @@ def is_pattern_key(name: str) -> bool:
 
 
 def make_declarations(
-    raml: Raml, value_node: Node, location: str
-) -> tuple[dict[str, Property], dict[str, PatternProperty]]:
-    """Read a properties declaration into its named and its pattern halves."""
+    raml: Raml,
+    value_node: Node,
+    location: str,
+    properties: dict[str, Property],
+    patterns: dict[str, PatternProperty],
+) -> None:
+    """Read a properties declaration into its named and its pattern halves.
+
+    Both maps are the holder's own, filled as each property is built, so one
+    that fails leaves the rest. The failures are raised after all of them.
+    """
     if is_null(value_node):
         # `properties:` with nothing under it declares no properties.
-        return {}, {}
+        return
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('properties must be a mapping', location, value_node)
-    properties: dict[str, Property] = {}
-    patterns: dict[str, PatternProperty] = {}
+    accumulator = Accumulator()
     for key, value in pairs(value_node):
         chomped, _had_optional = chomp_optional(key.value)
-        if is_pattern_key(chomped):
-            pattern = make_pattern_property(raml, key, value, location)
-            patterns[pattern.pattern.pattern] = pattern
-        else:
-            prop = make_property(raml, key, value, location)
-            properties[prop.name] = prop
-    return properties, patterns
+        try:
+            if is_pattern_key(chomped):
+                pattern = make_pattern_property(raml, key, value, location)
+                patterns[pattern.pattern.pattern] = pattern
+            else:
+                prop = make_property(raml, key, value, location)
+                properties[prop.name] = prop
+        except RamlError as err:
+            accumulator.add(err)
+    accumulator.raise_if_any()
 
 
 def make_parameter_map(raml: Raml, value_node: Node, location: str, binding: Binding) -> dict[str, Parameter]:

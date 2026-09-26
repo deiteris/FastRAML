@@ -111,8 +111,9 @@ def resolve_shape(raml: Raml, base: BaseShape) -> None:
         else:
             _build(raml, shape, _parse(raml, base))
     except RamlError as err:
-        # Left an `UnknownShape`, and so is every shape this failure passes
-        # through on its way out (docs/13 § 1).
+        # Left an `UnknownShape`, or its kind if one of its declaration facets
+        # failed; marked, as is every shape this failure passes through on its
+        # way out (docs/13 § 1).
         raml.broken[base.id] = err
         raise
     finally:

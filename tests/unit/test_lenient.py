@@ -195,7 +195,7 @@ class TestABrokenTypeDeclarationIsKeptAndMarked:
     CASES = {  # noqa: RUF012 - a table, read once per parametrize
         'kind facet': ('Bad:\n    type: string\n    minLength: two', 'StringShape'),
         'common facet': ('Bad:\n    displayName: {a: 1}', 'UnknownShape'),
-        'nested property': ('Bad:\n    properties:\n      p:\n        minLength: two', 'UnknownShape'),
+        'nested property': ('Bad:\n    properties:\n      p:\n        minLength: two', 'ObjectShape'),
     }
 
     @pytest.mark.parametrize('header', [API, LIB], ids=['api', 'library'])
@@ -234,6 +234,64 @@ class TestABrokenTypeDeclarationIsKeptAndMarked:
         raml, error = parse_lenient(root / 'api.raml', BOTH)
         assert error is None
         assert raml.broken == {}
+
+
+class TestADeclarationKeepsTheChildrenThatBuilt:
+    """docs/13 § 1 — the kind is attached before its `properties`, `items` or
+    `anyOf` are built into it, so one failed child leaves its siblings.
+
+    It used to cost the whole kind: the declaration became an `UnknownShape`
+    while the siblings it had built stayed registered, and when P7 built them
+    they were resolved and marked inside nothing.
+    """
+
+    def test_a_failed_property_leaves_its_siblings(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'types:\n  T:\n    properties:\n      a: string\n      b: {minLength: x}\n      c: string\n'
+            }
+        )
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        t = raml.entry_point.types['T']
+        assert type(t.shape).__name__ == 'ObjectShape'
+        assert list(t.shape.properties) == ['a', 'c']
+        assert set(raml.broken) == {t.id}
+
+    def test_every_failed_property_is_reported(self, workspace):
+        root = workspace(
+            {'api.raml': API + 'types:\n  T:\n    properties:\n      a: {minLength: x}\n      b: {maxLength: y}\n'}
+        )
+        _, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert [chain[-1].position.line for chain in error.chains()] == [6, 7]
+
+    def test_a_failed_union_member_leaves_the_others(self, workspace):
+        root = workspace(
+            {'api.raml': API + 'types:\n  U:\n    type: union\n    anyOf: [string, {minLength: x}, integer]\n'}
+        )
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        u = raml.entry_point.types['U']
+        assert [member.type for member in u.shape.any_of] == ['string', 'integer']
+
+    def test_a_property_that_p7_fails_is_inside_its_declaration(self, workspace):
+        # P7 builds these properties, because `type: B` left the kind unknown
+        # until then; `c: 11` fails the build after `b: Nope` was queued.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'types:\n  B: object\n  T:\n    type: B\n    properties:\n      a: string\n'
+                + '      b: Nope\n      c: 11\n'
+            }
+        )
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert raml.stopped_at is Stage.RESOLVED
+        t = raml.entry_point.types['T']
+        assert list(t.shape.properties) == ['a', 'b']
+        assert set(raml.broken) == {t.id, t.shape.properties['b'].base.id}
 
 
 class TestABrokenDefinitionIsKeptAndMarked:

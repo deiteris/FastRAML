@@ -570,8 +570,8 @@ class DeclarationFacet:
     """A facet whose value is one or more declarations rather than data.
 
     A kind that has any publishes them in a class-level `DECLARATION_FACETS`
-    table. `make_shape` reads the table off the class it is about to construct,
-    builds the children itself, and passes them in under `fields`. The kind
+    table. `make_shape` reads the table off the class, constructs the kind,
+    and builds the children into it under `fields`. The kind
     never calls back into `shape.py`, so `shape.py` imports the kind modules
     and never the reverse.
     """

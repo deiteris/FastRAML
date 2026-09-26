@@ -18,7 +18,7 @@ import json
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 from fastraml.parser.facets import regex_engine
 from fastraml.registry import Raml
 from tests.unit.test_jsonschema import API, indent
@@ -33,6 +33,11 @@ RE2 = ParseOptions(regex_engine='re2')
 BACKREFERENCE = '(a)\\1'
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def messages(error: RamlError) -> list[str]:
     return [trace.message for chain in error.chains() for trace in chain]
 
@@ -40,7 +45,7 @@ def messages(error: RamlError) -> list[str]:
 def schema_shape(workspace, schema: dict, **options):
     """The `JsonShape` of `T`, declared inline so the schema is its own."""
     root = workspace({'api.raml': API + 'types:\n  T: |\n' + indent(json.dumps(schema))})
-    raml = parse_from_path(root / 'api.raml', ParseOptions(regex_engine='re2', **options))
+    raml = workspace.parse(root / 'api.raml', ParseOptions(regex_engine='re2', **options))
     return raml.types_in(raml.location)['T'].shape
 
 
@@ -57,7 +62,7 @@ class TestSelection:
 class TestRamlPatterns:
     def test_a_pattern_facet_compiles_under_re2(self, workspace):
         root = workspace({'lib.raml': LIB + 'types:\n  T:\n    type: string\n    pattern: ^[a-z]+$\n'})
-        raml = parse_from_path(root / 'lib.raml', RE2)
+        raml = workspace.parse(root / 'lib.raml', RE2)
         pattern = raml.entry_point.types['T'].shape.pattern.value
         assert isinstance(pattern, re2._Regexp)
         assert pattern.fullmatch('abc')
@@ -65,7 +70,7 @@ class TestRamlPatterns:
 
     def test_a_pattern_property_compiles_under_re2(self, workspace):
         root = workspace({'lib.raml': LIB + 'types:\n  T:\n    properties:\n      /^x/: string\n'})
-        raml = parse_from_path(root / 'lib.raml', ParseOptions(regex_engine='re2', unwrap=True))
+        raml = workspace.parse(root / 'lib.raml', ParseOptions(regex_engine='re2', unwrap=True))
         pattern = raml.entry_point.types['T'].shape.pattern_properties['^x'].pattern
         assert isinstance(pattern, re2._Regexp)
 
@@ -79,10 +84,10 @@ class TestRamlPatterns:
         # Single-quoted: a double-quoted YAML scalar processes `\1` as an escape
         # and never reaches the regex engine at all.
         root = workspace({'lib.raml': LIB + f"types:\n  T:\n    type: string\n    pattern: '{BACKREFERENCE}'\n"})
-        parse_from_path(root / 'lib.raml')
+        workspace.parse(root / 'lib.raml')
 
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml', RE2)
+            workspace.parse(root / 'lib.raml', RE2)
         assert 'invalid pattern' in messages(caught.value)
 
 

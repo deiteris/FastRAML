@@ -37,11 +37,16 @@ PERSON = json.dumps(
 )
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def parse(workspace, files: dict[str, str], **options):
     """Parse `api.raml` out of `files`; return the error, or `None`."""
     root = workspace(files)
     try:
-        parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
+        workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
     except RamlError as err:
         return err
     return None
@@ -49,7 +54,7 @@ def parse(workspace, files: dict[str, str], **options):
 
 def parsed(workspace, files: dict[str, str], **options):
     root = workspace(files)
-    return parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
+    return workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
 
 
 def messages(error: RamlError) -> set[str]:
@@ -96,7 +101,7 @@ class TestCompilation:
         # error in the document rather than something only `validate=True` sees.
         root = workspace({'api.raml': API + 'types:\n  Person: |\n    {"type": "object"\n'})
         with pytest.raises(RamlError):
-            parse_from_path(root / 'api.raml')
+            workspace.parse(root / 'api.raml')
 
     def test_an_external_json_file_compiles_through_the_same_path(self, workspace):
         raml = parsed(workspace, {'api.raml': API + 'types:\n  Person: !include person.json\n', 'person.json': PERSON})
@@ -180,7 +185,7 @@ class TestReferences:
             for index in range(8)
         )
         root = workspace({'api.raml': API + 'types:\n' + holders, 'person.json': PERSON})
-        loader = CountingLoader(root)
+        loader = CountingLoader(root, workspace)
         parse_from_path(
             root / 'api.raml', ParseOptions(validate=True, unwrap=True, file_loader=loader, workspace_root=root)
         )
@@ -515,7 +520,7 @@ types:
 
     def test_each_inline_schema_keeps_its_own_properties(self, workspace):
         root = workspace({'api.raml': self.INLINE})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         declared = raml.types_in(raml.location)
         assert sorted(projected(declared['A']).shape.properties) == ['alpha']
         assert sorted(projected(declared['B']).shape.properties) == ['beta']
@@ -541,7 +546,7 @@ types:
     @pytest.fixture
     def declared(self, workspace):
         root = workspace({'api.raml': self.RECURSIVE, 'node.json': self.NODE})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         return raml.types_in(raml.location)
 
     def test_both_types_project_the_whole_schema(self, declared):
@@ -564,7 +569,7 @@ types:
         one thing, at the schema's own URI.
         """
         root = workspace({'api.raml': self.RECURSIVE, 'node.json': self.NODE})
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         assert f'{DEFAULT_BASE}/node.json#/properties/value' in graph.nodes
         for name in ('A', 'B'):
             assert f'{DEFAULT_BASE}#/declarations/types/{name}/property/value' in graph.nodes

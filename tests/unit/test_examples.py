@@ -15,6 +15,11 @@ from fastraml.yamlnode import Node, compose, pairs
 LOCATION = 'file:///a.raml'
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def value_of(text: str) -> Node:
     """The value node of a one-key document."""
     _key, value = next(iter(pairs(compose(text, uri=LOCATION))))
@@ -87,16 +92,18 @@ class TestIncludedNamedExamples:
     API = '#%RAML 1.0\ntitle: T\n'
 
     def parse(self, workspace, files):
-        from fastraml import ParseOptions, parse_from_path
+        from fastraml import ParseOptions
 
         root = workspace(files)
         try:
-            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
         except RamlError as err:
             return err
         return None
 
     def test_an_included_example_that_does_not_conform_is_reported(self, workspace):
+        # Neither the entry nor its include exists on disk.
+        assert not (workspace.root / 'api.raml').exists()
         error = self.parse(
             workspace,
             {
@@ -105,6 +112,7 @@ class TestIncludedNamedExamples:
                 'e.raml': '#%RAML 1.0 NamedExample\nfirst:\n  a: not a number\n',
             },
         )
+        assert not (workspace.root / 'e.raml').exists()
         assert error is not None
         assert 'invalid example' in str(error)
 
@@ -137,10 +145,10 @@ class TestExamplesOf:
     API = '#%RAML 1.0\ntitle: T\ntypes:\n  T:\n    type: integer\n'
 
     def declared(self, workspace, files: dict[str, str]):
-        from fastraml import ParseOptions, parse_from_path
+        from fastraml import ParseOptions
 
         root = workspace(files)
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         return raml.types_in(raml.location)['T']
 
     def test_named_examples_come_in_declaration_order(self, workspace):

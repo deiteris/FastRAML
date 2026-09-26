@@ -19,6 +19,7 @@ import pytest
 from fastraml import ParseOptions, parse_from_path
 from fastraml.views.graph import build_graph
 from fastraml.views.tree import build_tree, positions_of
+from tests.unit.conftest import write_files
 
 #: Exercises each of the four cross-references at once: `inherits`, an alias
 #: under an array, a recursion head, and an applied annotation.
@@ -57,6 +58,11 @@ types:
 REFERENCE_KEYS = frozenset({'$ref', 'declaration', 'id', 'type'})
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def references(value: object, key: str = '') -> list[tuple[str, str]]:
     """Every `(key, address)` pair the projection emits, however deep."""
     found: list[tuple[str, str]] = []
@@ -74,7 +80,7 @@ def references(value: object, key: str = '') -> list[tuple[str, str]]:
 @pytest.fixture
 def both(workspace):
     root = workspace({'api.raml': API})
-    raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
     return build_tree(raml), build_graph(raml)
 
 
@@ -88,12 +94,12 @@ class TestWireContract:
 
     def test_protocols_have_one_wire_spelling(self, workspace):
         root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nprotocols: [hTtPs]\n'})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         assert build_tree(raml)['entry_point']['protocols'] == ['HTTPS']
 
     def test_fragment_kind_is_not_guessed_from_the_shared_model_class(self, workspace):
         root = workspace({'annotation.raml': '#%RAML 1.0 AnnotationTypeDeclaration\ntype: string\n'})
-        raml = parse_from_path(root / 'annotation.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'annotation.raml', ParseOptions(unwrap=True))
         assert build_tree(raml)['entry_point']['kind'] == 'AnnotationTypeDeclaration'
 
 
@@ -188,7 +194,7 @@ class TestATypedFragmentIsADeclaration:
     @pytest.fixture
     def entry(self, workspace):
         root = workspace({'user.raml': self.FRAGMENT})
-        return parse_from_path(root / 'user.raml', ParseOptions(unwrap=True))
+        return workspace.parse(root / 'user.raml', ParseOptions(unwrap=True))
 
     def test_the_fragment_is_projected_as_a_type(self, entry):
         declared = build_tree(entry)['types']['user.raml']
@@ -218,7 +224,7 @@ class TestATypedFragmentIsADeclaration:
                 'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  User: !include user.raml\n',
             }
         )
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         declared = build_tree(raml)['types']
         assert {file: list(names) for file, names in declared.items()} == {'api.raml': ['User']}
         assert set(build_graph(raml).nodes) >= {addr for _, addr in references(declared)}
@@ -230,7 +236,7 @@ class TestAnAddressMapCanBeReused:
         one map rather than two walks that happen to match.
         """
         root = workspace({'api.raml': API})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
         assert build_tree(raml, addresses=graph.addresses) == build_tree(raml)
 
@@ -282,7 +288,7 @@ class TestWhatADocumentationViewNeeds:
     @pytest.fixture
     def doc(self, workspace):
         root = workspace({'api.raml': DOCUMENTED})
-        return build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def test_base_uri_parameters_are_projected(self, doc):
         """`{tenant}` is a value every caller supplies; without it no request
@@ -330,7 +336,7 @@ class TestAnAnnotationIsRecordedWhereItWasApplied:
     @pytest.fixture
     def doc(self, workspace):
         root = workspace({'api.raml': DOCUMENTED})
-        return build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def test_on_the_resource(self, doc):
         assert doc['endpoints']['/users']['annotations'] == [
@@ -360,7 +366,7 @@ class TestAnAnnotationIsRecordedWhereItWasApplied:
 
     def test_each_points_at_a_type_that_exists(self, workspace):
         root = workspace({'api.raml': DOCUMENTED})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
         dangling = [a for _, a in references(build_tree(raml)) if a not in graph.nodes]
         assert not dangling, dangling
@@ -407,7 +413,7 @@ class TestABoundSurvivesTheTripToAConsumer:
     @pytest.fixture
     def limits(self, workspace):
         root = workspace({'api.raml': NUMBERS})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         return build_tree(raml)['types']['api.raml']['Limits']['properties']
 
     def bound(self, limits, name, facet):
@@ -484,7 +490,7 @@ class TestAPathIsRelativeToTheWorkspaceRoot:
     @pytest.fixture
     def tree(self, workspace):
         root = workspace(SHARED)
-        raml = parse_from_path(root / 'apis' / 'store' / 'api.raml', ParseOptions(unwrap=True, workspace_root=root))
+        raml = workspace.parse(root / 'apis' / 'store' / 'api.raml', ParseOptions(unwrap=True, workspace_root=root))
         return build_tree(raml)
 
     def test_the_library_is_keyed_by_its_path_under_the_root(self, tree):
@@ -499,11 +505,11 @@ class TestAPathIsRelativeToTheWorkspaceRoot:
         declared = tree['types']['shared/money.raml']['Money']
         assert raml['$ref'] == declared['id']
 
-    def test_a_relative_workspace_root_is_resolved_before_it_is_named(self, workspace, monkeypatch):
+    def test_a_relative_workspace_root_is_resolved_before_it_is_named(self, tmp_path, monkeypatch):
         # `path_to_file_uri` has nothing to resolve a relative path against, so
         # `-w apis` named `file:///apis` while the loader confined reads to the
         # absolute one. The two disagreed and only the loader was right.
-        root = workspace(SHARED)
+        root = write_files(tmp_path, SHARED)
         monkeypatch.chdir(root)
         raml = parse_from_path('apis/store/api.raml', ParseOptions(unwrap=True, workspace_root='.'))
         assert list(build_tree(raml)['types']) == ['apis/store/api.raml', 'shared/money.raml']
@@ -553,7 +559,7 @@ class TestASchemaArrivesSelfContained:
     @pytest.fixture
     def schema(self, workspace):
         root = workspace(SCHEMA_API)
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         return build_tree(raml)['types']['api.raml']['Invoice']['json_schema']
 
     def test_it_is_a_json_value_and_not_a_string(self, schema):
@@ -643,7 +649,7 @@ class TestAnIncludedSchemeSaysWhatItIs:
     @pytest.fixture
     def schemes(self, workspace):
         root = workspace(INCLUDED_SCHEME)
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, validate=True, workspace_root=root))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True, workspace_root=root))
         return build_tree(raml)['security_schemes']['api.raml']
 
     def test_the_type_is_the_one_the_fragment_declares(self, schemes):
@@ -671,7 +677,7 @@ class TestAnIncludedSchemeSaysWhatItIs:
 
     def test_the_use_site_points_at_the_declaration(self, workspace):
         root = workspace(INCLUDED_SCHEME)
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, validate=True, workspace_root=root))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True, workspace_root=root))
         tree = build_tree(raml)
         secured = tree['endpoints']['/things']['operations']['get']['secured_by'][0]
         assert secured['declaration'] == tree['security_schemes']['api.raml']['included']['id']
@@ -717,7 +723,7 @@ types:
 @pytest.fixture
 def metadata_tree(workspace):
     root = workspace(METADATA)
-    raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, workspace_root=root))
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, workspace_root=root))
     return build_tree(raml)
 
 

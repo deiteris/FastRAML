@@ -12,13 +12,18 @@ from typing import ClassVar
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
 
 
-def parse(root, name: str = 'api.raml'):
-    return parse_from_path(root / name, ParseOptions())
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
+def parse(workspace, root, name: str = 'api.raml'):
+    return workspace.parse(root / name)
 
 
 def operation(raml, uri: str, method: str):
@@ -34,7 +39,7 @@ class TestApplication:
                 + '/users:\n  get:\n    is: [paged]\n    description: mine\n'
             }
         )
-        get = operation(parse(root), '/users', 'get')
+        get = operation(parse(workspace, root), '/users', 'get')
         assert list(get.request.query_parameters) == ['page']
         assert get.description.value == 'mine'
 
@@ -46,7 +51,7 @@ class TestApplication:
                 + '/users:\n  get:\n    is: [paged]\n    description: mine\n'
             }
         )
-        assert operation(parse(root), '/users', 'get').description.value == 'mine'
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'mine'
 
     def test_a_resource_level_trait_reaches_every_method(self, workspace):
         root = workspace(
@@ -56,7 +61,7 @@ class TestApplication:
                 + '/users:\n  is: [paged]\n  get:\n  post:\n'
             }
         )
-        raml = parse(root)
+        raml = parse(workspace, root)
         for method in ('get', 'post'):
             assert operation(raml, '/users', method).description.value == 'from the trait'
 
@@ -70,7 +75,7 @@ class TestApplication:
                 + '/users:\n  is: [t]\n  get:\n    is: [t]\n'
             }
         )
-        query = operation(parse(root), '/users', 'get').request.query_parameters['q']
+        query = operation(parse(workspace, root), '/users', 'get').request.query_parameters['q']
         assert [member.raw for member in query.base.enum] == ['a']
 
     def test_the_closest_occurrence_wins(self, workspace):
@@ -85,7 +90,7 @@ class TestApplication:
                 + '/users:\n  is: [{t: {who: resource}}]\n  get:\n    is: [{t: {who: method}}]\n'
             }
         )
-        assert operation(parse(root), '/users', 'get').description.value == 'method'
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'method'
 
 
 class TestEveryReferenceIsBound:
@@ -106,7 +111,7 @@ class TestEveryReferenceIsBound:
                 'api.raml': API + 'uses:\n  l: lib.raml\n/a:\n  is: [l.drm]\n  get:\n    is: [l.drm]\n',
             }
         )
-        endpoint = parse(root).endpoints['/a']
+        endpoint = parse(workspace, root).endpoints['/a']
         assert endpoint.traits[0].resolved is not None
         assert endpoint.traits[0].resolved is endpoint.operations['get'].traits[0].resolved
 
@@ -119,7 +124,7 @@ class TestEveryReferenceIsBound:
     )
     def test_a_reference_on_a_resource_with_no_methods_is_bound(self, workspace, body):
         root = workspace({'lib.raml': self.LIBRARY, 'api.raml': API + 'uses:\n  l: lib.raml\n' + body})
-        assert parse(root).endpoints['/a'].traits[0].resolved is not None
+        assert parse(workspace, root).endpoints['/a'].traits[0].resolved is not None
 
     @pytest.mark.parametrize(
         'body',
@@ -132,7 +137,7 @@ class TestEveryReferenceIsBound:
     def test_a_name_that_matches_nothing_is_reported_once(self, workspace, body):
         root = workspace({'api.raml': API + body})
         with pytest.raises(RamlError) as caught:
-            parse(root)
+            parse(workspace, root)
         chains = list(caught.value.chains())
         assert [[frame.message for frame in chain][:2] for chain in chains] == [['apply trait', 'get trait definition']]
         assert chains[0][0].info == {'trait': 'nosuch'}
@@ -147,7 +152,7 @@ class TestParameters:
                 + '/users:\n  get:\n    is: [{t: {what: users}}]\n'
             }
         )
-        assert operation(parse(root), '/users', 'get').description.value == 'about users'
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'about users'
 
     def test_the_reserved_parameters_are_injected(self, workspace):
         root = workspace(
@@ -157,7 +162,7 @@ class TestParameters:
                 + '/users/{id}:\n  get:\n    is: [t]\n'
             }
         )
-        assert operation(parse(root), '/users/{id}', 'get').description.value == 'get /users/{id} users'
+        assert operation(parse(workspace, root), '/users/{id}', 'get').description.value == 'get /users/{id} users'
 
     def test_an_action_transforms_the_value(self, workspace):
         root = workspace(
@@ -167,26 +172,26 @@ class TestParameters:
                 + '/users:\n  get:\n    is: [t]\n'
             }
         )
-        assert operation(parse(root), '/users', 'get').description.value == 'user'
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'user'
 
     def test_an_undeclared_parameter_is_rejected(self, workspace):
         root = workspace(
             {'api.raml': API + 'traits:\n  t:\n    description: d\n/users:\n  get:\n    is: [{t: {nope: 1}}]\n'}
         )
         with pytest.raises(RamlError) as caught:
-            parse(root)
+            parse(workspace, root)
         assert 'unexpected parameter' in str(caught.value)
 
     def test_a_missing_parameter_is_rejected(self, workspace):
         root = workspace({'api.raml': API + 'traits:\n  t:\n    description: <<what>>\n/users:\n  get:\n    is: [t]\n'})
         with pytest.raises(RamlError) as caught:
-            parse(root)
+            parse(workspace, root)
         assert 'missing required parameter' in str(caught.value)
 
     def test_an_unresolvable_trait_names_itself(self, workspace):
         root = workspace({'api.raml': API + '/users:\n  get:\n    is: [nowhere]\n'})
         with pytest.raises(RamlError) as caught:
-            parse(root)
+            parse(workspace, root)
         assert caught.value.head.info == {'trait': 'nowhere'}
 
 
@@ -217,7 +222,7 @@ class TestProvenance:
 
     @pytest.fixture
     def three_way_body(self, workspace):
-        raml = parse(workspace(dict(self.THREE_WAY)))
+        raml = parse(workspace, workspace(dict(self.THREE_WAY)))
         return raml.endpoints['/items'].operations['get'].responses['200'].bodies['application/json']
 
     def test_all_three_namespaces_resolve_at_once(self, three_way_body):
@@ -247,13 +252,13 @@ class TestProvenance:
 
     def test_the_record_of_substitutions_is_dropped_after_resolution(self, workspace):
         # Only P7 reads it; kept, it would hold every application's values.
-        assert parse(workspace(dict(self.THREE_WAY))).substitutions == {}
+        assert parse(workspace, workspace(dict(self.THREE_WAY))).substitutions == {}
 
     def test_a_substituted_name_that_resolves_nowhere_is_reported_where_it_was_written(self, workspace):
         files = dict(self.THREE_WAY)
         files['api.raml'] = files['api.raml'].replace('types.PagedResult', 'types.Nope')
         with pytest.raises(RamlError) as caught:
-            parse(workspace(files))
+            parse(workspace, workspace(files))
         frames = {
             (frame.location.rsplit('/', 1)[-1], frame.position.line)
             for chain in caught.value.chains()
@@ -278,7 +283,7 @@ class TestProvenance:
             }
         )
         with pytest.raises(RamlError) as caught:
-            parse(root)
+            parse(workspace, root)
         assert 'Thing' in str(caught.value)
 
     def test_a_caller_substituted_type_resolves_in_the_caller(self, workspace):
@@ -293,7 +298,7 @@ class TestProvenance:
                 't.raml': '#%RAML 1.0 Trait\nbody:\n  application/json:\n    type: <<kind>>\n',
             }
         )
-        body = parse(root).endpoints['/items'].operations['get'].request.bodies['application/json']
+        body = parse(workspace, root).endpoints['/items'].operations['get'].request.bodies['application/json']
         assert [inherited.name for inherited in body.shape.inherits] == ['Thing']
 
     def test_a_trait_contributed_shape_joins_the_later_passes(self, workspace):
@@ -308,5 +313,5 @@ class TestProvenance:
             }
         )
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+            workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
         assert 'example' in str(caught.value)

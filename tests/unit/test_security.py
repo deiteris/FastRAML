@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 from fastraml.domains import DomainLocation
 
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
@@ -29,9 +29,14 @@ OAUTH2 = (
 )
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def parse(workspace, body: str, **options):
     root = workspace({'api.raml': API + body})
-    return parse_from_path(root / 'api.raml', ParseOptions(**options) if options else None)
+    return workspace.parse(root / 'api.raml', ParseOptions(**options) if options else None)
 
 
 def rejected(workspace, body: str) -> RamlError:
@@ -341,7 +346,7 @@ class TestFragment:
                 ),
             }
         )
-        raml = parse_from_path(root / 'api.raml')
+        raml = workspace.parse(root / 'api.raml')
         scheme = raml.endpoints['/users'].operations['get'].secured_by[0]
         assert scheme.definition.resolved().type == 'OAuth 2.0'
 
@@ -361,5 +366,5 @@ class TestFragment:
             }
         )
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml')
+            workspace.parse(root / 'api.raml')
         assert 'scope is not declared by the security scheme' in keys(caught.value)

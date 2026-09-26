@@ -22,10 +22,15 @@ from fastraml.types.values import ValueSet, is_subset, same_value, unique_items
 API = '#%RAML 1.0\ntitle: T\n'
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def declared_in(workspace, body: str, name: str = 'T'):
     """The parse and the named type from `types:\n<body>`, unwrapped."""
     root = workspace({'api.raml': API + 'types:\n' + body})
-    raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
     return raml, raml.types_in(raml.location)[name]
 
 
@@ -37,7 +42,7 @@ def declared(workspace, body: str, name: str = 'T'):
 def parse_validating(workspace, body: str):
     root = workspace({'api.raml': API + 'types:\n' + body})
     try:
-        parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
     except RamlError as err:
         return err
     return None
@@ -615,7 +620,7 @@ class TestUnionDispatchesOnADiscriminator:
         # what its own declaration wrote, so it accepts a value missing the
         # property its parent made required — silently, which is the hazard.
         root = workspace({'api.raml': API + 'types:\n' + TAGGED})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=False))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=False))
         with pytest.raises(AssertionError, match='unwrapped shape'):
             raml.types_in(raml.location)['Cat'].validate({'meows': True})
 
@@ -902,7 +907,7 @@ class TestUnionFacetsAreDistributed:
                 + '  Wide:\n    type: U\n    example: 99999\n'
             }
         )
-        assert parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
+        assert workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
 
 
 class TestUnionDeclarationFacetsAreDistributed:
@@ -998,7 +1003,7 @@ class TestPrivateUnwrap:
                 'api.raml': API + 'types:\n  P:\n    properties:\n      a: string\n  T:\n    type: P\n',
             }
         )
-        raml = parse_from_path(root / 'api.raml', ParseOptions(validate=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(validate=True))
         child = raml.types_in(raml.location)['T']
         assert not raml.unwrapped
         assert [parent.name for parent in child.inherits] == ['P']
@@ -1015,7 +1020,7 @@ class TestPrivateUnwrap:
             }
         )
         with pytest.raises(RamlError):
-            parse_from_path(root / 'api.raml', ParseOptions(validate=True))
+            workspace.parse(root / 'api.raml', ParseOptions(validate=True))
 
 
 # -- property-based: inheritance narrows ----------------------------------

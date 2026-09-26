@@ -9,16 +9,21 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 from fastraml.domains import DomainLocation
 
 API = '#%RAML 1.0\ntitle: T\n'
 JSON = API + 'mediaType: application/json\n'
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def parse(workspace, body: str, head: str = API, **options):
     root = workspace({'api.raml': head + body})
-    return parse_from_path(root / 'api.raml', ParseOptions(**options) if options else None)
+    return workspace.parse(root / 'api.raml', ParseOptions(**options) if options else None)
 
 
 def fails(workspace, body: str, head: str = API) -> RamlError | None:
@@ -338,7 +343,7 @@ class TestRegisteredForLaterPasses:
             }
         )
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
         assert 'invalid example' in {t.message for c in caught.value.chains() for t in c}
 
 
@@ -387,7 +392,7 @@ class TestAnnotationTargets:
 class TestNonApiFragments:
     def test_a_library_has_no_endpoints(self, workspace):
         root = workspace({'lib.raml': '#%RAML 1.0 Library\ntypes:\n  T: string\n'})
-        assert parse_from_path(root / 'lib.raml').endpoints == {}
+        assert workspace.parse(root / 'lib.raml').endpoints == {}
 
 
 class TestParameterEntity:
@@ -448,5 +453,5 @@ class TestParameterEntity:
                 'baseUriParameters:\n  host:\n    type: string\n'
             }
         )
-        raml = parse_from_path(root / 'api.raml')
+        raml = workspace.parse(root / 'api.raml')
         assert raml.entry_point.base_uri_parameters['host'].binding == 'uri'

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import Library, parse_from_path
+from fastraml import Library
 from fastraml.parser.references import (
     UnresolvedReferenceError,
     cut_last,
@@ -12,6 +12,11 @@ from fastraml.parser.references import (
     resolve_reference,
 )
 from fastraml.registry import Raml
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 def library_with(raml: Raml, location: str, **tables) -> Library:
@@ -113,7 +118,7 @@ class TestAnnotationTypeFallback:
         root = workspace(
             {'api.raml': '#%RAML 1.0\ntitle: T\nuses:\n  l: lib.raml\n', 'lib.raml': '#%RAML 1.0 Library\n'}
         )
-        raml = parse_from_path(root / 'api.raml')
+        raml = workspace.parse(root / 'api.raml')
         api = raml.entry_point
         library = api.uses['l'].link
         library.types['Config'] = 'the data type'
@@ -130,6 +135,6 @@ class TestAnnotationTypeFallback:
                 'lib.raml': '#%RAML 1.0 Library\n',
             }
         )
-        fragment = parse_from_path(root / 'dt.raml').entry_point
+        fragment = workspace.parse(root / 'dt.raml').entry_point
         fragment.uses['l'].link.types['Config'] = 'the data type'
         assert fragment.reference_annotation_type('l.Config') == 'the data type'

@@ -9,7 +9,7 @@ import math
 
 import pytest
 
-from fastraml import RamlError, parse_from_path, path_to_file_uri
+from fastraml import RamlError, path_to_file_uri
 from fastraml.datanode import make_data_node, value_node_of
 from fastraml.parser.facets import make_string_facet, resolve_annotated_scalar
 from fastraml.registry import Raml
@@ -18,6 +18,11 @@ from fastraml.yamlnode import compose, pairs
 #: Several tests here carry their value on an annotation key, which accepts
 #: anything. P8 binds every application to a declaration, so they are declared.
 API = '#%RAML 1.0\ntitle: T\nannotationTypes:\n  a: any\n  redirectable: any\n  only: any\n'
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 def first_value(raml: Raml, text: str):
@@ -112,7 +117,7 @@ class TestIncludedValues:
     def test_an_included_value_reports_the_included_file_as_its_location(self, workspace):
         # A bad example inside an included file must point at that file.
         root = workspace({'api.raml': API + '(a): !include data.yaml\n', 'data.yaml': 'k: v\n'})
-        raml = parse_from_path(root / 'api.raml')
+        raml = workspace.parse(root / 'api.raml')
         value = raml.entry_point.annotations['a'].value
         assert value.location == path_to_file_uri(root / 'data.yaml')
         assert value.include.path == 'data.yaml'
@@ -135,20 +140,20 @@ class TestAnnotatedScalar:
 
     def test_the_map_form_yields_the_value_and_its_annotations(self, workspace):
         root = workspace({'api.raml': API + 'description:\n  value: Some text\n  (redirectable): true\n'})
-        api = parse_from_path(root / 'api.raml').entry_point
+        api = workspace.parse(root / 'api.raml').entry_point
         assert api.description.value == 'Some text'
         assert api.description.annotations['redirectable'].value.raw is True
 
     def test_a_missing_value_key_is_an_error(self, workspace):
         root = workspace({'api.raml': API + 'description:\n  (only): 1\n'})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml')
+            workspace.parse(root / 'api.raml')
         assert 'missing value key in annotated scalar' in caught.value.messages()[0]
 
     def test_any_other_key_is_an_error(self, workspace):
         root = workspace({'api.raml': API + 'description:\n  value: text\n  other: 1\n'})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml')
+            workspace.parse(root / 'api.raml')
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.message == 'unknown field in annotated scalar'
         assert trace.info == {'field': 'other'}
@@ -167,7 +172,7 @@ class TestAnnotatedScalar:
                 )
             }
         )
-        api = parse_from_path(root / 'api.raml').entry_point
+        api = workspace.parse(root / 'api.raml').entry_point
         assert (api.title.value, api.version.value, api.base_uri.value) == ('T', 'v1', 'http://e.com')
         assert [set(facet.annotations) for facet in (api.title, api.version, api.base_uri)] == [
             {'a'},
@@ -179,7 +184,7 @@ class TestAnnotatedScalar:
 class TestFacetIncludes:
     def test_a_facet_may_be_included_from_a_non_yaml_file(self, workspace):
         root = workspace({'api.raml': API + 'description: !include d.md\n', 'd.md': 'Text from markdown.\n'})
-        api = parse_from_path(root / 'api.raml').entry_point
+        api = workspace.parse(root / 'api.raml').entry_point
         assert api.description.value == 'Text from markdown.\n'
         assert api.description.include.abs_uri == path_to_file_uri(root / 'd.md')
 

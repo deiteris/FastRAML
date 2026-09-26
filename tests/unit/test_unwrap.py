@@ -11,7 +11,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from fastraml import ParseOptions, RamlError, parse_from_path, parse_lenient
+from fastraml import ParseOptions, RamlError, parse_from_path
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.unwrap import unwrap_shape
 
@@ -19,12 +19,17 @@ LIB = '#%RAML 1.0 Library\n'
 UNWRAP = ParseOptions(unwrap=True)
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def unwrapped(workspace, body: str, extra: dict[str, str] | None = None):
     """Parse a library with `unwrap=True` and return its declared types."""
     files = {'lib.raml': LIB + 'types:\n' + body}
     files.update(extra or {})
     root = workspace(files)
-    raml = parse_from_path(root / 'lib.raml', UNWRAP)
+    raml = workspace.parse(root / 'lib.raml', UNWRAP)
     return raml, raml.types_in(raml.location)
 
 
@@ -370,7 +375,7 @@ RECURSIVE = '  Node:\n    properties:\n      next?: Node\n'
 
 def lenient(workspace, body: str):
     root = workspace({'lib.raml': LIB + 'types:\n' + body})
-    raml, error = parse_lenient(root / 'lib.raml', UNWRAP)
+    raml, error = workspace.lenient(root / 'lib.raml', UNWRAP)
     assert error is not None
     return raml, raml.types_in(raml.location), error
 
@@ -417,7 +422,7 @@ class TestAFailedMerge:
     def test_unwrap_shape_leaves_a_failed_clone_unflagged(self, workspace):
         """The one-declaration entry point, which P10 calls on a detached clone."""
         root = workspace({'lib.raml': LIB + 'types:\n' + FAILING_MERGE})
-        raml = parse_from_path(root / 'lib.raml')
+        raml = workspace.parse(root / 'lib.raml')
         clone = raml.types_in(raml.location)['C'].clone_detached()
         with pytest.raises(RamlError):
             unwrap_shape(raml, clone)

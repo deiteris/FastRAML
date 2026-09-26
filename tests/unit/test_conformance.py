@@ -42,6 +42,11 @@ REGENERATE = 'python -m fastraml.views.bindings.conformance'
 ORDERED_MAP = 'github.com/wk8/go-ordered-map/v2@v2.1.8'
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 @pytest.fixture(scope='module')
 def expected():
     return load_corpus()
@@ -144,7 +149,7 @@ class TestTheCorpusIsNotStale:
     def test_the_every_kind_tree_is_current(self, workspace):
         source = SOURCES.joinpath('every-kind.raml').read_text(encoding='utf-8')
         root = workspace({'api.raml': source})
-        projected = build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        projected = build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         current = json.loads((CORPUS / 'trees' / 'every-kind.json').read_text(encoding='utf-8'))
         assert current == projected, f'regenerate the corpus trees -- every-kind.json is stale ({REGENERATE})'
 

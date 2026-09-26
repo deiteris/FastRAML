@@ -408,7 +408,7 @@ class TestRuleExamples:
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
         assert findings[0].info['reason'] == 'binary media requires a file shape'
 
-    def test_json_ref_siblings_name_the_schema_and_every_exact_path(self, workspace):
+    def test_json_ref_siblings_name_the_schema_and_every_exact_path(self, memory_workspace):
         schema = json.dumps(
             {
                 'definitions': {'Name': {'type': 'string'}},
@@ -423,8 +423,8 @@ class TestRuleExamples:
             '/a:\n  get:\n    responses:\n      200:\n        body:\n          application/json: T\n'
             '/b:\n  get:\n    responses:\n      200:\n        body:\n          application/json: T\n'
         )
-        root = workspace({'api.raml': api, 'schema.json': schema})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        root = memory_workspace({'api.raml': api, 'schema.json': schema})
+        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
         config = Config(extends=(), rules=(RuleSetting(id='json-ref-siblings'),))
         findings = Linter(builtin_registry(), config).run(raml)
         assert {finding.info['schemaPath'] for finding in findings} == {
@@ -435,14 +435,14 @@ class TestRuleExamples:
         assert all(finding.location.endswith('/schema.json') for finding in findings)
         assert all(not finding.position.is_known for finding in findings)
 
-    def test_raml_source_spelling_rules_ignore_external_json_schema_syntax(self, workspace):
-        root = workspace(
+    def test_raml_source_spelling_rules_ignore_external_json_schema_syntax(self, memory_workspace):
+        root = memory_workspace(
             {
                 'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  External: !include schema.json\n',
                 'schema.json': '{"type": "string"}',
             }
         )
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
         config = Config(extends=(), rules=(RuleSetting(id='prefer-inline-alias'),))
         assert not Linter(builtin_registry(), config).run(raml)
 
@@ -550,8 +550,8 @@ class TestRuleExamples:
         config = Config(extends=(), rules=(RuleSetting(id='missing-description'),))
         assert not Linter(builtin_registry(), config).run(parsed(source, tmp_path))
 
-    def test_suppression_uses_an_included_files_location(self, workspace):
-        root = workspace(
+    def test_suppression_uses_an_included_files_location(self, memory_workspace):
+        root = memory_workspace(
             {
                 'api.raml': '#%RAML 1.0\ntitle: t\nuses:\n  lib: lib.raml\n',
                 'lib.raml': (
@@ -561,7 +561,7 @@ class TestRuleExamples:
                 ),
             }
         )
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
         config = Config(extends=(), rules=(RuleSetting(id='optional-and-nil'),))
         assert not Linter(builtin_registry(), config).run(raml)
 

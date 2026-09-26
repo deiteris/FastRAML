@@ -11,16 +11,21 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 
 API = '#%RAML 1.0\ntitle: T\n'
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 def parse(workspace, body: str, **files: str):
     """Parse `types:\n<body>` and return the error, or `None` if it validated."""
     root = workspace({'api.raml': API + 'types:\n' + body, **files})
     try:
-        parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
     except RamlError as err:
         return err
     return None
@@ -244,7 +249,7 @@ class TestDiscriminator:
 
     def test_only_declarations_with_discriminators_enter_the_check_index(self, workspace):
         root = workspace({'api.raml': API + 'types:\n  T: string\n'})
-        raml = parse_from_path(root / 'api.raml')
+        raml = workspace.parse(root / 'api.raml')
         assert raml._discriminator_shapes == []
 
         root = workspace(
@@ -253,7 +258,7 @@ class TestDiscriminator:
                 + 'types:\n  Plain: string\n  Tagged:\n    properties:\n      kind: string\n    discriminator: kind\n'
             }
         )
-        raml = parse_from_path(root / 'with.raml')
+        raml = workspace.parse(root / 'with.raml')
         assert [base.name for base in raml._discriminator_shapes] == ['Tagged']
 
     def test_an_inline_declaration_may_not_declare_one(self, workspace):
@@ -268,7 +273,7 @@ class TestDiscriminator:
         )
         root = workspace({'api.raml': API + 'types:\n' + body})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
         assert 'discriminator on an inline type declaration' in str(caught.value)
 
     def test_a_body_that_inherits_a_discriminated_type_is_fine(self, workspace):
@@ -283,7 +288,7 @@ class TestDiscriminator:
             '          application/json: Person\n'
         )
         root = workspace({'api.raml': API + 'types:\n' + body})
-        assert parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
+        assert workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
 
     def test_an_inline_declaration_may_not_declare_a_discriminator_value(self, workspace):
         body = (
@@ -293,7 +298,7 @@ class TestDiscriminator:
         )
         root = workspace({'api.raml': API + 'types:\n' + body})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
         assert 'discriminator on an inline type declaration' in str(caught.value)
 
     def test_an_inherited_property_counts(self, workspace):
@@ -367,7 +372,7 @@ class TestDiscriminatorValuesInExamples:
     def parse(self, workspace, tail: str):
         root = workspace({'api.raml': API + 'types:\n' + self.HIERARCHY + tail})
         try:
-            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
         except RamlError as err:
             return err
         return None
@@ -434,5 +439,5 @@ class TestAccumulation:
 class TestNotRunWithoutTheOption:
     def test_a_bad_declaration_parses_when_validation_is_off(self, workspace):
         root = workspace({'api.raml': API + 'types:\n  T:\n    type: string\n    minLength: 9\n    maxLength: 2\n'})
-        raml = parse_from_path(root / 'api.raml', ParseOptions())
+        raml = workspace.parse(root / 'api.raml')
         assert raml.types_in(raml.location)['T'].shape.min_length.value == 9

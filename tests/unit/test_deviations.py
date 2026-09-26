@@ -15,12 +15,17 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 from fastraml.registry import DEFAULT_MAX_INCLUDE_SIZE
 from fastraml.types.scalars import INTEGER_FORMATS, NUMBER_FORMATS
 
 LIB = '#%RAML 1.0 Library\n'
 XSD = '<?xml version="1.0"?>\n<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/>\n'
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 def messages(error: RamlError) -> set[str]:
@@ -31,14 +36,14 @@ class TestD1NoXsd:
     def test_an_xsd_type_says_why(self, workspace):
         root = workspace({'lib.raml': LIB + 'types:\n  S: !include s.xsd\n', 's.xsd': XSD})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml')
+            workspace.parse(root / 'lib.raml')
         assert 'xml schema external types are not supported' in messages(caught.value)
 
     def test_it_is_not_the_generic_header_diagnostic(self, workspace):
         """The generic header diagnostic would point the author at the wrong fix."""
         root = workspace({'lib.raml': LIB + 'types:\n  S: !include s.xsd\n', 's.xsd': XSD})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml')
+            workspace.parse(root / 'lib.raml')
         assert 'unknown fragment kind' not in messages(caught.value)
 
     def test_an_xml_scalar_include_is_untouched(self, workspace):
@@ -49,7 +54,7 @@ class TestD1NoXsd:
                 'e.xml': '<a>hi</a>\n',
             }
         )
-        raml = parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
+        raml = workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
         assert raml.entry_point.types['T'] is not None
 
 
@@ -67,7 +72,7 @@ class TestD2NumericFormatsDoNotCross:
     def test_a_format_from_the_other_table_is_refused(self, workspace, declared, fmt):
         root = workspace({'lib.raml': LIB + f'types:\n  T:\n    type: {declared}\n    format: {fmt}\n'})
         with pytest.raises(RamlError):
-            parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
+            workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
 
 
 class TestD6IncludeSizeLimit:
@@ -82,9 +87,9 @@ class TestD6IncludeSizeLimit:
                 'big.txt': 'x' * 200,
             }
         )
-        parse_from_path(root / 'lib.raml', ParseOptions(max_include_size=1000))
+        workspace.parse(root / 'lib.raml', ParseOptions(max_include_size=1000))
         with pytest.raises(RamlError):
-            parse_from_path(root / 'lib.raml', ParseOptions(max_include_size=100))
+            workspace.parse(root / 'lib.raml', ParseOptions(max_include_size=100))
 
     def test_zero_disables_the_limit(self, workspace):
         root = workspace(
@@ -93,7 +98,7 @@ class TestD6IncludeSizeLimit:
                 'big.txt': 'x' * 200,
             }
         )
-        assert parse_from_path(root / 'lib.raml', ParseOptions(max_include_size=0)) is not None
+        assert workspace.parse(root / 'lib.raml', ParseOptions(max_include_size=0)) is not None
 
 
 class TestD7OrderedMapsArePlainDicts:
@@ -102,5 +107,5 @@ class TestD7OrderedMapsArePlainDicts:
         names = ['Zeta', 'alpha', 'Mid', 'beta']
         body = ''.join(f'  {name}: string\n' for name in names)
         root = workspace({'lib.raml': LIB + 'types:\n' + body})
-        raml = parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True))
         assert list(raml.entry_point.types) == names

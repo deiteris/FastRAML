@@ -84,9 +84,14 @@ types:
 
 
 @pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
+@pytest.fixture
 def graph(workspace) -> Graph:
     root = workspace({'api.raml': API, 'lib.raml': LIB})
-    return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+    return build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
 
 def iris(graph: Graph, kind: str) -> list[str]:
@@ -114,7 +119,7 @@ class TestIris:
             return original(value)
 
         monkeypatch.setattr(walk_module, '_segment', counted)
-        build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         assert calls.count('id') == 1
 
     def test_a_library_is_a_unit_of_its_own_relative_to_the_entry_directory(self, graph):
@@ -148,7 +153,7 @@ class TestIris:
                 'shared.json': '{"type": "object", "properties": {"x": {"type": "string"}}}',
             }
         )
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         shared = f'{DEFAULT_BASE}/shared.json#'
         assert shared in graph.nodes, 'the shared schema is a node in its own right'
         assert f'{shared}/properties/x' in graph.nodes
@@ -167,7 +172,7 @@ class TestIris:
                 '  A:\n    type: |\n      {"type": "object", "properties": {"x": {"type": "string"}}}\n'
             }
         )
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         assert any('/declarations/types/A' in iri and iri.endswith('/property/x/schema') for iri in graph.nodes)
 
     def test_a_use_site_does_not_steal_the_declaration_iri(self, graph):
@@ -201,7 +206,7 @@ class TestIris:
                 '  Admin:\n    type: [User, Entity]\n    properties:\n      level: integer\n'
             }
         )
-        graph = build_graph(parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True)))
         assert len([iri for iri, n in graph.nodes.items() if n.attributes.get('name') == 'Entity']) > 1, (
             'the collision this rule exists for must actually occur, or the test is vacuous'
         )
@@ -224,7 +229,7 @@ class TestIris:
                 'two.raml': shared,
             }
         )
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         assert sorted(graph.find('Thing')) == [
             f'{DEFAULT_BASE}/one.raml#/declarations/types/Thing',
             f'{DEFAULT_BASE}/two.raml#/declarations/types/Thing',
@@ -236,7 +241,7 @@ class TestIris:
         root = workspace(
             {'api.raml': '#%RAML 1.0\ntitle: D\n/books:\n  displayName: Books\n  get:\n  /{isbn}:\n    get:\n'}
         )
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         books = f'{DEFAULT_BASE}#/web-api/endpoint/%2Fbooks'
         assert graph.find('Books') == [books]
         assert graph.find('/books') == [books]
@@ -258,7 +263,7 @@ class TestIris:
         found by taking it seriously, in one corpus fixture.
         """
         root = workspace({'lib.raml': '#%RAML 1.0 Library\ntypes:\n  Both: [string, string]\n'})
-        graph = build_graph(parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True)))
         parents = graph.out(graph.find('Both')[0], ['inherits'])
         assert len({edge.object for edge in parents}) == 2, 'two parents, two nodes'
 
@@ -266,8 +271,8 @@ class TestIris:
         """Determinism, at the level a consumer sees it."""
         root = workspace({'api.raml': API, 'lib.raml': LIB})
         options = ParseOptions(unwrap=True)
-        first = build_graph(parse_from_path(root / 'api.raml', options))
-        second = build_graph(parse_from_path(root / 'api.raml', options))
+        first = build_graph(workspace.parse(root / 'api.raml', options))
+        second = build_graph(workspace.parse(root / 'api.raml', options))
         assert list(first.nodes) == list(second.nodes)
         assert first.edges == second.edges
 
@@ -328,7 +333,7 @@ class TestTheEdgesThatAnswerQuestions:
                 'types:\n  Tenant: string\nbaseUriParameters:\n  tenant: Tenant\n'
             }
         )
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         parameter = next(iri for iri in iris(graph, 'Parameter') if graph.label(iri) == 'tenant')
         assert graph.out(parameter, ('range',))[0].object in graph.request_shape_iris()
 
@@ -347,7 +352,7 @@ class TestTheEdgesThatAnswerQuestions:
                 '/persons:\n  get:\n    securedBy: [oauth2.0]\n'
             }
         )
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         scheme = graph.find('oauth2.0')[0]
         assert scheme.endswith('/declarations/securitySchemes/oauth2.0')
         found = graph.walk(scheme, USE_EDGES, reverse=True)
@@ -369,7 +374,7 @@ class TestFacetLiterals:
                 'lib.raml': '#%RAML 1.0 Library\ntypes:\n  N:\n    type: number\n    multipleOf: 1.1\n    minimum: -0.25\n'
             }
         )
-        graph = build_graph(parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True)))
         attributes = graph.nodes[graph.find('N')[0]].attributes
         assert attributes['multipleOf'] == '1.1'
         assert attributes['minimum'] == '-0.25'
@@ -467,7 +472,7 @@ class TestTheInventory:
         root = workspace({'api.raml': API, 'lib.raml': LIB})
 
         def once():
-            built = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+            built = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
             return [(kind, name) for kind, name, _ in built.entries()]
 
         assert once() == once()
@@ -508,7 +513,7 @@ title: T
     @pytest.fixture
     def parameterised(self, workspace):
         root = workspace({'api.raml': self.QUERY})
-        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def test_a_node_and_the_schema_inside_it_are_not_an_ambiguity(self, parameterised):
         """`…/parameter/query/login` and `…/parameter/query/login/schema` are one
@@ -527,7 +532,7 @@ title: T
         api = '#%RAML 1.0\ntitle: T\nuses:\n  a: a.raml\n  b: b.raml\ntypes:\n  Use: a.Thing\n'
         lib = '#%RAML 1.0 Library\ntypes:\n  Thing:\n    type: object\n    properties:\n      x: string\n'
         root = workspace({'api.raml': api, 'a.raml': lib, 'b.raml': lib})
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         assert len(graph.find('Thing')) > 1
 
     def test_a_synthetic_parent_still_needs_the_declaration_rule(self, workspace):
@@ -542,7 +547,7 @@ title: T
             '  Admin:\n    type: [User, Entity]\n    properties:\n      level: integer\n'
         )
         root = workspace({'api.raml': api})
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         found = graph.find('Entity')
         assert len(found) == 1, found
         assert found[0].endswith('#/declarations/types/Entity')
@@ -593,7 +598,7 @@ class TestSchemaTypesAreNotLeaves:
     @pytest.fixture
     def schema_graph(self, workspace):
         root = workspace({'api.raml': SCHEMA_LIB, 'err.json': ERR})
-        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def test_a_schema_type_has_its_properties_as_children(self, schema_graph):
         err = schema_graph.find('Err')[0]
@@ -646,7 +651,7 @@ class TestDeclarationsArePositioned:
     @pytest.fixture
     def positioned(self, workspace):
         root = workspace({'api.raml': SCHEMA_LIB, 'err.json': ERR})
-        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
     @pytest.mark.parametrize(('kind', 'name'), [('Trait', 'paged'), ('SecurityScheme', 'key')])
     def test_it_has_a_file_and_a_line(self, positioned, kind, name):
@@ -814,7 +819,7 @@ securitySchemes:
 """
             }
         )
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         operation = iris(graph, 'Operation')[0]
         assert graph.nodes[operation].attributes['scopes'] == ('read', 'admin')
 
@@ -891,7 +896,7 @@ class TestAReferenceThroughALibraryReachesTheDeclaration:
     @pytest.fixture
     def graph(self, workspace) -> Graph:
         root = workspace({'api.raml': QUALIFIED_API, 'shared.raml': QUALIFIED_LIB})
-        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def declaration(self, graph: Graph, bucket: str, name: str) -> str:
         tail = f'#/declarations/{bucket}/{name}'
@@ -953,7 +958,7 @@ class TestOneNameInTwoLibraries:
                 'b.raml': '#%RAML 1.0 Library\ntraits:\n  paged:\n    queryParameters:\n      fromB?: integer\n',
             }
         )
-        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def test_the_edge_lands_on_the_library_that_was_applied(self, graph: Graph):
         operation = iris(graph, 'Operation')[0]
@@ -1027,7 +1032,7 @@ class TestEveryFileThatDeclaresSomethingHasANode:
                 'role.raml': '#%RAML 1.0 DataType\ntype: object\nproperties:\n  name: string\n',
             }
         )
-        return build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def test_the_included_file_is_a_node(self, graph: Graph):
         assert sorted(graph.label(iri) for iri in iris(graph, 'Unit')) == ['api.raml', 'role.raml']

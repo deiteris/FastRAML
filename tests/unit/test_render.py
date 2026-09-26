@@ -20,7 +20,7 @@ import re
 import pytest
 import yaml
 
-from fastraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions
 from fastraml.types.base import facets_of
 from fastraml.types.jsonschema_ import projected
 from fastraml.views.graph import build_graph
@@ -77,9 +77,14 @@ types:
 
 
 @pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
+@pytest.fixture
 def shown(workspace):
     root = workspace({'lib.raml': LIB})
-    raml = parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True))
+    raml = workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True))
     graph = build_graph(raml)
 
     def show(name: str, depth: int = 1) -> str:
@@ -290,7 +295,7 @@ def endpoint(workspace):
     from fastraml.views.render import Sources, render_endpoint
 
     root = workspace({'api.raml': API})
-    raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
     graph = build_graph(raml)
     sources = Sources.of(raml)
 
@@ -401,7 +406,7 @@ class TestJsonSchemaTypesExpand:
     @pytest.fixture
     def schema_shown(self, workspace):
         root = workspace({'api.raml': SCHEMA_API, 'err.json': ERR_JSON, 'uuid.json': UUID_JSON})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
 
         def show(name: str, depth: int = 1) -> str:
@@ -445,7 +450,7 @@ class TestJsonSchemaTypesExpand:
         schema type once P9 had run — unreachable at the shape a consumer holds.
         """
         root = workspace({'api.raml': SCHEMA_API, 'err.json': ERR_JSON, 'uuid.json': UUID_JSON})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         declared = raml.types_in(raml.location)['errorScheme']
         assert declared.shape.as_shape() is not None
 
@@ -508,7 +513,7 @@ class TestSchemaDefinitionsKeepTheirName:
         which drops the comments the note column is made of.
         """
         root = workspace({'api.raml': DEFS_API, 'item.json': ITEM_JSON, 'shared.json': SHARED_JSON})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
 
         def show(name: str, depth: int = 1) -> str:
@@ -521,7 +526,7 @@ class TestSchemaDefinitionsKeepTheirName:
     @pytest.fixture
     def defs_shown(self, workspace):
         root = workspace({'api.raml': DEFS_API, 'item.json': ITEM_JSON, 'shared.json': SHARED_JSON})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
 
         def show(name: str, depth: int = 1) -> dict:
@@ -637,7 +642,7 @@ class TestScalarsAreQuotedWhenPlainWouldNotParse:
     @pytest.fixture
     def quoted(self, workspace):
         root = workspace({'lib.raml': QUOTING})
-        graph = build_graph(parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True)))
 
         def show(name: str) -> dict:
             shape = graph.shape_at(graph.find(name)[0])
@@ -827,7 +832,7 @@ class TestExtensionsAreShown:
     @pytest.fixture
     def extended(self, workspace):
         root = workspace({'api.raml': EXTENDED})
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
         def show(name: str) -> dict:
             text = '\n'.join(render(graph.shape_at(graph.find(name)[0]), root=graph.root))
@@ -896,7 +901,7 @@ types:
     @pytest.fixture
     def views(self, workspace):
         root = workspace({'api.raml': self.FACETED})
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
         def of(name: str) -> tuple[set[str], set[str], set[str]]:
             iri = graph.find(name)[0]

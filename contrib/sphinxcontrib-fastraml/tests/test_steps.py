@@ -6,6 +6,8 @@ import html
 import json
 import re
 
+import pytest
+
 OFF = 'raml_warn_unrendered = False'
 
 
@@ -25,13 +27,22 @@ def blocks(built, page: str = 'index') -> list[str]:
     return [html.unescape(re.sub(r'<[^>]+>', '', block)) for block in found]
 
 
-def test_a_step_leads_with_the_authors_words_and_links_out_once(build):
-    built = build(
-        {'index': 'Home\n====\n\n.. raml:send:: GET /books/{isbn}\n\n   Ask for the book by its ISBN.\n'},
-        conf=OFF,
-    )
+@pytest.mark.parametrize(
+    ('directive', 'argument'), [('send', 'GET /books/{isbn}'), ('expect', 'GET /books/{isbn} 200')]
+)
+def test_a_step_takes_no_content(build, directive, argument):
+    # Its text would render exactly as a paragraph above it: there is no entry
+    # to place it in, so the instruction is written outside.
+    built = build({'index': f'Home\n====\n\n.. raml:{directive}:: {argument}\n\n   Ask for the book.\n'}, conf=OFF)
+    assert any(f'Error in "raml:{directive}" directive' in warning for warning in built.warnings), built.warnings
+    assert 'Ask for the book' not in built.text()
+
+
+def test_a_step_explains_in_place_and_links_out_once(build):
+    built = build({'index': 'Home\n====\n\n.. raml:send:: GET /books/{isbn}\n'}, conf=OFF)
+    assert built.warnings == []
     text = built.text()
-    assert text.startswith('Home ¶ Ask for the book by its ISBN.')
+    assert text.startswith('Home ¶ Authenticate with oauth2')
     # What an input means is here, not behind a link, one row each: `{tenant}`
     # is in the host, so it is in the URL rather than the path.
     table = rows(built)

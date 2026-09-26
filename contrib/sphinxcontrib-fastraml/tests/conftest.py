@@ -83,6 +83,7 @@ def build(tmp_path: Path) -> Callable[..., Built]:
             app.build()
         finally:
             app.cleanup()
-        return Built(app, [line for line in warning.getvalue().splitlines() if 'WARNING' in line])
+        lines = warning.getvalue().splitlines()
+        return Built(app, [line for line in lines if 'WARNING' in line or 'ERROR' in line])
 
     return run

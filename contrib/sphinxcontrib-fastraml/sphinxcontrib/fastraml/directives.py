@@ -263,17 +263,16 @@ def _fields(argument: str | None) -> str:
 
 
 class Step(RamlDirective):
-    """What `raml:send` and `raml:expect` share: the options, and where the author's text goes.
+    """What `raml:send` and `raml:expect` share: their options.
 
-    The author's text comes first -- it is the step's instruction -- and the
-    generated part follows it. Neither is ever a link target, so `:no-index:`
-    changes nothing.
+    A step takes no content: it is no entry to add to, so text inside it would
+    render exactly as a paragraph above it does. It is never a link target, so
+    `:no-index:` changes nothing.
     """
 
     writer = Steps
     required_arguments = 1
     final_argument_whitespace = True
-    has_content = True
     option_spec: ClassVar[dict[str, Callable[[str], object]]] = {
         'api': directives.unchanged_required,
         'media': directives.unchanged_required,
@@ -302,9 +301,6 @@ class Step(RamlDirective):
             values=self.options.get('values', {}),
             body=body,
         )
-
-    def add_content(self, rendered: list[Node]) -> None:
-        rendered[0:0] = self.parse_content_to_nodes()
 
 
 class Send(Step):

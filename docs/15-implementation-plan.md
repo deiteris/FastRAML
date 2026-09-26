@@ -37,6 +37,15 @@ Its first milestone fixes two present defects: recursion left unmarked after a
 P9 failure, and one mistake reported once per template application or
 inheritance level.
 
+**Deprecated aliases as a model fact (proposed).** `deprecated-schemas` is on
+by default and reads `source_info`, so every lint-enabled parse, the language
+service's included, retains each declaration's YAML subtree: +7.66 MB on
+`large`, against +0.56 MB for the text alone. It needs only where a `schema:`
+or `schemas:` key was accepted, which the decoder knows. Recording those
+(file, position, key) on the model would let the default rule set run on
+`retain_text`; the three off-by-default rules that inspect how a declaration
+was written keep `retain_source`.
+
 **Sampled examples in the tree (undecided).** The viewer's request and response
 panel (parked on `feat/viewer-request-samples`) needs a working body for each
 payload, and only Python can produce a validated one. The candidate design:

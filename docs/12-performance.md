@@ -86,7 +86,9 @@ fails or skips the work. Measure it by linearity instead: at `--scale 0.5` the
 time should halve.
 
 Each workload supports `parse`, `unwrap`, `validate`, `unwrap+validate`,
-`unwrap+graph`, and `unwrap+lint`. Corpus generation is outside the timed region.
+`unwrap+graph`, `unwrap+lint`, and `unwrap+occurrences`, which builds the
+occurrence index ([16](16-graph.md) § 9). Corpus generation is outside the
+timed region.
 The small corpus-validity tests run in the ordinary test suite.
 
 ```bash

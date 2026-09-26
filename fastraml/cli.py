@@ -9,6 +9,7 @@ fastraml tree [--positions] FILE
 fastraml serve [--host H] [--port P] FILE
 fastraml list FILE [PATTERN]
 fastraml refs|deps FILE NAME
+fastraml refs --sites FILE NAME
 fastraml show [--depth N] FILE NAME
 fastraml compat [--types] [--json] OLD NEW
 fastraml join [--title T] [--version V] [--description D] [--base-uri INPUT=URI]... INPUT INPUT...
@@ -303,6 +304,10 @@ def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser
         walk.add_argument('files', metavar='FILE', nargs=1)
         walk.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
         walk.add_argument('--json', action='store_true', help='one JSON object per result')
+        if name == 'refs':
+            walk.add_argument(
+                '--sites', action='store_true', help='where the name is written, as FILE:LINE:COLUMN, instead'
+            )
         walk.add_argument('--depth', type=int, default=None, metavar='N', help='stop after N hops')
         walk.add_argument(
             '--kind',
@@ -801,13 +806,16 @@ def _walk(args: argparse.Namespace) -> int:
     """`refs` walks the edges backwards, `deps` forwards."""
     from fastraml.views.graph import TYPE_EDGES, USE_EDGES  # noqa: PLC0415 - graph commands only
 
-    built = _built(args)
+    sites = getattr(args, 'sites', False)
+    built = _built(args, retain_source=sites)
     if built is None:
         return EXIT_INVALID
-    graph, _ = built
+    graph, raml = built
     origin = _resolve(graph, args.name)
     if origin is None:
         return EXIT_INVALID
+    if sites:
+        return _sites(args, graph, raml, origin)
 
     reverse = args.command == 'refs'
     # `deps` follows type structure from a type, and use containment from
@@ -841,6 +849,33 @@ def _walk(args: argparse.Namespace) -> int:
         print(f'... {len(routes) - len(paths)} more; raise --limit or narrow with --kind', file=sys.stderr)
     if not paths and not args.json:
         print(f'{args.name}: nothing found', file=sys.stderr)
+    return EXIT_OK
+
+
+def _sites(args: argparse.Namespace, graph: Graph, raml: Raml, origin: str) -> int:
+    """`refs --sites`: where the name is written, from the occurrence index (docs/16 § 9)."""
+    from fastraml.types.base import Property  # noqa: PLC0415 - graph commands only
+    from fastraml.uris import relative_to  # noqa: PLC0415
+    from fastraml.views.occurrences import build_occurrences  # noqa: PLC0415
+    from fastraml.views.walk import workspace_of  # noqa: PLC0415
+
+    entity = graph.entity_at(origin)
+    # A property is a record; the index names its declaration.
+    if isinstance(entity, Property):
+        entity = entity.base
+    target = getattr(entity, 'id', None)
+    found = [] if target is None else build_occurrences(raml).of(target)
+    root = workspace_of(raml)
+    for occurrence in sorted(found, key=lambda o: (o.uri, o.span.line, o.span.column)):
+        where = f'{relative_to(occurrence.uri, root)}:{occurrence.span.line}:{occurrence.span.column}'
+        if args.json:
+            import json  # noqa: PLC0415 - only JSON output needs the encoder
+
+            print(json.dumps({'at': where, 'role': str(occurrence.role), 'kind': str(occurrence.kind)}))
+        else:
+            print(f'{where:<30} {occurrence.role}')
+    if not found and not args.json:
+        print(f'{args.name}: written nowhere the index records', file=sys.stderr)
     return EXIT_OK
 
 
@@ -1015,7 +1050,9 @@ def _parsed(args: argparse.Namespace, path: str | None = None) -> Raml | None:
         return None
 
 
-def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Raml] | None:
+def _built(
+    args: argparse.Namespace, path: str | None = None, *, retain_source: bool = False
+) -> tuple[Graph, Raml] | None:
     """Parse and project, or report why not. Returns the graph and the model.
 
     Validation is off, as for every reading verb, so a document with a bad
@@ -1027,7 +1064,7 @@ def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Ra
 
     path = path or args.files[0]
     try:
-        raml = parse_from_path(path, _options(args, validate=False))
+        raml = parse_from_path(path, _options(args, validate=False, retain_source=retain_source))
     except RamlError as err:
         _invalid(path, err)
         return None

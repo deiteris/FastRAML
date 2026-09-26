@@ -339,6 +339,25 @@ class TestGraphVerbs:
         assert main(['refs', graphed, 'Nope']) == EXIT_INVALID
         assert 'no such node' in capsys.readouterr().err
 
+    def test_sites_prints_where_the_name_is_written(self, graphed, capsys):
+        # docs/16 § 9: the declaration's key, then each use, in source order.
+        assert main(['refs', '--sites', graphed, 'Entity']) == EXIT_OK
+        rows = [line.split() for line in capsys.readouterr().out.splitlines()]
+        lines = GRAPHED.splitlines()
+        declared = lines.index('  Entity:') + 1
+        used = lines.index('    type: Entity') + 1
+        assert rows == [[f'g.raml:{declared}:3', 'definition'], [f'g.raml:{used}:11', 'reference']]
+
+    def test_sites_as_json_is_one_object_per_site(self, graphed, capsys):
+        assert main(['refs', '--sites', '--json', graphed, 'User']) == EXIT_OK
+        rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        assert [(row['role'], row['kind']) for row in rows] == [('definition', 'type'), ('reference', 'type')]
+
+    def test_sites_names_a_property_by_its_declaration(self, graphed, capsys):
+        # A property is a record, not an entity: its sites are its declaration's.
+        assert main(['refs', '--sites', graphed, 'fastraml://id#/declarations/types/Entity/property/id']) == EXIT_OK
+        assert capsys.readouterr().out.split()[1:] == ['definition']
+
     def test_a_multi_parent_type_does_not_make_its_parents_ambiguous(self, workspace, capsys):
         """The end-to-end form of the defect `Graph.find` now rules out.
 

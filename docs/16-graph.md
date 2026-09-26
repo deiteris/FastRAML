@@ -90,7 +90,8 @@ fastraml deps api.raml User
 
 `refs` follows use edges in reverse. `deps` follows type structure for types and
 use containment for other node kinds. Both commands can filter by kind, depth,
-and result limit.
+and result limit. `refs --sites` prints where the name is written instead,
+from the occurrence index (§ 9).
 
 ### 3.1 SPARQL catalogue
 
@@ -337,7 +338,7 @@ at decode, and P7 never reads it.
 
 - View boundary: `tests/unit/test_views.py`
 - Graph and tree behavior: `tests/unit/test_graph.py`, `tests/unit/test_cli.py`
-- Occurrence index: `tests/unit/test_occurrences.py`
+- Occurrence index: `tests/unit/test_occurrences.py`; the law over the corpora, `tests/unit/test_occurrence_law.py`
 - Tree bindings: `tests/unit/test_bindings.py`, `tests/unit/test_conformance.py`
 - Consumer traversal law: `tests/unit/test_consumer_traversal.py`
 

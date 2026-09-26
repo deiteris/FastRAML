@@ -44,10 +44,19 @@ if TYPE_CHECKING:
 
 BASELINE_PATH = Path(__file__).parent / 'baselines.json'
 
-#: The six configurations every bench runs (docs/12 § 4). `unwrap+graph` and
-#: `unwrap+lint` measure the consumer paths: parse, unwrap, then project or
-#: lint. Each runs in a fresh subprocess, so one bench cannot inflate another.
-CONFIGS: tuple[str, ...] = ('parse', 'unwrap', 'validate', 'unwrap+validate', 'unwrap+graph', 'unwrap+lint')
+#: The seven configurations every bench runs (docs/12 § 4). `unwrap+graph`,
+#: `unwrap+lint` and `unwrap+occurrences` measure the consumer paths: parse,
+#: unwrap, then project, lint or index. Each runs in a fresh subprocess, so one
+#: bench cannot inflate another.
+CONFIGS: tuple[str, ...] = (
+    'parse',
+    'unwrap',
+    'validate',
+    'unwrap+validate',
+    'unwrap+graph',
+    'unwrap+lint',
+    'unwrap+occurrences',
+)
 
 #: For `compare`. Generous on purpose: it flags a change that made something
 #: much slower, not a noisy machine (docs/12 § 5).
@@ -108,7 +117,11 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     """Measure one configuration. Runs in the subprocess, not the driver."""
     from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - see module docstring
 
-    options = ParseOptions(unwrap='unwrap' in config, validate='validate' in config, retain_source='lint' in config)
+    options = ParseOptions(
+        unwrap='unwrap' in config,
+        validate='validate' in config,
+        retain_source='lint' in config or 'occurrences' in config,
+    )
     if 'lint' in config:
         from fastraml.views.lint import Config, Linter, builtin_registry  # noqa: PLC0415 - as above
 
@@ -118,6 +131,10 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
         from fastraml.views.graph import build_graph  # noqa: PLC0415 - as above
 
         return measure(bench, config, lambda: build_graph(parse_from_path(entry, options)), repeat=repeat)
+    if 'occurrences' in config:
+        from fastraml.views.occurrences import build_occurrences  # noqa: PLC0415 - as above
+
+        return measure(bench, config, lambda: build_occurrences(parse_from_path(entry, options)), repeat=repeat)
     return measure(bench, config, lambda: parse_from_path(entry, options), repeat=repeat)
 
 

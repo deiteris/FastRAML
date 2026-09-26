@@ -12,6 +12,8 @@ or a fixture file. On every result it checks the whole contract:
 - every mark in `Raml.broken` names an entity the model holds;
 - no registered shape lacks a kind, and no marked one is flagged unwrapped;
 - a walk of the shapes' containment terminates without a visited set;
+- the occurrence index builds, and every use in it meets one definition
+  (docs/16 § 9);
 - on an unwrapped model, the views run and the tree obeys the traversal law
   (docs/16 § 6.1).
 
@@ -40,11 +42,13 @@ from fastraml.uris import path_to_file_uri
 from fastraml.views.graph import build_graph
 from fastraml.views.lint.engine import Linter
 from fastraml.views.lint.rules import builtin_registry
+from fastraml.views.occurrences import build_occurrences
 from fastraml.views.openapi import to_openapi
 from fastraml.views.tree import build_tree
 from fastraml.yamlnode import Node
 from tests.tck.conftest import case_directory, collect_fixtures, fixture_id, tck_root
 from tests.unit.test_consumer_traversal import expand
+from tests.unit.test_occurrence_law import round_trip
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -137,7 +141,7 @@ class Corpus:
         self.offenders += [f'{label}: {problem}' for problem in self._check(raml, error)]
 
     def _check(self, raml: Raml, error: RamlError | None) -> list[str]:
-        problems = _stages(raml, error) + _registries(raml) + _marks(raml) + _shapes(raml)
+        problems = _stages(raml, error) + _registries(raml) + _marks(raml) + _shapes(raml) + _occurrences(raml)
         if raml.stopped_at is not None:
             self.tally[f'stopped at {raml.stopped_at.value}'] += 1
         if raml.broken:
@@ -253,6 +257,14 @@ def _contained(base: BaseShape, depth: int) -> None:
     elif isinstance(shape, ObjectShape):
         for prop in (*(shape.properties or {}).values(), *(shape.pattern_properties or {}).values()):
             _contained(prop.base, depth + 1)
+
+
+def _occurrences(raml: Raml) -> list[str]:
+    """The occurrence index builds at any stage, and each use meets one definition."""
+    try:
+        return round_trip(raml, build_occurrences(raml))
+    except Exception as err:
+        return [f'the occurrence index raised {type(err).__name__}: {err}']
 
 
 def _views(raml: Raml) -> list[str]:

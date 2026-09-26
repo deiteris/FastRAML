@@ -163,7 +163,7 @@ package exports it deliberately.
 | `tree FILE` | Export the effective addressed tree, or positions with `--positions`. |
 | `serve FILE` | Serve the tree through `fastraml-viewer`. |
 | `list FILE [PATTERN]` | List nameable declarations, endpoints, and operations. |
-| `refs FILE NAME` | Walk incoming graph routes. |
+| `refs FILE NAME` | Walk incoming graph routes. `--sites` prints where the name is written instead, as `FILE:LINE:COLUMN`, from the occurrence index ([16](16-graph.md) § 9). |
 | `deps FILE NAME` | Walk outgoing graph routes. |
 | `show FILE NAME` | Render an effective type, endpoint, or operation. |
 | `compat OLD NEW` | Compare effective APIs, or `types:` with `--types`. |

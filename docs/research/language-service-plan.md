@@ -1,6 +1,6 @@
 # Plan: partial models, then the language service
 
-**Status: accepted; M1, M2 and M3.1 done, M3.2 next.** This document orders the work proposed in
+**Status: accepted; M1, M2, M3.1 and M3.2 done, M3.3 next.** This document orders the work proposed in
 `research/partial-models.md` (PM) and `research/language-server.md` (LS). It
 is not normative. Each milestone amends its owning numbered document in the
 same commit, as `AGENTS.md` requires. When the service lands, a normative
@@ -210,12 +210,21 @@ Met.
   (`type: string`) is settled at decode, and P7 records no `TypeExprRef` for
   it, so hover on it has no occurrence. For M3.3.
 
-**M3.2 CLI and law.**
+**M3.2 CLI and law.** Done.
 
 - CLI: `fastraml refs --sites FILE NAME` prints `file:line:col`.
 - Test: the law and the round trip (LS § 9), over the fixtures, and over the
   TCK when present.
 - Bench: a workload that builds the index (`docs/12` § 5).
+- As built: `refs --sites` prints each site with its role, and `--json` gives
+  one object per site. `tests/unit/test_occurrence_law.py` holds the drops
+  as a ratchet, `DROPPED`, so each M3.3 fix removes its entries. The mutation
+  corpus also builds the index on every partial model and checks the round
+  trip. The bench configuration is `unwrap+occurrences`, which runs on every
+  workload. On `large`, the index costs 93 ms and a 13 MB peak on top of the
+  parse, for 24,854 occurrences.
+- Found: P7 places the name in a dotted type name, `Dot.Type`, past a dot
+  that names no library (`Types/dot-notation-types`). For M3.3.
 
 **M3.3 Driven by the law.** Each fix is committed with the law failures it
 removes:

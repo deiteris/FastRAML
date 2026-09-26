@@ -104,6 +104,7 @@ about names, so a name it does not hold has no answer.
 | `folding_ranges`, `selection_ranges` | the buffer's composed `Node` tree alone |
 | `type_at`, `supertypes`, `subtypes` | a type's `inherits` and `alias`, and the declarations naming it |
 | `diagnostics` | `RamlError.chains()` and the lint findings |
+| `tree` | `build_tree` (`docs/16` § 6) as JSON text, only on an unwrapped model |
 
 **Stopped parses.** A query on a snapshot that stopped early answers from the
 stages it completed. A declaration is an occurrence after decoding; a type
@@ -172,6 +173,13 @@ diagnostic's `info`.
 workspace symbols, links, folding and selection ranges, and type hierarchy.
 A request answers from every snapshot serving the file, once each.
 
+**Tree.** `fastraml/tree`, with `{textDocument: {uri}}`, answers `tree`'s
+text, or `null` for a parse that stopped before unwrap. A root answers for
+itself; any other file, for the first root reading it. Text rather than a
+value, so an integer larger than a double reaches a JavaScript client as
+written. It is the preview's source in `contrib/fastraml-vscode`
+(`docs/17` § 4).
+
 **Latency.** On `large`, an edit costs 477 ms and allocates 48.8 MB before
 its parser diagnostics, against 360 ms for a plain `unwrap+validate` parse
 (`python -m bench run --bench large --config service`). About a quarter of
@@ -189,4 +197,4 @@ could save.
 - `test_loaders.py`: `SafeFileLoader.contains` and `files`.
 - `test_lsp.py`: `fastraml lsp` driven over stdio by pygls' client, one
   request per feature, the column after an astral character, clearing, the
-  quick fix, and that the run is tuned.
+  quick fix, `fastraml/tree`, and that the run is tuned.

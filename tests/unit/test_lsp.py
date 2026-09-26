@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import json
 import sys
 from typing import TYPE_CHECKING
 
@@ -20,7 +21,7 @@ from pygls.lsp.client import LanguageClient
 
 from fastraml.cli import main
 from fastraml.gctuning import FULL_COLLECTION_THRESHOLD
-from fastraml.service.lsp import RamlServer
+from fastraml.service.lsp import TREE, RamlServer
 from fastraml.uris import path_to_file_uri
 from tests.unit.conftest import write_files
 
@@ -310,3 +311,24 @@ def test_the_server_runs_with_full_collections_deferred(monkeypatch):
     monkeypatch.setattr(RamlServer, 'start_io', lambda self: seen.append(gc.get_threshold()))
     assert main(['lsp']) == 0
     assert seen[0][2] >= FULL_COLLECTION_THRESHOLD
+
+
+class TestTree:
+    def tree(self, lsp: _Client, uri: str) -> dict[str, object] | None:
+        async def ask() -> str | None:
+            # Called on the loop, where pygls' future belongs.
+            return await lsp.client.protocol.send_request_async(TREE, {'textDocument': {'uri': uri}})
+
+        found = lsp.run(ask())
+        return None if found is None else json.loads(found)
+
+    def test_a_root_previews_itself_and_a_library_the_root_reading_it(self, lsp):
+        root = self.tree(lsp, _uri(lsp, 'api.raml'))
+        assert root is not None
+        assert {'Admin', 'Emoji'} <= root['types']['api.raml'].keys()
+        assert self.tree(lsp, _uri(lsp, 'lib.raml')) == root
+
+    def test_a_parse_that_stops_before_unwrap_has_none(self, lsp):
+        uri = _uri(lsp, 'broken.raml')
+        lsp.open(uri, LIBRARY.replace('string', 'strin'))
+        assert self.tree(lsp, uri) is None

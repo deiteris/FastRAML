@@ -11,6 +11,7 @@ A query on a snapshot that stopped early answers from the stages it completed
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final
@@ -22,6 +23,7 @@ from fastraml.types.base import BaseShape
 from fastraml.uris import relative_to
 from fastraml.views.occurrences import Kind, Role
 from fastraml.views.render import render
+from fastraml.views.tree import build_tree
 from fastraml.yamlnode import Node, NodeKind, compose, pairs
 
 if TYPE_CHECKING:
@@ -52,6 +54,7 @@ __all__ = [
     'subtypes',
     'supertypes',
     'suppression',
+    'tree',
     'type_at',
     'workspace_symbols',
 ]
@@ -193,6 +196,20 @@ def suppression(line: str, rule: str) -> str:
     annotates.
     """
     return f'{line[: len(line) - len(line.lstrip())]}{_DIRECTIVE}{rule}\n'
+
+
+# -- views ----------------------------------------------------------------------
+
+
+def tree(snapshot: Snapshot) -> str | None:
+    """The effective document as `fastraml tree` prints it (docs/16 § 6), or
+    `None` when the parse stopped before unwrap.
+
+    JSON text rather than a value, so an integer larger than a double reaches
+    a JavaScript reader as written.
+    """
+    raml = snapshot.raml
+    return None if raml is None or not raml.unwrapped else json.dumps(build_tree(raml))
 
 
 # -- names ----------------------------------------------------------------------

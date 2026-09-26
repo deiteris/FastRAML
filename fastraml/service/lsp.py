@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from functools import partial
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from lsprotocol import types
 from pygls.lsp.server import LanguageServer
@@ -45,10 +45,12 @@ class _AtPosition(Protocol):
     position: types.Position
 
 
-__all__ = ['DEBOUNCE', 'RamlServer']
+__all__ = ['DEBOUNCE', 'TREE', 'RamlServer']
 
 #: Seconds without a change before diagnostics are published.
 DEBOUNCE: Final = 0.3
+#: The request for a document's `tree` projection, as JSON text (docs/21 § 5).
+TREE: Final = 'fastraml/tree'
 
 _SEVERITY: Final = {
     'error': types.DiagnosticSeverity.Error,
@@ -441,6 +443,14 @@ class RamlServer(LanguageServer):
                     )
                 )
             return found
+
+        @feature(TREE)
+        def tree(params: Any) -> str | None:
+            if (uri := _file(params.textDocument.uri)) is None:
+                return None
+            # A root previews itself; any other file, the first root reading it.
+            snapshot = self.service.snapshot(uri) if uri in self.service.roots() else self.service.snapshots(uri)[0]
+            return queries.tree(snapshot)
 
     # -- helpers the handlers share ---------------------------------------------
 

@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.source_ir import SourceEndPoint, SourceOperation
-    from fastraml.parser.templates import Substitutions
+    from fastraml.parser.substitutions import Substitutions
     from fastraml.registry import Raml
     from fastraml.yamlnode import Node
 

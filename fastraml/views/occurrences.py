@@ -356,21 +356,29 @@ class _Index:
                 )
 
     def annotations(self, raml: Raml) -> None:
-        """The name in each `(annotation)` key P8 bound, past the `(`."""
+        """The name in each `(annotation)` key P8 bound, past the `(`, or in
+        the caller's value a template substituted it from.
+        """
         for extension in raml.domain_extensions:
             defined_by = extension.defined_by
-            if defined_by is not None and defined_by.name:
-                self._qualified(
-                    extension.location,
-                    extension.key_pos,
-                    extension.name,
-                    declared=defined_by.name,
-                    kind=_type_kind(defined_by),
-                    target=defined_by.id,
-                    resolver=extension.anchor,
-                    text=f'({extension.name})',
-                    offset=1,
-                )
+            if defined_by is None or not defined_by.name:
+                continue
+            name = extension.name
+            if extension.name_site is None:
+                uri, at, text, offset = extension.location, extension.key_pos, f'({name})', 1
+            else:
+                (uri, at), text, offset = extension.name_site, name, 0
+            self._qualified(
+                uri,
+                at,
+                name,
+                declared=defined_by.name,
+                kind=_type_kind(defined_by),
+                target=defined_by.id,
+                resolver=extension.anchor,
+                text=text,
+                offset=offset,
+            )
 
     def includes(self, raml: Raml) -> None:
         """Each `!include` argument, linked to the fragment it decoded to if any."""

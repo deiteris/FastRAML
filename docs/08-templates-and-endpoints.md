@@ -236,9 +236,12 @@ A value is recorded only when its text is the caller's text:
 P7 reads the record, so a name inside a caller's value is reported and
 recorded where the caller wrote it ([06](06-type-expressions.md) § 3). In
 `type: <<item>>[]`, `User` is placed at `item: User`, and the `[]` at the
-template. The decoder reads it for a built-in P7 never sees,
-`type: <<item>>` with `item: string`. Nothing reads it after P7, which drops
-it.
+template. The decoders read it for what P7 never sees: a built-in,
+`type: <<item>>` with `item: string`, and an annotation name,
+`(<<tag>>): ...`, whose `DomainExtension.name_site` P8 reports an unknown
+name at ([09](09-security-and-annotations.md) § B1). A name only partly the
+caller's, `(<<tag>>Suffix)`, is written in two places and is not placed.
+Nothing reads the record after P7, which drops it.
 
 ## 6. Endpoint construction
 

@@ -326,11 +326,8 @@ target.
 the name it records. For a reference, that is the name its target is declared
 under, so a wrong position and a wrong binding both fail. A rejected candidate
 is kept in `Occurrences.dropped`. A name a template substituted is placed
-where the caller wrote it (docs/08 § 5.1). Two known causes remain:
-
-- a transformed value, `<<item | !pluralize>>`, which is written nowhere;
-- a substituted annotation key, `(<<annotation>>)`: a `DomainExtension`
-  keeps the key's position but not its node, so the record is not read.
+where the caller wrote it (docs/08 § 5.1). One known cause remains: a
+transformed value, `<<item | !pluralize>>`, which is written nowhere.
 
 The law checks only the candidates the index finds. A name nothing records is
 not a candidate, and nothing checks for one.

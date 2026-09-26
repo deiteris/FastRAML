@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from fastraml.parser.fragments import ExtensionFragment, Fragment, ReferenceResolver
     from fastraml.parser.includes import IncludeRef
     from fastraml.parser.structural_merge import ProvenanceOverlay
-    from fastraml.parser.templates import Substitutions
+    from fastraml.parser.substitutions import Substitutions
     from fastraml.positions import Position
     from fastraml.types.expressions import ExprCache
     from fastraml.types.jsonschema_ import SchemaRegistry

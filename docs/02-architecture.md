@@ -48,7 +48,7 @@ in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
 | Garbage-collector tuning | `gctuning.py` | [12](12-performance.md) |
 | Entry and RAML decoding | `parser/entry.py`, `parser/fragments.py`, `parser/includes.py`, `parser/references.py` | [03](03-yaml-and-io.md), [04](04-fragments-and-namespaces.md) |
 | Overlays and Extensions | `parser/extensions.py`, `parser/extension_merge.py` | [19](19-overlays-and-extensions.md) |
-| Endpoints and templates | `parser/source_ir.py`, `parser/structural_merge.py`, `parser/source_decode.py`, `parser/endpoint_build.py`, `parser/traits.py`, `parser/resourcetypes.py` | [08](08-templates-and-endpoints.md) |
+| Endpoints and templates | `parser/source_ir.py`, `parser/structural_merge.py`, `parser/source_decode.py`, `parser/endpoint_build.py`, `parser/traits.py`, `parser/resourcetypes.py`, `parser/substitutions.py` | [08](08-templates-and-endpoints.md) |
 | Security and annotations | `parser/security.py`, `parser/annotations.py`, `parser/directives.py` | [09](09-security-and-annotations.md) |
 | Type system | `types/` | [05](05-type-model.md) through [10](10-validation.md) |
 | Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, value samples, occurrences, and linting | [16](16-graph.md), [18](18-linting.md) |

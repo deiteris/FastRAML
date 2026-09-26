@@ -120,7 +120,12 @@ key_pos: Position
 value_pos: Position
 anchor: ReferenceResolver | None
 target: DomainLocation
+name_site: tuple[str, Position] | None
 ```
+
+`name_site` is where a name a template substituted was written: the caller's
+file and value (docs/08 § 5.1). P8 reports an unknown name there; `key_pos`
+stays the template's key, where the application is.
 
 Any nonempty mapping key of the form `(name)` is an application. The decoder
 converts its value to `DataNode`, captures the current anchor and target,

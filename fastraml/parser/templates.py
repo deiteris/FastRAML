@@ -23,6 +23,7 @@ from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.facet_names import FACET_USAGE
 from fastraml.parser.facets import make_string_facet
 from fastraml.parser.includes import note_include_ref
+from fastraml.parser.substitutions import Substitution
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, is_null, node_error, pairs, with_content, with_value
 
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.fragments import ReferenceResolver
     from fastraml.parser.structural_merge import ProvenanceOverlay
+    from fastraml.parser.substitutions import Substitutions
     from fastraml.registry import ParseCtx, Raml
     from fastraml.types.base import ScalarFacet
 
@@ -41,8 +43,6 @@ __all__ = [
     'KNOWN_ACTIONS',
     'RESERVED_PARAMETERS',
     'TEMPLATE_ACTIONS',
-    'Substitution',
-    'Substitutions',
     'TemplateDefinition',
     'VariableIndex',
     'VariableInfo',
@@ -56,7 +56,6 @@ __all__ = [
     'make_template_definition',
     'parameter_node',
     'parse_template_variables',
-    'substituted_site',
 ]
 
 #: The three parameters the parser injects at every application site. They are
@@ -77,25 +76,6 @@ def parameter_node(value: str) -> Node:
 #: keyed by the node itself.
 type VariableIndex = dict[Node, list[VariableInfo]]
 
-
-@dataclass(frozen=True, slots=True)
-class Substitution:
-    """A caller's value inside a substituted scalar, and where it was written.
-
-    `start` and `end` are offsets into the scalar's text. `node` is the value
-    as the caller wrote it, in the file `location` (docs/08 § 5.1).
-    """
-
-    start: int
-    end: int
-    location: str
-    node: Node
-
-
-#: Every scalar a substitution produced, with the caller's values it holds
-#: verbatim; empty where it holds none. Only P7 reads it, and it is dropped
-#: when P7 ends (docs/08 § 5.1).
-type Substitutions = dict[Node, tuple[Substitution, ...]]
 
 # -- the two template declarations (docs/08 § 3) -------------------------------
 
@@ -603,14 +583,3 @@ def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arg
     overlay[compiled] = caller_scope
     substitutions[compiled] = tuple(placed) if exact and placed else ()
     return compiled
-
-
-def substituted_site(substitutions: Substitutions, node: Node, offset: int) -> tuple[str, Position] | None:
-    """Where the character at `offset` in `node`'s text was written, if a
-    caller wrote it: the file, and the caller's own position (docs/08 § 5.1).
-    """
-    for part in substitutions.get(node, ()):
-        if part.start <= offset < part.end:
-            written = part.node
-            return part.location, written.position.within(written.value).shifted(offset - part.start)
-    return None

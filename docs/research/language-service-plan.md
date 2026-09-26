@@ -261,11 +261,13 @@ As done so far, one commit each:
   (`docs/08` § 5.1). P7 places names and diagnostics there, and
   `TypeExprRef.location` names the file. The record is dropped when P7 ends.
   A partial substitution, `<<item>>[]`, is placed too; only a transformed
-  value is not, because it is written nowhere.
+  value is not, because it is written nowhere;
+- a substituted annotation name, `(<<tag>>)`, is placed where the caller
+  wrote it: the decoder reads the record into `DomainExtension.name_site`,
+  and P8 reports there (`docs/09` § B1).
 
-Remaining drops over the TCK, each a known limit for now: eight transformed
-values, and one substituted annotation key, `(<<annotation>>)`, whose
-`DomainExtension` keeps the key's position but not its node. G9 is next.
+Remaining drops over the TCK, each a known limit: eight transformed values,
+which are written nowhere. G9 is next.
 
 ## M4: Service and a read-only LSP
 

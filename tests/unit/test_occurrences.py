@@ -262,6 +262,26 @@ class TestTemplates:
         )
         assert occurrences.dropped == ()
 
+    @staticmethod
+    def _annotated(key: str, value: str) -> str:
+        return API.replace('    get:\n      responses:', f'    get:\n      ({key}): hi\n      responses:').replace(
+            '  type: collection\n', f'  type: {{collection: {{tag: {value}}}}}\n'
+        )
+
+    def test_a_substituted_annotation_name_is_found_where_the_caller_wrote_it(self, tmp_path):
+        api = self._annotated('<<tag>>', 'note')
+        _, occurrences, uri = _parsed(tmp_path, api)
+        found = _only(occurrences.at(uri, *_where(api, 'note}')))
+        assert (found.role, found.kind, found.written) == (Role.REFERENCE, Kind.ANNOTATION_TYPE, 'note')
+        assert occurrences.dropped == ()
+
+    def test_an_annotation_name_only_partly_substituted_is_dropped(self, tmp_path):
+        # `<<tag>>te` is written in two places, so neither is where `note` is.
+        api = self._annotated('<<tag>>te', 'no')
+        _, occurrences, uri = _parsed(tmp_path, api)
+        dropped = _only([o for o in occurrences.dropped if o.written == 'note'])
+        assert (dropped.uri, dropped.line) == (uri, _where(api, '<<tag>>te')[0])
+
     def test_a_transformed_name_is_written_nowhere_and_is_dropped(self, tmp_path):
         api = API.replace('type: User\n', 'type: <<item | !uppercamelcase>>\n').replace(
             '  type: collection\n', '  type: {collection: {item: user}}\n'

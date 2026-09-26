@@ -33,9 +33,6 @@ DROPPED: Final = {
     'EdgeCases/inclusion-paths/valid.raml': 1,
     'EdgeCases/parsing-param-array-type/valid-parsing-param-array-type.raml': 6,
     'ResourceTypes/chaining-functions/valid.raml': 1,
-    # A substituted annotation key, `(<<annotation>>)`: a `DomainExtension`
-    # keeps the key's position but not its node, so the record is not read.
-    'Annotations/complex-06/valid-params.raml': 1,
 }
 
 

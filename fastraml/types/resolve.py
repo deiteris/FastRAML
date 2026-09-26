@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, cast
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.parser.references import UnresolvedReferenceError, cut_last
-from fastraml.parser.templates import substituted_site
+from fastraml.parser.substitutions import substituted_site
 from fastraml.types.base import (
     TYPE_ARRAY,
     TYPE_COMPOSITE,

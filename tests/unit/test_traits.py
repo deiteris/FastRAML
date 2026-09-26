@@ -269,6 +269,22 @@ class TestProvenance:
             ('api.raml', files['api.raml'].splitlines().index('    is: [{paged: {responseType: types.Nope}}]') + 1)
         }
 
+    def test_a_substituted_annotation_name_that_resolves_nowhere_is_reported_where_it_was_written(self, workspace):
+        files = dict(self.THREE_WAY)
+        # A template's annotation key names what the caller supplied.
+        files['api.raml'] = files['api.raml'].replace('PagedResult}', 'PagedResult, tag: nope}')
+        files['traits/paged.raml'] = files['traits/paged.raml'].replace('responses:\n', '(<<tag>>): 1\nresponses:\n')
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, workspace(files))
+        frames = {
+            (frame.location.rsplit('/', 1)[-1], frame.position.line, frame.position.column)
+            for chain in caught.value.chains()
+            for frame in chain
+            if frame.info.get('annotation') == 'nope'
+        }
+        line = files['api.raml'].splitlines().index('    is: [{paged: {responseType: types.PagedResult, tag: nope}}]')
+        assert frames == {('api.raml', line + 1, len('    is: [{paged: {responseType: types.PagedResult, tag: ') + 1)}
+
     def test_static_trait_content_resolves_in_the_trait_not_the_caller(self, workspace):
         # api.raml declares a `Thing` of its own. The trait's unqualified
         # `Thing` must not find it: the trait fragment declares no such name and

@@ -44,11 +44,8 @@ DROPPED: Final = {
     **_SUBSTITUTED,
     # A property unwrap replaced with a recursion marker has the head's position.
     'Libraries/recursive-types/valid-recursive-type.raml': 1,
-    # A `securedBy:` entry with parameters keeps no position for its name.
-    'SecuritySchemes/scopes/valid.raml': 1,
-    # Five `securedBy:` entries with parameters, one substitution, and one
-    # recursion marker.
-    'fixtures/sample/api.raml': 7,
+    # One substitution, and one recursion marker.
+    'fixtures/sample/api.raml': 2,
 }
 
 

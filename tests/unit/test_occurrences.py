@@ -54,6 +54,7 @@ traits:
   securedBy: [basic.v1]
   (note): hi
   get:
+    securedBy: [basic.v1: {}]
   /{id}:
     type: collection
 """
@@ -129,6 +130,9 @@ class TestEachNameIsAnOccurrence:
             pytest.param((Role.ALIAS_PREFIX, Kind.LIBRARY, 'lib'), ('lib.audited', 0), id='qualified is: prefix'),
             pytest.param((Role.REFERENCE, Kind.TRAIT, 'audited'), ('audited', 0), id='qualified is:'),
             pytest.param((Role.REFERENCE, Kind.SECURITY_SCHEME, 'basic.v1'), ('basic.v1]', 0), id='securedBy:'),
+            pytest.param(
+                (Role.REFERENCE, Kind.SECURITY_SCHEME, 'basic.v1'), ('basic.v1: {}', 0), id='securedBy: with parameters'
+            ),
             pytest.param((Role.REFERENCE, Kind.ANNOTATION_TYPE, 'note'), ('note)', 0), id='annotation'),
             pytest.param((Role.LINK, Kind.FILE, 'lib.raml'), ('lib.raml', 0), id='uses: value'),
             pytest.param((Role.LINK, Kind.FILE, 'money.raml'), ('money.raml', 0), id='!include'),

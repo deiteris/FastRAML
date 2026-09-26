@@ -25,7 +25,8 @@ unwrapping, and validation reach them.
 
 `SecurityScheme` is the model-side form of one `securedBy` entry. It holds the
 name, original parameter nodes, an optional bound definition, optional compiled
-parameters, the null marker, and its position. It lives in `parser/directives.py`
+parameters, the null marker, and two positions: `key_pos` for the name alone
+and `value_pos` for the whole entry. It lives in `parser/directives.py`
 with `DirectiveRef`; stage 2 can construct it without importing P5 resolution.
 
 Includes are followed by `fragments.py`. The declaration records `link_uri`; the

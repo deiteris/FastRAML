@@ -328,7 +328,7 @@ class _Index:
             if scheme.definition is not None and not scheme.is_null:
                 self._qualified(
                     scheme.location,
-                    scheme.value_pos,
+                    scheme.key_pos,
                     scheme.name,
                     declared=scheme.definition.name,
                     kind=Kind.SECURITY_SCHEME,

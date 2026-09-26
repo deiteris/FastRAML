@@ -323,8 +323,6 @@ under, so a wrong position and a wrong binding both fail. A rejected candidate
 is kept in `Occurrences.dropped`. The known causes are:
 
 - a template substitution, which keeps the template's position (docs/11 § 3);
-- a `securedBy:` entry with parameters, whose name has no position of its
-  own;
 - a property the unwrap replaced with a recursion marker, which carries the
   head's position.
 

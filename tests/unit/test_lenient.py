@@ -89,6 +89,45 @@ class TestPartialModel:
         assert raml.entry_point.types['T'].type == 'string'
 
 
+class TestOneBadDeclarationKeepsItsSiblings:
+    """docs/11 § 2 — a declaration map is the fragment's own, filled before
+    its errors are raised. It used to be assigned only on success, so one bad
+    facet left the fragment declaring nothing, while the registry held the rest.
+    """
+
+    #: The map's key, the fragment attribute, a failing entry and a good one.
+    CASES = {  # noqa: RUF012 - a table, read once per parametrize
+        'types': ('types', 'Bad:\n    minLength: two', 'Good: string'),
+        'annotationTypes': ('annotation_types', 'bad:\n    minLength: two', 'good: string'),
+        'traits': ('traits', 'bad: 5', 'good:\n    description: d'),
+        'resourceTypes': ('resource_types', 'bad: 5', 'good:\n    description: d'),
+        'securitySchemes': ('security_schemes', 'bad:\n    type: Nope', 'good:\n    type: Basic Authentication'),
+    }
+
+    @pytest.mark.parametrize('header', [API, LIB], ids=['api', 'library'])
+    @pytest.mark.parametrize(('key', 'case'), CASES.items(), ids=list(CASES))
+    def test_the_good_sibling_is_declared(self, workspace, header, key, case):
+        attribute, bad, good = case
+        root = workspace({'api.raml': header + f'{key}:\n  {bad}\n  {good}\n'})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert list(getattr(raml.fragments[raml.location], attribute)) == [good.split(':')[0]]
+
+    def test_the_fragment_and_the_registry_agree(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  Good: string\n  Bad:\n    minLength: two\n  User: object\n'})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert list(raml.entry_point.types) == list(raml.types_in(raml.location)) == ['Good', 'User']
+
+    def test_the_error_is_the_strict_one(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  Bad:\n    minLength: two\n  Good: string\n'})
+        with pytest.raises(RamlError) as caught:
+            parse_from_path(root / 'api.raml', BOTH)
+        _, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        assert messages(error) == messages(caught.value)
+
+
 class TestItStopsWhereStrictStops:
     """The design decision, pinned with the measurement that produced it.
 

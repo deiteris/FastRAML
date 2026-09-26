@@ -224,8 +224,10 @@ how much damage each defect does to a consumer today.
    once per written site. Tests: a trait applied N times, and a `securedBy`
    inherited over three levels, each give one chain in strict and in lenient
    parsing.
-3. **Retain siblings (A1, A2).** At each site listed under A2, attach the
-   container before raising. This is a mechanical change: the siblings of a
+3. **Retain siblings (A1, A2).** Done for A1 (plan M1.3): the declaration
+   maps are filled in place. A2 is a loss of *ancestors*, not siblings, and
+   moved to item 5 with its marks. As first written: at each site listed
+   under A2, attach the container before raising. This is a mechanical change: the siblings of a
    failed entity survive, and the failed entity is still absent. A test for
    each row of `docs/11` § 2 asserts survival *in the model*, not only in the
    error.

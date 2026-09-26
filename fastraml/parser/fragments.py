@@ -473,15 +473,15 @@ class _DeclaringFragment(_NameResolver, _BaseFragment):
         raml = self._raml
         name = key.value
         if name in (FACET_TYPES, FACET_SCHEMAS):
-            self.types = unmarshal_types(raml, declarations.types(key, value), self.location)
+            unmarshal_types(raml, declarations.types(key, value), self.location, self.types)
         elif name == FACET_ANNOTATION_TYPES:
-            self.annotation_types = unmarshal_types(raml, value, self.location, is_annotation=True)
+            unmarshal_types(raml, value, self.location, self.annotation_types, is_annotation=True)
         elif name == FACET_TRAITS:
-            self.traits = decode_trait_definitions(raml, value, self.location)
+            decode_trait_definitions(raml, value, self.location, self.traits)
         elif name == FACET_RESOURCE_TYPES:
-            self.resource_types = decode_resource_type_definitions(raml, value, self.location)
+            decode_resource_type_definitions(raml, value, self.location, self.resource_types)
         elif name == FACET_SECURITY_SCHEMES:
-            self.security_schemes = decode_security_scheme_definitions(raml, value, self.location)
+            decode_security_scheme_definitions(raml, value, self.location, self.security_schemes)
         elif is_annotation_key(name):
             add_domain_extension(raml, self.annotations, self.location, key, value)
         else:
@@ -934,13 +934,17 @@ def _one_definition(raml: Raml, key: Node | None, value: Node, location: str, ki
     return definition
 
 
-def _definitions(raml: Raml, node: Node, location: str, kind: FragmentKind) -> dict[str, Any]:
-    """Decode a `traits:`, `resourceTypes:` or `securitySchemes:` map, one definition per name."""
+def _definitions(raml: Raml, node: Node, location: str, kind: FragmentKind, declared: dict[str, Any]) -> None:
+    """Decode a `traits:`, `resourceTypes:` or `securitySchemes:` map into `declared`.
+
+    One definition per name. `declared` is the fragment's own map, filled
+    before the accumulated errors are raised, so one bad definition does not
+    hide the rest (docs/11 § 2).
+    """
     if node.tag == TAG_NULL:
-        return {}
+        return
     if node.kind is not NodeKind.MAPPING:
         raise node_error(f'{kind} declarations must be a mapping', location, node)
-    declared: dict[str, Any] = {}
     accumulator = Accumulator()
     for key, value in pairs(node):
         try:
@@ -948,19 +952,22 @@ def _definitions(raml: Raml, node: Node, location: str, kind: FragmentKind) -> d
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()
-    return declared
 
 
-def decode_trait_definitions(raml: Raml, node: Node, location: str) -> dict[str, TraitDefinition]:
-    return _definitions(raml, node, location, FragmentKind.TRAIT)
+def decode_trait_definitions(raml: Raml, node: Node, location: str, declared: dict[str, TraitDefinition]) -> None:
+    _definitions(raml, node, location, FragmentKind.TRAIT, declared)
 
 
-def decode_resource_type_definitions(raml: Raml, node: Node, location: str) -> dict[str, ResourceTypeDefinition]:
-    return _definitions(raml, node, location, FragmentKind.RESOURCE_TYPE)
+def decode_resource_type_definitions(
+    raml: Raml, node: Node, location: str, declared: dict[str, ResourceTypeDefinition]
+) -> None:
+    _definitions(raml, node, location, FragmentKind.RESOURCE_TYPE, declared)
 
 
-def decode_security_scheme_definitions(raml: Raml, node: Node, location: str) -> dict[str, SecuritySchemeDefinition]:
-    return _definitions(raml, node, location, FragmentKind.SECURITY_SCHEME)
+def decode_security_scheme_definitions(
+    raml: Raml, node: Node, location: str, declared: dict[str, SecuritySchemeDefinition]
+) -> None:
+    _definitions(raml, node, location, FragmentKind.SECURITY_SCHEME, declared)
 
 
 class _Declarations:

@@ -95,6 +95,19 @@ This table describes recovery boundaries, not a promise that every malformed
 child survives. Invalid container structure or a missing prerequisite can abort
 the current enclosing construct.
 
+Reporting a child independently is not the same as retaining its siblings in
+the model. The five declaration maps (`types:` or `schemas:`,
+`annotationTypes:`, `traits:`, `resourceTypes:` and `securitySchemes:`) retain
+them: each decoder fills the fragment's own map before it raises, so the good
+declarations stay in the fragment and agree with the registry. The failed
+declaration is absent from both. A declaration key written twice in one
+document, which YAML leaves in the tree (docs/03 § 1), fills the same map
+both times, as the registry always did. Below a declaration, and in the endpoint
+tree, a failed child still drops each construct enclosing it up to the nearest
+loop: a bad key in one response drops that response's operation and every
+enclosing endpoint, with everything they contain, while the other top-level
+resources remain.
+
 `parse_lenient()` runs the same passes as `parse_from_path()` and stops at the
 same failing pass. It returns the registry built up to that point and the error
 that strict parsing would raise. Successfully decoded siblings remain available;

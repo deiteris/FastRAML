@@ -29,6 +29,7 @@ from tests.unit.conftest import CountingLoader
 #: `a` and `here` are declared because P8 requires every application to bind to
 #: a declaration; `any` because these tests carry arbitrary values on them.
 API = '#%RAML 1.0\ntitle: Example\nannotationTypes:\n  a: any\n  here: any\n'
+BARE_API = '#%RAML 1.0\ntitle: Example\n'
 
 
 def messages(error: RamlError) -> list[str]:
@@ -181,7 +182,7 @@ class TestApiDecoding:
     def test_every_declaration_kind_is_decoded_with_the_fragment(self, workspace):
         root = workspace(
             {
-                'api.raml': API
+                'api.raml': BARE_API
                 + 'types:\n  A: string\nannotationTypes:\n  B: string\ntraits:\n  t: {}\n'
                 + 'resourceTypes:\n  r: {}\n'
                 + 'securitySchemes:\n  s:\n    type: Basic Authentication\n'
@@ -195,6 +196,15 @@ class TestApiDecoding:
         assert list(api.traits) == ['t']
         assert list(api.resource_types) == ['r']
         assert list(api.security_schemes) == ['s']
+
+    def test_a_repeated_declaration_key_adds_to_one_map_as_the_registry_does(self, workspace):
+        """YAML duplicate keys stay in the tree (docs/03 § 1). The fragment used
+        to keep only the last map while the registry held both (docs/11 § 2).
+        """
+        root = workspace({'api.raml': API + 'annotationTypes:\n  B: string\n'})
+        raml = parse_from_path(root / 'api.raml')
+        assert list(raml.entry_point.annotation_types) == ['a', 'here', 'B']
+        assert list(raml.entry_point.annotation_types) == list(raml.fragment_annotations[raml.location])
 
 
 class TestGlobalPrePass:

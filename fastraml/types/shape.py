@@ -213,22 +213,25 @@ def _make_shape(
     return base
 
 
-def unmarshal_types(raml: Raml, node: Node, location: str, *, is_annotation: bool = False) -> dict[str, BaseShape]:
-    """Decode a `types:`, `schemas:` or `annotationTypes:` mapping.
+def unmarshal_types(
+    raml: Raml, node: Node, location: str, declared: dict[str, BaseShape], *, is_annotation: bool = False
+) -> None:
+    """Decode a `types:`, `schemas:` or `annotationTypes:` mapping into `declared`.
 
     Per name: reject a built-in name, reject a duplicate in the same map, build
     the shape, register it under the file, and append it to the flat per-file
     index that unwrap and validation iterate (docs/04 § 5).
 
-    Errors accumulate, so one bad declaration does not hide the rest.
+    Errors accumulate, so one bad declaration does not hide the rest. The
+    fragment's own map is filled before they are raised, so it lists the same
+    declarations as the registry (docs/11 § 2).
     """
     if is_null(node):
         # `types:` with nothing under it. RAML uses an empty value widely.
-        return {}
+        return
     if node.kind is not NodeKind.MAPPING:
         raise node_error('type declarations must be a mapping', location, node)
 
-    declared: dict[str, BaseShape] = {}
     accumulator = Accumulator()
     # An annotation written on one of these declarations targets the
     # declaration, not the file that holds it (docs/09 § B4).
@@ -252,7 +255,6 @@ def unmarshal_types(raml: Raml, node: Node, location: str, *, is_annotation: boo
             except RamlError as err:
                 accumulator.add(err)
     accumulator.raise_if_any()
-    return declared
 
 
 def make_body_shape(raml: Raml, key_node: Node | None, value_node: Node, location: str) -> BaseShape:

@@ -72,21 +72,29 @@ No new API. This fixes defects that affect current users of `parse_lenient`,
   message text (`reference not found: nope`), not into `info`, because
   `UnresolvedReferenceError` is wrapped as text (`docs/11` § 6).
 
-**M1.3 Siblings retained** (PM A1, A2).
+**M1.3 Siblings retained** (PM A1).
 
-- Code: the ten builder sites listed under PM A2. Each attaches its container
-  before `raise_if_any()`.
-- Documents: `docs/11` § 2 gains a *retained* column.
-- Tests: for each row of that table, the siblings of a failed entity are
-  present in the model. For example, one bad type keeps the good ones in
-  `entry_point.types`, and one bad response key keeps the endpoint and its
-  other operations.
-- Check: the contrib suites (the Sphinx extension renders more of a broken
-  document) and the viewer's committed JSON (which should not change, because
-  it is built from valid input).
+- Finding: the builder sites hold two different defects.
+  - A1, *lost siblings*: the five declaration maps were built, and then the
+    decoder raised before the fragment assigned the map. The good siblings
+    are sound and already registered, so retaining them needs no mark.
+  - A2, *lost ancestors*: a bad key in a response drops its operation and
+    every enclosing endpoint, because each level raises before its parent
+    attaches it. Sibling top-level resources already survive. Keeping the
+    ancestors means keeping *incomplete* entities, which without a mark
+    repeats A4. A2 therefore moves to M2.2 item 2, where each kept ancestor
+    is marked in the same commit.
+- Code: `unmarshal_types` and `_definitions` fill the fragment's own map,
+  passed in, and then raise.
+- Documents: `docs/11` § 2 separates *reported* from *retained*.
+- Tests: for each map, in an API and in a library, a bad entry keeps the good
+  sibling in the fragment; the fragment and the registry agree; the error is
+  the strict one.
+- `make_parameter_map` and `documentation:` fail fast on their first error, so
+  they have no siblings to lose. Whether they should accumulate is a question
+  of recovery granularity, not of retention.
 
-Exit criteria: every row of the PM § 2 table is re-measured, and A1, A2, A5
-and A6 no longer reproduce.
+Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
 
 ## M2: Signals and the contract
 
@@ -101,7 +109,8 @@ and A6 no longer reproduce.
 **M2.2 Broken entities (S2),** one commit per entity kind:
 
 1. declarations with a bad facet;
-2. responses, methods and resources;
+2. responses, methods and resources: an operation or endpoint enclosing a
+   failed child is kept and marked, which resolves A2;
 3. `DirectiveRef` and `SecurityScheme`;
 4. P7 shapes;
 5. P8 extensions;

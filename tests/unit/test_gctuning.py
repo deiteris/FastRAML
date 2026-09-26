@@ -29,7 +29,9 @@ def host_collector():
     yield
     set_gc_tuning(True)
     gc.set_threshold(*saved)
-    if not enabled:
+    if enabled:
+        gc.enable()
+    else:
         gc.disable()
     assert gctuning._depth == 0
 

@@ -104,6 +104,18 @@ class TestCachingAndLimits:
         assert refs[0].position.line == API.count('\n') + 1
         assert refs[1].position.line == refs[0].position.line + 1
 
+    @pytest.mark.parametrize(
+        ('path', 'content'),
+        [
+            pytest.param('user.raml', '#%RAML 1.0 DataType\ntype: string\n', id='data type'),
+            pytest.param('user.json', '{"type": "string"}', id='JSON Schema'),
+        ],
+    )
+    def test_a_type_included_whole_is_recorded_once(self, memory_workspace, path, content):
+        root = memory_workspace({'api.raml': API + f'types:\n  User:\n    type: !include {path}\n', path: content})
+        raml = memory_workspace.parse(root / 'api.raml')
+        assert [ref.path for ref in raml.include_refs_in(path_to_file_uri(root / 'api.raml'))] == [path]
+
     def test_an_oversized_include_is_rejected_without_being_read_whole(self, memory_workspace):
         root = memory_workspace({'api.raml': API + '(a): !include big.yaml\n', 'big.yaml': 'k: ' + 'x' * 5000})
         loader = CountingLoader(root, memory_workspace)

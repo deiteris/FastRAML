@@ -439,9 +439,9 @@ def _decode_type_node(
     # Retained whole, so P7 can report a column inside the expression and tooling
     # can offer go-to-definition on each name within it.
     base.type_expr = type_node
-    note_include_ref(raml, type_node, location)
 
     if type_node.tag == TAG_INCLUDE:
+        # `_parse_data_type` records the include.
         base.link = _parse_data_type(raml, type_node, location)
         return '', None
     if type_node.tag == TAG_NULL:

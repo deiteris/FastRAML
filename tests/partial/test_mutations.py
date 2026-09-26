@@ -70,6 +70,10 @@ _RUNAWAY = 100
 _FIXTURES = Path(__file__).resolve().parents[2] / 'fixtures'
 _FIXTURE_STRIDE = 7
 
+#: Built once: rebuilding the rule registry for every parse cost as much as
+#: the lint run itself.
+_LINTER = Linter(builtin_registry())
+
 
 def mutations(text: str) -> Iterator[tuple[str, str]]:
     """Every one-mistake variant of `text`, named by mistake and line.
@@ -120,12 +124,15 @@ class Corpus:
         self.offenders: list[str] = []
         self.tally: Counter[str] = Counter()
 
-    def run(self, entry: Path, workspace: Path, mutated: Path, text: str, label: str) -> None:
-        """Parse `entry` with `mutated` replaced by `text`, and check the result."""
+    def run(self, entry: Path, workspace: Path, mutated: Path, variants: Iterator[tuple[str, str]], label: str) -> None:
+        """Parse `entry` with `mutated` replaced by each variant's text, and check each result."""
         uri = path_to_file_uri(mutated)
-        options = ParseOptions(
-            workspace_root=str(workspace), file_loader=_Overlay(SafeFileLoader(workspace), uri, text), **_OPTIONS
-        )
+        loader = SafeFileLoader(workspace)
+        for name, text in variants:
+            self._one(entry, str(workspace), _Overlay(loader, uri, text), f'{label}: {name}')
+
+    def _one(self, entry: Path, workspace: str, loader: _Overlay, label: str) -> None:
+        options = ParseOptions(workspace_root=workspace, file_loader=loader, **_OPTIONS)
         self.tally['parsed'] += 1
         try:
             raml, error = parse_lenient(entry, options)
@@ -271,8 +278,7 @@ def _views(raml: Raml) -> list[str]:
     """The views that need an unwrapped model run on one, and the tree is walkable."""
     try:
         expand(build_tree(raml))
-        build_graph(raml)
-        Linter(builtin_registry()).run(raml)
+        _LINTER.run(raml, graph=build_graph(raml))
         if isinstance(raml.entry_point, APIFragment):
             to_openapi(raml)
     except Exception as err:
@@ -293,8 +299,7 @@ def test_every_mutation_of_a_valid_tck_document_keeps_the_contract():
     for path in collect_fixtures('valid'):
         workspace = case_directory(root, path)
         text = path.read_bytes().decode('utf-8-sig')
-        for name, mutated in mutations(text):
-            corpus.run(path, workspace, path, mutated, f'{fixture_id(root, path)}: {name}')
+        corpus.run(path, workspace, path, mutations(text), fixture_id(root, path))
     assert not corpus.offenders, _report(corpus)
     # Not vacuous: every stage was reached and stopped at, marks were made,
     # and the views ran.
@@ -310,8 +315,8 @@ def test_every_seventh_mutation_of_the_fixtures_keeps_the_contract():
         if path.suffix not in {'.raml', '.json'}:
             continue
         text = path.read_bytes().decode('utf-8-sig')
-        for name, mutated in islice(mutations(text), 0, None, _FIXTURE_STRIDE):
-            corpus.run(entry, _FIXTURES, path, mutated, f'{path.relative_to(_FIXTURES).as_posix()}: {name}')
+        variants = islice(mutations(text), 0, None, _FIXTURE_STRIDE)
+        corpus.run(entry, _FIXTURES, path, variants, path.relative_to(_FIXTURES).as_posix())
     assert not corpus.offenders, _report(corpus)
     assert corpus.tally['marked'] > 0, corpus.tally
     assert corpus.tally['views'] > 0, corpus.tally

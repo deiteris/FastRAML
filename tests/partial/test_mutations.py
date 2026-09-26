@@ -21,6 +21,10 @@ The TCK half is exhaustive: a sample of one site per mutation kind passed
 while the full run found three defects. The fixtures are larger, so every
 seventh mutation is parsed; seven is prime to the five kinds, so each kind is
 reached throughout each file.
+
+It is an exploration, not part of the gate: it runs only with `--mutations`
+(`conftest.py`), and each defect it finds is pinned by a unit test of its
+own.
 """
 
 from __future__ import annotations

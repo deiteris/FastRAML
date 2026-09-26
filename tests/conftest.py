@@ -16,3 +16,13 @@ def _node_content_is_never_edited_in_place():
     """
     yield
     assert not yamlnode._NO_CONTENT, 'a node was edited in place: the shared empty content is no longer empty'
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    # Here rather than in tests/partial/, so the flag parses from the root too.
+    parser.addoption(
+        '--mutations',
+        action='store_true',
+        default=False,
+        help='run the mutation corpus over the TCK and the fixtures (tests/partial/)',
+    )

@@ -74,8 +74,9 @@ marked today:
 | A shape whose merge P9 rejected, and each shape enclosing it | Its declared, unmerged form, not flagged unwrapped (docs/07 § 6) |
 
 Anything else that fails is absent (docs/11 § 2). On success, `broken` is
-empty. `tests/partial/` checks this contract over mutations of every valid TCK
-document and of the fixtures (docs/14 § 3).
+empty. `tests/partial/`, run with `pytest --mutations`, explores this
+contract over mutations of every valid TCK document and of the fixtures
+(docs/14 § 3).
 
 An Overlay or Extension may be the entry document. The returned `Raml` holds
 the target tree of its `extends` chain: `entry_point` is the root API's

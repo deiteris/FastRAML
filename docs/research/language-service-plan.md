@@ -189,6 +189,10 @@ Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
 Exit criteria: the mutation corpus passes, and the contract is in `docs/13`.
 Met.
 
+Later, the corpus left the gate: random mistakes find defects by volume, which
+is exploration, not a test. It runs with `pytest --mutations`; each defect
+above has a unit test that names its rule.
+
 ## M3: The occurrence index
 
 **M3.1 View.** Done.

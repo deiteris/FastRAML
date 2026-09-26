@@ -88,6 +88,56 @@ class TestApplication:
         assert operation(parse(root), '/users', 'get').description.value == 'method'
 
 
+class TestEveryReferenceIsBound:
+    """docs/08 § 3.2: an `is:` entry names a trait whether or not it is applied.
+
+    The name rule skips the farther of two same-named references, and a
+    resource with no methods applies nothing. Either reference used to stay
+    unbound: a misspelt name went unreported, and a library-qualified one left
+    the graph an unresolved node, which lint refuses.
+    """
+
+    LIBRARY: ClassVar[str] = '#%RAML 1.0 Library\ntraits:\n  drm:\n    description: d\n'
+
+    def test_a_reference_the_name_rule_skipped_is_bound(self, workspace):
+        root = workspace(
+            {
+                'lib.raml': self.LIBRARY,
+                'api.raml': API + 'uses:\n  l: lib.raml\n/a:\n  is: [l.drm]\n  get:\n    is: [l.drm]\n',
+            }
+        )
+        endpoint = parse(root).endpoints['/a']
+        assert endpoint.traits[0].resolved is not None
+        assert endpoint.traits[0].resolved is endpoint.operations['get'].traits[0].resolved
+
+    @pytest.mark.parametrize(
+        'body',
+        [
+            pytest.param('/a:\n  is: [l.drm]\n', id='resource'),
+            pytest.param('resourceTypes:\n  rt:\n    is: [l.drm]\n/a:\n  type: rt\n', id='resource type'),
+        ],
+    )
+    def test_a_reference_on_a_resource_with_no_methods_is_bound(self, workspace, body):
+        root = workspace({'lib.raml': self.LIBRARY, 'api.raml': API + 'uses:\n  l: lib.raml\n' + body})
+        assert parse(root).endpoints['/a'].traits[0].resolved is not None
+
+    @pytest.mark.parametrize(
+        'body',
+        [
+            pytest.param('/a:\n  is: [nosuch]\n', id='resource'),
+            pytest.param('resourceTypes:\n  rt:\n    is: [nosuch]\n/a:\n  type: rt\n', id='resource type'),
+            pytest.param('/a:\n  is: [nosuch]\n  get:\n', id='applied'),
+        ],
+    )
+    def test_a_name_that_matches_nothing_is_reported_once(self, workspace, body):
+        root = workspace({'api.raml': API + body})
+        with pytest.raises(RamlError) as caught:
+            parse(root)
+        chains = list(caught.value.chains())
+        assert [[frame.message for frame in chain][:2] for chain in chains] == [['apply trait', 'get trait definition']]
+        assert chains[0][0].info == {'trait': 'nosuch'}
+
+
 class TestParameters:
     def test_a_parameter_is_substituted(self, workspace):
         root = workspace(

@@ -106,6 +106,12 @@ Each application resolves its definition lexically, injects `resourcePath`,
 `resourcePathName`, and `methodName`, checks parameters in both directions,
 substitutes, and merges the compiled body beneath the operation body.
 
+Every `is:` entry is bound to its definition whether or not it is applied: an
+entry the first-occurrence rule skipped, and one on a resource with no methods,
+still names a trait, and a name that matches nothing is reported as `apply
+trait`. go-raml resolves a name only when it applies it, so it accepts
+`is: [nosuch]` on a resource with no methods.
+
 `resourcePath` and `resourcePathName` are built once per resource. `methodName`
 is built once per operation. These scalar nodes are read-only and are never
 inserted by pointer into a compiled tree.

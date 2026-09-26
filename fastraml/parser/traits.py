@@ -112,11 +112,27 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
                 definition = _definition_for(ref)
                 merge_trait_into(operation, definition, params, caller_scope=endpoint.scope)
             except RamlError as err:
-                wrapped = RamlError.wrap('apply trait', err, ref.location, ref.value_pos, info={'trait': ref.name})
+                wrapped = _wrap(ref, err)
                 # The operation it was merging into lacks its contribution.
                 note_failure(operation, wrapped)
                 accumulator.add(wrapped)
+
+    # A reference the name rule skipped, or one on a resource with no methods,
+    # is applied nowhere but still names a trait: bind it, so a consumer can
+    # follow it, and report a name that matches nothing (docs/08 § 3.2). A
+    # lookup that already failed above fails identically and is reported once.
+    operation_refs = (chain(operation.traits, operation.rt_traits) for operation in endpoint.operations.values())
+    for ref in chain(endpoint.traits, endpoint.rt_traits, *operation_refs):
+        if ref.resolved is None:
+            try:
+                _definition_for(ref)
+            except RamlError as err:
+                accumulator.add(_wrap(ref, err))
     accumulator.raise_if_any()
+
+
+def _wrap(ref: DirectiveRef, err: RamlError) -> RamlError:
+    return RamlError.wrap('apply trait', err, ref.location, ref.value_pos, info={'trait': ref.name})
 
 
 def _in_priority_order(endpoint: SourceEndPoint, operation: SourceOperation) -> Iterator[DirectiveRef]:

@@ -176,7 +176,7 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
         # Every shape the error passes through is left unmerged, and must not
         # claim to be flattened (docs/07 § 6). It is marked (docs/13 § 1).
         base._unwrapped = False  # noqa: SLF001 - see above
-        walk.raml.broken[base.id] = err
+        walk.raml.mark(base, err)
         walk.failed.add(base.id)
         walk.raml.put_shape(base)
         raise

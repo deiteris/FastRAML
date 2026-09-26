@@ -397,6 +397,17 @@ class TestATemplateThatFailsToApplyMarksWhatLacksIt:
         _, marked = self.marked(workspace, '/a:\n  type: nosuch\n  get:\n')
         assert marked == {'/a'}
 
+    def test_a_failure_in_what_did_merge_joins_the_mark(self, workspace):
+        # `nosuch` fails to apply; `bad` applies, and its `minLength` then fails
+        # when the merged operation is decoded. The mark holds both.
+        raml, _ = self.marked(
+            workspace,
+            'traits:\n  bad:\n    queryParameters:\n      q:\n        minLength: x\n'
+            '/a:\n  get:\n    is: [nosuch, bad]\n',
+        )
+        mark = raml.broken[raml.endpoints['/a'].operations['get'].id]
+        assert [chain[0].message for chain in mark.chains()] == ['apply trait', 'expected an integer value']
+
 
 class TestALaterStageMarksWhatItCouldNotSettle:
     """docs/13 § 1 — P5, P7, P8 and P9 fail on entities already in the model;
@@ -415,6 +426,8 @@ class TestALaterStageMarksWhatItCouldNotSettle:
         (scheme,) = raml.global_secured_by
         assert scheme.definition is None
         assert set(raml.broken) == {scheme.id}
+        # Bound once per level that inherits it, and marked once.
+        assert len(list(raml.broken[scheme.id].chains())) == 1
 
     def test_an_unknown_type_name_stays_unknown(self, workspace):
         raml = self.parse(workspace, 'types:\n  Bad: NoSuch\n  Good: string\n')

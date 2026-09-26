@@ -945,11 +945,8 @@ def _one_definition(  # noqa: PLR0913 - the declaration, its kind, and where to 
     """
     definition = _DEFINITION_BUILDERS[kind](raml, key, value, location, attach=attach)
     if definition.link_uri:
-        try:
+        with raml.marking(definition):
             fragment = parse_fragment(raml, definition.link_uri, kind)
-        except RamlError as err:
-            raml.broken[definition.id] = err
-            raise
         definition.link = getattr(fragment, 'definition', None)
 
 

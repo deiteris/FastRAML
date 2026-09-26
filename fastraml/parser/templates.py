@@ -147,40 +147,28 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
         value_pos=value_node.full_position,
     )
     attach(definition)
-    try:
-        _decode_template_body(raml, definition, value_node, location, what, retain)
-    except RamlError as err:
-        raml.broken[definition.id] = err
-        raise
+    with raml.marking(definition):
+        if is_null(value_node):
+            return definition
+        if value_node.tag == TAG_INCLUDE:
+            definition.link_uri = note_include_ref(raml, value_node, location)
+            return definition
+        if value_node.kind is not NodeKind.MAPPING:
+            raise node_error(f'{what} definition must be a mapping', location, value_node)
+
+        kept: list[Node] = []
+        for key, value in pairs(value_node):
+            if key.value == FACET_USAGE:
+                definition.usage = make_string_facet(raml, key, value, location)
+            else:
+                kept.append(key if retain is None else retain(definition, key))
+                kept.append(value)
+        if kept:
+            definition.source = with_content(value_node, kept)
+            definition.declared_variables, definition.variable_index = collect_variables_index(
+                definition.source, location
+            )
     return definition
-
-
-def _decode_template_body[T: TemplateDefinition](  # noqa: PLR0913, PLR0917 - make_template_definition's arguments
-    raml: Raml,
-    definition: T,
-    value_node: Node,
-    location: str,
-    what: str,
-    retain: Callable[[T, Node], Node] | None,
-) -> None:
-    if is_null(value_node):
-        return
-    if value_node.tag == TAG_INCLUDE:
-        definition.link_uri = note_include_ref(raml, value_node, location)
-        return
-    if value_node.kind is not NodeKind.MAPPING:
-        raise node_error(f'{what} definition must be a mapping', location, value_node)
-
-    kept: list[Node] = []
-    for key, value in pairs(value_node):
-        if key.value == FACET_USAGE:
-            definition.usage = make_string_facet(raml, key, value, location)
-        else:
-            kept.append(key if retain is None else retain(definition, key))
-            kept.append(value)
-    if kept:
-        definition.source = with_content(value_node, kept)
-        definition.declared_variables, definition.variable_index = collect_variables_index(definition.source, location)
 
 
 def find_template_definition[T: TemplateDefinition](

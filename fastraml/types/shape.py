@@ -211,7 +211,7 @@ def _make_shape(  # noqa: PLR0913, PLR0917 - make_shape's arguments, resolved
         # `UnknownShape` an unresolved name does (docs/13 § 1).
         if base.shape is None:
             base.shape = UnknownShape(base, from_mapping=value_node.kind is NodeKind.MAPPING)
-        raml.broken[base.id] = err
+        raml.mark(base, err)
         raml.put_shape(base)
         raise
 

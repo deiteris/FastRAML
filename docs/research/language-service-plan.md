@@ -149,8 +149,12 @@ Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
 - Code: `Raml.broken: dict[int, RamlError]`, read by membership; no
   `is_broken()` accessor, which would only repeat it. Each builder takes an
   `attach` callback, attaches the entity as soon as it has an identity, and
-  marks it in the one `except` around its content (decisions of 2026-09-26:
-  attach first; mark every entity the failure passes through).
+  decodes its content inside `with raml.marking(entity)`. A pass that already
+  has an `except` there (P7, P9, `make_shape`) calls `Raml.mark` in it, and
+  `mark` is the one place a mark is written (decisions of 2026-09-26: attach
+  first; mark every entity the failure passes through). A second failure
+  joins the first, so a template's failure and one in the merged content are
+  both on the mark; the same failure met again is kept once.
 - Documents: `docs/13` § 1 (the contract text from PM § 5) and `docs/02` § 4
   (invariants hold for entities that are not broken).
 

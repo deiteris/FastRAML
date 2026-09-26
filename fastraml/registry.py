@@ -18,16 +18,16 @@ from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, cast
 
 from fastraml.domains import DomainLocation
+from fastraml.errors import Accumulator, RamlError
 from fastraml.loaders import SchemeLoader
 from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, NodeKind, mark_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
-    from fastraml.errors import RamlError
     from fastraml.loaders import ResourceLoader
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.fragments import ExtensionFragment, Fragment, ReferenceResolver
@@ -79,6 +79,13 @@ class Stage(Enum):
     VALIDATED = 'validated'  # P10, when requested
 
 
+class _Identified(Protocol):
+    """Anything `Raml.broken` can mark: every model entity has an id."""
+
+    @property
+    def id(self) -> int: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ParseCtx:
     """The lexical scope in effect while a fragment is being decoded.
@@ -121,6 +128,25 @@ class _TargetScope:
 
     def __exit__(self, *exc: object) -> None:
         self._raml._parse_ctx_stack.pop()  # noqa: SLF001
+
+
+class _Marking:
+    """`Raml.marking`. A class rather than `@contextmanager`, as for
+    `_TargetScope`: a decoder enters one per response, operation and resource.
+    """
+
+    __slots__ = ('_entity', '_raml')
+
+    def __init__(self, raml: Raml, entity: _Identified) -> None:
+        self._raml = raml
+        self._entity = entity
+
+    def __enter__(self) -> None:
+        pass
+
+    def __exit__(self, kind: object, error: BaseException | None, traceback: object) -> None:
+        if isinstance(error, RamlError):
+            self._raml.mark(self._entity, error)
 
 
 class _MarkedScope:
@@ -320,6 +346,27 @@ class Raml:
             self.stopped_at = stage
             raise
         self.completed.append(stage)
+
+    def mark(self, entity: _Identified, error: RamlError) -> None:
+        """Record that `entity` is in the model but incomplete (docs/13 § 1).
+
+        A second failure of the same entity joins the first: a template that
+        failed to apply, then the merged content, are both on the mark. The
+        same failure met again, by a second referrer or an inherited copy, is
+        kept once, as `Accumulator` keeps it (docs/11 § 2).
+        """
+        earlier = self.broken.get(entity.id)
+        if earlier is None:
+            self.broken[entity.id] = error
+            return
+        both = Accumulator()
+        both.add(earlier)
+        both.add(error)
+        self.broken[entity.id] = cast('RamlError', both.result())
+
+    def marking(self, entity: _Identified) -> _Marking:
+        """Decode `entity`'s content, marking it if that fails."""
+        return _Marking(self, entity)
 
     def _scope(self, anchor: ReferenceResolver | None, target: DomainLocation) -> ParseCtx:
         """The one `ParseCtx` for this anchor and target."""

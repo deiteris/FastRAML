@@ -1,6 +1,6 @@
 # Plan: partial models, then the language service
 
-**Status: accepted; M1 done, M2 in progress.** This document orders the work proposed in
+**Status: accepted; M1 and M2 done, M3 next.** This document orders the work proposed in
 `research/partial-models.md` (PM) and `research/language-server.md` (LS). It
 is not normative. Each milestone amends its owning numbered document in the
 same commit, as `AGENTS.md` requires. When the service lands, a normative
@@ -156,13 +156,34 @@ Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
 
 **M2.3 Mutation corpus** (PM § 8).
 
-- Code: `tests/partial/` (or a marked module), which generates mutations of
-  the valid TCK documents and the fixtures.
-- Assertions: the contract, the traversal law, and view gating.
-- The TCK part skips without the submodule, as the TCK tests do.
-- Bench: `bench run` on `large` and `endpoints` shows no allocation delta.
+- Code, as done: `tests/partial/test_mutations.py`. Each mutation deletes a
+  line, indents one, adds an unknown key, corrupts a scalar or misspells a
+  name. The TCK half is exhaustive over every valid document (about 21,500
+  parses, 16 s) and skips without the submodule; the fixtures half parses
+  every seventh mutation of every fixture file (4 s). A sample of one site
+  per kind passed where the exhaustive run found three defects.
+- Assertions: nothing but a fatal entry failure escapes; `completed` and
+  `stopped_at` agree with the error; fragments agree with the registry;
+  every mark is on an entity reachable through the model's public fields;
+  no registered shape is kindless, and no marked one flagged unwrapped;
+  containment terminates without a visited set; on an unwrapped model the
+  tree, graph, lint and OpenAPI views run and the tree obeys the traversal
+  law.
+- Found, each fixed in its own commit before the corpus:
+  - an `is:` entry skipped by the first-occurrence rule, or on a resource
+    with no methods, was never bound; lint crashed on the clean parse
+    (`docs/08` § 3.2);
+  - a repeated mapping key was kept, last wins, so what the first held was
+    reported and marked inside nothing; YAML 1.2 forbids it, and composition
+    now rejects it (`docs/03` § 1);
+  - one failing property cost a type its kind, and in P7 its siblings were
+    marked inside nothing; the kind is now attached before its
+    declarations are built (`docs/05` § 3).
+- Bench: no allocation delta on `large` or `templates` from any of the
+  three fixes.
 
 Exit criteria: the mutation corpus passes, and the contract is in `docs/13`.
+Met.
 
 ## M3: The occurrence index
 

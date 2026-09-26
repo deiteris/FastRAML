@@ -11,12 +11,17 @@ def test_positions_render_as_line_column():
     assert str(Position(17, 10, 17, 14)) == '17:10'
 
 
-def test_shifted_marks_a_single_character():
+def test_shifted_marks_a_single_character_by_default():
     # Sub-token positioning: an error inside a URI template or a type expression
-    # points at one offending byte within the enclosing scalar.
+    # points at one offending character within the enclosing scalar.
     shifted = Position(4, 8, 4, 30).shifted(6)
     assert (shifted.line, shifted.column) == (4, 14)
     assert (shifted.end_line, shifted.end_column) == (4, 15)
+
+
+def test_shifted_spans_a_name():
+    shifted = Position(4, 8, 4, 30).shifted(6, 4)
+    assert (shifted.line, shifted.column, shifted.end_line, shifted.end_column) == (4, 14, 4, 18)
 
 
 class TestWithin:

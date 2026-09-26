@@ -267,6 +267,30 @@ class TestDiagnostics:
     def test_an_unknown_name_is_reported(self, workspace):
         assert 'reference not found' in failure(workspace, '  A: Nope\n')
 
+    @pytest.mark.parametrize(
+        ('document', 'span'),
+        [
+            pytest.param(LIB + 'types:\n  A: string | Nope\n', (3, 15, 3, 19), id='plain'),
+            pytest.param(LIB + 'types:\n  A: "Nope | string"\n', (3, 7, 3, 11), id='quoted'),
+            pytest.param(
+                '#%RAML 1.0\ntitle: T\nresourceTypes:\n  rt:\n    get:\n      body:\n'
+                '        application/json:\n          type: <<item>> | string\n'
+                '/a:\n  type: {rt: {item: Nope}}\n',
+                (10, 21, 10, 25),
+                id='in a value the caller wrote',
+            ),
+        ],
+    )
+    def test_an_unknown_name_spans_the_name(self, workspace, document, span):
+        # docs/11 § 3: an editor underlines the whole name, not its first character.
+        root = workspace({'doc.raml': document})
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'doc.raml')
+        (chain,) = caught.value.chains()
+        assert chain[-1].message == 'reference not found'
+        position = chain[-1].position
+        assert (position.line, position.column, position.end_line, position.end_column) == span
+
     def test_an_unknown_library_is_reported(self, workspace):
         assert 'library not found' in failure(workspace, '  A: nolib.Thing\n')
 

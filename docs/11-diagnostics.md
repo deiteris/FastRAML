@@ -173,7 +173,11 @@ composer does not report a scalar's style, so a scalar whose span fits neither
 form, such as a block scalar or a quoted one with an escape, keeps its node's
 start, and a column inside it can be off.
 
-`Position.shifted(offset)` returns a one-character span at the shifted column.
+`Position.shifted(offset, length)` returns a span of `length` characters, one
+by default, at the shifted column. An unresolved or self-referential name spans
+the whole name, so an editor underlines it; a lexer or URI-template error, the
+offending character. A YAML syntax error is a point, and spans the character
+at it.
 
 ## 4. Locations after structural merge
 

@@ -229,7 +229,7 @@ def _build_reference(raml: Raml, base: BaseShape, node: Reference, facets: list[
     if ref is base:
         raise RamlError.new(
             'self-referential type',
-            *_site(raml, base, node.col),
+            *_site(raml, base, node.col, len(node.name)),
             kind=ErrorKind.RESOLVING,
             info={'type': node.name},
         )
@@ -249,7 +249,7 @@ def _lookup(raml: Raml, base: BaseShape, node: Reference, resolver: ReferenceRes
     if resolver is None:
         raise RamlError.new(
             'no scope to resolve a type name in',
-            *_site(raml, base, node.col),
+            *_site(raml, base, node.col, len(node.name)),
             kind=ErrorKind.RESOLVING,
             info={'type': node.name},
         )
@@ -260,7 +260,7 @@ def _lookup(raml: Raml, base: BaseShape, node: Reference, resolver: ReferenceRes
     except UnresolvedReferenceError as err:
         raise RamlError.new(
             err.reason,
-            *_site(raml, base, node.col),
+            *_site(raml, base, node.col, len(node.name)),
             kind=ErrorKind.RESOLVING,
             info={'type': node.name, 'missing': err.name},
         ) from err
@@ -322,8 +322,9 @@ def _nil(raml: Raml, template: BaseShape) -> BaseShape:
 # -- positions and tooling references (docs/06 § 2 and § 3) -------------------
 
 
-def _site(raml: Raml, base: BaseShape, offset: int) -> tuple[str, Position]:
-    """The file and position of a 0-based offset inside `base`'s type expression.
+def _site(raml: Raml, base: BaseShape, offset: int, length: int = 1) -> tuple[str, Position]:
+    """The file and span of `length` characters from a 0-based offset inside
+    `base`'s type expression.
 
     Inside a caller's value a template substituted, where the caller wrote it
     (docs/08 § 5.1); elsewhere, in the expression's own scalar. Exact for a
@@ -332,10 +333,10 @@ def _site(raml: Raml, base: BaseShape, offset: int) -> tuple[str, Position]:
     expression = base.type_expr
     if expression is None:
         return base.location, base.key_pos
-    site = substituted_site(raml.substitutions, expression, offset)
+    site = substituted_site(raml.substitutions, expression, offset, offset + length)
     if site is not None:
         return site
-    return base.location, expression.position.within(expression.value).shifted(offset)
+    return base.location, expression.position.within(expression.value).shifted(offset, length)
 
 
 def _note(raml: Raml, base: BaseShape, col: int, *, builtin: str) -> None:

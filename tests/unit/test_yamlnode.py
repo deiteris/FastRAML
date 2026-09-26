@@ -230,6 +230,9 @@ class TestLimitsAndErrors:
         frame = excinfo.value.frames()[0]
         assert frame.position is not None
         assert frame.location == URI
+        # A point, so the character at it: an editor has an end to underline to.
+        position = frame.position
+        assert (position.end_line, position.end_column) == (position.line, position.column + 1)
 
     def test_syntax_error_message_drops_the_pyyaml_position_prose(self):
         with pytest.raises(RamlError) as excinfo:

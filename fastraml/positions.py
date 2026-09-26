@@ -32,16 +32,15 @@ class Position:
         """Whether this position came from real source rather than a default."""
         return self is not UNKNOWN and (self.line, self.column) != (0, 0)
 
-    def shifted(self, offset: int) -> Position:
-        """Return this position moved `offset` characters to the right.
+    def shifted(self, offset: int, length: int = 1) -> Position:
+        """The `length` characters `offset` characters to the right of the start.
 
         Used for sub-token positioning: an error inside a URI template or a type
-        expression is reported at its byte offset within the enclosing scalar.
-        The result spans a single character, which is what an editor needs to
-        mark one offending symbol.
+        expression is reported at its offset within the enclosing scalar,
+        spanning the offending character or name.
         """
         column = self.column + offset
-        return Position(line=self.line, column=column, end_line=self.line, end_column=column + 1)
+        return Position(line=self.line, column=column, end_line=self.line, end_column=column + length)
 
     def within(self, text: str) -> Position:
         """Where `text` starts inside the scalar this position spans.

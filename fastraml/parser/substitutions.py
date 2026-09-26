@@ -47,5 +47,5 @@ def substituted_site(
     for part in substitutions.get(node, ()):
         if part.start <= offset and end <= part.end:
             written = part.node
-            return part.location, written.position.within(written.value).shifted(offset - part.start)
+            return part.location, written.position.within(written.value).shifted(offset - part.start, end - offset)
     return None

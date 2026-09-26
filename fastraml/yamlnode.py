@@ -660,7 +660,8 @@ def _syntax_error(err: yaml.MarkedYAMLError, uri: str) -> RamlError:
     it is not printed twice.
     """
     mark = err.problem_mark or err.context_mark
-    position = Position(mark.line + 1, mark.column + 1) if mark is not None else None
+    # A mark is a point: the character at it.
+    position = None if mark is None else Position(mark.line + 1, mark.column + 1, mark.line + 1, mark.column + 2)
     message = err.problem or err.context or str(err)
     info = {'context': err.context} if err.context and err.problem else None
     return RamlError.new(message.strip(), uri, position, kind=ErrorKind.PARSING, info=info)

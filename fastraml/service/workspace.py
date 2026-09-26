@@ -9,10 +9,16 @@ file no root reads is parsed on its own.
 
 Parsing is lazy: a snapshot is built when a query asks for it and reused
 until something it read changes.
+
+A dropped snapshot is cyclic garbage the size of a model, and a server defers
+full collections for its whole run (docs/12 § 6), so nothing would free it.
+The next parse collects it first: one full collection per edit, and no second
+model alive while the next is built (docs/21 § 2).
 """
 
 from __future__ import annotations
 
+import gc
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Final
@@ -141,6 +147,8 @@ class Workspace:
         self.buffers: dict[str, Buffer] = {}
         self._roots: list[str] | None = None
         self._snapshots: dict[str, Snapshot] = {}
+        #: Whether a snapshot was dropped since the last collection.
+        self._garbage = False
         self._linter: Linter | None = None
 
     # -- buffers --------------------------------------------------------------
@@ -194,6 +202,7 @@ class Workspace:
         for root, snapshot in list(self._snapshots.items()):
             if uri in snapshot.read or (appeared and snapshot.error is not None):
                 del self._snapshots[root]
+                self._garbage = True
 
     # -- roots and snapshots --------------------------------------------------
 
@@ -216,8 +225,20 @@ class Workspace:
         root = canonical(root)
         snapshot = self._snapshots.get(root)
         if snapshot is None:
+            self._collect()
             snapshot = self._snapshots[root] = self._parse(root)
         return snapshot
+
+    def _collect(self) -> None:
+        """Free the snapshots dropped since the last parse.
+
+        Whether or not automatic collection is on: the host's switch governs
+        when the collector runs by itself, and this frees what the service
+        itself discarded.
+        """
+        if self._garbage:
+            gc.collect()
+            self._garbage = False
 
     def affected(self, uri: str) -> list[str]:
         """The roots whose diagnostics a change to `uri` can move."""
@@ -233,7 +254,10 @@ class Workspace:
         options = ParseOptions(
             unwrap=True,
             validate=True,
-            retain_source=True,
+            # The index needs the texts; the YAML trees only for a lint rule
+            # that reads them.
+            retain_text=True,
+            retain_source=self._lint_reads_source,
             workspace_root=disk.root,
             max_include_size=parser.max_include_size,
             file_loader=_Overlay(self.buffers, disk),
@@ -247,6 +271,10 @@ class Workspace:
             failure = err if isinstance(err, RamlError) else RamlError.new(str(err), root)
             return Snapshot(root, None, failure, frozenset({root}))
         return Snapshot(root, raml, error, _read(raml, root), linter=self.linter)
+
+    @property
+    def _lint_reads_source(self) -> bool:
+        return any(getattr(rule, 'requires_source', False) for rule in self.linter.rules)
 
     @property
     def linter(self) -> Linter:

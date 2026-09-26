@@ -41,12 +41,21 @@ replace discovery. Discovery runs again when a buffer's header line changes,
 a buffer opens, or a file changes on disk.
 
 **Snapshots.** A snapshot is one `parse_lenient` of one root, with
-`unwrap=True, validate=True, retain_source=True` and the configuration's
-`parser:` limits, and the set of files it read: every retained text, every
+`unwrap=True, validate=True, retain_text=True` and the configuration's
+`parser:` limits. It keeps the YAML trees too, `retain_source=True`, only when
+an enabled lint rule reads them (`deprecated-schemas`, in the default set).
+It records the set of files it read: every retained text, every
 fragment, and every include it tried, found or not. It is built when a query
 first asks for it and kept until one of those files changes. A file that
 appears, a buffer opened or a file created, also drops every snapshot that
 ended in an error, since the error may be the missing file.
+
+**Memory.** A server defers full collections for its whole run (`docs/12`
+§ 6), and a dropped snapshot is cyclic garbage the size of a model, which only
+a full collection frees. So before it parses, the workspace collects once if
+it dropped a snapshot since the last parse, whether or not automatic
+collection is on. Without that, the model an edit replaced stays alive beside
+the next one: on `large`, a run of edits settles at 98 MB instead of 75 MB.
 
 `snapshots(uri)` serves a file from every root that read it, or else from a
 parse of the file alone. `affected(uri)` names the roots whose diagnostics a

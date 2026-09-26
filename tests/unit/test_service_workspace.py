@@ -7,10 +7,14 @@ the sandboxed loader does.
 
 from __future__ import annotations
 
+import gc
 from typing import TYPE_CHECKING
 
 import pytest
 
+from fastraml.config import FastRamlConfig
+from fastraml.gctuning import tuned_gc
+from fastraml.registry import Raml
 from fastraml.service.workspace import Workspace, canonical
 from fastraml.uris import path_to_file_uri
 from tests.unit.conftest import write_files
@@ -26,6 +30,10 @@ def _workspace(tmp_path: Path, files: dict[str, str], **options: object) -> tupl
     write_files(tmp_path, files)
     folder = path_to_file_uri(tmp_path)
     return Workspace([folder], **options), folder  # type: ignore[arg-type]
+
+
+def _models() -> int:
+    return sum(isinstance(found, Raml) for found in gc.get_objects())
 
 
 class TestRoots:
@@ -126,6 +134,29 @@ class TestSnapshots:
         workspace.open(f'{folder}/lib.raml', API, 1)
         assert workspace.text(f'{folder}/lib.raml') == API
         assert workspace.text(path_to_file_uri(tmp_path.parent / 'elsewhere.raml')) is None
+
+    def test_a_dropped_snapshot_is_freed_before_the_next_parse(self, tmp_path):
+        # A server defers full collections for its whole run (docs/12 § 6), and
+        # a model is cyclic garbage: without the collection, every edit would
+        # keep the model it replaced.
+        workspace, folder = _workspace(tmp_path, self.FILES)
+        root = f'{folder}/api.raml'
+        gc.collect()
+        before = _models()
+        with tuned_gc():
+            for version in range(1, 4):
+                workspace.change(root, f'{self.FILES["api.raml"]}# {version}\n', version)
+                workspace.snapshot(root)
+            assert _models() - before == 1
+
+    def test_the_yaml_trees_are_kept_only_for_a_lint_rule_that_reads_them(self, tmp_path):
+        files = {'api.raml': API}
+        reading, folder = _workspace(tmp_path, files)
+        assert reading.snapshot(f'{folder}/api.raml').raml.retain_source
+        config = FastRamlConfig(lint={'rules': [{'id': 'deprecated-schemas', 'disabled': True}]})
+        plain = Workspace([folder], config=config)
+        raml = plain.snapshot(f'{folder}/api.raml').raml
+        assert (raml.retain_source, raml.retain_text) == (False, True)
 
     def test_what_a_change_moves_is_every_root_that_read_it(self, tmp_path):
         workspace, folder = _workspace(tmp_path, {**self.FILES, 'second.raml': self.FILES['api.raml']})

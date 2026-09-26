@@ -23,7 +23,7 @@ from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
 from fastraml.parser.resourcetypes import apply_resource_type
 from fastraml.parser.source_decode import decode_source_endpoint
-from fastraml.parser.source_ir import make_source_endpoint
+from fastraml.parser.source_ir import make_source_endpoint, note_failure
 from fastraml.parser.traits import apply_traits
 from fastraml.parser.uritemplates import extract_uri_template_params, unused_uri_parameters
 from fastraml.registry import ParseCtx
@@ -102,18 +102,21 @@ def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) ->
         try:
             apply_resource_type(raml, source, source.resource_type, set())
         except RamlError as err:
-            acc.add(
-                RamlError.wrap(
-                    'apply resource type',
-                    err,
-                    source.location,
-                    source.resource_type.value_pos,
-                    info={'resourceType': source.resource_type.name},
-                )
+            wrapped = RamlError.wrap(
+                'apply resource type',
+                err,
+                source.location,
+                source.resource_type.value_pos,
+                info={'resourceType': source.resource_type.name},
             )
+            note_failure(source, wrapped)
+            acc.add(wrapped)
     try:
         apply_traits(source)
     except RamlError as err:
+        # Each operation a trait failed on has noted it; the failure passed
+        # through this resource too (docs/13 § 1).
+        note_failure(source, err)
         acc.add(err)
     for child in source.endpoints.values():
         _resolve_directives(raml, child, acc)

@@ -135,11 +135,12 @@ Exit criteria: A1, A5 and A6 no longer reproduce. A2 is carried to M2.2.
    P6 now also runs over a kept resource, so a strict parse can report an
    unused URI parameter beside the key that failed;
 3. `DirectiveRef` and `SecurityScheme`. `SecurityScheme` done: marked in
-   the `except` around `_bind`. `DirectiveRef` is open: it has no `id`, and
-   giving it one takes a number from the per-parse counter, which renumbers
-   every later entity in the committed tree JSON. A failure to apply a trait
-   or resource type happens in the source IR, before any `Operation` exists,
-   so the reference is the only model entity it passes through;
+   the `except` around `_bind`. A failure to apply a trait or resource type
+   happens in the source IR, before any `Operation` exists. Decided on
+   2026-09-26: mark what lacks the contribution rather than the reference,
+   which has no `id`. `note_failure` records the failure on the
+   `SourceOperation` or `SourceEndPoint` where it is caught, and stage 2
+   copies it into `Raml.broken` for the entity that IR becomes. No ids move;
 4. P7 shapes. Done: `resolve_shape` marks in its `except`, so a referrer
    that resolved a failing shape out of queue order is marked too;
 5. P8 extensions. Done;

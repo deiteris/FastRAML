@@ -297,6 +297,49 @@ class TestABrokenDefinitionIsKeptAndMarked:
         assert fragment.definition.id in raml.broken
 
 
+class TestATemplateThatFailsToApplyMarksWhatLacksIt:
+    """docs/13 § 1 — a trait or resource type fails in the source IR, before
+    the model entity exists. The failure is noted on the IR, and stage 2 marks
+    the operation or resource it becomes: that is what lacks the contribution.
+    """
+
+    @staticmethod
+    def marked(workspace, body: str):
+        root = workspace({'api.raml': API + body})
+        raml, error = parse_lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        names = {}
+        for uri, endpoint in raml.endpoints.items():
+            names[endpoint.id] = uri
+            names.update({operation.id: f'{uri} {method}' for method, operation in endpoint.operations.items()})
+        return raml, {names[entity] for entity in raml.broken}
+
+    def test_an_unknown_trait(self, workspace):
+        raml, marked = self.marked(workspace, '/a:\n  get:\n    is: [nosuch]\n  post:\n/b:\n  get:\n')
+        assert marked == {'/a', '/a get'}
+        (ref,) = raml.endpoints['/a'].operations['get'].traits
+        assert ref.resolved is None
+
+    def test_a_trait_that_resolves_but_fails_to_merge(self, workspace):
+        _, marked = self.marked(
+            workspace, 'traits:\n  paged:\n    description: <<what>>\n/a:\n  get:\n    is: [paged]\n  post:\n'
+        )
+        assert marked == {'/a', '/a get'}
+
+    def test_every_trait_that_failed_is_on_the_mark(self, workspace):
+        raml, _ = self.marked(
+            workspace,
+            'traits:\n  one:\n    description: <<a>>\n  two:\n    description: <<b>>\n'
+            '/a:\n  get:\n    is: [one, two]\n',
+        )
+        mark = raml.broken[raml.endpoints['/a'].operations['get'].id]
+        assert [chain[0].info for chain in mark.chains()] == [{'trait': 'one'}, {'trait': 'two'}]
+
+    def test_an_unknown_resource_type_marks_the_resource(self, workspace):
+        _, marked = self.marked(workspace, '/a:\n  type: nosuch\n  get:\n')
+        assert marked == {'/a'}
+
+
 class TestALaterStageMarksWhatItCouldNotSettle:
     """docs/13 § 1 — P5, P7, P8 and P9 fail on entities already in the model;
     each such entity, and each one the failure passed through, is marked.

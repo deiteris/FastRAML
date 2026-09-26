@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
+from fastraml.parser.source_ir import note_failure
 from fastraml.parser.structural_merge import merge_structural
 from fastraml.parser.templates import (
     TemplateDefinition,
@@ -111,9 +112,10 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
                 definition = _definition_for(ref)
                 merge_trait_into(operation, definition, params, caller_scope=endpoint.scope)
             except RamlError as err:
-                accumulator.add(
-                    RamlError.wrap('apply trait', err, ref.location, ref.value_pos, info={'trait': ref.name})
-                )
+                wrapped = RamlError.wrap('apply trait', err, ref.location, ref.value_pos, info={'trait': ref.name})
+                # The operation it was merging into lacks its contribution.
+                note_failure(operation, wrapped)
+                accumulator.add(wrapped)
     accumulator.raise_if_any()
 
 

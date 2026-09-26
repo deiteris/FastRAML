@@ -67,6 +67,7 @@ marked today:
 | A type or annotation type declaration | Its decoded facets. A failure before its kind was settled leaves an `UnknownShape`, never `shape is None` |
 | A trait, resource type or security scheme definition | Every key that decoded; a security scheme's `describedBy` and its responses as a resource's. One whose `!include` failed has `link is None` |
 | A resource, an operation, a response | Every key that decoded, and every child, sound or marked |
+| An operation a trait failed to apply to, and its resource; a resource a resource type failed to apply to | Everything but that template's contribution. The `DirectiveRef` stays in `traits` or `resource_type`, with `resolved is None` if the name matched nothing |
 | A `securedBy:` entry whose scheme did not bind (P5) | `definition is None` |
 | A shape whose kind P7 could not settle, and each shape the failure passed through | An `UnknownShape` |
 | An annotation application whose type P8 could not find | `defined_by is None` |

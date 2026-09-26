@@ -333,6 +333,8 @@ def decode_source_operation(raml: Raml, source: SourceOperation, attach: Callabl
         value_pos=source.value_pos,
     )
     attach(operation)
+    if source.failure is not None:
+        raml.broken[operation.id] = source.failure
     try:
         _decode_operation_content(raml, operation, source)
     except RamlError as err:
@@ -405,6 +407,8 @@ def decode_source_endpoint(raml: Raml, source: SourceEndPoint, attach: Callable[
         value_pos=source.value_pos,
     )
     attach(endpoint)
+    if source.failure is not None:
+        raml.broken[endpoint.id] = source.failure
     try:
         _decode_endpoint_content(raml, endpoint, source)
     except RamlError as err:

@@ -34,6 +34,7 @@ __all__ = [
     'SourceEndPoint',
     'SourceOperation',
     'make_source_endpoint',
+    'note_failure',
 ]
 
 #: The HTTP methods a resource may declare (spec section Methods). `?`-suffixed
@@ -72,6 +73,9 @@ class SourceOperation:
     provenance: dict[Node, ParseCtx] = field(default_factory=dict)
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
+    #: Set by P4 when a trait or resource type failed to apply here. Stage 2
+    #: marks the entity this becomes (docs/13 § 1).
+    failure: RamlError | None = None
 
     def __repr__(self) -> str:
         return f'SourceOperation({self.method!r})'
@@ -101,9 +105,20 @@ class SourceEndPoint:
     provenance: dict[Node, ParseCtx] = field(default_factory=dict)
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
+    #: Set by P4 when a trait or resource type failed to apply here. Stage 2
+    #: marks the entity this becomes (docs/13 § 1).
+    failure: RamlError | None = None
 
     def __repr__(self) -> str:
         return f'SourceEndPoint({self.full_uri!r})'
+
+
+def note_failure(source: SourceOperation | SourceEndPoint, error: RamlError) -> None:
+    """Record that a trait or resource type failed to apply to `source`.
+
+    Every failure is kept, since two traits can fail on one operation.
+    """
+    source.failure = error if source.failure is None else source.failure.append(error)
 
 
 def _retained(kept: list[Node], source: Node) -> Node | None:

@@ -24,11 +24,17 @@ export function Sidebar({
   index,
   pathOrder = 'authored',
   onSearch,
+  shortcuts = true,
+  projectLink = true,
 }: {
   document: Document;
   index: Index;
   /** Opens the search dialog, which the shell owns. */
   onSearch: () => void;
+  /** Whether the standalone page owns the global search keys. */
+  shortcuts?: boolean;
+  /** The standalone viewer's project footer; hosts provide their own branding. */
+  projectLink?: boolean;
   /** How endpoint paths are listed: as declared, or A-Z (see `pathTree`). */
   pathOrder?: PathOrder;
 }) {
@@ -47,7 +53,7 @@ export function Sidebar({
           </Link>
           <ThemeToggle />
         </div>
-        <SearchButton onOpen={onSearch} />
+        <SearchButton onOpen={onSearch} shortcuts={shortcuts} />
 
         {/* A destination among the others, not only the thing the title happens
             to link to. What the API is -- its base URI, its media types, its
@@ -110,12 +116,14 @@ export function Sidebar({
 
       {/* Outside the scrolling part, so it is always in view however long the
           lists above run. */}
-      <footer className="sidebar-foot">
-        <a className="sidebar-link" href={REPOSITORY}>
-          <GitHubMark />
-          fastRAML on GitHub
-        </a>
-      </footer>
+      {projectLink && (
+        <footer className="sidebar-foot">
+          <a className="sidebar-link" href={REPOSITORY}>
+            <GitHubMark />
+            fastRAML on GitHub
+          </a>
+        </footer>
+      )}
     </nav>
   );
 }

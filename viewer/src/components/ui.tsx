@@ -381,25 +381,27 @@ export interface Tab {
  * A light/dark switch, showing the theme in effect.
  *
  * A reader who has not chosen follows the system: nothing is stored, and
- * `data-theme` is absent, which is how the stylesheet's media query stays in
- * charge. Switching to the theme the system prefers forgets the choice rather
- * than storing it, so following the system again needs no third position.
+ * `data-theme` is absent, so `color-scheme` follows the system. Switching to
+ * the theme the system prefers forgets the choice rather than storing it, so
+ * following the system again needs no third position.
  */
 export function ThemeToggle() {
   const [chosen, setChosen] = useState<Theme | null>(storedTheme);
+  const button = useRef<HTMLButtonElement>(null);
   const systemDark = useSyncExternalStore(watchSystemDark, systemPrefersDark, () => false);
   const system: Theme = systemDark ? 'dark' : 'light';
   const dark = (chosen ?? system) === 'dark';
 
-  // `index.html` applies the stored choice before the first paint; this keeps
-  // the attribute and the store in step with the switch after that.
+  // The shell applies the stored choice on its first render; later choices stay
+  // on this viewer rather than changing the embedding page's <html> element.
   useEffect(() => {
-    const root = window.document.documentElement;
+    const root = button.current?.closest('.fastraml-viewer');
+    if (!root) return;
     if (chosen === null) root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', chosen);
     try {
-      if (chosen === null) localStorage.removeItem('theme');
-      else localStorage.setItem('theme', chosen);
+      if (chosen === null) localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, chosen);
     } catch {
       // Storage refused (a file:// page, a private window): the choice lasts
       // until the page closes, which is all that can be offered.
@@ -411,7 +413,7 @@ export function ThemeToggle() {
     setChosen(next === system ? null : next);
   };
   return (
-    <button type="button" role="switch" aria-checked={dark} aria-label="Dark theme" className="theme" onClick={flip}>
+    <button ref={button} type="button" role="switch" aria-checked={dark} aria-label="Dark theme" className="theme" onClick={flip}>
       <span className="theme-knob">
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
           {dark ? (
@@ -429,11 +431,12 @@ export function ThemeToggle() {
 }
 
 type Theme = 'light' | 'dark';
+const THEME_KEY = 'fastraml-viewer-theme';
 
 /** The stored choice, if it is one; anything else in the store means none was made. */
-function storedTheme(): Theme | null {
+export function storedTheme(): Theme | null {
   try {
-    const stored = localStorage.getItem('theme');
+    const stored = localStorage.getItem(THEME_KEY);
     return stored === 'light' || stored === 'dark' ? stored : null;
   } catch {
     return null;

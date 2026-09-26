@@ -1,7 +1,8 @@
 /**
  * Getting a document in.
  *
- * One way: `api.json` beside the bundle.
+ * The standalone app fetches `api.json` beside the bundle. A host may instead
+ * supply its JSON text directly to `App` or `Viewer`.
  *
  * **There is deliberately no `?src=`.** Accepting any URL would let a crafted
  * link render someone else's document under this origin, with nothing on the
@@ -22,7 +23,12 @@ export const DEFAULT_SOURCE = 'api.json';
 export async function loadDocument(source: string): Promise<Document> {
   const response = await fetch(source);
   if (!response.ok) throw new Error(`${source}: ${response.status} ${response.statusText}`);
-  return validate(parse(await response.text()));
+  return parseDocument(await response.text());
+}
+
+/** Parse supplied tree JSON with the same exact-number handling as a fetched file. */
+export function parseDocument(contents: string): Document {
+  return validate(parse(contents));
 }
 
 /**

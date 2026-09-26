@@ -307,7 +307,9 @@ The index reads what the passes bound and resolves no name itself:
 - **Definitions.** The five declaration tables of every API and library,
   `uses:` keys, object properties and `facets:` entries.
 - **References.** The names in type expressions, which P7 records
-  ([06](06-type-expressions.md) § 3). The `type:` and `is:` entries of every
+  ([06](06-type-expressions.md) § 3). A built-in written alone, such as
+  `type: string`, never reaches P7; it is read from the `type:` node the
+  shape keeps. The `type:` and `is:` entries of every
   resource and method. `securedBy:` names, and the name in each
   `(annotation)` key.
 - **Links.** Each `!include` argument and each `uses:` value. The target is
@@ -324,8 +326,7 @@ is kept in `Occurrences.dropped`. The known cause is a template substitution,
 which keeps the template's position (docs/11 § 3).
 
 The law checks only the candidates the index finds. A name nothing records is
-not a candidate: a built-in written alone, such as `type: string`, is settled
-at decode, and P7 never reads it.
+not a candidate, and nothing checks for one.
 
 `Occurrences.at(uri, line, column)` finds the occurrences under a cursor.
 `Occurrences.of(id)` lists an entity's definition and every use of it.

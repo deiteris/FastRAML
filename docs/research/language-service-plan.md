@@ -230,7 +230,7 @@ Met.
   occurrences. `unwrap+occurrences` on `large` is 394 ms and 37.3 MB
   allocated, against 460 ms and 48.4 MB for `unwrap+graph`.
 - Found: P7 places the name in a dotted type name, `Dot.Type`, past a dot
-  that names no library (`Types/dot-notation-types`). For M3.3.
+  that names no library (`Types/dot-notation-types`). Fixed in M3.3.
 
 **M3.3 Driven by the law.** Each fix is committed with the law failures it
 removes:

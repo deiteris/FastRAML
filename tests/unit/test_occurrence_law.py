@@ -36,6 +36,7 @@ _SUBSTITUTED: Final = {
     'Resources/request-datatype-property/valid.raml': 1,
     **{f'Resources/restype-datatype-property-0{n}/valid.raml': 1 for n in range(1, 9)},
     'ResourceTypes/chaining-functions/valid.raml': 1,
+    'Traits/with-params/valid.raml': 1,
     **{f'ResourceTypes/datatype-properties-0{n}/valid.raml': 1 for n in range(1, 10)},
     **{f'Traits/datatype-properties-0{n}/valid.raml': 1 for n in range(1, 5)},
 }

@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Final
 
 from fastraml.parser.fragments import APIFragment, Library
 from fastraml.positions import Position
+from fastraml.types.base import BUILTIN_TYPES
 from fastraml.types.complex_ import ObjectShape
 
 if TYPE_CHECKING:
@@ -250,7 +251,7 @@ class _Index:
 
     def shapes(self, raml: Raml) -> None:
         """Each shape's properties and `facets:` entries, and the names in its
-        type expression, which P7 recorded (docs/06 § 3).
+        type expression: P7's records (docs/06 § 3), or a built-in alone.
 
         A property is read once per declaration: unwrap gives each subtype
         the properties it inherits, and they keep their declaration's id.
@@ -277,6 +278,12 @@ class _Index:
                         target=member.id,
                     )
             uri = base.location
+            written = base.type_expr
+            if not base.type_expr_refs and written is not None and written.value in BUILTIN_TYPES:
+                # A built-in written alone is settled at decode, so P7 records
+                # nothing for it; the node the shape keeps says where it is.
+                at = written.position
+                self.add(uri, at.line, at.column, written.value, role=Role.BUILTIN, kind=Kind.TYPE, target=None)
             for ref in base.type_expr_refs:
                 if ref.builtin is not None:
                     self.add(uri, ref.line, ref.column, ref.builtin, role=Role.BUILTIN, kind=Kind.TYPE, target=None)

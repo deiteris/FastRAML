@@ -125,6 +125,8 @@ class TestEachNameIsAnOccurrence:
             pytest.param((Role.ALIAS_PREFIX, Kind.LIBRARY, 'lib'), ('lib.Person', 0), id='alias prefix'),
             pytest.param((Role.REFERENCE, Kind.TYPE, 'Person'), ('Person', 0), id='qualified type name'),
             pytest.param((Role.BUILTIN, Kind.TYPE, 'string'), ('string[]', 0), id='built-in in an expression'),
+            pytest.param((Role.BUILTIN, Kind.TYPE, 'string'), ('string', 0), id='built-in written alone'),
+            pytest.param((Role.BUILTIN, Kind.TYPE, 'object'), ('object', 0), id='built-in under type:'),
             pytest.param((Role.REFERENCE, Kind.RESOURCE_TYPE, 'collection'), ('collection', 1), id='type:'),
             pytest.param((Role.REFERENCE, Kind.TRAIT, 'paged'), ('paged', 1), id='is:'),
             pytest.param((Role.ALIAS_PREFIX, Kind.LIBRARY, 'lib'), ('lib.audited', 0), id='qualified is: prefix'),

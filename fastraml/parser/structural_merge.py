@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
+from fastraml.facet_names import FACET_DEFAULT, FACET_EXAMPLE, FACET_EXAMPLES
 from fastraml.yamlnode import Node, NodeKind, mark_subtree, pairs, with_content
 
 if TYPE_CHECKING:
@@ -47,7 +48,7 @@ type ProvenanceOverlay = dict[Node, ParseCtx]
 #: that validates against nothing. Spec section Merging Rules: "Examples are
 #: always Simple Properties despite the capability to have complex YAML samples
 #: as values."
-OPAQUE_DATA_FACETS: Final = frozenset({'example', 'examples', 'default'})
+OPAQUE_DATA_FACETS: Final = frozenset({FACET_EXAMPLE, FACET_EXAMPLES, FACET_DEFAULT})
 
 
 def merge_structural(

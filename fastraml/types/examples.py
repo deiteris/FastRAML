@@ -17,8 +17,9 @@ wrapper form explicitly. See docs/05-type-model.md § 5.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
+from fastraml import facet_names as fn
 from fastraml.datanode import make_data_node
 from fastraml.domains import DomainLocation
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
@@ -42,9 +43,6 @@ __all__ = [
     'examples_of',
     'make_example',
 ]
-
-#: The key whose presence selects form B.
-EXAMPLE_VALUE: Final = 'value'
 
 
 @dataclass(slots=True, eq=False)
@@ -125,20 +123,20 @@ def make_example(raml: Raml, value_node: Node, name: str, location: str) -> Exam
 
 
 def _has_value_key(value_node: Node) -> bool:
-    return any(key.value == EXAMPLE_VALUE for key, _ in pairs(value_node))
+    return any(key.value == fn.FACET_VALUE for key, _ in pairs(value_node))
 
 
 def _fill_from_wrapper(raml: Raml, example: Example, value_node: Node, location: str) -> None:
     """Form B: read `value` plus the metadata keys and any annotations."""
     for key, value in pairs(value_node):
         match key.value:
-            case 'value':
+            case fn.FACET_VALUE:
                 example.data = make_data_node(raml, key, value, location)
-            case 'strict':
+            case fn.FACET_STRICT:
                 example.strict = make_bool_facet(raml, key, value, location)
-            case 'displayName':
+            case fn.FACET_DISPLAY_NAME:
                 example.display_name = make_string_facet(raml, key, value, location)
-            case 'description':
+            case fn.FACET_DESCRIPTION:
                 example.description = make_string_facet(raml, key, value, location)
             case name if is_annotation_key(name):
                 add_domain_extension(raml, example.annotations, location, key, value)

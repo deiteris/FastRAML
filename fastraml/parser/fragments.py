@@ -33,6 +33,26 @@ from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, runtime_checka
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.facet_names import (
+    FACET_ANNOTATION_TYPES,
+    FACET_BASE_URI,
+    FACET_BASE_URI_PARAMETERS,
+    FACET_DESCRIPTION,
+    FACET_DOCUMENTATION,
+    FACET_MEDIA_TYPE,
+    FACET_PROTOCOLS,
+    FACET_RESOURCE_TYPES,
+    FACET_SCHEMAS,
+    FACET_SECURED_BY,
+    FACET_SECURITY_SCHEMES,
+    FACET_TITLE,
+    FACET_TRAITS,
+    FACET_TYPE,
+    FACET_TYPES,
+    FACET_USAGE,
+    FACET_USES,
+    FACET_VERSION,
+)
 from fastraml.parser.annotations import DomainExtension, add_domain_extension, is_annotation_key
 from fastraml.parser.directives import decode_secured_by, make_security_schemes
 from fastraml.parser.documentation import DocumentationItem, decode_documentation_item
@@ -155,27 +175,6 @@ FRAGMENT_TARGETS: Final[Mapping[FragmentKind, DomainLocation]] = {
     FragmentKind.OVERLAY: DomainLocation.OVERLAY,
     FragmentKind.EXTENSION: DomainLocation.EXTENSION,
 }
-
-
-# -- facet names --------------------------------------------------------------
-
-FACET_USES: Final = 'uses'
-FACET_TYPES: Final = 'types'
-FACET_SCHEMAS: Final = 'schemas'
-FACET_ANNOTATION_TYPES: Final = 'annotationTypes'
-FACET_RESOURCE_TYPES: Final = 'resourceTypes'
-FACET_TRAITS: Final = 'traits'
-FACET_SECURITY_SCHEMES: Final = 'securitySchemes'
-FACET_SECURED_BY: Final = 'securedBy'
-FACET_USAGE: Final = 'usage'
-FACET_TITLE: Final = 'title'
-FACET_DESCRIPTION: Final = 'description'
-FACET_VERSION: Final = 'version'
-FACET_BASE_URI: Final = 'baseUri'
-FACET_BASE_URI_PARAMETERS: Final = 'baseUriParameters'
-FACET_MEDIA_TYPE: Final = 'mediaType'
-FACET_PROTOCOLS: Final = 'protocols'
-FACET_DOCUMENTATION: Final = 'documentation'
 
 
 @runtime_checkable
@@ -812,7 +811,7 @@ class DataTypeFragment(_UsesOnlyFragment):
                 NodeKind.MAPPING,
                 TAG_MAP,
                 '',
-                [Node(NodeKind.SCALAR, TAG_STR, 'type'), Node(NodeKind.SCALAR, TAG_STR, text)],
+                [Node(NodeKind.SCALAR, TAG_STR, FACET_TYPE), Node(NodeKind.SCALAR, TAG_STR, text)],
             )
         )
 

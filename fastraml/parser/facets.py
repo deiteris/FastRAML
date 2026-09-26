@@ -26,6 +26,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.datanode import parse_int
+from fastraml.facet_names import FACET_VALUE
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.includes import IncludeInfo, resolve_include
 from fastraml.positions import UNKNOWN
@@ -54,9 +55,6 @@ __all__ = [
     'scalar_int',
     'scalar_str',
 ]
-
-#: The key that carries the value in the annotated-scalar form.
-FACET_VALUE: Final = 'value'
 
 #: Implicit `!!bool` is only `true`/`false` in the YAML 1.2 table; the YAML 1.1
 #: spellings are still honoured under an explicit `!!bool` tag.

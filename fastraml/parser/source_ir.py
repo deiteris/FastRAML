@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
 from fastraml.errors import Accumulator, RamlError
+from fastraml.facet_names import FACET_IS, FACET_SECURED_BY, FACET_TYPE
 from fastraml.parser.directives import DirectiveRef, decode_secured_by, decode_trait_refs, decode_type_ref
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import Node, NodeKind, is_null, node_error, pairs, with_content
@@ -42,10 +43,6 @@ __all__ = [
 #: only if the target already declares it"; the suffix is chomped by whoever
 #: compiles the template, so plain names are what reach here.
 METHODS: Final = frozenset({'get', 'patch', 'put', 'post', 'delete', 'options', 'head', 'trace', 'connect'})
-
-FACET_TYPE: Final = 'type'
-FACET_IS: Final = 'is'
-FACET_SECURED_BY: Final = 'securedBy'
 
 
 @dataclass(slots=True, eq=False)

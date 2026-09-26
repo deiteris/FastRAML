@@ -20,6 +20,7 @@ import binascii
 import re
 from typing import TYPE_CHECKING, ClassVar, Final
 
+from fastraml import facet_names as fn
 from fastraml.errors import Accumulator
 from fastraml.parser.facets import (
     make_fraction_facet,
@@ -117,7 +118,7 @@ def _bounds_error(base: BaseShape, message: str, low: ScalarFacet[Any], high: Sc
 def _check_lengths(base: BaseShape, low: ScalarFacet[int] | None, high: ScalarFacet[int] | None) -> None:
     """`minLength`/`maxLength`: non-negative, and ordered (docs/10 § 2)."""
     accumulator = Accumulator()
-    for name, facet in (('minLength', low), ('maxLength', high)):
+    for name, facet in ((fn.FACET_MIN_LENGTH, low), (fn.FACET_MAX_LENGTH, high)):
         if facet is not None:
             accumulator.add(check_non_negative(name, facet.value, base.location, facet.value_pos))
     pair = _disordered(low, high)
@@ -299,7 +300,7 @@ class DateTimeShape(ScalarKind):
         rest: list[Node] = []
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
-            if key.value == 'format':
+            if key.value == fn.FACET_FORMAT:
                 # The value is checked in P10 (docs/10 § 2), after an inherited
                 # format has been merged in.
                 self.format = make_string_facet(self.base._raml, key, value, self.base.location)  # noqa: SLF001
@@ -343,11 +344,11 @@ class StringShape(ScalarKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'pattern':
+                case fn.FACET_PATTERN:
                     self.pattern = make_pattern_facet(raml, key, value, location)
-                case 'minLength':
+                case fn.FACET_MIN_LENGTH:
                     self.min_length = make_int_facet(raml, key, value, location)
-                case 'maxLength':
+                case fn.FACET_MAX_LENGTH:
                     self.max_length = make_int_facet(raml, key, value, location)
                 case _:
                     rest.append(key)
@@ -407,13 +408,13 @@ class NumberShape(ScalarKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'minimum':
+                case fn.FACET_MINIMUM:
                     self.minimum = make_fraction_facet(raml, key, value, location)
-                case 'maximum':
+                case fn.FACET_MAXIMUM:
                     self.maximum = make_fraction_facet(raml, key, value, location)
-                case 'multipleOf':
+                case fn.FACET_MULTIPLE_OF:
                     self.multiple_of = make_fraction_facet(raml, key, value, location)
-                case 'format':
+                case fn.FACET_FORMAT:
                     self.format = make_string_facet(raml, key, value, location)
                 case _:
                     rest.append(key)
@@ -458,13 +459,13 @@ class IntegerShape(ScalarKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'minimum':
+                case fn.FACET_MINIMUM:
                     self.minimum = make_int_facet(raml, key, value, location)
-                case 'maximum':
+                case fn.FACET_MAXIMUM:
                     self.maximum = make_int_facet(raml, key, value, location)
-                case 'multipleOf':
+                case fn.FACET_MULTIPLE_OF:
                     self.multiple_of = make_fraction_facet(raml, key, value, location)
-                case 'format':
+                case fn.FACET_FORMAT:
                     self.format = make_string_facet(raml, key, value, location)
                 case _:
                     rest.append(key)
@@ -521,13 +522,13 @@ class FileShape(ScalarKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'fileTypes':
+                case fn.FACET_FILE_TYPES:
                     if value.kind is not NodeKind.SEQUENCE:
                         raise node_error('fileTypes must be a sequence', location, value)
                     self.file_types = [make_seq_facet(raml, item, location, scalar_str) for item in value.content]
-                case 'minLength':
+                case fn.FACET_MIN_LENGTH:
                     self.min_length = make_int_facet(raml, key, value, location)
-                case 'maxLength':
+                case fn.FACET_MAX_LENGTH:
                     self.max_length = make_int_facet(raml, key, value, location)
                 case _:
                     rest.append(key)

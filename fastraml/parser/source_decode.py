@@ -28,6 +28,17 @@ from typing import TYPE_CHECKING, Final, Protocol
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
+from fastraml.facet_names import (
+    FACET_BODY,
+    FACET_DESCRIPTION,
+    FACET_DISPLAY_NAME,
+    FACET_HEADERS,
+    FACET_PROTOCOLS,
+    FACET_QUERY_PARAMETERS,
+    FACET_QUERY_STRING,
+    FACET_RESPONSES,
+    FACET_URI_PARAMETERS,
+)
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.directives import make_security_schemes
 from fastraml.parser.endpoints import VALID_PROTOCOLS, Body, EndPoint, Operation, Request, Response
@@ -45,16 +56,6 @@ if TYPE_CHECKING:
     from fastraml.yamlnode import Node
 
 __all__ = ['decode_request_facet', 'decode_responses', 'decode_source_endpoint', 'query_exclusion_error']
-
-FACET_DISPLAY_NAME: Final = 'displayName'
-FACET_DESCRIPTION: Final = 'description'
-FACET_HEADERS: Final = 'headers'
-FACET_QUERY_PARAMETERS: Final = 'queryParameters'
-FACET_QUERY_STRING: Final = 'queryString'
-FACET_RESPONSES: Final = 'responses'
-FACET_BODY: Final = 'body'
-FACET_PROTOCOLS: Final = 'protocols'
-FACET_URI_PARAMETERS: Final = 'uriParameters'
 
 
 @contextmanager

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Final
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.facet_names import FACET_TITLE, FACET_USAGE, FACET_USES
 from fastraml.parser.extension_merge import merge_extension
 from fastraml.parser.facets import make_string_facet
 from fastraml.parser.fragments import (
@@ -74,7 +75,7 @@ def decode_extension_chain(raml: Raml, uri: str, kind: FragmentKind, text: str) 
     raml.entry_point = _register(raml, api)
 
     accumulator = Accumulator()
-    if not any(key.value == 'title' for key, _ in pairs(root_api.root)):
+    if not any(key.value == FACET_TITLE for key, _ in pairs(root_api.root)):
         # The target tree takes its title from here (docs/19 § 2).
         accumulator.add(node_error('title is required', root_api.uri, root_api.root))
 
@@ -189,9 +190,9 @@ def _decode_own_keys(raml: Raml, fragment: ExtensionFragment, document: _Documen
     try:
         for key, value in pairs(document.root):
             try:
-                if key.value == 'usage':
+                if key.value == FACET_USAGE:
                     fragment.usage = make_string_facet(raml, key, value, fragment.location)
-                elif key.value == 'uses':
+                elif key.value == FACET_USES:
                     fragment.uses = unmarshal_uses(raml, value, fragment.location)
             except RamlError as err:
                 accumulator.add(err)

@@ -139,6 +139,9 @@ scalar claim for every member. Numeric tags use exact numeric keys; strings and
 booleans retain their distinct meanings. A present unknown scalar tag fails;
 missing, null, nonscalar, or non-uniform cases use ordinary member scanning.
 
+RAML field names shared by fragment, endpoint, and type decoders are defined in
+`facet_names.py`; diagnostic fields and JSON Schema keywords are separate.
+
 Implementation: `types/base.py`, `types/shape.py`, `types/inference.py`,
 `types/complex_.py`, `types/scalars.py`, `types/examples.py`, and `types/xml.py`.
 Tests: `tests/unit/test_shape_decode.py`, `test_properties.py`, `test_inference.py`,

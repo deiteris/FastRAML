@@ -25,6 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
+from fastraml import facet_names as fn
 from fastraml.domains import DomainLocation
 from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.source_ir import METHODS, make_source_endpoint
@@ -61,7 +62,16 @@ __all__ = [
 #: The non-method keys a resource type may declare. `usage:` is consumed by the
 #: shared decoder; the rest are kept and flow into the compiled endpoint
 #: (docs/08 § 3.1).
-RESOURCE_TYPE_FACETS: Final = frozenset({'displayName', 'description', 'uriParameters', 'type', 'is', 'securedBy'})
+RESOURCE_TYPE_FACETS: Final = frozenset(
+    {
+        fn.FACET_DISPLAY_NAME,
+        fn.FACET_DESCRIPTION,
+        fn.FACET_URI_PARAMETERS,
+        fn.FACET_TYPE,
+        fn.FACET_IS,
+        fn.FACET_SECURED_BY,
+    }
+)
 
 
 @dataclass(slots=True, eq=False)

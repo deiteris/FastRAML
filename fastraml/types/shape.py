@@ -20,6 +20,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Final, cast
 
+from fastraml import facet_names as fn
 from fastraml.datanode import make_data_node
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
@@ -118,17 +119,17 @@ KIND_TO_CLASS: Final[dict[str, type[KindBase]]] = {
 #: facets, and are deliberately absent.
 COMMON_FACETS: Final = frozenset(
     {
-        'type',
-        'schema',
-        'facets',
-        'example',
-        'examples',
-        'default',
-        'description',
-        'displayName',
-        'required',
-        'enum',
-        'allowedTargets',
+        fn.FACET_TYPE,
+        fn.FACET_SCHEMA,
+        fn.FACET_FACETS,
+        fn.FACET_EXAMPLE,
+        fn.FACET_EXAMPLES,
+        fn.FACET_DEFAULT,
+        fn.FACET_DESCRIPTION,
+        fn.FACET_DISPLAY_NAME,
+        fn.FACET_REQUIRED,
+        fn.FACET_ENUM,
+        fn.FACET_ALLOWED_TARGETS,
     }
 )
 
@@ -137,19 +138,19 @@ COMMON_FACETS: Final = frozenset(
 TYPE_SPECIFIC_FACETS: Final[dict[str, frozenset[str]]] = {
     'object': frozenset(
         {
-            'properties',
-            'additionalProperties',
-            'minProperties',
-            'maxProperties',
-            'discriminator',
-            'discriminatorValue',
+            fn.FACET_PROPERTIES,
+            fn.FACET_ADDITIONAL_PROPERTIES,
+            fn.FACET_MIN_PROPERTIES,
+            fn.FACET_MAX_PROPERTIES,
+            fn.FACET_DISCRIMINATOR,
+            fn.FACET_DISCRIMINATOR_VALUE,
         }
     ),
-    'array': frozenset({'items', 'minItems', 'maxItems', 'uniqueItems'}),
-    'string': frozenset({'pattern', 'minLength', 'maxLength'}),
-    'integer': frozenset({'minimum', 'maximum', 'multipleOf'}),
-    'number': frozenset({'minimum', 'maximum', 'multipleOf'}),
-    'file': frozenset({'fileTypes'}),
+    'array': frozenset({fn.FACET_ITEMS, fn.FACET_MIN_ITEMS, fn.FACET_MAX_ITEMS, fn.FACET_UNIQUE_ITEMS}),
+    'string': frozenset({fn.FACET_PATTERN, fn.FACET_MIN_LENGTH, fn.FACET_MAX_LENGTH}),
+    'integer': frozenset({fn.FACET_MINIMUM, fn.FACET_MAXIMUM, fn.FACET_MULTIPLE_OF}),
+    'number': frozenset({fn.FACET_MINIMUM, fn.FACET_MAXIMUM, fn.FACET_MULTIPLE_OF}),
+    'file': frozenset({fn.FACET_FILE_TYPES}),
 }
 
 
@@ -320,29 +321,29 @@ def _decode(  # noqa: PLR0912 - one pass over the common-facet vocabulary (docs/
     for index in range(0, len(content), 2):
         key, value = content[index], content[index + 1]
         match key.value:
-            case 'type' | 'schema':
+            case fn.FACET_TYPE | fn.FACET_SCHEMA:
                 if type_node is not None:
                     raise node_error('`type` and `schema` are mutually exclusive', location, key)
                 type_node = value
-            case 'displayName':
+            case fn.FACET_DISPLAY_NAME:
                 base.display_name = make_string_facet(raml, key, value, location)
-            case 'description':
+            case fn.FACET_DESCRIPTION:
                 base.description = make_string_facet(raml, key, value, location)
-            case 'required':
+            case fn.FACET_REQUIRED:
                 base.required = make_bool_facet(raml, key, value, location)
-            case 'facets':
+            case fn.FACET_FACETS:
                 _decode_custom_facet_defs(raml, base, value)
-            case 'example':
+            case fn.FACET_EXAMPLE:
                 _decode_example(raml, base, value)
-            case 'examples':
+            case fn.FACET_EXAMPLES:
                 _decode_examples(raml, base, value)
-            case 'default':
+            case fn.FACET_DEFAULT:
                 base.default = make_data_node(raml, key, value, location)
-            case 'enum':
+            case fn.FACET_ENUM:
                 base.enum = _decode_enum(raml, value, location)
-            case 'xml':
+            case fn.FACET_XML:
                 base.xml = decode_xml_serialization(raml, value, location)
-            case 'allowedTargets':
+            case fn.FACET_ALLOWED_TARGETS:
                 base.allowed_targets = _decode_allowed_targets(value, location)
             case name if is_annotation_key(name):
                 add_domain_extension(raml, base.annotations, location, key, value)
@@ -511,8 +512,8 @@ def attach_kind(raml: Raml, base: BaseShape, kind: str, facets: list[Node], *, f
 #: The declaration facets a union's members may take from beside `type: A | B`,
 #: and the kind whose table defines each (docs/07 § 5).
 _MEMBER_DECLARATION_KINDS: Final[dict[str, tuple[str, type[KindBase]]]] = {
-    'properties': (TYPE_OBJECT, ObjectShape),
-    'items': (TYPE_ARRAY, ArrayShape),
+    fn.FACET_PROPERTIES: (TYPE_OBJECT, ObjectShape),
+    fn.FACET_ITEMS: (TYPE_ARRAY, ArrayShape),
 }
 
 

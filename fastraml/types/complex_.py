@@ -35,6 +35,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, NamedTuple, cast
 
+from fastraml import facet_names as fn
 from fastraml.datanode import make_data_node
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.parser.facets import make_bool_facet, make_int_facet, make_string_facet
@@ -155,7 +156,7 @@ class ObjectShape(ComplexKind):
         'properties',
     )
 
-    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {'properties': PROPERTIES}
+    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {fn.FACET_PROPERTIES: PROPERTIES}
 
     def __init__(
         self,
@@ -182,18 +183,18 @@ class ObjectShape(ComplexKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'minProperties':
+                case fn.FACET_MIN_PROPERTIES:
                     self.min_properties = make_int_facet(raml, key, value, location)
-                case 'maxProperties':
+                case fn.FACET_MAX_PROPERTIES:
                     self.max_properties = make_int_facet(raml, key, value, location)
-                case 'additionalProperties':
+                case fn.FACET_ADDITIONAL_PROPERTIES:
                     self.additional_properties = make_bool_facet(raml, key, value, location)
-                case 'discriminator':
+                case fn.FACET_DISCRIMINATOR:
                     # Whether the named property exists is P10's question: it may
                     # be inherited, and so invisible until unwrap (docs/05 § 6).
                     self.discriminator = make_string_facet(raml, key, value, location)
                     declares_discriminator = True
-                case 'discriminatorValue':
+                case fn.FACET_DISCRIMINATOR_VALUE:
                     self.discriminator_value = make_data_node(raml, key, value, location)
                     declares_discriminator = True
                 case _:
@@ -212,7 +213,9 @@ class ObjectShape(ComplexKind):
     def check(self) -> None:
         accumulator = Accumulator()
         try:
-            _count_bounds(self.base, self.min_properties, self.max_properties, ('minProperties', 'maxProperties'))
+            _count_bounds(
+                self.base, self.min_properties, self.max_properties, (fn.FACET_MIN_PROPERTIES, fn.FACET_MAX_PROPERTIES)
+            )
         except RamlError as err:
             accumulator.add(err)
         forbids_extras = self.additional_properties is not None and not self.additional_properties.value
@@ -356,7 +359,7 @@ class ArrayShape(ComplexKind):
 
     __slots__ = ('items', 'max_items', 'min_items', 'unique_items')
 
-    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {'items': ONE_SHAPE}
+    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {fn.FACET_ITEMS: ONE_SHAPE}
 
     def __init__(self, base: BaseShape, *, items: BaseShape | None = None) -> None:
         super().__init__(base)
@@ -371,11 +374,11 @@ class ArrayShape(ComplexKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'minItems':
+                case fn.FACET_MIN_ITEMS:
                     self.min_items = make_int_facet(raml, key, value, location)
-                case 'maxItems':
+                case fn.FACET_MAX_ITEMS:
                     self.max_items = make_int_facet(raml, key, value, location)
-                case 'uniqueItems':
+                case fn.FACET_UNIQUE_ITEMS:
                     self.unique_items = make_bool_facet(raml, key, value, location)
                 case _:
                     rest.append(key)
@@ -390,7 +393,7 @@ class ArrayShape(ComplexKind):
     def check(self) -> None:
         accumulator = Accumulator()
         try:
-            _count_bounds(self.base, self.min_items, self.max_items, ('minItems', 'maxItems'))
+            _count_bounds(self.base, self.min_items, self.max_items, (fn.FACET_MIN_ITEMS, fn.FACET_MAX_ITEMS))
         except RamlError as err:
             accumulator.add(err)
         if self.items is not None:
@@ -624,7 +627,7 @@ class UnionShape(ComplexKind):
 
     __slots__ = ('_dispatch', '_member_declarations', 'any_of', 'pending_facets')
 
-    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {'anyOf': SHAPE_LIST}
+    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {fn.FACET_ANY_OF: SHAPE_LIST}
 
     def __init__(self, base: BaseShape, *, any_of: list[BaseShape] | None = None) -> None:
         super().__init__(base)
@@ -653,7 +656,7 @@ class UnionShape(ComplexKind):
         rest: list[Node] = []
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
-            if key.value in ('discriminator', 'discriminatorValue'):
+            if key.value in (fn.FACET_DISCRIMINATOR, fn.FACET_DISCRIMINATOR_VALUE):
                 # The one discriminator rule checked at decode time: a union has
                 # no properties, so this can never become valid (docs/05 § 6).
                 raise node_error(

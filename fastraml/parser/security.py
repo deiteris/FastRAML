@@ -22,6 +22,21 @@ from urllib.parse import urlparse
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
+from fastraml.facet_names import (
+    FACET_ACCESS_TOKEN_URI,
+    FACET_AUTHORIZATION_GRANTS,
+    FACET_AUTHORIZATION_URI,
+    FACET_DESCRIBED_BY,
+    FACET_DESCRIPTION,
+    FACET_DISPLAY_NAME,
+    FACET_REQUEST_TOKEN_URI,
+    FACET_RESPONSES,
+    FACET_SCOPES,
+    FACET_SETTINGS,
+    FACET_SIGNATURES,
+    FACET_TOKEN_CREDENTIALS_URI,
+    FACET_TYPE,
+)
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_string_facet, scalar_str
 from fastraml.parser.includes import note_include_ref
@@ -47,12 +62,6 @@ __all__ = [
     'make_security_scheme_definition',
 ]
 
-FACET_TYPE: Final = 'type'
-FACET_DISPLAY_NAME: Final = 'displayName'
-FACET_DESCRIPTION: Final = 'description'
-FACET_DESCRIBED_BY: Final = 'describedBy'
-FACET_SETTINGS: Final = 'settings'
-
 TYPE_NULL: Final = 'null'
 TYPE_OAUTH1: Final = 'OAuth 1.0'
 TYPE_OAUTH2: Final = 'OAuth 2.0'
@@ -65,8 +74,10 @@ TYPE_PASS_THROUGH: Final = 'Pass Through'  # noqa: S105 - a scheme type name, no
 #: is what catches `type: Basic Authentication` with an `accessTokenUri`
 #: (docs/09 § A2).
 SCHEME_TYPES: Final[dict[str, frozenset[str]]] = {
-    TYPE_OAUTH1: frozenset({'requestTokenUri', 'authorizationUri', 'tokenCredentialsUri', 'signatures'}),
-    TYPE_OAUTH2: frozenset({'authorizationUri', 'accessTokenUri', 'authorizationGrants', 'scopes'}),
+    TYPE_OAUTH1: frozenset(
+        {FACET_REQUEST_TOKEN_URI, FACET_AUTHORIZATION_URI, FACET_TOKEN_CREDENTIALS_URI, FACET_SIGNATURES}
+    ),
+    TYPE_OAUTH2: frozenset({FACET_AUTHORIZATION_URI, FACET_ACCESS_TOKEN_URI, FACET_AUTHORIZATION_GRANTS, FACET_SCOPES}),
     TYPE_BASIC: frozenset(),
     TYPE_DIGEST: frozenset(),
     TYPE_PASS_THROUGH: frozenset(),
@@ -246,7 +257,7 @@ def _decode_described_by(
             try:
                 if decode_request_facet(raml, description, key, value, location):
                     continue
-                if name == 'responses':
+                if name == FACET_RESPONSES:
                     decode_responses(raml, value, location, description.responses)
                 elif is_annotation_key(name):
                     add_domain_extension(raml, description.annotations, location, key, value)
@@ -284,7 +295,7 @@ def _make_settings(
 
 
 #: Which of the accepted keys hold a sequence rather than a scalar.
-_LIST_SETTINGS: Final = frozenset({'signatures', 'authorizationGrants', 'scopes'})
+_LIST_SETTINGS: Final = frozenset({FACET_SIGNATURES, FACET_AUTHORIZATION_GRANTS, FACET_SCOPES})
 
 
 def _decode_settings(

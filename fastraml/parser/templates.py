@@ -20,6 +20,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING, Final, Self
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.facet_names import FACET_USAGE
 from fastraml.parser.facets import make_string_facet
 from fastraml.parser.includes import note_include_ref
 from fastraml.positions import UNKNOWN, Position
@@ -95,9 +96,6 @@ class Substitution:
 #: verbatim; empty where it holds none. Only P7 reads it, and it is dropped
 #: when P7 ends (docs/08 § 5.1).
 type Substitutions = dict[Node, tuple[Substitution, ...]]
-
-FACET_USAGE: Final = 'usage'
-
 
 # -- the two template declarations (docs/08 § 3) -------------------------------
 

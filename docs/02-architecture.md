@@ -44,6 +44,7 @@ in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
 | Diagnostics, positions, URIs, loaders | `errors.py`, `positions.py`, `uris.py`, `loaders.py` | [03](03-yaml-and-io.md), [11](11-diagnostics.md) |
 | YAML and arbitrary data | `yamlnode.py`, `datanode.py` | [03](03-yaml-and-io.md) |
 | Parse state | `registry.py`, `domains.py` | this document, [04](04-fragments-and-namespaces.md) |
+| RAML field names | `facet_names.py` | [05](05-type-model.md), [08](08-templates-and-endpoints.md), [09](09-security-and-annotations.md) |
 | Garbage-collector tuning | `gctuning.py` | [12](12-performance.md) |
 | Entry and RAML decoding | `parser/entry.py`, `parser/fragments.py`, `parser/includes.py`, `parser/references.py` | [03](03-yaml-and-io.md), [04](04-fragments-and-namespaces.md) |
 | Overlays and Extensions | `parser/extensions.py`, `parser/extension_merge.py` | [19](19-overlays-and-extensions.md) |

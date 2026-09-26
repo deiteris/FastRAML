@@ -291,7 +291,8 @@ container with the model. Tests: `tests/unit/test_samples.py`.
 
 `fastraml.views.occurrences.build_occurrences(raml)` lists where each name is
 written and which entity it names. It is what definition, references and
-rename read. The model must be parsed with `retain_source=True`.
+rename read. The model must be parsed with `retain_text=True`, which keeps
+each file's text and none of its YAML tree; `retain_source=True` implies it.
 
 An `Occurrence` holds five things:
 

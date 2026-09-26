@@ -120,7 +120,8 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     options = ParseOptions(
         unwrap='unwrap' in config,
         validate='validate' in config,
-        retain_source='lint' in config or 'occurrences' in config,
+        retain_source='lint' in config,
+        retain_text='occurrences' in config,
     )
     if 'lint' in config:
         from fastraml.views.lint import Config, Linter, builtin_registry  # noqa: PLC0415 - as above

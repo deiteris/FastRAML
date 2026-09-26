@@ -807,7 +807,7 @@ def _walk(args: argparse.Namespace) -> int:
     from fastraml.views.graph import TYPE_EDGES, USE_EDGES  # noqa: PLC0415 - graph commands only
 
     sites = getattr(args, 'sites', False)
-    built = _built(args, retain_source=sites)
+    built = _built(args, retain_text=sites)
     if built is None:
         return EXIT_INVALID
     graph, raml = built
@@ -1051,7 +1051,7 @@ def _parsed(args: argparse.Namespace, path: str | None = None) -> Raml | None:
 
 
 def _built(
-    args: argparse.Namespace, path: str | None = None, *, retain_source: bool = False
+    args: argparse.Namespace, path: str | None = None, *, retain_text: bool = False
 ) -> tuple[Graph, Raml] | None:
     """Parse and project, or report why not. Returns the graph and the model.
 
@@ -1064,7 +1064,7 @@ def _built(
 
     path = path or args.files[0]
     try:
-        raml = parse_from_path(path, _options(args, validate=False, retain_source=retain_source))
+        raml = parse_from_path(path, _options(args, validate=False, retain_text=retain_text))
     except RamlError as err:
         _invalid(path, err)
         return None
@@ -1406,7 +1406,9 @@ def _join(args: argparse.Namespace) -> int:
     return _emit_document(args, text)
 
 
-def _options(args: argparse.Namespace, *, validate: bool = True, retain_source: bool = False) -> ParseOptions:
+def _options(
+    args: argparse.Namespace, *, validate: bool = True, retain_source: bool = False, retain_text: bool = False
+) -> ParseOptions:
     """`unwrap` is always on; `validate` is on wherever the job is to find faults."""
     from fastraml.loaders import FileLoader  # noqa: PLC0415 - parsing commands only
     from fastraml.parser.entry import ParseOptions  # noqa: PLC0415
@@ -1416,6 +1418,7 @@ def _options(args: argparse.Namespace, *, validate: bool = True, retain_source: 
         unwrap=True,
         validate=validate,
         retain_source=retain_source,
+        retain_text=retain_text,
         workspace_root=args.workspace_root or configured.workspace_root,
         max_include_size=configured.max_include_size,
         file_loader=FileLoader() if args.no_workspace_guard else None,

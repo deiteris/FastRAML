@@ -186,6 +186,7 @@ class Raml:
         'max_include_size',
         'regex_engine',
         'retain_source',
+        'retain_text',
         'workspace_root_uri',
         # --- caches ----------------------------------------------------------
         'expr_cache',
@@ -233,6 +234,7 @@ class Raml:
         max_include_size: int = DEFAULT_MAX_INCLUDE_SIZE,
         max_depth: int = DEFAULT_MAX_DEPTH,
         retain_source: bool = False,
+        retain_text: bool = False,
         regex_engine: Literal['re', 're2'] = 're',
     ) -> None:
         # An empty SchemeLoader rather than None: a registry built without one
@@ -242,6 +244,7 @@ class Raml:
         self.max_include_size = max_include_size
         self.max_depth = max_depth
         self.retain_source = retain_source
+        self.retain_text = retain_text or retain_source
         self.regex_engine = regex_engine
 
         self.fragments: dict[str, Fragment] = {}
@@ -553,8 +556,8 @@ class Raml:
             self.source_nodes[uri] = node
 
     def store_source_text(self, uri: str, text: str) -> None:
-        """Keep source text for comment-aware tooling when retention is on."""
-        if self.retain_source:
+        """Keep source text when `retain_text` or `retain_source` is on."""
+        if self.retain_text:
             self.source_texts[uri] = text
 
     def put_source_info(self, entity_id: int, key: Node | None, value: Node) -> None:

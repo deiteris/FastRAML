@@ -70,7 +70,7 @@ def round_trip(raml: Raml, occurrences: Occurrences) -> list[str]:
 
 
 def _check(entry: Path, workspace: Path, name: str, dropped: dict[str, int], broken: list[str]) -> None:
-    options = ParseOptions(unwrap=True, validate=False, retain_source=True, workspace_root=workspace)
+    options = ParseOptions(unwrap=True, validate=False, retain_text=True, workspace_root=workspace)
     raml, _ = parse_lenient(entry, options)
     occurrences = build_occurrences(raml)
     if occurrences.dropped:

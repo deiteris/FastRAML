@@ -52,6 +52,9 @@ class ParseOptions:
     unwrap: bool = False
     validate: bool = False
     retain_source: bool = False
+    #: Keep each file's text and nothing else: what the occurrence index
+    #: checks its spans against (docs/16 § 9). Implied by `retain_source`.
+    retain_text: bool = False
     workspace_root: str | os.PathLike[str] | None = None
     max_include_size: int = DEFAULT_MAX_INCLUDE_SIZE
     #: Replaces the sandboxed `file://` loader. Supplying one makes the caller
@@ -132,6 +135,7 @@ def _new_registry(options: ParseOptions, *, default_root: str) -> Raml:
         workspace_root_uri=path_to_file_uri(workspace_root),
         max_include_size=options.max_include_size,
         retain_source=options.retain_source,
+        retain_text=options.retain_text,
         regex_engine=options.regex_engine,
         max_depth=options.max_depth,
     )

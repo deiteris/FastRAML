@@ -73,6 +73,15 @@ class TestStores:
         assert off.source_info is None
         assert on.source_info == {}
 
+    def test_retain_text_keeps_the_text_and_nothing_else(self):
+        # docs/13 § 2: what the occurrence index needs, without the YAML trees.
+        raml = Raml(retain_text=True)
+        raml.store_source_node('file:///a.raml', 'node')
+        raml.store_source_text('file:///a.raml', 'text')
+        assert raml.source_texts == {'file:///a.raml': 'text'}
+        assert raml.source_node('file:///a.raml') is None
+        assert raml.source_info is None
+
 
 class TestDefaults:
     def test_a_registry_without_a_loader_reports_the_missing_scheme(self):

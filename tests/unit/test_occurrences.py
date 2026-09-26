@@ -85,7 +85,7 @@ def _write(tmp_path: Path, api: str = API) -> Path:
 
 def _parsed(tmp_path: Path, api: str = API) -> tuple[Raml, Occurrences, str]:
     entry = _write(tmp_path, api)
-    raml = parse_from_path(entry, ParseOptions(unwrap=True, retain_source=True))
+    raml = parse_from_path(entry, ParseOptions(unwrap=True, retain_text=True))
     return raml, build_occurrences(raml), path_to_file_uri(entry)
 
 
@@ -228,13 +228,13 @@ class TestHitTest:
 class TestTheModelItReads:
     def test_it_needs_the_retained_source(self, tmp_path):
         raml = parse_from_path(_write(tmp_path), ParseOptions())
-        with pytest.raises(ValueError, match='retain_source'):
+        with pytest.raises(ValueError, match='retain_text'):
             build_occurrences(raml)
 
     def test_a_lenient_model_gives_what_its_stages_bound(self, tmp_path):
         # P4 stops at the unknown trait, before P7 reads a type expression.
         entry = _write(tmp_path, API.replace('is: [paged,', 'is: [nope, paged,'))
-        raml, error = parse_lenient(entry, ParseOptions(retain_source=True))
+        raml, error = parse_lenient(entry, ParseOptions(retain_text=True))
         assert error is not None
         found = _found(build_occurrences(raml), path_to_file_uri(entry))
         assert (Role.DEFINITION, Kind.TYPE, 'User', *_where(API, 'User:')) in found

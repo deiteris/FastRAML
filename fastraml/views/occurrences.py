@@ -138,14 +138,14 @@ class Occurrences:
 
 
 def build_occurrences(raml: Raml) -> Occurrences:
-    """The occurrences of a model parsed with `ParseOptions(retain_source=True)`.
+    """The occurrences of a model parsed with `ParseOptions(retain_text=True)`.
 
     Built from what the parse bound, so a lenient model gives the occurrences
     of the stages it completed. One span met again, as a template applied
     twice meets it, is kept once for each target.
     """
-    if not raml.retain_source:
-        msg = 'occurrences are checked against the source: parse with ParseOptions(retain_source=True)'
+    if not raml.retain_text:
+        msg = 'occurrences are checked against the source text: parse with ParseOptions(retain_text=True)'
         raise ValueError(msg)
     law = _Law(raml.source_texts)
     seen: set[tuple[str, Position, int | None]] = set()

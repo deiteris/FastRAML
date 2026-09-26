@@ -1143,16 +1143,18 @@ class _Bundling:
     resolver: Resolver[Any]
     #: Name -> the pulled-in subschema, in encounter order.
     pulled: dict[str, Any]
-    #: The identity of a resolved document -> the name it was given, so a second
-    #: reference to it points at the first copy and a cycle terminates.
+    #: The identity of a resolved schema -> the local reference that stands for
+    #: it, so a second reference points at the first copy, a cycle terminates,
+    #: and the bundled root answers `#`.
     named: dict[int, str]
     #: Every name in use, including the ones the document already had.
     taken: set[str]
-    #: True while walking the document the bundle is *of*. A pointer there is a
-    #: pointer into the result and stands. Inside anything pulled in it is a
-    #: pointer into the file that was pulled, which the result is not: left
-    #: alone it names whatever the result happens to have at that path, and a
-    #: schema that validates something else is worse than one that is opaque.
+    #: True while walking a whole document the bundle is *of*. A pointer there
+    #: is a pointer into the result and stands. Inside anything pulled in, or
+    #: in a subschema bundled on its own, it is a pointer into a file the
+    #: result is not: left alone it names whatever the result happens to have
+    #: at that path, and a schema that validates something else is worse than
+    #: one that is opaque.
     root: bool
     #: The file the bundle is of, where it is a whole file of its own: a
     #: reference back into it, from anywhere, is a pointer into the result.
@@ -1176,7 +1178,15 @@ def _bundle(compiled: CompiledSchema, canonical: str | None) -> Any:
         else set()
     )
     whole, _, pointer = (canonical or '').partition('#')
-    context = _Bundling(compiled.resolver, {}, {}, taken, root=True, document=None if pointer else whole or None)
+    selected = compiled.uri.partition('#')[2]
+    context = _Bundling(
+        compiled.resolver,
+        {},
+        {id(document): '#'},
+        taken,
+        root=not selected,
+        document=None if pointer else whole or None,
+    )
     aliases = _definition_aliases(context, document)
     bundled = _bundle_root(context, document, aliases)
     if not context.pulled or not isinstance(bundled, dict):
@@ -1212,7 +1222,7 @@ def _definition_aliases(context: _Bundling, document: Any) -> dict[str, Any]:
             continue
         if id(resolved.contents) in context.named:
             continue
-        context.named[id(resolved.contents)] = name
+        context.named[id(resolved.contents)] = f'#/{_BUNDLE_KEY}/{name}'
         aliases[name] = resolved
     return aliases
 
@@ -1278,14 +1288,15 @@ def _pull(context: _Bundling, reference: str) -> str | None:
         return None
     known = context.named.get(id(resolved.contents))
     if known is not None:
-        return f'#/{_BUNDLE_KEY}/{known}'
+        return known
     name = _bundle_name(reference, context.taken)
+    local = f'#/{_BUNDLE_KEY}/{name}'
     # Registered before the walk into it, so a reference that leads back here
     # finds the name rather than descending again.
-    context.named[id(resolved.contents)] = name
+    context.named[id(resolved.contents)] = local
     context.pulled[name] = None
     context.pulled[name] = _bundle_node(context.at(resolved.resolver), resolved.contents)
-    return f'#/{_BUNDLE_KEY}/{name}'
+    return local
 
 
 def _bundle_name(reference: str, taken: set[str]) -> str:

@@ -164,7 +164,11 @@ merge an identical schema; attempts to specialize it with RAML constraints fail.
 `JsonShape.as_schema()` returns a cached self-contained schema view with external
 references bundled locally. A reference back into the bundled file, from a
 document pulled in, points into the result (`#`, `#/definitions/line`) rather
-than pulling in a copy of it. `JsonShape.as_shape()` returns a cached nearest-RAML
+than pulling in a copy of it. A pointer within the document stands only when
+the bundle is the whole document: a subschema included by pointer
+(`schema.json#/definitions/User`) is bundled on its own, so what its
+`#/definitions/...` name is pulled in, and a reference to the subschema
+itself is `#`. `JsonShape.as_shape()` returns a cached nearest-RAML
 shape projection for consumers. Projection shapes are unregistered, positionless,
 already unwrapped view objects and must not re-enter parser passes. The projection
 can lose semantics: `oneOf` becomes a union, unsupported conditionals,

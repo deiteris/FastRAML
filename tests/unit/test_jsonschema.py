@@ -257,6 +257,27 @@ class TestInstanceValidation:
         }
         assert parse(workspace, files) is None
 
+    def test_a_pointer_included_subschema_bundles_the_pointers_it_uses(self, workspace):
+        # docs/10 § 7: its `#/definitions/...` point into the file, which the
+        # bundle of the subschema is not, so what they name is pulled in, and
+        # a reference back to the subschema itself is the bundle's root.
+        from jsonschema import Draft7Validator
+
+        user = {
+            'type': 'object',
+            'required': ['home'],
+            'properties': {'home': {'$ref': '#/definitions/Address'}, 'friend': {'$ref': '#/definitions/User'}},
+        }
+        document = json.dumps({'definitions': {'User': user, 'Address': {'type': 'string'}}})
+        files = {'api.raml': API + 'types:\n  User: !include schema.json#/definitions/User\n', 'schema.json': document}
+        raml = parsed(workspace, files)
+        bundle = raml.types_in(raml.location)['User'].shape.as_schema()
+        assert bundle['definitions'] == {'Address': {'type': 'string'}}
+        assert bundle['properties']['friend'] == {'$ref': '#'}
+        validator = Draft7Validator(bundle)
+        assert validator.is_valid({'home': 'x', 'friend': {'home': 'y'}})
+        assert not validator.is_valid({'home': 1})
+
     def test_a_pointer_that_names_nothing_is_an_error(self, workspace):
         document = json.dumps({'definitions': {'Person': json.loads(PERSON)}})
         files = {

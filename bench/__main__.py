@@ -44,10 +44,11 @@ if TYPE_CHECKING:
 
 BASELINE_PATH = Path(__file__).parent / 'baselines.json'
 
-#: The seven configurations every bench runs (docs/12 § 4). `unwrap+graph`,
+#: The eight configurations every bench runs (docs/12 § 4). `unwrap+graph`,
 #: `unwrap+lint` and `unwrap+occurrences` measure the consumer paths: parse,
-#: unwrap, then project, lint or index. Each runs in a fresh subprocess, so one
-#: bench cannot inflate another.
+#: unwrap, then project, lint or index. `service` is an edit in the language
+#: service: a changed buffer, its reparse, its diagnostics and its occurrence
+#: index. Each runs in a fresh subprocess, so one bench cannot inflate another.
 CONFIGS: tuple[str, ...] = (
     'parse',
     'unwrap',
@@ -56,6 +57,7 @@ CONFIGS: tuple[str, ...] = (
     'unwrap+graph',
     'unwrap+lint',
     'unwrap+occurrences',
+    'service',
 )
 
 #: For `compare`. Generous on purpose: it flags a change that made something
@@ -117,6 +119,8 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     """Measure one configuration. Runs in the subprocess, not the driver."""
     from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - see module docstring
 
+    if config == 'service':
+        return _measure_edit(bench, entry, repeat)
     options = ParseOptions(
         unwrap='unwrap' in config,
         validate='validate' in config,
@@ -137,6 +141,31 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
 
         return measure(bench, config, lambda: build_occurrences(parse_from_path(entry, options)), repeat=repeat)
     return measure(bench, config, lambda: parse_from_path(entry, options), repeat=repeat)
+
+
+def _measure_edit(bench: str, entry: Path, repeat: int) -> Measurement:
+    """One edit to the root's buffer, and what the editor then asks for first."""
+    from itertools import count  # noqa: PLC0415 - as above
+
+    from fastraml.gctuning import tuned_gc  # noqa: PLC0415 - as above
+    from fastraml.service import queries  # noqa: PLC0415 - as above
+    from fastraml.service.workspace import Workspace  # noqa: PLC0415 - as above
+    from fastraml.uris import path_to_file_uri  # noqa: PLC0415 - as above
+
+    root = path_to_file_uri(entry)
+    workspace = Workspace([path_to_file_uri(entry.parent)])
+    text = entry.read_text(encoding='utf-8')
+    versions = count(1)
+
+    def edit() -> object:
+        version = next(versions)
+        workspace.change(root, f'{text}\n# edit {version}\n', version)
+        snapshot = workspace.snapshot(root)
+        return queries.diagnostics(snapshot, lint=False), snapshot.occurrences
+
+    # A server defers full collections for its whole run (docs/21 § 2).
+    with tuned_gc():
+        return measure(bench, 'service', edit, repeat=repeat)
 
 
 # -- the driver ---------------------------------------------------------------

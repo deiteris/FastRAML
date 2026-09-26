@@ -86,8 +86,13 @@ fails or skips the work. Measure it by linearity instead: at `--scale 0.5` the
 time should halve.
 
 Each workload supports `parse`, `unwrap`, `validate`, `unwrap+validate`,
-`unwrap+graph`, `unwrap+lint`, and `unwrap+occurrences`, which builds the
-occurrence index ([16](16-graph.md) § 9). Corpus generation is outside the
+`unwrap+graph`, `unwrap+lint`, `unwrap+occurrences`, which builds the
+occurrence index ([16](16-graph.md) § 9), and `service`: one edit to the root's
+buffer in the language service, run tuned as its host is, with the reparse, the
+diagnostics and the occurrence index ([21](21-language-service.md) § 2). Like
+every configuration's, its peak RSS includes tracemalloc's overhead, which
+grows with the allocation, here nearly twice `unwrap+validate`'s. Without
+tracemalloc, a run of edits on `large` settles at 75 MB. Corpus generation is outside the
 timed region.
 The small corpus-validity tests run in the ordinary test suite.
 

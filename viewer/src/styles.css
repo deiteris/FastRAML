@@ -1392,19 +1392,15 @@ h4 + .tabs > .tabs-bar,
  * Every RAML description is Markdown, so this styles what a description can
  * contain rather than assuming a paragraph.
  *
- * Full width by default. A `description:` is a caption on the structure under
+ * Full width everywhere. A `description:` is a caption on the structure under
  * it, and a caption that stops short of the attribute rows it belongs to reads
- * as a column that does not line up with anything. The measure is capped only
- * on `.reading`, where prose *is* the page: a documentation item is many
- * paragraphs meant to be read in sequence, and that wants a measure.
+ * as a column that does not line up with anything. A documentation item's
+ * prose had a narrower measure of its own, which left it the one block on any
+ * page not reaching the edge the rest share; `main`'s width bounds it instead.
  */
 .prose {
   color: var(--dim);
   margin: 6px 0;
-}
-
-.reading .prose {
-  max-width: 70ch;
 }
 
 .prose > :first-child {

@@ -58,6 +58,10 @@ behavior and local development. The standalone app loads `api.json` by default;
 both `App` and the source-level `Viewer` component accept tree JSON contents
 directly. `Viewer` also accepts a decoded document from a frontend with its own
 HTML entry and router. The viewer is not an npm library build.
+The package `fastraml-viewer` exports `App` and `Viewer` from
+`src/index.ts`, as source, with the stylesheets: a host depends on it and
+bundles it, as `contrib/fastraml-vscode/webview` does (§ 4). The viewer holds
+no host's entry.
 
 The viewer's checked-in contract artifacts are generated:
 

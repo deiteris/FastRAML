@@ -180,7 +180,8 @@ Disabling the collector, or `gc.freeze()`, would stop the host's own cyclic
 garbage from being collected. Python 3.14 measured the same. The free-threaded
 build has no generations and ignores the setting.
 
-A process hosting the language service stays tuned for its whole run.
+A process hosting the language service stays tuned for its whole run:
+`fastraml lsp` enters `tuned_gc` before it serves ([21](21-language-service.md) § 5).
 What it discards is a whole model, which is cyclic garbage that only a full
 collection frees. So the workspace runs one full collection before a parse
 whenever it has dropped a snapshot ([21](21-language-service.md) § 2).

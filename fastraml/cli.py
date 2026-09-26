@@ -16,6 +16,7 @@ fastraml join [--title T] [--version V] [--description D] [--base-uri INPUT=URI]
 fastraml query [FILE] (-q SPARQL | -Q FILE.rq | -n NAME | --list | --show NAME)
 fastraml lint [--config FILE] [--format human|text|json|summary] FILE...
 fastraml skills (list | get NAME... | install [NAME...])
+fastraml lsp [--config FILE] [-r]
 ```
 
 Every parsing verb also takes `--config`, `-w ROOT`, `--no-workspace-guard`
@@ -123,6 +124,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_common(tree)
 
     _add_serve(commands)
+    _add_lsp(commands)
     _add_navigation(commands)
 
     _add_compat(commands)
@@ -152,6 +154,7 @@ def _parser() -> argparse.ArgumentParser:
         openapi=_openapi,
         tree=_tree,
         serve=_serve,
+        lsp=_lsp,
         refs=_walk,
         deps=_walk,
         show=_show_type,
@@ -295,6 +298,13 @@ def _add_serve(commands: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     serve.add_argument('--host', default='127.0.0.1', help='interface to bind (default: 127.0.0.1, loopback only)')
     serve.add_argument('--port', type=int, default=8000, help='port to bind (default: 8000)')
     _add_common(serve)
+
+
+def _add_lsp(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """`lsp`: a language server on stdin and stdout. The editor names the folders."""
+    lsp = commands.add_parser('lsp', help='a language server over stdio (needs pygls)')
+    lsp.add_argument('--config', metavar='FILE', help='common FastRAML configuration in YAML')
+    lsp.add_argument('-r', '--remote', action='store_true', help='allow http(s) includes')
 
 
 def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -727,6 +737,24 @@ def _serve(args: argparse.Namespace) -> int:
         pass
     finally:
         server.server_close()
+    return EXIT_OK
+
+
+def _lsp(args: argparse.Namespace) -> int:
+    """The language server (docs/21 § 5), deferring full collections for its
+    whole run (docs/12 § 6). pygls is an optional extra imported here only.
+    """
+    try:
+        from fastraml.service.lsp import RamlServer  # noqa: PLC0415 - optional: fastraml[lsp]
+    except ImportError:
+        print('lsp needs pygls: pip install "fastraml[lsp]"', file=sys.stderr)
+        return EXIT_INVALID
+    from fastraml.gctuning import tuned_gc  # noqa: PLC0415
+
+    config = args.fastraml_config
+    http_client = _http_client() if args.remote or config.parser.remote else None
+    with tuned_gc():
+        RamlServer(config, http_client).start_io()
     return EXIT_OK
 
 

@@ -400,6 +400,7 @@ Where fastRAML reads the spec differently from
 |-------|-----|
 | `fastraml[graph]` (`pyoxigraph`) | `fastraml query` — SPARQL over the graph projection; the graph itself needs nothing |
 | `fastraml[serve]` (`fastraml-viewer`) | `fastraml serve` — the document in a browser; the built viewer bundle, a static package with no dependencies of its own ([consumer boundary](https://github.com/deiteris/FastRAML/blob/master/docs/17-consumers.md)) |
+| `fastraml[lsp]` (`pygls`) | `fastraml lsp` — a language server over stdio: diagnostics with lint, navigation, hover, symbols and type hierarchy ([language service](https://github.com/deiteris/FastRAML/blob/master/docs/21-language-service.md)) |
 | `fastraml[http]` (`httpx`) or `requests` | remote `!include`; supply the client yourself, or use `fastraml validate -r`. Synchronous clients only — from async code run the parse in `asyncio.to_thread` ([loaders](https://github.com/deiteris/FastRAML/blob/master/docs/03-yaml-and-io.md#5-resource-loaders)) |
 | `fastraml[re2]` (`google-re2`) | `ParseOptions(regex_engine="re2")` — linear-time patterns for untrusted input |
 | libyaml | selected automatically when PyYAML was built with it; its scanner differs from the pure-Python backend for a tab after a mapping colon ([YAML behavior](https://github.com/deiteris/FastRAML/blob/master/docs/03-yaml-and-io.md#21-yaml-12-scalar-behavior)) |

@@ -53,6 +53,9 @@ graph = ["pyoxigraph>=0.4"]
 # that serves them -- no dependencies of its own, and imported only inside the
 # verb, the way `query` imports `pyoxigraph`. See docs/17 § 1.
 serve = ["fastraml-viewer>=0.1,<0.2"]
+# The language server behind `fastraml lsp`, imported inside the verb. See
+# docs/21 § 5.
+lsp = ["pygls>=2"]
 
 [project.scripts]
 fastraml = "fastraml.cli:main"
@@ -71,6 +74,7 @@ dev = [
     "ruff",
     "types-pyyaml",
     "ruamel-yaml>=0.18,<0.20",
+    "pygls>=2",
 ]
 # Not in `dev`: the editable install's build hook copies `viewer/dist`, which a
 # fresh checkout does not have until `npm run build` has run in viewer/. A plain

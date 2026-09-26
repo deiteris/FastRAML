@@ -21,6 +21,7 @@ and several views, and only `cli.py` imports it (`docs/02` § 2;
 | `service/workspace.py` | buffers, the overlay loader, roots, snapshots, staleness |
 | `service/text.py` | converting a column between fastRAML and a protocol |
 | `service/queries.py` | the queries, in fastRAML positions |
+| `service/lsp.py` | the LSP adapter, over pygls (§ 5) |
 
 ## 2. Workspace
 
@@ -126,7 +127,47 @@ before it. A parser diagnostic cannot be suppressed.
 `diagnostics(snapshot)` has an entry for every file the snapshot read, empty
 where it holds none, so a client clears what it showed before.
 
-## 5. Verification
+## 5. The LSP adapter
+
+`fastraml lsp [--config FILE] [-r]` serves LSP on stdin and stdout. pygls is
+the extra `fastraml[lsp]`, imported inside the verb. The adapter converts
+positions (§ 3) and shapes, and nothing else: every answer is a query's.
+
+**Run.** The whole server runs under `tuned_gc` (`docs/12` § 6), and on one
+event loop, so the workspace takes no lock. The folders are the client's
+workspace folders, or its root URI; the `roots` globs of § 2 come as
+`initializationOptions.roots`. A change of folders builds a new workspace
+holding the open buffers. A URI that is not `file:` is not served.
+
+**Sync.** pygls applies incremental edits to its copy of a document, and the
+adapter hands the whole text to `Workspace.change`. File changes come from
+`workspace/didChangeWatchedFiles`, registered for `**/*` where the client
+allows it.
+
+**Diagnostics.** A change publishes 0.3 s after the last one. Parser
+diagnostics go first; the lint tier follows on the next turn of the loop, and
+a change that comes in between postpones it. A request never waits: a query
+parses whatever is stale.
+
+A file shows the diagnostics of every root that reads it (`affected`),
+merged and deduplicated; a file no root reads shows its own only while it is
+open. Each root remembers the files it published, so a file it stopped
+reading is cleared. `data` is the diagnostic's `info`.
+
+**Quick fix.** A code action on a lint diagnostic inserts `suppression`'s line
+(§ 4.1). A parser diagnostic gets none.
+
+**Features.** Definition, references, highlight, hover, document and
+workspace symbols, links, folding and selection ranges, and type hierarchy.
+A request answers from every snapshot serving the file, once each.
+
+**Latency.** On `large`, an edit costs 477 ms and allocates 48.8 MB before
+its parser diagnostics, against 360 ms for a plain `unwrap+validate` parse
+(`python -m bench run --bench large --config service`). About a quarter of
+the parse composes the unchanged libraries: the most a compose cache (G8)
+could save.
+
+## 6. Verification
 
 - `test_service_text.py`: conversion in each encoding, both ways.
 - `test_service_workspace.py`: roots, buffers over the disk, the sandbox, and
@@ -135,3 +176,6 @@ where it holds none, so a client clears what it showed before.
   DataType include, a trait and a resource type; and every query on a parse
   stopped at each stage.
 - `test_loaders.py`: `SafeFileLoader.contains` and `files`.
+- `test_lsp.py`: `fastraml lsp` driven over stdio by pygls' client, one
+  request per feature, the column after an astral character, clearing, the
+  quick fix, and that the run is tuned.

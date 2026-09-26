@@ -310,7 +310,14 @@ As done so far:
   in `loaders.py`.
 - Found on the way: `type: !include` was recorded twice in `include_refs`.
   Fixed in its own commit.
-- Next: the pygls adapter behind `fastraml lsp`, and the latency on `large`.
+- A dropped snapshot is freed before the next parse, since the server defers
+  full collections for its whole run (`docs/21` § 2).
+- The pygls adapter behind `fastraml lsp` (`docs/21` § 5): every M4 feature,
+  debounced diagnostics with lint as a second tier, and the suppress quick fix.
+- Latency on `large`: 477 ms per edit, against 360 ms for a plain parse.
+  Composing the unchanged libraries is about a quarter of the parse, which
+  bounds what G8 can save. Whether that asks for G8 is still open.
+- Left: moving LS to `archive/`.
 
 ## M5: Completion
 

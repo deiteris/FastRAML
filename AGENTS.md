@@ -36,8 +36,8 @@ message. For a new feature with no base number, use `bench linearity --bench NAM
   `nodes.py`, `registry.py`, `datanode.py` — never imports `fastraml.views`; outside
   `views/`, only `cli.py` does. One view imports another only through the substrates
   `walk`, `graph` and `severity`. `tests/unit/test_views.py` enforces all three.
-  `pyoxigraph` and `fastraml-viewer` are optional extras imported inside their CLI
-  verb.
+  `pyoxigraph`, `fastraml-viewer` and `pygls` are optional extras imported inside
+  their CLI verb.
 - `fastraml/views/bindings/`: TypeScript, Python and Go backends for the tree's wire
   contract (`docs/16-graph.md` § 7). `bindings/schema.py` decides key sets and each key's
   structural kind; a backend only spells a kind. Code that does not vary with the

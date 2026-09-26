@@ -56,8 +56,9 @@ __all__ = [
     'workspace_symbols',
 ]
 
-#: The source a parser diagnostic is reported under; lint reports its rule.
+#: The source a parser diagnostic is reported under, and a lint finding.
 SOURCE: Final = 'fastraml'
+LINT_SOURCE: Final = 'fastraml-lint'
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,7 +172,7 @@ def _from_finding(finding: Finding) -> Diagnostic:
         severity=str(finding.severity),
         code=finding.rule,
         message=finding.rendered_message(),
-        source=f'{SOURCE}-lint',
+        source=LINT_SOURCE,
         info=finding.info,
     )
 
@@ -182,20 +183,18 @@ _START: Final = Position(1, 1, 1, 1)
 _DIRECTIVE: Final = '# fastraml: ignore '
 
 
-def suppression(text: str, diagnostic: Diagnostic) -> tuple[int, str] | None:
-    """The line to insert before a lint finding's line to suppress it, as
-    `(1-based line, text)`, or `None` for a parser diagnostic.
+def suppression(text: str, line: int, rule: str) -> str:
+    """The line to insert before the 1-based `line` of `text` to suppress the
+    lint rule `rule` there. Only a lint finding can be suppressed: its source
+    is `LINT_SOURCE`.
 
     The directive takes the finding line's indentation, so it stays in the
     block it annotates.
     """
-    if diagnostic.source == SOURCE:
-        return None
-    line = diagnostic.site.span.line
     lines = text.splitlines()
     source = lines[line - 1] if 0 < line <= len(lines) else ''
     indent = source[: len(source) - len(source.lstrip())]
-    return line, f'{indent}{_DIRECTIVE}{diagnostic.code}\n'
+    return f'{indent}{_DIRECTIVE}{rule}\n'
 
 
 # -- names ----------------------------------------------------------------------

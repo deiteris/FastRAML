@@ -173,11 +173,14 @@ package exports it deliberately.
 | `query` | List/show named SPARQL queries or run `-n`, `-q`, or `-Q` against a file. |
 | `lint [FILE...]` | Run configured lint rules, list rules, or explain one rule; `--fail-on` selects the exit threshold. |
 | `skills` | List, print, or install packaged agent-guide stubs. |
+| `lsp` | Serve LSP over stdio for the editor's workspace folders ([21](21-language-service.md) § 5). |
 
-All parsing commands except `skills` accept the common configuration and workspace
-options. CLI parsing always unwraps. `validate` and `info` validate; reading and
-view commands parse without validation so a partially invalid document remains
-navigable. Diagnostics use stderr; document output uses stdout or `-o FILE` with
-UTF-8 and LF newlines. `query` needs `fastraml[graph]`; `serve` needs
-`fastraml[serve]`; `-r` needs an HTTP client such as `fastraml[http]`. Lint
-defaults to failing on `error`; `--fail-on warning` also fails on warnings.
+All parsing commands except `skills` and `lsp` accept the common configuration
+and workspace options; `lsp` takes `--config` and `-r`, and its sandbox is the
+editor's folders. CLI parsing always unwraps. `validate` and `info` validate;
+reading and view commands parse without validation so a partially invalid
+document remains navigable. Diagnostics use stderr; document output uses stdout
+or `-o FILE` with UTF-8 and LF newlines. `query` needs `fastraml[graph]`;
+`serve` needs `fastraml[serve]`; `lsp` needs `fastraml[lsp]`; `-r` needs an
+HTTP client such as `fastraml[http]`. Lint defaults to failing on `error`;
+`--fail-on warning` also fails on warnings.

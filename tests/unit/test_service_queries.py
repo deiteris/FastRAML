@@ -236,16 +236,16 @@ class TestDiagnostics:
         (found,) = (d for d in queries.diagnostics(snapshot)[f'{folder}/api.raml'] if d.source != queries.SOURCE)
         assert (found.code, found.site.span.line) == ('unused-trait', _where(API, 'spare:')[0])
 
-    def test_a_finding_is_suppressed_by_a_directive_above_its_line_at_its_indentation(self, parsed):
+    def test_the_suppression_line_silences_the_finding(self, parsed):
         snapshot, folder = parsed
-        finding = next(d for d in queries.diagnostics(snapshot)[f'{folder}/api.raml'] if d.source != queries.SOURCE)
-        line, text = queries.suppression(API, finding)
-        indent = API.splitlines()[line - 1][: -len(API.splitlines()[line - 1].lstrip())] or ''
-        assert (line, text) == (finding.site.span.line, f'{indent}# fastraml: ignore {finding.code}\n')
-
-    def test_a_parser_diagnostic_cannot_be_suppressed(self):
-        site = queries.Site('file:///api.raml', queries._START)
-        assert queries.suppression(API, queries.Diagnostic(site, 'error', 'k', 'k', queries.SOURCE)) is None
+        root = f'{folder}/api.raml'
+        (finding,) = (d for d in queries.diagnostics(snapshot)[root] if d.source == queries.LINT_SOURCE)
+        lines = API.splitlines(keepends=True)
+        line = finding.site.span.line
+        lines.insert(line - 1, queries.suppression(API, line, finding.code))
+        workspace = Workspace([folder])
+        workspace.change(root, ''.join(lines), 2)
+        assert not [d for d in queries.diagnostics(workspace.snapshot(root))[root] if d.source == queries.LINT_SOURCE]
 
 
 #: One mistake that stops the parse at each stage.

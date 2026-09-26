@@ -182,8 +182,10 @@ FACET_DOCUMENTATION: Final = 'documentation'
 class Fragment(Protocol):
     """Anything a RAML file can decode to. Capability is checked, not inherited."""
 
+    id: int
     location: str
     kind: FragmentKind | None
+    uses: dict[str, LibraryLink]
 
 
 @runtime_checkable

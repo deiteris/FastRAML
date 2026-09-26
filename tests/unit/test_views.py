@@ -34,6 +34,7 @@ _VIEWS = (
     'base_uri',
     'samples',
     'lint',
+    'occurrences',
 )
 
 

@@ -1,6 +1,6 @@
 # Plan: partial models, then the language service
 
-**Status: accepted; M1 and M2 done, M3 next.** This document orders the work proposed in
+**Status: accepted; M1, M2 and M3.1 done, M3.2 next.** This document orders the work proposed in
 `research/partial-models.md` (PM) and `research/language-server.md` (LS). It
 is not normative. Each milestone amends its owning numbered document in the
 same commit, as `AGENTS.md` requires. When the service lands, a normative
@@ -191,12 +191,24 @@ Met.
 
 ## M3: The occurrence index
 
-**M3.1 View.**
+**M3.1 View.** Done.
 
 - Code: `views/occurrences.py`, which builds the index after P10 from the
   flat registries (LS § 5.2), keyed by ID.
 - The index drops, and counts, any occurrence that fails the law.
 - `tests/unit/test_views.py` covers it.
+- As built (`docs/16` § 9): the definitions, references and links LS § 5.2
+  lists, except template variables, custom facet uses and keys inside values,
+  and `extends`, which has no position. A candidate the law rejects is kept
+  in `dropped`, not only counted, so M3.3 can see each one. `at` returns a
+  list, because a template applied twice defines one property span twice.
+- Survey over the valid TCK documents and the fixtures: about 2,400 kept and
+  53 dropped. The drops are template substitution (G2), `securedBy:` entries
+  with parameters (a `SecurityScheme` keeps no name position), and properties
+  that unwrap replaced with a recursion marker.
+- Found: a coverage gap the law cannot see. A built-in written alone
+  (`type: string`) is settled at decode, and P7 records no `TypeExprRef` for
+  it, so hover on it has no occurrence. For M3.3.
 
 **M3.2 CLI and law.**
 

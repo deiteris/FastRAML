@@ -286,10 +286,58 @@ name, even if it is marked `strict: false`, provided it validates.
 Every returned value has been validated against the shape, and none shares a
 container with the model. Tests: `tests/unit/test_samples.py`.
 
-## 9. Verification
+## 9. Occurrence index
+
+`fastraml.views.occurrences.build_occurrences(raml)` lists where each name is
+written and which entity it names. It is what definition, references and
+rename read. The model must be parsed with `retain_source=True`.
+
+An `Occurrence` holds five things:
+
+- the file the name is written in;
+- the span of the name token alone, so `lib.User` gives two occurrences;
+- a role: `definition`, `reference`, `alias_prefix`, `builtin` or `link`;
+- a kind;
+- the target entity's `id`, and the text it expects at the span.
+
+The index reads what the passes bound and resolves no name itself:
+
+- **Definitions.** The five declaration tables of every API and library,
+  `uses:` keys, object properties and `facets:` entries.
+- **References.** The names in type expressions, which P7 records
+  ([06](06-type-expressions.md) § 3). The `type:` and `is:` entries of every
+  resource and method. `securedBy:` names, and the name in each
+  `(annotation)` key.
+- **Links.** Each `!include` argument and each `uses:` value. The target is
+  the fragment the file decoded to, or `None` for a file that is not one.
+
+A lenient model gives the occurrences of the stages it completed. A span met
+more than once, for example in a template applied twice, is kept once per
+target.
+
+**The law.** A candidate is kept only if the retained text at its span equals
+the name it records. For a reference, that is the name its target is declared
+under, so a wrong position and a wrong binding both fail. A rejected candidate
+is kept in `Occurrences.dropped`. The known causes are:
+
+- a template substitution, which keeps the template's position (docs/11 § 3);
+- a `securedBy:` entry with parameters, whose name has no position of its
+  own;
+- a property the unwrap replaced with a recursion marker, which carries the
+  head's position.
+
+The law checks only the candidates the index finds. A name nothing records is
+not a candidate: a built-in written alone, such as `type: string`, is settled
+at decode, and P7 never reads it.
+
+`Occurrences.at(uri, line, column)` finds the occurrences under a cursor.
+`Occurrences.of(id)` lists an entity's definition and every use of it.
+
+## 10. Verification
 
 - View boundary: `tests/unit/test_views.py`
 - Graph and tree behavior: `tests/unit/test_graph.py`, `tests/unit/test_cli.py`
+- Occurrence index: `tests/unit/test_occurrences.py`
 - Tree bindings: `tests/unit/test_bindings.py`, `tests/unit/test_conformance.py`
 - Consumer traversal law: `tests/unit/test_consumer_traversal.py`
 

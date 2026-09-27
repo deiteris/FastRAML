@@ -6,6 +6,8 @@ See docs/11-diagnostics.md.
 from __future__ import annotations
 
 import copy
+import errno
+import os
 import pickle
 from concurrent.futures import ProcessPoolExecutor
 from fractions import Fraction
@@ -33,6 +35,29 @@ class TestChains:
         err = RamlError.wrap('load resource', OSError('no such file'), LOC, kind=ErrorKind.LOADING)
         assert [f.message for f in err.frames()] == ['load resource', 'no such file']
         assert err.frames()[-1].location == LOC
+
+    @pytest.mark.parametrize(
+        ('code', 'message', 'info'),
+        [
+            (errno.ENOENT, 'file not found', {}),
+            (errno.EACCES, 'permission denied', {}),
+            (errno.EIO, 'cannot read file', {'error': os.strerror(errno.EIO)}),
+        ],
+    )
+    def test_an_os_error_is_keyed_by_its_errno(self, code, message, info):
+        # docs/11 § 6: its text holds the OS path, and `[Errno 2]` twice once
+        # a loader re-raised it.
+        cause = OSError(code, os.strerror(code), r'C:\secret\path.raml')
+        (_, inner) = RamlError.wrap('load resource', cause, LOC).frames()
+        assert (inner.message, inner.info) == (message, info)
+
+    def test_an_unresolved_reference_keeps_the_name_out_of_its_key(self):
+        from fastraml.parser.references import UnresolvedReferenceError
+
+        (_, inner) = RamlError.wrap(
+            'get trait definition', UnresolvedReferenceError('reference not found', 'x'), LOC
+        ).frames()
+        assert (inner.message, inner.info) == ('reference not found', {'missing': 'x'})
 
     def test_wrap_preserves_siblings(self):
         first = RamlError.new('bad response', LOC)

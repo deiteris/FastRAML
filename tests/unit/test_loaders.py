@@ -130,8 +130,9 @@ class TestSafeFileLoader:
             raise OSError(errno.ELOOP, 'Too many levels of symbolic links')
 
         monkeypatch.setattr(os, 'open', refuse)
-        with pytest.raises(WorkspaceEscapeError, match='refusing to follow symlink'):
+        with pytest.raises(WorkspaceEscapeError, match='refusing to follow a symlink') as caught:
             loader.load(path_to_file_uri(workspace / 'api.raml'))
+        assert caught.value.info['path'].endswith('api.raml')
 
     def test_refuses_a_symlink_at_an_intermediate_component(self, workspace, tmp_path):
         # O_NOFOLLOW only guards the last component, so this is the case the
@@ -253,8 +254,9 @@ class TestHTTPLoader:
 
     def test_rejects_a_non_2xx_status(self):
         client = _FakeClient({})
-        with pytest.raises(LoaderError, match='status 404'):
+        with pytest.raises(LoaderError, match='http request failed') as caught:
             HTTPLoader(client).load('https://e.com/missing.raml')
+        assert caught.value.info == {'status': 404}
 
     def test_wraps_a_transport_failure(self):
         class Broken:
@@ -262,8 +264,9 @@ class TestHTTPLoader:
                 msg = 'connection refused'
                 raise RuntimeError(msg)
 
-        with pytest.raises(LoaderError, match='connection refused'):
+        with pytest.raises(LoaderError, match='http request failed') as caught:
             HTTPLoader(Broken()).load('https://e.com/t.raml')
+        assert caught.value.info == {'error': 'connection refused'}
 
     def test_honours_max_bytes(self):
         client = _FakeClient({'https://e.com/t.raml': _FakeResponse(200, b'x' * 5000)})
@@ -323,8 +326,9 @@ class TestSchemeLoader:
 
     def test_rejects_an_unregistered_scheme(self, workspace):
         loader = SchemeLoader({'file': SafeFileLoader(workspace)})
-        with pytest.raises(UnsupportedSchemeError, match='https'):
+        with pytest.raises(UnsupportedSchemeError, match='no loader for URI scheme') as caught:
             loader.load('https://e.com/t.raml')
+        assert caught.value.info == {'scheme': 'https', 'registered': ['file']}
 
 
 class TestBuildLoader:

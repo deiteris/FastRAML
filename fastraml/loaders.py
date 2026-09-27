@@ -36,7 +36,14 @@ __all__ = [
 
 
 class LoaderError(OSError):
-    """A resource could not be loaded. Callers wrap this with position context."""
+    """A resource could not be loaded. Callers wrap this with position context.
+
+    One from the OS keeps its `errno`, which `RamlError.wrap` keys; any other
+    has a message key for its text and its variables in `info` (docs/11 § 6).
+    """
+
+    #: Set per instance by `_keyed`, as for `WorkspaceEscapeError`.
+    info: Mapping[str, Any]
 
 
 class WorkspaceEscapeError(LoaderError):
@@ -97,7 +104,7 @@ class FileLoader:
             with open(path, 'rb') as handle:
                 return handle.read() if max_bytes is None else handle.read(max_bytes + 1)
         except OSError as err:
-            raise LoaderError(err.errno, str(err), path) from err
+            raise LoaderError(err.errno, err.strerror) from err
 
 
 #: Flags a platform lacks read as 0: `O_NOFOLLOW` and `O_NONBLOCK` are absent on
@@ -192,14 +199,12 @@ class SafeFileLoader:
             # refused it. Report that as an escape rather than a missing file,
             # because the path may well exist.
             if err.errno == _ELOOP:
-                msg = f'refusing to follow symlink: {path}'
-                raise WorkspaceEscapeError(msg) from err
-            raise LoaderError(err.errno, str(err), path) from err
+                raise _keyed(WorkspaceEscapeError, 'refusing to follow a symlink', path=path) from err
+            raise LoaderError(err.errno, err.strerror) from err
 
     def _verify(self, fd: int, path: str) -> None:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
-            msg = f'not a regular file: {path}'
-            raise LoaderError(msg)
+            raise LoaderError('not a regular file')
         # A symlink at an intermediate component would have been followed by
         # os.open, so containment is re-checked against the resolved path.
         self._check_beneath(os.path.realpath(path), self._real_root, path)
@@ -217,8 +222,19 @@ class SafeFileLoader:
 
 def _escaped(reported: str, root: str) -> WorkspaceEscapeError:
     """The refusal, with paths in `info` rather than the message (docs/11 § 6)."""
-    error = WorkspaceEscapeError('path is outside the workspace root')
-    error.info = {'path': reported, 'root': root, 'suggested_root': _common_root(root, reported)}
+    suggested = _common_root(root, reported)
+    return _keyed(
+        WorkspaceEscapeError, 'path is outside the workspace root', path=reported, root=root, suggested_root=suggested
+    )
+
+
+def _keyed[E: LoaderError](cls: type[E], key: str, **info: Any) -> E:
+    """A loader error whose text is a message key, its variables in `info`.
+
+    Not constructor arguments, because `OSError` renders every one in `str()`.
+    """
+    error = cls(key)
+    error.info = info
     return error
 
 
@@ -271,8 +287,7 @@ class HTTPLoader:
         try:
             response = self.client.get(uri)
         except Exception as err:
-            msg = f'http get {uri}: {err}'
-            raise LoaderError(msg) from err
+            raise _keyed(LoaderError, 'http request failed', error=str(err)) from err
 
         # A `get` that returns a coroutine passes the check in `__init__`. Close
         # it before raising to avoid an un-awaited coroutine warning.
@@ -280,13 +295,11 @@ class HTTPLoader:
             close = getattr(response, 'close', None)
             if close is not None:
                 close()
-            msg = f'http get {uri}: {_ASYNC_CLIENT}'
-            raise LoaderError(msg)
+            raise LoaderError(_ASYNC_CLIENT)
 
         status = int(response.status_code)
         if not (200 <= status < 300):  # noqa: PLR2004 - the HTTP success range
-            msg = f'http get {uri}: status {status}'
-            raise LoaderError(msg)
+            raise _keyed(LoaderError, 'http request failed', status=status)
 
         content: bytes = response.content
         if max_bytes is not None:
@@ -309,9 +322,8 @@ class SchemeLoader:
         scheme = uri_scheme(uri)
         loader = self.loaders.get(scheme)
         if loader is None:
-            known = ', '.join(sorted(self.loaders)) or 'none'
-            msg = f'no loader for URI scheme {scheme!r} (registered: {known})'
-            raise UnsupportedSchemeError(msg)
+            registered = sorted(self.loaders)
+            raise _keyed(UnsupportedSchemeError, 'no loader for URI scheme', scheme=scheme, registered=registered)
         return loader.load(uri, max_bytes=max_bytes)
 
 

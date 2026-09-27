@@ -16,8 +16,9 @@ See docs/11-diagnostics.md.
 
 from __future__ import annotations
 
+import errno
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Final, Self
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
@@ -179,7 +180,8 @@ class RamlError(Exception):
             inner = cause.head
             siblings = cause.siblings
         else:
-            inner = Trace(str(cause), location, position, kind, getattr(cause, 'info', None))
+            text, variables = _described(cause)
+            inner = Trace(text, location, position, kind, variables)
             siblings = ()
         return cls(Trace(message, location, position, kind, info, cause=inner), siblings)
 
@@ -287,6 +289,30 @@ class Accumulator:
         error = self.result()
         if error is not None:
             raise error
+
+
+#: What an `OSError` any loader raises says, as a message key (docs/11 § 6).
+_OS_ERRORS: Final = {
+    errno.ENOENT: 'file not found',
+    errno.ENOTDIR: 'file not found',
+    errno.EACCES: 'permission denied',
+    errno.EPERM: 'permission denied',
+    errno.EISDIR: 'not a regular file',
+}
+
+
+def _described(cause: BaseException) -> tuple[str, Mapping[str, Any] | None]:
+    """A foreign exception as a message key and its `info`.
+
+    An `OSError` from any loader, a caller's included, is keyed by its
+    `errno`: its text holds the OS path and the platform's wording. Anything
+    else carries its key as its text, and its variables, where it has any, as
+    `info`, as `LoaderError` and `UnresolvedReferenceError` do.
+    """
+    if isinstance(cause, OSError) and cause.errno is not None:
+        key = _OS_ERRORS.get(cause.errno)
+        return (key, None) if key is not None else ('cannot read file', {'error': cause.strerror})
+    return str(cause), getattr(cause, 'info', None)
 
 
 def _frame_key(frame: Trace) -> tuple[Any, ...]:

@@ -292,8 +292,15 @@ raise RamlError.new(
 
 This keeps `Trace.message` suitable for grouping and for test assertions.
 Tests assert the message key and `info` separately, not assembled display text.
-Wrapped external exceptions and some existing diagnostics can contain free-form
-text; the diagnostic model does not enforce the convention.
+
+A wrapped exception follows it too. An `OSError` with an `errno`, from any
+loader, a caller's included, becomes `file not found`, `permission denied`,
+`not a regular file`, or `cannot read file` with `info['error']`: its text
+holds the OS path and the platform's wording. `LoaderError` and
+`UnresolvedReferenceError` carry a key as their text and their variables as
+`info` (`no loader for URI scheme` with `scheme` and `registered`,
+`reference not found` with `missing`). Any other exception keeps its text,
+which the model does not police.
 
 `Trace.rendered_message()` appends `info` entries in insertion order, producing
 `cannot redefine built-in type: type: string` for the example above.

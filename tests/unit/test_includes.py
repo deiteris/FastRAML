@@ -166,7 +166,10 @@ class TestMissingTargets:
         root = memory_workspace({'api.raml': API + '(a): !include gone.yaml\n'})
         with pytest.raises(RamlError) as caught:
             memory_workspace.parse(root / 'api.raml')
-        assert any('gone.yaml' in message for message in caught.value.messages())
+        # Named by the include's `info`; the message is a key (docs/11 § 6).
+        include, missing = caught.value.frames()[-2:]
+        assert (include.message, missing.message) == ('include', 'file not found')
+        assert include.info['path'].endswith('/gone.yaml')
 
     def test_an_include_outside_the_workspace_is_refused(self, workspace, tmp_path: Path):
         root = workspace({'project/api.raml': API + '(a): !include ../secret.yaml\n'})

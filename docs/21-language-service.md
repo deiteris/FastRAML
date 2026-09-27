@@ -151,7 +151,9 @@ positions (§ 3) and shapes, and nothing else: every answer is a query's.
 event loop, so the workspace takes no lock. The folders are the client's
 workspace folders, or its root URI; the `roots` globs of § 2 come as
 `initializationOptions.roots`. A change of folders builds a new workspace
-holding the open buffers. A URI that is not `file:` is not served.
+holding the open buffers. A URI that is not `file:` is not served, and no
+diagnostic is published to one or links to one as related information: a
+remote document `--remote` read holds no lines here.
 
 **Sync.** pygls applies incremental edits to its copy of a document, and the
 adapter hands the whole text to `Workspace.change`. File changes come from

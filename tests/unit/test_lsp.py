@@ -332,3 +332,37 @@ class TestTree:
         uri = _uri(lsp, 'broken.raml')
         lsp.open(uri, LIBRARY.replace('string', 'strin'))
         assert self.tree(lsp, uri) is None
+
+
+def test_a_remote_document_is_neither_published_nor_linked(tmp_path, monkeypatch):
+    """`--remote` reads `https:` documents the service holds no lines for, and
+    an editor cannot open: converting a position in one raised mid-publish.
+    """
+    from fastraml.positions import Position
+    from fastraml.service import queries
+    from fastraml.service.lsp import _Positions
+    from fastraml.service.text import Encoding
+    from fastraml.service.workspace import Workspace
+
+    write_files(tmp_path, {'api.raml': API})
+    folder = path_to_file_uri(tmp_path)
+    api, remote = f'{folder}/api.raml', 'https://example.com/lib.raml'
+    at = Position(1, 1, 1, 2)
+    here = queries.Diagnostic(
+        queries.Site(api, at),
+        'error',
+        'k',
+        'k',
+        queries.SOURCE,
+        related=(queries.Related(queries.Site(remote, at), 'r'),),
+    )
+    there = queries.Diagnostic(queries.Site(remote, at), 'error', 'k', 'k', queries.SOURCE)
+    server = RamlServer()
+    server.service = Workspace([folder])
+    sent: list[types.PublishDiagnosticsParams] = []
+    monkeypatch.setattr(queries, 'diagnostics', lambda snapshot, lint=True: {api: [here], remote: [there]})
+    monkeypatch.setattr(RamlServer, 'positions', lambda self: _Positions(self.service, Encoding.UTF16))
+    monkeypatch.setattr(server, 'text_document_publish_diagnostics', sent.append)
+    server.publish([api])
+    assert [params.uri for params in sent] == [api]
+    assert sent[0].diagnostics[0].related_information is None

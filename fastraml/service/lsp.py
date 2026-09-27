@@ -200,6 +200,10 @@ class RamlServer(LanguageServer):
                 files |= self._shown.get(root, frozenset()) | of(root).keys()
         positions = self.positions()
         for file in sorted(files):
+            if _file(file) is None:
+                # A remote document (`--remote`): the service holds no lines
+                # for it, and an editor cannot open it.
+                continue
             merged = {(d.site, d.code, d.message): d for root in serving(file) for d in of(root).get(file, ())}
             self.text_document_publish_diagnostics(
                 types.PublishDiagnosticsParams(
@@ -225,6 +229,7 @@ class RamlServer(LanguageServer):
             related_information=[
                 types.DiagnosticRelatedInformation(self._location(positions, related.site), related.message)
                 for related in diagnostic.related
+                if _file(related.site.uri) is not None
             ]
             or None,
         )

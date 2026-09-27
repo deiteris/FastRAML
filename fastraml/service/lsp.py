@@ -70,6 +70,11 @@ _SYMBOL: Final = {
     queries.SymbolKind.RESOURCE: types.SymbolKind.Namespace,
     queries.SymbolKind.METHOD: types.SymbolKind.Method,
     queries.SymbolKind.DOCUMENTATION: types.SymbolKind.String,
+    queries.SymbolKind.PARAMETER: types.SymbolKind.Variable,
+    queries.SymbolKind.RESPONSE: types.SymbolKind.Event,
+    queries.SymbolKind.BODY: types.SymbolKind.Object,
+    queries.SymbolKind.EXAMPLE: types.SymbolKind.Constant,
+    queries.SymbolKind.ANNOTATION: types.SymbolKind.Operator,
 }
 
 
@@ -247,6 +252,7 @@ class RamlServer(LanguageServer):
             kind=_SYMBOL[symbol.kind],
             range=positions.range(symbol.uri, symbol.span),
             selection_range=positions.range(symbol.uri, symbol.selection),
+            detail=symbol.detail or None,
             children=[self._symbol(positions, child) for child in symbol.children] or None,
         )
 

@@ -737,7 +737,7 @@ class TestAUnionNamesItsMembers:
         assert body['application/json']['properties']['tag'] == 'string | nil'
 
     def test_a_declared_name_still_beats_the_members(self, shown):
-        """`_type_name` prefers the alias, so naming the members is the fallback
+        """`type_name` prefers the alias, so naming the members is the fallback
         for an anonymous one rather than a replacement for the declared name.
         """
         assert loaded(shown('UserList'))['UserList']['type'] == 'User[]'

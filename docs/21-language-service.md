@@ -104,7 +104,7 @@ about names, so a name it does not hold has no answer.
 | `definition` | the `DEFINITION` occurrence of the target; for a path, the fragment it decoded to |
 | `references`, `highlights` | the target's occurrences |
 | `hover` | `render` for a type, annotation type, property or facet; the kind, parameters, `usage` and `description` otherwise |
-| `document_symbols` | the fragment's declaration tables, documentation items, and resources with their methods, written in this file, from `key_pos` and `value_pos`; a documentation item has no key and selects its title |
+| `document_symbols` | the fragment's `uses:`, declaration tables, documentation items, base URI parameters and resources, each with what it declares, from `key_pos` and `value_pos`; `type_name` for a type's detail |
 | `workspace_symbols` | the declarations of every snapshot, matched case-insensitively, once each |
 | `links` | `include_refs` and `uses:` links, placed at their `LINK` occurrence |
 | `folding_ranges`, `selection_ranges` | the buffer's composed `Node` tree alone |
@@ -117,9 +117,24 @@ stages it completed. A declaration is an occurrence after decoding; a type
 name used in an expression is one only once P7 bound it. No query raises on a
 snapshot that stopped at any stage (`test_service_queries.py`).
 
-**Outline.** A method is listed under a resource only when it is written
-inside the resource's span. A method a resource type contributed is written in
-the resource type.
+**Outline.** Every entry is read from the model. A type holds its properties,
+pattern properties, `items`, custom facet declarations and values, examples
+and annotations; a resource its URI parameters, methods, resources and
+annotations; a method its query parameters, headers, `queryString`, bodies by
+media type and responses; a response its headers and bodies; a security scheme
+its `describedBy`. The detail is the type named, as hover names it, a scalar
+value, the resource type applied, or a method's traits.
+
+An entry is listed under another only when it is written in the same file,
+inside the other's span. So an inherited property is outlined under the type
+that wrote it, a method a resource type contributed under nothing (it is
+written in the resource type), and `items` a type expression built (`Book[]`)
+not at all: it is placed at its array's own key. A `body:` with no media type
+is one body per default media type, listed once under all their names.
+
+A trait or resource type is listed by name alone. Its body is decoded only
+where it is applied (`docs/08` § 5), and the model keeps it undecoded, so there
+is nothing else to list. A documentation item has no key and selects its title.
 
 **Hierarchy items across snapshots.** A type hierarchy item is found again by
 where its name is written, never by its id: ids do not survive a reparse

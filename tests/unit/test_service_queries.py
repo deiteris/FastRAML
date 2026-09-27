@@ -145,6 +145,7 @@ class TestSymbols:
         snapshot, folder = parsed
         found = queries.document_symbols(snapshot, f'{folder}/api.raml')
         assert [(symbol.name, symbol.kind) for symbol in found] == [
+            ('lib', SymbolKind.LIBRARY),
             ('Entity', SymbolKind.TYPE),
             ('Book', SymbolKind.TYPE),
             ('paged', SymbolKind.TRAIT),
@@ -154,6 +155,61 @@ class TestSymbols:
         ]
         # `get` came from the resource type: it is written in its declaration.
         assert [child.name for child in found[-1].children] == ['post']
+
+    def test_the_outline_holds_what_each_declaration_writes_and_not_what_it_inherits(self, tmp_path):
+        document = (
+            '#%RAML 1.0\ntitle: T\nmediaType: [application/json, application/xml]\n'
+            'annotationTypes:\n  note: string\n  flag: boolean\n'
+            'types:\n'
+            '  Base:\n    facets:\n      unit: string\n    properties:\n      id: string\n'
+            '  Item:\n    type: Base\n    unit: kg\n    (note): hi\n    (flag): true\n    properties:\n'
+            '      tags:\n        type: array\n        items:\n          type: string\n'
+            '      related: Item[]\n      /^x-/: string\n'
+            '    examples:\n      one:\n        id: a\n'
+            '/items/{id}:\n  uriParameters:\n    id: string\n  get:\n'
+            '    headers:\n      X-Trace: string\n    queryParameters:\n      q: string\n'
+            '    responses:\n      200:\n        headers:\n          ETag: string\n        body: Item\n'
+        )
+        write_files(tmp_path, {'api.raml': document})
+        folder = path_to_file_uri(tmp_path)
+        (snapshot,) = Workspace([folder]).snapshots(f'{folder}/api.raml')
+
+        def tree(symbols: list[queries.Symbol]) -> list[object]:
+            return [
+                (s.name, s.kind, s.detail, tree(s.children)) if s.children else (s.name, s.kind, s.detail)
+                for s in symbols
+            ]
+
+        # Item holds no `id`: Base wrote it. `related: Item[]` holds no `items`:
+        # an expression built it. The two default media types are one `body:`.
+        assert tree(queries.document_symbols(snapshot, f'{folder}/api.raml')) == [
+            ('note', SymbolKind.ANNOTATION_TYPE, 'string'),
+            ('flag', SymbolKind.ANNOTATION_TYPE, 'boolean'),
+            ('Base', SymbolKind.TYPE, 'object', [
+                ('unit', SymbolKind.FACET, 'string'),
+                ('id', SymbolKind.PROPERTY, 'string'),
+            ]),
+            ('Item', SymbolKind.TYPE, 'Base', [
+                ('unit', SymbolKind.FACET, 'kg'),
+                ('(note)', SymbolKind.ANNOTATION, 'hi'),
+                ('(flag)', SymbolKind.ANNOTATION, 'true'),
+                ('tags', SymbolKind.PROPERTY, 'string[]', [('items', SymbolKind.TYPE, 'string')]),
+                ('related', SymbolKind.PROPERTY, 'Item[]'),
+                ('/^x-/', SymbolKind.PROPERTY, 'string'),
+                ('one', SymbolKind.EXAMPLE, ''),
+            ]),
+            ('/items/{id}', SymbolKind.RESOURCE, '', [
+                ('id', SymbolKind.PARAMETER, 'string'),
+                ('get', SymbolKind.METHOD, '', [
+                    ('X-Trace', SymbolKind.PARAMETER, 'string'),
+                    ('q', SymbolKind.PARAMETER, 'string'),
+                    ('200', SymbolKind.RESPONSE, '', [
+                        ('ETag', SymbolKind.PARAMETER, 'string'),
+                        ('application/json, application/xml', SymbolKind.BODY, 'Item'),
+                    ]),
+                ]),
+            ]),
+        ]  # fmt: skip
 
     def test_a_symbol_spans_its_value_and_selects_its_name(self, parsed):
         snapshot, folder = parsed

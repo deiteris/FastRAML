@@ -14,25 +14,32 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Protocol, cast
 
 from fastraml.errors import RamlError
+from fastraml.parser.annotations import DomainExtension
 from fastraml.parser.fragments import APIFragment, Library
+from fastraml.parser.security import SecuritySchemeDefinition, SecuritySchemeDescription
 from fastraml.positions import Position
 from fastraml.types.base import BaseShape
+from fastraml.types.complex_ import ArrayShape, ObjectShape
+from fastraml.types.examples import examples_of
 from fastraml.uris import relative_to
 from fastraml.views.occurrences import Kind, Role
-from fastraml.views.render import render
+from fastraml.views.render import render, type_name
 from fastraml.views.tree import build_tree
 from fastraml.yamlnode import Node, NodeKind, compose, pairs
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
 
+    from fastraml.datanode import DataNode
     from fastraml.errors import Trace
-    from fastraml.parser.endpoints import EndPoint
+    from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
+    from fastraml.parser.templates import TemplateDefinition
     from fastraml.registry import Raml
     from fastraml.service.workspace import Snapshot
+    from fastraml.types.base import Parameter
     from fastraml.views.lint import Finding
     from fastraml.views.occurrences import Occurrence
 
@@ -111,11 +118,18 @@ class SymbolKind(StrEnum):
     RESOURCE = 'resource'
     METHOD = 'method'
     DOCUMENTATION = 'documentation'
+    PARAMETER = 'parameter'
+    RESPONSE = 'response'
+    BODY = 'body'
+    EXAMPLE = 'example'
+    ANNOTATION = 'annotation'
 
 
 @dataclass(slots=True)
 class Symbol:
-    """A named construct: its whole span, the span of its name, and what it holds."""
+    """A named construct: its whole span, the span of its name, what it holds,
+    and a line of detail, such as the type it names.
+    """
 
     name: str
     kind: SymbolKind
@@ -123,6 +137,7 @@ class Symbol:
     span: Position
     selection: Position
     children: list[Symbol] = field(default_factory=list)
+    detail: str = ''
 
 
 # -- diagnostics --------------------------------------------------------------
@@ -380,27 +395,196 @@ _TABLE_KINDS: Final = (
 
 
 def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
-    """The file's outline: its declarations, its documentation items, and its
-    resources with their methods, as written in this file.
+    """The file's outline, from the model, as written in this file.
 
-    A method a resource type contributed is written in the resource type, not
-    under the resource, and is not in the outline.
+    A type holds its properties, items, custom facets, examples and
+    annotations; a resource its URI parameters, methods and resources; a
+    method its parameters, bodies and responses. What the model placed
+    elsewhere is not listed under it: an inherited property, or a method a
+    resource type contributed, is outlined where it is written. A trait or
+    resource type is listed by name alone: its body is decoded only where it
+    is applied (docs/08 § 5).
     """
     raml = snapshot.raml
     fragment = None if raml is None else raml.fragments.get(uri)
     if raml is None or fragment is None:
         return []
-    found = list(_declarations(fragment))
+    found: list[Symbol | None] = []
+    if isinstance(fragment, (Library, APIFragment)):
+        found += (_symbol(name, SymbolKind.LIBRARY, link, link.value) for name, link in fragment.uses.items())
+        for kind, table in zip(_TABLE_KINDS, _tables(fragment), strict=True):
+            found += (_declaration(name, kind, entity) for name, entity in table.items())
     if isinstance(fragment, APIFragment):
         for item in fragment.documentation:
-            if item.location != uri:
-                continue
             title, key = ('', item.key_pos) if item.title is None else (str(item.title.value), item.title.value_pos)
-            symbol = _symbol(title, SymbolKind.DOCUMENTATION, item.location, key, item.value_pos)
-            if symbol is not None:
-                found.append(symbol)
-        found += _resources((e for e in raml.endpoints.values() if e.full_uri == e.uri), uri)
-    return sorted(found, key=lambda symbol: (symbol.span.line, symbol.span.column))
+            found.append(_symbol(title, SymbolKind.DOCUMENTATION, item, key=key))
+        found += (_parameter(name, param, None) for name, param in fragment.base_uri_parameters.items())
+        found += (_resource(e, None) for e in raml.endpoints.values() if e.full_uri == e.uri)
+    placed = [symbol for symbol in found if symbol is not None and symbol.uri == uri]
+    return sorted(placed, key=lambda symbol: (symbol.span.line, symbol.span.column))
+
+
+def _declaration(name: str, kind: SymbolKind, entity: object) -> Symbol | None:
+    if isinstance(entity, BaseShape):
+        return _shape(name, kind, entity, None)
+    if isinstance(entity, SecuritySchemeDefinition):
+        symbol = _symbol(name, kind, entity, entity.resolved().type)
+        described = entity.described_by
+        if symbol is not None and described is not None:
+            _adopt(symbol, _messages(described, symbol))
+        return symbol
+    template = cast('TemplateDefinition', entity)
+    return _symbol(name, kind, template)
+
+
+def _shape(name: str, kind: SymbolKind, base: BaseShape, parent: Symbol | None) -> Symbol | None:
+    """A type-like symbol: `base` and what it declares, or `None` where it is
+    not written inside `parent`, which is checked before descending, since an
+    inherited property is the parent type's own.
+    """
+    symbol = _symbol(name, kind, base, type_name(base))
+    if symbol is None or not _inside(symbol, parent):
+        return None
+    _declares(base, symbol)
+    return symbol
+
+
+def _declares(base: BaseShape, symbol: Symbol) -> None:
+    """Add to `symbol` what `base` declares inside it."""
+    shape = base.shape
+    found: list[Symbol | None] = []
+    # An alias shares its referent's containers (docs/07 § 3): they are the referent's.
+    if base.alias is None and isinstance(shape, ObjectShape):
+        found += (_shape(key, SymbolKind.PROPERTY, prop.base, symbol) for key, prop in (shape.properties or {}).items())
+        found += (
+            _shape(f'/{key}/', SymbolKind.PROPERTY, pattern.base, symbol)
+            for key, pattern in (shape.pattern_properties or {}).items()
+        )
+    # Items a type expression built, `Book[]`, are placed at the array's own key.
+    if (
+        base.alias is None
+        and isinstance(shape, ArrayShape)
+        and shape.items is not None
+        and shape.items.key_pos != base.key_pos
+    ):
+        found.append(_shape('items', SymbolKind.TYPE, shape.items, symbol))
+    if base.custom_facet_defs:
+        found += (_shape(key, SymbolKind.FACET, prop.base, symbol) for key, prop in base.custom_facet_defs.items())
+    if base.custom_facets:
+        found += (_data(key, SymbolKind.FACET, value) for key, value in base.custom_facets.items())
+    found += (_symbol(example.name or 'example', SymbolKind.EXAMPLE, example) for example in examples_of(base))
+    if base.annotations:
+        found += _annotations(base.annotations)
+    if found:
+        _adopt(symbol, found)
+
+
+def _resource(endpoint: EndPoint, parent: Symbol | None) -> Symbol | None:
+    applied = endpoint.resource_type
+    detail = '' if applied is None else applied.name
+    symbol = _symbol(endpoint.uri, SymbolKind.RESOURCE, endpoint, detail)
+    if symbol is None or not _inside(symbol, parent):
+        return None
+    found: list[Symbol | None] = [_parameter(name, param, symbol) for name, param in endpoint.uri_parameters.items()]
+    found += (_method(operation, symbol) for operation in endpoint.operations.values())
+    found += (_resource(child, symbol) for child in endpoint.endpoints.values())
+    found += _annotations(endpoint.annotations)
+    _adopt(symbol, found)
+    return symbol
+
+
+def _method(operation: Operation, parent: Symbol) -> Symbol | None:
+    detail = ', '.join(applied.name for applied in operation.traits)
+    symbol = _symbol(operation.method, SymbolKind.METHOD, operation, detail)
+    if symbol is None or not _inside(symbol, parent):
+        return None
+    found: list[Symbol | None] = []
+    if operation.request is not None:
+        found += _messages(operation.request, symbol)
+        found += _bodies(operation.request.bodies, symbol)
+    found += (_response(response, symbol) for response in operation.responses.values())
+    found += _annotations(operation.annotations)
+    _adopt(symbol, found)
+    return symbol
+
+
+def _messages(message: Request | SecuritySchemeDescription, parent: Symbol) -> Iterator[Symbol | None]:
+    """A request's, or a `describedBy`'s, parameters and query string; a
+    `describedBy`'s responses too.
+    """
+    yield from (_parameter(name, param, parent) for name, param in message.query_parameters.items())
+    yield from (_parameter(name, param, parent) for name, param in message.headers.items())
+    if message.query_string is not None:
+        yield _shape('queryString', SymbolKind.TYPE, message.query_string, parent)
+    if isinstance(message, SecuritySchemeDescription):
+        yield from (_response(response, parent) for response in message.responses.values())
+
+
+def _response(response: Response, parent: Symbol) -> Symbol | None:
+    symbol = _symbol(response.code, SymbolKind.RESPONSE, response)
+    if symbol is None or not _inside(symbol, parent):
+        return None
+    found: list[Symbol | None] = [_parameter(name, param, symbol) for name, param in response.headers.items()]
+    found += _bodies(response.bodies, symbol)
+    found += _annotations(response.annotations)
+    _adopt(symbol, found)
+    return symbol
+
+
+def _bodies(bodies: Mapping[str, Body], parent: Symbol) -> Iterator[Symbol | None]:
+    """One symbol per body written: a `body:` with no media type is one body
+    per default media type (docs/08 § 6.3), named by all of them.
+    """
+    written: dict[Position, list[Body]] = {}
+    for body in bodies.values():
+        written.setdefault(body.key_pos, []).append(body)
+    for same in written.values():
+        body, shape = same[0], same[0].shape
+        name = ', '.join(each.media_type for each in same)
+        # The body's own key: its shape's is none for `body: Book`.
+        symbol = _symbol(name, SymbolKind.BODY, body, '' if shape is None else type_name(shape))
+        if symbol is not None and shape is not None and _inside(symbol, parent):
+            _declares(shape, symbol)
+        yield symbol
+
+
+def _parameter(name: str, param: Parameter, parent: Symbol | None) -> Symbol | None:
+    return _shape(name, SymbolKind.PARAMETER, param.declaration.base, parent)
+
+
+def _annotations(applied: Mapping[str, DomainExtension]) -> Iterator[Symbol | None]:
+    return (_data(f'({name})', SymbolKind.ANNOTATION, extension) for name, extension in applied.items())
+
+
+def _data(name: str, kind: SymbolKind, written: DataNode | DomainExtension) -> Symbol | None:
+    """A custom facet value or an annotation, with a scalar value as detail."""
+    value = (written.value if isinstance(written, DomainExtension) else written).raw
+    if isinstance(value, (dict, list)) or value is None:
+        detail = ''
+    else:
+        detail = str(value).lower() if isinstance(value, bool) else str(value)
+    return _symbol(name, kind, written, detail)
+
+
+def _adopt(parent: Symbol, found: Iterable[Symbol | None]) -> None:
+    """Add what is written inside `parent`, in the order written."""
+    placed = [symbol for symbol in found if symbol is not None and _inside(symbol, parent)]
+    if len(placed) > 1:
+        placed.sort(key=lambda symbol: (symbol.span.line, symbol.span.column))
+    parent.children += placed
+
+
+def _inside(symbol: Symbol, parent: Symbol | None) -> bool:
+    return parent is None or (symbol.uri == parent.uri and _within(symbol.span, parent.span))
+
+
+def _line(text: str) -> str:
+    """The first line of `text`, cut to `_DETAIL_LIMIT` characters."""
+    line = text.strip().partition('\n')[0]
+    return line if len(line) <= _DETAIL_LIMIT else f'{line[: _DETAIL_LIMIT - 1]}…'
+
+
+_DETAIL_LIMIT: Final = 80
 
 
 def _declarations(fragment: object, wanted: str = '') -> Iterator[Symbol]:
@@ -412,27 +596,9 @@ def _declarations(fragment: object, wanted: str = '') -> Iterator[Symbol]:
     for kind, table in zip(_TABLE_KINDS, _tables(fragment), strict=True):
         for name, entity in table.items():
             if wanted in name.casefold():
-                symbol = _symbol(name, kind, entity.location, entity.key_pos, entity.value_pos)
+                symbol = _symbol(name, kind, entity)
                 if symbol is not None:
                     yield symbol
-
-
-def _resources(endpoints: Iterable[EndPoint], uri: str) -> list[Symbol]:
-    found: list[Symbol] = []
-    for endpoint in endpoints:
-        symbol = _symbol(endpoint.uri, SymbolKind.RESOURCE, endpoint.location, endpoint.key_pos, endpoint.value_pos)
-        if symbol is None or endpoint.location != uri:
-            continue
-        symbol.children += [
-            child
-            for method, operation in endpoint.operations.items()
-            if (child := _symbol(method, SymbolKind.METHOD, operation.location, operation.key_pos, operation.value_pos))
-            and operation.location == uri
-            and _within(child.span, symbol.span)
-        ]
-        symbol.children += _resources(endpoint.endpoints.values(), uri)
-        found.append(symbol)
-    return found
 
 
 def _within(inner: Position, outer: Position) -> bool:
@@ -442,20 +608,39 @@ def _within(inner: Position, outer: Position) -> bool:
     )
 
 
-def _symbol(name: str, kind: SymbolKind, uri: str, key: Position | None, value: Position | None) -> Symbol | None:
-    """A symbol selecting its key and spanning key and value, or `None` where
-    the key has no position.
+class _Placed(Protocol):
+    """An entity the model placed: the file and the key and value it was written at."""
+
+    @property
+    def location(self) -> str: ...
+    @property
+    def key_pos(self) -> Position | None: ...
+    @property
+    def value_pos(self) -> Position | None: ...
+
+
+def _symbol(
+    name: str, kind: SymbolKind, placed: _Placed, detail: str = '', *, key: Position | None = None
+) -> Symbol | None:
+    """A symbol selecting `placed`'s key, or `key`, and spanning key and
+    value; `None` where the key has no position.
 
     The span holds the key, which a client requires of the selection: a
     documentation item has no key and selects its title, inside its value.
     """
+    key = placed.key_pos if key is None else key
     if key is None or not key.is_known:
         return None
-    start, end = key, key
-    if value is not None and value.is_known:
-        start = min(key, value, key=lambda at: (at.line, at.column))
-        end = max(key, value, key=lambda at: (at.end_line, at.end_column))
-    return Symbol(name, kind, uri, Position(start.line, start.column, end.end_line, end.end_column), key)
+    return Symbol(name, kind, placed.location, _spanning(key, placed.value_pos), key, detail=_line(detail))
+
+
+def _spanning(key: Position, value: Position | None) -> Position:
+    """The span from `key` through `value`, holding both."""
+    if value is None or not value.is_known:
+        return key
+    start = min(key, value, key=lambda at: (at.line, at.column))
+    end = max(key, value, key=lambda at: (at.end_line, at.end_column))
+    return Position(start.line, start.column, end.end_line, end.end_column)
 
 
 def workspace_symbols(snapshots: Iterable[Snapshot], query: str) -> list[Symbol]:
@@ -647,4 +832,4 @@ def _declared(snapshot: Snapshot, item: Symbol) -> BaseShape | None:
 
 def _type_symbol(base: BaseShape) -> Symbol | None:
     kind = SymbolKind.ANNOTATION_TYPE if base.is_annotation_type else SymbolKind.TYPE
-    return None if not base.name else _symbol(base.name, kind, base.location, base.key_pos, base.value_pos)
+    return None if not base.name else _symbol(base.name, kind, base)

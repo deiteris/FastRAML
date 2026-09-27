@@ -264,6 +264,7 @@ class TestStructure:
             lsp.client.text_document_document_symbol_async(types.DocumentSymbolParams(_document(_uri(lsp, 'api.raml'))))
         )
         assert [(s.name, s.kind) for s in found] == [
+            ('lib', types.SymbolKind.Module),
             ('paged', types.SymbolKind.Function),
             ('spare', types.SymbolKind.Function),
             ('Admin', types.SymbolKind.Class),
@@ -271,6 +272,7 @@ class TestStructure:
             ('/users', types.SymbolKind.Namespace),
         ]
         assert [child.name for child in found[-1].children] == ['get']
+        assert found[3].detail == 'User'
 
     def test_workspace_symbols(self, lsp):
         found = lsp.run(lsp.client.workspace_symbol_async(types.WorkspaceSymbolParams('user')))

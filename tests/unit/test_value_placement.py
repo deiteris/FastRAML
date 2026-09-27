@@ -1,4 +1,4 @@
-"""Where a value that breaks a constraint is reported (docs/11 § 3).
+"""Where a fault in a value or an application is reported (docs/11 § 3.1).
 
 The chain narrows: the example, default or annotation as written, then the
 value inside it that is at fault. The constraint it broke is the frame's
@@ -131,3 +131,22 @@ def test_an_unknown_discriminator_value_is_placed_at_the_value(workspace):
     )
     frame = innermost(workspace, {'api.raml': document})['discriminator value names no known type']
     assert span(frame.position) == (11, 13, 11, 18)
+
+
+class TestTemplateParameters:
+    """An application is where a parameter fault is fixed; the template, where it is used."""
+
+    def test_a_missing_parameter_is_placed_at_the_application_beside_its_first_use(self, workspace):
+        document = API + (
+            'resourceTypes:\n  searchable:\n    get:\n      description: by <<field>>\n/books:\n  type: searchable\n'
+        )
+        frame = innermost(workspace, {'api.raml': document})['missing required parameter']
+        assert frame.info == {'parameter': 'field'}
+        assert span(frame.position) == (8, 9, 8, 19)
+        assert (frame.origin.message, span(frame.origin.position)) == ('used here', (6, 23, 6, 32))
+
+    def test_an_unexpected_parameter_is_placed_at_its_name_beside_the_template(self, workspace):
+        document = API + ('traits:\n  paged:\n    description: paged\n/books:\n  get:\n    is: [{paged: {size: 10}}]\n')
+        frame = innermost(workspace, {'api.raml': document})['unexpected parameter']
+        assert span(frame.position) == (8, 25, 8, 27)
+        assert (frame.origin.message, span(frame.origin.position)) == ('declared here', (4, 3, 4, 8))

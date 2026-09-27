@@ -205,6 +205,14 @@ are in the included file. A value with no position, a path inside an inline
 JSON string or the root of an included file, leaves the frame unplaced, so
 the chain is reported at its wrapper.
 
+A template application is checked the same way. An unexpected parameter is
+placed at its value in the application, with the template's name as its
+origin, `declared here`. Its key would be exact, but an application keeps
+only its parameters' values, and keeping the keys cost 2.6% of what the
+`templates` bench retains. A missing one is placed at the application's
+parameters, or its name when it has none, with the first `<<parameter>>` in
+the template as its origin, `used here`.
+
 ## 4. Locations after structural merge
 
 Stage 2 endpoint decoding can read nodes supplied by traits or resource types.

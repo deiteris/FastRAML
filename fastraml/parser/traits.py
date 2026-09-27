@@ -118,7 +118,7 @@ def apply_traits(raml: Raml, endpoint: SourceEndPoint) -> None:
                     definition,
                     params,
                     caller_scope=endpoint.scope,
-                    written_in=ref.location,
+                    application=ref,
                     substitutions=raml.substitutions,
                 )
             except RamlError as err:
@@ -187,16 +187,16 @@ def merge_trait_into(  # noqa: PLR0913 - the application, and where its values a
     params: dict[str, Node],
     *,
     caller_scope: ParseCtx | None,
-    written_in: str,
+    application: DirectiveRef,
     substitutions: Substitutions,
 ) -> None:
-    """Substitute `params`, written in `written_in`, into the trait body and
+    """Substitute `params`, written at `application`, into the trait body and
     merge it under the operation.
     """
     definition = definition.resolved()
     if definition.source is None:
         return
-    check_parameters(definition.declared_variables, params, definition.location, definition.value_pos)
+    check_parameters(definition, params, application)
 
     compiled = compile_source_provenance(
         definition.source,
@@ -204,7 +204,7 @@ def merge_trait_into(  # noqa: PLR0913 - the application, and where its values a
         definition.variable_index,
         caller_scope if caller_scope is not None else ParseCtx(),
         operation.provenance,
-        written_in=written_in,
+        written_in=application.location,
         substitutions=substitutions,
     )
     trait_scope = ParseCtx(anchor=definition.anchor, target=DomainLocation.TRAIT)

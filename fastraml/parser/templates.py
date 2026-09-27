@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import TYPE_CHECKING, Final, Self
 
-from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
 from fastraml.facet_names import FACET_USAGE
 from fastraml.parser.facets import make_string_facet
 from fastraml.parser.includes import note_include_ref
@@ -194,14 +194,17 @@ def find_template_definition[T: TemplateDefinition](
 
 
 def check_parameters(
-    declared: set[str],
+    definition: TemplateDefinition,
     params: dict[str, Node],
-    location: str,
-    position: Position,
+    application: DirectiveRef,
     *,
     required: set[str] | None = None,
 ) -> None:
     """Both directions: nothing supplied undeclared, nothing required unsupplied.
+
+    At the application, where the fix goes (docs/11 § 3.1): an unexpected
+    parameter at its value, beside the template it is not used in; a missing
+    one at the parameters, beside its first `<<use>>` in the template.
 
     The two sets differ for a resource type. Everything the template mentions is
     accepted as a parameter, but only what survives optional-method filtering is
@@ -212,14 +215,39 @@ def check_parameters(
     Reserved parameters are always accepted and never required: the parser
     injects them at every application site.
     """
+    declared = definition.declared_variables
     accumulator = Accumulator()
-    for name in params:
+    for name, value in params.items():
         if name not in RESERVED_PARAMETERS and name not in declared:
-            accumulator.add(RamlError.new('unexpected parameter', location, position, info={'parameter': name}))
+            template = Trace('declared here', definition.location, definition.key_pos)
+            # At its value: the parse keeps no key nodes for an application.
+            error = _parameter_error('unexpected parameter', application, value.full_position, name, template)
+            accumulator.add(error)
     for name in declared if required is None else required:
         if name not in RESERVED_PARAMETERS and name not in params:
-            accumulator.add(RamlError.new('missing required parameter', location, position, info={'parameter': name}))
+            use = Trace('used here', definition.location, _first_use(definition.variable_index, name))
+            accumulator.add(
+                _parameter_error('missing required parameter', application, application.value_pos, name, use)
+            )
     accumulator.raise_if_any()
+
+
+def _parameter_error(message: str, application: DirectiveRef, at: Position, name: str, origin: Trace) -> RamlError:
+    return RamlError(Trace(message, application.location, at, info={'parameter': name}, origin=origin))
+
+
+def _first_use(index: VariableIndex, name: str) -> Position:
+    """Where `<<name>>` is first written in the template: the variable itself
+    in a one-line scalar, the scalar otherwise (docs/11 § 3).
+    """
+    for node, variables in index.items():
+        for variable in variables:
+            if variable.name == name:
+                offset = node.value.find(variable.substring)
+                if offset < 0 or '\n' in node.value:
+                    return node.position
+                return node.position.within(node.value).shifted(offset, len(variable.substring))
+    return UNKNOWN
 
 
 @dataclass(frozen=True, slots=True)

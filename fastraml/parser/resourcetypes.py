@@ -158,7 +158,7 @@ def apply_resource_type(raml: Raml, endpoint: SourceEndPoint, ref: DirectiveRef,
         params,
         existing_methods=set(endpoint.operations),
         caller_scope=endpoint.scope,
-        written_in=ref.location,
+        application=ref,
         location=endpoint.location,
         uri=endpoint.uri,
         parent_uri=endpoint.full_uri[: len(endpoint.full_uri) - len(endpoint.uri)],
@@ -196,7 +196,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
     *,
     existing_methods: set[str],
     caller_scope: ParseCtx | None,
-    written_in: str,
+    application: DirectiveRef,
     location: str,
     uri: str,
     parent_uri: str,
@@ -212,7 +212,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
             params,
             existing_methods=existing_methods,
             caller_scope=caller_scope,
-            written_in=written_in,
+            application=application,
             location=definition.link.location,
             uri=uri,
             parent_uri=parent_uri,
@@ -222,11 +222,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
 
     source = _filter_optional_methods(definition, definition.source, existing_methods)
     check_parameters(
-        definition.declared_variables,
-        params,
-        definition.location,
-        definition.value_pos,
-        required=collect_required_variables(source, definition.variable_index),
+        definition, params, application, required=collect_required_variables(source, definition.variable_index)
     )
 
     overlay: ProvenanceOverlay = {}
@@ -236,7 +232,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
         definition.variable_index,
         caller_scope if caller_scope is not None else ParseCtx(),
         overlay,
-        written_in=written_in,
+        written_in=application.location,
         substitutions=raml.substitutions,
     )
 

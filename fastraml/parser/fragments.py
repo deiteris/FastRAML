@@ -64,7 +64,7 @@ from fastraml.parser.resourcetypes import ResourceTypeDefinition, make_resource_
 from fastraml.parser.security import SecuritySchemeDefinition, make_security_scheme_definition
 from fastraml.parser.traits import TraitDefinition, make_trait_definition
 from fastraml.parser.uritemplates import check_uri_reference, extract_uri_template_params, unused_uri_parameters
-from fastraml.positions import UNKNOWN
+from fastraml.positions import UNKNOWN, Position
 from fastraml.registry import ParseCtx
 from fastraml.types.examples import Example, make_example
 from fastraml.types.shape import make_parameter_map, make_shape, unmarshal_types
@@ -88,11 +88,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
 
     from fastraml.parser.extension_merge import RemovedProperty
-    from fastraml.positions import Position
     from fastraml.registry import Raml
     from fastraml.types.base import BaseShape, Parameter, ScalarFacet
 
 __all__ = [
+    'API_HEAD_SPAN',
     'HEADS',
     'APIFragment',
     'DataTypeFragment',
@@ -135,6 +135,10 @@ class FragmentKind(StrEnum):
     OVERLAY = 'Overlay'
     EXTENSION = 'Extension'
 
+
+#: Where an API document says what it is: its header, on line 1. A missing
+#: `title:` is reported there, not over the whole document (docs/11 § 3).
+API_HEAD_SPAN: Final = Position(1, 1, 1, len('#%RAML 1.0') + 1)
 
 #: The first line of a document identifies it. Matching is exact, after the
 #: line ending and trailing spaces are stripped. See docs/03 § 3.
@@ -588,7 +592,7 @@ class APIFragment(_DeclaringFragment):
                 accumulator.add(err)
 
         if self.title is None:
-            accumulator.add(node_error('title is required', self.location, node))
+            accumulator.add(RamlError.new('title is required', self.location, API_HEAD_SPAN))
         # After the loop, since `baseUri` and `baseUriParameters` come in either
         # order. A `baseUri` that failed has reported already, and is not
         # followed by one error per parameter (docs/08 § 6.2).
@@ -1003,9 +1007,7 @@ class _Declarations:
 
     def types(self, key: Node, value: Node) -> Node:
         if self._seen:
-            raise node_error(
-                'types and schemas are mutually exclusive', self._location, value, info={'field': key.value}
-            )
+            raise node_error('types and schemas are mutually exclusive', self._location, key, info={'field': key.value})
         self._seen = True
         return value
 

@@ -31,6 +31,7 @@ from fastraml.types.base import TYPE_STRING, BaseShape, Parameter, Property
 from fastraml.types.shape import attach_kind
 
 if TYPE_CHECKING:
+    from fastraml.datanode import DataNode
     from fastraml.parser.endpoints import EndPoint
     from fastraml.parser.source_ir import SourceEndPoint
     from fastraml.registry import Raml
@@ -213,25 +214,26 @@ def _check_slash_free(prop: Parameter) -> RamlError | None:
     parameter can never match.
     """
     base = prop.base
-    candidates: list[tuple[str, object]] = []
+    candidates: list[tuple[str, DataNode]] = []
     if base.default is not None:
-        candidates.append(('default', base.default.raw))
+        candidates.append(('default', base.default))
     if base.example is not None and base.example.data is not None:
-        candidates.append(('example', base.example.data.raw))
+        candidates.append(('example', base.example.data))
     if base.examples is not None:
         candidates += [
-            (f'examples.{name}', example.data.raw)
+            (f'examples.{name}', example.data)
             for name, example in base.examples.entries().items()
             if example.data is not None
         ]
-    candidates += [(f'enum[{index}]', member.raw) for index, member in enumerate(base.enum or ())]
+    candidates += [(f'enum[{index}]', member) for index, member in enumerate(base.enum or ())]
 
-    for facet, raw in candidates:
-        if isinstance(raw, str) and '/' in raw:
+    for facet, data in candidates:
+        if isinstance(data.raw, str) and '/' in data.raw:
+            # At the value that holds it (docs/11 § 3).
             return RamlError.new(
                 'uri parameter value must not contain a slash',
-                base.location,
-                base.value_pos,
+                data.location,
+                data.value_pos,
                 info={'parameter': prop.name, 'facet': facet},
             )
     return None

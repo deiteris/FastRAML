@@ -20,7 +20,7 @@ from collections import deque
 from typing import TYPE_CHECKING
 
 from fastraml.datanode import at_value, locate
-from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.examples import examples_of
 from fastraml.types.unwrap import finish_unwrap, unwrap_shape
@@ -449,12 +449,20 @@ def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
     declared = _facet_declarations(base, acc)
     for name, prop in declared.items():
         if prop.required and name not in base.custom_facets:
+            # At the type that lacks it, beside the facet's declaration.
+            facet = prop.base
+            origin = Trace('declared here', facet.location, facet.key_pos)
+            at = base.key_pos if base.key_pos.is_known else base.value_pos
             acc.add(
-                failure(
-                    'required custom facet is missing',
-                    base.location,
-                    base.value_pos,
-                    info={'facet': name},
+                RamlError(
+                    Trace(
+                        'required custom facet is missing',
+                        base.location,
+                        at,
+                        ErrorKind.VALIDATING,
+                        {'facet': name},
+                        origin=origin,
+                    )
                 )
             )
     for name, value in base.custom_facets.items():

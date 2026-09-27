@@ -346,10 +346,24 @@ def _validate_settings(settings: SecuritySchemeSettings, node: Node, location: s
                 )
         for signature in settings.lists.get('signatures', []):
             if signature not in OAUTH1_SIGNATURES:
-                accumulator.add(node_error('unknown signature', location, node, info={'signature': signature}))
+                at = _item(node, 'signatures', signature)
+                accumulator.add(node_error('unknown signature', location, at, info={'signature': signature}))
     elif settings.scheme_type == TYPE_OAUTH2:
         accumulator.add(_validate_oauth2(settings, node, location))
     accumulator.raise_if_any()
+
+
+def _item(settings: Node, key: str, value: str) -> Node:
+    """The item of the `settings:` list `key` that wrote `value`, so a
+    diagnostic points at it and not at every setting (docs/11 § 3).
+    """
+    for name, items in pairs(settings) if settings.kind is NodeKind.MAPPING else ():
+        if name.value == key:
+            for item in items.content if items.kind is NodeKind.SEQUENCE else (items,):
+                if item.value == value:
+                    return item
+            return items
+    return settings
 
 
 def _validate_oauth2(settings: SecuritySchemeSettings, node: Node, location: str) -> RamlError | None:
@@ -359,7 +373,8 @@ def _validate_oauth2(settings: SecuritySchemeSettings, node: Node, location: str
     for grant in grants:
         if grant not in OAUTH2_GRANTS and not _is_absolute_uri(grant):
             # Not one of the four RFC 6749 names, and not an extension grant.
-            return node_error('unknown authorization grant', location, node, info={'grant': grant})
+            at = _item(node, 'authorizationGrants', grant)
+            return node_error('unknown authorization grant', location, at, info={'grant': grant})
     if any(grant in OAUTH2_GRANTS_NEEDING_AUTHORIZATION_URI for grant in grants) and not settings.values.get(
         'authorizationUri', None
     ):

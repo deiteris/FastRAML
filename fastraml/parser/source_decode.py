@@ -280,7 +280,10 @@ def decode_request_facet(raml: Raml, into: RequestFacets, key: Node, value: Node
 def query_exclusion_error(facets: RequestFacets, location: str, node: Node) -> RamlError | None:
     """Spec section Methods: `queryString` is "mutually exclusive with queryParameters"."""
     if facets.query_string is not None and facets.query_parameters:
-        return node_error('queryString and queryParameters are mutually exclusive', location, node)
+        # At the one written second: the first stood until it came.
+        written = [key for key, _ in pairs(node) if key.value in (FACET_QUERY_STRING, FACET_QUERY_PARAMETERS)]
+        at = written[-1] if written else node
+        return node_error('queryString and queryParameters are mutually exclusive', location, at)
     return None
 
 

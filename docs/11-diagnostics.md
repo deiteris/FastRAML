@@ -190,6 +190,15 @@ the whole name, so an editor underlines it; a lexer or URI-template error, the
 offending character. A YAML syntax error is a point, and spans the character
 at it.
 
+A diagnostic is placed at the node at fault, and a construct that merely
+holds it is context. So an unknown OAuth signature or grant is its item in
+the list, two keys that exclude each other are reported at the one written
+second, a value a URI parameter can never match is that value, a missing
+required custom facet is the name of the type that lacks it, with the
+facet's declaration as origin, and a missing `title` is the document's
+header. A value of the wrong kind, a mapping where a string belongs, is
+still the whole value.
+
 ### 3.1 Values against constraints
 
 `validate_at` sees Python values, not nodes, so it raises each failure at the

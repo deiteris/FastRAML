@@ -1,9 +1,10 @@
-"""Where a fault in a value or an application is reported (docs/11 § 3.1).
+"""Where a fault is reported: at the node at fault, never a construct that
+holds it (docs/11 § 1, § 3).
 
-The chain narrows: the example, default or annotation as written, then the
-value inside it that is at fault. The constraint it broke is the frame's
-`origin`, in whatever file declared it. Spans are `(line, column, end_line,
-end_column)`, 1-based with exclusive ends.
+For a value, the chain narrows from the example, default or annotation as
+written to the value inside it; the constraint it broke is the frame's
+`origin`, in whatever file declared it (§ 3.1). Spans are `(line, column,
+end_line, end_column)`, 1-based with exclusive ends.
 """
 
 from __future__ import annotations
@@ -145,8 +146,70 @@ class TestTemplateParameters:
         assert span(frame.position) == (8, 9, 8, 19)
         assert (frame.origin.message, span(frame.origin.position)) == ('used here', (6, 23, 6, 32))
 
-    def test_an_unexpected_parameter_is_placed_at_its_name_beside_the_template(self, workspace):
+    def test_an_unexpected_parameter_is_placed_at_its_value_beside_the_template(self, workspace):
         document = API + ('traits:\n  paged:\n    description: paged\n/books:\n  get:\n    is: [{paged: {size: 10}}]\n')
         frame = innermost(workspace, {'api.raml': document})['unexpected parameter']
         assert span(frame.position) == (8, 25, 8, 27)
         assert (frame.origin.message, span(frame.origin.position)) == ('declared here', (4, 3, 4, 8))
+
+
+def where(document: str, needle: str) -> tuple[int, int, int, int]:
+    """The span of the one `needle` in `document`."""
+    assert document.count(needle) == 1, needle
+    before = document[: document.index(needle)]
+    line, column = before.count('\n') + 1, len(before.rpartition('\n')[2]) + 1
+    return (line, column, line, column + len(needle))
+
+
+OAUTH1 = (
+    'securitySchemes:\n  o:\n    type: OAuth 1.0\n    settings:\n      requestTokenUri: https://a/b\n'
+    '      authorizationUri: https://a/c\n      tokenCredentialsUri: https://a/d\n'
+    '      signatures: [HMAC-SHA1, HI]\n'
+)
+OAUTH2 = (
+    'securitySchemes:\n  o:\n    type: OAuth 2.0\n    settings:\n      accessTokenUri: https://a/t\n'
+    '      authorizationGrants: [client_credentials, nope]\n'
+)
+
+
+@pytest.mark.parametrize(
+    ('body', 'message', 'needle'),
+    [
+        pytest.param(
+            'types:\n  A: string\nschemas:\n  B: string\n',
+            'types and schemas are mutually exclusive',
+            'schemas',
+            id='schemas',
+        ),
+        pytest.param(
+            '/r:\n  get:\n    queryString:\n      type: object\n    queryParameters:\n      a: string\n',
+            'queryString and queryParameters are mutually exclusive',
+            'queryParameters',
+            id='query',
+        ),
+        pytest.param(OAUTH1, 'unknown signature', 'HI', id='signature'),
+        pytest.param(OAUTH2, 'unknown authorization grant', 'nope', id='grant'),
+        pytest.param(
+            '/{id}:\n  uriParameters:\n    id:\n      example: a/b\n',
+            'uri parameter value must not contain a slash',
+            'a/b',
+            id='slash',
+        ),
+    ],
+)
+def test_a_fault_is_placed_at_the_node_that_holds_it(workspace, body, message, needle):
+    document = API + body
+    frame = innermost(workspace, {'api.raml': document})[message]
+    assert span(frame.position) == where(document, needle)
+
+
+def test_a_missing_title_is_placed_at_the_header(workspace):
+    frame = innermost(workspace, {'api.raml': '#%RAML 1.0\nversion: v1\n/r:\n  get:\n'})['title is required']
+    assert span(frame.position) == (1, 1, 1, 11)
+
+
+def test_a_missing_custom_facet_is_placed_at_the_type_beside_its_declaration(workspace):
+    document = API + 'types:\n  Base:\n    facets:\n      unit: string\n  Sub:\n    type: Base\n'
+    frame = innermost(workspace, {'api.raml': document})['required custom facet is missing']
+    assert span(frame.position) == where(document, 'Sub')
+    assert span(frame.origin.position) == where(document, 'unit')

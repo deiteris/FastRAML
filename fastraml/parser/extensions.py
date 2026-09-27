@@ -24,6 +24,7 @@ from fastraml.facet_names import FACET_TITLE, FACET_USAGE, FACET_USES
 from fastraml.parser.extension_merge import merge_extension
 from fastraml.parser.facets import make_string_facet
 from fastraml.parser.fragments import (
+    API_HEAD_SPAN,
     FRAGMENT_TARGETS,
     APIFragment,
     ExtensionFragment,
@@ -77,7 +78,7 @@ def decode_extension_chain(raml: Raml, uri: str, kind: FragmentKind, text: str) 
     accumulator = Accumulator()
     if not any(key.value == FACET_TITLE for key, _ in pairs(root_api.root)):
         # The target tree takes its title from here (docs/19 § 2).
-        accumulator.add(node_error('title is required', root_api.uri, root_api.root))
+        accumulator.add(RamlError.new('title is required', root_api.uri, API_HEAD_SPAN))
 
     target = root_api.root
     declared_by: dict[str, dict[str, int]] = {}

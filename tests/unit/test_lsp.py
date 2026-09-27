@@ -39,6 +39,7 @@ types:
   Admin:
     type: lib.User
   Emoji: {description: "\U0001f600", type: lib.User}
+  Tags: string[]
 /users:
   is: [paged]
   get:
@@ -264,15 +265,19 @@ class TestStructure:
             lsp.client.text_document_document_symbol_async(types.DocumentSymbolParams(_document(_uri(lsp, 'api.raml'))))
         )
         assert [(s.name, s.kind) for s in found] == [
-            ('lib', types.SymbolKind.Module),
-            ('paged', types.SymbolKind.Function),
-            ('spare', types.SymbolKind.Function),
-            ('Admin', types.SymbolKind.Class),
-            ('Emoji', types.SymbolKind.Class),
+            ('title', types.SymbolKind.String),
+            ('uses', types.SymbolKind.Package),
+            ('traits', types.SymbolKind.Package),
+            ('types', types.SymbolKind.Package),
             ('/users', types.SymbolKind.Namespace),
         ]
-        assert [child.name for child in found[-1].children] == ['get']
-        assert found[3].detail == 'User'
+        # A type's icon is its kind; its detail, its type as written.
+        assert [(s.name, s.kind, s.detail) for s in found[3].children] == [
+            ('Admin', types.SymbolKind.Class, 'lib.User'),
+            ('Emoji', types.SymbolKind.Class, 'lib.User'),
+            ('Tags', types.SymbolKind.Array, 'string[]'),
+        ]
+        assert [child.name for child in found[-1].children] == ['is', 'get']
 
     def test_workspace_symbols(self, lsp):
         found = lsp.run(lsp.client.workspace_symbol_async(types.WorkspaceSymbolParams('user')))
@@ -287,7 +292,7 @@ class TestStructure:
     def test_folding_and_selection(self, lsp):
         uri = _uri(lsp, 'api.raml')
         folds = lsp.run(lsp.client.text_document_folding_range_async(types.FoldingRangeParams(_document(uri))))
-        assert (_position(API, 'types:').line, _position(API, 'Emoji').line) in {
+        assert (_position(API, 'types:').line, _position(API, 'Tags').line) in {
             (f.start_line, f.end_line) for f in folds
         }
         (selection,) = lsp.run(

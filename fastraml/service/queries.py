@@ -17,29 +17,27 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final, Protocol, cast
 
 from fastraml.errors import RamlError
-from fastraml.parser.annotations import DomainExtension
 from fastraml.parser.fragments import APIFragment, Library
 from fastraml.parser.security import SecuritySchemeDefinition, SecuritySchemeDescription
 from fastraml.positions import Position
 from fastraml.types.base import BaseShape
 from fastraml.types.complex_ import ArrayShape, ObjectShape
-from fastraml.types.examples import examples_of
 from fastraml.uris import relative_to
 from fastraml.views.occurrences import Kind, Role
 from fastraml.views.render import render, type_name
 from fastraml.views.tree import build_tree
-from fastraml.yamlnode import Node, NodeKind, compose, pairs
+from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind, compose, pairs
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
 
-    from fastraml.datanode import DataNode
     from fastraml.errors import Trace
+    from fastraml.parser.directives import DirectiveRef, SecurityScheme
     from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
     from fastraml.parser.templates import TemplateDefinition
     from fastraml.registry import Raml
     from fastraml.service.workspace import Snapshot
-    from fastraml.types.base import Parameter
+    from fastraml.types.base import Parameter, Property, ScalarFacet
     from fastraml.views.lint import Finding
     from fastraml.views.occurrences import Occurrence
 
@@ -121,8 +119,10 @@ class SymbolKind(StrEnum):
     PARAMETER = 'parameter'
     RESPONSE = 'response'
     BODY = 'body'
-    EXAMPLE = 'example'
-    ANNOTATION = 'annotation'
+    #: A scalar the file states, `title`, or what an entry applies, `is:`.
+    METADATA = 'metadata'
+    #: A group of entries, as the file groups them: `types:`, `headers:`.
+    SECTION = 'section'
 
 
 @dataclass(slots=True)
@@ -138,6 +138,8 @@ class Symbol:
     selection: Position
     children: list[Symbol] = field(default_factory=list)
     detail: str = ''
+    #: A type's kind, `object`, `array`, `union`, `enum` or a scalar's, for its icon.
+    form: str = ''
 
 
 # -- diagnostics --------------------------------------------------------------
@@ -395,139 +397,184 @@ _TABLE_KINDS: Final = (
 
 
 def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
-    """The file's outline, from the model, as written in this file.
+    """The file's outline, from the model, grouped as the file is: its
+    metadata, each declaration section, and its resources.
 
-    A type holds its properties, items, custom facets, examples and
-    annotations; a resource its URI parameters, methods and resources; a
-    method its parameters, bodies and responses. What the model placed
-    elsewhere is not listed under it: an inherited property, or a method a
-    resource type contributed, is outlined where it is written. A trait or
+    Declarations only, as a code outline lists them: a type and its
+    properties, not its examples or annotations. A type's detail is its type
+    as written, and an optional member is named `name?`. A section the model
+    records no key for, `types:` or a method's `headers:`, spans its entries.
+
+    An entry is listed only inside the entry that wrote it, in the same file.
+    An inherited property is outlined under the type that declared it; a
+    method a resource type contributed, under nothing, since a trait or
     resource type is listed by name alone: its body is decoded only where it
     is applied (docs/08 § 5).
     """
     raml = snapshot.raml
     fragment = None if raml is None else raml.fragments.get(uri)
-    if raml is None or fragment is None:
+    if raml is None or not isinstance(fragment, (Library, APIFragment)):
         return []
     found: list[Symbol | None] = []
-    if isinstance(fragment, (Library, APIFragment)):
-        found += (_symbol(name, SymbolKind.LIBRARY, link, link.value) for name, link in fragment.uses.items())
-        for kind, table in zip(_TABLE_KINDS, _tables(fragment), strict=True):
-            found += (_declaration(name, kind, entity) for name, entity in table.items())
     if isinstance(fragment, APIFragment):
-        for item in fragment.documentation:
-            title, key = ('', item.key_pos) if item.title is None else (str(item.title.value), item.title.value_pos)
-            found.append(_symbol(title, SymbolKind.DOCUMENTATION, item, key=key))
-        found += (_parameter(name, param, None) for name, param in fragment.base_uri_parameters.items())
-        found += (_resource(e, None) for e in raml.endpoints.values() if e.full_uri == e.uri)
-    placed = [symbol for symbol in found if symbol is not None and symbol.uri == uri]
-    return sorted(placed, key=lambda symbol: (symbol.span.line, symbol.span.column))
+        metadata = (('title', fragment.title), ('version', fragment.version), ('baseUri', fragment.base_uri))
+        found += (_symbol(name, SymbolKind.METADATA, facet, facet.value) for name, facet in metadata if facet)
+        parameters = (_parameter(name, param, None) for name, param in fragment.base_uri_parameters.items())
+        found.append(_group('baseUriParameters', _placed(parameters, uri)))
+        items = (
+            _symbol(str(item.title.value), SymbolKind.DOCUMENTATION, item, key=item.title.value_pos)
+            for item in fragment.documentation
+            if item.title is not None
+        )
+        found.append(_group('documentation', _placed(items, uri)))
+    links = (_symbol(name, SymbolKind.LIBRARY, link, link.value) for name, link in fragment.uses.items())
+    found.append(_group('uses', _placed(links, uri)))
+    for section, kind, table in zip(_SECTIONS, _TABLE_KINDS, _tables(fragment), strict=True):
+        entries = (_declaration(name, kind, entity) for name, entity in table.items())
+        found.append(_group(section, _placed(entries, uri)))
+    if isinstance(fragment, APIFragment):
+        found += (
+            _resource(endpoint, None) for endpoint in raml.endpoints.values() if endpoint.full_uri == endpoint.uri
+        )
+    return _placed(found, uri)
+
+
+#: The key each declaration table is written under, in `_tables` order.
+_SECTIONS: Final = ('types', 'annotationTypes', 'traits', 'resourceTypes', 'securitySchemes')
 
 
 def _declaration(name: str, kind: SymbolKind, entity: object) -> Symbol | None:
     if isinstance(entity, BaseShape):
-        return _shape(name, kind, entity, None)
+        return _type(name, kind, entity, None)
     if isinstance(entity, SecuritySchemeDefinition):
         symbol = _symbol(name, kind, entity, entity.resolved().type)
         described = entity.described_by
         if symbol is not None and described is not None:
-            _adopt(symbol, _messages(described, symbol))
+            _adopt(symbol, [_group('describedBy', _placed(_message(described, symbol), symbol))])
         return symbol
     template = cast('TemplateDefinition', entity)
     return _symbol(name, kind, template)
 
 
-def _shape(name: str, kind: SymbolKind, base: BaseShape, parent: Symbol | None) -> Symbol | None:
-    """A type-like symbol: `base` and what it declares, or `None` where it is
-    not written inside `parent`, which is checked before descending, since an
-    inherited property is the parent type's own.
+def _type(name: str, kind: SymbolKind, base: BaseShape, parent: Symbol | None) -> Symbol | None:
+    """A type-like symbol: `base` and the members it declares, or `None` where
+    it is not written inside `parent`, which is checked before descending,
+    since an inherited property is the parent type's own.
     """
-    symbol = _symbol(name, kind, base, type_name(base))
+    symbol = _symbol(name, kind, base, _written(base))
     if symbol is None or not _inside(symbol, parent):
         return None
-    _declares(base, symbol)
+    symbol.form = 'enum' if base.enum is not None else base.type or ''
+    _members(base, symbol)
     return symbol
 
 
-def _declares(base: BaseShape, symbol: Symbol) -> None:
-    """Add to `symbol` what `base` declares inside it."""
+def _members(base: BaseShape, symbol: Symbol) -> None:
+    """Add to `symbol` the members `base` declares inside it."""
     shape = base.shape
     found: list[Symbol | None] = []
     # An alias shares its referent's containers (docs/07 § 3): they are the referent's.
     if base.alias is None and isinstance(shape, ObjectShape):
-        found += (_shape(key, SymbolKind.PROPERTY, prop.base, symbol) for key, prop in (shape.properties or {}).items())
+        found += (_property(key, prop, symbol) for key, prop in (shape.properties or {}).items())
         found += (
-            _shape(f'/{key}/', SymbolKind.PROPERTY, pattern.base, symbol)
+            _type(f'/{key}/', SymbolKind.PROPERTY, pattern.base, symbol)
             for key, pattern in (shape.pattern_properties or {}).items()
         )
     # Items a type expression built, `Book[]`, are placed at the array's own key.
-    if (
-        base.alias is None
-        and isinstance(shape, ArrayShape)
-        and shape.items is not None
-        and shape.items.key_pos != base.key_pos
-    ):
-        found.append(_shape('items', SymbolKind.TYPE, shape.items, symbol))
+    items = shape.items if base.alias is None and isinstance(shape, ArrayShape) else None
+    if items is not None and items.key_pos != base.key_pos:
+        found.append(_type('items', SymbolKind.TYPE, items, symbol))
     if base.custom_facet_defs:
-        found += (_shape(key, SymbolKind.FACET, prop.base, symbol) for key, prop in base.custom_facet_defs.items())
-    if base.custom_facets:
-        found += (_data(key, SymbolKind.FACET, value) for key, value in base.custom_facets.items())
-    found += (_symbol(example.name or 'example', SymbolKind.EXAMPLE, example) for example in examples_of(base))
-    if base.annotations:
-        found += _annotations(base.annotations)
+        facets = (_property(key, prop, symbol, SymbolKind.FACET) for key, prop in base.custom_facet_defs.items())
+        found.append(_group('facets', _placed(facets, symbol)))
     if found:
         _adopt(symbol, found)
 
 
+def _property(key: str, prop: Property, parent: Symbol, kind: SymbolKind = SymbolKind.PROPERTY) -> Symbol | None:
+    return _type(key if prop.required else f'{key}?', kind, prop.base, parent)
+
+
+def _parameter(name: str, param: Parameter, parent: Symbol | None) -> Symbol | None:
+    return _type(name if param.required else f'{name}?', SymbolKind.PARAMETER, param.declaration.base, parent)
+
+
+def _written(base: BaseShape) -> str:
+    """The type `base` was declared with, as written: `common.Address`,
+    `Book[] | Review`; where nothing was, as hover names it.
+    """
+    written = base.type_expr
+    if written is None or written.kind is NodeKind.MAPPING:
+        return type_name(base)
+    if written.kind is NodeKind.SEQUENCE:
+        return ', '.join(item.value for item in written.content if item.kind is NodeKind.SCALAR)
+    text = written.value.lstrip()
+    if written.tag != TAG_INCLUDE and text.startswith('{'):
+        return 'JSON schema'
+    if written.tag != TAG_INCLUDE and text.startswith('<'):
+        return 'XML schema'
+    return text
+
+
 def _resource(endpoint: EndPoint, parent: Symbol | None) -> Symbol | None:
-    applied = endpoint.resource_type
-    detail = '' if applied is None else applied.name
-    symbol = _symbol(endpoint.uri, SymbolKind.RESOURCE, endpoint, detail)
+    symbol = _symbol(endpoint.uri, SymbolKind.RESOURCE, endpoint, _shown(endpoint.display_name))
     if symbol is None or not _inside(symbol, parent):
         return None
-    found: list[Symbol | None] = [_parameter(name, param, symbol) for name, param in endpoint.uri_parameters.items()]
+    applied = [] if endpoint.resource_type is None else [endpoint.resource_type]
+    parameters = (_parameter(name, param, symbol) for name, param in endpoint.uri_parameters.items())
+    found: list[Symbol | None] = [
+        _applied('type', applied, symbol),
+        _applied('is', endpoint.traits, symbol),
+        _applied('securedBy', endpoint.secured_by if endpoint.explicit_secured_by else [], symbol),
+        _group('uriParameters', _placed(parameters, symbol)),
+    ]
     found += (_method(operation, symbol) for operation in endpoint.operations.values())
     found += (_resource(child, symbol) for child in endpoint.endpoints.values())
-    found += _annotations(endpoint.annotations)
     _adopt(symbol, found)
     return symbol
 
 
 def _method(operation: Operation, parent: Symbol) -> Symbol | None:
-    detail = ', '.join(applied.name for applied in operation.traits)
-    symbol = _symbol(operation.method, SymbolKind.METHOD, operation, detail)
+    symbol = _symbol(operation.method, SymbolKind.METHOD, operation, _shown(operation.display_name))
     if symbol is None or not _inside(symbol, parent):
         return None
-    found: list[Symbol | None] = []
+    found: list[Symbol | None] = [
+        _applied('is', operation.traits, symbol),
+        _applied('securedBy', operation.secured_by if operation.explicit_secured_by else [], symbol),
+    ]
     if operation.request is not None:
-        found += _messages(operation.request, symbol)
-        found += _bodies(operation.request.bodies, symbol)
+        found += _message(operation.request, symbol)
+        found.append(_group('body', _placed(_bodies(operation.request.bodies, symbol), symbol)))
     found += (_response(response, symbol) for response in operation.responses.values())
-    found += _annotations(operation.annotations)
     _adopt(symbol, found)
     return symbol
 
 
-def _messages(message: Request | SecuritySchemeDescription, parent: Symbol) -> Iterator[Symbol | None]:
-    """A request's, or a `describedBy`'s, parameters and query string; a
-    `describedBy`'s responses too.
+def _message(message: Request | SecuritySchemeDescription, parent: Symbol) -> list[Symbol | None]:
+    """A request's, or a `describedBy`'s, parameter groups and query string;
+    a `describedBy`'s responses too.
     """
-    yield from (_parameter(name, param, parent) for name, param in message.query_parameters.items())
-    yield from (_parameter(name, param, parent) for name, param in message.headers.items())
+    query = (_parameter(name, param, parent) for name, param in message.query_parameters.items())
+    headers = (_parameter(name, param, parent) for name, param in message.headers.items())
+    found: list[Symbol | None] = [
+        _group('queryParameters', _placed(query, parent)),
+        _group('headers', _placed(headers, parent)),
+    ]
     if message.query_string is not None:
-        yield _shape('queryString', SymbolKind.TYPE, message.query_string, parent)
+        found.append(_type('queryString', SymbolKind.TYPE, message.query_string, parent))
     if isinstance(message, SecuritySchemeDescription):
-        yield from (_response(response, parent) for response in message.responses.values())
+        found += (_response(response, parent) for response in message.responses.values())
+    return found
 
 
 def _response(response: Response, parent: Symbol) -> Symbol | None:
-    symbol = _symbol(response.code, SymbolKind.RESPONSE, response)
+    shown = _shown(response.display_name) or _shown(response.description)
+    symbol = _symbol(response.code, SymbolKind.RESPONSE, response, shown)
     if symbol is None or not _inside(symbol, parent):
         return None
-    found: list[Symbol | None] = [_parameter(name, param, symbol) for name, param in response.headers.items()]
-    found += _bodies(response.bodies, symbol)
-    found += _annotations(response.annotations)
-    _adopt(symbol, found)
+    headers = (_parameter(name, param, symbol) for name, param in response.headers.items())
+    bodies = _bodies(response.bodies, symbol)
+    _adopt(symbol, [_group('headers', _placed(headers, symbol)), _group('body', _placed(bodies, symbol))])
     return symbol
 
 
@@ -542,36 +589,62 @@ def _bodies(bodies: Mapping[str, Body], parent: Symbol) -> Iterator[Symbol | Non
         body, shape = same[0], same[0].shape
         name = ', '.join(each.media_type for each in same)
         # The body's own key: its shape's is none for `body: Book`.
-        symbol = _symbol(name, SymbolKind.BODY, body, '' if shape is None else type_name(shape))
+        symbol = _symbol(name, SymbolKind.BODY, body, '' if shape is None else _written(shape))
         if symbol is not None and shape is not None and _inside(symbol, parent):
-            _declares(shape, symbol)
+            _members(shape, symbol)
         yield symbol
 
 
-def _parameter(name: str, param: Parameter, parent: Symbol | None) -> Symbol | None:
-    return _shape(name, SymbolKind.PARAMETER, param.declaration.base, parent)
+def _applied(name: str, refs: Sequence[DirectiveRef | SecurityScheme], parent: Symbol) -> Symbol | None:
+    """What a resource or method applies, `is:` or `securedBy:`, as one entry
+    naming each, spanning those written inside `parent`.
+    """
+    placed = [ref for ref in refs if ref.location == parent.uri and ref.value_pos.is_known]
+    spans = [_spanning(ref.key_pos, ref.value_pos) for ref in placed]
+    if not spans or not all(_within(span, parent.span) for span in spans):
+        return None
+    detail = _line(', '.join(ref.name for ref in placed))
+    return Symbol(name, SymbolKind.METADATA, parent.uri, _union(spans), placed[0].key_pos, detail=detail)
 
 
-def _annotations(applied: Mapping[str, DomainExtension]) -> Iterator[Symbol | None]:
-    return (_data(f'({name})', SymbolKind.ANNOTATION, extension) for name, extension in applied.items())
+def _group(name: str, children: list[Symbol]) -> Symbol | None:
+    """A section holding `children`, or `None` for an empty one. The model
+    keeps no position for a section's key, so it spans its entries and
+    selects the first.
+    """
+    if not children:
+        return None
+    first = children[0]
+    span = _union([child.span for child in children])
+    return Symbol(name, SymbolKind.SECTION, first.uri, span, first.selection, children)
 
 
-def _data(name: str, kind: SymbolKind, written: DataNode | DomainExtension) -> Symbol | None:
-    """A custom facet value or an annotation, with a scalar value as detail."""
-    value = (written.value if isinstance(written, DomainExtension) else written).raw
-    if isinstance(value, (dict, list)) or value is None:
-        detail = ''
+def _union(spans: Sequence[Position]) -> Position:
+    start = min(spans, key=lambda span: (span.line, span.column))
+    end = max(spans, key=lambda span: (span.end_line, span.end_column))
+    return Position(start.line, start.column, end.end_line, end.end_column)
+
+
+def _shown(facet: ScalarFacet[str] | None) -> str:
+    return '' if facet is None else str(facet.value)
+
+
+def _placed(found: Iterable[Symbol | None], within: Symbol | str) -> list[Symbol]:
+    """What is written in the file `within`, or inside the entry `within`, in
+    the order written.
+    """
+    if isinstance(within, str):
+        placed = [symbol for symbol in found if symbol is not None and symbol.uri == within]
     else:
-        detail = str(value).lower() if isinstance(value, bool) else str(value)
-    return _symbol(name, kind, written, detail)
+        placed = [symbol for symbol in found if symbol is not None and _inside(symbol, within)]
+    if len(placed) > 1:
+        placed.sort(key=lambda symbol: (symbol.span.line, symbol.span.column))
+    return placed
 
 
 def _adopt(parent: Symbol, found: Iterable[Symbol | None]) -> None:
     """Add what is written inside `parent`, in the order written."""
-    placed = [symbol for symbol in found if symbol is not None and _inside(symbol, parent)]
-    if len(placed) > 1:
-        placed.sort(key=lambda symbol: (symbol.span.line, symbol.span.column))
-    parent.children += placed
+    parent.children += _placed(found, parent)
 
 
 def _inside(symbol: Symbol, parent: Symbol | None) -> bool:

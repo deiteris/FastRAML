@@ -104,7 +104,7 @@ about names, so a name it does not hold has no answer.
 | `definition` | the `DEFINITION` occurrence of the target; for a path, the fragment it decoded to |
 | `references`, `highlights` | the target's occurrences |
 | `hover` | `render` for a type, annotation type, property or facet; the kind, parameters, `usage` and `description` otherwise |
-| `document_symbols` | the fragment's `uses:`, declaration tables, documentation items, base URI parameters and resources, each with what it declares, from `key_pos` and `value_pos`; `type_name` for a type's detail |
+| `document_symbols` | the fragment's metadata, declaration tables, documentation and resources, grouped by section, from `key_pos` and `value_pos`; `type_expr`, else `type_name`, for a type's detail |
 | `workspace_symbols` | the declarations of every snapshot, matched case-insensitively, once each |
 | `links` | `include_refs` and `uses:` links, placed at their `LINK` occurrence |
 | `folding_ranges`, `selection_ranges` | the buffer's composed `Node` tree alone |
@@ -117,13 +117,26 @@ stages it completed. A declaration is an occurrence after decoding; a type
 name used in an expression is one only once P7 bound it. No query raises on a
 snapshot that stopped at any stage (`test_service_queries.py`).
 
-**Outline.** Every entry is read from the model. A type holds its properties,
-pattern properties, `items`, custom facet declarations and values, examples
-and annotations; a resource its URI parameters, methods, resources and
-annotations; a method its query parameters, headers, `queryString`, bodies by
-media type and responses; a response its headers and bodies; a security scheme
-its `describedBy`. The detail is the type named, as hover names it, a scalar
-value, the resource type applied, or a method's traits.
+**Outline.** Every entry is read from the model, and grouped as the file
+groups it, the way a code outline reads: `title`, `version` and `baseUri` with
+their values, then one section per declaration table (`uses`, `types`,
+`annotationTypes`, `traits`, `resourceTypes`, `securitySchemes`), the
+documentation, and the resources. A resource holds what it applies (`type`,
+`is`, `securedBy`, each one entry naming them), its `uriParameters` and its
+methods and resources; a method, what it applies, its `queryParameters`,
+`headers`, `queryString`, `body` by media type and responses; a response, its
+`headers` and `body`; a security scheme, its `describedBy`.
+
+Declarations only. A type holds its properties, pattern properties, an inline
+`items` and a `facets` section, not its examples, annotations or facet values.
+An optional property or parameter is named `name?`. A type's detail is its
+type as written (`common.Address`, `Book[] | Review`), `type_expr` from the
+model, or where nothing was written, `type_name`, as hover names it; its icon
+is its kind: object, array, union, enum or a scalar's. A resource's, method's
+or response's detail is its `displayName`, a response's else its description.
+
+The model keeps no position for a section's key (`types:`, a method's
+`headers:`), so a section spans its entries and selects the first.
 
 An entry is listed under another only when it is written in the same file,
 inside the other's span. So an inherited property is outlined under the type

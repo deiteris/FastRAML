@@ -77,6 +77,13 @@ def _where(text: str, needle: str, nth: int = 0) -> tuple[int, int]:
     return text.count('\n', 0, offset) + 1, offset - text.rfind('\n', 0, offset)
 
 
+def _tree(symbols: list[queries.Symbol]) -> list[object]:
+    """Each symbol's name, kind and detail, and its children's, if any."""
+    return [
+        (s.name, s.kind, s.detail, _tree(s.children)) if s.children else (s.name, s.kind, s.detail) for s in symbols
+    ]
+
+
 def _starts(sites: list[queries.Site]) -> list[tuple[str, int, int]]:
     return [(site.uri.rsplit('/', 1)[-1], site.span.line, site.span.column) for site in sites]
 
@@ -141,81 +148,87 @@ class TestHover:
 
 
 class TestSymbols:
-    def test_the_outline_holds_declarations_and_resources_with_their_methods(self, parsed):
+    def test_the_outline_groups_declarations_as_the_file_does(self, parsed):
         snapshot, folder = parsed
         found = queries.document_symbols(snapshot, f'{folder}/api.raml')
         assert [(symbol.name, symbol.kind) for symbol in found] == [
-            ('lib', SymbolKind.LIBRARY),
-            ('Entity', SymbolKind.TYPE),
-            ('Book', SymbolKind.TYPE),
-            ('paged', SymbolKind.TRAIT),
-            ('spare', SymbolKind.TRAIT),
-            ('collection', SymbolKind.RESOURCE_TYPE),
+            ('title', SymbolKind.METADATA),
+            ('uses', SymbolKind.SECTION),
+            ('types', SymbolKind.SECTION),
+            ('traits', SymbolKind.SECTION),
+            ('resourceTypes', SymbolKind.SECTION),
             ('/books', SymbolKind.RESOURCE),
         ]
+        assert [symbol.name for symbol in found[2].children] == ['Entity', 'Book']
         # `get` came from the resource type: it is written in its declaration.
-        assert [child.name for child in found[-1].children] == ['post']
+        assert [(child.name, child.detail) for child in found[-1].children] == [
+            ('type', 'collection'),
+            ('is', 'paged'),
+            ('post', ''),
+        ]
 
     def test_the_outline_holds_what_each_declaration_writes_and_not_what_it_inherits(self, tmp_path):
         document = (
             '#%RAML 1.0\ntitle: T\nmediaType: [application/json, application/xml]\n'
-            'annotationTypes:\n  note: string\n  flag: boolean\n'
+            'annotationTypes:\n  note: string\n'
             'types:\n'
             '  Base:\n    facets:\n      unit: string\n    properties:\n      id: string\n'
-            '  Item:\n    type: Base\n    unit: kg\n    (note): hi\n    (flag): true\n    properties:\n'
+            '  Item:\n    type: Base\n    unit: kg\n    (note): hi\n    properties:\n'
             '      tags:\n        type: array\n        items:\n          type: string\n'
-            '      related: Item[]\n      /^x-/: string\n'
+            '      related?: Item[]\n      /^x-/: string\n'
             '    examples:\n      one:\n        id: a\n'
-            '/items/{id}:\n  uriParameters:\n    id: string\n  get:\n'
-            '    headers:\n      X-Trace: string\n    queryParameters:\n      q: string\n'
+            '/items/{id}:\n  uriParameters:\n    id: string\n  get:\n    displayName: Read\n'
+            '    headers:\n      X-Trace: string\n    queryParameters:\n      q?: string\n'
             '    responses:\n      200:\n        headers:\n          ETag: string\n        body: Item\n'
         )
         write_files(tmp_path, {'api.raml': document})
         folder = path_to_file_uri(tmp_path)
         (snapshot,) = Workspace([folder]).snapshots(f'{folder}/api.raml')
-
-        def tree(symbols: list[queries.Symbol]) -> list[object]:
-            return [
-                (s.name, s.kind, s.detail, tree(s.children)) if s.children else (s.name, s.kind, s.detail)
-                for s in symbols
-            ]
-
-        # Item holds no `id`: Base wrote it. `related: Item[]` holds no `items`:
-        # an expression built it. The two default media types are one `body:`.
-        assert tree(queries.document_symbols(snapshot, f'{folder}/api.raml')) == [
-            ('note', SymbolKind.ANNOTATION_TYPE, 'string'),
-            ('flag', SymbolKind.ANNOTATION_TYPE, 'boolean'),
-            ('Base', SymbolKind.TYPE, 'object', [
-                ('unit', SymbolKind.FACET, 'string'),
-                ('id', SymbolKind.PROPERTY, 'string'),
-            ]),
-            ('Item', SymbolKind.TYPE, 'Base', [
-                ('unit', SymbolKind.FACET, 'kg'),
-                ('(note)', SymbolKind.ANNOTATION, 'hi'),
-                ('(flag)', SymbolKind.ANNOTATION, 'true'),
-                ('tags', SymbolKind.PROPERTY, 'string[]', [('items', SymbolKind.TYPE, 'string')]),
-                ('related', SymbolKind.PROPERTY, 'Item[]'),
-                ('/^x-/', SymbolKind.PROPERTY, 'string'),
-                ('one', SymbolKind.EXAMPLE, ''),
+        section = SymbolKind.SECTION
+        # Item holds no `id`: Base wrote it; nor its facet value, annotation or
+        # example, which are not declarations. `related?: Item[]` holds no
+        # `items`: an expression built it. The two default media types are one
+        # `body:`.
+        assert _tree(queries.document_symbols(snapshot, f'{folder}/api.raml')) == [
+            ('title', SymbolKind.METADATA, 'T'),
+            ('annotationTypes', section, '', [('note', SymbolKind.ANNOTATION_TYPE, 'string')]),
+            ('types', section, '', [
+                ('Base', SymbolKind.TYPE, 'object', [
+                    ('facets', section, '', [('unit', SymbolKind.FACET, 'string')]),
+                    ('id', SymbolKind.PROPERTY, 'string'),
+                ]),
+                ('Item', SymbolKind.TYPE, 'Base', [
+                    ('tags', SymbolKind.PROPERTY, 'array', [('items', SymbolKind.TYPE, 'string')]),
+                    ('related?', SymbolKind.PROPERTY, 'Item[]'),
+                    ('/^x-/', SymbolKind.PROPERTY, 'string'),
+                ]),
             ]),
             ('/items/{id}', SymbolKind.RESOURCE, '', [
-                ('id', SymbolKind.PARAMETER, 'string'),
-                ('get', SymbolKind.METHOD, '', [
-                    ('X-Trace', SymbolKind.PARAMETER, 'string'),
-                    ('q', SymbolKind.PARAMETER, 'string'),
+                ('uriParameters', section, '', [('id', SymbolKind.PARAMETER, 'string')]),
+                ('get', SymbolKind.METHOD, 'Read', [
+                    ('headers', section, '', [('X-Trace', SymbolKind.PARAMETER, 'string')]),
+                    ('queryParameters', section, '', [('q?', SymbolKind.PARAMETER, 'string')]),
                     ('200', SymbolKind.RESPONSE, '', [
-                        ('ETag', SymbolKind.PARAMETER, 'string'),
-                        ('application/json, application/xml', SymbolKind.BODY, 'Item'),
+                        ('headers', section, '', [('ETag', SymbolKind.PARAMETER, 'string')]),
+                        ('body', section, '', [
+                            ('application/json, application/xml', SymbolKind.BODY, 'Item'),
+                        ]),
                     ]),
                 ]),
             ]),
         ]  # fmt: skip
 
+    def test_a_section_spans_its_entries_and_selects_the_first(self, parsed):
+        snapshot, folder = parsed
+        types = next(s for s in queries.document_symbols(snapshot, f'{folder}/api.raml') if s.name == 'types')
+        entity, book = types.children
+        assert (types.span.line, types.span.end_line) == (entity.span.line, book.span.end_line)
+        assert types.selection == entity.selection
+
     def test_a_symbol_spans_its_value_and_selects_its_name(self, parsed):
         snapshot, folder = parsed
-        book = next(
-            symbol for symbol in queries.document_symbols(snapshot, f'{folder}/api.raml') if symbol.name == 'Book'
-        )
+        types = next(s for s in queries.document_symbols(snapshot, f'{folder}/api.raml') if s.name == 'types')
+        book = next(symbol for symbol in types.children if symbol.name == 'Book')
         line, column = _where(API, 'Book:')
         assert (book.selection.line, book.selection.column, book.selection.end_column) == (line, column, column + 4)
         assert (book.span.line, book.span.end_line) == (line, _where(API, 'cover.raml')[0])
@@ -229,7 +242,8 @@ class TestSymbols:
         )
         folder = path_to_file_uri(tmp_path)
         (snapshot,) = Workspace([folder]).snapshots(f'{folder}/api.raml')
-        (home,) = queries.document_symbols(snapshot, f'{folder}/api.raml')
+        _title, documentation = queries.document_symbols(snapshot, f'{folder}/api.raml')
+        (home,) = documentation.children
         line, column = _where(document, 'Home')
         assert (home.selection.line, home.selection.column, home.selection.end_column) == (line, column, column + 4)
         assert (home.span.line, home.span.end_line) == (line, 7)

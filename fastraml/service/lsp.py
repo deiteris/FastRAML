@@ -73,9 +73,28 @@ _SYMBOL: Final = {
     queries.SymbolKind.PARAMETER: types.SymbolKind.Variable,
     queries.SymbolKind.RESPONSE: types.SymbolKind.Event,
     queries.SymbolKind.BODY: types.SymbolKind.Object,
-    queries.SymbolKind.EXAMPLE: types.SymbolKind.Constant,
-    queries.SymbolKind.ANNOTATION: types.SymbolKind.Operator,
+    queries.SymbolKind.METADATA: types.SymbolKind.String,
+    queries.SymbolKind.SECTION: types.SymbolKind.Package,
 }
+
+#: A type declaration's icon, by its kind; any other is `_SYMBOL`'s.
+_FORM: Final = {
+    'object': types.SymbolKind.Class,
+    'array': types.SymbolKind.Array,
+    'union': types.SymbolKind.Interface,
+    'enum': types.SymbolKind.Enum,
+    'string': types.SymbolKind.String,
+    'number': types.SymbolKind.Number,
+    'integer': types.SymbolKind.Number,
+    'boolean': types.SymbolKind.Boolean,
+    'nil': types.SymbolKind.Null,
+}
+
+
+def _kind(symbol: queries.Symbol) -> types.SymbolKind:
+    if symbol.kind is queries.SymbolKind.TYPE and symbol.form in _FORM:
+        return _FORM[symbol.form]
+    return _SYMBOL[symbol.kind]
 
 
 def _file(uri: str) -> str | None:
@@ -249,7 +268,7 @@ class RamlServer(LanguageServer):
     def _symbol(self, positions: _Positions, symbol: queries.Symbol) -> types.DocumentSymbol:
         return types.DocumentSymbol(
             name=symbol.name,
-            kind=_SYMBOL[symbol.kind],
+            kind=_kind(symbol),
             range=positions.range(symbol.uri, symbol.span),
             selection_range=positions.range(symbol.uri, symbol.selection),
             detail=symbol.detail or None,
@@ -259,7 +278,7 @@ class RamlServer(LanguageServer):
     def _item(self, positions: _Positions, symbol: queries.Symbol) -> types.TypeHierarchyItem:
         return types.TypeHierarchyItem(
             name=symbol.name,
-            kind=_SYMBOL[symbol.kind],
+            kind=_kind(symbol),
             uri=self._client(symbol.uri),
             range=positions.range(symbol.uri, symbol.span),
             selection_range=positions.range(symbol.uri, symbol.selection),
@@ -378,7 +397,7 @@ class RamlServer(LanguageServer):
                 types.WorkspaceSymbol(
                     location=self._location(positions, queries.Site(symbol.uri, symbol.selection)),
                     name=symbol.name,
-                    kind=_SYMBOL[symbol.kind],
+                    kind=_kind(symbol),
                 )
                 for symbol in queries.workspace_symbols(snapshots, params.query)
             ]

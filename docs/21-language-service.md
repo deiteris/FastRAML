@@ -38,8 +38,10 @@ send (`file:///c%3A/...`).
 **Roots.** A root is an API, Overlay or Extension document, found by its
 header (`docs/03` § 3) among the `.raml` files `SafeFileLoader.files` lists,
 and among unsaved buffers. `roots=[...]` globs over folder-relative paths
-replace discovery. Discovery runs again when a buffer's header line changes,
-a buffer opens, or a file changes on disk.
+replace discovery. Discovery runs again when a file changes on disk. A
+buffer that opens, closes or changes its header line decides again for its
+own file only: listing the folders on each open read every header, 0.23 s on
+the TCK's 1011 files.
 
 **Snapshots.** A snapshot is one `parse_lenient` of one root, with
 `unwrap=True, validate=True, retain_text=True` and the configuration's
@@ -154,9 +156,9 @@ adapter hands the whole text to `Workspace.change`. File changes come from
 `workspace/didChangeWatchedFiles`, registered for `**/*` where the client
 allows it.
 
-**Diagnostics.** A change publishes 0.3 s after the last one. Parser
-diagnostics go first; the lint tier follows on the next turn of the loop, and
-a change that comes in between postpones it. A request never waits: a query
+**Diagnostics.** A change publishes 0.3 s after the last one; an open, at
+once. Parser diagnostics go first; the lint tier follows on the next turn of
+the loop, and a change that comes in between postpones it. A request never waits: a query
 parses whatever is stale.
 
 A file shows the diagnostics of every root that reads it (`readers`),

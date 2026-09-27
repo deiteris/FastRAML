@@ -164,15 +164,16 @@ class Workspace:
     # -- buffers --------------------------------------------------------------
 
     def open(self, uri: str, text: str, version: int) -> None:
-        # A new buffer may be a file a failed include was looking for.
-        self._put(canonical(uri), Buffer(text, version), appeared=True)
+        self._put(canonical(uri), Buffer(text, version))
 
     def change(self, uri: str, text: str, version: int) -> None:
-        self._put(canonical(uri), Buffer(text, version), appeared=False)
+        self._put(canonical(uri), Buffer(text, version))
 
     def close(self, uri: str) -> None:
         uri = canonical(uri)
         if self.buffers.pop(uri, None) is not None:
+            # The file on disk may say otherwise than the buffer did.
+            self._classify(uri)
             self._touched(uri, appeared=False)
 
     def changed_on_disk(self, uri: str) -> None:
@@ -206,14 +207,31 @@ class Workspace:
         buffer = self.buffers.get(canonical(uri))
         return buffer.lines if buffer is not None else Lines(self.text(uri) or '')
 
-    def _put(self, uri: str, buffer: Buffer, *, appeared: bool) -> None:
+    def _put(self, uri: str, buffer: Buffer) -> None:
+        """Hold `buffer`, and drop what read other text for `uri`.
+
+        A buffer opened on its file's text changes nothing a parse reads. One
+        for a file no parse could read may be what a failed include was
+        looking for; dropping every failed snapshot on each open instead
+        reparsed 437 of the TCK's 1011 roots.
+        """
         old = self.buffers.get(uri)
+        before = old.text if old is not None else self.text(uri)
         self.buffers[uri] = buffer
         if old is None or _head(old.text) != _head(buffer.text):
-            # Whether it is a root is decided by its header.
-            self._roots = None
-        if old is None or old.text != buffer.text:
-            self._touched(uri, appeared=appeared)
+            self._classify(uri)
+        if before != buffer.text:
+            self._touched(uri, appeared=before is None)
+
+    def _classify(self, uri: str) -> None:
+        """Whether `uri` is a root, decided again by its header, without
+        listing the folders again: opening a file in a thousand-file folder
+        otherwise reads every header. `roots` globs do not read headers.
+        """
+        if self._roots is None or self._globs:
+            return
+        if self._is_root(uri) != (uri in self._roots):
+            self._roots = sorted({*self._roots} ^ {uri})
 
     def _touched(self, uri: str, *, appeared: bool) -> None:
         """Drop every snapshot that read `uri`.

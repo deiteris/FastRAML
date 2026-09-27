@@ -64,6 +64,22 @@ class TestRoots:
         workspace.open(f'{folder}/lib.raml', API, 1)
         assert workspace.roots() == [f'{folder}/api.raml', f'{folder}/lib.raml']
 
+    def test_a_closed_buffer_is_decided_by_its_file_again(self, tmp_path):
+        workspace, folder = _workspace(tmp_path, {'api.raml': API, 'lib.raml': LIBRARY})
+        workspace.open(f'{folder}/lib.raml', API, 1)
+        assert workspace.roots() == [f'{folder}/api.raml', f'{folder}/lib.raml']
+        workspace.close(f'{folder}/lib.raml')
+        assert workspace.roots() == [f'{folder}/api.raml']
+
+    def test_a_buffer_decides_for_its_own_file_without_listing_the_folders(self, tmp_path, monkeypatch):
+        # Listing read every header on each open: 0.23 s on the TCK's 1011 files.
+        workspace, folder = _workspace(tmp_path, {'api.raml': API, 'lib.raml': LIBRARY})
+        workspace.roots()
+        monkeypatch.setattr(workspace, '_discover', lambda: pytest.fail('the folders were listed again'))
+        workspace.open(f'{folder}/lib.raml', API, 1)
+        workspace.close(f'{folder}/lib.raml')
+        assert workspace.roots() == [f'{folder}/api.raml']
+
     def test_an_editors_spelling_of_a_uri_is_the_parsers(self, tmp_path):
         uri = path_to_file_uri(tmp_path / 'api.raml')
         assert canonical(uri.replace(':', '%3A', 1).replace('file%3A', 'file:')) == uri
@@ -118,6 +134,15 @@ class TestSnapshots:
         assert workspace.snapshot(root).error is not None
         workspace.open(f'{folder}/lib.raml', LIBRARY, 1)
         assert workspace.snapshot(root).error is None
+
+    def test_opening_a_file_on_its_own_text_keeps_every_snapshot(self, tmp_path):
+        # Failed ones too: each open reparsed 437 of the TCK's 1011 roots.
+        workspace, folder = _workspace(tmp_path, {**self.FILES, 'broken.raml': API + 'types:\n  A: Nope\n'})
+        kept = [workspace.snapshot(f'{folder}/{name}') for name in ('api.raml', 'broken.raml')]
+        assert kept[1].error is not None
+        workspace.open(f'{folder}/lib.raml', LIBRARY, 1)
+        workspace.open(f'{folder}/other.raml', API, 1)
+        assert [workspace.snapshot(f'{folder}/{name}') for name in ('api.raml', 'broken.raml')] == kept
 
     def test_a_file_changed_on_disk_is_read_again(self, tmp_path):
         workspace, folder = _workspace(tmp_path, self.FILES)

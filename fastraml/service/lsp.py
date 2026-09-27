@@ -151,10 +151,10 @@ class RamlServer(LanguageServer):
     def positions(self) -> _Positions:
         return _Positions(self.service, Encoding(self.workspace.position_encoding or Encoding.UTF16))
 
-    def changed(self, uri: str) -> None:
-        """Publish `uri`'s diagnostics, and its dependents', after the pause."""
+    def changed(self, uri: str, delay: float = DEBOUNCE) -> None:
+        """Publish `uri`'s diagnostics, and its dependents', after `delay`."""
         self._pending.add(uri)
-        self._schedule(DEBOUNCE, lint=False)
+        self._schedule(delay, lint=False)
 
     def _schedule(self, delay: float, *, lint: bool) -> None:
         if self._timer is not None:
@@ -281,7 +281,8 @@ class RamlServer(LanguageServer):
             if (uri := _file(document.uri)) is not None:
                 self._spelling[uri] = document.uri
                 self.service.open(uri, document.text, document.version)
-                self.changed(uri)
+                # An open is no keystroke: there is no burst to wait out.
+                self.changed(uri, 0)
 
         @feature(types.TEXT_DOCUMENT_DID_CHANGE)
         def did_change(params: types.DidChangeTextDocumentParams) -> None:

@@ -114,6 +114,7 @@ __all__ = [
     'decode_trait_definitions',
     'identify_fragment',
     'parse_fragment',
+    'parse_included_fragment',
     'parse_library',
     'resolve_uses',
 ]
@@ -947,7 +948,7 @@ def _one_definition(  # noqa: PLR0913 - the declaration, its kind, and where to 
     definition = _DEFINITION_BUILDERS[kind](raml, key, value, location, attach=attach)
     if definition.link_uri:
         with raml.marking(definition):
-            fragment = parse_fragment(raml, definition.link_uri, kind)
+            fragment = parse_included_fragment(raml, definition.link_uri, kind, value, location)
         definition.link = getattr(fragment, 'definition', None)
 
 
@@ -1022,7 +1023,7 @@ def unmarshal_documentation_items(
             # The target is a fragment with its own cache, so the reference is
             # noted rather than resolved: resolving would read the file twice.
             target = note_include_ref(raml, item_node, location)
-            fragment = parse_fragment(raml, target, FragmentKind.DOCUMENTATION_ITEM)
+            fragment = parse_included_fragment(raml, target, FragmentKind.DOCUMENTATION_ITEM, item_node, location)
             if isinstance(fragment, DocumentationItemFragment) and fragment.item is not None:
                 items.append(fragment.item)
         else:
@@ -1168,6 +1169,22 @@ def _decode_json_data_type(raml: Raml, uri: str, text: str) -> DataTypeFragment:
     raml.put_fragment(uri, fragment)
     fragment.decode_json_schema(text)
     return fragment
+
+
+def parse_included_fragment(raml: Raml, target: str, kind: FragmentKind, node: Node, location: str) -> Fragment:
+    """`parse_fragment` for the `!include` `node` names, `target`, with a
+    failure wrapped at the include: the fragment's own frames carry no place in
+    the including file, and one that fails to load carries none at all
+    (docs/11 § 3). `include` is no fatal key, so the failure stays local
+    (docs/11 § 2).
+    """
+    try:
+        return parse_fragment(raml, target, kind)
+    except RamlError as err:
+        written = raml.document_location(node, location)
+        raise RamlError.wrap(
+            'include', err, written, node.full_position, kind=ErrorKind.LOADING, info={'path': target}
+        ) from err
 
 
 def parse_library(raml: Raml, uri: str) -> Library:

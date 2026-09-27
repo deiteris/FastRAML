@@ -700,15 +700,20 @@ class TestStillFatal:
 
     @pytest.mark.parametrize(('files', 'message'), INCLUDED.values(), ids=list(INCLUDED))
     def test_a_type_include_that_fails_is_not_fatal(self, workspace, files, message):
-        """A fragment `!include`d in a type position is not wrapped for the
-        include: its failure is the head of the error, located in the included
-        file. The message is a fatal one; the location is what says it is not
-        the entry's.
+        """A fragment `!include`d in a type position fails under an `include`
+        frame at the include (docs/11 § 3), whose key is not fatal. The
+        message inside is a fatal one; the frame outside it is what says it is
+        not the entry's.
         """
         root = workspace({'api.raml': API + 'types:\n  A: !include t.raml\n  T: string\n', **files})
         raml, error = workspace.lenient(root / 'api.raml', BOTH)
         assert error is not None
-        assert error.head.message == message
+        outer, *inner = error.frames()
+        assert (outer.message, outer.location.rsplit('/', 1)[1]) == ('include', 'api.raml')
+        # At the include, so an editor can show a file that failed to load.
+        assert outer.position is not None
+        assert outer.position.is_known
+        assert message in [frame.message for frame in inner]
         assert raml.entry_point is not None
 
     def test_an_include_outside_the_workspace_is_not_fatal(self, tmp_path):
@@ -721,5 +726,5 @@ class TestStillFatal:
         )
         raml, error = parse_lenient(root / 'sub' / 'api.raml', BOTH)
         assert error is not None
-        assert error.head.message == 'load resource'
+        assert [frame.message for frame in error.frames()][:2] == ['include', 'load resource']
         assert raml.entry_point is not None

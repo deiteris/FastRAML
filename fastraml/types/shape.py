@@ -754,9 +754,10 @@ def _parse_data_type(raml: Raml, type_node: Node, location: str) -> DataTypeFrag
     The import is deferred because the recursion is in the language: a type
     may be a file, and a file declares types (docs/02-architecture.md § 2).
     """
-    from fastraml.parser.fragments import DataTypeFragment, FragmentKind, parse_fragment  # noqa: PLC0415
+    from fastraml.parser.fragments import DataTypeFragment, FragmentKind, parse_included_fragment  # noqa: PLC0415
 
-    fragment = parse_fragment(raml, note_include_ref(raml, type_node, location), FragmentKind.DATA_TYPE)
+    target = note_include_ref(raml, type_node, location)
+    fragment = parse_included_fragment(raml, target, FragmentKind.DATA_TYPE, type_node, location)
     if not isinstance(fragment, DataTypeFragment):  # pragma: no cover - the kind check guarantees this
         raise node_error('expected a data type fragment', location, type_node)
     return fragment
@@ -767,9 +768,10 @@ def _parse_named_example(raml: Raml, value_node: Node, location: str) -> NamedEx
 
     Deferred for the same reason as `_parse_data_type`.
     """
-    from fastraml.parser.fragments import FragmentKind, NamedExample, parse_fragment  # noqa: PLC0415
+    from fastraml.parser.fragments import FragmentKind, NamedExample, parse_included_fragment  # noqa: PLC0415
 
-    fragment = parse_fragment(raml, note_include_ref(raml, value_node, location), FragmentKind.NAMED_EXAMPLE)
+    target = note_include_ref(raml, value_node, location)
+    fragment = parse_included_fragment(raml, target, FragmentKind.NAMED_EXAMPLE, value_node, location)
     if not isinstance(fragment, NamedExample):  # pragma: no cover - the kind check guarantees this
         raise node_error('expected a named example fragment', location, value_node)
     return fragment

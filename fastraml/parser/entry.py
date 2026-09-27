@@ -176,8 +176,8 @@ def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = N
 #:
 #: Matched on the head of the error, and only when the head is located in the
 #: entry file. The same failure in an included file is local: a library's
-#: failure arrives wrapped in the `uses:` trace, and a fragment `!include`d in
-#: a type position surfaces unwrapped but with its own location.
+#: failure arrives wrapped in the `uses:` trace, and an `!include`d fragment's
+#: in an `include` frame, neither of them a fatal key.
 #:
 #: An unreadable entry file is not listed: `_open` raises it before parsing.
 #: `entry_point is None` cannot stand in for this set, because registration

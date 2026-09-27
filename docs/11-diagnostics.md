@@ -142,9 +142,12 @@ the entry URI as that frame's location:
 | `unexpected fragment kind` | A fragment header conflicts with the context that loaded it |
 | `must be map` | The entry root is not a mapping |
 
-The same failure in an included fragment remains local even when a type-fragment
-include surfaces it without an extra frame, because its location is not the entry
-URI. `parse_lenient()` accepts paths only; there is no string-input lenient entry
+The same failure in an included fragment remains local: a library's arrives
+under the `uses:` frame, and an `!include`d fragment's, in a type, example,
+template or documentation position, under an `include` frame at the include,
+neither of them a fatal key. That frame also places the failure in the
+including file, where one that fails to load has no position of its own.
+`parse_lenient()` accepts paths only; there is no string-input lenient entry
 point.
 
 ## 3. Source positions

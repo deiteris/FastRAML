@@ -747,7 +747,7 @@ class UnionShape(ComplexKind):
             raise rejected(
                 'unknown discriminator value',
                 self.base,
-                info={'path': path, 'discriminator': table.name, 'value': _spell(tag), 'known': list(table.known)},
+                info={'path': path, 'discriminator': table.name, 'known': list(table.known)},
             )
         return member
 

@@ -152,7 +152,7 @@ def _load(raml: Raml, uri: str, kind: FragmentKind, text: str, *, seen: list[str
         head = read_head(master_text)
         master_kind = identify_fragment(head)
         if master_kind is None:
-            raise RamlError.new('unknown fragment kind', master, info={'head': head}, kind=ErrorKind.PARSING)
+            raise RamlError.new('unknown fragment kind', master, kind=ErrorKind.PARSING)
         if master_kind not in _MASTER_KINDS:
             raise RamlError.new(
                 'unexpected fragment kind',

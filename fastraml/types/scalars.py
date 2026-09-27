@@ -168,19 +168,19 @@ def _validate_numeric(
         raise broken(
             'value is below the minimum',
             minimum,
-            info={'path': path, 'value': str(number), 'minimum': str(minimum.value)},
+            info={'path': path, 'minimum': str(minimum.value)},
         )
     if maximum is not None and number > maximum.value:
         raise broken(
             'value is above the maximum',
             maximum,
-            info={'path': path, 'value': str(number), 'maximum': str(maximum.value)},
+            info={'path': path, 'maximum': str(maximum.value)},
         )
     if multiple_of is not None and not is_multiple_of(number, multiple_of.value):
         raise broken(
             'value is not a multiple',
             multiple_of,
-            info={'path': path, 'value': str(number), 'multipleOf': str(multiple_of.value)},
+            info={'path': path, 'multipleOf': str(multiple_of.value)},
         )
 
 
@@ -255,7 +255,7 @@ class _DateKind(ScalarKind):
             raise rejected(
                 'invalid date',
                 self.base,
-                info={'path': path, 'expected': self.GRAMMAR, 'value': value},
+                info={'path': path, 'expected': self.GRAMMAR},
             )
 
 
@@ -318,7 +318,7 @@ class DateTimeShape(ScalarKind):
             raise rejected(
                 'invalid date',
                 self.base,
-                info={'path': path, 'expected': 'rfc2616' if rfc2616 else 'rfc3339', 'value': value},
+                info={'path': path, 'expected': 'rfc2616' if rfc2616 else 'rfc3339'},
             )
 
 
@@ -378,7 +378,7 @@ class StringShape(ScalarKind):
             raise broken(
                 'value does not match pattern',
                 self.pattern,
-                info={'path': path, 'pattern': self.pattern.value.pattern, 'value': value},
+                info={'path': path, 'pattern': self.pattern.value.pattern},
             )
 
 
@@ -476,7 +476,7 @@ class IntegerShape(ScalarKind):
             raise rejected(
                 'value is not an integer',
                 self.base,
-                info={'path': path, 'value': str(number)},
+                info={'path': path},
             )
         _validate_numeric(number, path, minimum=self.minimum, maximum=self.maximum, multiple_of=self.multiple_of)
         if self.format is not None:
@@ -485,7 +485,7 @@ class IntegerShape(ScalarKind):
                 raise broken(
                     'value is outside the format range',
                     self.format,
-                    info={'path': path, 'value': str(number), 'format': self.format.value},
+                    info={'path': path, 'format': self.format.value},
                 )
 
 

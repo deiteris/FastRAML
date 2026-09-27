@@ -302,6 +302,15 @@ raise RamlError.new(
 This keeps `Trace.message` suitable for grouping and for test assertions.
 Tests assert the message key and `info` separately, not assembled display text.
 
+`info` never repeats the text a diagnostic is placed at: not a value
+(an example's, a facet's, a discriminator's), not a document's header line,
+not a JSON Schema validator's message, which quotes the instance. That text
+may come from any file an `!include` names, and a diagnostic travels further
+than the file: to a log, a CI report, an editor. The position already shows
+it to whoever may read the file. `info` holds names and constraints: the
+facet, the bound, the pattern, the known discriminator values, the
+`schema_path` or `keyword`.
+
 A wrapped exception follows it too. An `OSError` with an `errno`, from any
 loader, a caller's included, becomes `file not found`, `permission denied`,
 `not a regular file`, or `cannot read file` with `info['error']`: its text

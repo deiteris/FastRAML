@@ -213,3 +213,61 @@ def test_a_missing_custom_facet_is_placed_at_the_type_beside_its_declaration(wor
     frame = innermost(workspace, {'api.raml': document})['required custom facet is missing']
     assert span(frame.position) == where(document, 'Sub')
     assert span(frame.origin.position) == where(document, 'unit')
+
+
+SECRET = 'hunter2-secret'
+
+
+@pytest.mark.parametrize(
+    ('files', 'message'),
+    [
+        pytest.param(
+            {'secret.txt': f'{SECRET}\n', 'api.raml': API + 'types:\n  T: !include secret.txt\n'},
+            'unknown fragment kind',
+            id='header',
+        ),
+        pytest.param(
+            {
+                'secret.txt': SECRET,
+                'api.raml': API + 'types:\n  T:\n    pattern: ^x\n    example: !include secret.txt\n',
+            },
+            'value does not match pattern',
+            id='pattern',
+        ),
+        pytest.param(
+            {'api.raml': API + f'types:\n  T:\n    type: date-only\n    example: {SECRET}\n'},
+            'invalid date',
+            id='date',
+        ),
+        pytest.param(
+            {'api.raml': API + f'types:\n  T:\n    type: integer\n    maximum: 1\n    example: 1{len(SECRET)}\n'},
+            'value is above the maximum',
+            id='number',
+        ),
+        pytest.param(
+            {'api.raml': API + f'types:\n  T:\n    type: |\n      {{"type": "integer"}}\n    example: {SECRET}\n'},
+            'value does not match the JSON schema',
+            id='json schema',
+        ),
+        pytest.param(
+            {'api.raml': API + f'types:\n  T:\n    type: |\n      {{"type": "{SECRET}"}}\n'},
+            'invalid JSON schema',
+            id='schema',
+        ),
+        pytest.param(
+            {
+                'api.raml': API + 'types:\n  P:\n    discriminator: kind\n    properties:\n      kind: string\n'
+                f'  C:\n    type: P\n    example:\n      kind: {SECRET}\n'
+            },
+            'discriminator value names no known type',
+            id='discriminator',
+        ),
+    ],
+)
+def test_a_diagnostic_never_repeats_the_text_it_is_placed_at(workspace, files, message):
+    # docs/11 § 6: the text may be any file an `!include` names.
+    found = innermost(workspace, files)
+    assert message in found
+    rendered = str(found[message]) + repr(found[message].to_dict())
+    assert SECRET not in rendered
+    assert f'1{len(SECRET)}' not in rendered

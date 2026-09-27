@@ -96,7 +96,7 @@ def check_non_negative(name: str, value: int, location: str, position: Position 
     Returns rather than raises: every caller is accumulating.
     """
     if value < 0:
-        return failure('facet must not be negative', location, position, info={'facet': name, 'value': value})
+        return failure('facet must not be negative', location, position, info={'facet': name})
     return None
 
 

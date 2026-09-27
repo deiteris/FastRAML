@@ -1103,7 +1103,7 @@ def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> None:
     head = read_head(text)
     found = identify_fragment(head)
     if found is None:
-        raise RamlError.new('unknown fragment kind', uri, info={'head': head}, kind=ErrorKind.PARSING)
+        raise RamlError.new('unknown fragment kind', uri, kind=ErrorKind.PARSING)
     if found is kind:
         return
     if kind is FragmentKind.DATA_TYPE and found is FragmentKind.ANNOTATION_TYPE:

@@ -215,7 +215,7 @@ def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
         head = read_head(text)
         kind = identify_fragment(head)
         if kind is None:
-            raise RamlError.new('unknown fragment kind', uri, info={'head': head}, kind=ErrorKind.PARSING)
+            raise RamlError.new('unknown fragment kind', uri, kind=ErrorKind.PARSING)
 
         # P1 to P3 — compose, decode, and resolve `uses:` recursively. All three
         # happen inside decode_fragment, which owns their ordering.

@@ -80,7 +80,7 @@ def scalar_int(node: Node, location: str) -> int:
     try:
         return parse_int(node.value)
     except ValueError as err:
-        raise node_error('expected an integer value', location, node, info={'value': node.value}) from err
+        raise node_error('expected an integer value', location, node) from err
 
 
 def scalar_fraction(node: Node, location: str) -> Fraction:
@@ -100,7 +100,7 @@ def scalar_fraction(node: Node, location: str) -> Fraction:
             return Fraction(parse_int(node.value))
         return Fraction(text)
     except (ValueError, ZeroDivisionError) as err:
-        raise node_error('expected a number value', location, node, info={'value': node.value}) from err
+        raise node_error('expected a number value', location, node) from err
 
 
 def regex_engine(raml: Raml) -> Any:

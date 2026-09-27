@@ -204,7 +204,7 @@ class TestNumericExactness:
         integer = declared(workspace, '  T:\n    type: integer\n    maximum: 10\n')
         error = integer.validate(11)
         assert error is not None
-        assert error.head.info == {'path': '$', 'value': '11', 'maximum': '10'}
+        assert error.head.info == {'path': '$', 'maximum': '10'}
 
 
 class TestString:
@@ -426,7 +426,6 @@ class TestUnionDispatchesOnADiscriminator:
         assert error is not None
         trace = next(t for chain in error.chains() for t in chain if t.message == 'unknown discriminator value')
         assert trace.info['discriminator'] == 'kind'
-        assert trace.info['value'] == 'Fish'
         assert trace.info['known'] == ['Cat', 'Dog']
 
     def test_the_selected_member_reports_its_own_failure(self, workspace):

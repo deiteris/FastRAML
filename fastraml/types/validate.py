@@ -335,7 +335,7 @@ def _check_one(  # noqa: PLR0913, PLR0917 - as above
             'discriminator value names no known type',
             data.location,
             locate(data, key_path(path, discriminator)),
-            info={'path': path, 'discriminator': discriminator, 'value': written, 'known': sorted(allowed)},
+            info={'path': path, 'discriminator': discriminator, 'known': sorted(allowed)},
         )
     )
 

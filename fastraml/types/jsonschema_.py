@@ -174,7 +174,7 @@ class SchemaRegistry:
                 location,
                 position,
                 kind=ErrorKind.PARSING,
-                info={'error': err.message, 'path': '/'.join(str(part) for part in err.absolute_path)},
+                info={'keyword': str(err.validator), 'path': '/'.join(str(part) for part in err.absolute_path)},
             ) from err
 
         entry = Resource.from_contents(contents, default_specification=specification)
@@ -486,7 +486,6 @@ class JsonShape(ComplexKind):
                 self.base,
                 info={
                     'path': path,
-                    'error': err.message,
                     'schema_path': '/'.join(str(part) for part in err.absolute_schema_path),
                 },
             ) from err

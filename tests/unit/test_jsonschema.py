@@ -278,6 +278,77 @@ class TestInstanceValidation:
         assert validator.is_valid({'home': 'x', 'friend': {'home': 'y'}})
         assert not validator.is_valid({'home': 1})
 
+    def test_a_referenced_document_claims_its_own_definition_aliases(self, workspace):
+        from jsonschema import Draft7Validator
+
+        files = {
+            'api.raml': API + 'types:\n  Batch: !include batch.json\n',
+            'batch.json': json.dumps(
+                {
+                    'definitions': {'idp': {'$ref': 'idp.json'}},
+                    'type': 'array',
+                    'items': {'$ref': '#/definitions/idp'},
+                }
+            ),
+            # Put properties before definitions: aliases must be claimed before
+            # the first reference to them, regardless of object member order.
+            'idp.json': json.dumps(
+                {
+                    'type': 'object',
+                    'properties': {'id': {'$ref': '#/definitions/uuid'}},
+                    'definitions': {'uuid': {'$ref': 'uuid.json'}},
+                }
+            ),
+            'uuid.json': json.dumps({'type': 'string', 'pattern': '^u$'}),
+        }
+        raml = parsed(workspace, files)
+        bundle = raml.types_in(raml.location)['Batch'].shape.as_schema()
+        assert list(bundle['definitions']) == ['idp']
+        idp = bundle['definitions']['idp']
+        assert idp['definitions'] == {'uuid': {'type': 'string', 'pattern': '^u$'}}
+        assert idp['properties']['id'] == {'$ref': '#/definitions/idp/definitions/uuid'}
+        validator = Draft7Validator(bundle)
+        assert validator.is_valid([{'id': 'u'}])
+        assert not validator.is_valid([{'id': 'wrong'}])
+
+    def test_two_referenced_documents_can_alias_the_same_target(self, workspace):
+        from jsonschema import Draft7Validator
+
+        files = {
+            'api.raml': API + 'types:\n  Batch: !include batch.json\n',
+            'batch.json': json.dumps(
+                {
+                    'type': 'object',
+                    'properties': {'first': {'$ref': 'first.json'}, 'second': {'$ref': 'second.json'}},
+                }
+            ),
+            'first.json': json.dumps(
+                {
+                    'definitions': {'uuid': {'$ref': 'uuid.json'}},
+                    'type': 'object',
+                    'properties': {'id': {'$ref': '#/definitions/uuid'}},
+                }
+            ),
+            'second.json': json.dumps(
+                {
+                    'definitions': {'uuid': {'$ref': 'uuid.json'}},
+                    'type': 'object',
+                    'properties': {'id': {'$ref': '#/definitions/uuid'}},
+                }
+            ),
+            'uuid.json': json.dumps({'type': 'string', 'pattern': '^u$'}),
+        }
+        raml = parsed(workspace, files)
+        bundle = raml.types_in(raml.location)['Batch'].shape.as_schema()
+        assert list(bundle['definitions']) == ['first', 'second']
+        assert bundle['definitions']['second']['definitions']['uuid'] == {
+            '$ref': '#/definitions/first/definitions/uuid'
+        }
+        assert bundle['definitions']['second']['properties']['id'] == {'$ref': '#/definitions/second/definitions/uuid'}
+        validator = Draft7Validator(bundle)
+        assert validator.is_valid({'first': {'id': 'u'}, 'second': {'id': 'u'}})
+        assert not validator.is_valid({'second': {'id': 'wrong'}})
+
     def test_a_pointer_that_names_nothing_is_an_error(self, workspace):
         document = json.dumps({'definitions': {'Person': json.loads(PERSON)}})
         files = {

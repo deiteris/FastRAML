@@ -168,10 +168,14 @@ than pulling in a copy of it. A pointer within the document stands only when
 the bundle is the whole document: a subschema included by pointer
 (`schema.json#/definitions/User`) is bundled on its own, so what its
 `#/definitions/...` name is pulled in, and a reference to the subschema
-itself is `#`. `JsonShape.as_shape()` returns a cached nearest-RAML
-shape projection for consumers. Projection shapes are unregistered, positionless,
-already unwrapped view objects and must not re-enter parser passes. The projection
-can lose semantics: `oneOf` becomes a union, unsupported conditionals,
+itself is `#`. When a referenced document defines an exact external alias
+(`definitions: {uuid: {$ref: "uuid.json"}}`), the target is expanded in that
+slot, or the slot points to an earlier claim of the same target. References to
+the alias point to its slot in the bundle, without creating another copy.
+`JsonShape.as_shape()` returns a cached nearest-RAML shape projection for
+consumers. Projection shapes are unregistered, positionless, already unwrapped
+view objects and must not re-enter parser passes. The projection can lose
+semantics: `oneOf` becomes a union, unsupported conditionals,
 schema-form `additionalProperties`, tuple `items`, and false schemas fail
 projection, and a schema with incompatible inferred kinds projects as `any`.
 `contents` exposes the decoded schema object by convention only; consumers must

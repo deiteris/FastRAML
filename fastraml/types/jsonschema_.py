@@ -1160,9 +1160,11 @@ class _Bundling:
     #: The file the bundle is of, where it is a whole file of its own: a
     #: reference back into it, from anywhere, is a pointer into the result.
     document: str | None = None
+    #: The bundled location of this document, for aliases in its definitions.
+    slot: str = '#'
 
-    def at(self, resolver: Resolver[Any]) -> _Bundling:
-        return _Bundling(resolver, self.pulled, self.named, self.taken, root=False, document=self.document)
+    def at(self, resolver: Resolver[Any], slot: str) -> _Bundling:
+        return _Bundling(resolver, self.pulled, self.named, self.taken, root=False, document=self.document, slot=slot)
 
 
 def _bundle(compiled: CompiledSchema, canonical: str | None) -> Any:
@@ -1188,8 +1190,7 @@ def _bundle(compiled: CompiledSchema, canonical: str | None) -> Any:
         root=not selected,
         document=None if pointer else whole or None,
     )
-    aliases = _definition_aliases(context, document)
-    bundled = _bundle_root(context, document, aliases)
+    bundled = _bundle_root(context, document)
     if not context.pulled or not isinstance(bundled, dict):
         return bundled
     existing = bundled.get(_BUNDLE_KEY)
@@ -1198,13 +1199,12 @@ def _bundle(compiled: CompiledSchema, canonical: str | None) -> Any:
 
 
 def _definition_aliases(context: _Bundling, document: Any) -> dict[str, Any]:
-    """Claim exact external aliases under the names the document already gave them.
+    """Claim exact external aliases at the document's bundled location.
 
     Without this first pass, `definitions: {uuid: {$ref: "uuid.json"}}`
-    reserves `uuid`, then the ordinary pull has to call the target `uuid2`. The
-    original slot is already the right place for that target. Claim aliases
-    before walking the rest of the document so an earlier direct reference to
-    the same target uses the author's name too.
+    reserves `uuid`, then the ordinary pull has to call the target `uuid2`.
+    Claim aliases in every document before walking its properties, including
+    documents pulled into a definition of the entry schema.
     """
     from referencing.exceptions import Unresolvable  # noqa: PLC0415 - deferred for startup cost
 
@@ -1221,22 +1221,35 @@ def _definition_aliases(context: _Bundling, document: Any) -> dict[str, Any]:
             resolved = context.resolver.lookup(reference)
         except Unresolvable:
             continue
+        local = f'{context.slot}/{_BUNDLE_KEY}/{escape_json_pointer_segment(name)}'
         if id(resolved.contents) in context.named:
+            # Another document already claimed the target. Keep this alias as
+            # a reference to it, but local pointers must still find this slot.
+            context.named[id(node)] = local
             continue
-        context.named[id(resolved.contents)] = f'#/{_BUNDLE_KEY}/{name}'
+        context.named[id(resolved.contents)] = local
+        # A local pointer resolves to the alias node, whereas a direct external
+        # reference resolves to its target. Both already occupy this one slot.
+        context.named[id(node)] = local
         aliases[name] = resolved
     return aliases
 
 
-def _bundle_root(context: _Bundling, document: Any, aliases: dict[str, Any]) -> Any:
-    """Bundle the root, expanding its claimed definition aliases in place."""
+def _bundle_root(context: _Bundling, document: Any) -> Any:
+    """Bundle one document, expanding its claimed definition aliases in place."""
     if not isinstance(document, dict):
         return _bundle_node(context, document)
+    aliases = _definition_aliases(context, document)
     bundled: dict[str, Any] = {}
     for key, value in document.items():
         if key == _BUNDLE_KEY and isinstance(value, dict):
             bundled[key] = {
-                name: _bundle_node(context.at(aliases[name].resolver), aliases[name].contents)
+                name: _bundle_root(
+                    context.at(
+                        aliases[name].resolver, f'{context.slot}/{_BUNDLE_KEY}/{escape_json_pointer_segment(name)}'
+                    ),
+                    aliases[name].contents,
+                )
                 if name in aliases
                 else _bundle_node(context, node)
                 for name, node in value.items()
@@ -1296,7 +1309,7 @@ def _pull(context: _Bundling, reference: str) -> str | None:
     # finds the name rather than descending again.
     context.named[id(resolved.contents)] = local
     context.pulled[name] = None
-    context.pulled[name] = _bundle_node(context.at(resolved.resolver), resolved.contents)
+    context.pulled[name] = _bundle_root(context.at(resolved.resolver, local), resolved.contents)
     return local
 
 

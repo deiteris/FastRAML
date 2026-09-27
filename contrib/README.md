@@ -1,11 +1,11 @@
 # contrib
 
-Distributions that sit on fastRAML. Each is a separate `uv` project with its own
-lock and its own gate, but for the npm project `fastraml-vscode`; none is
-packaged from the root `pyproject.toml`, and the root gate does not see them.
+Integrations that sit on fastRAML. Each Python project has its own `uv` lock
+and gate. The VS Code client is an npm project, and the Claude Code integration
+is a plugin directory. None is packaged from the root `pyproject.toml`.
 `docs/17-consumers.md` settles the boundary.
 
-| Distribution | Direction | What it does |
+| Project | Direction | What it does |
 |---|---|---|
 | [`raml-document`](raml-document/) | neither | A typed authoring model for a RAML document, and a reader that builds one from pydantic models. Depends on no web framework. |
 | [`fastapi-raml`](fastapi-raml/) | code → RAML | Renders a FastAPI app's routes as RAML, and serves it. |
@@ -16,6 +16,7 @@ packaged from the root `pyproject.toml`, and the root gate does not see them.
 | [`raml-codegen`](raml-codegen/) | tree → code | Generates source from a `fastraml tree` document, or from RAML with the `raml` extra. Two targets: `python-httpx`, a typed client, and `python-fastapi`, a server interface to implement. |
 | [`sphinxcontrib-fastraml`](sphinxcontrib-fastraml/) | RAML → docs | Renders a RAML API as native Sphinx content, with a `raml` domain whose roles link prose to endpoints, methods and types. |
 | [`fastraml-vscode`](fastraml-vscode/) | RAML → editor | The VS Code client of `fastraml lsp`, with the viewer as a preview. An npm project, not a `uv` one; it is not published. |
+| [`fastraml-claude-code`](fastraml-claude-code/) | RAML → Claude Code | A Claude Code LSP plugin for `fastraml lsp`; requires `fastraml[lsp]` installed separately. |
 
 `raml-document` is the part the two framework integrations share, so that they
 cannot disagree about what a RAML document is. The second one earned its keep

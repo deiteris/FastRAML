@@ -1,0 +1,10 @@
+{
+  "name": "fastraml-lsp",
+  "description": "RAML 1.0 code intelligence through the fastRAML language server",
+  "version": "0.1.0",
+  "author": {
+    "name": "Yury Palyanitsa"
+  },
+  "repository": "https://github.com/deiteris/FastRAML",
+  "license": "MIT"
+}

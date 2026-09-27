@@ -101,12 +101,17 @@ CI runs `npm run ci`; screenshots are not a CI gate.
 own lock, dependencies, and test gate. The root `pyproject.toml` does not package
 them; CI runs their gates as a matrix.
 
-It also holds `fastraml-vscode`, an npm project: the VS Code client of
-`fastraml lsp` ([21](21-language-service.md) § 5). It starts the server, and
-its preview is a webview page, the package `webview/`, which depends on
-`fastraml-viewer` and renders its `App` from the server's `fastraml/tree`
-answer. It is not published and has no test suite; CI type-checks both and
-builds the page.
+It also holds two clients of `fastraml lsp` ([21](21-language-service.md) § 5):
+
+- `fastraml-vscode`, an npm project, starts the server and offers a preview in
+  its `webview/` package. The webview depends on `fastraml-viewer` and renders
+  its `App` from the server's `fastraml/tree` answer. It is not published and
+  has no test suite; CI type-checks both and builds the page.
+- `fastraml-claude-code`, a Claude Code plugin directory, declares the server
+  for `.raml` files in its root `.lsp.json`. It requires a separate installation
+  of `fastraml[lsp]` on the user's `PATH`; it is not a Python distribution.
+  Validate its layout with `claude plugin validate --strict ./contrib/fastraml-claude-code`
+  when Claude Code is available.
 
 See `contrib/README.md` for the current project inventory and each project's
 README for its supported behavior. In particular:

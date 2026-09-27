@@ -36,6 +36,11 @@ button {
   font: inherit;
 }
 
+:is(a, button, input):focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 2px;
+}
+
 /* -- layout ---------------------------------------------------------------- */
 
 & {
@@ -44,7 +49,7 @@ button {
   /* Paints the nav column for the page's whole height. The sidebar itself is
      sticky and one viewport tall, so on a long page the column below it would
      otherwise fall back to the body background. */
-  background: linear-gradient(to right, var(--panel) 0 320px, var(--bg) 320px);
+  background: linear-gradient(to right, var(--sidebar-bg) 0 320px, var(--bg) 320px);
 }
 
 &.viewer-standalone {
@@ -153,6 +158,7 @@ h4 {
 .sidebar {
   display: flex;
   flex-direction: column;
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--line);
   height: 100vh;
   position: sticky;
@@ -188,9 +194,9 @@ h4 {
   justify-content: space-between;
   width: 100%;
   padding: 6px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--input-border);
   border-radius: 7px;
-  background: var(--bg);
+  background: var(--input-bg);
   color: var(--faint);
   font: inherit;
   font-size: 13px;
@@ -290,6 +296,12 @@ kbd {
   outline: none;
 }
 
+/* The dialog's border already locates its field. The shared keyboard-focus
+   ring has higher specificity than .search-field's base outline reset. */
+.search-field:focus-visible {
+  outline: none;
+}
+
 /* The browser's own clear button is drawn in its colours, not the theme's;
    `.search-clear` replaces it. */
 .search-field::-webkit-search-cancel-button {
@@ -341,7 +353,7 @@ kbd {
 }
 
 .search-option.is-active {
-  background: var(--line-soft);
+  background: var(--search-active-bg);
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
@@ -437,14 +449,14 @@ kbd {
 }
 
 .nav-item:hover {
-  background: var(--line-soft);
-  color: var(--ink);
+  background: var(--nav-hover-bg);
+  color: var(--nav-hover-ink);
   text-decoration: none;
 }
 
 .nav-item.is-here {
-  background: var(--line);
-  color: var(--ink);
+  background: var(--nav-selected-bg);
+  color: var(--nav-selected-ink);
   font-weight: 600;
 }
 
@@ -463,7 +475,7 @@ kbd {
    could not, so the one page with no rows -- Overview -- had no current state
    at all. */
 .nav-heading a.active {
-  color: var(--ink);
+  color: var(--nav-selected-ink);
 }
 
 /* An SVG on a fixed box, so every icon lands on the same grid. The characters
@@ -522,13 +534,14 @@ kbd {
 }
 
 .nav-op:hover {
-  background: var(--line-soft);
+  background: var(--nav-hover-bg);
+  color: var(--nav-hover-ink);
   text-decoration: none;
 }
 
 .nav-op.is-here {
-  background: var(--line);
-  color: var(--ink);
+  background: var(--nav-selected-bg);
+  color: var(--nav-selected-ink);
 }
 
 .nav-op-name {
@@ -1383,7 +1396,7 @@ h4 + .tabs > .tabs-bar,
 
 /* A fenced or indented block. `code` inside one must not be chipped twice. */
 .prose pre {
-  background: var(--panel);
+  background: var(--code-bg);
   border-radius: 8px;
   padding: 12px 14px;
   overflow-x: auto;
@@ -1393,7 +1406,7 @@ h4 + .tabs > .tabs-bar,
 .prose code {
   font-family: var(--mono);
   font-size: 0.9em;
-  background: var(--panel);
+  background: var(--inline-code-bg);
   border-radius: 4px;
   padding: 1px 5px;
 }
@@ -1417,7 +1430,7 @@ h4 + .tabs > .tabs-bar,
 .gloss code {
   font-family: var(--mono);
   font-size: 0.9em;
-  background: var(--panel);
+  background: var(--inline-code-bg);
   border-radius: 4px;
   padding: 1px 5px;
 }
@@ -1567,7 +1580,7 @@ h4 .lock {
    pixels from the attribute's own rule, which reads as one doubled border
    rather than as two separate things. */
 .code {
-  background: var(--panel);
+  background: var(--code-bg);
   border: 0;
   border-radius: 6px;
   padding: 10px 12px;
@@ -1822,7 +1835,7 @@ table.properties td {
     top: 0;
     z-index: 5;
     padding: 10px 18px;
-    background: var(--panel);
+    background: var(--sidebar-bg);
     border-bottom: 1px solid var(--line);
   }
 
@@ -1869,7 +1882,7 @@ table.properties td {
     z-index: 20;
     width: min(320px, 85vw);
     height: auto;
-    background: var(--panel);
+    background: var(--sidebar-bg);
   }
 
   .scrim {

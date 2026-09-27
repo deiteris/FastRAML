@@ -1,0 +1,38 @@
+/* VS Code supplies these variables on the webview body. They inherit across
+   the preview's shadow boundary and update with the workbench theme. */
+.fastraml-viewer {
+  --bg: var(--vscode-editor-background, light-dark(#ffffff, #12161c));
+  --panel: var(--vscode-sideBar-background, var(--vscode-editor-background, light-dark(#f4f7fa, #1b1e25)));
+  --raised: var(--vscode-input-background, var(--vscode-editor-background, light-dark(#ffffff, #171c23)));
+  --line: var(--vscode-contrastBorder, var(--vscode-sideBar-border, var(--vscode-widget-border, light-dark(#e3e8ee, #2a323d))));
+  --line-soft: var(--vscode-contrastBorder, var(--vscode-widget-border, light-dark(#eef1f6, #212831)));
+  --ink: var(--vscode-editor-foreground, light-dark(#1a2c44, #eceef1));
+  /* Even the quietest labels carry information; disabledForeground is too
+     low-contrast for headings, field names and type metadata. */
+  --faint: var(--vscode-descriptionForeground, var(--ink));
+  --dim: color-mix(in srgb, var(--ink) 30%, var(--faint));
+  --accent: var(--vscode-textLink-foreground, light-dark(#533afd, #9d8cff));
+  --required: var(--vscode-errorForeground, light-dark(#b3261e, #f08b7d));
+  --warn: var(--vscode-list-warningForeground, light-dark(#8a5a00, #d8ab5e));
+  --sidebar-bg: var(--vscode-sideBar-background, var(--panel));
+  --nav-hover-bg: var(--vscode-list-hoverBackground, var(--line-soft));
+  --nav-hover-ink: var(--vscode-list-hoverForeground, var(--ink));
+  --nav-selected-bg: var(--vscode-list-inactiveSelectionBackground, var(--line));
+  --nav-selected-ink: var(--vscode-list-inactiveSelectionForeground, var(--ink));
+  --search-active-bg: var(--vscode-list-hoverBackground, var(--line-soft));
+  --input-bg: var(--vscode-input-background, var(--bg));
+  --input-border: var(--vscode-input-border, var(--line));
+  --code-bg: var(--vscode-textCodeBlock-background, var(--panel));
+  --inline-code-bg: var(--vscode-textPreformat-background, var(--panel));
+  --focus-border: var(--vscode-focusBorder, var(--accent));
+  --sans: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  --mono: var(--vscode-editor-font-family, ui-monospace, monospace);
+  color-scheme: inherit;
+}
+
+.vscode-error {
+  padding: 0.5em 1em;
+  color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
+  background: var(--vscode-inputValidation-errorBackground, var(--vscode-editor-background));
+  border-bottom: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-contrastBorder));
+}

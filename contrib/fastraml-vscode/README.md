@@ -39,6 +39,28 @@ server's `fastraml/tree` request, and again after every save. A parse that
 stops before its types resolve has no effective model: the page keeps the
 last one, under a message.
 
+The preview renders in a shadow root, with `normalize.css` and the bundled
+viewer stylesheet loaded inside it. VS Code's webview element styles cannot
+override the viewer's code tags or other components. The preview follows VS
+Code's live light, dark, and high-contrast themes; it does not show the
+standalone viewer's theme switch or use its saved theme preference.
+`webview/src/theme.css` maps VS Code's webview CSS variables (inherited into
+the shadow root) onto the viewer tokens: editor colors for the page and text,
+sidebar and input colors for surfaces, borders and contrast borders for
+dividers, link and error colors for markers, and editor font settings for code.
+Navigation hover and selection use VS Code's list colors; code blocks and inline
+code use its text-code colors; the search opener uses its input colors; keyboard
+focus uses `focusBorder`. Each role falls back to the viewer's base palette
+when a theme does not supply the corresponding VS Code color.
+Quiet labels use `descriptionForeground` rather than `disabledForeground`:
+they are information to read, not disabled controls. Secondary text blends
+that color with `editor.foreground` to keep it legible across themes.
+The viewer keeps its own syntax-highlight palette: VS Code exposes workbench
+color variables to webviews, but not the editor's TextMate token colors as CSS
+variables.
+See the [webview theming guide](https://code.visualstudio.com/api/extension-guides/webview#theming-webview-content)
+and [theme color reference](https://code.visualstudio.com/api/references/theme-color).
+
 ## Build
 
 ```bash
@@ -54,7 +76,7 @@ viewer's `App`. It depends on the viewer as the package `fastraml-viewer`
 (`file:../../../viewer`), installed as a copy rather than a link
 (`install-links` in its `.npmrc`), so React and the viewer's other
 dependencies are installed once, there. After a change to `viewer/`, run
-`npm install --prefix webview` again. Install the extension with
+`npm ci --prefix webview` to refresh the copied sources. Install the extension with
 `code --install-extension fastraml-vscode-0.1.0.vsix`, or open this directory
 in VS Code and run **Run extension** (F5).
 

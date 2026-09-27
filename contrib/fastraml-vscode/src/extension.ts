@@ -127,19 +127,14 @@ function page(webview: Webview, media: Uri): string {
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${source} 'unsafe-inline'; img-src ${source} https: data:; font-src ${source};">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="${style}">
     <style>
       body { margin: 0; padding: 0; }
-      .vscode-error {
-        padding: 0.5em 1em;
-        color: var(--vscode-inputValidation-errorForeground);
-        background: var(--vscode-inputValidation-errorBackground);
-        border-bottom: 1px solid var(--vscode-inputValidation-errorBorder);
-      }
+      body.vscode-light, body.vscode-high-contrast-light { color-scheme: light; }
+      body.vscode-dark, body.vscode-high-contrast { color-scheme: dark; }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root" data-style="${style}"></div>
     <script type="module" nonce="${nonce}" src="${script}"></script>
   </body>
 </html>`;

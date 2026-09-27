@@ -526,6 +526,8 @@ async function searchFails(page, suffix, themed) {
   await page.keyboard.press('Enter');
   await page.waitForSelector('dialog.search[open]', { timeout: 2000 });
   if (!(await focusIs('.search-field'))) failed.push(`opened with focus on ${await focused()}, not the field`);
+  const fieldOutline = await page.$eval('.search-field', (field) => getComputedStyle(field).outlineStyle);
+  if (fieldOutline !== 'none') failed.push(`the focused search field has a ${fieldOutline} outline inside the dialog`);
   await page.keyboard.type('book');
   await page.waitForSelector('.search-option', { timeout: 2000 });
   const shown = await page.evaluate(() => ({

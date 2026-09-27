@@ -4,6 +4,7 @@
  * brings the stylesheets.
  */
 
+import 'normalize.css';
 import './tokens.css';
 import './styles.css';
 

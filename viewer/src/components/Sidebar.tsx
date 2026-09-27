@@ -26,6 +26,7 @@ export function Sidebar({
   onSearch,
   shortcuts = true,
   projectLink = true,
+  themeToggle = true,
 }: {
   document: Document;
   index: Index;
@@ -35,6 +36,8 @@ export function Sidebar({
   shortcuts?: boolean;
   /** The standalone viewer's project footer; hosts provide their own branding. */
   projectLink?: boolean;
+  /** The host can own the theme instead of showing the viewer's switch. */
+  themeToggle?: boolean;
   /** How endpoint paths are listed: as declared, or A-Z (see `pathTree`). */
   pathOrder?: PathOrder;
 }) {
@@ -51,7 +54,7 @@ export function Sidebar({
           <Link to="/" className="brand">
             {document.entry_point?.title ?? 'API reference'}
           </Link>
-          <ThemeToggle />
+          {themeToggle && <ThemeToggle />}
         </div>
         <SearchButton onOpen={onSearch} shortcuts={shortcuts} />
 

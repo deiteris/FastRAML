@@ -11,6 +11,7 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from 'fastraml-viewer';
+import './theme.css';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
@@ -33,14 +34,19 @@ function Host() {
   return (
     <>
       {error !== undefined && <div className="vscode-error">{error}</div>}
-      {tree !== undefined && <App contents={tree} />}
+      {tree !== undefined && <App contents={tree} themeToggle={false} />}
     </>
   );
 }
 
 const root = document.getElementById('root');
 if (!root) throw new Error('no #root in the page');
-createRoot(root).render(
+const shadow = root.attachShadow({ mode: 'open' });
+const style = document.createElement('link');
+style.rel = 'stylesheet';
+style.href = root.dataset.style ?? '';
+shadow.append(style);
+createRoot(shadow).render(
   <StrictMode>
     <Host />
   </StrictMode>,

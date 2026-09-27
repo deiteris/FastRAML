@@ -3,10 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
-import App from '../src/App';
-import { Viewer } from '../src/Viewer';
-import '../src/tokens.css';
-import '../src/styles.css';
+import { App, Viewer } from '../src/index';
 
 function Host() {
   const [contents, setContents] = useState<string | null>(null);

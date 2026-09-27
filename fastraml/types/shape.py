@@ -334,7 +334,7 @@ def _decode(  # noqa: PLR0912 - one pass over the common-facet vocabulary (docs/
             case fn.FACET_FACETS:
                 _decode_custom_facet_defs(raml, base, value)
             case fn.FACET_EXAMPLE:
-                _decode_example(raml, base, value)
+                _decode_example(raml, base, key, value)
             case fn.FACET_EXAMPLES:
                 _decode_examples(raml, base, value)
             case fn.FACET_DEFAULT:
@@ -380,10 +380,10 @@ def _decode_enum(raml: Raml, value_node: Node, location: str) -> list:
     return EnumValues(make_data_node(raml, None, item, location) for item in value_node.content)
 
 
-def _decode_example(raml: Raml, base: BaseShape, value_node: Node) -> None:
+def _decode_example(raml: Raml, base: BaseShape, key: Node, value_node: Node) -> None:
     if base.examples is not None:
         raise node_error('example and examples cannot be defined together', base.location, value_node)
-    base.example = make_example(raml, value_node, '', base.location)
+    base.example = make_example(raml, key, value_node, '', base.location)
 
 
 def _decode_examples(raml: Raml, base: BaseShape, value_node: Node) -> None:
@@ -400,7 +400,7 @@ def _decode_examples(raml: Raml, base: BaseShape, value_node: Node) -> None:
         return
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('examples must be a mapping', base.location, value_node)
-    values = {key.value: make_example(raml, value, key.value, base.location) for key, value in pairs(value_node)}
+    values = {key.value: make_example(raml, key, value, key.value, base.location) for key, value in pairs(value_node)}
     base.examples = Examples(location=base.location, position=value_node.full_position, values=values)
 
 

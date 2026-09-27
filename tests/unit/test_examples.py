@@ -20,14 +20,13 @@ def workspace(memory_workspace):
     return memory_workspace
 
 
-def value_of(text: str) -> Node:
-    """The value node of a one-key document."""
-    _key, value = next(iter(pairs(compose(text, uri=LOCATION))))
-    return value
+def pair_of(text: str) -> tuple[Node, Node]:
+    """The key and value nodes of a one-key document."""
+    return next(iter(pairs(compose(text, uri=LOCATION))))
 
 
 def example(text: str, name: str = ''):
-    return make_example(Raml(), value_of(text), name, LOCATION)
+    return make_example(Raml(), *pair_of(text), name, LOCATION)
 
 
 class TestFormA:
@@ -131,10 +130,16 @@ class TestIncludedNamedExamples:
 
 
 class TestIdentity:
+    def test_an_example_is_placed_at_its_key_and_its_value(self):
+        # The key was the value's position, so an outline could not select a name.
+        found = example('terse:\n  a: 1\n', 'terse')
+        assert (found.key_pos.line, found.key_pos.column, found.key_pos.end_column) == (1, 1, 6)
+        assert (found.value_pos.line, found.value_pos.column) == (2, 3)
+
     def test_each_example_takes_an_id_from_the_parse(self):
         raml = Raml()
-        first = make_example(raml, value_of('example: 1\n'), 'a', LOCATION)
-        second = make_example(raml, value_of('example: 2\n'), 'b', LOCATION)
+        first = make_example(raml, *pair_of('example: 1\n'), 'a', LOCATION)
+        second = make_example(raml, *pair_of('example: 2\n'), 'b', LOCATION)
         assert first.id != second.id
         assert (first.name, second.name) == ('a', 'b')
 

@@ -849,7 +849,7 @@ class NamedExample(_UsesOnlyFragment):
         filtered, uses = filter_fragment_uses(self._raml, node, self.location)
         self.uses = uses
         for key, value in pairs(filtered):
-            self.examples[key.value] = make_example(self._raml, value, key.value, self.location)
+            self.examples[key.value] = make_example(self._raml, key, value, key.value, self.location)
 
 
 class DocumentationItemFragment(_UsesOnlyFragment):

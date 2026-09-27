@@ -103,13 +103,15 @@ def examples_of(base: BaseShape) -> Iterator[Example]:
         yield from base.examples.entries().values()
 
 
-def make_example(raml: Raml, value_node: Node, name: str, location: str) -> Example:
-    """Build one example, choosing between the two forms by the `value` key."""
+def make_example(raml: Raml, key: Node, value_node: Node, name: str, location: str) -> Example:
+    """Build one example, written at `key`, choosing between the two forms by
+    the `value` key.
+    """
     example = Example(
         id=raml.next_id(),
         name=name,
         location=location,
-        key_pos=value_node.full_position,
+        key_pos=key.position,
         value_pos=value_node.full_position,
     )
     # An annotation inside an example targets the example, not the declaration

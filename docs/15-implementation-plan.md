@@ -33,6 +33,8 @@ An LSP and MCP design is drafted in
 prerequisite, a trustworthy `parse_lenient` model, is analysed in
 [research/partial-models.md](research/partial-models.md), and the ordered plan
 is [research/language-service-plan.md](research/language-service-plan.md).
+The architecture the service is moving to, and the parser facts it takes, is
+[research/language-service-architecture.md](research/language-service-architecture.md).
 Its first milestone fixes two present defects: recursion left unmarked after a
 P9 failure, and one mistake reported once per template application or
 inheritance level.

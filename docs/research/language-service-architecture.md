@@ -1,0 +1,239 @@
+# Language service: target architecture
+
+**Status: proposed, 2026-09-27.** This document records how the language
+service should sit on the parser and its model, from a review of the service as
+built against `docs/21`, `research/language-server.md` (LS) and
+`research/language-service-plan.md`. It is not normative: `docs/21` describes
+the service as it is, and each change below amends its owning document in the
+same commit. The order of work is § 11.
+
+## 1. Findings
+
+The service is sound where it matters most. It is a composition root
+(`docs/02` § 2); every answer is read from a parse or a view; no query
+resolves a name, and the occurrence index checks each name it keeps against
+the text at its span (`docs/16` § 9). What follows is where it departs from
+that shape.
+
+**Queries infer what the parser knew.** Five answers are guesses from spans:
+
+- the outline lists a member under an entity only when it lies in the same
+  file and inside the entity's span, which stands for "this entity wrote it";
+- `render`'s contributor note (`views/render.py`, `Sources`) names the
+  template whose declaration span holds a member's line;
+- `items` a type expression built (`Book[]`) is told apart by sharing its
+  array's `key_pos`;
+- the bodies one `body:` without a media type became are grouped by an equal
+  `key_pos`;
+- `links()` pairs each include with the path text written on its lines,
+  because an include of a file that is not a fragment has no target id.
+
+Two more read the wrong thing: the outline detects an inline JSON or XML
+schema by its first character, where the model has `JsonShape`; hover reads
+an entity's facets with `getattr` on an untyped value.
+
+**Knowledge is repeated.** The five declaration tables (types, annotation
+types, traits, resource types, security schemes) are listed in the occurrence
+index, `walk.py`, `render.py`'s `Sources` and four times in
+`service/queries.py`. The model has no iterator over them. The containment of
+the model (a resource's methods, a method's request and responses, a
+response's bodies) is walked separately by the outline, `render`, the tree,
+the walk and the graph. Span arithmetic (holds, contains, covers) is written in
+`service/queries.py` and again in `views/occurrences.py`.
+
+**Work is repeated.**
+
+- `Workspace.snapshots(uri)` brings every root current to learn which ones
+  read `uri`. After an edit to a library, a request that needs one snapshot,
+  the outline, reparses every root reading the library first.
+- Definition, highlight and hover ask every snapshot serving the file, and
+  each builds its occurrence index on first use (46 ms on `large`), to
+  deduplicate answers that are the same in every root for a name a library
+  declares.
+- A buffer is encoded to bytes for the loader and decoded again by each parse,
+  and each snapshot keeps its own copy of every text it read: a library read
+  by N roots is held N times.
+
+**Positions carry every feature, and nothing checks most of them.** One review
+found an example's key placed at its value, a body without a media type with
+no key at all, a documentation item whose key was its whole mapping, alias
+copies that gave a block an end before its start, and security scheme
+definitions whose positions are spelled `None` where every other entity's
+are `UNKNOWN`. The occurrence law checks name tokens only.
+
+**One failure costs the editor most of the model.** With `fixtures/sample`
+opened alone, two includes outside the workspace root leave the model with no
+endpoints and no unwrap: no resources in the outline, no rendered hover, no
+lint. The pass that failed decoded everything else. This is the continuation
+PM § 7 defers.
+
+**The documents disagree with the code.** `docs/21` § 5 says a request answers
+from every snapshot serving the file; the outline, links and the tree use one.
+LS § 5.1 derives the outline from occurrences and `walk` nesting, and
+workspace symbols and subtypes from the graph; the code reads model tables.
+`docs/21` § 4 states the span test of the outline as a rule. The plan's status
+predates the outline, and `docs/21` § 5's latency predates this round's
+changes.
+
+## 2. Principles
+
+1. **Facts, not inference.** A query reads what the model records. Where a
+   query would need to infer from positions, names or text what a pass knew,
+   the pass records it, and the gap is listed here until it does.
+2. **One definition per concern.** The declaration tables, who wrote an
+   entity, span arithmetic and the snapshot a query reads each have one home,
+   shared by the service and the views.
+3. **Positions obey a law.** Every positioned entity satisfies § 7's
+   placement law, tested over the TCK and the fixtures, so no consumer
+   re-checks a position.
+4. **The least parsing that answers.** A request brings current only the
+   snapshots it reads, and reads the fewest that answer it (§ 5).
+5. **Text is read for text features only.** Folding, selection and, later,
+   cursor context (LS § 5.3) read the buffer's composed tree, because they must
+   answer while the parse is stale or broken. Nothing else reads YAML; a node
+   the model keeps as its record of what was written, such as `type_expr`, is
+   read as that record.
+
+## 3. Layers
+
+| Layer | Holds | Change |
+|---|---|---|
+| Passes (`parser/`, `types/`) | the rules, and the facts of § 6 | record F2 to F5 |
+| Model (`registry.py`, fragments, entities) | entities, positions, `broken`, the declaration iterator F1 | add F1 |
+| Substrates (`views/`) | occurrences (names and links), the authorship view (§ 4), walk (effective addresses), render, tree | add the authorship view; F6 |
+| Service (`service/`) | workspace, snapshot policy (§ 5), queries, outline | queries read substrates only |
+| Adapter (`service/lsp.py`) | protocol shapes and position encoding | unchanged |
+
+The outline moves to `service/outline.py`. Queries hold no traversal of the
+model of their own: they ask the occurrence index about names, the authorship
+view about structure, and `render` about text.
+
+## 4. The authorship view
+
+`views/authored.py` answers one question for every consumer: what an entity,
+or a file, wrote. It reads facts only:
+
+- a fragment's declarations, through F1;
+- a type's own members: its properties whose declaration ids are not among its
+  parents' (unwrap keeps a property's declaration id, which
+  `views/occurrences.py` already relies on), its
+  written `items` (F4), its `facets:` entries;
+- a resource's own URI parameters, methods and resources, and a method's own
+  parameters, bodies and responses: those no template contributed (F2);
+- the bodies of one `body:` without a media type, as one entry (F3).
+
+The outline, `render`'s contributor note and hover read it now; completion,
+rename and semantic tokens read it later (M5, M6). It needs no position, so
+it removes the span test, the `Sources` table and the line lookup.
+
+## 5. Snapshot policy
+
+`Workspace.serving(uri)` yields the snapshots serving a file lazily: the file's
+own root first when it is one, then the other roots that read it, then a parse
+of the file alone when none does. A root is brought current only when the
+iteration reaches it. Which roots read a file is known only from a current
+snapshot, so the workspace keeps the read set of a snapshot it drops and tries
+the roots that read the file last time first: after an edit, the first root
+tried is one that reads it. `readers()` still brings every root current, for
+publishing (`docs/21` § 5).
+
+| Query | Reads |
+|---|---|
+| outline, links, the tree | the first snapshot |
+| definition, hover, highlight, type hierarchy | the first snapshot holding an occurrence at the cursor |
+| references, subtypes | every snapshot, deduplicated |
+| diagnostics | every root reading the file, merged (unchanged) |
+| workspace symbols | every root (unchanged) |
+
+A file read by roots that bind it differently (a master API an Overlay merges
+into, a template applied with different arguments) answers from the first,
+and says so in `docs/21` § 5. References span roots because a use in any root
+is a use.
+
+## 6. Facts the model records
+
+| # | Fact | Owner | Removes | Read by |
+|---|---|---|---|---|
+| F1 | `declarations()` on a declaring fragment: `(kind, name, entity)` over the five tables, in declaration order | `docs/04` | seven table lists | occurrences, walk, render, authorship, service |
+| F2 | the template that contributed an operation, response, body or parameter, recorded by P4 as it merges (`docs/08` § 4) | `docs/08` | the span test; `Sources` | authorship, render |
+| F3 | on `Body`, whether its media type was written | `docs/08` § 6.3 | grouping by `key_pos` | authorship |
+| F4 | on an array shape, whether its `items` came from a type expression | `docs/06` § 3 | the `key_pos` comparison | authorship |
+| F5 | a security scheme definition's, settings' and description's positions spelled `UNKNOWN`, never `None`, as every other entity's | `docs/09` | the `None` checks | every consumer |
+| F6 | on each path occurrence, the URI the path resolved to | `docs/16` § 9 | `links()`'s line and text pairing; the fragment scan for a path's definition | links, definition, hover |
+
+The schema kind needs no new fact: `JsonShape` says it. A section's key
+(`types:`, a method's `headers:`) is not recorded: a section spans its
+entries, as `docs/21` § 4 says, and one position per section is not worth its
+allocation on every parse.
+
+## 7. The placement law
+
+For every entity the model positions, over the TCK and the fixtures:
+
+1. `key_pos` is one line, and the text there is the entity's name as written
+   (a documentation item's title, a body's media type or `body`);
+2. `value_pos` ends after it starts, and the span from key through value holds
+   both;
+3. a child written in the same file lies inside its parent's span;
+4. an entity's `location` is the file its key is written in.
+
+`tests/unit/test_placement_law.py` checks it, as `test_occurrence_law.py`
+checks names; a failure is a parser defect, fixed in its pass. The service
+then converts positions without guarding them.
+
+## 8. Failure containment
+
+A failed include is contained: the entity that includes the file is kept and
+marked (`docs/13` § 1), and nothing else depends on the file's content except
+through that entity. It is the first class PM § 7 would admit: decoding
+completes with the marked entity, and later passes skip it and every reference
+to it. The gate is PM § 7's: over the invalid TCK and the fixtures, continuing
+adds no chain whose cause is already reported, and the 41-to-1 test holds.
+The case to measure it on is `fixtures/sample` with its own directory as the
+root, where two such includes cost the endpoints, unwrap and lint.
+
+## 9. Stable identity
+
+Ids do not survive a reparse (LS § 3.2), so a type hierarchy item is found
+again by where its name is written. The walk's addresses (`docs/16` § 2) are
+stable across parses. They could identify an item, and link the editor to the
+preview: reveal the entity at the cursor, or go from a node in the viewer to
+its source, which the tree already places. That waits for a feature that
+needs it.
+
+## 10. What stays
+
+- Folding and selection compose the buffer (principle 5).
+- A section's span is derived from its entries.
+- Publishing parses every root (`readers()`), as decided for now.
+- The byte round trip through the loader: the loader interface is bytes, and
+  a file is decoded at most once per parse (`docs/02` § 4). Each snapshot's
+  copy of the texts stays until a compose cache (G8) shares them.
+
+## 11. Order
+
+Each step is its own commit, amends its owning document, and passes the gate.
+
+1. `docs/21`: § 5 states the snapshot rule as built; § 4 marks the outline's
+   span test as a stand-in for F2. The plan's status and M4 notes catch up;
+   the latency is measured again.
+2. Snapshot policy (§ 5): `serving(uri)`, and each query reading as the table
+   says. Tests pin how many roots a request brings current.
+3. F1, and every table list reading it.
+4. Span helpers on `Position`, replacing the local ones.
+5. The placement law (§ 7), with each defect it finds fixed first.
+6. F5.
+7. F6, and `links()` and path definitions reading it.
+8. The authorship view (§ 4) with F3 and F4; the outline and `render` read it;
+   the outline moves to `service/outline.py`; hover dispatches on the entity's
+   class.
+9. F2, and the view reading it.
+10. Failure containment (§ 8), behind PM § 7's gate.
+
+## 12. Open questions
+
+- Should the outline of a master API, served from an Overlay's snapshot, show
+  the Overlay's contributions? Today it shows what the master's own file
+  wrote, since only that is in its span.
+- Moving LS to `archive/` (plan, M4).
+- Whether the latency after steps 2 and 10 asks for G8.

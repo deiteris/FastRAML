@@ -318,6 +318,11 @@ As done so far:
   Composing the unchanged libraries is about a quarter of the parse, which
   bounds what G8 can save. Whether that asks for G8 is still open.
 - Left: moving LS to `archive/`.
+- Next: the consolidation `research/language-service-architecture.md` orders
+  (§ 11), from a review of the service against this plan and LS: the snapshot
+  a query reads, model facts in place of the span inferences, one home for
+  the declaration tables and for authorship, and a placement law. It precedes
+  M5, whose completion needs the same authorship and positions.
 
 ## M5: Completion
 

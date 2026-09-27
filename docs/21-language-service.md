@@ -7,7 +7,8 @@ RAML rule. Every answer is read from a parse (`docs/13` § 1) or a view
 
 The design and its decisions are in `research/language-server.md` and
 `research/language-service-plan.md`, which this document supersedes where they
-differ.
+differ. Where the service is headed, and the parser facts that takes, is
+`research/language-service-architecture.md`.
 
 ## 1. Place
 

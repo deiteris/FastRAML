@@ -51,10 +51,12 @@ from fastraml.types.base import (
 )
 from fastraml.types.values import (
     as_fraction,
+    broken,
     check_non_negative,
     failure,
     index_path,
     key_path,
+    rejected,
     type_name,
     unique_items,
 )
@@ -91,10 +93,9 @@ class ComplexKind(KindBase):
         return False
 
     def wrong_type(self, value: Any, path: str, expected: str) -> RamlError:
-        return failure(
+        return rejected(
             'invalid type',
-            self.base.location,
-            self.base.value_pos,
+            self.base,
             info={'path': path, 'expected': expected, 'found': type_name(value)},
         )
 
@@ -283,10 +284,9 @@ class ObjectShape(ComplexKind):
         missing = [name for name, prop in declared.items() if prop.required and name not in value]
         if missing:
             accumulator.add(
-                failure(
+                rejected(
                     'missing required properties',
-                    self.base.location,
-                    self.base.value_pos,
+                    self.base,
                     info={'path': path, 'properties': missing},
                 )
             )
@@ -311,15 +311,13 @@ class ObjectShape(ComplexKind):
 
         count = len(value)
         if self.min_properties is not None and count < self.min_properties.value:
-            accumulator.add(self._count_failure('too few properties', path, count, self.min_properties.value))
+            accumulator.add(self._count_failure('too few properties', path, count, self.min_properties))
         if self.max_properties is not None and count > self.max_properties.value:
-            accumulator.add(self._count_failure('too many properties', path, count, self.max_properties.value))
+            accumulator.add(self._count_failure('too many properties', path, count, self.max_properties))
         accumulator.raise_if_any()
 
-    def _count_failure(self, message: str, path: str, count: int, bound: int) -> RamlError:
-        return failure(
-            message, self.base.location, self.base.value_pos, info={'path': path, 'count': count, 'bound': bound}
-        )
+    def _count_failure(self, message: str, path: str, count: int, bound: ScalarFacet[int]) -> RamlError:
+        return broken(message, bound, info={'path': path, 'count': count, 'bound': bound.value})
 
     def _validate_extra(self, name: str, item: Any, path: str) -> None:
         """A key the declaration did not name: a pattern property, or refused."""
@@ -335,10 +333,9 @@ class ObjectShape(ComplexKind):
             # properties to be a string". So declaring any pattern makes the
             # set of them exhaustive — a key matching none is refused whatever
             # `additionalProperties` says (docs/05 § 4).
-            raise failure(
+            raise rejected(
                 'property name matches no pattern property',
-                self.base.location,
-                self.base.value_pos,
+                self.base,
                 info={
                     'path': path,
                     'property': name,
@@ -346,10 +343,9 @@ class ObjectShape(ComplexKind):
                 },
             )
         if self.additional_properties is not None and not self.additional_properties.value:
-            raise failure(
+            raise broken(
                 'additional properties are not allowed',
-                self.base.location,
-                self.base.value_pos,
+                self.additional_properties,
                 info={'path': path, 'property': name},
             )
 
@@ -410,19 +406,17 @@ class ArrayShape(ComplexKind):
         count = len(value)
         if self.min_items is not None and count < self.min_items.value:
             accumulator.add(
-                failure(
+                broken(
                     'too few items',
-                    self.base.location,
-                    self.base.value_pos,
+                    self.min_items,
                     info={'path': path, 'count': count, 'minItems': self.min_items.value},
                 )
             )
         if self.max_items is not None and count > self.max_items.value:
             accumulator.add(
-                failure(
+                broken(
                     'too many items',
-                    self.base.location,
-                    self.base.value_pos,
+                    self.max_items,
                     info={'path': path, 'count': count, 'maxItems': self.max_items.value},
                 )
             )
@@ -436,10 +430,9 @@ class ArrayShape(ComplexKind):
             duplicate = unique_items(value)
             if duplicate is not None:
                 accumulator.add(
-                    failure(
+                    broken(
                         'items are not unique',
-                        self.base.location,
-                        self.base.value_pos,
+                        self.unique_items,
                         info={'path': index_path(path, duplicate)},
                     )
                 )
@@ -751,10 +744,9 @@ class UnionShape(ComplexKind):
             return None
         member = table.members.get(key)
         if member is None:
-            raise failure(
+            raise rejected(
                 'unknown discriminator value',
-                self.base.location,
-                self.base.value_pos,
+                self.base,
                 info={'path': path, 'discriminator': table.name, 'value': _spell(tag), 'known': list(table.known)},
             )
         return member

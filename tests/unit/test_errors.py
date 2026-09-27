@@ -107,6 +107,16 @@ class TestRendering:
         assert all(f['severity'] == 'error' for f in stack)
         assert stack[1]['position'] == f'{LOC}:17:10'
 
+    def test_an_origin_is_rendered_under_its_frame(self):
+        # docs/11 § 3: the constraint a value broke, in both renderings.
+        origin = Trace('declared here', LOC, Position(4, 5, 4, 17))
+        err = RamlError(Trace('value is too short', LOC, POS, ErrorKind.VALIDATING, origin=origin))
+        assert f'{LOC}:4:5 declared here' in str(err)
+        assert err.to_dict()['traces'][0]['stack'][0]['origin'] == {
+            'message': 'declared here',
+            'position': f'{LOC}:4:5',
+        }
+
     def test_exception_message_is_the_head(self):
         err = RamlError.new('title is required', LOC, POS)
         assert str(err.args[0]) == 'title is required'
@@ -223,6 +233,17 @@ class TestOneMistakeOneChain:
         assert [[frame.message for frame in chain] for chain in result.chains()] == [
             ['resolve shape', 'reference not found']
         ]
+
+    def test_chains_with_different_origins_are_kept_apart(self):
+        # One value breaking two constraints is two reports.
+        def broken(line: int) -> RamlError:
+            origin = Trace('declared here', LOC, Position(line, 5))
+            return RamlError(Trace('value is too short', LOC, POS, ErrorKind.VALIDATING, origin=origin))
+
+        acc = Accumulator()
+        acc.add(broken(4))
+        acc.add(broken(5))
+        assert len(list(acc.result().chains())) == 2
 
     def test_distinct_errors_are_kept_as_they_are(self):
         class SpecialError(RamlError):

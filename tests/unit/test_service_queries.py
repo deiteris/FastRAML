@@ -225,6 +225,16 @@ class TestDiagnostics:
         assert found.info.get('type') == 'lib.Nobody'
         assert found.source == queries.SOURCE
 
+    def test_the_constraint_a_value_broke_is_related_information(self, tmp_path):
+        document = '#%RAML 1.0\ntitle: T\ntypes:\n  Name:\n    minLength: 5\n    example: d\n'
+        write_files(tmp_path, {'api.raml': document})
+        folder = path_to_file_uri(tmp_path)
+        (found,) = queries.diagnostics(Workspace([folder]).snapshot(f'{folder}/api.raml'), lint=False)[
+            f'{folder}/api.raml'
+        ]
+        assert (found.code, found.site.span.line, found.site.span.column) == ('value is too short', 6, 14)
+        assert [(r.message, r.site.span.line) for r in found.related] == [('declared here', 5)]
+
     def test_a_file_without_problems_has_no_entry(self, parsed):
         snapshot, _ = parsed
         assert queries.diagnostics(snapshot, lint=False) == {}

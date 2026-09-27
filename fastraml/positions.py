@@ -54,6 +54,14 @@ class Position:
             return Position(self.line, self.column + 1, self.line, self.end_column - 1)
         return self
 
+    def through(self, last: Position) -> Position:
+        """From this span's start to the end of `last`; `last` alone when this
+        one is unknown.
+        """
+        if not self.is_known:
+            return last
+        return Position(self.line, self.column, last.end_line, last.end_column)
+
     def with_end(self, end_line: int, end_column: int) -> Position:
         return replace(self, end_line=end_line, end_column=end_column)
 

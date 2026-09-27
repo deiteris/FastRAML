@@ -47,7 +47,7 @@ from fastraml.types.complex_ import ArrayShape, ComplexKind, ObjectShape, Recurs
 from fastraml.types.examples import Example, Examples
 from fastraml.types.inherit import inherit
 from fastraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
-from fastraml.types.values import EnumValues
+from fastraml.types.values import EnumValues, index_path, key_path, rejected
 from fastraml.uris import uri_stem
 from fastraml.yamlnode import node_error
 
@@ -477,11 +477,13 @@ class JsonShape(ComplexKind):
         try:
             self.validator.validate(value)
         except ValidationError as err:
-            raise RamlError.new(
+            # The failing instance's path, in RAML's spelling, so the value is
+            # found in the example (docs/11 § 3).
+            for part in err.absolute_path:
+                path = index_path(path, part) if isinstance(part, int) else key_path(path, part)
+            raise rejected(
                 'value does not match the JSON schema',
-                self.base.location,
-                self.base.value_pos,
-                kind=ErrorKind.VALIDATING,
+                self.base,
                 info={
                     'path': path,
                     'error': err.message,

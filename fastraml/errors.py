@@ -49,11 +49,14 @@ class Trace:
     `info` holds the values that vary between occurrences of the same message.
     Keeping them out of `message` means diagnostics group cleanly and tests can
     match on the message alone. See docs/11-diagnostics.md § 6.
+
+    `origin` is a second place that explains this one: the constraint a value
+    broke, where the frame itself is at the value (docs/11 § 3).
     """
 
-    __slots__ = ('cause', 'info', 'kind', 'location', 'message', 'position')
+    __slots__ = ('cause', 'info', 'kind', 'location', 'message', 'origin', 'position')
 
-    def __init__(  # noqa: PLR0913, PLR0917 - a diagnostic frame carries six fields
+    def __init__(  # noqa: PLR0913, PLR0917 - a diagnostic frame carries seven fields
         self,
         message: str,
         location: str,
@@ -61,6 +64,7 @@ class Trace:
         kind: ErrorKind = ErrorKind.PARSING,
         info: Mapping[str, Any] | None = None,
         cause: Trace | None = None,
+        origin: Trace | None = None,
     ) -> None:
         self.message = message
         self.location = location
@@ -68,6 +72,7 @@ class Trace:
         self.kind = kind
         self.info = info or {}
         self.cause = cause
+        self.origin = origin
 
     def __repr__(self) -> str:
         return f'Trace({self.message!r}, {self.where()!r})'
@@ -86,12 +91,15 @@ class Trace:
         return f'{self.message}: {details}'
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        found: dict[str, Any] = {
             'message': self.rendered_message(),
             'position': self.where(),
             'severity': 'error',
             'type': str(self.kind),
         }
+        if self.origin is not None:
+            found['origin'] = {'message': self.origin.rendered_message(), 'position': self.origin.where()}
+        return found
 
 
 class RamlError(Exception):
@@ -210,6 +218,8 @@ class RamlError(Exception):
             lines.append(f'[{index}]')
             for depth, frame in enumerate(chain):
                 lines.append(f'{"  " * (depth + 1)}{frame.where()} {frame.rendered_message()}')
+                if frame.origin is not None:
+                    lines.append(f'{"  " * (depth + 2)}{frame.origin.where()} {frame.origin.rendered_message()}')
         return '\n'.join(lines)
 
     def to_dict(self) -> dict[str, Any]:
@@ -284,4 +294,5 @@ def _frame_key(frame: Trace) -> tuple[Any, ...]:
     `repr`, because some are lists and a key must hash.
     """
     info = tuple((key, repr(value)) for key, value in frame.info.items())
-    return (frame.message, frame.location, frame.position, frame.kind, info)
+    origin = None if frame.origin is None else (frame.origin.location, frame.origin.position)
+    return (frame.message, frame.location, frame.position, frame.kind, info, origin)

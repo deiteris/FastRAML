@@ -124,7 +124,9 @@ where its name is written, never by its id: ids do not survive a reparse
 ### 4.1 Diagnostics
 
 Each chain becomes one diagnostic at its innermost frame with a known
-position. Its outer frames with positions become related information. `code`
+position. Its outer frames with positions, but for one at that same site,
+become related information, followed by every frame's origin: the
+constraint a value broke (`docs/11` § 3.1). `code`
 is the innermost message key and `info` its variables (`docs/11` § 6). A chain
 with no position is placed at the start of its innermost frame's file.
 

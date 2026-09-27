@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Hashable, Iterable
 
     from fastraml.positions import Position
+    from fastraml.types.base import BaseShape, ScalarFacet
 
 __all__ = [
     'DATETIME_ONLY',
@@ -35,6 +36,7 @@ __all__ = [
     'ValueSet',
     'as_exact',
     'as_fraction',
+    'broken',
     'check_non_negative',
     'decimal_digits',
     'decimal_text',
@@ -45,6 +47,7 @@ __all__ = [
     'key_path',
     'parse_rfc2616',
     'parse_rfc3339',
+    'rejected',
     'same_value',
     'type_name',
     'unique_items',
@@ -67,6 +70,20 @@ def failure(
 ) -> RamlError:
     """One validation diagnostic. `ErrorKind.VALIDATING` throughout P10."""
     return RamlError.new(message, location, position, kind=ErrorKind.VALIDATING, info=info)
+
+
+def broken(message: str, facet: ScalarFacet[Any], *, info: dict[str, Any]) -> RamlError:
+    """A value `facet` rejects, placed at the facet: its key and value, in the
+    file that wrote them, which may be a parent's (docs/11 § 3).
+    """
+    return failure(message, facet.location, facet.key_pos.through(facet.value_pos), info=info)
+
+
+def rejected(message: str, base: BaseShape, *, info: dict[str, Any]) -> RamlError:
+    """A value `base` rejects on no one facet, placed at the name it is
+    declared under, or at the declaration where it has none.
+    """
+    return failure(message, base.location, base.key_pos if base.key_pos.is_known else base.value_pos, info=info)
 
 
 def check_non_negative(name: str, value: int, location: str, position: Position | None) -> RamlError | None:
@@ -446,11 +463,21 @@ class EnumValues(list[Any]):
     inheritance and the union intersection bind a new list (docs/07 § 4, § 5).
     """
 
-    __slots__ = ('_index',)
+    __slots__ = ('_index', '_span')
 
     def __init__(self, members: Iterable[Any] = ()) -> None:
         super().__init__(members)
         self._index: ValueSet | None = None
+        self._span: Position | None = None
+
+    def span(self) -> Position:
+        """From the first member to the last: where a value outside them is
+        reported against (docs/11 § 3.1). Once, since a union scan builds and
+        drops that failure for every member it tries.
+        """
+        if self._span is None:
+            self._span = self[0].value_pos.through(self[-1].value_pos)
+        return self._span
 
     def contains(self, value: Any) -> bool:
         """Is `value` one of these members' raw values, under `same_value`?"""

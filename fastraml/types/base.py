@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
 
-from fastraml.datanode import make_data_node
+from fastraml.datanode import at_value, make_data_node
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.positions import UNKNOWN, Position
 from fastraml.types.values import EnumValues, ValueSet
@@ -407,7 +407,7 @@ class BaseShape:
                 accumulator.add(
                     RamlError.wrap(
                         'invalid enum member',
-                        err,
+                        at_value(err, member),
                         member.location,
                         member.value_pos,
                         kind=ErrorKind.VALIDATING,
@@ -431,10 +431,13 @@ class BaseShape:
             raise RamlError.new('declaration has no shape', self.location, self.key_pos, kind=ErrorKind.VALIDATING)
         if self.enum:
             if not _enum_contains(self.enum, value):
+                enum = self.enum
+                # At the members, which may be a parent's (docs/11 § 3.1).
+                span = enum.span() if isinstance(enum, EnumValues) else enum[0].value_pos.through(enum[-1].value_pos)
                 raise RamlError.new(
                     'value is not one of the allowed values',
-                    self.location,
-                    self.value_pos,
+                    enum[0].location,
+                    span,
                     kind=ErrorKind.VALIDATING,
                     info={'path': path, 'allowed': [member.raw for member in self.enum]},
                 )

@@ -43,7 +43,12 @@ class RamlError(Exception):
 
 A `Trace` is one contextual frame. `Trace.cause` links to the next inner frame.
 `RamlError.head` is the outermost frame, and `RamlError.siblings` contains
-independent errors.
+independent errors. `Trace.origin` is a second place that explains a frame,
+with its own message: the constraint a value broke (§ 3.1).
+
+A chain narrows. Each frame is at a node inside, or reached from, the one
+outside it, and the innermost frame is at the node at fault, not at a
+construct that holds it.
 
 Use these operations to compose diagnostics:
 
@@ -181,6 +186,24 @@ by default, at the shifted column. An unresolved or self-referential name spans
 the whole name, so an editor underlines it; a lexer or URI-template error, the
 offending character. A YAML syntax error is a point, and spans the character
 at it.
+
+### 3.1 Values against constraints
+
+`validate_at` sees Python values, not nodes, so it raises each failure at the
+constraint: the facet's key and value (`minLength: 5`), in the file that
+wrote the facet, which may be a parent's; or, for a failure no one facet
+states (a wrong type, a missing property, no union member), at the name the
+type is declared under. `enum` is placed at its members.
+
+Each P10 check of a value, an example, default, annotation value, custom
+facet value or enum member, then moves those frames to the value
+(`at_value`). The frame's `info['path']` is found in the value's `DataNode`,
+and a frame naming `info['property']` is placed at that key. Where the frame
+was becomes its `origin`, `declared here`. The wrapping frame is at the value
+as written: an included example's is the `!include`, and the frames inside
+are in the included file. A value with no position, a path inside an inline
+JSON string or the root of an included file, leaves the frame unplaced, so
+the chain is reported at its wrapper.
 
 ## 4. Locations after structural merge
 

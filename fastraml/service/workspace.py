@@ -257,24 +257,30 @@ class Workspace:
         parse of `uri` alone when none did.
         """
         uri = canonical(uri)
-        found = [snapshot for snapshot in map(self.snapshot, self.roots()) if uri in snapshot.read]
-        return found or [self.snapshot(uri)]
+        found = [snapshot for snapshot in map(self._current, self.roots()) if uri in snapshot.read]
+        return found or [self._current(uri)]
 
     def snapshot(self, root: str) -> Snapshot:
         """The current snapshot of `root`, parsed now if it is stale."""
-        root = canonical(root)
+        return self._current(canonical(root))
+
+    def _current(self, root: str) -> Snapshot:
+        """`snapshot` for a URI already canonical, as every root is: parsing
+        one to spell it again cost 13 ms per request over the TCK's 1011.
+        """
         snapshot = self._snapshots.get(root)
         if snapshot is None:
-            self._collect()
             snapshot = self._snapshots[root] = self._parse(root)
         return snapshot
 
-    def _collect(self) -> None:
-        """Free the snapshots dropped since the last parse.
+    def collect(self) -> None:
+        """Free the snapshots dropped since the last call (docs/21 § 2).
 
         Whether or not automatic collection is on: the host's switch governs
         when the collector runs by itself, and this frees what the service
-        itself discarded.
+        itself discarded. The host calls it between a change and the parse it
+        leads to, outside any request: a full collection over a large
+        workspace costs more than most requests.
         """
         if self._garbage:
             gc.collect()
@@ -286,7 +292,7 @@ class Workspace:
         """
         found: dict[str, list[str]] = {}
         for root in self.roots():
-            for uri in self.snapshot(root).read:
+            for uri in self._current(root).read:
                 found.setdefault(uri, []).append(root)
         return found
 

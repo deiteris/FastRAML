@@ -160,7 +160,16 @@ class TestSnapshots:
         assert workspace.text(f'{folder}/lib.raml') == API
         assert workspace.text(path_to_file_uri(tmp_path.parent / 'elsewhere.raml')) is None
 
-    def test_a_dropped_snapshot_is_freed_before_the_next_parse(self, tmp_path):
+    def test_a_parse_does_not_wait_for_a_collection(self, tmp_path, monkeypatch):
+        # The host collects when idle (docs/21 § 2); a request's parse never does.
+        workspace, folder = _workspace(tmp_path, self.FILES)
+        root = f'{folder}/api.raml'
+        workspace.snapshot(root)
+        workspace.change(root, f'{self.FILES["api.raml"]}# 2\n', 2)
+        monkeypatch.setattr(gc, 'collect', lambda *_: pytest.fail('a parse collected'))
+        assert workspace.snapshot(root).error is None
+
+    def test_collect_frees_the_dropped_snapshots(self, tmp_path):
         # A server defers full collections for its whole run (docs/12 § 6), and
         # a model is cyclic garbage: without the collection, every edit would
         # keep the model it replaced.
@@ -172,6 +181,7 @@ class TestSnapshots:
             for version in range(1, 4):
                 workspace.change(root, f'{self.FILES["api.raml"]}# {version}\n', version)
                 workspace.snapshot(root)
+                workspace.collect()
             assert _models() - before == 1
 
     def test_the_yaml_trees_are_kept_only_for_a_lint_rule_that_reads_them(self, tmp_path):

@@ -166,6 +166,10 @@ class RamlServer(LanguageServer):
         change postpones (docs/21 § 5).
         """
         self._timer = None
+        if not lint:
+            # After the pause and before the parse it leads to: free what the
+            # changes replaced, so the new model is not built beside the old.
+            self.service.collect()
         self.publish(self._pending, lint=lint)
         if lint:
             self._pending = set()

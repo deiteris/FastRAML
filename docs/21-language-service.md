@@ -55,10 +55,14 @@ ended in an error, since the error may be the missing file.
 
 **Memory.** A server defers full collections for its whole run (`docs/12`
 § 6), and a dropped snapshot is cyclic garbage the size of a model, which only
-a full collection frees. So before it parses, the workspace collects once if
-it dropped a snapshot since the last parse, whether or not automatic
-collection is on. Without that, the model an edit replaced stays alive beside
-the next one: on `large`, a run of edits settles at 98 MB instead of 75 MB.
+a full collection frees. So `collect()` collects once if the workspace
+dropped a snapshot since the last call, whether or not automatic collection
+is on, and the host calls it between the change that dropped one and the
+parse it leads to: the adapter, after the pause and before the parser tier
+(§ 5). Without that, the model an edit replaced stays alive beside the
+next one: on `large`, a run of edits settles at 98 MB instead of 75 MB. A
+parse never collects: collecting before one put a full collection over every
+live snapshot in the request, 14 ms over the TCK's 1011.
 
 `snapshots(uri)` serves a file from every root that read it, or else from a
 parse of the file alone. `readers()` maps every file a root read to those

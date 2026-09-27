@@ -366,3 +366,22 @@ def test_a_remote_document_is_neither_published_nor_linked(tmp_path, monkeypatch
     server.publish([api])
     assert [params.uri for params in sent] == [api]
     assert sent[0].diagnostics[0].related_information is None
+
+
+def test_the_server_collects_after_the_pause_and_before_the_parse(monkeypatch):
+    """Not in a request: a full collection over the TCK's 1011 snapshots cost
+    14 ms, and each open and close made one pending. Not after the lint tier
+    either: the snapshot a change drops is still current then, and the next
+    parse would build its model beside it (docs/21 § 2).
+    """
+    events: list[str] = []
+    server = RamlServer()
+    monkeypatch.setattr(server, 'publish', lambda uris, lint=True: events.append(f'publish lint={lint}'))
+    monkeypatch.setattr(server.service, 'collect', lambda: events.append('collect'))
+
+    async def flush() -> None:
+        server._flush(lint=False)
+        await asyncio.sleep(0.05)  # the lint tier it schedules
+
+    asyncio.run(flush())
+    assert events == ['collect', 'publish lint=False', 'publish lint=True']

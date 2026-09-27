@@ -160,6 +160,8 @@ def _measure_edit(bench: str, entry: Path, repeat: int) -> Measurement:
     def edit() -> object:
         version = next(versions)
         workspace.change(root, f'{text}\n# edit {version}\n', version)
+        # As the server does after the pause, before the parse (docs/21 § 2).
+        workspace.collect()
         snapshot = workspace.snapshot(root)
         return queries.diagnostics(snapshot, lint=False), snapshot.occurrences
 

@@ -29,7 +29,9 @@ class Node:
 - `Node` defines neither equality nor hashing, so identity is preserved. The
   endpoint provenance overlay is keyed by node identity.
 - YAML aliases are expanded to independent nodes. Recursive anchors are
-  rejected, and alias expansion is bounded by the document node limit.
+  rejected, and alias expansion is bounded by the document node limit. A copy
+  keeps its anchor's position, so a block whose last value is an alias ends
+  at the alias's key: `full_position` never ends before it starts.
 - A mapping key written twice is rejected as `duplicate key` at the repeat,
   with `info['key']`, as YAML 1.2 requires. Keys compare as text, so `200` and
   `'200'` are one key, which is how RAML reads a status code. A file with a

@@ -363,9 +363,21 @@ def mark_subtree[V](marks: dict[Node, V], node: Node, value: V) -> None:
 
 
 def last_leaf(node: Node) -> Node:
-    """The deepest last-child descendant. Iterative, so depth costs nothing."""
+    """The deepest last-child descendant. Iterative, so depth costs nothing.
+
+    An alias's copy keeps its anchor's position, which may be anywhere
+    earlier: a last child that starts before its previous sibling ends, or
+    before its container starts, is passed over for that sibling or container.
+    """
     while node.content:
-        node = node.content[-1]
+        last = node.content[-1]
+        before = node.content[-2] if len(node.content) > 1 else None
+        floor = (node.line, node.column) if before is None else (before.end_line, before.end_column)
+        if (last.line, last.column) < floor:
+            if before is None:
+                return node
+            last = before
+        node = last
     return node
 
 

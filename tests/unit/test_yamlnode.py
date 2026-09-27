@@ -123,6 +123,21 @@ class TestPositions:
         _, flow = next(pairs(parse(text)))
         assert (flow.full_position.column, flow.full_position.end_column) == (4, 10)
 
+    @pytest.mark.parametrize(
+        ('text', 'end'),
+        [
+            pytest.param('a: &x |\n  t\nb:\n  p: *x\n', (4, 4), id='below its anchor'),
+            pytest.param('a: &x 1\nb:\n  p: *x\n', (3, 4), id='beside its anchor'),
+            pytest.param('a: &x {k: 1}\nb:\n  - 1\n  - *x\n', (3, 6), id='in a sequence'),
+        ],
+    )
+    def test_a_block_ending_in_an_alias_ends_after_it_starts(self, text, end):
+        # The alias's copy sits at its anchor: its end, taken as the block's,
+        # came before the block's start, which VS Code refuses for an outline.
+        _, block = list(pairs(parse(text)))[1]
+        span = block.full_position
+        assert (span.line, span.column) < (span.end_line, span.end_column) == end
+
     def test_last_leaf_helpers(self):
         root = parse('a:\n  b:\n    c: value\n')
         assert last_leaf(root).value == 'value'

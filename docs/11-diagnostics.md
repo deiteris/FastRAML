@@ -287,6 +287,7 @@ New parser-authored diagnostics MUST use a stable message key:
 
 - lowercase;
 - no trailing period;
+- no markup: an editor shows a diagnostic's message as plain text;
 - no source position in the message;
 - varying values in `Trace.info` rather than interpolated into `Trace.message`.
 

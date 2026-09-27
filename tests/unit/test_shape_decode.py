@@ -105,7 +105,7 @@ class TestCommonFacets:
     def test_type_and_schema_are_mutually_exclusive(self):
         with pytest.raises(RamlError) as caught:
             shape('T:\n  type: string\n  schema: string\n')
-        assert '`type` and `schema` are mutually exclusive' in caught.value.messages()[0]
+        assert 'type and schema are mutually exclusive' in caught.value.messages()[0]
 
     def test_the_declaration_keeps_its_position_and_file(self):
         base = shape('T:\n  type: string\n')

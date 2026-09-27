@@ -117,6 +117,12 @@ class TestPositions:
         assert span.line == 2
         assert span.end_line == 3
 
+    @pytest.mark.parametrize('text', ['a: [a, b]\n', 'a: {x: 1}  # c\n'])
+    def test_full_position_of_a_flow_collection_reaches_its_bracket(self, text):
+        # The last leaf ends before `]`: a value squiggle stopped one short.
+        _, flow = next(pairs(parse(text)))
+        assert (flow.full_position.column, flow.full_position.end_column) == (4, 10)
+
     def test_last_leaf_helpers(self):
         root = parse('a:\n  b:\n    c: value\n')
         assert last_leaf(root).value == 'value'

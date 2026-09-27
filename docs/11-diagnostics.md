@@ -153,6 +153,9 @@ Source-backed declarations generally carry `location` and a `key_pos`, a
 - `value_pos` usually spans the complete value, including child nodes.
 - A tagged node's full span includes the tag, so `!include file.raml` can be
   highlighted as one source range.
+- A collection's full span ends at its last leaf, not at the line break
+  PyYAML ends a block at; a flow collection's ends past its bracket, when
+  that is on the last leaf's line.
 
 YAML node spans come from the composer's marks. Some parsers derive a more
 specific position within a scalar:

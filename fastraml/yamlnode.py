@@ -301,11 +301,16 @@ class Node:
         """The span of this node including every descendant.
 
         For a scalar this equals `position`. For a mapping or sequence it runs
-        to the end of the last leaf, so an editor underlines the whole block.
+        to the end of the last leaf, so an editor underlines the whole block,
+        not the line break PyYAML ends a block collection at. A flow
+        collection ends past its bracket, on the last leaf's line, and keeps
+        that end; one whose bracket is on a line of its own loses it.
         """
         if not self.content:
             return self.position
         leaf = last_leaf(self)
+        if self.end_line == leaf.end_line and self.end_column > leaf.end_column:
+            return self.position
         return Position(self.line, self.column, leaf.end_line, leaf.end_column)
 
 

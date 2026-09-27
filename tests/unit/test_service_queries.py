@@ -164,6 +164,20 @@ class TestSymbols:
         assert (book.selection.line, book.selection.column, book.selection.end_column) == (line, column, column + 4)
         assert (book.span.line, book.span.end_line) == (line, _where(API, 'cover.raml')[0])
 
+    def test_a_documentation_item_selects_its_title_and_an_included_one_is_not_listed(self, tmp_path):
+        # An item has no key: selecting its mapping's first line ran past the
+        # span, which VS Code refuses for the whole outline.
+        document = '#%RAML 1.0\ntitle: T\ndocumentation:\n - title: Home\n   content: |\n    a\n - !include item.raml\n'
+        write_files(
+            tmp_path, {'api.raml': document, 'item.raml': '#%RAML 1.0 DocumentationItem\ntitle: Inc\ncontent: x\n'}
+        )
+        folder = path_to_file_uri(tmp_path)
+        (snapshot,) = Workspace([folder]).snapshots(f'{folder}/api.raml')
+        (home,) = queries.document_symbols(snapshot, f'{folder}/api.raml')
+        line, column = _where(document, 'Home')
+        assert (home.selection.line, home.selection.column, home.selection.end_column) == (line, column, column + 4)
+        assert (home.span.line, home.span.end_line) == (line, 7)
+
     def test_workspace_symbols_match_part_of_a_name_in_any_case(self, parsed):
         snapshot, _ = parsed
         found = queries.workspace_symbols([snapshot, snapshot], 'PERS')

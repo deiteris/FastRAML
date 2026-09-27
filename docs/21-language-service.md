@@ -104,7 +104,7 @@ about names, so a name it does not hold has no answer.
 | `definition` | the `DEFINITION` occurrence of the target; for a path, the fragment it decoded to |
 | `references`, `highlights` | the target's occurrences |
 | `hover` | `render` for a type, annotation type, property or facet; the kind, parameters, `usage` and `description` otherwise |
-| `document_symbols` | the fragment's declaration tables, documentation items, and resources with their methods, from `key_pos` and `value_pos` |
+| `document_symbols` | the fragment's declaration tables, documentation items, and resources with their methods, written in this file, from `key_pos` and `value_pos`; a documentation item has no key and selects its title |
 | `workspace_symbols` | the declarations of every snapshot, matched case-insensitively, once each |
 | `links` | `include_refs` and `uses:` links, placed at their `LINK` occurrence |
 | `folding_ranges`, `selection_ranges` | the buffer's composed `Node` tree alone |

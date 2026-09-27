@@ -393,8 +393,10 @@ def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
     found = list(_declarations(fragment))
     if isinstance(fragment, APIFragment):
         for item in fragment.documentation:
-            title = '' if item.title is None else str(item.title.value)
-            symbol = _symbol(title, SymbolKind.DOCUMENTATION, item.location, item.key_pos, item.value_pos)
+            if item.location != uri:
+                continue
+            title, key = ('', item.key_pos) if item.title is None else (str(item.title.value), item.title.value_pos)
+            symbol = _symbol(title, SymbolKind.DOCUMENTATION, item.location, key, item.value_pos)
             if symbol is not None:
                 found.append(symbol)
         found += _resources((e for e in raml.endpoints.values() if e.full_uri == e.uri), uri)
@@ -441,12 +443,19 @@ def _within(inner: Position, outer: Position) -> bool:
 
 
 def _symbol(name: str, kind: SymbolKind, uri: str, key: Position | None, value: Position | None) -> Symbol | None:
-    """A symbol from its key and its value, or `None` where the key has no position."""
+    """A symbol selecting its key and spanning key and value, or `None` where
+    the key has no position.
+
+    The span holds the key, which a client requires of the selection: a
+    documentation item has no key and selects its title, inside its value.
+    """
     if key is None or not key.is_known:
         return None
-    end = value if value is not None and value.is_known and value.end_line >= key.line else key
-    span = Position(key.line, key.column, end.end_line, end.end_column)
-    return Symbol(name, kind, uri, span, Position(key.line, key.column, key.line, key.end_column))
+    start, end = key, key
+    if value is not None and value.is_known:
+        start = min(key, value, key=lambda at: (at.line, at.column))
+        end = max(key, value, key=lambda at: (at.end_line, at.end_column))
+    return Symbol(name, kind, uri, Position(start.line, start.column, end.end_line, end.end_column), key)
 
 
 def workspace_symbols(snapshots: Iterable[Snapshot], query: str) -> list[Symbol]:

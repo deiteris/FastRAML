@@ -199,6 +199,18 @@ class TestBodies:
         # Separate shapes: sharing one would alias their facets through P7.
         assert bodies['application/json'].shape is not bodies['application/xml'].shape
 
+    @pytest.mark.parametrize('site', ['request', 'response'])
+    def test_a_bodyless_declaration_is_placed_at_its_body_key(self, workspace, site):
+        # It was placed nowhere: a lint finding on it fell back to the file's start.
+        text = '/users:\n  post:\n    ' + (
+            'body:\n' if site == 'request' else 'responses:\n      200:\n        body:\n'
+        )
+        raml = parse(workspace, text + '          type: string\n', head=JSON)
+        operation = raml.endpoints['/users'].operations['post']
+        (body,) = (operation.request.bodies if site == 'request' else operation.responses['200'].bodies).values()
+        line = (JSON + text).count('\n')
+        assert (body.key_pos.line, body.key_pos.end_column - body.key_pos.column) == (line, len('body'))
+
     def test_no_media_type_anywhere_is_an_error(self, workspace):
         error = fails(workspace, '/users:\n  post:\n    body:\n      type: string\n')
         assert error is not None

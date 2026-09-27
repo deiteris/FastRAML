@@ -122,8 +122,8 @@ def _is_media_type_map(node: Node) -> bool:
     return all('/' in content[index].value for index in range(0, len(content), 2))
 
 
-def _decode_bodies(raml: Raml, node: Node, location: str, target: DomainLocation) -> dict[str, Body]:
-    """`body:` in either spelling (docs/08 § 6.3)."""
+def _decode_bodies(raml: Raml, key: Node, node: Node, location: str, target: DomainLocation) -> dict[str, Body]:
+    """`body:` in either spelling (docs/08 § 6.3), written at `key`."""
     if is_null(node):
         return {}
     location = raml.location_of(node, location)
@@ -133,15 +133,15 @@ def _decode_bodies(raml: Raml, node: Node, location: str, target: DomainLocation
         # The media-type node *is* the body node the spec's target table names,
         # so an annotation written inside one targets RequestBody/ResponseBody.
         with raml.target_scope(target):
-            for key, value in pairs(node):
-                shape = make_body_shape(raml, key, value, location)
+            for media, value in pairs(node):
+                shape = make_body_shape(raml, media, value, location)
                 raml.put_typedef(shape.location, shape)
-                bodies[key.value] = Body(
+                bodies[media.value] = Body(
                     id=raml.next_id(),
-                    media_type=key.value,
+                    media_type=media.value,
                     location=location,
                     shape=shape,
-                    key_pos=key.position,
+                    key_pos=media.position,
                     value_pos=value.full_position,
                 )
         return bodies
@@ -172,6 +172,7 @@ def _decode_bodies(raml: Raml, node: Node, location: str, target: DomainLocation
                 media_type=media_type,
                 location=location,
                 shape=shape,
+                key_pos=key.position,
                 value_pos=node.full_position,
             )
     return bodies
@@ -221,7 +222,9 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str, attach: 
                     elif name == FACET_HEADERS:
                         response.headers = make_parameter_map(raml, child_value, location, 'header')
                     elif name == FACET_BODY:
-                        response.bodies = _decode_bodies(raml, child_value, location, DomainLocation.RESPONSE_BODY)
+                        response.bodies = _decode_bodies(
+                            raml, child_key, child_value, location, DomainLocation.RESPONSE_BODY
+                        )
                     elif is_annotation_key(name):
                         add_domain_extension(raml, response.annotations, location, child_key, child_value)
                     else:
@@ -303,7 +306,7 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
     elif name == FACET_PROTOCOLS:
         operation.protocols = _protocols(value, location)
     elif name == FACET_BODY:
-        request.bodies = _decode_bodies(raml, value, location, DomainLocation.REQUEST_BODY)
+        request.bodies = _decode_bodies(raml, key, value, location, DomainLocation.REQUEST_BODY)
     elif name == FACET_RESPONSES:
         decode_responses(raml, value, location, operation.responses)
     elif is_annotation_key(name):

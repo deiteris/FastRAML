@@ -36,6 +36,22 @@ types:
   Order:
     properties:
       sku: string
+  HasHome:
+    properties:
+      home: string
+  OnFarm:
+    properties:
+      farm: string
+  Cat:
+    properties:
+      purrs: boolean
+  Dog:
+    properties:
+      barks: boolean
+  Homely:
+    type: [HasHome, Cat | Dog]
+  Kept:
+    type: [HasHome | OnFarm, Cat | Dog]
 /drafts:
   post:
     body:
@@ -184,3 +200,25 @@ class TestEveryNameIsDistinct:
 
     def test_every_model_has_its_own_module(self, models):
         assert len(models) == len(set(models))
+
+
+class TestAVariantIsNamedForTheMembersItTook:
+    """An inherited union's variants are anonymous (docs/07 § 5).
+
+    Named from the address they would be `TypesHomelyAnyOf0`, which says nothing
+    about which is which. Each variant inherits the members it took, and those
+    are what tell it apart from its siblings.
+    """
+
+    def test_the_member_the_union_took(self, models):
+        assert 'HomelyCat | HomelyDog' in models['homely']
+        assert 'class HomelyCat:' in models['homely_cat']
+        assert 'class HomelyDog:' in models['homely_dog']
+
+    def test_one_name_per_pair_of_members(self, models):
+        # Neither parent is named: both are unions, and every variant took one
+        # member of each.
+        assert 'KeptHasHomeCat | KeptOnFarmCat | KeptHasHomeDog | KeptOnFarmDog' in models['kept']
+
+    def test_no_variant_is_named_for_its_address(self, models):
+        assert not any('any_of' in name for name in models)

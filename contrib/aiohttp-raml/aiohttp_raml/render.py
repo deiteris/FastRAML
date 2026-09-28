@@ -71,7 +71,9 @@ def _parameters(entry: Described, method: Method, at: str, walk: Walk) -> Parame
         if item.place == BODY:
             continue
         info = _field_info(item)
-        decl = walk.optional(walk.field(info, f'{at}.{item.name}'), info)
+        # A parameter is text or absent: `None` in its annotation means only that
+        # it may be left out, never that the wire carries a null.
+        decl = walk.optional(walk.field(info, f'{at}.{item.name}', nullable=False), info)
         if item.place == URI:
             # A URI parameter is part of the path: the route matched, so it is
             # there. `required: false` on one contradicts the path it sits in.

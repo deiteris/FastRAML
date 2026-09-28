@@ -96,6 +96,12 @@ def test_an_optional_query_parameter_is_not_required() -> None:
     assert pages['default'] == 10
 
 
+def test_an_optional_parameter_is_absent_rather_than_null() -> None:
+    """A query value is text or missing; `str | None` means only that it may be left out."""
+    document, _ = rendered(one_view('/books/{isbn}', ParamsView))
+    assert document['/books']['/{isbn}']['get']['queryParameters']['title'] == {'type': 'string', 'required': False}
+
+
 class Defaulted(RamlView):
     async def get(self, isbn: str = 'x', /) -> Annotated[web.Response, Responds(200, Book)]: ...
 
@@ -129,7 +135,7 @@ def test_a_marker_names_the_header_rather_than_guessing_it() -> None:
 def test_the_marker_does_not_reach_the_type_walk() -> None:
     """`Header(...)` is metadata about the position, not a facet of the value."""
     document, dropped = rendered(one_view('/x', Marked))
-    assert document['/x']['get']['headers']['X-Request-Id']['type'] == 'string | nil'
+    assert document['/x']['get']['headers']['X-Request-Id']['type'] == 'string'
     assert dropped == []
 
 

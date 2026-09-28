@@ -665,9 +665,11 @@ def _supertypes(model: type[BaseModel]) -> list[type[BaseModel]]:
 
     `BaseModel` itself is not a RAML type. Neither is `RootModel`, whose job is
     to *be* its single field rather than to be a supertype of anything. Neither
-    is a parametrised generic such as `Page[Book]`: pydantic builds a class for
-    it, but its name is not a name a document can declare, so a model deriving
-    from one keeps its properties inline.
+    is a generic, in either form. `Page`, with its fields still typed `T`, is
+    the base pydantic gives `Page[Book]` -- inheriting it would type `items` as
+    `any[]` and hide the `Book[]` the parametrisation resolved. `Page[Book]`
+    names one parametrisation of many, so a model deriving from it keeps its
+    properties inline as well.
     """
     return [base for base in model.__bases__ if _is_supertype(base)]
 
@@ -677,7 +679,8 @@ def _is_supertype(base: Any) -> bool:
         return False
     if any(ancestor.__name__ == 'RootModel' for ancestor in base.__mro__):
         return False
-    return getattr(base, '__pydantic_generic_metadata__', {}).get('origin') is None
+    generic = getattr(base, '__pydantic_generic_metadata__', {})
+    return generic.get('origin') is None and not generic.get('parameters')
 
 
 def _own_fields(model: type[BaseModel]) -> set[str]:

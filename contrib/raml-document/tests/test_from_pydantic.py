@@ -406,7 +406,11 @@ class TestNames:
         walk = Walk()
         walk.model(M)
         assert walk.types['M'].properties['page'].type == 'Page_int_'
-        assert parsed_types(walk)['M'].validate({'page': {'items': [1]}}) is None
+        shape = parsed_types(walk)['M']
+        assert shape.validate({'page': {'items': [1]}}) is None
+        # Not `any[]`, which inheriting the unparametrised `Page` would give.
+        assert shape.validate({'page': {'items': ['x']}}) is not None
+        assert 'Page' not in walk.types
 
     def test_same_named_models_in_same_named_modules_stay_apart(self):
         """Two packages each keeping a `User` in `models.py` agree on the last segment."""

@@ -304,12 +304,13 @@ class Node:
         to the end of the last leaf, so an editor underlines the whole block,
         not the line break PyYAML ends a block collection at. A flow
         collection ends past its bracket, on the last leaf's line, and keeps
-        that end; one whose bracket is on a line of its own loses it.
+        that end, and so does a block that ends in one; one whose bracket is
+        on a line of its own loses it.
         """
         if not self.content:
             return self.position
         end = _end(self)
-        if self.end_line == end[0] and self.end_column > end[1]:
+        if end == (self.end_line, self.end_column):
             return self.position
         return Position(self.line, self.column, *end)
 
@@ -339,7 +340,7 @@ class _Grafted(Node):
         self.end_column = model.end_column
         self._position = None
         #: Where the model ends, as `full_position` reads it.
-        self.written_end: tuple[int, int] = model.written_end if isinstance(model, _Grafted) else _written_end(model)
+        self.written_end: tuple[int, int] = model.written_end if isinstance(model, _Grafted) else _end(model)
 
     @property
     def full_position(self) -> Position:
@@ -407,38 +408,36 @@ def mark_subtree[V](marks: dict[Node, V], node: Node, value: V) -> None:
 
 
 def _end(node: Node) -> tuple[int, int]:
-    """Where `node` and its descendants end: its deepest last-child
-    descendant's end, or a grafted descendant's written end. Iterative, so
-    depth costs nothing.
+    """Where `node` and its descendants end, as `full_position` reads it: its
+    deepest last-child descendant's end, or a grafted descendant's written
+    end, and past the bracket of any flow collection on the way down that
+    closes on that line. Iterative, so depth costs nothing.
 
     An alias's copy keeps its anchor's position, which may be anywhere
     earlier: a last child that starts before its previous sibling ends, or
     before its container starts, is passed over for that sibling or container.
     """
+    containers: list[Node] = []
     while node.content:
+        containers.append(node)
         last = node.content[-1]
         before = node.content[-2] if len(node.content) > 1 else None
         floor = (node.line, node.column) if before is None else (before.end_line, before.end_column)
         if (last.line, last.column) < floor:
             if before is None:
-                return node.end_line, node.end_column
+                end = node.end_line, node.end_column
+                break
             last = before
         if isinstance(last, _Grafted):
-            return last.written_end
+            end = last.written_end
+            break
         node = last
-    return node.end_line, node.end_column
-
-
-def _written_end(node: Node) -> tuple[int, int]:
-    """Where `full_position` ends a node that is not grafted: a flow
-    collection past its bracket, when that is on its last leaf's line; any
-    other container at its last leaf.
-    """
-    if not node.content:
-        return node.end_line, node.end_column
-    end = _end(node)
-    if node.end_line == end[0] and node.end_column > end[1]:
-        return node.end_line, node.end_column
+    else:
+        end = node.end_line, node.end_column
+    # The outermost bracket closing on the last leaf's line is the furthest.
+    for container in containers:
+        if container.end_line == end[0] and container.end_column > end[1]:
+            return container.end_line, container.end_column
     return end
 
 

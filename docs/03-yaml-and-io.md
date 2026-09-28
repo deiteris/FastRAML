@@ -25,12 +25,14 @@ class Node:
 - Tags use short YAML names such as `!!str`, `!!int`, `!!null`, and
   `!!timestamp`; `!include` is the only RAML local tag.
 - Positions are 1-based and include token end positions. `full_position`
-  extends through a node's descendants. A container a merge, an Overlay or a
-  substitution rebuilds holds nodes written elsewhere in the file or in
-  another file, so `with_grafts` builds it spanning what the node it was
-  rebuilt from spans: a container's extent is where it was written. A
-  filter, which keeps some of a container's own children, uses
-  `with_content`, and its extent is read from what it kept.
+  extends through a node's descendants, past the bracket of every flow
+  collection that closes on its last leaf's line, so a block ending in
+  `{ rt: {item: T} }` ends after the outer `}`. A container a merge, an
+  Overlay or a substitution rebuilds holds nodes written elsewhere in the file
+  or in another file, so `with_grafts` builds it spanning what the node it was
+  rebuilt from spans: a container's extent is where it was written. A filter,
+  which keeps some of a container's own children, uses `with_content`, and its
+  extent is read from what it kept.
 - `Node` defines neither equality nor hashing, so identity is preserved. The
   endpoint provenance overlay is keyed by node identity.
 - YAML aliases are expanded to independent nodes. Recursive anchors are

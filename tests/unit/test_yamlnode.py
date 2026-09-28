@@ -124,6 +124,12 @@ class TestPositions:
         _, flow = next(pairs(parse(text)))
         assert (flow.full_position.column, flow.full_position.end_column) == (4, 10)
 
+    def test_a_block_ending_in_a_flow_collection_reaches_its_bracket(self):
+        # `type: { rt: {item: T} }`: the block ended at the inner bracket, and
+        # the directive written in it ran past the resource holding it.
+        _, block = next(pairs(parse('r:\n  type: { rt: {item: T} }\n')))
+        assert (block.full_position.end_line, block.full_position.end_column) == (2, 26)
+
     @pytest.mark.parametrize(
         ('text', 'end'),
         [

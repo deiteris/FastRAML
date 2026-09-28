@@ -243,7 +243,7 @@ Each step is its own commit, amends its owning document, and passes the gate.
    compares text, which is not span arithmetic.
 5. Done: the placement law (§ 7), with each defect it finds fixed first.
 6. Done: F5.
-7. F6, and `links()` and path definitions reading it.
+7. Done: F6, and `links()`, path definitions and path hovers reading it.
 8. The authorship view (§ 4) with F3 and F4; the outline and `render` read it;
    the outline moves to `service/outline.py`; hover dispatches on the entity's
    class.

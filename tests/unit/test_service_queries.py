@@ -263,6 +263,23 @@ class TestStructure:
             ('lib.raml', _where(API, 'lib.raml')[0]),
         ]
 
+    def test_a_path_to_a_file_that_is_no_fragment_links_goes_and_hovers(self, tmp_path):
+        # docs/16 § 9: a path records the file it resolved to, so a schema or
+        # a text file is reached as a fragment is, not paired with the path
+        # text written on its line.
+        document = '#%RAML 1.0\ntitle: T\ndescription: !include notes.md\n'
+        write_files(tmp_path, {'api.raml': document, 'notes.md': 'Notes.'})
+        folder = path_to_file_uri(tmp_path)
+        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
+        at = _where(document, 'notes.md')
+        assert [(site.uri, site.span.line) for site in queries.links(snapshot, f'{folder}/api.raml')] == [
+            (f'{folder}/notes.md', at[0])
+        ]
+        assert _starts(queries.definition(snapshot, f'{folder}/api.raml', *at)) == [('notes.md', 1, 1)]
+        hovered = queries.hover(snapshot, f'{folder}/api.raml', *at)
+        assert hovered is not None
+        assert hovered[0] == '`notes.md`'
+
     def test_a_block_folds_from_its_key_to_its_last_line(self):
         folded = (_where(API, 'traits:')[0], _where(API, 'Never applied')[0])
         assert folded in queries.folding_ranges(API, 'file:///api.raml')

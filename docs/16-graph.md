@@ -313,8 +313,11 @@ The index reads what the passes bound and resolves no name itself:
   caller wrote it. The `type:` and `is:` entries of every
   resource and method. `securedBy:` names, and the name in each
   `(annotation)` key.
-- **Links.** Each `!include` argument and each `uses:` value. The target is
-  the fragment the file decoded to, or `None` for a file that is not one.
+- **Links.** Each `!include` argument and each `uses:` value, as a `Link`:
+  an occurrence that also records the URI its path resolved to, found or
+  not, without a `#fragment`. The target is the fragment the file decoded
+  to, or `None` for a file that is not one, such as a schema or a text file;
+  the resolved URI names it either way.
 
 A name in a quoted scalar is placed past its quote, as diagnostics are
 (docs/11 § 3). A lenient model gives the occurrences of the stages it

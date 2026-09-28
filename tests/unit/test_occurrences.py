@@ -8,7 +8,7 @@ import pytest
 
 from fastraml import ParseOptions
 from fastraml.uris import path_to_file_uri
-from fastraml.views.occurrences import Kind, Role, build_occurrences
+from fastraml.views.occurrences import Kind, Link, Role, build_occurrences
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -183,6 +183,9 @@ class TestTargets:
         _, occurrences, uri = _parsed(workspace)
         link = _only(occurrences.at(uri, *_where(API, 'readme.md')))
         assert (link.role, link.target) == (Role.LINK, None)
+        # docs/16 § 9: it still names the file its path resolved to.
+        assert isinstance(link, Link)
+        assert link.resolved == uri.rsplit('/', 1)[0] + '/readme.md'
 
     def test_a_dotted_scheme_name_is_one_token(self, workspace):
         # `basic.v1` names no library: only the declared name splits a prefix off.

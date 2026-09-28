@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from fastraml.types.base import BaseShape
 
 
-__all__ = ['Kind', 'Occurrence', 'Occurrences', 'Role', 'build_occurrences']
+__all__ = ['Kind', 'Link', 'Occurrence', 'Occurrences', 'Role', 'build_occurrences']
 
 
 class Role(StrEnum):
@@ -111,6 +111,16 @@ class Occurrence:
     def span(self) -> Position:
         """The name token only: `User` in `lib.User`."""
         return Position(self.line, self.column, self.line, self.end_column)
+
+
+@dataclass(slots=True, eq=False)
+class Link(Occurrence):
+    """A path to a file: an `!include` argument or a `uses:` value, with the
+    file it resolved to, found or not, fragment or not (docs/16 § 9).
+    """
+
+    #: The URI the path resolved to, without the `#fragment` it may carry.
+    resolved: str
 
 
 _START: Final = attrgetter('line', 'column')
@@ -201,14 +211,28 @@ class _Index:
         self.dropped: list[Occurrence] = []
 
     def add(  # noqa: PLR0913 - an occurrence's fields
-        self, uri: str, line: int, column: int, written: str, *, role: Role, kind: Kind, target: int | None
+        self,
+        uri: str,
+        line: int,
+        column: int,
+        written: str,
+        *,
+        role: Role,
+        kind: Kind,
+        target: int | None,
+        resolved: str | None = None,
     ) -> None:
+        """An occurrence, a `Link` when it is a path that `resolved` to a file."""
         key = (uri, line, column, target)
         if key in self._seen or not written:
             return
         self._seen.add(key)
         end = column + len(written)
-        occurrence = Occurrence(uri, line, column, end, role, kind, target, written)
+        occurrence = (
+            Occurrence(uri, line, column, end, role, kind, target, written)
+            if resolved is None
+            else Link(uri, line, column, end, role, kind, target, written, resolved)
+        )
         (self.kept if self._holds(uri, line, column, end, written) else self.dropped).append(occurrence)
 
     def add_at(  # noqa: PLR0913 - `add`, from a position the model holds
@@ -251,7 +275,7 @@ class _Index:
             for alias, link in fragment.uses.items():
                 self.add_at(link.location, link.key_pos, alias, role=Role.DEFINITION, kind=Kind.LIBRARY, target=link.id)
                 if link.link is not None:
-                    self._path(link.location, link.value_pos, link.value, link.link.id)
+                    self._path(link.location, link.value_pos, link.value, link.link.id, link.link.location)
 
     def shapes(self, raml: Raml) -> None:
         """Each shape's properties and `facets:` entries, and the names in its
@@ -385,7 +409,8 @@ class _Index:
         for refs in raml.include_refs.values():
             for ref in refs:
                 fragment = raml.fragments.get(ref.abs_uri)
-                self._path(ref.source_uri, ref.position, ref.path, None if fragment is None else fragment.id)
+                target = None if fragment is None else fragment.id
+                self._path(ref.source_uri, ref.position, ref.path, target, ref.abs_uri.split('#', 1)[0])
 
     def _qualified(  # noqa: PLR0913 - a reference's fields, and the scope its prefix names a `uses:` entry in
         self,
@@ -416,16 +441,19 @@ class _Index:
             offset += len(prefix) + 1
         self.add_at(uri, at, declared, role=Role.REFERENCE, kind=kind, target=target, text=text, offset=offset)
 
-    def _path(self, uri: str, at: Position, path: str, target: int | None) -> None:
-        """A path to a file: the text of a quoted scalar, or else what finishes
-        the node, whose position starts at its tag (`uses:` may write
-        `!include` too).
+    def _path(self, uri: str, at: Position, path: str, target: int | None, resolved: str) -> None:
+        """A path to a file, `resolved`: the text of a quoted scalar, or else
+        what finishes the node, whose position starts at its tag (`uses:` may
+        write `!include` too).
         """
         start = at.within(path)
         if start is not at:
-            self.add(uri, start.line, start.column, path, role=Role.LINK, kind=Kind.FILE, target=target)
+            line, column = start.line, start.column
         elif at.end_line == at.line:
-            self.add(uri, at.line, at.end_column - len(path), path, role=Role.LINK, kind=Kind.FILE, target=target)
+            line, column = at.line, at.end_column - len(path)
+        else:
+            return
+        self.add(uri, line, column, path, role=Role.LINK, kind=Kind.FILE, target=target, resolved=resolved)
 
 
 def _type_kind(base: BaseShape) -> Kind:

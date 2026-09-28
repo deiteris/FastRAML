@@ -30,7 +30,7 @@ from fastraml.positions import Position
 from fastraml.types.base import BaseShape
 from fastraml.types.complex_ import ArrayShape, ObjectShape
 from fastraml.uris import relative_to
-from fastraml.views.occurrences import Kind, Role
+from fastraml.views.occurrences import Kind, Link, Role
 from fastraml.views.render import render, type_name
 from fastraml.views.tree import build_tree
 from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind, compose, pairs
@@ -264,16 +264,10 @@ def definition(snapshot: Snapshot, uri: str, line: int, column: int) -> list[Sit
         return []
     found: list[Site] = []
     for occurrence in occurrences.at(uri, line, column):
-        if occurrence.target is None:
-            continue
-        if occurrence.role is Role.LINK:
-            found += [
-                Site(location, _START)
-                for location, fragment in raml.fragments.items()
-                if fragment.id == occurrence.target
-            ]
-            continue
-        found += [_site(other) for other in occurrences.of(occurrence.target) if other.role is Role.DEFINITION]
+        if isinstance(occurrence, Link):
+            found.append(Site(occurrence.resolved, _START))
+        elif occurrence.target is not None:
+            found += [_site(other) for other in occurrences.of(occurrence.target) if other.role is Role.DEFINITION]
     return found
 
 
@@ -332,20 +326,13 @@ def hover(snapshot: Snapshot, uri: str, line: int, column: int) -> tuple[str, Po
 def _describe(snapshot: Snapshot, raml: Raml, occurrence: Occurrence) -> str | None:
     if occurrence.role is Role.BUILTIN:
         return f'built-in type `{occurrence.written}`'
+    # Paths in the text are relative to the root's directory.
+    root = snapshot.root.rpartition('/')[0] + '/'
+    if isinstance(occurrence, Link):
+        return f'`{relative_to(occurrence.resolved, root)}`'
     target = occurrence.target
     if target is None:
         return None
-    # Paths in the text are relative to the root's directory.
-    root = snapshot.root.rpartition('/')[0] + '/'
-    if occurrence.role is Role.LINK:
-        return next(
-            (
-                f'`{relative_to(location, root)}`'
-                for location, fragment in raml.fragments.items()
-                if fragment.id == target
-            ),
-            None,
-        )
     entity = _entity(raml, target)
     if isinstance(entity, BaseShape):
         return '```yaml\n' + '\n'.join(render(entity, root=root)) + '\n```'
@@ -718,31 +705,14 @@ def links(snapshot: Snapshot, uri: str) -> list[Site]:
 
     The target is the file the path resolves to, found or not.
     """
-    raml, occurrences = snapshot.raml, snapshot.occurrences
-    if raml is None or occurrences is None:
+    occurrences = snapshot.occurrences
+    if occurrences is None:
         return []
-    # Each path written in the file, as the occurrence index placed it.
-    written: dict[str, list[Position]] = {}
-    for occurrence in occurrences.in_file(uri):
-        if occurrence.role is Role.LINK:
-            written.setdefault(occurrence.written, []).append(occurrence.span)
-
-    def span(at: Position, path: str) -> Position | None:
-        if not at.is_known:
-            return None
-        return next((found for found in written.get(path, ()) if at.line <= found.line <= at.end_line), None)
-
-    # A template applied twice records its includes twice.
-    sites = dict.fromkeys(
-        Site(ref.abs_uri, place)
-        for ref in raml.include_refs.get(uri, ())
-        if (place := span(ref.position, ref.path)) is not None
-    )
-    fragment = raml.fragments.get(uri)
-    for link in () if fragment is None else fragment.uses.values():
-        if link.link is not None and (place := span(link.value_pos, link.value)) is not None:
-            sites[Site(link.link.location, place)] = None
-    return list(sites)
+    return [
+        Site(occurrence.resolved, occurrence.span)
+        for occurrence in occurrences.in_file(uri)
+        if isinstance(occurrence, Link)
+    ]
 
 
 def folding_ranges(text: str, uri: str) -> list[tuple[int, int]]:

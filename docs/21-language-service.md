@@ -109,12 +109,12 @@ about names, so a name it does not hold has no answer.
 
 | Query | Reads |
 |---|---|
-| `definition` | the `DEFINITION` occurrence of the target; for a path, the fragment it decoded to |
+| `definition` | the `DEFINITION` occurrence of the target; for a path, the file its `Link` resolved to |
 | `references`, `highlights` | the target's occurrences |
-| `hover` | `render` for a type, annotation type, property or facet; the kind, parameters, `usage` and `description` otherwise |
+| `hover` | `render` for a type, annotation type, property or facet; for a path, the file it resolved to; the kind, parameters, `usage` and `description` otherwise |
 | `document_symbols` | the fragment's metadata, declaration tables, documentation and resources, grouped by section, from `key_pos` and `value_pos`; `type_expr`, else `type_name`, for a type's detail |
 | `workspace_symbols` | the declarations of every snapshot, matched case-insensitively, once each |
-| `links` | `include_refs` and `uses:` links, placed at their `LINK` occurrence |
+| `links` | each `Link` occurrence in the file, with the file it resolved to |
 | `folding_ranges`, `selection_ranges` | the buffer's composed `Node` tree alone |
 | `type_at`, `supertypes`, `subtypes` | a type's `inherits` and `alias`, and the declarations naming it |
 | `diagnostics` | `RamlError.chains()` and the lint findings |

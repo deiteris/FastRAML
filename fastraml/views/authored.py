@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-from fastraml.parser.fragments import APIFragment, Library
+from fastraml.parser.fragments import APIFragment, every_declaration
 from fastraml.types.complex_ import ArrayShape, ObjectShape
 
 if TYPE_CHECKING:
@@ -103,15 +103,10 @@ def parameters(owner: Placed, written: Mapping[str, Parameter]) -> Iterator[tupl
 
 def declarations(raml: Raml, uri: str) -> Iterator[tuple[str, str, Declaration]]:
     """Every declaration written in `uri`, as `(key, name, entity)` in F1's
-    order: its own fragment's, and those it added to the tables of the API
-    an Overlay or Extension merges into, the one fragment a merge writes to
-    (docs/19 § 4).
+    order: its own fragment's, and those an Overlay or Extension added to the
+    tables of the API it merges into (docs/19 § 4).
     """
-    fragments = (raml.fragments.get(uri), raml.entry_point)
-    for fragment in dict.fromkeys(each for each in fragments if isinstance(each, (APIFragment, Library))):
-        for key, name, entity in fragment.declarations():
-            if entity.location == uri:
-                yield key, name, entity
+    return (each for each in every_declaration(raml) if each[2].location == uri)
 
 
 def documentation(raml: Raml, uri: str) -> Iterator[DocumentationItem]:

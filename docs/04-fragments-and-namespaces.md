@@ -30,7 +30,8 @@ RAML key the table is written under. The tables come in a fixed order (`types`,
 `annotationTypes`, `traits`, `resourceTypes`, `securitySchemes`), each in
 declaration order. Anything that reads every declaration, such as the
 occurrence index, the walk, `render` or the language service, reads it rather
-than listing the tables.
+than listing the tables; `every_declaration(raml)` reads it over every
+fragment of a parse, so a reader tests no fragment's class.
 
 ## 2. Resolver capabilities
 

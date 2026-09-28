@@ -113,6 +113,7 @@ __all__ = [
     'decode_resource_type_definitions',
     'decode_security_scheme_definitions',
     'decode_trait_definitions',
+    'every_declaration',
     'identify_fragment',
     'parse_fragment',
     'parse_included_fragment',
@@ -508,6 +509,15 @@ class _DeclaringFragment(_NameResolver, _BaseFragment):
         else:
             return False
         return True
+
+
+def every_declaration(raml: Raml) -> Iterator[tuple[str, str, Declaration]]:
+    """`declarations()` of every fragment that declares any, the API and each
+    library, in the order they were parsed (docs/04 § 1).
+    """
+    for fragment in raml.fragments.values():
+        if isinstance(fragment, _DeclaringFragment):
+            yield from fragment.declarations()
 
 
 class Library(_DeclaringFragment):

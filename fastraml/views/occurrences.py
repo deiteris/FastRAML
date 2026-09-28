@@ -30,7 +30,7 @@ from fastraml.facet_names import (
     FACET_TYPES,
 )
 from fastraml.gctuning import tuned_gc
-from fastraml.parser.fragments import APIFragment, Library
+from fastraml.parser.fragments import every_declaration
 from fastraml.positions import Position
 from fastraml.types.base import BUILTIN_TYPES
 from fastraml.types.complex_ import ObjectShape
@@ -266,12 +266,9 @@ class _Index:
 
     def declarations(self, raml: Raml) -> None:
         """Every declared name, and each `uses:` entry with the file it links."""
+        for key, name, entity in every_declaration(raml):
+            self.add_at(entity.location, entity.key_pos, name, role=Role.DEFINITION, kind=_KINDS[key], target=entity.id)
         for fragment in raml.fragments.values():
-            if isinstance(fragment, (Library, APIFragment)):
-                for key, name, entity in fragment.declarations():
-                    self.add_at(
-                        entity.location, entity.key_pos, name, role=Role.DEFINITION, kind=_KINDS[key], target=entity.id
-                    )
             for alias, link in fragment.uses.items():
                 self.add_at(link.location, link.key_pos, alias, role=Role.DEFINITION, kind=Kind.LIBRARY, target=link.id)
                 if link.link is not None:

@@ -22,7 +22,13 @@ from fastraml import (
     parse_from_string,
     path_to_file_uri,
 )
-from fastraml.parser.fragments import HEADS, ReferenceResolver, SecuritySchemeResolver, identify_fragment
+from fastraml.parser.fragments import (
+    HEADS,
+    ReferenceResolver,
+    SecuritySchemeResolver,
+    every_declaration,
+    identify_fragment,
+)
 from tests.unit.conftest import CountingLoader, write_files
 
 #: `a` and `here` are declared because P8 requires every application to bind to
@@ -359,6 +365,19 @@ class TestLibrary:
             ('securitySchemes', 's'),
         ]
         assert [entity for *_, entity in library.declarations()][:2] == [library.types['B'], library.types['A']]
+
+    def test_every_declaration_reads_each_declaring_fragment(self, workspace):
+        # docs/04 § 1: the API's and each library's, and nothing of a fragment
+        # that declares none, such as an included DataType.
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: t\nuses:\n  lib: lib.raml\ntypes:\n  A: !include a.raml\n',
+                'lib.raml': '#%RAML 1.0 Library\ntraits:\n  t: {}\n',
+                'a.raml': '#%RAML 1.0 DataType\ntype: string\n',
+            }
+        )
+        raml = workspace.parse(root / 'api.raml')
+        assert [(key, name) for key, name, _ in every_declaration(raml)] == [('types', 'A'), ('traits', 't')]
 
     def test_an_empty_library_is_valid(self, workspace):
         root = workspace({'lib.raml': '#%RAML 1.0 Library\n'})

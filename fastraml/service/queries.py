@@ -24,7 +24,7 @@ from fastraml.facet_names import (
     FACET_TRAITS,
     FACET_TYPES,
 )
-from fastraml.parser.fragments import APIFragment, Library, LibraryLink
+from fastraml.parser.fragments import LibraryLink, every_declaration
 from fastraml.parser.security import SecuritySchemeDefinition
 from fastraml.parser.templates import TemplateDefinition
 from fastraml.positions import Position
@@ -369,10 +369,9 @@ def _entity(raml: Raml, target: int) -> Declaration | LibraryLink | None:
         for link in fragment.uses.values():
             if link.id == target:
                 return link
-        if isinstance(fragment, (Library, APIFragment)):
-            for _key, _name, entity in fragment.declarations():
-                if entity.id == target:
-                    return entity
+    for _key, _name, entity in every_declaration(raml):
+        if entity.id == target:
+            return entity
     return next((base for base in raml.shapes if base.id == target), None)
 
 
@@ -395,17 +394,6 @@ def detail_line(text: str) -> str:
 
 
 _DETAIL_LIMIT: Final = 80
-
-
-def _declarations(fragment: object, wanted: str = '') -> Iterator[Symbol]:
-    """The symbols of a fragment's declaration tables whose names hold
-    `wanted`, casefolded, if one is given.
-    """
-    if not isinstance(fragment, (Library, APIFragment)):
-        return
-    for key, name, entity in fragment.declarations():
-        if wanted in name.casefold() and (each := symbol(name, DECLARATION_KINDS[key], entity)) is not None:
-            yield each
 
 
 def symbol(
@@ -439,12 +427,14 @@ def workspace_symbols(snapshots: Iterable[Snapshot], query: str) -> list[Symbol]
         raml = snapshot.raml
         if raml is None:
             continue
-        for fragment in raml.fragments.values():
-            for each in _declarations(fragment, wanted):
-                key = (each.uri, each.selection.line, each.selection.column)
-                if key not in seen:
-                    seen.add(key)
-                    found.append(each)
+        for table, name, entity in every_declaration(raml):
+            each = symbol(name, DECLARATION_KINDS[table], entity) if wanted in name.casefold() else None
+            if each is None:
+                continue
+            key = (each.uri, each.selection.line, each.selection.column)
+            if key not in seen:
+                seen.add(key)
+                found.append(each)
     return found
 
 
@@ -564,9 +554,7 @@ def subtypes(snapshot: Snapshot, item: Symbol) -> list[Symbol]:
         return []
     return [
         each
-        for fragment in raml.fragments.values()
-        if isinstance(fragment, (Library, APIFragment))
-        for _key, _name, child in fragment.declarations()
+        for _key, _name, child in every_declaration(raml)
         if isinstance(child, BaseShape)
         and any(parent.id == base.id for parent in _parents(child))
         and (each := _type_symbol(child)) is not None

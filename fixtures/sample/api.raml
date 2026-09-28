@@ -417,6 +417,42 @@ types:
       lines:
         - description: One paperback
           amount: 24.5
+  Curated:
+    type: object
+    facets:
+      reviewWindow?: integer
+    properties:
+      curator: string
+  CuratedCollection:
+    description: A collection with identity and a curator, inherited from two types.
+    type: [Entity, Curated]
+    stewardedBy: catalogue-team
+    reviewWindow: 30
+    properties:
+      name: string
+    example:
+      id: collection-1
+      createdAt: 2024-01-01T00:00:00Z
+      curator: Ada
+      name: Staff picks
+  HasHome:
+    type: object
+    properties:
+      home: string
+  Cat:
+    type: object
+    properties:
+      purrs: boolean
+  Dog:
+    type: object
+    properties:
+      barks: boolean
+  HomelyPet:
+    description: Either kind of pet, with a home required in both cases.
+    type: [HasHome, Cat | Dog]
+    example:
+      home: 12 Book Lane
+      purrs: true
 traits:
   paged:
     queryParameters:

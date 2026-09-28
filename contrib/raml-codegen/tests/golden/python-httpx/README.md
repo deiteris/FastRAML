@@ -31,7 +31,7 @@ through the detailed variants, and an undocumented one raises
 | | |
 |---|---|
 | `client.py` | `Client` and `AuthenticatedClient`, over `httpx` |
-| `models/` | 28 declared and nested types, as dataclasses and aliases |
+| `models/` | 36 declared and nested types, as dataclasses and aliases |
 | `api/` | 8 operations, grouped by the first path segment |
 | `types.py` | `Unset`/`UNSET`, `Response[T]`, `File` |
 | `errors.py` | `UnexpectedStatus` |

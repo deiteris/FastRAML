@@ -31,13 +31,15 @@ const PAGES = [
   ['documentation-item', '/documentation/1'],
   ['types', '/types'],
   ['type-object', '/types/sample%2Fapi.raml/Book'],
+  ['type-multiple-inheritance', '/types/sample%2Fapi.raml/CuratedCollection'],
+  ['type-union-inheritance', '/types/sample%2Fapi.raml/HomelyPet'],
   ['type-union', '/types/sample%2Fapi.raml/Search'],
   ['type-union-large', '/types/sample%2Fapi.raml/Anything'],
   ['type-union-referenced', '/types/sample%2Fapi.raml/Paged'],
   ['type-scalar', '/types/sample%2Fapi.raml/Isbn'],
   // The declaring half of `facets:`. The supplying half is on `Book` above,
   // and the two render differently on purpose: what a subtype must supply is
-  // rows, what one did supply is a chip.
+  // an attribute list, while values it supplied link back to their declaration.
   ['type-declares-facets', '/types/sample%2Fapi.raml/Entity'],
   ['type-from-shared-library', '/types/shared%2Fmeasures.raml/Parcel'],
   ['type-at-the-limits', '/types/shared%2Fmeasures.raml/Tolerance'],
@@ -78,6 +80,8 @@ const PAGES = [
  * narrow pages plus one of each other kind, in the one-column layout.
  */
 const NARROW = new Set([
+  'type-multiple-inheritance',
+  'type-union-inheritance',
   'type-union-large',
   'type-union-referenced',
   'operation-responses',

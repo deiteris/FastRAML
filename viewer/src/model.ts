@@ -341,7 +341,16 @@ export function spellingOf(shape: Shape, index: Index, borrowed = false): string
   if (shape.type === TYPE_JSON) return shape.projection ? spellingOf(shape.projection, index, true) : shape.type;
   if (shape.type === 'union' && shape.any_of && shape.any_of.length > 0 && namedByMembers(shape, borrowed)) {
     const members = shape.any_of;
-    const names = members.map((member) => labelOf(member, index));
+    // A variant of several parents is bracketed, as RAML writes the list, so
+    // `[HasHome, Cat] | [HasHome, Dog]` does not read as four alternatives.
+    const names = members.map((member) => {
+      const label = labelOf(member, index);
+      return !isRef(member) && !isRecursion(member) && (variantOf(member)?.length ?? 0) > 1 ? `[${label}]` : label;
+    });
+    // Anonymous variants no parent names all collapse to their kind. The
+    // members below distinguish them; the heading should not claim that
+    // "object | object" identifies either one.
+    if (names.length > 1 && new Set(names).size === 1) return 'union';
     const shown = names.slice(0, MEMBERS_SPELLED).join(' | ');
     return names.length > MEMBERS_SPELLED ? `${shown} | +${names.length - MEMBERS_SPELLED} more` : shown;
   }
@@ -420,12 +429,31 @@ export function leadsSomewhere(node: Shape | Ref | Recursion | null | undefined,
  *
  * The three constructs, in the order the metamodel puts them: a link is named
  * by its target, a recursion marker by what repeats, and anything else by its
- * own `type` -- never by `type_expr`, for the reason `spelling` gives.
+ * own `type` -- never by `type_expr`, for the reason `spelling` gives. A
+ * variant is named by the declarations it took (`variantOf`).
  */
 export function labelOf(member: Shape | Ref | Recursion, index: Index): string {
   if (isRef(member)) return index.label(member.$ref);
   if (isRecursion(member)) return member.name ?? 'recursive';
+  const parents = variantOf(member);
+  if (parents) return parents.map((parent) => index.label(parent.$ref)).join(', ');
   return spellingOf(member, index, true);
+}
+
+/**
+ * The declarations a union member is a subtype of, when they name it.
+ *
+ * `type: [HasHome, Cat | Dog]` has two variants, each an anonymous object whose
+ * `type` reads `object`. What tells them apart is `inherits`: P9 records each
+ * variant's parents with the union replaced by the member it took, so one
+ * inherits `[HasHome, Cat]` and the other `[HasHome, Dog]` (docs/07 § 5).
+ * Only a list of links names a variant; an inline parent is a kind, which is
+ * no better than the variant's own `type`.
+ */
+export function variantOf(member: Shape): Ref[] | null {
+  const parents = member.inherits ?? [];
+  if (parents.length === 0 || !parents.every(isRef)) return null;
+  return parents as Ref[];
 }
 
 /** A `facets:` entry, and the type that declared it. */
@@ -443,31 +471,23 @@ export interface FacetDeclaration {
  * reader is not looking at. Without it a custom facet is a name and a string
  * with nothing saying what it was allowed to be.
  *
- * **Up `inherits[0]` only, which is what P10 does** (docs/10 § 4). The
- * validator's chain walk follows the first parent and no other, so a facet
- * declared on a second parent is one it does not see; finding it here would
- * show a reader a declaration that nothing checked the value against. The
- * limitation is tracked as a v1.1 item in that section, and both halves should
- * move together.
+ * P10 visits every ancestor breadth-first in declaration order (docs/10 § 4).
+ * Look in the same order so a facet supplied by a multiply inherited type
+ * points to the parent that declared it, even when that parent is not first.
  */
 export function facetDeclaration(shape: Shape, name: string, index: Index): FacetDeclaration | null {
   const seen = new Set<Shape>();
-  let at: Shape | undefined = parent(shape, index);
-  while (at !== undefined && !seen.has(at)) {
+  const queue = [...(shape.inherits ?? [])];
+  for (const candidate of queue) {
+    if (isRecursion(candidate)) continue;
+    const at = isRef(candidate) ? index.shape(candidate.$ref) : candidate;
+    if (!at || seen.has(at)) continue;
     seen.add(at);
     const found = at.declared_facets?.[name];
     if (found?.type != null) return { declared: found.type, by: at, required: found.required };
-    at = parent(at, index);
+    queue.push(...(at.inherits ?? []));
   }
   return null;
-}
-
-/** The first supertype, as a shape, wherever it is one this document holds. */
-function parent(shape: Shape, index: Index): Shape | undefined {
-  const first = (shape.inherits ?? [])[0];
-  if (first === undefined) return undefined;
-  if (isRef(first)) return index.shape(first.$ref);
-  return isRecursion(first) ? undefined : first;
 }
 
 /* -- where a request actually goes ----------------------------------------------- */

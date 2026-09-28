@@ -119,6 +119,58 @@ process.stdout.write(
     `(smallest ${smallest.size} bytes at ${smallest.route})\n`,
 );
 
+// The sample's second parent declares reviewWindow. Rendering a page is not
+// enough to catch its lost type and declaration link: the value still appears.
+{
+  const multiple = document.types['sample/api.raml']?.CuratedCollection;
+  if (!multiple || isRef(multiple) || multiple.inherits?.length !== 2) {
+    process.stderr.write('INHERITS the sample has no type with the two expected parents\n');
+    failed += 1;
+  } else {
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={[at('types', 'sample/api.raml', 'CuratedCollection')]}>
+        <Pages document={document} index={index} />
+      </MemoryRouter>,
+    );
+    const extendsLine = html.match(/<span class="label">extends<\/span>(.*?)<\/div>/s)?.[1] ?? '';
+    const facetHead = (name: string) => html.split(`<code class="extra-name">${name}</code>`)[1]?.split('</div>')[0] ?? '';
+    expect('INHERITS', [
+      ['both parents have links', extendsLine.includes('>Entity</a>') && extendsLine.includes('>Curated</a>')],
+      ['the parent names are separated', extendsLine.includes('>Entity</a>,')],
+      ['the first parent supplies a typed facet', facetHead('stewardedBy').includes('string</span>') && facetHead('stewardedBy').includes('>Entity</a>')],
+      ['the second parent supplies a typed facet', facetHead('reviewWindow').includes('integer</span>') && facetHead('reviewWindow').includes('>Curated</a>')],
+    ]);
+  }
+}
+
+// A union in a multiple-inheritance list is an anonymous parent, not a second
+// union panel inside the extends line. Each effective variant inherits the
+// parents it took (docs/07 § 5), and is named by them: a tab reading `object`
+// twice would not say which alternative is which.
+{
+  const pet = document.types['sample/api.raml']?.HomelyPet;
+  if (!pet || isRef(pet) || pet.type !== 'union' || pet.inherits?.length !== 2 || pet.any_of?.length !== 2) {
+    process.stderr.write('INHERITS the sample has no object-plus-union type\n');
+    failed += 1;
+  } else {
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={[at('types', 'sample/api.raml', 'HomelyPet')]}>
+        <Pages document={document} index={index} />
+      </MemoryRouter>,
+    );
+    const extendsLine = html.match(/<span class="label">extends<\/span>(.*?)<\/div>/s)?.[1] ?? '';
+    const subtitle = html.match(/<p class="subtitle">(.*?)<\/p>/s)?.[1] ?? '';
+    const tabs = [...html.matchAll(/role="tab"[^>]*>([^<]*)<\/button>/g)].map((tab) => tab[1]);
+    expect('INHERITS', [
+      ['the heading names each variant by its linked parents', subtitle.replace(/<[^>]+>/g, '') === '[HasHome, Cat]|[HasHome, Dog]' && (subtitle.match(/>HasHome<\/a>/g) ?? []).length === 2],
+      ['the parent names are linked', ['HasHome', 'Cat', 'Dog'].every((name) => extendsLine.includes(`>${name}</a>`))],
+      ['the parent union has no nested selector', (html.match(/role="tablist"/g) ?? []).length === 1],
+      ['each tab names the parents its variant took', JSON.stringify(tabs) === JSON.stringify(['HasHome, Cat', 'HasHome, Dog'])],
+      ['the common and branch attributes appear together', html.includes('>home</code>') && html.includes('>purrs</code>')],
+    ]);
+  }
+}
+
 /*
  * Two things rendering cannot tell you, because both produce a page that looks
  * fine and says something untrue.

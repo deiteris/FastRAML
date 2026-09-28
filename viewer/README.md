@@ -330,6 +330,16 @@ That is the one reference position where expansion shows nothing new; a
 property's `$ref` is not, because `Money`'s attributes are genuinely not
 inlined into `Book`.
 
+**Multiple supertypes stay separate links.** The `extends` line separates their
+names with commas and shows the merged attributes below. When a subtype supplies
+a custom facet, its type and declaration link come from whichever ancestor
+declared it, even if that ancestor is the second parent or farther up a chain.
+An inline union parent such as `type: [HasHome, Cat | Dog]` names its alternatives
+in that line; the effective `anyOf` below shows the merged attributes once per
+variant. Each variant inherits the parents it took, the union replaced by one
+member (docs/07 § 5), so its tab reads `HasHome, Cat` or `HasHome, Dog`, and the
+heading spells the type `[HasHome, Cat] | [HasHome, Dog]`, each name a link.
+
 No ancestor set and no depth budget exist anywhere in `Shape.tsx`, because the
 emitter guarantees a cycle is always *marked*. Collapsing the two into a bare
 `$ref` would put that bookkeeping back on every consumer, which is the thing

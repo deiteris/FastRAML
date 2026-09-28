@@ -94,6 +94,7 @@ BENCHES: tuple[Bench, ...] = (
     Bench('enums', lambda root, scale: corpus.write_enums(root, family_count=_at(40, scale))),
     Bench('unions', lambda root, scale: corpus.write_unions(root, family_count=_at(60, scale))),
     Bench('facets', lambda root, scale: corpus.write_facets(root, family_count=_at(150, scale))),
+    Bench('inheritance', lambda root, scale: corpus.write_inheritance(root, family_count=_at(150, scale))),
     Bench('templates', lambda root, scale: corpus.write_templates(root, resource_count=_at(250, scale))),
 )
 
@@ -315,6 +316,7 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'enums': 'unwrap+validate',
     'unions': 'unwrap+validate',
     'facets': 'unwrap+validate',
+    'inheritance': 'unwrap+validate',
     'templates': 'unwrap+validate',
     'schema-export': 'unwrap',
     'raml-schema': 'unwrap',

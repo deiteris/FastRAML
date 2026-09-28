@@ -34,6 +34,7 @@ WRITERS = {
     'enums': lambda root: corpus.write_enums(root, family_count=1),
     'unions': lambda root: corpus.write_unions(root, family_count=1),
     'facets': lambda root: corpus.write_facets(root, family_count=1),
+    'inheritance': lambda root: corpus.write_inheritance(root, family_count=1),
 }
 
 
@@ -197,6 +198,39 @@ class TestFeatureCorporaReachTheirCode:
         monkeypatch.setattr(validate_module, '_facet_declarations', counting)
         parse_from_path(corpus.write_facets(tmp_path, family_count=1), ParseOptions(unwrap=True, validate=True))
         assert set(widths) >= set(corpus.FACET_PARENTS)
+
+    def test_inheritance_takes_every_union_path_and_folds_every_declaration_kind(self, tmp_path, monkeypatch):
+        import fastraml.types.inherit as inherit_module
+        from fastraml.types.complex_ import UnionShape
+
+        paths: list[str] = []
+        folded: set[str] = set()
+
+        def counting(name, original):
+            def call(*args):
+                paths.append(name)
+                return original(*args)
+
+            return call
+
+        original_fold = inherit_module.fold
+
+        def fold(parents):
+            folded.add(parents[0].name)
+            return original_fold(parents)
+
+        monkeypatch.setattr(inherit_module, '_inherit_from_union', counting('from', inherit_module._inherit_from_union))
+        monkeypatch.setattr(inherit_module, '_inherit_into_union', counting('into', inherit_module._inherit_into_union))
+        # `_narrow` dispatches through the table, not the module attribute.
+        monkeypatch.setitem(inherit_module._RULES, UnionShape, counting('both', inherit_module._narrow_union))
+        monkeypatch.setattr(inherit_module, 'fold', fold)
+        raml = parse_from_path(corpus.write_inheritance(tmp_path, family_count=1), ParseOptions(unwrap=True))
+        assert {'from', 'into', 'both'} <= set(paths)
+        assert folded >= {'tag', '/^x-/', 'items'}, 'a property, a pattern property and items'
+        types = raml.types_in(raml.location)
+        for width in corpus.INHERITED_UNION_WIDTHS:
+            counts = [len(types[f'F0W{width}{kind}'].shape.any_of) for kind in ('After', 'First', 'Pairs')]
+            assert counts == [width, width, 2 * width]
 
 
 @pytest.mark.parametrize('name', sorted(WRITERS))

@@ -22,7 +22,7 @@ from pygls.lsp.server import LanguageServer
 
 from fastraml import __version__
 from fastraml.positions import Position
-from fastraml.service import queries
+from fastraml.service import outline, queries
 from fastraml.service.text import Encoding, Lines
 from fastraml.service.workspace import Workspace, canonical
 
@@ -383,7 +383,7 @@ class RamlServer(LanguageServer):
                 return None
             uri, positions = at
             snapshot = next(self.service.serving(uri))
-            return [self._symbol(positions, symbol) for symbol in queries.document_symbols(snapshot, uri)]
+            return [self._symbol(positions, symbol) for symbol in outline.document_symbols(snapshot, uri)]
 
         @feature(types.WORKSPACE_SYMBOL)
         def workspace_symbols(params: types.WorkspaceSymbolParams) -> list[types.WorkspaceSymbol]:

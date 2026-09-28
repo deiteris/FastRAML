@@ -338,7 +338,36 @@ not a candidate, and nothing checks for one.
 `Occurrences.at(uri, line, column)` finds the occurrences under a cursor.
 `Occurrences.of(id)` lists an entity's definition and every use of it.
 
-## 10. Verification
+## 10. Authorship view
+
+`fastraml.views.authored` answers what a file, or an entity, wrote, for every
+consumer that lists a document as its author wrote it: the outline
+(`docs/21` § 4), and later completion, rename and semantic tokens. It reads
+facts the model records and selects by `location` over the merged model, so a
+file an Extension or an Overlay adds to lists what it added there: a type in
+the master's `types`, a method on a master resource.
+
+- `declarations(raml, uri)`: every declaration located in `uri`, through
+  `declarations()` (`docs/04` § 1).
+- `documentation(raml, uri)`: the API's documentation items located there.
+- `properties(base)`, `pattern_properties(base)`: the members a type declares,
+  not those it inherits. An inherited property keeps its declaration's shape,
+  which a parent holds too; an alias declares none (docs/07 § 3).
+- `items(base)`: the items an array wrote, by `items_written` (docs/06 § 3).
+- `bodies(written)`: each body as written, the bodies of one `body:` without a
+  media type together, by `media_type_written` (docs/08 § 6.3).
+- `resources(raml, uri)`: the resources `uri` wrote, or added methods or
+  resources to, as it nests them; `here` says whether the resource's key is
+  written in `uri`.
+- `wrote(parent, location, key)`, `parameters(owner, written)`: what a
+  resource, method, response or security scheme wrote.
+
+Which template contributed a member is not recorded yet
+(`research/language-service-architecture.md` § 6, F2). Until it is, `wrote`
+stands in with the one span test: a member a template contributed lies in the
+template, outside its parent's span, even in the parent's file.
+
+## 11. Verification
 
 - View boundary: `tests/unit/test_views.py`
 - Graph and tree behavior: `tests/unit/test_graph.py`, `tests/unit/test_cli.py`

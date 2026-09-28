@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from fastraml import Stage
-from fastraml.service import queries
+from fastraml.service import outline, queries
 from fastraml.service.queries import SymbolKind
 from fastraml.service.workspace import Workspace
 from fastraml.uris import path_to_file_uri
@@ -150,7 +150,7 @@ class TestHover:
 class TestSymbols:
     def test_the_outline_groups_declarations_as_the_file_does(self, parsed):
         snapshot, folder = parsed
-        found = queries.document_symbols(snapshot, f'{folder}/api.raml')
+        found = outline.document_symbols(snapshot, f'{folder}/api.raml')
         assert [(symbol.name, symbol.kind) for symbol in found] == [
             ('title', SymbolKind.METADATA),
             ('uses', SymbolKind.SECTION),
@@ -189,7 +189,7 @@ class TestSymbols:
         # example, which are not declarations. `related?: Item[]` holds no
         # `items`: an expression built it. The two default media types are one
         # `body:`.
-        assert _tree(queries.document_symbols(snapshot, f'{folder}/api.raml')) == [
+        assert _tree(outline.document_symbols(snapshot, f'{folder}/api.raml')) == [
             ('title', SymbolKind.METADATA, 'T'),
             ('annotationTypes', section, '', [('note', SymbolKind.ANNOTATION_TYPE, 'string')]),
             ('types', section, '', [
@@ -218,16 +218,39 @@ class TestSymbols:
             ]),
         ]  # fmt: skip
 
+    def test_a_file_outlines_what_it_wrote_an_extension_what_it_added(self, tmp_path):
+        # docs/21 § 4: selected by location over the merged model. The type an
+        # Extension declares sits in the master's table, and the method it
+        # adds sits on the master's resource; both are the Extension's.
+        api = '#%RAML 1.0\ntitle: T\ntypes:\n  A: string\n/a:\n  get:\n'
+        extension = '#%RAML 1.0 Extension\nextends: api.raml\ntypes:\n  B: string\n/a:\n  post:\n/b:\n  get:\n'
+        write_files(tmp_path, {'api.raml': api, 'ext.raml': extension})
+        folder = path_to_file_uri(tmp_path)
+        workspace = Workspace([folder])
+        section, resource, method = SymbolKind.SECTION, SymbolKind.RESOURCE, SymbolKind.METHOD
+        added = _tree(outline.document_symbols(workspace.snapshot(f'{folder}/ext.raml'), f'{folder}/ext.raml'))
+        assert added == [
+            ('types', section, '', [('B', SymbolKind.TYPE, 'string')]),
+            ('/a', resource, '', [('post', method, '')]),
+            ('/b', resource, '', [('get', method, '')]),
+        ]
+        own = _tree(outline.document_symbols(workspace.snapshot(f'{folder}/api.raml'), f'{folder}/api.raml'))
+        assert own == [
+            ('title', SymbolKind.METADATA, 'T'),
+            ('types', section, '', [('A', SymbolKind.TYPE, 'string')]),
+            ('/a', resource, '', [('get', method, '')]),
+        ]
+
     def test_a_section_spans_its_entries_and_selects_the_first(self, parsed):
         snapshot, folder = parsed
-        types = next(s for s in queries.document_symbols(snapshot, f'{folder}/api.raml') if s.name == 'types')
+        types = next(s for s in outline.document_symbols(snapshot, f'{folder}/api.raml') if s.name == 'types')
         entity, book = types.children
         assert (types.span.line, types.span.end_line) == (entity.span.line, book.span.end_line)
         assert types.selection == entity.selection
 
     def test_a_symbol_spans_its_value_and_selects_its_name(self, parsed):
         snapshot, folder = parsed
-        types = next(s for s in queries.document_symbols(snapshot, f'{folder}/api.raml') if s.name == 'types')
+        types = next(s for s in outline.document_symbols(snapshot, f'{folder}/api.raml') if s.name == 'types')
         book = next(symbol for symbol in types.children if symbol.name == 'Book')
         line, column = _where(API, 'Book:')
         assert (book.selection.line, book.selection.column, book.selection.end_column) == (line, column, column + 4)
@@ -242,7 +265,7 @@ class TestSymbols:
         )
         folder = path_to_file_uri(tmp_path)
         snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
-        _title, documentation = queries.document_symbols(snapshot, f'{folder}/api.raml')
+        _title, documentation = outline.document_symbols(snapshot, f'{folder}/api.raml')
         (home,) = documentation.children
         line, column = _where(document, 'Home')
         assert (home.selection.line, home.selection.column, home.selection.end_column) == (line, column, column + 4)
@@ -252,6 +275,38 @@ class TestSymbols:
         snapshot, _ = parsed
         found = queries.workspace_symbols([snapshot, snapshot], 'PERS')
         assert [(symbol.name, symbol.uri.rsplit('/', 1)[-1]) for symbol in found] == [('Person', 'lib.raml')]
+
+
+@pytest.mark.tck
+def test_every_outline_entry_holds_its_selection_and_lies_in_its_parent():
+    # VS Code refuses an outline whose selection is outside its range: one
+    # range error hid the outline of a whole file. Over every file every TCK
+    # root read, each entry holds its selection and ends after it starts, and
+    # a child lies in its parent.
+    from tests.tck.conftest import tck_root
+
+    root = tck_root()
+    if root is None:
+        pytest.skip('no TCK corpus; set FASTRAML_TCK_DIR')
+    workspace = Workspace([path_to_file_uri(root)])
+    broken: list[str] = []
+
+    def check(symbols: list[queries.Symbol], parent: queries.Symbol | None) -> None:
+        for each in symbols:
+            span = each.span
+            if (
+                not span.contains(each.selection)
+                or (span.end_line, span.end_column) < (span.line, span.column)
+                or (parent is not None and not parent.span.contains(span))
+            ):
+                broken.append(f'{each.uri}: {each.name} at {span} in {parent.name if parent else "the file"}')
+            check(each.children, each)
+
+    for found in workspace.roots():
+        snapshot = workspace.snapshot(found)
+        for uri in () if snapshot.raml is None else snapshot.raml.source_texts:
+            check(outline.document_symbols(snapshot, uri), None)
+    assert not broken, broken
 
 
 class TestStructure:
@@ -391,7 +446,7 @@ class TestAStoppedParseAnswersFromItsStages:
             if item is not None:
                 queries.supertypes(snapshot, item)
                 queries.subtypes(snapshot, item)
-        queries.document_symbols(snapshot, root)
+        outline.document_symbols(snapshot, root)
         queries.workspace_symbols([snapshot], 'b')
         queries.links(snapshot, root)
         assert queries.diagnostics(snapshot)[root]

@@ -35,6 +35,7 @@ _VIEWS = (
     'samples',
     'lint',
     'occurrences',
+    'authored',
 )
 
 

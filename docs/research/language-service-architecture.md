@@ -247,7 +247,13 @@ Each step is its own commit, amends its owning document, and passes the gate.
 7. Done: F6, and `links()`, path definitions and path hovers reading it.
 8. The authorship view (§ 4) with F3 and F4; the outline and `render` read it;
    the outline moves to `service/outline.py`; hover dispatches on the entity's
-   class.
+   class. Done so far: F3, F4, the view (`docs/16` § 10) and the outline over
+   it, with an Extension outlined by location and a JSON schema named by its
+   `JsonShape`. The view keeps the span test as F2's stand-in, now also for
+   the properties and `items` a template merged into a declaration, and for an
+   inherited property recursion marking gave a shape of its own. Checking the
+   outline's ranges over the TCK found a block ending in a flow collection
+   ending before its bracket (`docs/03` § 1).
 9. F2, and the view reading it.
 10. Failure containment (§ 8), behind PM § 7's gate.
 

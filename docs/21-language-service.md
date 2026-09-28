@@ -22,6 +22,7 @@ and several views, and only `cli.py` imports it (`docs/02` § 2;
 | `service/workspace.py` | buffers, the overlay loader, roots, snapshots, staleness |
 | `service/text.py` | converting a column between fastRAML and a protocol |
 | `service/queries.py` | the queries, in fastRAML positions |
+| `service/outline.py` | the outline, over the authorship view (`docs/16` § 10) |
 | `service/lsp.py` | the LSP adapter, over pygls (§ 5) |
 
 ## 2. Workspace
@@ -139,23 +140,30 @@ Declarations only. A type holds its properties, pattern properties, an inline
 `items` and a `facets` section, not its examples, annotations or facet values.
 An optional property or parameter is named `name?`. A type's detail is its
 type as written (`common.Address`, `Book[] | Review`), `type_expr` from the
-model, or where nothing was written, `type_name`, as hover names it; its icon
+model; `JSON schema` for a `JsonShape`; or where nothing was written,
+`type_name`, as hover names it; its icon
 is its kind: object, array, union, enum or a scalar's. A resource's, method's
 or response's detail is its `displayName`, a response's else its description.
 
 The model keeps no position for a section's key (`types:`, a method's
 `headers:`), so a section spans its entries and selects the first.
 
-An entry is listed under another only when it is written in the same file,
-inside the other's span. That test stands in for a fact the model does not
-record yet: which template contributed a member
-(`research/language-service-architecture.md` § 6, F2). So an inherited
-property is outlined under the type that wrote it, and a method a resource
-type contributed under nothing (it is written in the resource type). An
-array's `items` is listed only where the array wrote them (`items_written`,
-`docs/06` § 3): not for `Book[]`, nor for a parent's. A `body:` with no media
-type is one body per default media type (`media_type_written`), listed once
-under all their names.
+What each entry lists is the authorship view's (`docs/16` § 10): a type's own
+members, not those it inherits, so an inherited property is outlined under the
+type that declared it; an array's `items` only where it wrote them
+(`items_written`), not for `Book[]` nor for a parent's; the bodies of one
+`body:` with no media type as one entry under all their names
+(`media_type_written`). A member written in another file, an `!include`d
+type's, is that file's. A method, response, body or parameter a template
+contributed is written in the template, and is listed under nothing: the view's
+span test stands in for recording which template contributed it
+(`research/language-service-architecture.md` § 6, F2).
+
+A file outlines what it wrote, selected by `location` over the model its
+snapshot parsed. An Extension or Overlay lists the types and other
+declarations it added to the master's tables, and, under a master resource's
+path, the methods and resources it added there: a section spanning them, since
+the resource's key it wrote is not in the model. The master lists its own.
 
 A trait or resource type is listed by name alone. Its body is decoded only
 where it is applied (`docs/08` § 5), and the model keeps it undecoded, so there
@@ -255,8 +263,9 @@ could save.
 - `test_service_workspace.py`: roots, buffers over the disk, the sandbox, and
   when a snapshot is stale.
 - `test_service_queries.py`: each query on one document with a library, a
-  DataType include, a trait and a resource type; and every query on a parse
-  stopped at each stage.
+  DataType include, a trait and a resource type; every query on a parse
+  stopped at each stage; an Extension's outline; and, over the TCK, that every
+  outline entry holds its selection and lies in its parent.
 - `test_loaders.py`: `SafeFileLoader.contains` and `files`.
 - `test_lsp.py`: `fastraml lsp` driven over stdio by pygls' client, one
   request per feature, the column after an astral character, clearing, the

@@ -19,6 +19,7 @@ decides no RAML rule, and reads the model without writing to it. Nothing under
     samples     a value a shape accepts: declared, composed or synthesized (§ 8.1)
     lint/       policy rules over the effective model (docs/18-linting.md)
     occurrences where each name is written and what it names (§ 9)
+    authored    what a file, or an entity, wrote (§ 10)
 
 `walk` is the shared substrate rather than a view of its own: `graph` and `tree`
 are lossy on orthogonal axes, and both are addressed by the same walk so a node

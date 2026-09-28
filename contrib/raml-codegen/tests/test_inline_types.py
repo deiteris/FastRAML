@@ -292,5 +292,16 @@ assert sorted(one.field for one in found) == ['1st', '@odata.type', 'class', 'us
         assert result.returncode == 0, result.stdout + result.stderr
 
 
+class TestAnOperationWithNoResponses:
+    """`/drafts` documents no `responses:`, which RAML allows."""
+
+    def test_the_server_is_still_generated(self):
+        document = json.loads((HERE / 'inline.json').read_text(encoding='utf-8'))
+        routes = generate(document, 'python-fastapi', Settings()).files['inline_api/api/drafts.py']
+        # Its `Responses` is empty, so there is no status to show `fail` with.
+        assert 'POST_DRAFTS = Responses({})' in routes
+        assert 'The document names no response here' in routes
+
+
 def _run(arguments, cwd):
     return subprocess.run([sys.executable, *arguments], capture_output=True, text=True, cwd=cwd, check=False)

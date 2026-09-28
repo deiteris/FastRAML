@@ -27,15 +27,25 @@
 {{ imports.block }}
 {% for route in routes %}
 
+{% if route.documented %}
 {{ route.constant }} = Responses({
 {{ route.documented }}
 })
+{% else %}
+{{ route.constant }} = Responses({})
+{% endif %}
 """What `{{ route.endpoint.method | upper }} {{ route.endpoint.path }}` documents, and what the document calls each.
+{% if route.endpoint.cases %}
 
     raise {{ route.constant }}.fail({{ (route.endpoint.cases | rejectattr('status', 'equalto', route.endpoint.success.status if route.endpoint.success else '') | map(attribute='status') | first) or route.endpoint.cases[0].status }})
 
 A status this does not name raises `LookupError` where you wrote it, rather
 than answering a caller with something the document never described.
+{% else %}
+
+The document names no response here, so `fail` raises `LookupError` for every
+status: raise `HTTPException` directly.
+{% endif %}
 """
 {% endfor %}
 

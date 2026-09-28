@@ -595,10 +595,10 @@ def _applied(name: str, refs: Sequence[DirectiveRef | SecurityScheme], parent: S
     """
     placed = [ref for ref in refs if ref.location == parent.uri and ref.value_pos.is_known]
     spans = [_spanning(ref.key_pos, ref.value_pos) for ref in placed]
-    if not spans or not all(_within(span, parent.span) for span in spans):
+    if not spans or not all(parent.span.contains(span) for span in spans):
         return None
     detail = _line(', '.join(ref.name for ref in placed))
-    return Symbol(name, SymbolKind.METADATA, parent.uri, _union(spans), placed[0].key_pos, detail=detail)
+    return Symbol(name, SymbolKind.METADATA, parent.uri, Position.covering(spans), placed[0].key_pos, detail=detail)
 
 
 def _group(name: str, children: list[Symbol]) -> Symbol | None:
@@ -609,14 +609,8 @@ def _group(name: str, children: list[Symbol]) -> Symbol | None:
     if not children:
         return None
     first = children[0]
-    span = _union([child.span for child in children])
+    span = Position.covering([child.span for child in children])
     return Symbol(name, SymbolKind.SECTION, first.uri, span, first.selection, children)
-
-
-def _union(spans: Sequence[Position]) -> Position:
-    start = min(spans, key=lambda span: (span.line, span.column))
-    end = max(spans, key=lambda span: (span.end_line, span.end_column))
-    return Position(start.line, start.column, end.end_line, end.end_column)
 
 
 def _shown(facet: ScalarFacet[str] | None) -> str:
@@ -642,7 +636,7 @@ def _adopt(parent: Symbol, found: Iterable[Symbol | None]) -> None:
 
 
 def _inside(symbol: Symbol, parent: Symbol | None) -> bool:
-    return parent is None or (symbol.uri == parent.uri and _within(symbol.span, parent.span))
+    return parent is None or (symbol.uri == parent.uri and parent.span.contains(symbol.span))
 
 
 def _line(text: str) -> str:
@@ -663,13 +657,6 @@ def _declarations(fragment: object, wanted: str = '') -> Iterator[Symbol]:
     for key, name, entity in fragment.declarations():
         if wanted in name.casefold() and (symbol := _symbol(name, _KINDS[key], entity)) is not None:
             yield symbol
-
-
-def _within(inner: Position, outer: Position) -> bool:
-    return (outer.line, outer.column) <= (inner.line, inner.column) and (inner.end_line, inner.end_column) <= (
-        outer.end_line,
-        outer.end_column,
-    )
 
 
 class _Placed(Protocol):
@@ -700,11 +687,7 @@ def _symbol(
 
 def _spanning(key: Position, value: Position | None) -> Position:
     """The span from `key` through `value`, holding both."""
-    if value is None or not value.is_known:
-        return key
-    start = min(key, value, key=lambda at: (at.line, at.column))
-    end = max(key, value, key=lambda at: (at.end_line, at.end_column))
-    return Position(start.line, start.column, end.end_line, end.end_column)
+    return key if value is None or not value.is_known else Position.covering((key, value))
 
 
 def workspace_symbols(snapshots: Iterable[Snapshot], query: str) -> list[Symbol]:
@@ -798,16 +781,12 @@ def _child_at(node: Node, line: int, column: int, found: list[Position]) -> Node
         for key, value in pairs(node):
             end = value.full_position
             pair = Position(key.line, key.column, end.end_line, end.end_column)
-            if _holds(pair, line, column):
+            if pair.holds(line, column):
                 found.append(pair)
-                return key if _holds(key.full_position, line, column) else value
+                return key if key.full_position.holds(line, column) else value
     elif node.kind is NodeKind.SEQUENCE:
-        return next((item for item in node.content if _holds(item.full_position, line, column)), None)
+        return next((item for item in node.content if item.full_position.holds(line, column)), None)
     return None
-
-
-def _holds(span: Position, line: int, column: int) -> bool:
-    return (span.line, span.column) <= (line, column) <= (span.end_line, span.end_column)
 
 
 def _compose(text: str, uri: str) -> Node | None:

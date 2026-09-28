@@ -21,6 +21,11 @@ Lines and columns are 1-based. End positions are exclusive. A position with no
 known end uses the default zero values. `UNKNOWN` represents a synthesized or
 otherwise unavailable source position.
 
+Span arithmetic lives on `Position` and nowhere else. `contains(inner)` tests
+whether one span lies within another, `holds(line, column)` whether a point
+lies within one (its end included, as an editor places a cursor just after a
+token), and `Position.covering(spans)` gives the least span holding them all.
+
 `fastraml.errors` defines the diagnostic graph:
 
 ```python

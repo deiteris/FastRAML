@@ -59,3 +59,42 @@ def test_positions_are_frozen_and_hashable():
 def test_unknown_is_not_reported_as_a_real_position():
     assert not UNKNOWN.is_known
     assert Position(4, 1).is_known
+
+
+class TestSpans:
+    """docs/11 § 1: span arithmetic, on `Position` only."""
+
+    SPAN = Position(2, 3, 4, 5)
+
+    @pytest.mark.parametrize(
+        ('inner', 'contained'),
+        [
+            pytest.param(Position(2, 3, 4, 5), True, id='itself'),
+            pytest.param(Position(3, 1, 3, 9), True, id='a middle line'),
+            pytest.param(Position(2, 2, 2, 4), False, id='starts before'),
+            pytest.param(Position(4, 1, 4, 6), False, id='ends after'),
+        ],
+    )
+    def test_contains_holds_its_ends(self, inner, contained):
+        assert self.SPAN.contains(inner) is contained
+
+    @pytest.mark.parametrize(
+        ('line', 'column', 'held'),
+        [
+            pytest.param(2, 3, True, id='the start'),
+            pytest.param(4, 5, True, id='just after the end'),
+            pytest.param(2, 2, False, id='before'),
+            pytest.param(4, 6, False, id='after'),
+        ],
+    )
+    def test_holds_a_cursor_just_after_its_end(self, line, column, held):
+        assert self.SPAN.holds(line, column) is held
+
+    def test_covering_spans_from_the_earliest_start_to_the_latest_end(self):
+        # The first to start is not the last to end.
+        spans = [Position(3, 1, 9, 1), Position(2, 5, 2, 8), Position(5, 1, 5, 2)]
+        assert Position.covering(spans) == Position(2, 5, 9, 1)
+
+    def test_covering_nothing_is_an_error(self):
+        with pytest.raises(ValueError, match='no span'):
+            Position.covering([])

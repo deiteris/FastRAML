@@ -12,7 +12,10 @@ without an off-by-one.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +67,34 @@ class Position:
 
     def with_end(self, end_line: int, end_column: int) -> Position:
         return replace(self, end_line=end_line, end_column=end_column)
+
+    def contains(self, inner: Position) -> bool:
+        """Whether `inner` lies within this span, ends included."""
+        return (self.line, self.column) <= (inner.line, inner.column) and (inner.end_line, inner.end_column) <= (
+            self.end_line,
+            self.end_column,
+        )
+
+    def holds(self, line: int, column: int) -> bool:
+        """Whether the point `line:column` lies within this span, its end
+        included: a cursor just after a token is on it, as an editor places it.
+        """
+        return (self.line, self.column) <= (line, column) <= (self.end_line, self.end_column)
+
+    @staticmethod
+    def covering(spans: Iterable[Position]) -> Position:
+        """The least span holding every one of `spans`, of which there is one
+        at least.
+        """
+        start = end = None
+        for span in spans:
+            if start is None or (span.line, span.column) < (start.line, start.column):
+                start = span
+            if end is None or (span.end_line, span.end_column) > (end.end_line, end.end_column):
+                end = span
+        if start is None or end is None:
+            raise ValueError('no span to cover')
+        return Position(start.line, start.column, end.end_line, end.end_column)
 
 
 #: Used where a construct has no source of its own: a synthesised URI parameter,

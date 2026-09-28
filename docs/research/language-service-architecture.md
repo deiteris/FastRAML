@@ -1,6 +1,6 @@
 # Language service: target architecture
 
-**Status: done, 2026-09-28; F2 and failure containment dropped (§ 12).**
+**Status: done, 2026-09-28; F2 and failure containment dropped (§ 12); reviewed against the code (§ 11, step 11).**
 Proposed on 2026-09-27. This document records how the language
 service should sit on the parser and its model, from a review of the service as
 built against `docs/21`, `archive/language-server.md` (LS) and
@@ -101,13 +101,15 @@ changes.
 |---|---|---|
 | Passes (`parser/`, `types/`) | the rules, and the facts of § 6 | record F3 to F5 |
 | Model (`registry.py`, fragments, entities) | entities, positions, `broken`, the declaration iterator F1 | add F1 |
-| Substrates (`views/`) | occurrences (names and links), the authorship view (§ 4), walk (effective addresses), render, tree | add the authorship view; F6 |
+| Views (`views/`) | occurrences (names and links), the authorship view (§ 4), walk (effective addresses), render, tree | add the authorship view; F6 |
 | Service (`service/`) | workspace, snapshot policy (§ 5), queries, outline | queries read substrates only |
 | Adapter (`service/lsp.py`) | protocol shapes and position encoding | unchanged |
 
 The outline moves to `service/outline.py`. Queries hold no traversal of the
 model of their own: they ask the occurrence index about names, the authorship
-view about structure, and `render` about text.
+view about structure, and `render` about text. The authorship view is a view,
+not a substrate (`docs/16` § 1): the service reads it, and another view does
+not, so `render`'s `Sources` keeps its own span test (§ 12).
 
 ## 4. The authorship view
 
@@ -125,9 +127,12 @@ or a file, wrote. It reads facts only:
 - the bodies of one `body:` without a media type, as one entry (F3, recorded
   as `Body.media_type_written`).
 
-The outline, `render`'s contributor note and hover read it now; completion,
-rename and semantic tokens read it later (M5, M6). It needs no position, so
-it removes the span test, the `Sources` table and the line lookup.
+The outline reads it now; completion, rename and semantic tokens read it
+later (M5, M6). It holds the one span test the service applies, `wrote` and
+the member and owner tests built on it, so no reader repeats one. It also
+says what a fragment file that is one declaration wrote (a DataType's
+shape, a SecurityScheme's definition, a DocumentationItem's item), and which
+metadata, base URI parameters and `uses:` a file wrote.
 
 ## 5. Snapshot policy
 
@@ -157,7 +162,7 @@ is a use.
 
 | # | Fact | Owner | Removes | Read by |
 |---|---|---|---|---|
-| F1 | `declarations()` on a declaring fragment: `(kind, name, entity)` over the five tables, in declaration order | `docs/04` | seven table lists | occurrences, walk, render, authorship, service |
+| F1 | `declarations()` on a declaring fragment: `(key, name, entity)` over the five tables, in declaration order; `every_declaration(raml)` over every fragment | `docs/04` | seven table lists, and a class test in each reader | occurrences, walk, render, authorship, service |
 | F2 | not recorded: which template contributed a member is told by span, which is exact (§ 12) | — | — | — |
 | F3 | on `Body`, whether its media type was written | `docs/08` § 6.3 | grouping by `key_pos` | authorship |
 | F4 | on an array shape, whether it wrote its `items` (`items_written`): not a type expression's, nor a parent's | `docs/06` § 3 | the `key_pos` comparison | authorship |
@@ -257,11 +262,20 @@ Each step is its own commit, amends its owning document, and passes the gate.
    named by its `JsonShape`. The view holds the one span test, also for the
    properties and `items` a template merged into a declaration and for an
    inherited property recursion marking gave a shape of its own. `render`'s
-   `Sources` keeps its own, which is exact for the same reason (§ 12).
+   `Sources` keeps its own, which is exact for the same reason (§ 12), once
+   it tests columns (step 11).
    Checking the outline's ranges over the TCK found a block ending in a flow
    collection ending before its bracket (`docs/03` § 1).
 9. Dropped: F2 (§ 12).
 10. Dropped: failure containment (§ 8, § 12).
+11. Done, from a review of the built service against this document:
+    `every_declaration`, so no reader tests a fragment's class; `render`'s
+    `Sources` tests columns, not lines, which named the wrong trait for two
+    declared on one line; the outline's remaining choices of what an entity
+    wrote (responses, bodies, applied refs, facets, metadata) move into the
+    authorship view, which fixes an alias listing its referent's facets; a
+    fragment file that is one declaration outlines its body; the service's
+    symbol kinds derive from the occurrence kinds.
 
 ## 12. Decisions
 

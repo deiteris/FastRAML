@@ -314,7 +314,14 @@ As done so far:
   full collections for its whole run (`docs/21` § 2).
 - The pygls adapter behind `fastraml lsp` (`docs/21` § 5): every M4 feature,
   debounced diagnostics with lint as a second tier, and the suppress quick fix.
-- Latency on `large`: 477 ms per edit, against 360 ms for a plain parse.
+- The outline groups what a file writes as the file groups it: metadata,
+  one section per declaration table, documentation, and resources with their
+  methods, parameters, bodies and responses (`docs/21` § 4). Building it
+  found three position defects, each fixed in its pass (an example's key, a
+  body without a media type, a block ending in an alias), and a message key
+  written with markup.
+- Latency on `large`, measured again on 2026-09-28: 475 ms per edit, against
+  366 ms for a plain parse.
   Composing the unchanged libraries is about a quarter of the parse, which
   bounds what G8 can save. Whether that asks for G8 is still open.
 - LS moved to `archive/` on 2026-09-28: `docs/21` supersedes it, and

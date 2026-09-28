@@ -66,8 +66,11 @@ parse never collects: collecting before one put a full collection over every
 live snapshot in the request, 14 ms over the TCK's 1011.
 
 `snapshots(uri)` serves a file from every root that read it, or else from a
-parse of the file alone. `readers()` maps every file a root read to those
-roots: the ones whose diagnostics a change to it can move.
+parse of the file alone. Which roots read a file is known only from their
+snapshots, so it brings every root current first: after an edit to a library,
+a request that reads one snapshot reparses every root. `readers()` maps every
+file a root read to those roots: the ones whose diagnostics a change to it can
+move.
 
 A snapshot whose entry is not RAML at all, one `parse_lenient` re-raises for
 (`docs/13` § 1), has `raml is None` and the error.
@@ -140,8 +143,10 @@ The model keeps no position for a section's key (`types:`, a method's
 `headers:`), so a section spans its entries and selects the first.
 
 An entry is listed under another only when it is written in the same file,
-inside the other's span. So an inherited property is outlined under the type
-that wrote it, a method a resource type contributed under nothing (it is
+inside the other's span. That test stands in for a fact the model does not
+record yet: which template contributed a member
+(`research/language-service-architecture.md` § 6, F2). So an inherited
+property is outlined under the type that wrote it, a method a resource type contributed under nothing (it is
 written in the resource type), and `items` a type expression built (`Book[]`)
 not at all: it is placed at its array's own key. A `body:` with no media type
 is one body per default media type, listed once under all their names.
@@ -210,7 +215,15 @@ diagnostic's `info`.
 
 **Features.** Definition, references, highlight, hover, document and
 workspace symbols, links, folding and selection ranges, and type hierarchy.
-A request answers from every snapshot serving the file, once each.
+Each reads the snapshots `snapshots(uri)` gives (§ 2) as follows:
+
+| Request | Reads |
+|---|---|
+| definition, references, highlight, supertypes, subtypes | every snapshot, answers deduplicated |
+| hover, prepare type hierarchy | the first snapshot that answers |
+| document symbols, links | the first snapshot |
+| workspace symbols | every root |
+| folding, selection | the buffer's text alone |
 
 **Tree.** `fastraml/tree`, with `{textDocument: {uri}}`, answers `tree`'s
 text, or `null` for a parse that stopped before unwrap. A root answers for
@@ -219,8 +232,8 @@ value, so an integer larger than a double reaches a JavaScript client as
 written. It is the preview's source in `contrib/fastraml-vscode`
 (`docs/17` § 4).
 
-**Latency.** On `large`, an edit costs 477 ms and allocates 48.8 MB before
-its parser diagnostics, against 360 ms for a plain `unwrap+validate` parse
+**Latency.** On `large`, an edit costs 475 ms and allocates 48.8 MB before
+its parser diagnostics, against 366 ms for a plain `unwrap+validate` parse
 (`python -m bench run --bench large --config service`). About a quarter of
 the parse composes the unchanged libraries: the most a compose cache (G8)
 could save.

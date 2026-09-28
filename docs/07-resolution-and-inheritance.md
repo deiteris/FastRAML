@@ -56,7 +56,11 @@ It is idempotent. `unwrap_shape(raml, base)` may return a replacement base,
 particularly when a union merge collapses; callers must use that return value.
 
 All parents are unwrapped before a child. Multiple inheritance folds parents
-into a fresh synthetic shape so merges cannot mutate or share a parent container.
+into a fresh shape (`fold` in `types/inherit.py`), so merges cannot mutate or
+share a parent container. The fold holds a declaration it took from one parent
+by reference. When a later parent declares a like-named property, pattern
+property or `items`, the two declarations are folded in turn rather than the
+first being narrowed in place, which would write into the first parent.
 A subtype may only narrow:
 
 | Kind | Narrowing contract |
@@ -90,7 +94,28 @@ members.
 
 When a union inherits a non-union, every member must narrow successfully. When
 two unions merge, a memberless child adopts parent members; otherwise every
-parent member must find a compatible child member.
+parent member must find a compatible child member. In both cases each variant
+is a fold of the members it pairs, and no member is narrowed in place: a member
+may be an alias sharing its referent's containers (§ 3), or one adopted from a
+parent union.
+
+A variant records the parents it took. The spec expands every union in a
+type's hierarchy (*spec section Union Type*), so `type: [HasHome, Cat | Dog]`
+has one variant inheriting `[HasHome, Cat]` and one inheriting
+`[HasHome, Dog]`, and `type: [HasHome | OnFarm, Cat | Dog]` has four, one per
+pair. Each union among the declared parents is replaced by the member of it
+the variant took, in the declared order. The union itself keeps its declared
+parents. A member narrowed by a property merge, which has no declared parents
+to replace, inherits from the members it pairs.
+
+A variant is anonymous. When a non-union child inherits a union, each variant
+starts as a copy of the child, and the child's name, display name and
+description are cleared from it, because they describe the union. A sole
+survivor replaces the child and keeps them.
+
+P10's custom facet walk (docs/10 § 4) follows a variant's parents, so a facet
+`Dog` requires is required of the `Dog` variant, and one only `Cat` declares
+is unknown to it.
 
 Facets beside `type: A | B` are retained as YAML until these merges settle the
 member list. P9 applies each to a fresh subtype of each member, then merges that
@@ -151,7 +176,10 @@ returns it without failing again.
 `clone(memo)` makes a structure-preserving copy keyed by `BaseShape.id`; cycles
 and diamonds remain cycles and diamonds, and the clone retains IDs. A caller that
 needs a fresh identity assigns one. `clone_detached()` uses a fresh memo for an
-independent mutable shape graph, used by union merging and P10 private unwrap.
+independent mutable shape graph, used by P10 private unwrap. Union merging
+does not detach: a non-union child inheriting a union is copied with its
+parents seeded into the memo, so they stay shared, and every other variant is
+a fold (§ 4, § 5).
 Scalar facets, data nodes, compiled patterns, and the `Raml` back-pointer are
 intentionally shared because they are not mutated in place. `copy.deepcopy` is
 not used.

@@ -97,7 +97,7 @@ class TestWhoWroteTheItems:
 
 
 class TestParentIsNotMutated:
-    """docs/07 § 4 — the corruption the synthetic shape exists to prevent."""
+    """docs/07 § 4 — the corruption the fold exists to prevent."""
 
     def test_two_children_do_not_corrupt_their_shared_parent(self, workspace):
         _raml, types = unwrapped(
@@ -135,6 +135,123 @@ class TestParentIsNotMutated:
         assert types['First'].shape.properties['shared'].base.shape.min_length.value == 2
         assert types['Parent'].shape.properties['shared'].base.shape.min_length is None
 
+    @pytest.mark.parametrize(
+        ('body', 'declaration'),
+        [
+            pytest.param(
+                '  L:\n    properties:\n      x: string\n'
+                '  R:\n    properties:\n      x:\n        type: string\n        maxLength: 3\n',
+                lambda shape: shape.properties['x'].base,
+                id='a property',
+            ),
+            pytest.param(
+                '  L:\n    properties:\n      /^x/: string\n'
+                '  R:\n    properties:\n      /^x/:\n        type: string\n        maxLength: 3\n',
+                lambda shape: next(iter(shape.pattern_properties.values())).base,
+                id='a pattern property',
+            ),
+            pytest.param(
+                '  L:\n    type: array\n    items:\n      properties:\n        x: string\n'
+                '  R:\n    type: array\n    items:\n      properties:\n        x:\n          type: string\n'
+                '          maxLength: 3\n',
+                lambda shape: shape.items.shape.properties['x'].base,
+                id='a property of the items',
+            ),
+        ],
+    )
+    def test_a_declaration_both_parents_make_is_folded_not_narrowed_in_place(self, workspace, body, declaration):
+        # The fold holds the first parent's declaration by reference, so
+        # narrowing it by the second parent's would write into the first parent.
+        _raml, types = unwrapped(workspace, body + '  Both:\n    type: [L, R]\n')
+        assert declaration(types['L'].shape).shape.max_length is None, 'L must not have gained maxLength'
+        assert declaration(types['Both'].shape).shape.max_length.value == 3
+
+    def test_a_union_first_among_the_parents_does_not_narrow_its_members(self, workspace):
+        # The fold adopts `Cat | Dog`'s members, which are aliases sharing
+        # `Cat`'s and `Dog`'s containers, and then narrows each by `HasHome`.
+        _raml, types = unwrapped(
+            workspace,
+            '  HasHome:\n    properties:\n      home: string\n'
+            '  Cat:\n    properties:\n      purrs: boolean\n'
+            '  Dog:\n    properties:\n      barks: boolean\n'
+            '  Pet:\n    type: [Cat | Dog, HasHome]\n',
+        )
+        assert list(types['Cat'].shape.properties) == ['purrs'], 'Cat must not have gained home'
+        assert list(types['Dog'].shape.properties) == ['barks']
+        assert [list(member.shape.properties) for member in types['Pet'].shape.any_of] == [
+            ['purrs', 'home'],
+            ['barks', 'home'],
+        ]
+
+
+class TestUnionAmongTheParents:
+    """docs/07 § 5: each variant names the parents it took, not the union."""
+
+    BODY = (
+        '  HasHome:\n    properties:\n      home: string\n'
+        '  Cat:\n    properties:\n      purrs: boolean\n'
+        '  Dog:\n    properties:\n      barks: boolean\n'
+        '  Named:\n    properties:\n      name: string\n'
+        '  OnFarm:\n    properties:\n      farm: string\n'
+        '  Pet: Cat | Dog\n'
+    )
+
+    @staticmethod
+    def parents(variant):
+        # A name among the parents, or an inline union's member, is an alias
+        # of the type it names.
+        return [parent.alias or parent for parent in variant.inherits]
+
+    @pytest.mark.parametrize(
+        ('declared', 'expected'),
+        [
+            pytest.param('[HasHome, Cat | Dog]', [['HasHome', 'Cat'], ['HasHome', 'Dog']], id='union last'),
+            pytest.param('[Cat | Dog, HasHome]', [['Cat', 'HasHome'], ['Dog', 'HasHome']], id='union first'),
+            pytest.param(
+                '[HasHome, Cat | Dog, Named]',
+                [['HasHome', 'Cat', 'Named'], ['HasHome', 'Dog', 'Named']],
+                id='union between',
+            ),
+            pytest.param('[HasHome, Pet]', [['HasHome', 'Cat'], ['HasHome', 'Dog']], id='declared union'),
+            pytest.param(
+                '[HasHome | OnFarm, Cat | Dog]',
+                [['HasHome', 'Cat'], ['OnFarm', 'Cat'], ['HasHome', 'Dog'], ['OnFarm', 'Dog']],
+                id='two unions',
+            ),
+        ],
+    )
+    def test_each_variant_names_the_member_it_took(self, workspace, declared, expected):
+        _raml, types = unwrapped(workspace, self.BODY + f'  Homely:\n    type: {declared}\n')
+        homely = types['Homely']
+        assert isinstance(homely.shape, UnionShape)
+        assert [[types[name] for name in names] for names in expected] == [
+            self.parents(variant) for variant in homely.shape.any_of
+        ]
+
+    def test_a_variant_is_anonymous(self, workspace):
+        # Each variant starts as a copy of the declaration; its name, display
+        # name and description are the union's, not the variant's.
+        _raml, types = unwrapped(
+            workspace,
+            self.BODY
+            + '  Homely:\n    displayName: Homely\n    description: Either.\n    type: [HasHome, Cat | Dog]\n',
+        )
+        homely = types['Homely']
+        assert (homely.name, homely.display_name.value, homely.description.value) == ('Homely', 'Homely', 'Either.')
+        assert [(variant.name, variant.display_name, variant.description) for variant in homely.shape.any_of] == [
+            (None, None, None),
+            (None, None, None),
+        ]
+
+    def test_a_sole_survivor_keeps_the_declarations_name(self, workspace):
+        # It replaces the declaration rather than being one variant of it.
+        _raml, types = unwrapped(workspace, self.BODY + '  Homely:\n    type: [HasHome, Cat | string]\n')
+        assert types['Homely'].name == 'Homely'
+
+    def test_the_union_itself_keeps_the_declared_parents(self, workspace):
+        _raml, types = unwrapped(workspace, self.BODY + '  Homely:\n    type: [HasHome, Pet]\n')
+        assert self.parents(types['Homely']) == [types['HasHome'], types['Pet']]
+
 
 class TestMultipleInheritance:
     def test_facets_from_every_parent_are_folded_in(self, workspace):
@@ -155,7 +272,7 @@ class TestMultipleInheritance:
             '  A:\n    type: string\n  B:\n    type: integer\n  Both:\n    type: [A, B]\n',
         )
 
-    def test_an_array_synthetic_gets_its_own_items(self, workspace):
+    def test_an_array_fold_takes_the_parents_items(self, workspace):
         _raml, types = unwrapped(
             workspace,
             '  Short:\n    type: string[]\n    minItems: 1\n'

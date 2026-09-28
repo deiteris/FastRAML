@@ -36,8 +36,7 @@ from fastraml.types.complex_ import (
     RecursiveShape,
     UnionShape,
 )
-from fastraml.types.inherit import alias_to, inherit
-from fastraml.types.shape import KIND_TO_CLASS
+from fastraml.types.inherit import alias_to, fold, inherit
 from fastraml.types.values import EnumValues
 
 if TYPE_CHECKING:
@@ -457,77 +456,20 @@ def _link_to_inherits(base: BaseShape) -> None:
 
 
 def _unwrap_parents(walk: _Walk, base: BaseShape, depth: int) -> BaseShape | None:
-    """The merge source for one declaration: nothing, one parent, or a synthetic."""
+    """The merge source for one declaration: nothing, one parent, or their fold."""
     if not base.inherits:
         return None
 
-    # Every parent is flattened first, so the synthetic shape below can inspect
-    # what each of them actually declares.
+    # Every parent is flattened first, so the fold below merges what each of
+    # them actually declares.
     base.inherits = [_unwrap(walk, parent, depth + 1) for parent in base.inherits]
     if len(base.inherits) == 1:
         return base.inherits[0]
 
-    synthetic = _make_multiple_inheritance_shape(walk, base.inherits)
-    for parent in base.inherits:
-        synthetic = inherit(synthetic, parent)
-    return synthetic
-
-
-def _make_multiple_inheritance_shape(walk: _Walk, parents: list[BaseShape]) -> BaseShape:
-    """An empty shape of the first parent's kind, to fold the parents into.
-
-    This exists to prevent one specific corruption. If the child merged its
-    parents directly, the first merge would take the `if target.properties is
-    None: target.properties = source.properties` shortcut and alias the first
-    parent's dict into the child; the second merge would then mutate that dict
-    in place, corrupting the parent for every *other* subtype that inherits
-    from it. Pre-initialising the collections to empty forces the merge loop to
-    run instead of taking the shortcut (docs/07 § 4).
-    """
-    first = parents[0]
-    synthetic = BaseShape(
-        id=walk.raml.next_id(),
-        raml=walk.raml,
-        location=first.location,
-        key_pos=first.key_pos,
-        value_pos=first.value_pos,
-        anchor=first.anchor,
-    )
-    synthetic.type = first.type
-    synthetic._unwrapped = True  # noqa: SLF001 - built flattened; it has no parents of its own
-
-    kind = KIND_TO_CLASS.get(first.type)
-    if kind is ObjectShape:
-        synthetic.shape = ObjectShape(synthetic, properties={}, pattern_properties={})
-    elif kind is ArrayShape:
-        synthetic.shape = ArrayShape(synthetic, items=_synthetic_items(walk, parents), items_written=False)
-    elif kind is not None:
-        # Every remaining kind's constructor takes only the base; the two that
-        # take children are handled above.
-        synthetic.shape = kind(synthetic)  # type: ignore[call-arg]
-    else:  # pragma: no cover - P7 leaves every reachable shape with a known kind
-        raise RamlError.new(
-            'cannot merge parents of an unresolved type',
-            first.location,
-            first.key_pos,
-            kind=ErrorKind.UNWRAPPING,
-            info={'type': first.type},
-        )
-    return synthetic
-
-
-def _synthetic_items(walk: _Walk, parents: list[BaseShape]) -> BaseShape | None:
-    """An array's synthetic needs its own `items`, one level down.
-
-    Built from the first parent that declares one. A self-referential `items`
-    (`A.items is A`) is skipped: recursion has not been marked yet, so
-    following it would not terminate.
-    """
-    for parent in parents:
-        shape = parent.shape
-        if isinstance(shape, ArrayShape) and shape.items is not None and shape.items is not parent:
-            return _make_multiple_inheritance_shape(walk, [shape.items])
-    return None
+    # The fold stands for these parents. Where one of them is a union, each
+    # variant names the parents it took, the union replaced by one member
+    # (docs/07 § 5).
+    return fold(base.inherits)
 
 
 def _unwrap_children(walk: _Walk, shape: Shape, depth: int) -> None:

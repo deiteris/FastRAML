@@ -807,6 +807,20 @@ class TestCustomFacets:
         error = parse_validating(workspace, body)
         assert error is not None
         assert messages(error) >= {'invalid custom facet value'}
+
+    def test_a_union_members_facet_is_required_of_the_variant_that_took_it(self, workspace):
+        # docs/07 § 5: the variant of `[A, Cat | Dog]` that took Dog inherits
+        # Dog, so the walk reaches Dog's declaration from it.
+        body = (
+            '  A:\n    type: object\n    properties:\n      a: string\n'
+            '  Cat:\n    type: object\n    properties:\n      purrs: boolean\n'
+            '  Dog:\n    type: object\n    properties:\n      barks: boolean\n    facets:\n      breed: string\n'
+            '  C:\n    type: [A, Cat | Dog]\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert messages(error) == {'required custom facet is missing'}
+        assert [trace.info for chain in error.chains() for trace in chain if trace.info] == [{'facet': 'breed'}]
         assert 'unknown facet' not in messages(error)
 
     def test_a_diamond_reaches_its_shared_ancestor_once(self, workspace):

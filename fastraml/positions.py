@@ -32,8 +32,15 @@ class Position:
 
     @property
     def is_known(self) -> bool:
-        """Whether this position came from real source rather than a default."""
-        return self is not UNKNOWN and (self.line, self.column) != (0, 0)
+        """Whether this position came from real source rather than a default.
+
+        By value, not identity: a node built with no source, such as the
+        synthetic key naming a DataType fragment's shape, spans `UNKNOWN`'s
+        empty `1:1` too, and nothing is written there, on the header line.
+        """
+        if self.line == 1 and self.column == 1:
+            return self.end_line != 1 or self.end_column != 1
+        return self.line != 0 or self.column != 0
 
     def shifted(self, offset: int, length: int = 1) -> Position:
         """The `length` characters `offset` characters to the right of the start.

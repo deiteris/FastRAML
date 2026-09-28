@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from fastraml.positions import UNKNOWN, Position
+from fastraml.uris import path_to_file_uri
 
 
 def test_positions_render_as_line_column():
@@ -59,6 +60,21 @@ def test_positions_are_frozen_and_hashable():
 def test_unknown_is_not_reported_as_a_real_position():
     assert not UNKNOWN.is_known
     assert Position(4, 1).is_known
+    assert Position(1, 1, 1, 5).is_known
+
+
+def test_an_unknown_span_is_unknown_by_value(memory_workspace):
+    # A node built with no source spans `1:1` too: the synthetic key naming
+    # a DataType fragment's shape made its key read as written on the header.
+    assert not Position(1, 1, 1, 1).is_known
+    root = memory_workspace(
+        {
+            'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  A: !include a.raml\n',
+            'a.raml': '#%RAML 1.0 DataType\ntype: string\n',
+        }
+    )
+    included = memory_workspace.parse(root / 'api.raml').fragments[path_to_file_uri(root / 'a.raml')]
+    assert not included.shape.key_pos.is_known
 
 
 class TestSpans:

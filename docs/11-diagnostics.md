@@ -19,7 +19,8 @@ class Position:
 
 Lines and columns are 1-based. End positions are exclusive. A position with no
 known end uses the default zero values. `UNKNOWN` represents a synthesized or
-otherwise unavailable source position.
+otherwise unavailable source position. `is_known` compares by value, so a node
+built with no source, which spans `UNKNOWN`'s empty `1:1` too, is not known.
 
 Span arithmetic lives on `Position` and nowhere else. `contains(inner)` tests
 whether one span lies within another, `holds(line, column)` whether a point

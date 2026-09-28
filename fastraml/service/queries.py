@@ -167,17 +167,14 @@ def diagnostics(snapshot: Snapshot, *, lint: bool = True) -> dict[str, list[Diag
 
 
 def _from_chain(chain: Sequence[Trace]) -> Diagnostic:
-    placed = [frame for frame in chain if frame.position is not None and frame.position.is_known]
-    inner = placed[-1] if placed else chain[-1]
-    span = inner.position if inner in placed and inner.position is not None else _START
+    placed = [(frame, frame.position) for frame in chain if frame.position is not None and frame.position.is_known]
+    inner, span = placed[-1] if placed else (chain[-1], _START)
     # The outer frames not at the reported site, then every frame's origin:
     # the constraint a value broke.
     related = tuple(
-        Related(Site(frame.location, frame.position), frame.rendered_message())
-        for frame in placed
-        if frame is not inner
-        and frame.position is not None
-        and (frame.location, frame.position) != (inner.location, span)
+        Related(Site(frame.location, position), frame.rendered_message())
+        for frame, position in placed[:-1]
+        if (frame.location, position) != (inner.location, span)
     ) + tuple(
         Related(Site(frame.origin.location, frame.origin.position), frame.origin.rendered_message())
         for frame in chain

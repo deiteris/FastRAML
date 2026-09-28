@@ -17,6 +17,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final, Protocol, cast
 
 from fastraml.errors import RamlError
+from fastraml.facet_names import (
+    FACET_ANNOTATION_TYPES,
+    FACET_RESOURCE_TYPES,
+    FACET_SECURITY_SCHEMES,
+    FACET_TRAITS,
+    FACET_TYPES,
+)
 from fastraml.parser.fragments import APIFragment, Library
 from fastraml.parser.security import SecuritySchemeDefinition, SecuritySchemeDescription
 from fastraml.positions import Position
@@ -368,32 +375,22 @@ def _entity(raml: Raml, target: int) -> Any:
             if link.id == target:
                 return link
         if isinstance(fragment, (Library, APIFragment)):
-            for table in _tables(fragment):
-                for entity in table.values():
-                    if entity.id == target:
-                        return entity
+            for _key, _name, entity in fragment.declarations():
+                if entity.id == target:
+                    return entity
     return next((base for base in raml.shapes if base.id == target), None)
-
-
-def _tables(fragment: Library | APIFragment) -> tuple[Mapping[str, Any], ...]:
-    return (
-        fragment.types,
-        fragment.annotation_types,
-        fragment.traits,
-        fragment.resource_types,
-        fragment.security_schemes,
-    )
 
 
 # -- symbols ------------------------------------------------------------------------
 
-_TABLE_KINDS: Final = (
-    SymbolKind.TYPE,
-    SymbolKind.ANNOTATION_TYPE,
-    SymbolKind.TRAIT,
-    SymbolKind.RESOURCE_TYPE,
-    SymbolKind.SECURITY_SCHEME,
-)
+#: The symbol kind of each declaration table, by the key it is written under.
+_KINDS: Final = {
+    FACET_TYPES: SymbolKind.TYPE,
+    FACET_ANNOTATION_TYPES: SymbolKind.ANNOTATION_TYPE,
+    FACET_TRAITS: SymbolKind.TRAIT,
+    FACET_RESOURCE_TYPES: SymbolKind.RESOURCE_TYPE,
+    FACET_SECURITY_SCHEMES: SymbolKind.SECURITY_SCHEME,
+}
 
 
 def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
@@ -429,18 +426,15 @@ def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
         found.append(_group('documentation', _placed(items, uri)))
     links = (_symbol(name, SymbolKind.LIBRARY, link, link.value) for name, link in fragment.uses.items())
     found.append(_group('uses', _placed(links, uri)))
-    for section, kind, table in zip(_SECTIONS, _TABLE_KINDS, _tables(fragment), strict=True):
-        entries = (_declaration(name, kind, entity) for name, entity in table.items())
-        found.append(_group(section, _placed(entries, uri)))
+    sections: dict[str, list[Symbol | None]] = {}
+    for key, name, entity in fragment.declarations():
+        sections.setdefault(key, []).append(_declaration(name, _KINDS[key], entity))
+    found += (_group(key, _placed(entries, uri)) for key, entries in sections.items())
     if isinstance(fragment, APIFragment):
         found += (
             _resource(endpoint, None) for endpoint in raml.endpoints.values() if endpoint.full_uri == endpoint.uri
         )
     return _placed(found, uri)
-
-
-#: The key each declaration table is written under, in `_tables` order.
-_SECTIONS: Final = ('types', 'annotationTypes', 'traits', 'resourceTypes', 'securitySchemes')
 
 
 def _declaration(name: str, kind: SymbolKind, entity: object) -> Symbol | None:
@@ -666,12 +660,9 @@ def _declarations(fragment: object, wanted: str = '') -> Iterator[Symbol]:
     """
     if not isinstance(fragment, (Library, APIFragment)):
         return
-    for kind, table in zip(_TABLE_KINDS, _tables(fragment), strict=True):
-        for name, entity in table.items():
-            if wanted in name.casefold():
-                symbol = _symbol(name, kind, entity)
-                if symbol is not None:
-                    yield symbol
+    for key, name, entity in fragment.declarations():
+        if wanted in name.casefold() and (symbol := _symbol(name, _KINDS[key], entity)) is not None:
+            yield symbol
 
 
 def _within(inner: Position, outer: Position) -> bool:
@@ -875,9 +866,10 @@ def subtypes(snapshot: Snapshot, item: Symbol) -> list[Symbol]:
         symbol
         for fragment in raml.fragments.values()
         if isinstance(fragment, (Library, APIFragment))
-        for table in (fragment.types, fragment.annotation_types)
-        for child in table.values()
-        if any(parent.id == base.id for parent in _parents(child)) and (symbol := _type_symbol(child)) is not None
+        for _key, _name, child in fragment.declarations()
+        if isinstance(child, BaseShape)
+        and any(parent.id == base.id for parent in _parents(child))
+        and (symbol := _type_symbol(child)) is not None
     ]
 
 

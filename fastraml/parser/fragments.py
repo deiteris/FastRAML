@@ -96,6 +96,7 @@ __all__ = [
     'HEADS',
     'APIFragment',
     'DataTypeFragment',
+    'Declaration',
     'DocumentationItemFragment',
     'ExtensionFragment',
     'Fragment',
@@ -118,6 +119,10 @@ __all__ = [
     'parse_library',
     'resolve_uses',
 ]
+
+
+#: What a declaration table holds (`_DeclaringFragment.declarations`).
+type Declaration = BaseShape | TraitDefinition | ResourceTypeDefinition | SecuritySchemeDefinition
 
 
 class FragmentKind(StrEnum):
@@ -471,6 +476,16 @@ class _DeclaringFragment(_NameResolver, _BaseFragment):
 
     def _libraries(self) -> Mapping[str, LibraryLink]:
         return self.uses
+
+    def declarations(self) -> Iterator[tuple[str, str, Declaration]]:
+        """Every declaration, as `(key, name, entity)`: table by table in
+        `_DECLARATION_TABLES` order, each in declaration order (docs/04 § 1).
+        `key` is the RAML key the table is written under.
+        """
+        for key, table in _DECLARATION_TABLES.items():
+            declared: Mapping[str, Declaration] = getattr(self, table)
+            for name, entity in declared.items():
+                yield key, name, entity
 
     # -- decoding -------------------------------------------------------------
 

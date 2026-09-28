@@ -22,6 +22,13 @@ from enum import StrEnum
 from operator import attrgetter
 from typing import TYPE_CHECKING, Final
 
+from fastraml.facet_names import (
+    FACET_ANNOTATION_TYPES,
+    FACET_RESOURCE_TYPES,
+    FACET_SECURITY_SCHEMES,
+    FACET_TRAITS,
+    FACET_TYPES,
+)
 from fastraml.gctuning import tuned_gc
 from fastraml.parser.fragments import APIFragment, Library
 from fastraml.positions import Position
@@ -30,21 +37,10 @@ from fastraml.types.complex_ import ObjectShape
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from typing import Protocol
 
     from fastraml.parser.fragments import ReferenceResolver
     from fastraml.registry import Raml
     from fastraml.types.base import BaseShape
-
-    class _Declared(Protocol):
-        """A declaration, of any of the five kinds a fragment declares."""
-
-        @property
-        def id(self) -> int: ...
-        @property
-        def location(self) -> str: ...
-        @property
-        def key_pos(self) -> Position | None: ...
 
 
 __all__ = ['Kind', 'Occurrence', 'Occurrences', 'Role', 'build_occurrences']
@@ -77,6 +73,16 @@ class Kind(StrEnum):
     #: A `facets:` entry.
     FACET = 'facet'
     FILE = 'file'
+
+
+#: The kind of each declaration table, by the key it is written under.
+_KINDS: Final = {
+    FACET_TYPES: Kind.TYPE,
+    FACET_ANNOTATION_TYPES: Kind.ANNOTATION_TYPE,
+    FACET_TRAITS: Kind.TRAIT,
+    FACET_RESOURCE_TYPES: Kind.RESOURCE_TYPE,
+    FACET_SECURITY_SCHEMES: Kind.SECURITY_SCHEME,
+}
 
 
 @dataclass(slots=True, eq=False)
@@ -238,18 +244,10 @@ class _Index:
         """Every declared name, and each `uses:` entry with the file it links."""
         for fragment in raml.fragments.values():
             if isinstance(fragment, (Library, APIFragment)):
-                declared: list[tuple[Kind, Mapping[str, _Declared]]] = [
-                    (Kind.TYPE, fragment.types),
-                    (Kind.ANNOTATION_TYPE, fragment.annotation_types),
-                    (Kind.TRAIT, fragment.traits),
-                    (Kind.RESOURCE_TYPE, fragment.resource_types),
-                    (Kind.SECURITY_SCHEME, fragment.security_schemes),
-                ]
-                for kind, table in declared:
-                    for name, entity in table.items():
-                        self.add_at(
-                            entity.location, entity.key_pos, name, role=Role.DEFINITION, kind=kind, target=entity.id
-                        )
+                for key, name, entity in fragment.declarations():
+                    self.add_at(
+                        entity.location, entity.key_pos, name, role=Role.DEFINITION, kind=_KINDS[key], target=entity.id
+                    )
             for alias, link in fragment.uses.items():
                 self.add_at(link.location, link.key_pos, alias, role=Role.DEFINITION, kind=Kind.LIBRARY, target=link.id)
                 if link.link is not None:

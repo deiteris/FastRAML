@@ -336,6 +336,30 @@ class TestLibrary:
         assert library.uses['o'].link is not None
         assert library.annotations['tag'].value.raw == 'v'
 
+    def test_declarations_lists_every_table_in_order(self, workspace):
+        # docs/04 § 1: table by table, each in declaration order, whatever
+        # order the sections are written in.
+        root = workspace(
+            {
+                'lib.raml': '#%RAML 1.0 Library\n'
+                'securitySchemes:\n  s: {type: Basic Authentication}\n'
+                'resourceTypes:\n  r: {}\n'
+                'traits:\n  t: {}\n'
+                'annotationTypes:\n  a: any\n'
+                'types:\n  B: string\n  A: string\n',
+            }
+        )
+        library = workspace.parse(root / 'lib.raml').entry_point
+        assert [(key, name) for key, name, _ in library.declarations()] == [
+            ('types', 'B'),
+            ('types', 'A'),
+            ('annotationTypes', 'a'),
+            ('traits', 't'),
+            ('resourceTypes', 'r'),
+            ('securitySchemes', 's'),
+        ]
+        assert [entity for *_, entity in library.declarations()][:2] == [library.types['B'], library.types['A']]
+
     def test_an_empty_library_is_valid(self, workspace):
         root = workspace({'lib.raml': '#%RAML 1.0 Library\n'})
         assert isinstance(workspace.parse(root / 'lib.raml').entry_point, Library)

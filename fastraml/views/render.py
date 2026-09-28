@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from fastraml.parser.fragments import APIFragment, Library
 from fastraml.types.base import facets_of
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.jsonschema_ import JsonShape, projected, subschema_document
@@ -120,12 +121,13 @@ class Sources:
     def of(cls, raml: Raml) -> Sources:
         spans: dict[str, list[tuple[int, int, str]]] = {}
         for location, fragment in raml.fragments.items():
+            if not isinstance(fragment, (APIFragment, Library)):
+                continue
             found: list[tuple[int, int, str]] = []
-            for group in ('traits', 'resource_types', 'types', 'annotation_types', 'security_schemes'):
-                for name, declared in (getattr(fragment, group, None) or {}).items():
-                    start, end = getattr(declared, 'key_pos', None), getattr(declared, 'value_pos', None)
-                    if start is not None and start.is_known and end is not None and end.end_line >= start.line:
-                        found.append((start.line, end.end_line, name))
+            for _key, name, declared in fragment.declarations():
+                start, end = declared.key_pos, declared.value_pos
+                if start is not None and start.is_known and end is not None and end.end_line >= start.line:
+                    found.append((start.line, end.end_line, name))
             if found:
                 spans[location] = sorted(found, key=lambda span: (span[1] - span[0], span[0]))
         return cls(spans=spans)

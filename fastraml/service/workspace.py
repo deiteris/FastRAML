@@ -8,12 +8,13 @@ the files it read, so a change to one of them makes that snapshot stale. A
 file no root reads is parsed on its own.
 
 Parsing is lazy: a snapshot is built when a query asks for it and reused
-until something it read changes.
+until something it read changes, and a query brings current only the roots
+it reads (`serving`).
 
 A dropped snapshot is cyclic garbage the size of a model, and a server defers
 full collections for its whole run (docs/12 § 6), so nothing would free it.
-The next parse collects it first: one full collection per edit, and no second
-model alive while the next is built (docs/21 § 2).
+The host calls `collect` between a change and the parse it leads to; a parse
+never collects (docs/21 § 2).
 """
 
 from __future__ import annotations

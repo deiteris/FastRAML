@@ -120,7 +120,8 @@ or a file, wrote. It reads facts only:
   written `items` (F4), its `facets:` entries;
 - a resource's own URI parameters, methods and resources, and a method's own
   parameters, bodies and responses: those no template contributed (F2);
-- the bodies of one `body:` without a media type, as one entry (F3).
+- the bodies of one `body:` without a media type, as one entry (F3, recorded
+  as `Body.media_type_written`).
 
 The outline, `render`'s contributor note and hover read it now; completion,
 rename and semantic tokens read it later (M5, M6). It needs no position, so

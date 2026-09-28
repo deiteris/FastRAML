@@ -60,6 +60,9 @@ class Body:
     shape: BaseShape | None = None
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
+    #: Whether `media_type` was written, or is a default media type a `body:`
+    #: without one was instantiated for, at that `body:` key.
+    media_type_written: bool = True
 
     def __repr__(self) -> str:
         return f'Body({self.media_type!r})'

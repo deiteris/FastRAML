@@ -174,6 +174,7 @@ def _decode_bodies(raml: Raml, key: Node, node: Node, location: str, target: Dom
                 shape=shape,
                 key_pos=key.position,
                 value_pos=node.full_position,
+                media_type_written=False,
             )
     return bodies
 

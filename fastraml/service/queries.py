@@ -563,10 +563,9 @@ def _bodies(bodies: Mapping[str, Body], parent: Symbol) -> Iterator[Symbol | Non
     """One symbol per body written: a `body:` with no media type is one body
     per default media type (docs/08 § 6.3), named by all of them.
     """
-    written: dict[Position, list[Body]] = {}
-    for body in bodies.values():
-        written.setdefault(body.key_pos, []).append(body)
-    for same in written.values():
+    defaults = [body for body in bodies.values() if not body.media_type_written]
+    written = [[body] for body in bodies.values() if body.media_type_written]
+    for same in [*written, defaults] if defaults else written:
         body, shape = same[0], same[0].shape
         name = ', '.join(each.media_type for each in same)
         # The body's own key: its shape's is none for `body: Book`.

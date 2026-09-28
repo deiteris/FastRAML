@@ -198,6 +198,14 @@ class TestBodies:
         assert list(bodies) == ['application/json', 'application/xml']
         # Separate shapes: sharing one would alias their facets through P7.
         assert bodies['application/json'].shape is not bodies['application/xml'].shape
+        # And each records that its media type was not written, so a reader
+        # tells them from bodies written under their own keys (docs/08 § 6.3).
+        assert [body.media_type_written for body in bodies.values()] == [False, False]
+
+    def test_a_body_under_its_media_type_records_that_it_was_written(self, workspace):
+        raml = parse(workspace, '/users:\n  post:\n    body:\n      application/json: string\n')
+        (body,) = raml.endpoints['/users'].operations['post'].request.bodies.values()
+        assert body.media_type_written
 
     @pytest.mark.parametrize('site', ['request', 'response'])
     def test_a_bodyless_declaration_is_placed_at_its_body_key(self, workspace, site):

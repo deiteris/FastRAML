@@ -146,7 +146,7 @@ cannot say whether P6 ran, because the driver runs P6 before P5, and it
 cannot say whether P9 ran, because P9 is optional while P10 is not.
 
 This resolves A3: a consumer gates each feature on the pass it needs. The
-LSP's feature-to-pass table (`research/language-server.md` § 3.1) reads
+LSP's feature-to-pass table (`archive/language-server.md` § 3.1) reads
 these two fields directly. `Raml.unwrapped` became a read-only property
 derived from them.
 

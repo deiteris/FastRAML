@@ -1,6 +1,10 @@
 # Language server and MCP server
 
-**Status: accepted as a direction.** The § 7 options were decided as
+**Status: archived, 2026-09-28.** `docs/21` describes the service as built and
+supersedes this document where they differ; where the service goes next is
+`research/language-service-architecture.md`. Kept as the design record.
+
+**As accepted.** The § 7 options were decided as
 recommended (`research/language-service-plan.md`, D3–D7). It proposes a design for a
 RAML language server (LSP), and an MCP server on the same core, built from
 scratch on fastRAML's parser. The numbered documents in `docs/` are normative;

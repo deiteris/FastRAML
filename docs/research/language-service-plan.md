@@ -1,7 +1,7 @@
 # Plan: partial models, then the language service
 
 **Status: accepted; M1 to M3 done, M4 in progress.** This document orders the work proposed in
-`research/partial-models.md` (PM) and `research/language-server.md` (LS). It
+`research/partial-models.md` (PM) and `archive/language-server.md` (LS). It
 is not normative. Each milestone amends its owning numbered document in the
 same commit, as `AGENTS.md` requires. When the service lands, a normative
 `docs/21-language-service.md` takes over from LS, and `docs/15` records
@@ -272,7 +272,7 @@ As done so far, one commit each:
 - G9 is closed without parser work. Every trait, resource type and security
   scheme definition, endpoint, operation, response, body and documentation
   item already carries `key_pos` and a full-span `value_pos`, which is what
-  symbol and folding ranges need (`language-server.md` § 8, G9).
+  symbol and folding ranges need (`archive/language-server.md` § 8, G9).
   `tests/unit/test_entity_spans.py` pins them.
 
 Remaining drops over the TCK, each a known limit: eight transformed values,
@@ -317,7 +317,8 @@ As done so far:
 - Latency on `large`: 477 ms per edit, against 360 ms for a plain parse.
   Composing the unchanged libraries is about a quarter of the parse, which
   bounds what G8 can save. Whether that asks for G8 is still open.
-- Left: moving LS to `archive/`.
+- LS moved to `archive/` on 2026-09-28: `docs/21` supersedes it, and
+  `research/language-service-architecture.md` holds where the service goes.
 - Next: the consolidation `research/language-service-architecture.md` orders
   (§ 11), from a review of the service against this plan and LS: the snapshot
   a query reads, model facts in place of the span inferences, one home for

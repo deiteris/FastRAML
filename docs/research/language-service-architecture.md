@@ -2,7 +2,7 @@
 
 **Status: proposed, 2026-09-27.** This document records how the language
 service should sit on the parser and its model, from a review of the service as
-built against `docs/21`, `research/language-server.md` (LS) and
+built against `docs/21`, `archive/language-server.md` (LS) and
 `research/language-service-plan.md`. It is not normative: `docs/21` describes
 the service as it is, and each change below amends its owning document in the
 same commit. The order of work is § 11.

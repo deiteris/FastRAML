@@ -28,8 +28,8 @@ covered (docs/20 § 11).
 Potential consumers and tooling include an LSP, more editor recovery in
 `parse_lenient`, and improved remote-include latency. These are not commitments
 and must not change parser rules without an owning design document and tests.
-An LSP and MCP design is drafted in
-[research/language-server.md](research/language-server.md). Its parser
+An LSP and MCP design was drafted in
+[archive/language-server.md](archive/language-server.md). Its parser
 prerequisite, a trustworthy `parse_lenient` model, is analysed in
 [research/partial-models.md](research/partial-models.md), and the ordered plan
 is [research/language-service-plan.md](research/language-service-plan.md).

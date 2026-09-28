@@ -1,7 +1,7 @@
 """Where each entity beyond shapes is written: its key, and its whole value.
 
 Symbol, folding and hover ranges read these, and nothing else
-(`docs/research/language-server.md` § 8, G9).
+(`docs/archive/language-server.md` § 8, G9).
 """
 
 from __future__ import annotations

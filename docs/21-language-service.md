@@ -5,7 +5,7 @@ lenient parse per root, and the queries an editor asks of them. It holds no
 RAML rule. Every answer is read from a parse (`docs/13` § 1) or a view
 (`docs/16`). The LSP adapter and the MCP verb are protocols over it.
 
-The design and its decisions are in `research/language-server.md` and
+The design and its decisions are in `archive/language-server.md` and
 `research/language-service-plan.md`, which this document supersedes where they
 differ. Where the service is headed, and the parser facts that takes, is
 `research/language-service-architecture.md`.
@@ -152,7 +152,7 @@ is nothing else to list. A documentation item has no key and selects its title.
 
 **Hierarchy items across snapshots.** A type hierarchy item is found again by
 where its name is written, never by its id: ids do not survive a reparse
-(`research/language-server.md` § 3.2).
+(`archive/language-server.md` § 3.2).
 
 ### 4.1 Diagnostics
 

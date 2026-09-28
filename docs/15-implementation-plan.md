@@ -33,11 +33,10 @@ An LSP and MCP design was drafted in
 prerequisite, a trustworthy `parse_lenient` model, is analysed in
 [research/partial-models.md](research/partial-models.md), and the ordered plan
 is [research/language-service-plan.md](research/language-service-plan.md).
-The architecture the service is moving to, and the parser facts it takes, is
+The architecture the service is built to, and the parser facts it took, is
 [research/language-service-architecture.md](research/language-service-architecture.md).
-Its first milestone fixes two present defects: recursion left unmarked after a
-P9 failure, and one mistake reported once per template application or
-inheritance level.
+M1 to M3 are done and M4 is in progress; `docs/21` describes the service as
+built. Completion (M5) comes next.
 
 **Deprecated aliases as a model fact (proposed).** `deprecated-schemas` is on
 by default and reads `source_info`, so every lint-enabled parse, the language

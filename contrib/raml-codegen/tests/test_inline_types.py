@@ -17,8 +17,10 @@ Where a name comes from, in order:
 4. its address, which is always there and always distinct.
 
 The document also declares `Entry`, whose property names Python cannot spell as
-attributes: `@odata.type`, `$ref`, `class`, `1st`, and `userId` beside
-`user_id`. The shared fixture has none of those either.
+attributes: `@odata.type`, `$ref`, `class`, `1st`, `userId` beside `user_id`,
+and `json` and `model_config`, which a pydantic model already has. `GET
+/entries` takes query parameters spelled like the arguments its server method
+already has. The shared fixture has none of those either.
 """
 
 from __future__ import annotations
@@ -67,6 +69,21 @@ types:
       1st: boolean
       userId: string
       user_id: string
+      json: string
+      model_config: string
+/entries:
+  get:
+    queryParameters:
+      body: string
+      self: string
+      userId: string
+      user_id: string
+      1st: boolean
+    responses:
+      200:
+        body:
+          application/json:
+            type: Entry
 /drafts:
   post:
     body:
@@ -276,7 +293,15 @@ class TestAnyPropertyNameIsAKey:
         assert result.returncode == 0, result.stdout + result.stderr
 
     def test_the_reader_reads_them(self, written):
-        payload = {'@odata.type': '#Entry', 'class': 1, '1st': True, 'userId': 'a', 'user_id': 'b'}
+        payload = {
+            '@odata.type': '#Entry',
+            'class': 1,
+            '1st': True,
+            'userId': 'a',
+            'user_id': 'b',
+            'json': 'c',
+            'model_config': 'd',
+        }
         check = f"""
 from inline_api.models import read_entry
 from inline_api.types import reading
@@ -286,10 +311,116 @@ with reading() as found:
 assert found == []
 with reading() as found:
     read_entry({{'userId': 'a'}})
-assert sorted(one.field for one in found) == ['1st', '@odata.type', 'class', 'user_id'], found
+missing = ['1st', '@odata.type', 'class', 'json', 'model_config', 'user_id']
+assert sorted(one.field for one in found) == missing, found
 """
         result = _run(['-c', check], cwd=written)
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+class TestAServerNamesWhatPydanticCannotTake:
+    """A server model is a pydantic class, so every property needs an attribute.
+
+    `field_name` alone gave `1st` the name `_1st`, which pydantic reads as a
+    private attribute and drops; gave `userId` and `user_id` one attribute; and
+    gave `model_config` a name that stops the class being built. `GET /entries`
+    takes query parameters spelled like the arguments its method already has.
+    """
+
+    @pytest.fixture(scope='class')
+    @staticmethod
+    def served():
+        document = json.loads((HERE / 'inline.json').read_text(encoding='utf-8'))
+        return generate(document, 'python-fastapi', Settings())
+
+    @pytest.fixture(scope='class')
+    @staticmethod
+    def entry(served):
+        return served.files['inline_api/models/entry.py']
+
+    def test_a_name_that_starts_with_a_digit_is_not_private(self, entry):
+        assert "field_1st: Annotated[bool, Field(alias='1st')]" in entry
+
+    def test_two_properties_that_snake_alike_keep_two_attributes(self, entry):
+        # The first declared keeps the spelling.
+        assert "user_id: Annotated[str, Field(alias='userId')]" in entry
+        assert "user_id2: Annotated[str, Field(alias='user_id')]" in entry
+
+    def test_a_name_basemodel_already_has_is_suffixed(self, entry):
+        assert "json_: Annotated[str, Field(alias='json')]" in entry
+        assert "model_config_: Annotated[str, Field(alias='model_config')]" in entry
+
+    def test_a_parameter_the_method_already_takes_is_suffixed(self, served):
+        routes = served.files['inline_api/api/entries.py']
+        assert "body_: Annotated[str, Query(alias='body')]" in routes
+        assert "self_: Annotated[str, Query(alias='self')]" in routes
+
+    @pytest.fixture(scope='class')
+    @staticmethod
+    def written(served, tmp_path_factory):
+        destination = tmp_path_factory.mktemp('inline-server')
+        served.write(destination)
+        return destination
+
+    def test_it_passes_mypy_strict(self, written):
+        result = _run(['-m', 'mypy', 'inline_api'], cwd=written)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_every_name_crosses_the_wire_both_ways(self, written):
+        # Query in, model out: each parameter reaches the method under its own
+        # attribute, and each property leaves under its own key.
+        check = """
+import asyncio
+
+import httpx
+
+from inline_api import Api, create_app
+from inline_api.models import Entry
+
+
+async def stub(self, **arguments):
+    raise NotImplementedError
+
+
+async def get_entries(self, *, body_, self_, user_id, user_id2, field_1st):
+    return Entry.model_validate({
+        '@odata.type': body_, 'class': 1, '1st': field_1st, 'userId': user_id,
+        'user_id': user_id2, 'json': self_, 'model_config': 'c',
+    })
+
+
+Implementation = type('Implementation', (Api,), {**dict.fromkeys(Api.__abstractmethods__, stub), 'get_entries': get_entries})
+
+
+async def main():
+    transport = httpx.ASGITransport(app=create_app(Implementation()))
+    async with httpx.AsyncClient(transport=transport, base_url='http://x') as client:
+        query = {'body': 'b', 'self': 's', 'userId': 'u', 'user_id': 'v', '1st': 'true'}
+        response = await client.get('/entries', params=query)
+    assert response.status_code == 200, response.text
+    got = response.json()
+    expected = {
+        '@odata.type': 'b', 'class': 1, '1st': True, 'userId': 'u',
+        'user_id': 'v', 'json': 's', 'model_config': 'c',
+    }
+    assert {key: got[key] for key in expected} == expected, got
+
+
+asyncio.run(main())
+"""
+        result = _run(['-c', check], cwd=written)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+class TestAnOperationWithNoResponses:
+    """`/drafts` documents no `responses:`, which RAML allows."""
+
+    def test_the_server_is_still_generated(self):
+        document = json.loads((HERE / 'inline.json').read_text(encoding='utf-8'))
+        routes = generate(document, 'python-fastapi', Settings()).files['inline_api/api/drafts.py']
+        # Its `Responses` is empty, so there is no status to show `fail` with.
+        assert 'POST_DRAFTS = Responses({})' in routes
+        assert 'The document names no response here' in routes
 
 
 def _run(arguments, cwd):

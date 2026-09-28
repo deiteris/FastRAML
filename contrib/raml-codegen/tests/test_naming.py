@@ -47,6 +47,9 @@ class TestSpelling:
             ('id', 'id_'),
             ('type', 'type_'),
             ('class', 'class_'),
+            # Not `_1st`: pydantic reads a leading underscore as private and
+            # drops the field.
+            ('1st', 'field_1st'),
         ],
     )
     def test_field_names(self, given, expected):

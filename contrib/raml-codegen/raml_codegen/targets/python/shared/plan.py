@@ -16,7 +16,7 @@ reading of the result.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
 
 from ....naming import Names, class_name, field_name, from_address, module_name
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from ....tree import EntryPoint, Operation, Parameter, SecurityScheme, Shape, ShapeNode
     from .annotate import Annotation, Annotator
 
-__all__ = ['Argument', 'Body', 'Case', 'Endpoint', 'Field', 'Model', 'Package', 'Scheme', 'plan']
+__all__ = ['Argument', 'Body', 'Case', 'Endpoint', 'Field', 'Model', 'Package', 'Reserved', 'Scheme', 'plan']
 
 _URI_TOKEN = re.compile(r'\{([^}]+)\}')
 
@@ -50,6 +50,19 @@ _CONSTRAINTS = (
     ('max_items', 'maxItems'),
     ('unique_items', 'uniqueItems'),
 )
+
+
+@dataclass(frozen=True, slots=True)
+class Reserved:
+    """The names a target's own code already uses, so the document's cannot take them."""
+
+    #: Modules at the generated package root: no declared type is named after one.
+    modules: frozenset[str] = frozenset()
+    #: Names a model's attribute cannot take -- pydantic's own, for a `BaseModel`.
+    attributes: frozenset[str] = frozenset()
+    #: Names an operation's argument cannot take, because the function that
+    #: receives it already uses them.
+    parameters: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,17 +241,13 @@ def plan(
     tree: Tree,
     settings: Settings,
     make_annotator: Callable[[Tree, Names], Annotator],
-    reserved: frozenset[str] = frozenset(),
+    reserved: Reserved | None = None,
 ) -> Package:
-    """Read the whole tree into one plan.
-
-    `reserved` names the modules the generated package root already uses, so
-    that a declared type cannot be given one of them.
-    """
+    """Read the whole tree into one plan, naming nothing a target has `reserved`."""
     entry: EntryPoint = tree.document['entry_point'] or cast('EntryPoint', {})
     title = entry.get('title') or 'API'
     distribution = settings.package or module_name(title).replace('_', '-')
-    builder = _Builder(tree, make_annotator, reserved)
+    builder = _Builder(tree, make_annotator, reserved or Reserved())
     # Endpoints first: annotating a response body reaches models that nothing in
     # `types:` declares, and draining the model queue before that happened left
     # them named in a signature and generated nowhere.
@@ -261,14 +270,14 @@ def plan(
 class _Builder:
     tree: Tree
     make_annotator: Callable[[Tree, Names], Annotator]
-    reserved: frozenset[str]
+    reserved: Reserved
     classes: Names = field(default_factory=Names)
     modules: Names = field(init=False)
     annotator: Annotator = field(init=False)
     _declared: dict[str, Declaration] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.modules = Names(self.reserved)
+        self.modules = Names(self.reserved.modules)
         self.annotator = self.make_annotator(self.tree, self.classes)
         # Claimed before anything is annotated, and in declaration order, so a
         # generated name is a function of the document rather than of the order
@@ -322,24 +331,28 @@ class _Builder:
         declared = self._declared.get(address)
         preferred = class_name(declared.name) if declared else _preferred(content, address)
         name = self.classes.claim(address, preferred)
-        required: list[Field] = []
-        optional: list[Field] = []
-        for wire, prop in properties_of(content).items():
-            one = Field(
-                name=field_name(wire),
-                wire=wire,
-                annotation=self.annotator.of(prop['type']),
-                required=prop['required'],
-                docs=_docs(self.tree, prop['type']),
-                description=_described(self.tree, prop['type']),
-                default=_default(self.tree, prop['type']),
-            )
-            (required if one.required else optional).append(one)
+        # Named in declaration order, so the first of two properties that
+        # share a spelling is the one that keeps it.
+        fields = _distinct(
+            [
+                Field(
+                    name=field_name(wire),
+                    wire=wire,
+                    annotation=self.annotator.of(prop['type']),
+                    required=prop['required'],
+                    docs=_docs(self.tree, prop['type']),
+                    description=_described(self.tree, prop['type']),
+                    default=_default(self.tree, prop['type']),
+                )
+                for wire, prop in properties_of(content).items()
+            ],
+            self.reserved.attributes,
+        )
         return Model(
             name=name,
             module=self.modules.claim(address, module_name(name)),
             description=_description(content),
-            fields=(*required, *optional),
+            fields=(*(one for one in fields if one.required), *(one for one in fields if not one.required)),
             discriminator=_discriminator(content),
         )
 
@@ -370,6 +383,10 @@ class _Builder:
     ) -> Endpoint:
         cases = self._cases(operation, path, method)
         secured = operation.get('secured_by', [])
+        # One function takes all three, so their names are settled together.
+        uri = _ordered_for(path, inherited_uri)
+        query = self._query(operation)
+        named = _distinct([*uri, *query, *self._arguments(operation.get('headers', {}))], self.reserved.parameters)
         return Endpoint(
             group=_group(path),
             module=self.modules.claim(f'api:{method}:{path}', module_name(f'{method}-{_slug(path)}')),
@@ -377,9 +394,9 @@ class _Builder:
             path=path,
             summary=operation.get('display_name', '') or f'{method.upper()} {path}',
             description=operation.get('description', ''),
-            uri_arguments=_ordered_for(path, inherited_uri),
-            query_arguments=self._query(operation),
-            header_arguments=self._arguments(operation.get('headers', {})),
+            uri_arguments=tuple(named[: len(uri)]),
+            query_arguments=tuple(named[len(uri) : len(uri) + len(query)]),
+            header_arguments=tuple(named[len(uri) + len(query) :]),
             body=self._body(operation, path, method),
             cases=cases,
             success=_success(cases),
@@ -605,6 +622,23 @@ def _group(path: str) -> str:
 
 def _slug(path: str) -> str:
     return '-'.join(part.strip('{}') for part in path.strip('/').split('/') if part) or 'root'
+
+
+def _distinct[Named: (Field, Argument)](found: list[Named], reserved: frozenset[str]) -> list[Named]:
+    """Give each of one scope's names a spelling none of the others has.
+
+    `field_name` is not reversible: `userId` and `user_id` are both `user_id`,
+    and one attribute holding either is a property lost without a word. The
+    first keeps the spelling and the next is numbered, as a class name is.
+
+    A name the target cannot use takes a trailing underscore, as a keyword
+    does: `json` on a pydantic model is `json_`.
+    """
+    taken = Names(reserved)
+    return [
+        replace(one, name=taken.claim(str(index), f'{one.name}_' if one.name in reserved else one.name))
+        for index, one in enumerate(found)
+    ]
 
 
 def _ordered_for(path: str, arguments: tuple[Argument, ...]) -> tuple[Argument, ...]:

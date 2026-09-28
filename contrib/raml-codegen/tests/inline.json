@@ -412,6 +412,24 @@
               "type": "string",
               "type_expr": "string"
             }
+          },
+          "json": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entry/property/json/schema",
+              "name": "json",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "model_config": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entry/property/model_config/schema",
+              "name": "model_config",
+              "type": "string",
+              "type_expr": "string"
+            }
           }
         }
       }
@@ -420,6 +438,158 @@
   "annotation_types": {},
   "security_schemes": {},
   "endpoints": {
+    "/entries": {
+      "id": "fastraml://id#/web-api/endpoint/%2Fentries",
+      "operations": {
+        "get": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fentries/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Fentries/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "object",
+                  "inherits": [
+                    {
+                      "$ref": "fastraml://id#/declarations/types/Entry"
+                    }
+                  ],
+                  "type_expr": "Entry",
+                  "properties": {
+                    "@odata.type": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entry/property/%40odata.type/schema",
+                        "name": "@odata.type",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "$ref": {
+                      "required": false,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entry/property/%24ref/schema",
+                        "name": "$ref?",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "class": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entry/property/class/schema",
+                        "name": "class",
+                        "type": "integer",
+                        "type_expr": "integer"
+                      }
+                    },
+                    "1st": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entry/property/1st/schema",
+                        "name": "1st",
+                        "type": "boolean",
+                        "type_expr": "boolean"
+                      }
+                    },
+                    "userId": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entry/property/userId/schema",
+                        "name": "userId",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "user_id": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entry/property/user_id/schema",
+                        "name": "user_id",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "json": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entry/property/json/schema",
+                        "name": "json",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    },
+                    "model_config": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Entry/property/model_config/schema",
+                        "name": "model_config",
+                        "type": "string",
+                        "type_expr": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "query_parameters": {
+            "body": {
+              "binding": "query",
+              "required": true,
+              "type": {
+                "id": "fastraml://id#/web-api/endpoint/%2Fentries/supportedOperation/get/request/parameter/query/body/schema",
+                "name": "body",
+                "type": "string",
+                "type_expr": "string"
+              }
+            },
+            "self": {
+              "binding": "query",
+              "required": true,
+              "type": {
+                "id": "fastraml://id#/web-api/endpoint/%2Fentries/supportedOperation/get/request/parameter/query/self/schema",
+                "name": "self",
+                "type": "string",
+                "type_expr": "string"
+              }
+            },
+            "userId": {
+              "binding": "query",
+              "required": true,
+              "type": {
+                "id": "fastraml://id#/web-api/endpoint/%2Fentries/supportedOperation/get/request/parameter/query/userId/schema",
+                "name": "userId",
+                "type": "string",
+                "type_expr": "string"
+              }
+            },
+            "user_id": {
+              "binding": "query",
+              "required": true,
+              "type": {
+                "id": "fastraml://id#/web-api/endpoint/%2Fentries/supportedOperation/get/request/parameter/query/user_id/schema",
+                "name": "user_id",
+                "type": "string",
+                "type_expr": "string"
+              }
+            },
+            "1st": {
+              "binding": "query",
+              "required": true,
+              "type": {
+                "id": "fastraml://id#/web-api/endpoint/%2Fentries/supportedOperation/get/request/parameter/query/1st/schema",
+                "name": "1st",
+                "type": "boolean",
+                "type_expr": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "secured_by": []
+    },
     "/drafts": {
       "id": "fastraml://id#/web-api/endpoint/%2Fdrafts",
       "operations": {

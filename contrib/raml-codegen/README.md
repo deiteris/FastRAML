@@ -339,6 +339,20 @@ So a response is built with the document's name:
 Book(isbn='9780441013593', title='Dune', createdAt=datetime.now(UTC), ...)
 ```
 
+The attribute is the snake-case spelling, adjusted where Python or pydantic
+cannot take it. The alias carries the wire name either way:
+
+| the document | the attribute | why |
+|---|---|---|
+| `class`, `id` | `class_`, `id_` | a keyword, a builtin |
+| `1st` | `field_1st` | pydantic drops a field whose name starts with `_` |
+| `json`, `model_config` | `json_`, `model_config_` | `BaseModel` already has them |
+| `userId` then `user_id` | `user_id`, `user_id2` | one model, one spelling each; the first declared keeps it |
+
+An operation's parameters follow the same rules, and also avoid `self`,
+`body`, `credential`, `response` and `implementation`, which the generated
+method and route already take: a query parameter `body` is `body_`.
+
 ### Conventions, not readings of the language
 
 Three, and the generated README repeats them:

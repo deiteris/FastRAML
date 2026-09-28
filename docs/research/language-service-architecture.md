@@ -217,8 +217,8 @@ Each step is its own commit, amends its owning document, and passes the gate.
 1. Done: `docs/21` § 5 states the snapshot rule as built; § 4 marks the
    outline's span test as a stand-in for F2. The plan's status and M4 notes
    catch up; the latency is measured again (475 ms, unchanged).
-2. Snapshot policy (§ 5): `serving(uri)`, and each query reading as the table
-   says. Tests pin how many roots a request brings current.
+2. Done: snapshot policy (§ 5): `serving(uri)`, and each query reading as the
+   table says. Tests pin how many roots a request brings current.
 3. F1, and every table list reading it.
 4. Span helpers on `Position`, replacing the local ones.
 5. The placement law (§ 7), with each defect it finds fixed first.

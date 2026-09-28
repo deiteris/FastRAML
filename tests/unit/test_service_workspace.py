@@ -36,6 +36,19 @@ def _models() -> int:
     return sum(isinstance(found, Raml) for found in gc.get_objects())
 
 
+def _parses(workspace: Workspace, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The roots `workspace` parses from now on, in order."""
+    parsed: list[str] = []
+    parse = workspace._parse
+
+    def counted(root: str) -> object:
+        parsed.append(root)
+        return parse(root)
+
+    monkeypatch.setattr(workspace, '_parse', counted)
+    return parsed
+
+
 class TestRoots:
     def test_a_document_nothing_includes_is_a_root(self, tmp_path):
         workspace, folder = _workspace(
@@ -94,11 +107,18 @@ class TestSnapshots:
 
     def test_a_file_is_served_from_every_root_that_read_it(self, tmp_path):
         workspace, folder = _workspace(tmp_path, self.FILES)
-        assert [snapshot.root for snapshot in workspace.snapshots(f'{folder}/lib.raml')] == [f'{folder}/api.raml']
+        assert [snapshot.root for snapshot in workspace.serving(f'{folder}/lib.raml')] == [f'{folder}/api.raml']
+
+    def test_a_root_is_served_by_itself_first(self, tmp_path):
+        # `aa.raml` sorts first and reads `api.raml` as an Overlay's master.
+        files = {**self.FILES, 'aa.raml': '#%RAML 1.0 Overlay\nextends: api.raml\n'}
+        workspace, folder = _workspace(tmp_path, files)
+        roots = [snapshot.root for snapshot in workspace.serving(f'{folder}/api.raml')]
+        assert roots == [f'{folder}/api.raml', f'{folder}/aa.raml']
 
     def test_a_file_no_root_reads_is_parsed_alone(self, tmp_path):
         workspace, folder = _workspace(tmp_path, {'api.raml': API, 'lib.raml': LIBRARY})
-        (snapshot,) = workspace.snapshots(f'{folder}/lib.raml')
+        (snapshot,) = workspace.serving(f'{folder}/lib.raml')
         assert snapshot.root == f'{folder}/lib.raml'
         assert snapshot.error is None
 
@@ -192,6 +212,40 @@ class TestSnapshots:
         plain = Workspace([folder], config=config)
         raml = plain.snapshot(f'{folder}/api.raml').raml
         assert (raml.retain_source, raml.retain_text) == (False, True)
+
+    def test_the_first_snapshot_serving_a_file_parses_one_root(self, tmp_path, monkeypatch):
+        # After an edit to a library, the outline read one snapshot but brought
+        # every root current first.
+        workspace, folder = _workspace(tmp_path, {**self.FILES, 'second.raml': self.FILES['api.raml']})
+        workspace.readers()
+        workspace.change(f'{folder}/lib.raml', LIBRARY + '  Guest: string\n', 2)
+        parsed = _parses(workspace, monkeypatch)
+        assert next(workspace.serving(f'{folder}/lib.raml')).root == f'{folder}/api.raml'
+        assert parsed == [f'{folder}/api.raml']
+
+    def test_the_roots_that_read_a_file_last_are_tried_first(self, tmp_path, monkeypatch):
+        # Both roots read `common.raml`; only `b.raml` reads `lib.raml`. In
+        # path order, `a.raml` would be parsed to learn it does not.
+        common = '#%RAML 1.0 Library\ntypes:\n  C: string\n'
+        files = {
+            'a.raml': API + 'uses:\n  common: common.raml\n',
+            'b.raml': API + 'uses:\n  common: common.raml\n  lib: lib.raml\n',
+            'common.raml': common,
+            'lib.raml': LIBRARY,
+        }
+        workspace, folder = _workspace(tmp_path, files)
+        workspace.readers()
+        workspace.change(f'{folder}/common.raml', common + '  D: string\n', 2)
+        parsed = _parses(workspace, monkeypatch)
+        assert next(workspace.serving(f'{folder}/lib.raml')).root == f'{folder}/b.raml'
+        assert parsed == [f'{folder}/b.raml']
+
+    def test_every_snapshot_serving_a_file_brings_every_root_current(self, tmp_path, monkeypatch):
+        workspace, folder = _workspace(tmp_path, {**self.FILES, 'second.raml': self.FILES['api.raml']})
+        parsed = _parses(workspace, monkeypatch)
+        served = [snapshot.root for snapshot in workspace.serving(f'{folder}/lib.raml')]
+        assert served == [f'{folder}/api.raml', f'{folder}/second.raml']
+        assert sorted(parsed) == workspace.roots()
 
     def test_what_a_change_moves_is_every_root_that_read_it(self, tmp_path):
         workspace, folder = _workspace(tmp_path, {**self.FILES, 'second.raml': self.FILES['api.raml']})

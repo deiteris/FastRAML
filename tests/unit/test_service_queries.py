@@ -65,7 +65,7 @@ COVER = '#%RAML 1.0 DataType\ntype: file\n'
 def parsed(tmp_path: Path) -> tuple[Snapshot, str]:
     write_files(tmp_path, {'api.raml': API, 'lib.raml': LIBRARY, 'cover.raml': COVER})
     folder = path_to_file_uri(tmp_path)
-    (snapshot,) = Workspace([folder]).snapshots(f'{folder}/api.raml')
+    snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
     return snapshot, folder
 
 
@@ -183,7 +183,7 @@ class TestSymbols:
         )
         write_files(tmp_path, {'api.raml': document})
         folder = path_to_file_uri(tmp_path)
-        (snapshot,) = Workspace([folder]).snapshots(f'{folder}/api.raml')
+        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
         section = SymbolKind.SECTION
         # Item holds no `id`: Base wrote it; nor its facet value, annotation or
         # example, which are not declarations. `related?: Item[]` holds no
@@ -241,7 +241,7 @@ class TestSymbols:
             tmp_path, {'api.raml': document, 'item.raml': '#%RAML 1.0 DocumentationItem\ntitle: Inc\ncontent: x\n'}
         )
         folder = path_to_file_uri(tmp_path)
-        (snapshot,) = Workspace([folder]).snapshots(f'{folder}/api.raml')
+        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
         _title, documentation = queries.document_symbols(snapshot, f'{folder}/api.raml')
         (home,) = documentation.children
         line, column = _where(document, 'Home')

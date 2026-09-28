@@ -341,13 +341,15 @@ class RamlServer(LanguageServer):
 
         @feature(types.TEXT_DOCUMENT_DEFINITION)
         def definition(params: types.DefinitionParams) -> list[types.Location] | None:
-            return self._sites(params, queries.definition)
+            return self._sites(params, queries.definition, every=False)
 
         @feature(types.TEXT_DOCUMENT_REFERENCES)
         def references(params: types.ReferenceParams) -> list[types.Location] | None:
             declaration = params.context.include_declaration
             return self._sites(
-                params, lambda s, uri, line, column: queries.references(s, uri, line, column, declaration=declaration)
+                params,
+                lambda s, uri, line, column: queries.references(s, uri, line, column, declaration=declaration),
+                every=True,
             )
 
         @feature(types.TEXT_DOCUMENT_DOCUMENT_HIGHLIGHT)
@@ -355,11 +357,7 @@ class RamlServer(LanguageServer):
             if (at := self._at(params)) is None:
                 return None
             uri, line, column, positions = at
-            found = dict.fromkeys(
-                spans
-                for snapshot in self.service.snapshots(uri)
-                for spans in queries.highlights(snapshot, uri, line, column)
-            )
+            found = _first(self.service.serving(uri), lambda s: queries.highlights(s, uri, line, column)) or []
             return [
                 types.DocumentHighlight(
                     positions.range(uri, span),
@@ -373,20 +371,18 @@ class RamlServer(LanguageServer):
             if (at := self._at(params)) is None:
                 return None
             uri, line, column, positions = at
-            for snapshot in self.service.snapshots(uri):
-                found = queries.hover(snapshot, uri, line, column)
-                if found is not None:
-                    text, span = found
-                    content = types.MarkupContent(types.MarkupKind.Markdown, text)
-                    return types.Hover(content, positions.range(uri, span))
-            return None
+            found = _first(self.service.serving(uri), lambda s: queries.hover(s, uri, line, column))
+            if found is None:
+                return None
+            text, span = found
+            return types.Hover(types.MarkupContent(types.MarkupKind.Markdown, text), positions.range(uri, span))
 
         @feature(types.TEXT_DOCUMENT_DOCUMENT_SYMBOL)
         def document_symbols(params: types.DocumentSymbolParams) -> list[types.DocumentSymbol] | None:
             if (at := self._in(params.text_document.uri)) is None:
                 return None
             uri, positions = at
-            snapshot = self.service.snapshots(uri)[0]
+            snapshot = next(self.service.serving(uri))
             return [self._symbol(positions, symbol) for symbol in queries.document_symbols(snapshot, uri)]
 
         @feature(types.WORKSPACE_SYMBOL)
@@ -409,7 +405,7 @@ class RamlServer(LanguageServer):
             uri, positions = at
             return [
                 types.DocumentLink(positions.range(uri, site.span), target=self._client(site.uri))
-                for site in queries.links(self.service.snapshots(uri)[0], uri)
+                for site in queries.links(next(self.service.serving(uri)), uri)
             ]
 
         @feature(types.TEXT_DOCUMENT_FOLDING_RANGE)
@@ -438,19 +434,16 @@ class RamlServer(LanguageServer):
             if (at := self._at(params)) is None:
                 return None
             uri, line, column, positions = at
-            for snapshot in self.service.snapshots(uri):
-                symbol = queries.type_at(snapshot, uri, line, column)
-                if symbol is not None:
-                    return [self._item(positions, symbol)]
-            return None
+            symbol = _first(self.service.serving(uri), lambda s: queries.type_at(s, uri, line, column))
+            return None if symbol is None else [self._item(positions, symbol)]
 
         @feature(types.TYPE_HIERARCHY_SUPERTYPES)
         def supertypes(params: types.TypeHierarchySupertypesParams) -> list[types.TypeHierarchyItem] | None:
-            return self._hierarchy(params.item, queries.supertypes)
+            return self._hierarchy(params.item, queries.supertypes, every=False)
 
         @feature(types.TYPE_HIERARCHY_SUBTYPES)
         def subtypes(params: types.TypeHierarchySubtypesParams) -> list[types.TypeHierarchyItem] | None:
-            return self._hierarchy(params.item, queries.subtypes)
+            return self._hierarchy(params.item, queries.subtypes, every=True)
 
         @feature(
             types.TEXT_DOCUMENT_CODE_ACTION,
@@ -484,8 +477,7 @@ class RamlServer(LanguageServer):
             if (uri := _file(params.textDocument.uri)) is None:
                 return None
             # A root previews itself; any other file, the first root reading it.
-            snapshot = self.service.snapshot(uri) if uri in self.service.roots() else self.service.snapshots(uri)[0]
-            return queries.tree(snapshot)
+            return queries.tree(next(self.service.serving(uri)))
 
     # -- helpers the handlers share ---------------------------------------------
 
@@ -503,17 +495,19 @@ class RamlServer(LanguageServer):
         uri, positions = at
         return uri, *positions.to_server(uri, params.position), positions
 
-    def _sites(self, params: _AtPosition, query: SiteQuery) -> list[types.Location] | None:
-        """A query answering sites, over every snapshot serving the file, once each."""
+    def _sites(self, params: _AtPosition, query: SiteQuery, *, every: bool) -> list[types.Location] | None:
+        """A query answering sites: from every snapshot serving the file, once
+        each, or from the first that answers (docs/21 § 5).
+        """
         if (at := self._at(params)) is None:
             return None
         uri, line, column, positions = at
-        sites = dict.fromkeys(
-            site for snapshot in self.service.snapshots(uri) for site in query(snapshot, uri, line, column)
-        )
+        sites = dict.fromkeys(_answers(self.service.serving(uri), lambda s: query(s, uri, line, column), every=every))
         return [self._location(positions, site) for site in sites]
 
-    def _hierarchy(self, item: types.TypeHierarchyItem, query: TypeQuery) -> list[types.TypeHierarchyItem] | None:
+    def _hierarchy(
+        self, item: types.TypeHierarchyItem, query: TypeQuery, *, every: bool
+    ) -> list[types.TypeHierarchyItem] | None:
         """Supertypes or subtypes of an item, found again by where its name is
         written: the item may come from an earlier snapshot (docs/21 § 4).
         """
@@ -522,12 +516,24 @@ class RamlServer(LanguageServer):
         uri, positions = at
         selection = positions.span(uri, item.selection_range)
         symbol = queries.Symbol(item.name, queries.SymbolKind.TYPE, uri, selection, selection)
-        found = {
-            (parent.uri, parent.selection): parent
-            for snapshot in self.service.snapshots(uri)
-            for parent in query(snapshot, symbol)
-        }
-        return [self._item(positions, parent) for parent in found.values()]
+        found = _answers(self.service.serving(uri), lambda s: query(s, symbol), every=every)
+        unique = {(related.uri, related.selection): related for related in found}
+        return [self._item(positions, related) for related in unique.values()]
+
+
+def _first[T](snapshots: Iterable[Snapshot], answer: Callable[[Snapshot], T | None]) -> T | None:
+    """The first snapshot's answer that is not empty; later ones are not parsed."""
+    for snapshot in snapshots:
+        if found := answer(snapshot):
+            return found
+    return None
+
+
+def _answers[T](snapshots: Iterable[Snapshot], answer: Callable[[Snapshot], list[T]], *, every: bool) -> list[T]:
+    """Every snapshot's answers, or the first snapshot's that has any."""
+    if not every:
+        return _first(snapshots, answer) or []
+    return [found for snapshot in snapshots for found in answer(snapshot)]
 
 
 def _plain(value: object) -> object:

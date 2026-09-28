@@ -33,7 +33,7 @@ from fastraml.views.lint import Linter, builtin_registry, discover_plugins, pars
 from fastraml.views.occurrences import build_occurrences
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Iterable, Iterator, Mapping, Sequence
 
     from fastraml.config import FastRamlConfig
     from fastraml.registry import Raml
@@ -157,6 +157,8 @@ class Workspace:
         self.buffers: dict[str, Buffer] = {}
         self._roots: list[str] | None = None
         self._snapshots: dict[str, Snapshot] = {}
+        #: What each dropped snapshot read: the order `serving` tries roots in.
+        self._last_read: dict[str, frozenset[str]] = {}
         #: Whether a snapshot was dropped since the last collection.
         self._garbage = False
         self._linter: Linter | None = None
@@ -242,6 +244,7 @@ class Workspace:
         for root, snapshot in list(self._snapshots.items()):
             if uri in snapshot.read or (appeared and snapshot.error is not None):
                 del self._snapshots[root]
+                self._last_read[root] = snapshot.read
                 self._garbage = True
 
     # -- roots and snapshots --------------------------------------------------
@@ -252,13 +255,37 @@ class Workspace:
             self._roots = self._discover()
         return self._roots
 
-    def snapshots(self, uri: str) -> list[Snapshot]:
-        """The snapshots `uri` is served from: every root that read it, or a
-        parse of `uri` alone when none did.
+    def serving(self, uri: str) -> Iterator[Snapshot]:
+        """The snapshots `uri` is served from, lazily (docs/21 § 2): its own
+        root's first, then every other root that reads it, then a parse of
+        `uri` alone when none does.
+
+        A root is brought current only when the iteration reaches it. Which
+        roots read `uri` is known only from their snapshots, so the roots that
+        read it when last parsed are tried first: after an edit, the first
+        root parsed is one that reads the file.
         """
         uri = canonical(uri)
-        found = [snapshot for snapshot in map(self._current, self.roots()) if uri in snapshot.read]
-        return found or [self._current(uri)]
+        served = False
+        for root in sorted(self.roots(), key=lambda root: self._order(root, uri)):
+            snapshot = self._current(root)
+            if uri in snapshot.read:
+                served = True
+                yield snapshot
+        if not served:
+            yield self._current(uri)
+
+    def _order(self, root: str, uri: str) -> int:
+        """Where `root` is tried in `serving(uri)`: `uri`'s own root, then the
+        roots known to read it, those not parsed yet, and those known not to.
+        """
+        if root == uri:
+            return 0
+        snapshot = self._snapshots.get(root)
+        read = snapshot.read if snapshot is not None else self._last_read.get(root)
+        if read is None:
+            return 2
+        return 1 if uri in read else 3
 
     def snapshot(self, root: str) -> Snapshot:
         """The current snapshot of `root`, parsed now if it is stale."""

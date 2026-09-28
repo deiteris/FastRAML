@@ -392,3 +392,42 @@ def test_the_server_collects_after_the_pause_and_before_the_parse(monkeypatch):
 
     asyncio.run(flush())
     assert events == ['collect', 'publish lint=False', 'publish lint=True']
+
+
+@pytest.mark.parametrize(
+    ('method', 'parsed'),
+    [
+        pytest.param(types.TEXT_DOCUMENT_DOCUMENT_SYMBOL, ['a.raml'], id='outline: the first'),
+        pytest.param(types.TEXT_DOCUMENT_HOVER, ['a.raml'], id='hover: the first that answers'),
+        pytest.param(types.TEXT_DOCUMENT_DEFINITION, ['a.raml'], id='definition: the first that answers'),
+        pytest.param(types.TEXT_DOCUMENT_REFERENCES, ['a.raml', 'b.raml'], id='references: every one'),
+    ],
+)
+def test_a_request_parses_only_the_snapshots_it_reads(tmp_path, monkeypatch, method, parsed):
+    # docs/21 § 5: both roots read the library; the outline read one snapshot
+    # but brought both current.
+    from fastraml.service.lsp import _Positions
+    from fastraml.service.text import Encoding
+    from fastraml.service.workspace import Workspace
+
+    root = '#%RAML 1.0\ntitle: T\nuses:\n  lib: lib.raml\ntypes:\n  Admin: lib.User\n'
+    write_files(tmp_path, {'a.raml': root, 'b.raml': root, 'lib.raml': LIBRARY})
+    folder = path_to_file_uri(tmp_path)
+    server = RamlServer()
+    server.service = Workspace([folder])
+    monkeypatch.setattr(RamlServer, 'positions', lambda self: _Positions(self.service, Encoding.UTF16))
+    seen: list[str] = []
+    parse = server.service._parse
+    monkeypatch.setattr(server.service, '_parse', lambda uri: seen.append(uri.rsplit('/', 1)[1]) or parse(uri))
+    document = _document(f'{folder}/lib.raml')
+    at = _position(LIBRARY, 'User')
+    params = {
+        types.TEXT_DOCUMENT_DOCUMENT_SYMBOL: types.DocumentSymbolParams(document),
+        types.TEXT_DOCUMENT_HOVER: types.HoverParams(document, at),
+        types.TEXT_DOCUMENT_DEFINITION: types.DefinitionParams(document, at),
+        types.TEXT_DOCUMENT_REFERENCES: types.ReferenceParams(
+            context=types.ReferenceContext(include_declaration=True), text_document=document, position=at
+        ),
+    }[method]
+    assert server.protocol.fm.features[method](params)
+    assert seen == parsed

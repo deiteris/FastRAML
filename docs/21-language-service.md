@@ -65,12 +65,16 @@ next one: on `large`, a run of edits settles at 98 MB instead of 75 MB. A
 parse never collects: collecting before one put a full collection over every
 live snapshot in the request, 14 ms over the TCK's 1011.
 
-`snapshots(uri)` serves a file from every root that read it, or else from a
-parse of the file alone. Which roots read a file is known only from their
-snapshots, so it brings every root current first: after an edit to a library,
-a request that reads one snapshot reparses every root. `readers()` maps every
-file a root read to those roots: the ones whose diagnostics a change to it can
-move.
+`serving(uri)` yields the snapshots serving a file, lazily: its own root's
+first when it is one, then every other root that reads it, then a parse of the
+file alone when none does. A root is brought current only when the iteration
+reaches it, so a request that reads the first snapshot parses one root. Which
+roots read a file is known only from their snapshots, so the workspace keeps
+the read set of each snapshot it drops, and tries the roots that read the file
+last time before those not yet parsed, and those before the ones known not to
+read it: after an edit to a library, the first root parsed reads it.
+`readers()` maps every file a root read to those roots, the ones whose
+diagnostics a change to it can move; it brings every root current.
 
 A snapshot whose entry is not RAML at all, one `parse_lenient` re-raises for
 (`docs/13` § 1), has `raml is None` and the error.
@@ -215,15 +219,20 @@ diagnostic's `info`.
 
 **Features.** Definition, references, highlight, hover, document and
 workspace symbols, links, folding and selection ranges, and type hierarchy.
-Each reads the snapshots `snapshots(uri)` gives (§ 2) as follows:
+Each reads the snapshots `serving(uri)` yields (§ 2) as follows, and brings
+current only those it reads:
 
 | Request | Reads |
 |---|---|
-| definition, references, highlight, supertypes, subtypes | every snapshot, answers deduplicated |
-| hover, prepare type hierarchy | the first snapshot that answers |
-| document symbols, links | the first snapshot |
+| document symbols, links, `fastraml/tree` | the first snapshot |
+| definition, highlight, hover, type hierarchy, supertypes | the first snapshot that answers |
+| references, subtypes | every snapshot, answers deduplicated |
 | workspace symbols | every root |
 | folding, selection | the buffer's text alone |
+
+A file that roots bind differently (a master an Overlay merges into, a
+template applied with different arguments) answers from the first. References
+and subtypes span roots, because a use in any root is a use.
 
 **Tree.** `fastraml/tree`, with `{textDocument: {uri}}`, answers `tree`'s
 text, or `null` for a parse that stopped before unwrap. A root answers for
@@ -249,4 +258,5 @@ could save.
 - `test_loaders.py`: `SafeFileLoader.contains` and `files`.
 - `test_lsp.py`: `fastraml lsp` driven over stdio by pygls' client, one
   request per feature, the column after an astral character, clearing, the
-  quick fix, `fastraml/tree`, and that the run is tuned.
+  quick fix, `fastraml/tree`, that the run is tuned, and which roots a
+  request parses.

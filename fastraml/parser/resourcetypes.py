@@ -159,7 +159,10 @@ def apply_resource_type(raml: Raml, endpoint: SourceEndPoint, ref: DirectiveRef,
         existing_methods=set(endpoint.operations),
         caller_scope=endpoint.scope,
         application=ref,
-        location=endpoint.location,
+        # Static template structure is located at its declaration (docs/08
+        # § 4.2): a method a library's resource type contributes is written in
+        # the library, at the library's positions.
+        location=definition.location,
         uri=endpoint.uri,
         parent_uri=endpoint.full_uri[: len(endpoint.full_uri) - len(endpoint.uri)],
     )

@@ -210,6 +210,25 @@ class TestProvenance:
         body = parse(workspace, root).endpoints['/users'].operations['get'].request.bodies['application/json']
         assert body.shape.location.endswith('rt.raml')
 
+    def test_what_a_library_resource_type_contributes_is_located_in_the_library(self, workspace):
+        # docs/08 § 4.2: static template structure is located at its
+        # declaration. The method, its response and its body said the
+        # applying file, at the library's lines.
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  lib: lib.raml\n/users:\n  type: lib.rt\n',
+                'lib.raml': (
+                    '#%RAML 1.0 Library\n'
+                    'resourceTypes:\n  rt:\n    post:\n      body:\n        application/json:\n'
+                    '      responses:\n        201:\n'
+                ),
+            }
+        )
+        post = parse(workspace, root).endpoints['/users'].operations['post']
+        located = [post.location, post.request.bodies['application/json'].location, post.responses['201'].location]
+        assert all(where.endswith('/lib.raml') for where in located), located
+        assert post.key_pos.line == 4
+
     def test_a_resource_type_contributed_shape_joins_the_later_passes(self, workspace):
         root = workspace(
             {

@@ -230,10 +230,22 @@ Each step is its own commit, amends its owning document, and passes the gate.
 9. F2, and the view reading it.
 10. Failure containment (§ 8), behind PM § 7's gate.
 
-## 12. Open questions
+## 12. Decisions
 
-- Should the outline of a master API, served from an Overlay's snapshot, show
-  the Overlay's contributions? Today it shows what the master's own file
-  wrote, since only that is in its span.
-- Moving LS to `archive/` (plan, M4).
-- Whether the latency after steps 2 and 10 asks for G8.
+Taken on 2026-09-28.
+
+- **A file outlines what it wrote.** An Overlay adds or changes only what
+  `docs/19` § 4.2 allows (documentation, annotations, annotation types and new
+  type declarations), never a resource or method; an Extension may add
+  anything the merge allows. Either way, what an extension document adds is
+  located in that document, so it is outlined there, and the master's outline
+  lists the master's own declarations, whichever snapshot serves it. The
+  authorship view (§ 4) selects by `location` over the merged model, not by
+  fragment: a type an Extension declares sits in the master fragment's
+  `types` with the Extension's location, and a method it adds to a master
+  resource is listed in the Extension's outline under that resource's path.
+  Today's outline reads the file's own fragment and misses both.
+- **LS is archived** (`archive/language-server.md`); `docs/21` and this
+  document replace it.
+- **No compose cache for now.** G8 stays additive work, taken up only when a
+  measured latency asks for it; nothing in § 11 depends on it.

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from raml_codegen.naming import Names
 from raml_codegen.targets import Settings
 from raml_codegen.targets.python.httpx.annotate import make_annotator
 from raml_codegen.targets.python.httpx.emit import _RESERVED
@@ -56,12 +57,20 @@ class TestShapesBecomeTypes:
         assert annotation_of(package, 'Money', 'amount').spelling == 'float'
         assert model(package, 'Grams').alias.spelling == 'int'
 
-    def test_a_datetime_crosses_the_json_boundary(self, package):
+    def test_a_date_is_the_string_it_arrived_as(self, package):
+        # Named for which string it is, and left a string: parsing it would be
+        # the client converting a value the caller may want as it was sent.
         created = annotation_of(package, 'Book', 'createdAt')
-        assert created.spelling == 'datetime.datetime'
-        assert created.encode == '{}.isoformat()'
-        assert created.decode == 'datetime.datetime.fromisoformat({})'
-        assert 'datetime' in created.imports
+        assert created.spelling == 'DateTime'
+        assert created.transparent
+        assert created.runtime == {'DateTime'}
+
+    def test_an_rfc2616_datetime_is_named_for_its_format(self, tree):
+        # `format: rfc2616` is a different string, and needs a different parser.
+        annotator = make_annotator(tree, Names())
+        assert annotator.scalar('datetime', {'type': 'datetime', 'format': 'rfc2616'}).spelling == 'HttpDate'
+        assert annotator.scalar('datetime', {'type': 'datetime', 'format': 'rfc3339'}).spelling == 'DateTime'
+        assert annotator.scalar('datetime-only').spelling == 'DateTimeOnly'
 
     def test_an_object_with_properties_is_a_class(self, package):
         assert annotation_of(package, 'Book', 'price').spelling == 'Money'
@@ -70,13 +79,14 @@ class TestShapesBecomeTypes:
         # `additionalProperties` and nothing named: there is no class to make.
         assert annotation_of(package, 'Book', 'metadata').spelling == 'dict[str, Any]'
 
-    def test_an_array_is_a_list_and_carries_its_items_conversion(self, package):
+    def test_an_array_is_a_list_and_checks_each_item(self, package):
         prices = annotation_of(package, 'Book', 'priceHistory')
         assert prices.spelling == 'list[Money]'
         # `as_list` rather than iterating whatever arrived: a `dict` where an
-        # array was promised yields its keys, and the client would hand back
-        # models built from strings with nothing having gone wrong.
-        assert prices.decode == '[Money.from_dict(_item) for _item in as_list({})]'
+        # array was promised yields its keys, and each would be checked as a
+        # `Money` with nothing having gone wrong.
+        assert prices.decode == 'each(read_money(_item) for _item in as_list({}))'
+        assert prices.readers == {'Money'}
 
     def test_an_enum_is_a_literal_and_not_a_class(self, package):
         # RAML's `enum:` is a list of *values* with no names attached, so an
@@ -86,21 +96,17 @@ class TestShapesBecomeTypes:
     def test_a_union_is_a_union(self, package):
         assert model(package, 'Payload').alias.spelling == 'list[Book] | Review'
 
-    def test_a_union_converts_both_ways(self, package):
+    def test_a_union_checks_the_member_that_arrived(self, package):
         # A union is the one field that does not know its own type until it has
-        # a value, so identity conversion is wrong in both directions: `json=`
-        # would be handed a dataclass, and a parsed response would be a `dict`
-        # where the annotation promised a model.
+        # a value, so which member's requirements apply is decided by the value.
         payload = model(package, 'Payload').alias
-        assert payload.encode == 'to_json({})'
         assert payload.decode == (
-            '([Book.from_dict(_item) for _item in as_list({})] if isinstance({}, list) else Review.from_dict({}))'
+            '(each(read_book(_item) for _item in as_list({})) if isinstance({}, list) else read_review({}))'
         )
-        assert 'to_json' in payload.runtime
 
     def test_a_nine_member_union_keeps_all_nine(self, package):
         # The spelling is what the document says, always. Widening it because
-        # the *decode* cannot tell two members apart would throw away what the
+        # the *check* cannot tell two members apart would throw away what the
         # author wrote in order to describe a limitation of this generator.
         anything = model(package, 'Anything').alias
         for name in ('Book', 'Review', 'Money', 'Publication', 'Magazine', 'Pamphlet', 'Delivery'):
@@ -112,17 +118,20 @@ class TestShapesBecomeTypes:
         # saying how to recognise one. A required-property guess would be a
         # second answer to a question already answered.
         decode = model(package, 'Anything').alias.decode
-        assert "Magazine.from_dict({}) if {}.get('kind') == 'monthly'" in decode
+        assert "read_magazine({}) if {}.get('kind') == 'monthly'" in decode
 
     def test_a_union_falls_back_to_a_property_only_one_member_requires(self, package):
         decode = model(package, 'Anything').alias.decode
-        assert "Book.from_dict({}) if 'createdAt' in {}" in decode
+        assert "read_book({}) if 'createdAt' in {}" in decode
 
-    def test_what_the_document_does_not_distinguish_is_handed_back(self, package):
-        # Two array members, and nothing says which is which. A `ShelfSlot` that
-        # is really a `Money` would be worse than an undecoded list.
-        decode = model(package, 'Anything').alias.decode
-        assert decode.startswith('({} if isinstance({}, list) else')
+    def test_what_the_document_does_not_distinguish_is_left_unchecked(self, package):
+        # Two array members, and nothing says which is which. Checking a list of
+        # `Money` as `ShelfSlot`s would report properties it never had.
+        anything = model(package, 'Anything').alias
+        assert anything.decode.startswith('({} if isinstance({}, list) else')
+        # And what it would have called is not imported.
+        assert 'ShelfSlot' not in anything.readers
+        assert 'Book' in anything.readers
 
     def test_no_discriminator_default_is_invented(self, package):
         # RAML defaults an unstated `discriminatorValue:` to the type name.
@@ -131,7 +140,7 @@ class TestShapesBecomeTypes:
         # required property instead.
         decode = model(package, 'Anything').alias.decode
         assert "'Pamphlet'" not in decode
-        assert "Pamphlet.from_dict({}) if 'pages' in {}" in decode
+        assert "read_pamphlet({}) if 'pages' in {}" in decode
 
     def test_a_union_of_scalars_needs_no_conversion(self, package):
         search = model(package, 'Search').alias
@@ -148,6 +157,41 @@ class TestShapesBecomeTypes:
         invoice = model(package, 'Invoice')
         assert not invoice.is_alias
         assert {one.wire for one in invoice.fields} >= {'number', 'total'}
+
+
+class TestReaders:
+    """Each model has a function beside it that checks one."""
+
+    def test_a_reader_is_named_for_its_model(self, tree):
+        annotator = make_annotator(tree, Names())
+        assert annotator.model('PriceHistory').decode == 'read_price_history({})'
+
+    def test_two_models_that_snake_alike_get_two_readers(self, tree):
+        # `ABTest` and `AbTest` are both `ab_test` in snake case. Two readers of
+        # one name imported into one module would have the second checking
+        # values against the first's requirements.
+        annotator = make_annotator(tree, Names())
+        assert annotator.model('ABTest').decode != annotator.model('AbTest').decode
+
+
+class TestKeysAreTheWireNames:
+    """A model's keys are the property names as the document spells them."""
+
+    def test_a_name_python_would_rename_is_kept(self, generated):
+        # `id` shadows a builtin and `createdAt` is not snake case; as attributes
+        # they were `id_` and `created_at`. A key is neither.
+        book = generated.files['bookstore_api/models/book.py']
+        assert "'id': 'str'" in book
+        assert "'createdAt': 'DateTime'" in book
+
+    def test_an_optional_property_is_not_required(self, generated):
+        assert "'tags': 'NotRequired[list[str]]'" in generated.files['bookstore_api/models/book.py']
+
+    def test_a_stated_discriminator_value_is_a_literal(self, generated):
+        # So a type checker narrows a union on `kind`, as `isinstance` would.
+        magazine = generated.files['bookstore_api/models/magazine.py']
+        assert "'kind': \"Literal['monthly']\"" in magazine
+        assert "kind (Literal['monthly'])" in magazine
 
 
 class TestADescriptionKeepsItsShape:

@@ -50,7 +50,6 @@ def main() -> None:
 
         sys.path.insert(0, str(destination))
         get_books = importlib.import_module('bookstore_api.api.books.get_books')
-        models = importlib.import_module('bookstore_api.models')
 
         # The document says `oauth2` carries its credential in `Authorization`
         # after `Bearer`; `security.py` is where it says so.
@@ -67,12 +66,13 @@ def main() -> None:
             )
         )
 
-        books = get_books.sync(client=client, limit=10)
+        # Each book is the JSON the server sent, keyed as the document spells it.
+        books = get_books.sync(client=client, limit=10) or []
         for book in books:
-            print(f'  {book.isbn}  {book.title}  {book.price.amount} {book.price.currency}')
-            print(f'  created {book.created_at:%Y-%m-%d}, tags {", ".join(book.tags)}')
+            print(f'  {book["isbn"]}  {book["title"]}  {book["price"]["amount"]} {book["price"]["currency"]}')
+            print(f'  created {book["createdAt"]}, tags {", ".join(book.get("tags", []))}')
 
-        print(f'\nand back again: {models.Book.from_dict(BOOK).to_dict() == BOOK}')
+        print(f'\nthe payload, untouched: {books == [BOOK]}')
 
 
 if __name__ == '__main__':

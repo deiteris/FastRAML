@@ -15,11 +15,18 @@ Where a name comes from, in order:
    request body, so `PostOrdersBody` is unambiguous and says where to look;
 3. the property it hangs off, for a nested object — `shipTo` is a `ShipTo`;
 4. its address, which is always there and always distinct.
+
+The document also declares `Entry`, whose property names Python cannot spell as
+attributes: `@odata.type`, `$ref`, `class`, `1st`, and `userId` beside
+`user_id`. The shared fixture has none of those either.
 """
 
 from __future__ import annotations
 
 import json
+import re
+import subprocess
+import sys
 
 import pytest
 from conftest import HERE
@@ -52,6 +59,14 @@ types:
     type: [HasHome, Cat | Dog]
   Kept:
     type: [HasHome | OnFarm, Cat | Dog]
+  Entry:
+    properties:
+      '@odata.type': string
+      $ref?: string
+      class: integer
+      1st: boolean
+      userId: string
+      user_id: string
 /drafts:
   post:
     body:
@@ -106,6 +121,14 @@ types:
 """
 
 
+#: How a generated model is declared: `Name = TypedDict(`.
+_DECLARED = re.compile(r'^(\w+) = TypedDict\(', re.MULTILINE)
+
+
+def declares(name):
+    return f'{name} = TypedDict('
+
+
 @pytest.fixture(scope='module')
 def generated():
     document = json.loads((HERE / 'inline.json').read_text(encoding='utf-8'))
@@ -123,18 +146,18 @@ def models(generated):
 
 class TestABodyIsNamedForWhereItSits:
     def test_a_request_body(self, models):
-        assert 'class PostOrdersBody:' in models['post_orders_body']
+        assert declares('PostOrdersBody') in models['post_orders_body']
 
     def test_a_response_body_carries_its_status(self, models):
         # `POST /orders` documents two, and they are different types. The status
         # is the only thing that tells them apart, so it is in the name.
-        assert 'class PostOrders201Response:' in models['post_orders201_response']
+        assert declares('PostOrders201Response') in models['post_orders201_response']
 
     def test_it_is_not_named_after_the_media_type(self, models):
         # `name` on a body shape is `application/json`, which says how the value
         # was sent and nothing about what it is.
         assert not any(name.startswith('application') for name in models)
-        assert 'class ApplicationJson' not in ''.join(models.values())
+        assert "TypedDict('ApplicationJson" not in ''.join(models.values())
 
 
 class TestALabelBeatsAPosition:
@@ -142,28 +165,28 @@ class TestALabelBeatsAPosition:
         # The author wrote `displayName: Existing order`, which is a name. A
         # generated `PostOrders200Response` would be this package overruling
         # them with a description of where the type happens to live.
-        assert 'class ExistingOrder:' in models['existing_order']
+        assert declares('ExistingOrder') in models['existing_order']
         assert 'post_orders200_response' not in models
 
 
 class TestANestedObjectTakesItsProperty:
     def test_the_property_name(self, models):
-        assert 'class ShipTo:' in models['ship_to']
+        assert declares('ShipTo') in models['ship_to']
 
     def test_the_holder_refers_to_it(self, models):
-        assert 'ship_to: ShipTo' in models['post_orders_body']
+        assert "'shipTo': 'ShipTo'" in models['post_orders_body']
 
 
 class TestInlineArrayItems:
     def test_items_are_named_after_their_array(self, models):
         # Without this they are called `items`, which is the structure's word
         # for the position rather than anybody's word for the type.
-        assert 'class GetOrders200ResponseItem:' in models['get_orders200_response_item']
+        assert declares('GetOrders200ResponseItem') in models['get_orders200_response_item']
 
     def test_two_inline_arrays_do_not_collide(self, models):
         # Both would be `Items`, and the second would silently become `Items2`
         # -- a name that says nothing and changes when a third arrives.
-        assert 'class GetInvoices200ResponseItem:' in models['get_invoices200_response_item']
+        assert declares('GetInvoices200ResponseItem') in models['get_invoices200_response_item']
         assert not any(name.startswith('items') for name in models)
 
     def test_the_array_is_typed_by_its_items(self, generated):
@@ -183,19 +206,21 @@ class TestExtendingANamedTypeIsTheSamePathAsAnInlineOne:
         assert 'body: Order' in generated.files['inline_api/api/drafts/post_drafts.py']
 
     def test_adding_a_property_generates_a_model_named_for_where_it_sits(self, models):
-        assert 'class PutDraftsBody:' in models['put_drafts_body']
+        assert declares('PutDraftsBody') in models['put_drafts_body']
 
     def test_that_model_is_flat(self, models):
-        # Not `class PutDraftsBody(Order)`: the tree merged the supertype before
-        # this package saw it, and RAML inheritance has no subclass form anyway.
-        assert 'class PutDraftsBody:' in models['put_drafts_body']
-        assert 'draft: bool' in models['put_drafts_body']
-        assert 'sku: str' in models['put_drafts_body']
+        # Not a `TypedDict` subclass of `Order`: the tree merged the supertype
+        # before this package saw it, and RAML inheritance has no subclass form
+        # anyway. So `sku` is a key of its own here.
+        assert declares('PutDraftsBody') in models['put_drafts_body']
+        assert "'draft': 'bool'" in models['put_drafts_body']
+        assert "'sku': 'str'" in models['put_drafts_body']
 
 
 class TestEveryNameIsDistinct:
     def test_no_model_is_generated_twice(self, models):
-        declared = [text.split('class ', 1)[1].split(':', 1)[0] for text in models.values() if 'class ' in text]
+        declared = [found for text in models.values() for found in _DECLARED.findall(text)]
+        assert declared
         assert len(declared) == len(set(declared))
 
     def test_every_model_has_its_own_module(self, models):
@@ -212,8 +237,8 @@ class TestAVariantIsNamedForTheMembersItTook:
 
     def test_the_member_the_union_took(self, models):
         assert 'HomelyCat | HomelyDog' in models['homely']
-        assert 'class HomelyCat:' in models['homely_cat']
-        assert 'class HomelyDog:' in models['homely_dog']
+        assert declares('HomelyCat') in models['homely_cat']
+        assert declares('HomelyDog') in models['homely_dog']
 
     def test_one_name_per_pair_of_members(self, models):
         # Neither parent is named: both are unions, and every variant took one
@@ -222,3 +247,50 @@ class TestAVariantIsNamedForTheMembersItTook:
 
     def test_no_variant_is_named_for_its_address(self, models):
         assert not any('any_of' in name for name in models)
+
+
+class TestAnyPropertyNameIsAKey:
+    """A client model is keyed by the wire names, so no property needs a Python name.
+
+    An attribute would have to rename `@odata.type` and `1st`, and `userId` and
+    `user_id` would become one attribute that silently holds either.
+    """
+
+    NAMES = ('@odata.type', '$ref', 'class', '1st', 'userId', 'user_id')
+
+    def test_every_name_is_a_key_as_written(self, models):
+        for name in self.NAMES:
+            assert f'{name!r}: ' in models['entry'], name
+
+    @pytest.fixture(scope='class')
+    @staticmethod
+    def written(generated, tmp_path_factory):
+        destination = tmp_path_factory.mktemp('inline')
+        generated.write(destination)
+        return destination
+
+    def test_the_model_passes_mypy_strict(self, written):
+        # The functional `TypedDict` form is the only one that takes these keys,
+        # and its field types are strings a type checker has to resolve.
+        result = _run(['-m', 'mypy', 'inline_api'], cwd=written)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_the_reader_reads_them(self, written):
+        payload = {'@odata.type': '#Entry', 'class': 1, '1st': True, 'userId': 'a', 'user_id': 'b'}
+        check = f"""
+from inline_api.models import read_entry
+from inline_api.types import reading
+payload = {payload!r}
+with reading() as found:
+    assert read_entry(payload) is payload
+assert found == []
+with reading() as found:
+    read_entry({{'userId': 'a'}})
+assert sorted(one.field for one in found) == ['1st', '@odata.type', 'class', 'user_id'], found
+"""
+        result = _run(['-c', check], cwd=written)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+def _run(arguments, cwd):
+    return subprocess.run([sys.executable, *arguments], capture_output=True, text=True, cwd=cwd, check=False)

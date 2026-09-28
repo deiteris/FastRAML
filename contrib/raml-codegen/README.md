@@ -25,7 +25,7 @@ the dash as a dot: `python-httpx` is `targets/python/httpx/`.
 
 | target | direction | what it generates |
 |---|---|---|
-| `python-httpx` | document → caller | a typed client, with stdlib dataclasses |
+| `python-httpx` | document → caller | a typed client, with `TypedDict` models |
 | `python-fastapi` | document → server | an interface to implement, with pydantic DTOs |
 
 Paired with `fastapi-raml`, which goes the other way — a FastAPI app rendered as
@@ -52,7 +52,7 @@ fails when it is stale.
 
 A typed `httpx` client, in the shape
 [openapi-python-client](https://github.com/openapi-generators/openapi-python-client)
-established, with stdlib dataclasses in place of attrs:
+established, with `TypedDict`s in place of attrs classes:
 
 ```
 out/<package>/
@@ -70,6 +70,7 @@ from bookstore_api.api.books import get_books
 
 client = security.OAUTH2.client(base_url='https://acme.books.example.com/v2', token=...)
 books = get_books.sync(client=client, limit=10)
+print(books[0]['title'], books[0]['createdAt'])
 ```
 
 Each endpoint module exposes four entry points. `sync_detailed` and
@@ -84,27 +85,43 @@ parsed body alone.
 | `string`, or with `enum:` | `str`, `Literal['a', 'b']` |
 | `integer`, `number` | `int`, `float` |
 | `boolean` | `bool` |
-| `datetime`, `datetime-only` | `datetime.datetime` |
-| `date-only`, `time-only` | `datetime.date`, `datetime.time` |
+| `datetime` | `DateTime`, or `HttpDate` for `format: rfc2616` |
+| `datetime-only`, `date-only`, `time-only` | `DateTimeOnly`, `DateOnly`, `TimeOnly` |
 | `file` | `File` |
 | `nil`, `null` | `None` |
 | `any` | `Any` |
-| `object` with properties | a generated dataclass |
+| `object` with properties | a generated `TypedDict` |
 | `object` without | `dict[str, Any]` |
 | `array` | `list[T]` |
 | `union` | `A \| B` |
 | `json` | its `projection` |
 | a recursion marker | the type it repeats, by name |
 
-**Models are flat.** `Magazine` is not a subclass of `Publication`: it carries
-its supertype's properties and is a class of its own. Where the document states
-a `discriminatorValue:`, the module holds it as `DISCRIMINATOR`, which is what
-to switch on in place of `isinstance`.
+**A model is its JSON.** Each is a `TypedDict`, in the functional form, keyed by
+the property names exactly as the document spells them: `'@odata.type'`,
+`'$ref'`, `'class'` and `'1st'` are keys like any other, and `userId` and
+`user_id` stay two. No attribute name is invented, so none can collide, and none
+changes when a sibling property is added. A request body is a dict literal and
+is sent as written; a response body is what `response.json()` returned, typed.
+A property the document marks optional is `NotRequired`.
+
+A date is the string the server sent. `DateTime` and its siblings in `types.py`
+are aliases of `str` that say which string, and parsing one is the caller's.
+
+Beside each model is a reader, `read_<model>(value)`, which checks a decoded
+value against the document and returns the same value. The endpoints run it on
+every response body; see below.
+
+**Models are flat.** `Magazine` does not extend `Publication`: it carries its
+supertype's properties and is a type of its own. Where the document states a
+`discriminatorValue:`, the discriminator key is that value's `Literal`, so a
+type checker narrows on it, and the module holds it as `DISCRIMINATOR`.
 
 **A union is told apart by what the document says**: a `discriminator:` and its
 `discriminatorValue:` first, then a required property no sibling requires, then
-whether the value is a list or an object. Where the document distinguishes
-nothing, the value is handed back undecoded.
+whether the value is a list or an object. That decides which member's
+requirements a value is checked against. Where the document distinguishes
+nothing, the value is not checked.
 
 ### Names
 
@@ -137,10 +154,10 @@ one changed property.
 
 | the server | the client | reported in |
 |---|---|---|
-| adds a property | ignores it | — |
+| adds a property | keeps it, unchecked | — |
 | adds an `enum` value | passes it through | — |
-| drops a required property | leaves the attribute `UNSET`, keeps the rest | `Response.mismatches` |
-| sends an unreadable value | returns no parsed body, keeps `content` | `Response.mismatches` |
+| drops a required property | hands the payload back without that key | `Response.mismatches` |
+| sends a body that is not JSON | returns no parsed body, keeps `content` | `Response.mismatches` |
 | sends the wrong shape | returns no parsed body, keeps `content` | `Response.mismatches` |
 | changes a property's type | passes it through | — |
 | answers with an undocumented status | returns `None`, or raises `UnexpectedStatus` when asked | — |
@@ -151,9 +168,9 @@ if not result.matched:
     log.warning('the API has moved: %s', '; '.join(str(one) for one in result.mismatches))
 ```
 
-`UNSET` is falsy, so `if book.isbn:` works without a caller knowing any of this.
-The annotation still says `str`: making every property `str | Unset` would price
-the normal case for the abnormal one.
+A key the server dropped is not in the dictionary, so `book.get('isbn')` reads
+it safely. The type still says `isbn` is required: marking every property
+`NotRequired` would price the normal case for the abnormal one.
 
 Pass `Client(strict=True)` to raise `errors.UnexpectedPayload` instead. It and
 `UnexpectedStatus` are both `errors.ClientError`.

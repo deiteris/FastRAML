@@ -9,6 +9,7 @@ a request through an `httpx.MockTransport`.
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 
 import httpx
@@ -43,30 +44,23 @@ def module(name: str):
 
 
 class TestModels:
-    def test_a_body_round_trips(self, client_package):
-        book = module('bookstore_api.models').Book.from_dict(PAYLOAD)
-        assert book.title == 'Dune'
-        assert book.price.currency == 'GBP'
-        assert book.to_dict() == PAYLOAD
+    def test_a_reader_hands_back_what_it_was_given(self, client_package):
+        # A model is its JSON: nothing is copied, renamed or converted.
+        assert module('bookstore_api.models').read_book(PAYLOAD) is PAYLOAD
 
-    def test_a_datetime_arrives_as_a_datetime(self, client_package):
-        import datetime
+    def test_a_date_arrives_as_the_string_the_server_sent(self, client_package):
+        book = module('bookstore_api.models').read_book(PAYLOAD)
+        assert book['createdAt'] == '2024-01-01T00:00:00'
 
-        book = module('bookstore_api.models').Book.from_dict(PAYLOAD)
-        assert book.created_at == datetime.datetime(2024, 1, 1)
-
-    def test_an_absent_optional_is_unset_and_not_none(self, client_package):
-        # `?tags=` and a key left off the body are different documents, which is
-        # the whole reason `Unset` exists beside `None`.
-        types = module('bookstore_api.types')
+    def test_an_absent_optional_is_absent(self, client_package):
+        # Not `None`: a key left off the body and `"tags": null` are different
+        # documents, and a dictionary already tells them apart.
         without = {key: value for key, value in PAYLOAD.items() if key != 'tags'}
-        book = module('bookstore_api.models').Book.from_dict(without)
-        assert isinstance(book.tags, types.Unset)
-        assert 'tags' not in book.to_dict()
+        assert 'tags' not in module('bookstore_api.models').read_book(without)
 
     def test_a_recursive_type_terminates(self, client_package):
-        chain = module('bookstore_api.models').Chain.from_dict({'next': {'next': {}}})
-        assert chain.next_.next_.to_dict() == {}
+        chain = {'next': {'next': {}}}
+        assert module('bookstore_api.models').read_chain(chain) is chain
 
 
 class TestCalls:
@@ -93,7 +87,7 @@ class TestCalls:
         books = module('bookstore_api.api.books.get_books').sync(client=client, limit=5, offset=10)
         assert 'offset=10' in seen['url']
         assert 'limit=5' in seen['url']
-        assert [one.title for one in books] == ['Dune']
+        assert books == [PAYLOAD]
 
     def test_an_unset_parameter_is_not_sent(self, client_package):
         seen = {}
@@ -144,10 +138,10 @@ class TestCalls:
             return httpx.Response(201, json=PAYLOAD)
 
         client = self.dialled(client_package, handler)
-        book = module('bookstore_api.models').Book.from_dict(PAYLOAD)
-        module('bookstore_api.api.books.post_books').sync(client=client, body=book)
+        module('bookstore_api.api.books.post_books').sync(client=client, body=PAYLOAD)
         assert seen['type'] == 'application/json'
-        assert b'Dune' in seen['body']
+        # The dictionary the caller wrote is the body, key for key.
+        assert json.loads(seen['body']) == PAYLOAD
 
     def test_an_undocumented_status_is_silent_by_default(self, client_package):
         client = self.dialled(client_package, lambda request: httpx.Response(418, json={}))
@@ -170,33 +164,20 @@ class TestCalls:
 class TestUnions:
     """The one field that does not know its own type until it has a value."""
 
-    def test_a_union_body_is_serialised_rather_than_handed_over(self, client_package):
-        # Identity conversion here hands `httpx` a dataclass, which is a crash
-        # on a documented operation.
-        seen = {}
+    def test_either_member_is_sent_as_written(self, client_package):
+        # `POST /shelves` takes `Book[] | Review`. Neither member needs choosing
+        # on the way out: each is already the JSON it is sent as.
+        review = {'rating': 5, 'author': {'name': 'A', 'verified': True}}
+        for body in ([PAYLOAD], review):
+            seen = {}
 
-        def handler(request):
-            seen['body'] = request.content
-            return httpx.Response(201, json=[])
+            def handler(request, seen=seen):
+                seen['body'] = request.content
+                return httpx.Response(201, json=[])
 
-        client = TestCalls.dialled(client_package, handler)
-        book = module('bookstore_api.models').Book.from_dict(PAYLOAD)
-        module('bookstore_api.api.shelves.post_shelves').sync(client=client, body=[book])
-        assert b'Dune' in seen['body']
-
-    def test_the_other_member_serialises_too(self, client_package):
-        seen = {}
-
-        def handler(request):
-            seen['body'] = request.content
-            return httpx.Response(201, json=[])
-
-        client = TestCalls.dialled(client_package, handler)
-        review = module('bookstore_api.models').Review.from_dict(
-            {'rating': 5, 'author': {'name': 'A', 'verified': True}}
-        )
-        module('bookstore_api.api.shelves.post_shelves').sync(client=client, body=review)
-        assert b'rating' in seen['body']
+            client = TestCalls.dialled(client_package, handler)
+            module('bookstore_api.api.shelves.post_shelves').sync(client=client, body=body)
+            assert json.loads(seen['body']) == body
 
 
 class TestSecurity:

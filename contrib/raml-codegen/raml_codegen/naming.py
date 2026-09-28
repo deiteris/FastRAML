@@ -54,8 +54,9 @@ def field_name(text: str) -> str:
     """A property name as an attribute, with keywords and shadows suffixed.
 
     A RAML property may be spelled anything at all, so this is not reversible;
-    the generated `to_dict` carries the wire name and this is only how Python
-    refers to it.
+    the generated code carries the wire name beside it -- a pydantic alias, a
+    query-string key -- and this is only how Python refers to it. A client
+    model has no attributes and never uses this.
     """
     name = module_name(text)
     if keyword.iskeyword(name) or name in _SHADOWED or name.startswith('__'):

@@ -6,13 +6,15 @@ body is really a declared type, claiming a name for one that is not — none of
 that changes when the output language does. A target supplies the six hooks at
 the bottom and gets all of it.
 
-An `Annotation` carries three things, and a template cannot work out any of them
-from the others: how to spell the type, how to write one of its values as JSON,
-and how to read one back. A target whose runtime converts for it — pydantic does
-— leaves the last two alone, and they stay the identity.
+An `Annotation` carries two things, and a template cannot work out either from
+the other: how to spell the type, and how to read a decoded JSON value as one.
+Nothing generated writes a value *to* JSON: a pydantic model serialises itself,
+and the client's `TypedDict`s already are JSON. A target whose runtime reads for
+it — pydantic does — leaves the reading as the identity; the client reads by
+checking what the document requires, and changes nothing.
 
-The two conversions are code templates over one placeholder, `{}`, rather than
-functions. Generated code has to read as code, and a chain of runtime converters
+The reading is a code template over one placeholder, `{}`, rather than a
+function. Generated code has to read as code, and a chain of runtime converters
 would put this package inside the client it generates.
 """
 
@@ -33,13 +35,13 @@ if TYPE_CHECKING:
 
 __all__ = ['IDENTITY', 'Annotation', 'Annotator', 'Member', 'fill']
 
-#: `{}` is the value being converted. A form of `'{}'` is the identity, which is
-#: what a JSON scalar needs and what most shapes are.
+#: `{}` is the value being read. A form of `'{}'` is the identity, which is what
+#: a JSON scalar needs and what most shapes are.
 IDENTITY = '{}'
 
 
 def fill(form: str, value: str) -> str:
-    """Fill a conversion form's `{}` with the value being converted.
+    """Fill a form's `{}` with the value being read.
 
     Uses `replace` rather than `str.format`: a discriminated union names its
     subject once per arm, and `format` reads those as separate placeholders.
@@ -49,13 +51,12 @@ def fill(form: str, value: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Annotation:
-    """One type, with the code that crosses the JSON boundary."""
+    """One type, with the code that reads one of its values out of JSON."""
 
     #: The annotation as it is written in generated source, e.g. `list[Book]`.
     spelling: str
-    #: `{}` -> a JSON value.
-    encode: str = IDENTITY
-    #: a JSON value -> `{}`.
+    #: Reads the decoded JSON value `{}` as this type. The client's form is a
+    #: check, run for what it reports; its value is not used.
     decode: str = IDENTITY
     #: Names the generated file must import, such as `datetime` or `Literal`.
     imports: frozenset[str] = frozenset()
@@ -63,6 +64,9 @@ class Annotation:
     models: frozenset[str] = frozenset()
     #: Names it needs from the generated package's own runtime module.
     runtime: frozenset[str] = frozenset()
+    #: Generated models whose module-level reader `decode` calls, for a target
+    #: that writes one beside each model. A subset of `models`.
+    readers: frozenset[str] = frozenset()
     #: The spelling with nothing wrapped round it, where a target wraps one in a
     #: constraint. Empty when there is no difference, which is every annotation
     #: a target that only documents its facets produces.
@@ -79,8 +83,8 @@ class Annotation:
 
     @property
     def transparent(self) -> bool:
-        """True when JSON and Python are the same value, so no code is needed."""
-        return self.encode == IDENTITY and self.decode == IDENTITY
+        """True when a decoded JSON value needs no code to be read as this type."""
+        return self.decode == IDENTITY
 
 
 @dataclass(frozen=True, slots=True)

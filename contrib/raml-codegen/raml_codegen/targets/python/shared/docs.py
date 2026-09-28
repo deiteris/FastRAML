@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Final, Literal
 if TYPE_CHECKING:
     from .plan import Argument, Field
 
-__all__ = ['attribute', 'blocks', 'details', 'one_line', 'summary', 'wrapped']
+__all__ = ['attribute', 'blocks', 'details', 'key', 'one_line', 'summary', 'wrapped']
 
 
 def one_line(text: str | None) -> str:
@@ -137,7 +137,16 @@ def attribute(one: Field | Argument, indent: int = 8) -> str:
     A description and its constraints run to a few hundred characters on a type
     whose author had something to say, and generated code is still code.
     """
-    head = f'{" " * indent}{one.name} ({one.annotation.spelling})'
+    return _entry(one.name, one.annotation.spelling, one, indent)
+
+
+def key(one: Field, spelling: str, indent: int = 4) -> str:
+    """One `Keys:` line, wrapped: a property under the name the payload carries."""
+    return _entry(one.wire, spelling, one, indent)
+
+
+def _entry(label: str, spelling: str, one: Field | Argument, indent: int) -> str:
+    head = f'{" " * indent}{label} ({spelling})'
     if not one.docs:
         return head
     return wrapped(f'{head}: {one_line(one.docs)}', indent + 4)

@@ -16,8 +16,8 @@ class UnexpectedPayload(ClientError):
     """A response left out a property the document says is required.
 
     **Only raised under `Client(strict=True)`.** By default this does not
-    happen: the discrepancy is recorded on `Response.mismatches`, the attribute
-    holds `UNSET`, and everything that did arrive still arrives. A client that
+    happen: the discrepancy is recorded on `Response.mismatches`, and the
+    payload arrives as the server sent it. A client that
     raised here would be a client that breaks because the *server* changed, and
     it would take the whole response with it -- including the properties the
     caller actually wanted, which are usually all of them.

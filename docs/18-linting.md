@@ -208,7 +208,8 @@ The optional `graph` argument is for Python callers that already built one. The
 CLI builds the graph as part of each lint invocation.
 
 Lint requires an unwrapped model. Source-sensitive rules additionally require
-`ParseOptions(retain_source=True)`.
+`ParseOptions(retain_source=True)`; `Linter.requires_source` says whether an
+enabled rule is one.
 
 ## 7. What lint is not
 

@@ -336,7 +336,7 @@ class Workspace:
             # The index needs the texts; the YAML trees only for a lint rule
             # that reads them.
             retain_text=True,
-            retain_source=self._lint_reads_source,
+            retain_source=self.linter.requires_source,
             workspace_root=disk.root,
             max_include_size=parser.max_include_size,
             file_loader=_Overlay(self.buffers, disk),
@@ -350,10 +350,6 @@ class Workspace:
             failure = err if isinstance(err, RamlError) else RamlError.new(str(err), root)
             return Snapshot(root, None, failure, frozenset({root}))
         return Snapshot(root, raml, error, _read(raml, root), linter=self.linter)
-
-    @property
-    def _lint_reads_source(self) -> bool:
-        return any(getattr(rule, 'requires_source', False) for rule in self.linter.rules)
 
     @property
     def linter(self) -> Linter:

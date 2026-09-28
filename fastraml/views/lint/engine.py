@@ -867,6 +867,13 @@ class Linter:
     def rules(self) -> list[Rule]:
         return list(self._enabled)
 
+    @property
+    def requires_source(self) -> bool:
+        """Whether an enabled rule reads the YAML trees: a parse for it needs
+        `ParseOptions(retain_source=True)`.
+        """
+        return any(getattr(rule, 'requires_source', False) for rule in self._enabled)
+
     def run(self, raml: Raml, *, graph: Graph | None = None) -> list[Finding]:
         """Every finding on one parsed document, sorted for reading.
 
@@ -933,7 +940,7 @@ class Linter:
         """One run, measured or not. The single path, so the two cannot drift."""
         if not raml.unwrapped:
             raise RuntimeError('lint needs an unwrapped model: parse with ParseOptions(unwrap=True)')
-        if any(getattr(rule, 'requires_source', False) for rule in self._enabled) and not raml.retain_source:
+        if self.requires_source and not raml.retain_source:
             raise RuntimeError('enabled lint rules need retained source: parse with ParseOptions(retain_source=True)')
 
         started = perf_counter_ns() if measure else 0

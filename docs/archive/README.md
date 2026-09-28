@@ -20,5 +20,7 @@ Topic records:
 - [Views and consumers](views-consumers-history.md)
 - [Language server design](language-server.md): the LSP and MCP design the
   service was built from, superseded by `docs/21`
+- [Language service architecture](language-service-architecture.md): the review
+  that consolidated the service on the model's facts, and its decisions
 
 Use the numbered current documents for the implementation as it stands today.

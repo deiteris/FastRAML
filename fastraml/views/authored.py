@@ -11,8 +11,7 @@ the spans, and that is exact. A trait or resource type is declared in its
 table or its own fragment, never inside a resource, a method or a type, so a
 member it contributed lies outside its parent's span even in the parent's
 file, and one inside was written there. The placement law makes spans hold
-what they were written with (`research/language-service-architecture.md`
-§ 7, § 12).
+what they were written with (docs/11 § 3.2).
 """
 
 from __future__ import annotations

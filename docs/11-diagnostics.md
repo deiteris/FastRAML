@@ -231,6 +231,29 @@ only its parameters' values, and keeping the keys cost 2.6% of what the
 parameters, or its name when it has none, with the first `<<parameter>>` in
 the template as its origin, `used here`.
 
+### 3.2 Placement law
+
+Every entity the model positions, over the TCK and the fixtures:
+
+1. is keyed on one line, where the text of its `location` is its name as
+   written: a property as `name?`, a documentation item as its title, a body
+   without a media type as `body`, a template's key as its `<<parameter>>`;
+2. has a `value_pos` that ends after it starts and starts after its key does;
+3. and, for a resource nested in one written in the same file, lies inside
+   that resource's span.
+
+Rule 3 is checked for resources only, which no template contributes: under a
+method, what a template wrote lies in the template, outside the method's span.
+Exempt, each for its reason: a request, which has the method's key; a URI
+parameter P6 synthesized, which was never written; a shape with no name, or
+one standing for a type it names (`Book[]`'s items, a recursive reference),
+placed at the key it is written under; and an unknown position.
+
+`tests/unit/test_placement_law.py` checks it, as `test_occurrence_law.py`
+checks names. A violation is a parser defect, fixed in its pass, so a consumer
+converts a position without guarding it. The authorship view's span test
+relies on it ([16](16-graph.md) § 10).
+
 ## 4. Locations after structural merge
 
 Stage 2 endpoint decoding can read nodes supplied by traits or resource types.

@@ -407,8 +407,7 @@ the spans, and that is exact. A trait or resource type is declared in its
 table or its own fragment, never inside a resource, a method or a type, so a
 member it contributed lies outside its parent's span even in the parent's
 file, and a member inside was written there. The placement law makes spans
-hold what they were written with (`research/language-service-architecture.md`
-§ 7). The same test tells a property a template merged into a declaration, and
+hold what they were written with ([11](11-diagnostics.md) § 3.2). The same test tells a property a template merged into a declaration, and
 an inherited one recursion marking gave a shape of its own, from the
 declaration's own.
 

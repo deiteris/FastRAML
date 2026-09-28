@@ -155,9 +155,9 @@ type that declared it; an array's `items` only where it wrote them
 `body:` with no media type as one entry under all their names
 (`media_type_written`). A member written in another file, an `!include`d
 type's, is that file's. A method, response, body or parameter a template
-contributed is written in the template, and is listed under nothing: the view's
-span test stands in for recording which template contributed it
-(`research/language-service-architecture.md` § 6, F2).
+contributed is written in the template, and is listed under nothing: it lies
+outside its parent's span, which the view tests, since no template is declared
+inside a resource or method (`docs/16` § 10).
 
 A file outlines what it wrote, selected by `location` over the model its
 snapshot parsed. An Extension or Overlay lists the types and other

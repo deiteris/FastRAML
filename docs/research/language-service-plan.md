@@ -326,11 +326,13 @@ As done so far:
   bounds what G8 can save. Whether that asks for G8 is still open.
 - LS moved to `archive/` on 2026-09-28: `docs/21` supersedes it, and
   `research/language-service-architecture.md` holds where the service goes.
-- Next: the consolidation `research/language-service-architecture.md` orders
-  (§ 11), from a review of the service against this plan and LS: the snapshot
-  a query reads, model facts in place of the span inferences, one home for
-  the declaration tables and for authorship, and a placement law. It precedes
-  M5, whose completion needs the same authorship and positions.
+- The consolidation `research/language-service-architecture.md` orders
+  (§ 11), done on 2026-09-28: requests parse only the snapshots they read,
+  the declaration tables and span arithmetic have one home each, the model
+  records F3 to F6, a placement law holds over the TCK, and the outline reads
+  the authorship view (`docs/16` § 10). F2 and failure containment were
+  dropped (§ 12 there). It precedes M5, whose completion needs the same
+  authorship and positions.
 
 ## M5: Completion
 

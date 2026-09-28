@@ -362,10 +362,15 @@ the master's `types`, a method on a master resource.
 - `wrote(parent, location, key)`, `parameters(owner, written)`: what a
   resource, method, response or security scheme wrote.
 
-Which template contributed a member is not recorded yet
-(`research/language-service-architecture.md` § 6, F2). Until it is, `wrote`
-stands in with the one span test: a member a template contributed lies in the
-template, outside its parent's span, even in the parent's file.
+Which template contributed a member is not recorded: `wrote` tells it from
+the spans, and that is exact. A trait or resource type is declared in its
+table or its own fragment, never inside a resource, a method or a type, so a
+member it contributed lies outside its parent's span even in the parent's
+file, and a member inside was written there. The placement law makes spans
+hold what they were written with (`research/language-service-architecture.md`
+§ 7). The same test tells a property a template merged into a declaration, and
+an inherited one recursion marking gave a shape of its own, from the
+declaration's own.
 
 ## 11. Verification
 

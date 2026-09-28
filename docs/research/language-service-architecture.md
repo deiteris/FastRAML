@@ -1,6 +1,7 @@
 # Language service: target architecture
 
-**Status: proposed, 2026-09-27.** This document records how the language
+**Status: done, 2026-09-28; F2 and failure containment dropped (§ 12).**
+Proposed on 2026-09-27. This document records how the language
 service should sit on the parser and its model, from a review of the service as
 built against `docs/21`, `archive/language-server.md` (LS) and
 `research/language-service-plan.md`. It is not normative: `docs/21` describes
@@ -98,7 +99,7 @@ changes.
 
 | Layer | Holds | Change |
 |---|---|---|
-| Passes (`parser/`, `types/`) | the rules, and the facts of § 6 | record F2 to F5 |
+| Passes (`parser/`, `types/`) | the rules, and the facts of § 6 | record F3 to F5 |
 | Model (`registry.py`, fragments, entities) | entities, positions, `broken`, the declaration iterator F1 | add F1 |
 | Substrates (`views/`) | occurrences (names and links), the authorship view (§ 4), walk (effective addresses), render, tree | add the authorship view; F6 |
 | Service (`service/`) | workspace, snapshot policy (§ 5), queries, outline | queries read substrates only |
@@ -119,7 +120,8 @@ or a file, wrote. It reads facts only:
   `views/occurrences.py` already relies on), its
   written `items` (F4), its `facets:` entries;
 - a resource's own URI parameters, methods and resources, and a method's own
-  parameters, bodies and responses: those no template contributed (F2);
+  parameters, bodies and responses: those no template contributed, told by
+  span, which is exact (§ 12);
 - the bodies of one `body:` without a media type, as one entry (F3, recorded
   as `Body.media_type_written`).
 
@@ -156,7 +158,7 @@ is a use.
 | # | Fact | Owner | Removes | Read by |
 |---|---|---|---|---|
 | F1 | `declarations()` on a declaring fragment: `(kind, name, entity)` over the five tables, in declaration order | `docs/04` | seven table lists | occurrences, walk, render, authorship, service |
-| F2 | the template that contributed an operation, response, body or parameter, recorded by P4 as it merges (`docs/08` § 4) | `docs/08` | the span test; `Sources` | authorship, render |
+| F2 | not recorded: which template contributed a member is told by span, which is exact (§ 12) | — | — | — |
 | F3 | on `Body`, whether its media type was written | `docs/08` § 6.3 | grouping by `key_pos` | authorship |
 | F4 | on an array shape, whether it wrote its `items` (`items_written`): not a type expression's, nor a parent's | `docs/06` § 3 | the `key_pos` comparison | authorship |
 | F5 | a security scheme definition's, settings' and description's positions spelled `UNKNOWN`, never `None`, as every other entity's | `docs/09` | the `None` checks | every consumer |
@@ -187,7 +189,7 @@ properties, parameters, resources, methods, responses and bodies, 5424 over
 the 721 TCK documents that reach unwrap. Rule 4 is read through rule 1, whose
 text is taken from the entity's location. Rule 3 is checked for resources
 only, which no template contributes: under a method, what a template wrote
-lies in the template, and telling it apart is F2. A request has the method's
+lies in the template, outside the method's span. A request has the method's
 key; a URI parameter P6 synthesizes was never written; a shape with no name,
 or one standing for a type it names (`Book[]`'s items, a recursive
 reference, F4), is placed at the key it is written under; each is exempt.
@@ -201,6 +203,9 @@ located in the applying file (`docs/08` § 4.2); and a key built with no
 source read as known (`docs/11` § 1).
 
 ## 8. Failure containment
+
+**Dropped (§ 12):** parsing keeps stopping at the failing pass. What follows
+is the proposal as it was.
 
 A failed include is contained: the entity that includes the file is kept and
 marked (`docs/13` § 1), and nothing else depends on the file's content except
@@ -247,16 +252,16 @@ Each step is its own commit, amends its owning document, and passes the gate.
 7. Done: F6, and `links()`, path definitions and path hovers reading it.
 8. The authorship view (§ 4) with F3 and F4; the outline and `render` read it;
    the outline moves to `service/outline.py`; hover dispatches on the entity's
-   class. Done, but for `render`, whose contributor note waits for F2 (step
-   9): F3, F4, hover's dispatch, the view (`docs/16` § 10) and the outline over
-   it, with an Extension outlined by location and a JSON schema named by its
-   `JsonShape`. The view keeps the span test as F2's stand-in, now also for
-   the properties and `items` a template merged into a declaration, and for an
-   inherited property recursion marking gave a shape of its own. Checking the
-   outline's ranges over the TCK found a block ending in a flow collection
-   ending before its bracket (`docs/03` § 1).
-9. F2, and the view reading it.
-10. Failure containment (§ 8), behind PM § 7's gate.
+   class. Done: F3, F4, hover's dispatch, the view (`docs/16` § 10) and the
+   outline over it, with an Extension outlined by location and a JSON schema
+   named by its `JsonShape`. The view holds the one span test, also for the
+   properties and `items` a template merged into a declaration and for an
+   inherited property recursion marking gave a shape of its own. `render`'s
+   `Sources` keeps its own, which is exact for the same reason (§ 12).
+   Checking the outline's ranges over the TCK found a block ending in a flow
+   collection ending before its bracket (`docs/03` § 1).
+9. Dropped: F2 (§ 12).
+10. Dropped: failure containment (§ 8, § 12).
 
 ## 12. Decisions
 
@@ -277,3 +282,15 @@ Taken on 2026-09-28.
   document replace it.
 - **No compose cache for now.** G8 stays additive work, taken up only when a
   measured latency asks for it; nothing in § 11 depends on it.
+- **F2 is not recorded.** Which template contributed a member is told by span,
+  and that is exact, not inferred: a trait or resource type is declared in its
+  table or its own fragment, never inside a resource, a method or a type, so
+  what it contributed lies outside the parent's span even in the parent's
+  file. The placement law (§ 7) makes spans hold what they were written with.
+  Recording F2 would put a field on every operation, response, body and
+  parameter, and through P4's merges and stage 2, for no answer the spans do
+  not give. `render`'s `Sources` names a contributing template from spans for
+  the same reason.
+- **No failure containment.** Parsing keeps stopping at the failing pass
+  (PM § 7), and the lenient model is made trustworthy instead; § 8 is not
+  taken up.

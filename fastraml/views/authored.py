@@ -6,10 +6,13 @@ the model records, and selects by `location` over the merged model, so a file
 an Extension adds to lists the type it declared in the master's table and the
 method it added to a master resource.
 
-Who contributed a member through a template is not recorded yet
-(`research/language-service-architecture.md` § 6, F2). Until it is, `wrote`
-stands in: a member a template contributed lies in the template, outside its
-parent's span, even in the parent's file.
+Which template contributed a member is not recorded: `wrote` tells it from
+the spans, and that is exact. A trait or resource type is declared in its
+table or its own fragment, never inside a resource, a method or a type, so a
+member it contributed lies outside its parent's span even in the parent's
+file, and one inside was written there. The placement law makes spans hold
+what they were written with (`research/language-service-architecture.md`
+§ 7, § 12).
 """
 
 from __future__ import annotations
@@ -60,7 +63,8 @@ def wrote(parent: Placed, location: str, key: Position) -> bool:
     """Whether `parent` wrote what is keyed at `key` in `location`: the same
     file, inside its span.
 
-    The stand-in for F2: the one span test, here rather than in each reader.
+    Exact, as the module docstring says; the one span test, here rather than
+    in each reader.
     """
     return location == parent.location and _within(_extent(parent), key)
 
@@ -122,7 +126,7 @@ def properties(base: BaseShape) -> Iterator[tuple[str, Property]]:
     keeps its declaration's shape, which a parent holds too. An alias shares
     its referent's containers (docs/07 § 3), so it declares none.
 
-    Written inside `base` too, by `wrote`: recursion marking gives an
+    Written inside `base` too, by `wrote`'s test: recursion marking gives an
     inherited property that closes a cycle a shape of its own, and a
     property a template merged into a declaration lies in the template.
     """

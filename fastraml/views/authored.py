@@ -24,26 +24,33 @@ from fastraml.parser.fragments import APIFragment, every_declaration
 from fastraml.types.complex_ import ArrayShape, ObjectShape
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterable, Iterator, Mapping
 
+    from fastraml.parser.directives import SecurityScheme
     from fastraml.parser.documentation import DocumentationItem
     from fastraml.parser.endpoints import Body, EndPoint, Operation
-    from fastraml.parser.fragments import Declaration
+    from fastraml.parser.fragments import Declaration, LibraryLink
     from fastraml.positions import Position
     from fastraml.registry import Raml
-    from fastraml.types.base import BaseShape, Parameter, PatternProperty, Property
+    from fastraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet
 
 __all__ = [
     'Placed',
     'WrittenResource',
+    'base_uri_parameters',
     'bodies',
     'declarations',
     'documentation',
+    'facets',
     'items',
+    'members',
+    'metadata',
     'parameters',
     'pattern_properties',
     'properties',
     'resources',
+    'secured_by',
+    'uses',
     'wrote',
 ]
 
@@ -94,11 +101,50 @@ def _within(extent: tuple[int, int, int, int], key: Position) -> bool:
     )
 
 
+def members[P: Placed](owner: Placed, found: Iterable[P]) -> Iterator[P]:
+    """Those of `found` that `owner` wrote: a method's responses, a
+    resource's `is:` entries.
+    """
+    location, extent = owner.location, _extent(owner)
+    return (each for each in found if each.location == location and _within(extent, each.key_pos))
+
+
 def parameters(owner: Placed, written: Mapping[str, Parameter]) -> Iterator[tuple[str, Parameter]]:
     """The parameters `owner` wrote. A parameter is a record placed at its
     key, in the file its shape was written in.
     """
-    return ((name, param) for name, param in written.items() if wrote(owner, param.base.location, param.key_pos))
+    location, extent = owner.location, _extent(owner)
+    return (
+        (name, param)
+        for name, param in written.items()
+        if param.base.location == location and _within(extent, param.key_pos)
+    )
+
+
+def secured_by(owner: EndPoint | Operation) -> Iterator[SecurityScheme]:
+    """The schemes `owner`'s own `securedBy:` names, not those it inherits."""
+    return members(owner, owner.secured_by if owner.explicit_secured_by else ())
+
+
+def metadata(raml: Raml, uri: str) -> Iterator[tuple[str, ScalarFacet[str]]]:
+    """The API's `title`, `version` and `baseUri` written in `uri`."""
+    api = raml.entry_point
+    if isinstance(api, APIFragment):
+        written = (('title', api.title), ('version', api.version), ('baseUri', api.base_uri))
+        yield from ((name, facet) for name, facet in written if facet is not None and facet.location == uri)
+
+
+def base_uri_parameters(raml: Raml, uri: str) -> Iterator[tuple[str, Parameter]]:
+    """The API's `baseUriParameters` written in `uri`."""
+    api = raml.entry_point
+    if isinstance(api, APIFragment):
+        yield from ((name, param) for name, param in api.base_uri_parameters.items() if param.base.location == uri)
+
+
+def uses(raml: Raml, uri: str) -> Mapping[str, LibraryLink]:
+    """The `uses:` entries `uri` wrote: its own fragment's, all of them."""
+    fragment = raml.fragments.get(uri)
+    return {} if fragment is None else fragment.uses
 
 
 def declarations(raml: Raml, uri: str) -> Iterator[tuple[str, str, Declaration]]:
@@ -116,42 +162,67 @@ def documentation(raml: Raml, uri: str) -> Iterator[DocumentationItem]:
         yield from (item for item in api.documentation if item.location == uri)
 
 
-def properties(base: BaseShape) -> Iterator[tuple[str, Property]]:
-    """The properties `base` declares, not those it inherits: an inherited one
-    keeps its declaration's shape, which a parent holds too. An alias shares
-    its referent's containers (docs/07 § 3), so it declares none.
+class _Member(Protocol):
+    """A property, a `/regex/` property or a `facets:` entry: a record around
+    the shape it declares.
+    """
+
+    @property
+    def base(self) -> BaseShape: ...
+
+
+def _declared[M: _Member](
+    base: BaseShape, table: Callable[[BaseShape], Mapping[str, M] | None]
+) -> Iterator[tuple[str, M]]:
+    """The members of `base`'s `table` that `base` declares, not those it
+    inherits: an inherited one keeps its declaration's shape, which a parent
+    holds too. An alias shares its referent's containers (docs/07 § 3), so it
+    declares none.
 
     Written inside `base` too, by `wrote`'s test: recursion marking gives an
     inherited property that closes a cycle a shape of its own, and a
     property a template merged into a declaration lies in the template.
     """
-    shape = base.shape
-    if base.alias is not None or not isinstance(shape, ObjectShape) or not shape.properties:
+    found = table(base)
+    if base.alias is not None or not found:
         return
-    inherited = {prop.base.id for parent in base.inherits for prop in _object_properties(parent)}
-    extent = _extent(base)
-    for key, prop in shape.properties.items():
-        member = prop.base
-        if member.id not in inherited and member.location == base.location and _within(extent, member.key_pos):
-            yield key, prop
+    inherited = {member.base.id for parent in base.inherits for member in (table(parent) or {}).values()}
+    location, extent = base.location, _extent(base)
+    for key, member in found.items():
+        shape = member.base
+        if shape.id not in inherited and shape.location == location and _within(extent, shape.key_pos):
+            yield key, member
+
+
+def properties(base: BaseShape) -> Iterator[tuple[str, Property]]:
+    """The properties `base` declares (`_declared`)."""
+    return _declared(base, _properties)
 
 
 def pattern_properties(base: BaseShape) -> Iterator[tuple[str, PatternProperty]]:
     """`properties`, for the `/regex/` keys."""
+    return _declared(base, _pattern_properties)
+
+
+def facets(base: BaseShape) -> Iterator[tuple[str, Property]]:
+    """The `facets:` entries `base` declares: after unwrap a subtype holds
+    its parents' too, and an alias its referent's.
+    """
+    return _declared(base, _facets)
+
+
+def _properties(base: BaseShape) -> Mapping[str, Property] | None:
     shape = base.shape
-    if base.alias is not None or not isinstance(shape, ObjectShape) or not shape.pattern_properties:
-        return
-    inherited = {
-        pattern.base.id
-        for parent in base.inherits
-        if isinstance(parent.shape, ObjectShape)
-        for pattern in (parent.shape.pattern_properties or {}).values()
-    }
-    extent = _extent(base)
-    for key, pattern in shape.pattern_properties.items():
-        member = pattern.base
-        if member.id not in inherited and member.location == base.location and _within(extent, member.key_pos):
-            yield key, pattern
+    return shape.properties if isinstance(shape, ObjectShape) else None
+
+
+def _pattern_properties(base: BaseShape) -> Mapping[str, PatternProperty] | None:
+    shape = base.shape
+    return shape.pattern_properties if isinstance(shape, ObjectShape) else None
+
+
+def _facets(base: BaseShape) -> Mapping[str, Property]:
+    return base.custom_facet_defs
 
 
 def items(base: BaseShape) -> BaseShape | None:
@@ -165,12 +236,13 @@ def items(base: BaseShape) -> BaseShape | None:
     return found if found is not None and wrote(base, found.location, found.key_pos) else None
 
 
-def bodies(written: Mapping[str, Body]) -> list[list[Body]]:
-    """Each body as written: one per media type key, and the bodies one
+def bodies(owner: Placed, written: Mapping[str, Body]) -> list[list[Body]]:
+    """Each body `owner` wrote: one per media type key, and the bodies one
     `body:` without a media type became, together (F3, docs/08 § 6.3).
     """
-    found = [[body] for body in written.values() if body.media_type_written]
-    defaults = [body for body in written.values() if not body.media_type_written]
+    own = list(members(owner, written.values()))
+    found = [[body] for body in own if body.media_type_written]
+    defaults = [body for body in own if not body.media_type_written]
     return [*found, defaults] if defaults else found
 
 
@@ -197,20 +269,13 @@ def resources(raml: Raml, uri: str) -> list[WrittenResource]:
 
 def _resource(endpoint: EndPoint, uri: str) -> WrittenResource | None:
     here = endpoint.location == uri
-    written = WrittenResource(endpoint, here)
-    for operation in endpoint.operations.values():
-        # A resource another file declared has no span in this one, so what
-        # this file added to it is known by location alone.
-        if wrote(endpoint, operation.location, operation.key_pos) if here else operation.location == uri:
-            written.operations.append(operation)
+    operations = endpoint.operations.values()
+    # A resource another file declared has no span in this one, so what this
+    # file added to it is known by location alone.
+    own = members(endpoint, operations) if here else (each for each in operations if each.location == uri)
+    written = WrittenResource(endpoint, here, list(own))
     for child in endpoint.endpoints.values():
         found = _resource(child, uri)
         if found is not None:
             written.resources.append(found)
     return written if here or written.operations or written.resources else None
-
-
-def _object_properties(base: BaseShape) -> Iterator[Property]:
-    shape = base.shape
-    if isinstance(shape, ObjectShape):
-        yield from (shape.properties or {}).values()

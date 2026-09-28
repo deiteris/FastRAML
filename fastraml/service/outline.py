@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from fastraml.parser.fragments import APIFragment
 from fastraml.parser.security import SecuritySchemeDefinition, SecuritySchemeDescription
 from fastraml.positions import Position
 from fastraml.service.queries import DECLARATION_KINDS, Symbol, SymbolKind, detail_line, symbol
@@ -20,7 +19,7 @@ from fastraml.views.render import type_name
 from fastraml.yamlnode import NodeKind
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Iterable, Iterator, Mapping
 
     from fastraml.parser.directives import DirectiveRef, SecurityScheme
     from fastraml.parser.endpoints import Body, Operation, Request, Response
@@ -45,31 +44,21 @@ def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
     added there.
     """
     raml = snapshot.raml
-    fragment = None if raml is None else raml.fragments.get(uri)
-    if raml is None or fragment is None:
+    if raml is None or uri not in raml.fragments:
         return []
-    found: list[Symbol | None] = []
-    api = raml.entry_point
-    if isinstance(api, APIFragment):
-        metadata = (('title', api.title), ('version', api.version), ('baseUri', api.base_uri))
-        found += (
-            symbol(name, SymbolKind.METADATA, facet, facet.value)
-            for name, facet in metadata
-            if facet is not None and facet.location == uri
-        )
-        parameters = (
-            _parameter(name, param) for name, param in api.base_uri_parameters.items() if param.base.location == uri
-        )
-        found.append(_group('baseUriParameters', parameters))
-        items = (
-            symbol(str(item.title.value), SymbolKind.DOCUMENTATION, item, key=item.title.value_pos)
-            for item in authored.documentation(raml, uri)
-            if item.title is not None
-        )
-        found.append(_group('documentation', items))
-    found.append(
-        _group('uses', (symbol(name, SymbolKind.LIBRARY, link, link.value) for name, link in fragment.uses.items()))
+    found: list[Symbol | None] = [
+        symbol(name, SymbolKind.METADATA, facet, facet.value) for name, facet in authored.metadata(raml, uri)
+    ]
+    parameters = (_parameter(name, param) for name, param in authored.base_uri_parameters(raml, uri))
+    found.append(_group('baseUriParameters', parameters))
+    items = (
+        symbol(str(item.title.value), SymbolKind.DOCUMENTATION, item, key=item.title.value_pos)
+        for item in authored.documentation(raml, uri)
+        if item.title is not None
     )
+    found.append(_group('documentation', items))
+    uses = (symbol(name, SymbolKind.LIBRARY, link, link.value) for name, link in authored.uses(raml, uri).items())
+    found.append(_group('uses', uses))
     sections: dict[str, list[Symbol | None]] = {}
     for key, name, entity in authored.declarations(raml, uri):
         sections.setdefault(key, []).append(_declaration(name, DECLARATION_KINDS[key], entity))
@@ -114,12 +103,10 @@ def _members(base: BaseShape, parent: Symbol) -> None:
     items = authored.items(base)
     if items is not None:
         found.append(_type('items', SymbolKind.TYPE, items))
-    if base.custom_facet_defs:
-        facets = (
-            _type(key if prop.required else f'{key}?', SymbolKind.FACET, prop.base)
-            for key, prop in base.custom_facet_defs.items()
-        )
-        found.append(_group('facets', facets))
+    facets = (
+        _type(key if prop.required else f'{key}?', SymbolKind.FACET, prop.base) for key, prop in authored.facets(base)
+    )
+    found.append(_group('facets', facets))
     _adopt(parent, found)
 
 
@@ -154,14 +141,14 @@ def _resource(written: authored.WrittenResource) -> Symbol | None:
     found = symbol(endpoint.uri, SymbolKind.RESOURCE, endpoint, _shown(endpoint.display_name))
     if found is None:
         return None
-    applied = [] if endpoint.resource_type is None else [endpoint.resource_type]
+    applied = () if endpoint.resource_type is None else (endpoint.resource_type,)
     parameters = (_parameter(name, param) for name, param in authored.parameters(endpoint, endpoint.uri_parameters))
     _adopt(
         found,
         [
-            _applied('type', applied, endpoint),
-            _applied('is', endpoint.traits, endpoint),
-            _applied('securedBy', endpoint.secured_by if endpoint.explicit_secured_by else [], endpoint),
+            _applied('type', authored.members(endpoint, applied)),
+            _applied('is', authored.members(endpoint, endpoint.traits)),
+            _applied('securedBy', authored.secured_by(endpoint)),
             _group('uriParameters', parameters),
             *children,
         ],
@@ -174,17 +161,13 @@ def _method(operation: Operation) -> Symbol | None:
     if found is None:
         return None
     children: list[Symbol | None] = [
-        _applied('is', operation.traits, operation),
-        _applied('securedBy', operation.secured_by if operation.explicit_secured_by else [], operation),
+        _applied('is', authored.members(operation, operation.traits)),
+        _applied('securedBy', authored.secured_by(operation)),
     ]
     if operation.request is not None:
         children += _message(operation.request, operation)
         children.append(_group('body', _bodies(operation.request.bodies, operation)))
-    children += (
-        _response(response)
-        for response in operation.responses.values()
-        if authored.wrote(operation, response.location, response.key_pos)
-    )
+    children += (_response(response) for response in authored.members(operation, operation.responses.values()))
     _adopt(found, children)
     return found
 
@@ -202,11 +185,7 @@ def _message(
     if string is not None and authored.wrote(owner, string.location, string.key_pos):
         found.append(_type('queryString', SymbolKind.TYPE, string))
     if isinstance(message, SecuritySchemeDescription):
-        found += (
-            _response(response)
-            for response in message.responses.values()
-            if authored.wrote(owner, response.location, response.key_pos)
-        )
+        found += (_response(response) for response in authored.members(owner, message.responses.values()))
     return found
 
 
@@ -224,10 +203,8 @@ def _bodies(bodies: Mapping[str, Body], owner: Operation | Response) -> Iterator
     """One symbol per body `owner` wrote: a `body:` with no media type is one
     body per default media type (docs/08 § 6.3), named by all of them.
     """
-    for same in authored.bodies(bodies):
+    for same in authored.bodies(owner, bodies):
         body, shape = same[0], same[0].shape
-        if not authored.wrote(owner, body.location, body.key_pos):
-            continue
         name = ', '.join(each.media_type for each in same)
         # The body's own key: its shape's is none for `body: Book`.
         found = symbol(name, SymbolKind.BODY, body, '' if shape is None else _written(shape))
@@ -236,11 +213,11 @@ def _bodies(bodies: Mapping[str, Body], owner: Operation | Response) -> Iterator
         yield found
 
 
-def _applied(name: str, refs: Sequence[DirectiveRef | SecurityScheme], owner: authored.Placed) -> Symbol | None:
+def _applied(name: str, refs: Iterable[DirectiveRef | SecurityScheme]) -> Symbol | None:
     """What a resource or method applies, `is:` or `securedBy:`, as one entry
-    naming each it wrote.
+    naming each of `refs`, those it wrote.
     """
-    placed = [ref for ref in refs if authored.wrote(owner, ref.location, ref.key_pos)]
+    placed = list(refs)
     if not placed:
         return None
     spans = [ref.key_pos.spanning(ref.value_pos) for ref in placed]

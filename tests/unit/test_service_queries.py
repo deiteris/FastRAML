@@ -240,6 +240,26 @@ class TestSymbols:
             ]),
         ]  # fmt: skip
 
+    def test_an_alias_or_a_subtype_lists_no_facet_it_did_not_declare(self, tmp_path):
+        # docs/16 § 10: an alias shares its referent's `facets:` container
+        # (docs/07 § 3), and a subtype holds its parents' after unwrap.
+        document = (
+            '#%RAML 1.0\ntitle: T\ntypes:\n'
+            '  A:\n    type: string\n    facets:\n      f: string\n'
+            '  B:\n    type: A\n    f: x\n    facets:\n      g?: integer\n'
+            '  C: A\n'
+        )
+        write_files(tmp_path, {'api.raml': document})
+        folder = path_to_file_uri(tmp_path)
+        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
+        section, facet = SymbolKind.SECTION, SymbolKind.FACET
+        types = _tree(outline.document_symbols(snapshot, f'{folder}/api.raml'))[1]
+        assert types == ('types', section, '', [
+            ('A', SymbolKind.TYPE, 'string', [('facets', section, '', [('f', facet, 'string')])]),
+            ('B', SymbolKind.TYPE, 'A', [('facets', section, '', [('g?', facet, 'integer')])]),
+            ('C', SymbolKind.TYPE, 'A'),
+        ])  # fmt: skip
+
     def test_a_file_outlines_what_it_wrote_an_extension_what_it_added(self, tmp_path):
         # docs/21 § 4: selected by location over the merged model. The type an
         # Extension declares sits in the master's table, and the method it

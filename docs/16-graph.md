@@ -353,19 +353,24 @@ file an Extension or an Overlay adds to lists what it added there: a type in
 the master's `types`, a method on a master resource.
 
 - `declarations(raml, uri)`: every declaration located in `uri`, through
-  `declarations()` (`docs/04` § 1).
-- `documentation(raml, uri)`: the API's documentation items located there.
-- `properties(base)`, `pattern_properties(base)`: the members a type declares,
-  not those it inherits. An inherited property keeps its declaration's shape,
-  which a parent holds too; an alias declares none (docs/07 § 3).
+  `every_declaration` (`docs/04` § 1).
+- `metadata`, `base_uri_parameters`, `documentation`, `uses` (each
+  `(raml, uri)`): the API's `title`, `version` and `baseUri`, its base URI
+  parameters and documentation items located in `uri`, and `uri`'s own
+  `uses:`.
+- `properties(base)`, `pattern_properties(base)`, `facets(base)`: the members
+  a type declares, not those it inherits. An inherited member keeps its
+  declaration's shape, which a parent holds too; an alias declares none, since
+  it shares its referent's containers (docs/07 § 3).
 - `items(base)`: the items an array wrote, by `items_written` (docs/06 § 3).
-- `bodies(written)`: each body as written, the bodies of one `body:` without a
-  media type together, by `media_type_written` (docs/08 § 6.3).
+- `bodies(owner, written)`: each body `owner` wrote, the bodies of one `body:`
+  without a media type together, by `media_type_written` (docs/08 § 6.3).
 - `resources(raml, uri)`: the resources `uri` wrote, or added methods or
   resources to, as it nests them; `here` says whether the resource's key is
   written in `uri`.
-- `wrote(parent, location, key)`, `parameters(owner, written)`: what a
-  resource, method, response or security scheme wrote.
+- `members(owner, found)`, `parameters(owner, written)`, `secured_by(owner)`,
+  `wrote(parent, location, key)`: which responses, `is:` entries, parameters
+  and schemes a resource, method, response or security scheme wrote.
 
 Which template contributed a member is not recorded: `wrote` tells it from
 the spans, and that is exact. A trait or resource type is declared in its

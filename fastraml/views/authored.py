@@ -81,12 +81,19 @@ def wrote(parent: Placed, location: str, key: Position) -> bool:
     Exact, as the module docstring says; the one span test, here rather than
     in each reader.
     """
-    return location == parent.location and _within(_extent(parent), key)
+    return _writer(parent)(location, key)
+
+
+def _writer(parent: Placed) -> Callable[[str, Position], bool]:
+    """`wrote` for one `parent`, its span computed once for all its members."""
+    location, extent = parent.location, _extent(parent)
+    return lambda where, key: where == location and _within(extent, key)
 
 
 def _extent(parent: Placed) -> tuple[int, int, int, int]:
     """`parent`'s span from its key through its value, as numbers: built for
     every member of every type, where a `Position` cost the outline a third.
+    So this test does not use `Position.spanning` and `contains`.
     """
     key, value = parent.key_pos, parent.value_pos
     if not value.is_known:
@@ -113,20 +120,16 @@ def members[P: Placed](owner: Placed, found: Iterable[P]) -> Iterator[P]:
     """Those of `found` that `owner` wrote: a method's responses, a
     resource's `is:` entries.
     """
-    location, extent = owner.location, _extent(owner)
-    return (each for each in found if each.location == location and _within(extent, each.key_pos))
+    test = _writer(owner)
+    return (each for each in found if test(each.location, each.key_pos))
 
 
 def parameters(owner: Placed, written: Mapping[str, Parameter]) -> Iterator[tuple[str, Parameter]]:
     """The parameters `owner` wrote. A parameter is a record placed at its
     key, in the file its shape was written in.
     """
-    location, extent = owner.location, _extent(owner)
-    return (
-        (name, param)
-        for name, param in written.items()
-        if param.base.location == location and _within(extent, param.key_pos)
-    )
+    test = _writer(owner)
+    return ((name, param) for name, param in written.items() if test(param.base.location, param.key_pos))
 
 
 def secured_by(owner: EndPoint | Operation) -> Iterator[SecurityScheme]:
@@ -218,10 +221,10 @@ def _declared[M: _Member](
     if base.alias is not None or not found:
         return
     inherited = {member.base.id for parent in base.inherits for member in (table(parent) or {}).values()}
-    location, extent = base.location, _extent(base)
+    test = _writer(base)
     for key, member in found.items():
         shape = member.base
-        if shape.id not in inherited and shape.location == location and _within(extent, shape.key_pos):
+        if shape.id not in inherited and test(shape.location, shape.key_pos):
             yield key, member
 
 

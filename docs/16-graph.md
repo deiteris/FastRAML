@@ -412,6 +412,10 @@ hold what they were written with (`research/language-service-architecture.md`
 an inherited one recursion marking gave a shape of its own, from the
 declaration's own.
 
+Every reader here goes through that one test. It compares spans as numbers,
+not through `Position.spanning` and `contains`: it runs for every member of
+every type, and building a `Position` for each cost the outline a third.
+
 ## 11. Verification
 
 - View boundary: `tests/unit/test_views.py`

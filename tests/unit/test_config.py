@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import fields
+
 from fastraml.cli import EXIT_INVALID, EXIT_OK, main
-from fastraml.config import parse_config
+from fastraml.config import ParserConfig, parse_config
+from fastraml.parser.entry import ParseOptions
 
 OLD = """#%RAML 1.0
 title: T
@@ -203,3 +206,16 @@ def test_unknown_compatibility_rule_is_rejected(workspace, tmp_path, capsys):
     )
     assert main(['compat', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
     assert 'unknown compatibility rule: imaginary-rule' in capsys.readouterr().err
+
+
+def test_every_parser_limit_reaches_the_parse_options():
+    """`ParserConfig.limits` is the one place a host reads the section, so a
+    new field is either applied there or named here as the host's to weigh.
+    """
+    configured = ParserConfig(max_include_size=7, max_depth=9, regex_engine='re2')
+    options = configured.limits(ParseOptions(unwrap=True))
+    hosts = {'workspace_root', 'remote'}
+    for each in fields(ParserConfig):
+        if each.name not in hosts:
+            assert getattr(options, each.name) == getattr(configured, each.name), each.name
+    assert options.unwrap

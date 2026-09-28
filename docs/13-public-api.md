@@ -106,6 +106,11 @@ returns RAML text ([20](20-join.md) § 8). It is not part of `fastraml.__all__`.
 Pass `unwrap=True, validate=True` together unless you specifically need declared,
 unflattened types. Validation alone must clone and unwrap declarations privately.
 
+A configuration file's `parser:` section is `ParserConfig`. `limits(options)`
+applies its `max_include_size`, `max_depth` and `regex_engine`; its
+`workspace_root` and `remote` are left to the host, which weighs them against
+its own flags and folders.
+
 ## 3. Model contracts
 
 One `Raml` holds the result of one parse. Its public stores include the entry

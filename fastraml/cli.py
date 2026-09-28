@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
+    from fastraml.config import ParserConfig
     from fastraml.errors import RamlError
     from fastraml.parser.entry import ParseOptions
     from fastraml.registry import Raml
@@ -1537,18 +1538,17 @@ def _options(
     from fastraml.loaders import FileLoader  # noqa: PLC0415 - parsing commands only
     from fastraml.parser.entry import ParseOptions  # noqa: PLC0415
 
-    configured = args.fastraml_config.parser
-    return ParseOptions(
-        unwrap=True,
-        validate=validate,
-        retain_source=retain_source,
-        retain_text=retain_text,
-        workspace_root=args.workspace_root or configured.workspace_root,
-        max_include_size=configured.max_include_size,
-        file_loader=FileLoader() if args.no_workspace_guard else None,
-        http_client=_http_client() if args.remote or configured.remote else None,
-        regex_engine=configured.regex_engine,
-        max_depth=configured.max_depth,
+    configured: ParserConfig = args.fastraml_config.parser
+    return configured.limits(
+        ParseOptions(
+            unwrap=True,
+            validate=validate,
+            retain_source=retain_source,
+            retain_text=retain_text,
+            workspace_root=args.workspace_root or configured.workspace_root,
+            file_loader=FileLoader() if args.no_workspace_guard else None,
+            http_client=_http_client() if args.remote or configured.remote else None,
+        )
     )
 
 

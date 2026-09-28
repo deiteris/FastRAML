@@ -331,20 +331,18 @@ class Workspace:
         if disk is None:
             refused = RamlError.new('path is outside the workspace root', root, info={'path': root})
             return Snapshot(root, None, refused, frozenset({root}))
-        parser = self.config.parser
-        options = ParseOptions(
-            unwrap=True,
-            validate=True,
-            # The index needs the texts; the YAML trees only for a lint rule
-            # that reads them.
-            retain_text=True,
-            retain_source=self.linter.requires_source,
-            workspace_root=disk.root,
-            max_include_size=parser.max_include_size,
-            file_loader=_Overlay(self.buffers, disk),
-            http_client=self._http_client,
-            regex_engine=parser.regex_engine,
-            max_depth=parser.max_depth,
+        options = self.config.parser.limits(
+            ParseOptions(
+                unwrap=True,
+                validate=True,
+                # The index needs the texts; the YAML trees only for a lint
+                # rule that reads them.
+                retain_text=True,
+                retain_source=self.linter.requires_source,
+                workspace_root=disk.root,
+                file_loader=_Overlay(self.buffers, disk),
+                http_client=self._http_client,
+            )
         )
         try:
             raml, error = parse_lenient(file_uri_to_path(root), options)

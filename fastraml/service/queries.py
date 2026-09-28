@@ -17,19 +17,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.errors import RamlError
-from fastraml.facet_names import (
-    FACET_ANNOTATION_TYPES,
-    FACET_RESOURCE_TYPES,
-    FACET_SECURITY_SCHEMES,
-    FACET_TRAITS,
-    FACET_TYPES,
-)
 from fastraml.parser.fragments import LibraryLink, every_declaration
 from fastraml.parser.security import SecuritySchemeDefinition
 from fastraml.parser.templates import TemplateDefinition
 from fastraml.positions import Position
 from fastraml.types.base import BaseShape
 from fastraml.uris import relative_to
+from fastraml.views.occurrences import DECLARATION_KINDS as _OCCURRENCE_KINDS
 from fastraml.views.occurrences import Kind, Link, Role
 from fastraml.views.render import render
 from fastraml.views.tree import build_tree
@@ -378,13 +372,7 @@ def _entity(raml: Raml, target: int) -> Declaration | LibraryLink | None:
 # -- symbols ------------------------------------------------------------------------
 
 #: The symbol kind of each declaration table, by the key it is written under.
-DECLARATION_KINDS: Final = {
-    FACET_TYPES: SymbolKind.TYPE,
-    FACET_ANNOTATION_TYPES: SymbolKind.ANNOTATION_TYPE,
-    FACET_TRAITS: SymbolKind.TRAIT,
-    FACET_RESOURCE_TYPES: SymbolKind.RESOURCE_TYPE,
-    FACET_SECURITY_SCHEMES: SymbolKind.SECURITY_SCHEME,
-}
+DECLARATION_KINDS: Final = {key: SymbolKind(kind) for key, kind in _OCCURRENCE_KINDS.items()}
 
 
 def detail_line(text: str) -> str:

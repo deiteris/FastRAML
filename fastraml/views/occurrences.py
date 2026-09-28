@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from fastraml.types.base import BaseShape
 
 
-__all__ = ['Kind', 'Link', 'Occurrence', 'Occurrences', 'Role', 'build_occurrences']
+__all__ = ['DECLARATION_KINDS', 'Kind', 'Link', 'Occurrence', 'Occurrences', 'Role', 'build_occurrences']
 
 
 class Role(StrEnum):
@@ -76,7 +76,7 @@ class Kind(StrEnum):
 
 
 #: The kind of each declaration table, by the key it is written under.
-_KINDS: Final = {
+DECLARATION_KINDS: Final = {
     FACET_TYPES: Kind.TYPE,
     FACET_ANNOTATION_TYPES: Kind.ANNOTATION_TYPE,
     FACET_TRAITS: Kind.TRAIT,
@@ -267,7 +267,14 @@ class _Index:
     def declarations(self, raml: Raml) -> None:
         """Every declared name, and each `uses:` entry with the file it links."""
         for key, name, entity in every_declaration(raml):
-            self.add_at(entity.location, entity.key_pos, name, role=Role.DEFINITION, kind=_KINDS[key], target=entity.id)
+            self.add_at(
+                entity.location,
+                entity.key_pos,
+                name,
+                role=Role.DEFINITION,
+                kind=DECLARATION_KINDS[key],
+                target=entity.id,
+            )
         for fragment in raml.fragments.values():
             for alias, link in fragment.uses.items():
                 self.add_at(link.location, link.key_pos, alias, role=Role.DEFINITION, kind=Kind.LIBRARY, target=link.id)

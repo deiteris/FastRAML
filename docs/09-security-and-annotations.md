@@ -9,7 +9,9 @@ extension decoding, P8 binding, and P10 validation.
 
 `SecuritySchemeDefinition` is a centrally declared scheme. It holds its name,
 type, display and description facets, optional `describedBy`, optional settings,
-include link information, annotations, and positions.
+include link information, annotations, and positions. The definition, its
+settings and its description spell a position with no source `UNKNOWN`, as
+every entity does, never `None`.
 
 `SecuritySchemeDescription` reuses endpoint decoders:
 

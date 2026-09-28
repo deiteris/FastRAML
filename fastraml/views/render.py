@@ -126,7 +126,7 @@ class Sources:
             found: list[tuple[int, int, str]] = []
             for _key, name, declared in fragment.declarations():
                 start, end = declared.key_pos, declared.value_pos
-                if start is not None and start.is_known and end is not None and end.end_line >= start.line:
+                if start.is_known and end.end_line >= start.line:
                     found.append((start.line, end.end_line, name))
             if found:
                 spans[location] = sorted(found, key=lambda span: (span[1] - span[0], span[0]))

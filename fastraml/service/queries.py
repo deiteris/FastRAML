@@ -665,9 +665,9 @@ class _Placed(Protocol):
     @property
     def location(self) -> str: ...
     @property
-    def key_pos(self) -> Position | None: ...
+    def key_pos(self) -> Position: ...
     @property
-    def value_pos(self) -> Position | None: ...
+    def value_pos(self) -> Position: ...
 
 
 def _symbol(
@@ -685,9 +685,9 @@ def _symbol(
     return Symbol(name, kind, placed.location, _spanning(key, placed.value_pos), key, detail=_line(detail))
 
 
-def _spanning(key: Position, value: Position | None) -> Position:
+def _spanning(key: Position, value: Position) -> Position:
     """The span from `key` through `value`, holding both."""
-    return key if value is None or not value.is_known else Position.covering((key, value))
+    return Position.covering((key, value)) if value.is_known else key
 
 
 def workspace_symbols(snapshots: Iterable[Snapshot], query: str) -> list[Symbol]:

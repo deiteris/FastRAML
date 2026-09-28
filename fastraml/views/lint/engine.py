@@ -524,7 +524,7 @@ class Context:
             rule,
             message,
             location=subject.location,
-            position=position or subject.key_pos or UNKNOWN,
+            position=position or subject.key_pos,
             iri=iri,
             **info,
         )
@@ -537,7 +537,7 @@ class _Located(Protocol):
     def location(self) -> str: ...
 
     @property
-    def key_pos(self) -> Position | None: ...
+    def key_pos(self) -> Position: ...
 
 
 class VisitorRule(Protocol):

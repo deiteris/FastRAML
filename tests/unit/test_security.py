@@ -182,6 +182,22 @@ class TestOAuth2:
         assert {'grant': 'example.com'} in infos(error)
 
 
+def test_a_scheme_built_with_no_source_is_placed_as_every_entity_is():
+    # docs/09 § A1: `None` where every other entity says `UNKNOWN` made each
+    # consumer guard both.
+    from fastraml.parser.security import (
+        SecuritySchemeDefinition,
+        SecuritySchemeDescription,
+        SecuritySchemeSettings,
+    )
+    from fastraml.positions import UNKNOWN
+
+    definition = SecuritySchemeDefinition(id=1, name='s', location='file:///a.raml')
+    settings = SecuritySchemeSettings(scheme_type='OAuth 2.0', location='file:///a.raml')
+    description = SecuritySchemeDescription(id=2, location='file:///a.raml')
+    assert (definition.key_pos, definition.value_pos, settings.value_pos, description.value_pos) == (UNKNOWN,) * 4
+
+
 class TestDescribedBy:
     BODY = (
         'securitySchemes:\n  s:\n    type: x-custom\n    describedBy:\n'

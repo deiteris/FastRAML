@@ -41,6 +41,7 @@ from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_string_facet, scalar_str
 from fastraml.parser.includes import note_include_ref
 from fastraml.parser.source_decode import decode_request_facet, decode_responses, query_exclusion_error
+from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
@@ -49,7 +50,6 @@ if TYPE_CHECKING:
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.directives import SecurityScheme
     from fastraml.parser.endpoints import EndPoint, Response
-    from fastraml.positions import Position
     from fastraml.registry import Raml
     from fastraml.types.base import BaseShape, Parameter, ScalarFacet
 
@@ -115,7 +115,7 @@ class SecuritySchemeSettings:
     #: The sequence-valued ones: `signatures`, `authorizationGrants`, `scopes`.
     lists: dict[str, list[str]] = field(default_factory=dict)
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
-    value_pos: Position | None = None
+    value_pos: Position = UNKNOWN
 
     def __repr__(self) -> str:
         return f'SecuritySchemeSettings({self.scheme_type!r})'
@@ -137,7 +137,7 @@ class SecuritySchemeDescription:
     query_string: BaseShape | None = None
     responses: dict[str, Response] = field(default_factory=dict)
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
-    value_pos: Position | None = None
+    value_pos: Position = UNKNOWN
 
 
 @dataclass(slots=True, eq=False)
@@ -155,8 +155,8 @@ class SecuritySchemeDefinition:
     link: SecuritySchemeDefinition | None = None
     link_uri: str | None = None
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
-    key_pos: Position | None = None
-    value_pos: Position | None = None
+    key_pos: Position = UNKNOWN
+    value_pos: Position = UNKNOWN
 
     def __repr__(self) -> str:
         return f'SecuritySchemeDefinition({self.name!r}, {self.type!r})'

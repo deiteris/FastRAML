@@ -214,7 +214,7 @@ class _Index:
     def add_at(  # noqa: PLR0913 - `add`, from a position the model holds
         self,
         uri: str,
-        at: Position | None,
+        at: Position,
         written: str,
         *,
         role: Role,
@@ -226,7 +226,7 @@ class _Index:
         """`written`, `offset` characters into the scalar at `at`, whose text is
         `text`, or `written` itself. Nothing where the source gave no position.
         """
-        if at is not None and at.is_known:
+        if at.is_known:
             start = at.within(written if text is None else text)
             self.add(uri, start.line, start.column + offset, written, role=role, kind=kind, target=target)
 

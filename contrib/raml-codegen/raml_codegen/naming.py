@@ -57,9 +57,19 @@ def field_name(text: str) -> str:
     the generated code carries the wire name beside it -- a pydantic alias, a
     query-string key -- and this is only how Python refers to it. A client
     model has no attributes and never uses this.
+
+    Never begins with an underscore: pydantic reads `_1st` as a private
+    attribute and drops the field without a word, so a property that starts
+    with a digit is `field_1st`, as datamodel-code-generator spells it.
+
+    Unique only within itself. Two properties may share a spelling, and a target
+    may not be able to use one; the plan settles both per model and per
+    operation (`targets/python/shared/plan.py`).
     """
     name = module_name(text)
-    if keyword.iskeyword(name) or name in _SHADOWED or name.startswith('__'):
+    if name.startswith('_'):
+        return f'field{name}'
+    if keyword.iskeyword(name) or name in _SHADOWED:
         return f'{name}_'
     return name
 

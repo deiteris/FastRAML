@@ -77,6 +77,8 @@ _SKIP = frozenset(
         '_unwrapped',
         '_visiting',
         'type_expr_refs',
+        # Who wrote an array's items, not what they are (docs/06 § 3).
+        'items_written',
         # A `JsonShape`'s validator `repr` carries an absolute path. `raw` is
         # emitted by `json_schema` instead, resolved, beside the projection.
         'raw',

@@ -351,15 +351,21 @@ class ObjectShape(ComplexKind):
 
 
 class ArrayShape(ComplexKind):
-    """`array`. `items` is one declaration, built before construction."""
+    """`array`. `items` is one declaration, built before construction.
 
-    __slots__ = ('items', 'max_items', 'min_items', 'unique_items')
+    `items_written` says whether this declaration wrote its items, as an
+    `items:` facet: not `Book[]`'s, which the expression built, nor ones
+    inherited, which a parent wrote (docs/06 § 3).
+    """
+
+    __slots__ = ('items', 'items_written', 'max_items', 'min_items', 'unique_items')
 
     DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {fn.FACET_ITEMS: ONE_SHAPE}
 
-    def __init__(self, base: BaseShape, *, items: BaseShape | None = None) -> None:
+    def __init__(self, base: BaseShape, *, items: BaseShape | None = None, items_written: bool = True) -> None:
         super().__init__(base)
         self.items = items
+        self.items_written = items_written
         self.min_items: ScalarFacet[int] | None = None
         self.max_items: ScalarFacet[int] | None = None
         self.unique_items: ScalarFacet[bool] | None = None

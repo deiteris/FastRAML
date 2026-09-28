@@ -158,7 +158,7 @@ is a use.
 | F1 | `declarations()` on a declaring fragment: `(kind, name, entity)` over the five tables, in declaration order | `docs/04` | seven table lists | occurrences, walk, render, authorship, service |
 | F2 | the template that contributed an operation, response, body or parameter, recorded by P4 as it merges (`docs/08` § 4) | `docs/08` | the span test; `Sources` | authorship, render |
 | F3 | on `Body`, whether its media type was written | `docs/08` § 6.3 | grouping by `key_pos` | authorship |
-| F4 | on an array shape, whether its `items` came from a type expression | `docs/06` § 3 | the `key_pos` comparison | authorship |
+| F4 | on an array shape, whether it wrote its `items` (`items_written`): not a type expression's, nor a parent's | `docs/06` § 3 | the `key_pos` comparison | authorship |
 | F5 | a security scheme definition's, settings' and description's positions spelled `UNKNOWN`, never `None`, as every other entity's | `docs/09` | the `None` checks | every consumer |
 | F6 | on each path occurrence, the URI the path resolved to | `docs/16` § 9 | `links()`'s line and text pairing; the fragment scan for a path's definition | links, definition, hover |
 

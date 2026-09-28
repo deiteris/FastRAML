@@ -150,10 +150,12 @@ An entry is listed under another only when it is written in the same file,
 inside the other's span. That test stands in for a fact the model does not
 record yet: which template contributed a member
 (`research/language-service-architecture.md` § 6, F2). So an inherited
-property is outlined under the type that wrote it, a method a resource type contributed under nothing (it is
-written in the resource type), and `items` a type expression built (`Book[]`)
-not at all: it is placed at its array's own key. A `body:` with no media type
-is one body per default media type, listed once under all their names.
+property is outlined under the type that wrote it, and a method a resource
+type contributed under nothing (it is written in the resource type). An
+array's `items` is listed only where the array wrote them (`items_written`,
+`docs/06` § 3): not for `Book[]`, nor for a parent's. A `body:` with no media
+type is one body per default media type (`media_type_written`), listed once
+under all their names.
 
 A trait or resource type is listed by name alone. Its body is decoded only
 where it is applied (`docs/08` § 5), and the model keeps it undecoded, so there

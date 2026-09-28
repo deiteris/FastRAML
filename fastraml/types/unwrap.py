@@ -500,7 +500,7 @@ def _make_multiple_inheritance_shape(walk: _Walk, parents: list[BaseShape]) -> B
     if kind is ObjectShape:
         synthetic.shape = ObjectShape(synthetic, properties={}, pattern_properties={})
     elif kind is ArrayShape:
-        synthetic.shape = ArrayShape(synthetic, items=_synthetic_items(walk, parents))
+        synthetic.shape = ArrayShape(synthetic, items=_synthetic_items(walk, parents), items_written=False)
     elif kind is not None:
         # Every remaining kind's constructor takes only the base; the two that
         # take children are handled above.

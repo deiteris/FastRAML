@@ -461,10 +461,9 @@ def _members(base: BaseShape, symbol: Symbol) -> None:
             _type(f'/{key}/', SymbolKind.PROPERTY, pattern.base, symbol)
             for key, pattern in (shape.pattern_properties or {}).items()
         )
-    # Items a type expression built, `Book[]`, are placed at the array's own key.
-    items = shape.items if base.alias is None and isinstance(shape, ArrayShape) else None
-    if items is not None and items.key_pos != base.key_pos:
-        found.append(_type('items', SymbolKind.TYPE, items, symbol))
+    # Only items this declaration wrote: not `Book[]`'s, nor a parent's.
+    if base.alias is None and isinstance(shape, ArrayShape) and shape.items_written and shape.items is not None:
+        found.append(_type('items', SymbolKind.TYPE, shape.items, symbol))
     if base.custom_facet_defs:
         facets = (_property(key, prop, symbol, SymbolKind.FACET) for key, prop in base.custom_facet_defs.items())
         found.append(_group('facets', _placed(facets, symbol)))

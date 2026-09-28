@@ -359,6 +359,8 @@ def _narrow_datetime(target: BaseShape, mine: DateTimeShape, theirs: DateTimeSha
 def _narrow_array(target: BaseShape, mine: ArrayShape, theirs: ArrayShape) -> None:
     if mine.items is None:
         mine.items = theirs.items
+        # Written by the parent, not here (docs/06 § 3).
+        mine.items_written = False
     elif theirs.items is not None:
         inherit(mine.items, theirs.items)
     _bound(target, mine, theirs, 'min_items', 'minItems constraint violation', operator.lt)

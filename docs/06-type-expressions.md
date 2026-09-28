@@ -49,7 +49,10 @@ P7 replaces an `UnknownShape` on its existing `BaseShape` with the expression's
 concrete kind. It creates fresh anonymous bases for expression-implied array
 items, optional members, and union members. Those bases inherit the outer
 expression's anchor and source expression, but sibling facets stay on the outer
-shape.
+shape. An array built from an expression records `items_written=False`: its
+items are the expression's, not an `items:` facet's. An array that inherits
+its items (P9) records the same, since a parent wrote them. A reader tells
+the items a declaration wrote by it, not by position.
 
 | AST | Result |
 |---|---|

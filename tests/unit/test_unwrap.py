@@ -73,6 +73,29 @@ class TestSingleInheritance:
         )
 
 
+class TestWhoWroteTheItems:
+    """docs/06 § 3: an array records whether it wrote its items itself."""
+
+    @pytest.mark.parametrize(
+        ('body', 'written'),
+        [
+            pytest.param('  A:\n    type: array\n    items: string\n', True, id='an items facet'),
+            pytest.param('  A: string[]\n', False, id='a type expression'),
+            pytest.param(
+                '  P:\n    type: array\n    items: string\n  A:\n    type: P\n    minItems: 1\n',
+                False,
+                id='inherited',
+            ),
+        ],
+    )
+    def test_an_array_records_whether_it_wrote_its_items(self, workspace, body, written):
+        _raml, types = unwrapped(workspace, body)
+        shape = types['A'].shape
+        assert isinstance(shape, ArrayShape)
+        assert shape.items is not None
+        assert shape.items_written is written
+
+
 class TestParentIsNotMutated:
     """docs/07 § 4 — the corruption the synthetic shape exists to prevent."""
 

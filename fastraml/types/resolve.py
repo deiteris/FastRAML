@@ -201,7 +201,9 @@ def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
             # KIND_TO_CLASS maps `array` to ArrayShape by construction.
             # An `items:` facet written beside an array expression is overridden
             # by the expression, which is the more specific statement.
-            cast('ArrayShape', base.shape).items = items.base
+            array = cast('ArrayShape', base.shape)
+            array.items = items.base
+            array.items_written = False
 
         case Optional_():
             # `T?` is sugar for `T | nil` (docs/06 § 1).

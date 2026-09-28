@@ -84,6 +84,17 @@ def _tree(symbols: list[queries.Symbol]) -> list[object]:
     ]
 
 
+def _buffered(memory_workspace, files: dict[str, str]) -> tuple[Workspace, str]:
+    """A service workspace over open buffers only, under a folder that does
+    not exist: nothing is written, and discovery counts unsaved buffers.
+    """
+    folder = path_to_file_uri(memory_workspace.root)
+    workspace = Workspace([folder])
+    for name, text in files.items():
+        workspace.open(f'{folder}/{name}', text, 1)
+    return workspace, folder
+
+
 def _starts(sites: list[queries.Site]) -> list[tuple[str, int, int]]:
     return [(site.uri.rsplit('/', 1)[-1], site.span.line, site.span.column) for site in sites]
 
@@ -240,7 +251,40 @@ class TestSymbols:
             ]),
         ]  # fmt: skip
 
-    def test_an_alias_or_a_subtype_lists_no_facet_it_did_not_declare(self, tmp_path):
+    def test_a_fragment_file_that_is_one_declaration_outlines_its_body(self, memory_workspace):
+        # docs/21 § 4: the file is the declaration, so its members are at the
+        # top; the API that includes each lists none of them.
+        files = {
+            'api.raml': '#%RAML 1.0\ntitle: T\ndocumentation:\n  - !include home.raml\n'
+            'securitySchemes:\n  basic: !include basic.raml\ntypes:\n  User: !include user.raml\n',
+            'user.raml': '#%RAML 1.0 DataType\ntype: object\nproperties:\n  name: string\n',
+            'basic.raml': '#%RAML 1.0 SecurityScheme\ntype: Basic Authentication\n'
+            'describedBy:\n  headers:\n    Authorization: string\n  responses:\n    401:\n',
+            'home.raml': '#%RAML 1.0 DocumentationItem\ntitle: Home\ncontent: hi\n',
+        }
+        workspace, folder = _buffered(memory_workspace, files)
+        section = SymbolKind.SECTION
+
+        def outlined(name: str):
+            uri = f'{folder}/{name}'
+            return _tree(outline.document_symbols(next(workspace.serving(uri)), uri))
+
+        assert outlined('user.raml') == [('name', SymbolKind.PROPERTY, 'string')]
+        assert outlined('basic.raml') == [('describedBy', section, '', [
+            ('headers', section, '', [('Authorization', SymbolKind.PARAMETER, 'string')]),
+            ('401', SymbolKind.RESPONSE, ''),
+        ])]  # fmt: skip
+        assert outlined('home.raml') == [('documentation', section, '', [('Home', SymbolKind.DOCUMENTATION, '')])]
+        assert [each[0] for each in outlined('api.raml')] == ['title', 'securitySchemes', 'types']
+
+    def test_a_documentation_item_file_no_api_reads_outlines_its_title(self, memory_workspace):
+        files = {'home.raml': '#%RAML 1.0 DocumentationItem\ntitle: Home\ncontent: hi\n'}
+        workspace, folder = _buffered(memory_workspace, files)
+        uri = f'{folder}/home.raml'
+        found = outline.document_symbols(next(workspace.serving(uri)), uri)
+        assert _tree(found) == [('documentation', SymbolKind.SECTION, '', [('Home', SymbolKind.DOCUMENTATION, '')])]
+
+    def test_an_alias_or_a_subtype_lists_no_facet_it_did_not_declare(self, memory_workspace):
         # docs/16 § 10: an alias shares its referent's `facets:` container
         # (docs/07 § 3), and a subtype holds its parents' after unwrap.
         document = (
@@ -249,9 +293,8 @@ class TestSymbols:
             '  B:\n    type: A\n    f: x\n    facets:\n      g?: integer\n'
             '  C: A\n'
         )
-        write_files(tmp_path, {'api.raml': document})
-        folder = path_to_file_uri(tmp_path)
-        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
         section, facet = SymbolKind.SECTION, SymbolKind.FACET
         types = _tree(outline.document_symbols(snapshot, f'{folder}/api.raml'))[1]
         assert types == ('types', section, '', [

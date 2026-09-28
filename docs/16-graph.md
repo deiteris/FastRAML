@@ -356,8 +356,10 @@ the master's `types`, a method on a master resource.
   `every_declaration` (`docs/04` § 1).
 - `metadata`, `base_uri_parameters`, `documentation`, `uses` (each
   `(raml, uri)`): the API's `title`, `version` and `baseUri`, its base URI
-  parameters and documentation items located in `uri`, and `uri`'s own
-  `uses:`.
+  parameters and documentation items located in `uri` (a DocumentationItem
+  file's own item among them), and `uri`'s own `uses:`.
+- `fragment_body(raml, uri)`: what a DataType, AnnotationTypeDeclaration or
+  SecurityScheme file is, its shape or definition.
 - `properties(base)`, `pattern_properties(base)`, `facets(base)`: the members
   a type declares, not those it inherits. An inherited member keeps its
   declaration's shape, which a parent holds too; an alias declares none, since

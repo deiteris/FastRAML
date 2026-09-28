@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping
 
     from fastraml.parser.directives import DirectiveRef, SecurityScheme
+    from fastraml.parser.documentation import DocumentationItem
     from fastraml.parser.endpoints import Body, Operation, Request, Response
     from fastraml.parser.templates import TemplateDefinition
     from fastraml.service.workspace import Snapshot
@@ -51,12 +52,7 @@ def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
     ]
     parameters = (_parameter(name, param) for name, param in authored.base_uri_parameters(raml, uri))
     found.append(_group('baseUriParameters', parameters))
-    items = (
-        symbol(str(item.title.value), SymbolKind.DOCUMENTATION, item, key=item.title.value_pos)
-        for item in authored.documentation(raml, uri)
-        if item.title is not None
-    )
-    found.append(_group('documentation', items))
+    found.append(_group('documentation', map(_documentation, authored.documentation(raml, uri))))
     uses = (symbol(name, SymbolKind.LIBRARY, link, link.value) for name, link in authored.uses(raml, uri).items())
     found.append(_group('uses', uses))
     sections: dict[str, list[Symbol | None]] = {}
@@ -64,7 +60,23 @@ def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
         sections.setdefault(key, []).append(_declaration(name, DECLARATION_KINDS[key], entity))
     found += (_group(key, entries) for key, entries in sections.items())
     found += (_resource(written) for written in authored.resources(raml, uri))
-    return _ordered(found)
+    found += _fragment_body(authored.fragment_body(raml, uri))
+    return _here(uri, found)
+
+
+def _fragment_body(body: BaseShape | SecuritySchemeDefinition | None) -> list[Symbol | None]:
+    """What a fragment file that is one declaration wrote, at the top: the
+    file is the declaration, and its name is the file's.
+    """
+    if isinstance(body, BaseShape):
+        return _member_symbols(body)
+    return [] if body is None else [_described(body)]
+
+
+def _documentation(item: DocumentationItem) -> Symbol | None:
+    """An item has no key, and selects its title."""
+    title = item.title
+    return None if title is None else symbol(str(title.value), SymbolKind.DOCUMENTATION, item, key=title.value_pos)
 
 
 def _declaration(name: str, kind: SymbolKind, entity: object) -> Symbol | None:
@@ -72,9 +84,8 @@ def _declaration(name: str, kind: SymbolKind, entity: object) -> Symbol | None:
         return _type(name, kind, entity)
     if isinstance(entity, SecuritySchemeDefinition):
         found = symbol(name, kind, entity, entity.resolved().type)
-        described = entity.described_by
-        if found is not None and described is not None:
-            _adopt(found, [_group('describedBy', _message(described, entity))])
+        if found is not None:
+            _adopt(found, [_described(entity)])
         return found
     return symbol(name, kind, cast('TemplateDefinition', entity))
 
@@ -89,9 +100,20 @@ def _type(name: str, kind: SymbolKind, base: BaseShape) -> Symbol | None:
     return found
 
 
+def _described(definition: SecuritySchemeDefinition) -> Symbol | None:
+    """A security scheme's `describedBy`, as the definition wrote it."""
+    described = definition.described_by
+    return None if described is None else _group('describedBy', _message(described, definition))
+
+
 def _members(base: BaseShape, parent: Symbol) -> None:
-    """Add to `parent` the members `base` declares: not those it inherits,
-    nor `items` an expression built (docs/16 § 10).
+    """Add to `parent` the members `base` declares."""
+    _adopt(parent, _member_symbols(base))
+
+
+def _member_symbols(base: BaseShape) -> list[Symbol | None]:
+    """The members `base` declares: not those it inherits, nor `items` an
+    expression built (docs/16 § 10).
     """
     found: list[Symbol | None] = [
         _type(key if prop.required else f'{key}?', SymbolKind.PROPERTY, prop.base)
@@ -107,7 +129,7 @@ def _members(base: BaseShape, parent: Symbol) -> None:
         _type(key if prop.required else f'{key}?', SymbolKind.FACET, prop.base) for key, prop in authored.facets(base)
     )
     found.append(_group('facets', facets))
-    _adopt(parent, found)
+    return found
 
 
 def _parameter(name: str, param: Parameter) -> Symbol | None:
@@ -241,10 +263,15 @@ def _group(name: str, children: Iterable[Symbol | None], kind: SymbolKind = Symb
 
 
 def _adopt(parent: Symbol, found: Iterable[Symbol | None]) -> None:
-    """Add `found` to `parent`, in the order written: those in its file only,
-    since a member another file wrote, an `!include`d type's, is that file's.
+    """Add `found` to `parent`, as `_here` keeps them."""
+    parent.children += _here(parent.uri, found)
+
+
+def _here(uri: str, found: Iterable[Symbol | None]) -> list[Symbol]:
+    """`found`, in the order written: those in `uri` only, since a member
+    another file wrote, an `!include`d type's, is that file's.
     """
-    parent.children += _ordered(each for each in found if each is None or each.uri == parent.uri)
+    return _ordered(each for each in found if each is None or each.uri == uri)
 
 
 def _ordered(found: Iterable[Symbol | None]) -> list[Symbol]:

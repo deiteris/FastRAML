@@ -20,7 +20,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-from fastraml.parser.fragments import APIFragment, every_declaration
+from fastraml.parser.fragments import (
+    APIFragment,
+    DataTypeFragment,
+    DocumentationItemFragment,
+    SecuritySchemeFragment,
+    every_declaration,
+)
 from fastraml.types.complex_ import ArrayShape, ObjectShape
 
 if TYPE_CHECKING:
@@ -30,6 +36,7 @@ if TYPE_CHECKING:
     from fastraml.parser.documentation import DocumentationItem
     from fastraml.parser.endpoints import Body, EndPoint, Operation
     from fastraml.parser.fragments import Declaration, LibraryLink
+    from fastraml.parser.security import SecuritySchemeDefinition
     from fastraml.positions import Position
     from fastraml.registry import Raml
     from fastraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet
@@ -42,6 +49,7 @@ __all__ = [
     'declarations',
     'documentation',
     'facets',
+    'fragment_body',
     'items',
     'members',
     'metadata',
@@ -141,6 +149,22 @@ def base_uri_parameters(raml: Raml, uri: str) -> Iterator[tuple[str, Parameter]]
         yield from ((name, param) for name, param in api.base_uri_parameters.items() if param.base.location == uri)
 
 
+def fragment_body(raml: Raml, uri: str) -> BaseShape | SecuritySchemeDefinition | None:
+    """What a fragment file that is one declaration wrote as its body: a
+    DataType's or AnnotationTypeDeclaration's shape, or a SecurityScheme's
+    definition. A DocumentationItem's is `documentation`'s; a Trait's or
+    ResourceType's body is decoded only where it is applied (docs/08 § 5);
+    a NamedExample's are examples, which no outline lists.
+    """
+    fragment = raml.fragments.get(uri)
+    if isinstance(fragment, DataTypeFragment):
+        return fragment.shape
+    if isinstance(fragment, SecuritySchemeFragment):
+        found: SecuritySchemeDefinition | None = fragment.definition
+        return found
+    return None
+
+
 def uses(raml: Raml, uri: str) -> Mapping[str, LibraryLink]:
     """The `uses:` entries `uri` wrote: its own fragment's, all of them."""
     fragment = raml.fragments.get(uri)
@@ -156,10 +180,17 @@ def declarations(raml: Raml, uri: str) -> Iterator[tuple[str, str, Declaration]]
 
 
 def documentation(raml: Raml, uri: str) -> Iterator[DocumentationItem]:
-    """The API's documentation items written in `uri`."""
+    """The API's documentation items written in `uri`, or the one a
+    DocumentationItem file is, which the API lists when it includes it.
+    """
     api = raml.entry_point
-    if isinstance(api, APIFragment):
-        yield from (item for item in api.documentation if item.location == uri)
+    found = [item for item in api.documentation if item.location == uri] if isinstance(api, APIFragment) else []
+    fragment = raml.fragments.get(uri)
+    if isinstance(fragment, DocumentationItemFragment) and fragment.item is not None:
+        item = fragment.item
+        if all(each is not item for each in found):
+            found.append(item)
+    return iter(found)
 
 
 class _Member(Protocol):

@@ -169,6 +169,12 @@ A trait or resource type is listed by name alone. Its body is decoded only
 where it is applied (`docs/08` § 5), and the model keeps it undecoded, so there
 is nothing else to list. A documentation item has no key and selects its title.
 
+A fragment file that is one declaration is that declaration, named after the
+file, so its outline holds the body at the top: a DataType's or annotation
+type's members, a SecurityScheme's `describedBy`, a DocumentationItem's title,
+beside its `uses:`. A Trait or ResourceType file lists its `uses:` only, and a
+NamedExample file its `uses:` only, since examples are not outlined.
+
 **Hierarchy items across snapshots.** A type hierarchy item is found again by
 where its name is written, never by its id: ids do not survive a reparse
 (`archive/language-server.md` § 3.2).

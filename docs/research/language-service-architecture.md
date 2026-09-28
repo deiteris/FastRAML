@@ -199,13 +199,15 @@ key; a URI parameter P6 synthesizes was never written; a shape with no name,
 or one standing for a type it names (`Book[]`'s items, a recursive
 reference, F4), is placed at the key it is written under; each is exempt.
 Documentation items, examples and `uses:` entries, which the walk does not
-report, are not checked yet.
+report, are read from the model: an item is placed at its title, which its
+span holds, and a single example is keyed `example`.
 
-It found three defects, fixed first: a container a merge or an Overlay
+It found four defects, fixed first: a container a merge or an Overlay
 rebuilt ended where its grafted content did, before its own start or in
 another file (`docs/03` § 1); what a library's resource type contributed was
-located in the applying file (`docs/08` § 4.2); and a key built with no
-source read as known (`docs/11` § 1).
+located in the applying file (`docs/08` § 4.2); a key built with no source
+read as known (`docs/11` § 1); and an example an extension document wrote
+was located in the master (`docs/19` § 5.3).
 
 ## 8. Failure containment
 

@@ -11,6 +11,10 @@ Every entity the walk reaches that the model positions:
    resource's span. Members a template can contribute are not checked yet:
    what a template contributed is not recorded (§ 6, F2).
 
+What the walk does not report is checked from the model: each `uses:` entry,
+each documentation item, placed at its title, which its span holds, and each
+example, whose single form is keyed `example`.
+
 A violation is a parser defect, fixed in its pass. Exempt, each for its
 reason: a request, which has the method's key; a URI parameter P6
 synthesized, and its shape, which were never written; a shape with no name,
@@ -28,8 +32,9 @@ from typing import TYPE_CHECKING, Any, Final
 import pytest
 
 from fastraml import ParseOptions, RamlError, parse_lenient
-from fastraml.positions import Position
+from fastraml.positions import UNKNOWN, Position
 from fastraml.types.complex_ import RecursiveShape
+from fastraml.types.examples import examples_of
 from fastraml.views.walk import Walk
 from tests.tck.conftest import case_directory, collect_fixtures, fixture_id, tck_root
 
@@ -103,25 +108,74 @@ def violations(raml: Raml) -> list[str]:
         # A property is a record; its shape holds where it was written.
         placed = entity.base if role in {'property_', 'pattern_property'} else entity
         location = getattr(placed, 'location', None) or entity.base.location
-        key: Position = placed.key_pos
-        value: Position = placed.value_pos
-        if not key.is_known:
-            continue
-        where = f'{role} {name} at {location.rsplit("/", 1)[-1]}:{key}'
-        text = lines.get(location)
-        if key.line != key.end_line or text is None or key.line > len(text):
-            found.append(f'{where}: its key is not one line of its file')
-            continue
-        written = text[key.line - 1][key.column - 1 : key.end_column - 1]
         forms = _written(name) | ({'body'} if role == 'payload' else set())
-        if written not in forms and '<<' not in written:
-            found.append(f'{where}: its key reads {written!r}')
-        if value.is_known and (
-            (value.end_line, value.end_column) < (value.line, value.column)
-            or (value.line, value.column) < (key.line, key.column)
-        ):
-            found.append(f'{where}: its value {value}-{value.end_line}:{value.end_column} is misplaced')
-    return found + _nesting(raml)
+        found += _placed(lines, f'{role} {name}', location, key=placed.key_pos, value=placed.value_pos, forms=forms)
+    return found + _unwalked(raml, lines) + _nesting(raml)
+
+
+def _placed(  # noqa: PLR0913 - an entity's name, file, key, value and spellings
+    lines: dict[str, list[str]], what: str, location: str, *, key: Position, value: Position, forms: set[str]
+) -> list[str]:
+    """Rules 1 and 2 for one entity: its key is one line reading one of
+    `forms`, or a `<<parameter>>`; its value starts at or after its key and
+    ends after it starts.
+    """
+    if not key.is_known:
+        return []
+    where = f'{what} at {location.rsplit("/", 1)[-1]}:{key}'
+    text = lines.get(location)
+    if key.line != key.end_line or text is None or key.line > len(text):
+        return [f'{where}: its key is not one line of its file']
+    found: list[str] = []
+    written = text[key.line - 1][key.column - 1 : key.end_column - 1]
+    if written not in forms and '<<' not in written:
+        found.append(f'{where}: its key reads {written!r}')
+    if value.is_known and (
+        (value.end_line, value.end_column) < (value.line, value.column)
+        or (value.line, value.column) < (key.line, key.column)
+    ):
+        found.append(f'{where}: its value {value}-{value.end_line}:{value.end_column} is misplaced')
+    return found
+
+
+def _unwalked(raml: Raml, lines: dict[str, list[str]]) -> list[str]:
+    """Rules 1 to 3 for what the walk does not report: `uses:` entries,
+    documentation items and examples.
+
+    A documentation item has no key: its title's value is where its name is
+    written, and its span holds it. A single `example:` is keyed `example`.
+    """
+    found: list[str] = []
+    for fragment in raml.fragments.values():
+        for alias, link in fragment.uses.items():
+            found += _placed(
+                lines, f'uses {alias}', link.location, key=link.key_pos, value=link.value_pos, forms=_written(alias)
+            )
+    api = raml.entry_point
+    items = [*getattr(api, 'documentation', ())]
+    items += [item for fragment in raml.fragments.values() if (item := getattr(fragment, 'item', None)) is not None]
+    for item in dict.fromkeys(items):
+        title = item.title
+        if title is None:
+            continue
+        name = str(title.value)
+        found += _placed(
+            lines, f'documentation {name}', item.location, key=title.value_pos, value=UNKNOWN, forms=_written(name)
+        )
+        if item.value_pos.is_known and not item.value_pos.contains(title.value_pos):
+            found.append(f'documentation {name}: its title lies outside it')
+    examples = {id(example): example for base in raml.shapes for example in examples_of(base)}
+    for example in examples.values():
+        forms = _written(example.name) | {'example'}
+        found += _placed(
+            lines,
+            f'example {example.name}',
+            example.location,
+            key=example.key_pos,
+            value=example.value_pos,
+            forms=forms,
+        )
+    return found
 
 
 def _nesting(raml: Raml) -> list[str]:
@@ -179,17 +233,37 @@ def _misplace_child(raml: Raml) -> None:
     child.key_pos = child.value_pos = Position(2, 1, 2, 3)
 
 
+def _misplace_uses(raml: Raml) -> None:
+    raml.entry_point.uses['lib'].key_pos = Position(2, 1, 2, 4)
+
+
+def _misplace_title(raml: Raml) -> None:
+    (item,) = raml.entry_point.documentation
+    item.value_pos = Position(1, 1, 1, 2)
+
+
+def _misplace_example(raml: Raml) -> None:
+    raml.entry_point.types['T'].example.key_pos = Position(2, 1, 2, 6)
+
+
 @pytest.mark.parametrize(
     ('move', 'rule'),
     [
         pytest.param(_misplace_key, 'its key reads', id='a key off its name'),
         pytest.param(_misplace_value, 'is misplaced', id='a value before its key'),
         pytest.param(_misplace_child, 'outside /a', id='a resource outside its parent'),
+        pytest.param(_misplace_uses, 'uses lib', id='a uses entry off its alias'),
+        pytest.param(_misplace_title, 'title lies outside it', id='a documentation title outside its item'),
+        pytest.param(_misplace_example, 'example', id='an example off its key'),
     ],
 )
 def test_a_misplaced_entity_breaks_the_law(memory_workspace, move, rule):
     # The law's own check: each rule reports what breaks it.
-    root = memory_workspace({'api.raml': '#%RAML 1.0\ntitle: T\n/a:\n  get:\n    description: d\n  /b:\n'})
+    api = (
+        '#%RAML 1.0\ntitle: T\nuses:\n  lib: lib.raml\ndocumentation:\n  - title: Home\n    content: c\n'
+        'types:\n  T:\n    type: string\n    example: x\n/a:\n  get:\n    description: d\n  /b:\n'
+    )
+    root = memory_workspace({'api.raml': api, 'lib.raml': '#%RAML 1.0 Library\n'})
     raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_text=True))
     assert violations(raml) == []
     move(raml)

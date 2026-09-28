@@ -22,6 +22,7 @@ from fastraml.parser.source_ir import make_source_endpoint
 from fastraml.parser.templates import make_template_definition
 from fastraml.parser.traits import TraitDefinition
 from fastraml.registry import ParseCtx, Raml
+from fastraml.types.examples import make_example
 from fastraml.uris import path_to_file_uri
 from fastraml.yamlnode import compose, node_error, pairs
 
@@ -166,6 +167,15 @@ class TestDecodingSites:
         raml.mark_authored(root, Document(EXTENSION))
         key, value = root.content
         assert make_data_node(raml, key, value, MASTER).location == EXTENSION
+
+    def test_an_example_is_located_where_its_key_was_written(self):
+        # Its key is the extension's, so the placement law reads its name there.
+        raml = Raml()
+        root = tree('test: {name: 7}\n')
+        raml.mark_authored(root, Document(EXTENSION))
+        key, value = root.content
+        example = make_example(raml, key, value, 'test', MASTER)
+        assert (example.location, example.data.location) == (EXTENSION, EXTENSION)
 
     def test_an_include_resolves_relative_to_its_author(self, tmp_path):
         # Spec section Overlays and Extensions: paths resolve "relative to the

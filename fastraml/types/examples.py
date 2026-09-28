@@ -106,7 +106,11 @@ def examples_of(base: BaseShape) -> Iterator[Example]:
 def make_example(raml: Raml, key: Node, value_node: Node, name: str, location: str) -> Example:
     """Build one example, written at `key`, choosing between the two forms by
     the `value` key.
+
+    An example an Overlay or Extension added or replaced is located in that
+    document, as its key is (docs/19 § 5.3).
     """
+    location = raml.document_location(value_node, location)
     example = Example(
         id=raml.next_id(),
         name=name,

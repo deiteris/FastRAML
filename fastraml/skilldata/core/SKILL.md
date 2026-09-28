@@ -319,13 +319,15 @@ fastraml graph -w . api.raml                 # Turtle (the default)
 fastraml graph -w . api.raml --format json   # Nodes and edges as JSON
 fastraml graph -w . api.raml --format dot    # Graphviz
 fastraml graph -w . api.raml --format nt     # N-Triples
-fastraml openapi -w . api.raml               # OpenAPI 3.0.3 YAML
-fastraml openapi -w . api.raml --format json # OpenAPI 3.0.3 JSON
-fastraml openapi -w . api.raml -o api.yaml   # To a file, UTF-8 with LF newlines
+fastraml convert openapi -w . api.raml               # OpenAPI 3.0.3 YAML
+fastraml convert openapi -w . api.raml --format json # OpenAPI 3.0.3 JSON
+fastraml convert openapi -w . api.raml -o api.yaml   # To a file, UTF-8 with LF newlines
+fastraml convert jsonschema -w . api.raml Book       # One effective type as JSON Schema
+fastraml convert raml -w . schema.json              # JSON Schema to RAML
 fastraml serve -w . api.raml                 # In a browser (needs fastraml-viewer)
 ```
 
-`tree`, `graph` and `openapi` feed another tool. `serve` is for a person to
+`tree`, `graph` and `convert` feed another tool. `serve` is for a person to
 read: it shows the `tree` output in a browser, on loopback by default, and exits
 1 naming the package when `fastraml-viewer` is missing. Choose `tree` when you
 need the contents, because it inlines examples, defaults and every container.
@@ -336,7 +338,7 @@ Both assign the same addresses to the same nodes, so an address from one names
 the same thing in the other.
 
 **Write these to a file with `-o FILE`, never a shell redirect.** `graph`,
-`openapi`, `tree`, `query` and `compat` all take it, and the file is UTF-8 with
+`convert`, `tree`, `query` and `compat` all take it, and the file is UTF-8 with
 LF newlines whatever shell or platform ran the command. A redirect on Windows
 writes CRLF, so output you commit stops matching what regenerates it. On
 `compat` it matters twice over: that command exits 1 whenever something is

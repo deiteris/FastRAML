@@ -529,6 +529,46 @@ class JsonShape(ComplexKind):
         """
         return self._cached_defs
 
+    def as_shape_definitions(self) -> dict[str, BaseShape]:
+        """Named reference targets and every top-level definition, including unused ones.
+
+        `as_shape_defs()` is the traversal's encountered references; an export
+        also needs definitions the root did not reference. Project those only
+        when requested, without changing the cached projection or parser model.
+        """
+        root = self.as_shape()
+        if self._compiled is None:
+            return {}
+        defs = dict(self._cached_defs or {})
+        contents = self._compiled.contents
+        declared: dict[str, BaseShape] = {}
+        if isinstance(contents, dict):
+            _, _, pointer = self._compiled.uri.partition('#')
+            context = _Projection(self.base, self._compiled.resolver, defs, pointer)
+            for keyword, entries in contents.items():
+                if keyword not in {'definitions', '$defs'}:
+                    continue
+                if not isinstance(entries, dict):
+                    continue
+                for name in entries:
+                    reference = f'#/{keyword}/{escape_json_pointer_segment(name)}'
+                    candidate, suffix = name, 2
+                    while candidate in declared:
+                        candidate = f'{name}{suffix}'
+                        suffix += 1
+                    declared[candidate] = _project_reference(context, reference, {})
+        # A local alias to `node.json` can register the same shape under both
+        # `Node` (the author's definition) and `node` (the file stem). The
+        # declared name wins; otherwise recursive references would name the
+        # file stem without a corresponding Library declaration.
+        result = dict(declared)
+        used = set(result.values())
+        if root is not None:
+            _collect_projection_names(root, result, used, declared, defs)
+        for name, base in defs.items():
+            _claim_projection_name(result, used, name, base)
+        return result
+
     @property
     def canonical_uri(self) -> str | None:
         """The subschema's identity, or `None` for a schema written inline.
@@ -555,10 +595,12 @@ class JsonShape(ComplexKind):
 
     @property
     def document_uri(self) -> str | None:
-        """The document this schema compiled from; `None` if it was inline.
+        """The resolver's base document, including the RAML file for inline schemas.
 
         Not `base.location`, which for `type: !include person.json` is the RAML
-        file. The resolver is re-based onto the document it retrieved.
+        file. The resolver is re-based onto the document it retrieved. For an
+        inline schema this is the RAML file, not a schema identity; use
+        `canonical_uri` to distinguish it from a schema file.
         """
         if self._compiled is None:
             return None
@@ -583,6 +625,52 @@ class JsonShape(ComplexKind):
         if self._cached_schema is None:
             self._cached_schema = _bundle(self._compiled, self.canonical_uri)
         return self._cached_schema
+
+
+def _claim_projection_name(found: dict[str, BaseShape], used: set[BaseShape], name: str, base: BaseShape) -> None:
+    if base in used:
+        return
+    candidate, suffix = name, 2
+    while candidate in found:
+        candidate = f'{name}{suffix}'
+        suffix += 1
+    found[candidate] = base
+    used.add(base)
+
+
+def _collect_projection_names(
+    root: BaseShape,
+    found: dict[str, BaseShape],
+    used: set[BaseShape],
+    declared: dict[str, BaseShape],
+    defs: dict[str, BaseShape],
+) -> None:
+    """Find named targets inside cached subtrees that did not re-enter the walk."""
+    stack = list(reversed([root, *declared.values(), *defs.values()]))
+    seen: set[BaseShape] = set()
+    while stack:
+        base = stack.pop()
+        if base in seen:
+            continue
+        seen.add(base)
+        if (
+            base is not root
+            and base.location != root.location
+            and base.name
+            and '#' in base.location
+            and not isinstance(base.shape, RecursiveShape)
+        ):
+            _claim_projection_name(found, used, base.name, base)
+        shape = base.shape
+        if isinstance(shape, RecursiveShape):
+            stack.append(shape.head)
+        elif isinstance(shape, ObjectShape):
+            stack.extend(reversed([prop.base for prop in (shape.properties or {}).values()]))
+            stack.extend(reversed([prop.base for prop in (shape.pattern_properties or {}).values()]))
+        elif isinstance(shape, ArrayShape) and shape.items is not None:
+            stack.append(shape.items)
+        elif isinstance(shape, UnionShape):
+            stack.extend(reversed(shape.any_of or ()))
 
 
 def projected(base: BaseShape) -> BaseShape:
@@ -741,7 +829,10 @@ def _view_base(context: _Projection, name: str | None = None) -> BaseShape:
     return base
 
 
-def _project(context: _Projection, contents: Any, visiting: dict[int, BaseShape]) -> BaseShape:
+type _Visiting = dict[int, BaseShape | None]
+
+
+def _project(context: _Projection, contents: Any, visiting: _Visiting) -> BaseShape:
     """One schema node, projected onto the nearest RAML shape (docs/10 § 7)."""
     # `visiting` holds one entry per level currently open — it is added to
     # before descending and removed in a `finally` — so its size *is* the depth,
@@ -763,7 +854,13 @@ def _project(context: _Projection, contents: Any, visiting: dict[int, BaseShape]
 
     reference = contents.get('$ref')
     if isinstance(reference, str):
-        return _project_reference(context, reference, visiting)
+        # Reference-only chains can cycle without ever opening a body. Mark
+        # these nodes too; a back-edge to one cannot yield a RAML shape head.
+        visiting[id(contents)] = None
+        try:
+            return _project_reference(context, reference, visiting)
+        finally:
+            del visiting[id(contents)]
     if 'if' in contents:
         raise _unsupported(context, 'if/then/else')
 
@@ -775,7 +872,7 @@ def _project(context: _Projection, contents: Any, visiting: dict[int, BaseShape]
         del visiting[id(contents)]
 
 
-def _project_reference(context: _Projection, reference: str, visiting: dict[int, BaseShape]) -> BaseShape:
+def _project_reference(context: _Projection, reference: str, visiting: _Visiting) -> BaseShape:
     resolved = context.resolver.lookup(reference)
     # Where the reference lands, split the way `Resolver.lookup` splits it. A
     # reference moves the walk outright rather than deeper, so this replaces the
@@ -783,8 +880,10 @@ def _project_reference(context: _Projection, reference: str, visiting: dict[int,
     # for a bare `#...`: it appends the fragment to the base, which is what
     # `lookup` shortcuts to.
     document, target = urldefrag(urljoin(_document_of(context.resolver) or '', reference))
-    head = visiting.get(id(resolved.contents))
-    if head is not None:
+    if id(resolved.contents) in visiting:
+        head = visiting[id(resolved.contents)]
+        if head is None:
+            raise _unsupported(context, 'reference-only cycle')
         # The back-edge of a cycle, which is exactly what P9 produces for a
         # recursive RAML type (docs/07 § 6).
         base = _view_base(context, head.name)
@@ -799,7 +898,7 @@ def _project_reference(context: _Projection, reference: str, visiting: dict[int,
     name = _subschema_name(uri) if target else None
     if name is not None:
         existing = context.defs.get(name)
-        if existing is not None:
+        if existing is not None and existing.location == uri:
             return existing
     # Only a target in a file of its own has a canonical URI to share under. An
     # inline schema compiles under the RAML file's URI, which it shares with
@@ -836,7 +935,7 @@ def _subschema_name(location: str) -> str | None:
     if not pointer:
         return uri_stem(document) or None
     parent, _, key = pointer.rpartition('/')
-    return key if parent in {'/definitions', '/$defs'} else None
+    return key.replace('~1', '/').replace('~0', '~') if parent in {'/definitions', '/$defs'} else None
 
 
 def _pointer_tail(reference: str) -> str | None:
@@ -853,7 +952,7 @@ def _pointer_tail(reference: str) -> str | None:
     return segment or None
 
 
-def _project_body(context: _Projection, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+def _project_body(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
     if contents.get('allOf'):
         return _project_all_of(context, contents['allOf'], base, visiting)
     for keyword in ('oneOf', 'anyOf'):
@@ -939,7 +1038,7 @@ def _inferred_type(contents: dict) -> str | None:
     return implied.pop() if len(implied) == 1 else None
 
 
-def _project_all_of(context: _Projection, members: list, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+def _project_all_of(context: _Projection, members: list, base: BaseShape, visiting: _Visiting) -> BaseShape:
     """Sequential inheritance, which is the nearest thing RAML has to `allOf`."""
     merged = _project(context.into('allOf', '0'), members[0], visiting)
     for index, member in enumerate(members[1:], start=1):
@@ -960,14 +1059,14 @@ def _project_all_of(context: _Projection, members: list, base: BaseShape, visiti
 
 
 def _project_union(
-    context: _Projection, keyword: str, members: list, base: BaseShape, visiting: dict[int, BaseShape]
+    context: _Projection, keyword: str, members: list, base: BaseShape, visiting: _Visiting
 ) -> BaseShape:
     projected = [_project(context.into(keyword, str(i)), member, visiting) for i, member in enumerate(members)]
     return _kind(base, TYPE_UNION, UnionShape, any_of=projected)
 
 
 def _project_type(  # noqa: PLR0911 - one return per projected kind
-    context: _Projection, declared: str, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]
+    context: _Projection, declared: str, contents: dict, base: BaseShape, visiting: _Visiting
 ) -> BaseShape:
     match declared:
         case 'object':
@@ -1000,7 +1099,7 @@ def _project_type(  # noqa: PLR0911 - one return per projected kind
             raise _unsupported(context, f'type: {declared}')
 
 
-def _project_object(context: _Projection, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+def _project_object(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
     extras = contents.get('additionalProperties')
     if isinstance(extras, dict):
         raise _unsupported(context, 'schema-form additionalProperties')
@@ -1027,7 +1126,7 @@ def _project_object(context: _Projection, contents: dict, base: BaseShape, visit
     return _attach(base, TYPE_OBJECT, shape)
 
 
-def _project_array(context: _Projection, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+def _project_array(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
     items = contents.get('items')
     if isinstance(items, list):
         raise _unsupported(context, 'tuple-form items')

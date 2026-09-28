@@ -25,7 +25,7 @@ BAD = API + 'types:\n  T:\n    type: integer\n    example: nope\n'
 
 
 def test_openapi_export_supports_json(files, capsys):
-    assert main(['openapi', '--format', 'json', files('good.raml')]) == EXIT_OK
+    assert main(['convert', 'openapi', '--format', 'json', files('good.raml')]) == EXIT_OK
     captured = capsys.readouterr()
     document = json.loads(captured.out)
     assert document['openapi'] == '3.0.3'
@@ -34,14 +34,137 @@ def test_openapi_export_supports_json(files, capsys):
 
 
 def test_openapi_export_defaults_to_yaml(files, capsys):
-    assert main(['openapi', files('good.raml')]) == EXIT_OK
+    assert main(['convert', 'openapi', files('good.raml')]) == EXIT_OK
     captured = capsys.readouterr()
     document = yaml.safe_load(captured.out)
     assert document['info']['title'] == 'Demo'
     assert captured.err == ''
 
 
-@pytest.mark.parametrize('verb', ['tree', 'graph', 'openapi'])
+def test_convert_jsonschema_exports_a_named_effective_type_with_o(workspace, tmp_path, capsys):
+    root = workspace(
+        {
+            'api.raml': API
+            + 'types:\n  Parent:\n    properties:\n      code: string\n'
+            + '  Child:\n    type: Parent\n    properties:\n      count?: integer\n'
+        }
+    )
+    target = tmp_path / 'child.json'
+    assert main(['convert', 'jsonschema', str(root / 'api.raml'), 'Child', '-o', str(target)]) == EXIT_OK
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ''
+    assert b'\r' not in target.read_bytes()
+    document = json.loads(target.read_text(encoding='utf-8'))
+    assert document['$ref'] == '#/definitions/Child'
+    assert document['definitions']['Child']['required'] == ['code']
+    assert list(document['definitions']['Child']['properties']) == ['count', 'code']
+
+
+def test_convert_jsonschema_accepts_a_data_type_fragment(workspace, capsys):
+    root = workspace({'type.raml': '#%RAML 1.0 DataType\ntype: string\nminLength: 2\n'})
+    assert main(['convert', 'jsonschema', str(root / 'type.raml')]) == EXIT_OK
+    captured = capsys.readouterr()
+    document = json.loads(captured.out)
+    assert document['definitions'][document['$ref'].rsplit('/', 1)[-1]] == {'type': 'string', 'minLength': 2}
+    assert captured.err == ''
+
+
+def test_convert_jsonschema_accepts_a_named_library_type(workspace, capsys):
+    root = workspace({'library.raml': '#%RAML 1.0 Library\ntypes:\n  Code:\n    type: integer\n    minimum: 1\n'})
+    assert main(['convert', 'jsonschema', str(root / 'library.raml'), 'Code']) == EXIT_OK
+    document = json.loads(capsys.readouterr().out)
+    assert document['definitions']['Code'] == {'type': 'integer', 'minimum': 1}
+
+
+def test_convert_jsonschema_bundles_refs_in_an_included_schema(workspace, capsys):
+    import jsonschema
+
+    root = workspace(
+        {
+            'api.raml': API + 'types:\n  User: !include user.json\n',
+            'user.json': json.dumps({'type': 'object', 'properties': {'id': {'$ref': 'id.json'}}}),
+            'id.json': json.dumps({'type': 'integer', 'minimum': 1}),
+        }
+    )
+    assert main(['convert', 'jsonschema', str(root / 'api.raml'), 'User']) == EXIT_OK
+    document = json.loads(capsys.readouterr().out)
+    jsonschema.validate({'id': 2}, document)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({'id': 0}, document)
+
+
+def test_convert_jsonschema_requires_an_existing_type(workspace, capsys):
+    root = workspace({'api.raml': GOOD})
+    for name in ([], ['Missing']):
+        assert main(['convert', 'jsonschema', str(root / 'api.raml'), *name]) == EXIT_INVALID
+        captured = capsys.readouterr()
+        assert captured.out == ''
+        assert ('TYPE is required' if not name else 'no type') in captured.err
+
+
+def test_convert_jsonschema_rejects_a_name_on_a_data_type_fragment(workspace, capsys):
+    root = workspace({'type.raml': '#%RAML 1.0 DataType\ntype: string\n'})
+    assert main(['convert', 'jsonschema', str(root / 'type.raml'), 'Other']) == EXIT_INVALID
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    assert 'does not take TYPE' in captured.err
+
+
+def test_convert_jsonschema_reports_losses_on_stderr(workspace, capsys):
+    root = workspace({'api.raml': API + 'types:\n  Photo:\n    type: file\n    fileTypes: [image/png, image/jpeg]\n'})
+    assert main(['convert', 'jsonschema', str(root / 'api.raml'), 'Photo']) == EXIT_OK
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)['definitions']['Photo']['contentMediaType'] == 'image/png'
+    assert 'warning:' in captured.err
+    assert 'fileTypes' in captured.err
+
+
+def test_old_openapi_verb_is_replaced_by_convert(files, capsys):
+    with pytest.raises(SystemExit) as caught:
+        main(['openapi', files('good.raml')])
+    assert caught.value.code == 2
+    assert "invalid choice: 'openapi'" in capsys.readouterr().err
+
+
+def test_convert_exports_a_json_schema_and_supports_o(workspace, tmp_path, capsys):
+    root = workspace(
+        {
+            'schema.json': json.dumps(
+                {
+                    'definitions': {'Code': {'type': 'string', 'minLength': 2}},
+                    'type': 'object',
+                    'properties': {'code': {'$ref': '#/definitions/Code'}},
+                }
+            )
+        }
+    )
+    target = tmp_path / 'schema.raml'
+    assert main(['convert', 'raml', '-o', str(target), str(root / 'schema.json')]) == EXIT_OK
+    assert capsys.readouterr().out == ''
+    assert target.read_bytes().startswith(b'#%RAML 1.0 Library\n')
+    assert b'\r' not in target.read_bytes()
+    types = yaml.safe_load(target.read_text(encoding='utf-8').partition('\n')[2])['types']
+    assert types['schema']['properties']['code'] == {'type': 'Code', 'required': False}
+
+
+def test_convert_reports_missing_schemas(workspace, capsys):
+    root = workspace({})
+    assert main(['convert', 'raml', str(root / 'missing.json')]) == EXIT_INVALID
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    assert 'load resource' in captured.err
+
+
+def test_convert_reports_an_unrepresentable_literal_property_without_a_traceback(workspace, capsys):
+    root = workspace({'schema.json': json.dumps({'type': 'object', 'properties': {'/^x/': {'type': 'string'}}})})
+    assert main(['convert', 'raml', str(root / 'schema.json')]) == EXIT_INVALID
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    assert 'literal JSON Schema property name' in captured.err
+    assert 'Traceback' not in captured.err
+
+
+@pytest.mark.parametrize('verb', ['tree', 'graph', 'convert'])
 def test_every_document_verb_writes_a_file_with_o(verb, files, tmp_path, capsys, monkeypatch):
     """`-o` on every verb whose output is a document, not just `openapi`.
 
@@ -51,13 +174,14 @@ def test_every_document_verb_writes_a_file_with_o(verb, files, tmp_path, capsys,
     """
     monkeypatch.chdir(tmp_path)
     target = tmp_path / f'{verb}.out'
-    assert main([verb, '-o', str(target), files('good.raml')]) == EXIT_OK
+    args = [verb, 'openapi'] if verb == 'convert' else [verb]
+    assert main([*args, '-o', str(target), files('good.raml')]) == EXIT_OK
     captured = capsys.readouterr()
     assert captured.out == ''
     assert captured.err == ''
     assert target.read_bytes()
     assert b'\r' not in target.read_bytes()
-    if verb == 'openapi':
+    if verb == 'convert':
         document = yaml.safe_load(target.read_text(encoding='utf-8'))
         assert document['info']['title'] == 'Demo'
         assert '/things' in document['paths']
@@ -70,7 +194,7 @@ def test_a_document_verb_without_o_still_prints(verb, files, capsys):
 
 
 def test_openapi_export_o_reports_an_unwritable_file(files, tmp_path, capsys):
-    assert main(['openapi', '-o', str(tmp_path / 'absent' / 'api.yaml'), files('good.raml')]) == EXIT_INVALID
+    assert main(['convert', 'openapi', '-o', str(tmp_path / 'absent' / 'api.yaml'), files('good.raml')]) == EXIT_INVALID
     captured = capsys.readouterr()
     assert 'absent' in captured.err
     assert captured.out == ''

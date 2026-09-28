@@ -161,7 +161,9 @@ package exports it deliberately.
 | `validate FILE...` | Parse, unwrap, and validate files. `--json` writes JSON Lines. |
 | `info FILE` | Print backend, timing, and model counts. |
 | `graph FILE` | Export the effective graph as Turtle, N-Triples, DOT, or JSON. |
-| `openapi FILE` | Export an effective API as OpenAPI 3.0.3 YAML or JSON. |
+| `convert openapi FILE.raml` | Export an effective API as OpenAPI 3.0.3 YAML or JSON. |
+| `convert jsonschema FILE.raml [TYPE]` | Export a DataType fragment or one named API/Library type as JSON Schema draft-07. |
+| `convert raml FILE.json` | Export JSON Schema as a RAML DataType or Library. |
 | `tree FILE` | Export the effective addressed tree, or positions with `--positions`. |
 | `serve FILE` | Serve the tree through `fastraml-viewer`. |
 | `list FILE [PATTERN]` | List nameable declarations, endpoints, and operations. |
@@ -184,3 +186,6 @@ or `-o FILE` with UTF-8 and LF newlines. `query` needs `fastraml[graph]`;
 `serve` needs `fastraml[serve]`; `lsp` needs `fastraml[lsp]`; `-r` needs an
 HTTP client such as `fastraml[http]`. Lint defaults to failing on `error`;
 `--fail-on warning` also fails on warnings.
+
+For library callers, `to_raml(json_shape, name=None)` accepts a compiled
+`JsonShape` and returns the same complete RAML document (docs/16 § 8).

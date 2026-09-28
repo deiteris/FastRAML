@@ -117,6 +117,10 @@ See `contrib/README.md` for the current project inventory and each project's
 README for its supported behavior. In particular:
 
 - `raml-document` is an authoring model, separate from fastRAML's parsed model.
+  The fastRAML JSON Schema exporter writes standalone DataType and Library
+  fragments, which the authoring model does not represent. Its output is checked
+  against `raml-document.TypeDecl.render()` for shared declaration spellings in
+  the consumer's tests; fastRAML does not import the consumer.
 - `raml-codegen` reads the tree contract and deliberately depends on no parser.
   Its optional `raml` extra installs `fastraml` so the command line can accept a
   `.raml` path; it runs the `tree` projection in-process and generates from the

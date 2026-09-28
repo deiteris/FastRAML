@@ -89,6 +89,8 @@ BENCHES: tuple[Bench, ...] = (
     Bench('extensions', lambda root, scale: corpus.write_extensions(root, resource_count=_at(500, scale))),
     Bench('validate', lambda root, scale: corpus.write_validate(root, type_count=_at(1000, scale))),
     Bench('jsonschema', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
+    Bench('schema-export', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
+    Bench('raml-schema', lambda root, scale: corpus.write_validate(root, type_count=_at(200, scale))),
     Bench('enums', lambda root, scale: corpus.write_enums(root, family_count=_at(40, scale))),
     Bench('unions', lambda root, scale: corpus.write_unions(root, family_count=_at(60, scale))),
     Bench('facets', lambda root, scale: corpus.write_facets(root, family_count=_at(150, scale))),
@@ -119,6 +121,8 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     """Measure one configuration. Runs in the subprocess, not the driver."""
     from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - see module docstring
 
+    if config == 'unwrap' and bench in {'schema-export', 'raml-schema'}:
+        return _measure_schema_export(bench, entry, repeat)
     if config == 'service':
         return _measure_edit(bench, entry, repeat)
     options = ParseOptions(
@@ -141,6 +145,27 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
 
         return measure(bench, config, lambda: build_occurrences(parse_from_path(entry, options)), repeat=repeat)
     return measure(bench, config, lambda: parse_from_path(entry, options), repeat=repeat)
+
+
+def _measure_schema_export(bench: str, entry: Path, repeat: int) -> Measurement:
+    from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - feature workload only
+
+    if bench == 'schema-export':
+        from fastraml.views.raml import to_raml  # noqa: PLC0415 - feature workload only
+
+        def export_raml() -> tuple[object, list[str]]:
+            raml = parse_from_path(entry, ParseOptions(unwrap=True))
+            return raml, [to_raml(base.shape) for base in raml.types_in(raml.location).values()]
+
+        return measure(bench, 'unwrap', export_raml, repeat=repeat)
+
+    from fastraml.views.jsonschema import to_json_schema  # noqa: PLC0415 - feature workload only
+
+    def export_json() -> tuple[object, list[str]]:
+        raml = parse_from_path(entry, ParseOptions(unwrap=True))
+        return raml, [json.dumps(to_json_schema(base)[0]) for base in raml.types_in(raml.location).values()]
+
+    return measure(bench, 'unwrap', export_json, repeat=repeat)
 
 
 def _measure_edit(bench: str, entry: Path, repeat: int) -> Measurement:
@@ -291,6 +316,8 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'unions': 'unwrap+validate',
     'facets': 'unwrap+validate',
     'templates': 'unwrap+validate',
+    'schema-export': 'unwrap',
+    'raml-schema': 'unwrap',
 }
 
 

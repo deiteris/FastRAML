@@ -87,6 +87,15 @@ class Conversion:
         refuses the same case, with `entrypoint shape must be unwrapped`.
         """
         base._assert_unwrapped()  # noqa: SLF001 - one package, one invariant
+        if isinstance(base.shape, JsonShape):
+            # A JSON-backed entry is already a schema. Keep its local pointers
+            # rooted at the document instead of nesting it under `definitions`,
+            # and bundle external references before the caller writes it.
+            bundled = base.shape.as_schema()
+            if isinstance(bundled, dict):
+                return {'$schema': SCHEMA_VERSION, **self._common(base), **bundled}
+            if isinstance(bundled, bool):
+                return {'$schema': SCHEMA_VERSION, **self._common(base), **({} if bundled else {'not': {}})}
         name = base.name or 'root'
         # Occupied before the body is walked, so a type that reaches itself
         # finds the entry already there and closes the loop with a `$ref`.

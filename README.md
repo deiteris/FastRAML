@@ -178,7 +178,9 @@ turns the check off; use it only for documents you trust.
 fastraml validate api.raml           # exit 1 and a positioned trace if invalid
 fastraml validate --json *.raml      # one JSON object per file
 fastraml info api.raml               # YAML backend, timing, model counts
-fastraml openapi api.raml            # OpenAPI 3.0.3 YAML; --format json for JSON
+fastraml convert openapi api.raml    # OpenAPI 3.0.3 YAML; --format json for JSON
+fastraml convert jsonschema api.raml T  # Export type T as JSON Schema draft-07
+fastraml convert raml schema.json   # Export JSON Schema as a RAML type or Library
 fastraml lint api.raml               # recommended spec checks (see Linting)
 ```
 

@@ -2,7 +2,7 @@
 
 **Status: built.** `fastraml.views` contains read-only projections of a parsed,
 effective RAML model. The CLI exposes them through `graph`, `tree`, `show`,
-`list`, `refs`, `deps`, `query`, `compat`, `openapi`, and `serve`.
+`list`, `refs`, `deps`, `query`, `compat`, `convert`, and `serve`.
 
 This document owns the view-layer boundary and durable contracts shared by view
 consumers. It does not restate RAML rules, implementation history, or generated
@@ -236,12 +236,40 @@ kinds. Generation fails when the emitter writes an undeclared key.
 
 ## 8. Other exports
 
+`fastraml.views.raml.to_raml(json_shape, name=None)` returns a complete RAML
+document from a compiled `JsonShape`. A schema without named definitions or
+nested external targets becomes a DataType; a root-only external reference can
+also be inlined unless recursive. With definitions (including unused ones),
+recursive root references, or named targets needed by other types, it becomes
+a Library containing the named types and
+the root type, named for the schema file stem by default. References become
+type names; recursive uses refer back to their named head. An inline schema
+needs an explicit `name` when the result is a Library. JSON Pointer keys and
+file stems that cannot be written as RAML type expressions are given safe names;
+collisions (including with built-in types) receive numeric suffixes. Optional
+properties write `required: false`; a literal name ending in `?` writes
+`required:` explicitly for either value so the question mark stays in the name.
+A literal `/regex/`-looking property cannot be distinguished from RAML's
+pattern-property syntax, so export rejects it. RAML also rejects pattern
+properties together with `additionalProperties: false`; export refuses that
+combination rather than emitting an invalid document. A constrained anonymous
+union member, an anonymous recursion, or a root name colliding with a definition
+fails rather than silently losing a constraint. Fraction facets are written as
+exact YAML numbers. The export uses the nearest-RAML shape
+projection (docs/10 § 7), with its documented semantic losses; it is not a
+lossless translation of JSON Schema. `fastraml convert raml FILE.json [-o FILE]`
+parses the schema through the normal loader and writes this document.
+
 `fastraml.views.jsonschema.to_json_schema(shape)` returns a JSON Schema draft-07
 document and any information the export could not represent. The input shape
-must be unwrapped.
+must be unwrapped. A JSON-backed entry exports its bundled schema at the root
+so local pointers still resolve. `fastraml convert jsonschema FILE.raml [TYPE]`
+exports a DataType fragment directly; an API or Library requires the name of
+one declared type. It writes JSON (`-o FILE` saves it) and reports dropped
+information on stderr.
 
 `fastraml.views.openapi.to_openapi(raml)` returns an OpenAPI 3.0.3 document and
-loss notices. `fastraml openapi` emits YAML by default or JSON with
+loss notices. `fastraml convert openapi` emits YAML by default or JSON with
 `--format json`; notices go to stderr.
 
 `fastraml.bound_base_uri(api)` is `baseUri` with `{version}` bound to the

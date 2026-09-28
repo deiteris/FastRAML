@@ -30,6 +30,7 @@ _VIEWS = (
     'backward',
     'bindings',
     'jsonschema',
+    'raml',
     'openapi',
     'base_uri',
     'samples',

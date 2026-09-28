@@ -4,7 +4,9 @@
 fastraml validate [-v] [--json] FILE...
 fastraml info FILE
 fastraml graph [--format nt|turtle|dot|json] FILE
-fastraml openapi [--format yaml|json] FILE
+fastraml convert openapi [--format yaml|json] FILE.raml
+fastraml convert jsonschema FILE.raml [TYPE]
+fastraml convert raml FILE.json
 fastraml tree [--positions] FILE
 fastraml serve [--host H] [--port P] FILE
 fastraml list FILE [PATTERN]
@@ -106,16 +108,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_output(graph)
     _add_common(graph)
 
-    openapi = commands.add_parser('openapi', help='export the effective API as OpenAPI 3.0.3')
-    openapi.add_argument('files', metavar='FILE', nargs=1)
-    openapi.add_argument(
-        '--format',
-        choices=('yaml', 'json'),
-        default='yaml',
-        help='YAML or JSON output (default: yaml)',
-    )
-    _add_output(openapi)
-    _add_common(openapi)
+    _add_convert(commands)
 
     tree = commands.add_parser('tree', help='the effective document as an addressed JSON tree')
     tree.add_argument('files', metavar='FILE', nargs=1)
@@ -151,7 +144,7 @@ def _parser() -> argparse.ArgumentParser:
         validate=_validate,
         info=_info,
         graph=_graph,
-        openapi=_openapi,
+        convert=_convert,
         tree=_tree,
         serve=_serve,
         lsp=_lsp,
@@ -166,6 +159,32 @@ def _parser() -> argparse.ArgumentParser:
         join=_join,
     )
     return parser
+
+
+def _add_convert(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    convert = commands.add_parser('convert', help='convert between RAML and other schema formats')
+    targets = convert.add_subparsers(dest='target', required=True)
+    openapi = targets.add_parser('openapi', help='export the effective API as OpenAPI 3.0.3')
+    openapi.add_argument('files', metavar='FILE', nargs=1)
+    openapi.add_argument(
+        '--format',
+        choices=('yaml', 'json'),
+        default='yaml',
+        help='YAML or JSON output (default: yaml)',
+    )
+    _add_output(openapi)
+    _add_common(openapi)
+
+    jsonschema = targets.add_parser('jsonschema', help='export an effective RAML type as JSON Schema draft-07')
+    jsonschema.add_argument('files', metavar='FILE.raml', nargs=1)
+    jsonschema.add_argument('name', metavar='TYPE', nargs='?')
+    _add_output(jsonschema)
+    _add_common(jsonschema)
+
+    raml = targets.add_parser('raml', help='export a JSON Schema as a RAML DataType or Library')
+    raml.add_argument('file', metavar='FILE.json')
+    _add_output(raml)
+    _add_common(raml)
 
 
 def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -1430,6 +1449,82 @@ def _join(args: argparse.Namespace) -> int:
     except RamlError as err:
         print('join: failed', file=sys.stderr)
         print(err, file=sys.stderr)
+        return EXIT_INVALID
+    return _emit_document(args, text)
+
+
+def _convert(args: argparse.Namespace) -> int:
+    if args.target == 'openapi':
+        return _openapi(args)
+    if args.target == 'jsonschema':
+        return _convert_jsonschema(args)
+    return _convert_raml(args)
+
+
+def _convert_jsonschema(args: argparse.Namespace) -> int:
+    """Export one effective type, reporting any semantics JSON Schema cannot carry."""
+    import json  # noqa: PLC0415 - this target writes JSON only
+
+    from fastraml.parser.fragments import APIFragment, DataTypeFragment, Library  # noqa: PLC0415
+    from fastraml.views.jsonschema import to_json_schema  # noqa: PLC0415
+
+    raml = _parsed(args)
+    if raml is None:
+        return EXIT_INVALID
+    if isinstance(raml.entry_point, DataTypeFragment):
+        if args.name is not None:
+            print('convert jsonschema: a DataType fragment does not take TYPE', file=sys.stderr)
+            return EXIT_INVALID
+        base = raml.entry_point.shape
+    elif isinstance(raml.entry_point, (APIFragment, Library)):
+        if args.name is None:
+            print('convert jsonschema: TYPE is required for an API or Library', file=sys.stderr)
+            return EXIT_INVALID
+        base = raml.types_in(raml.location).get(args.name)
+    else:
+        print('convert jsonschema: expected an API, Library, or DataType', file=sys.stderr)
+        return EXIT_INVALID
+    if base is None:
+        print(f'convert jsonschema: no type {args.name!r} in {args.files[0]}', file=sys.stderr)
+        return EXIT_INVALID
+    document, dropped = to_json_schema(base)
+    code = _emit_document(args, json.dumps(document, indent=2, ensure_ascii=False) + '\n')
+    for message in dropped:
+        print(f'warning: {message}', file=sys.stderr)
+    return code
+
+
+def _convert_raml(args: argparse.Namespace) -> int:
+    """Parse an external schema through the ordinary include loader, then export it."""
+    import json  # noqa: PLC0415 - only the schema path needs quoting
+    from pathlib import Path  # noqa: PLC0415
+
+    from fastraml.errors import RamlError  # noqa: PLC0415
+    from fastraml.parser.entry import parse_from_string  # noqa: PLC0415
+    from fastraml.parser.fragments import DataTypeFragment  # noqa: PLC0415
+    from fastraml.types.jsonschema_ import JsonShape  # noqa: PLC0415
+    from fastraml.views.raml import to_raml  # noqa: PLC0415
+
+    path = Path(args.file).absolute()
+    if path.suffix.lower() != '.json':
+        print(f'{args.file}: expected a .json schema', file=sys.stderr)
+        return EXIT_INVALID
+    source = f'#%RAML 1.0 DataType\ntype: !include {json.dumps(path.name)}\n'
+    try:
+        parsed = parse_from_string(
+            source, file_name='_schema.raml', base_dir=path.parent, options=_options(args, validate=False)
+        )
+        entry = parsed.entry_point
+        if not isinstance(entry, DataTypeFragment) or entry.shape is None:
+            print(f'{args.file}: expected a JSON Schema DataType', file=sys.stderr)
+            return EXIT_INVALID
+        schema = entry.shape.shape
+        if not isinstance(schema, JsonShape):
+            print(f'{args.file}: expected a JSON Schema type', file=sys.stderr)
+            return EXIT_INVALID
+        text = to_raml(schema, name=path.stem)
+    except (RamlError, ValueError) as err:
+        print(f'{args.file}: {err}', file=sys.stderr)
         return EXIT_INVALID
     return _emit_document(args, text)
 

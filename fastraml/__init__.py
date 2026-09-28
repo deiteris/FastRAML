@@ -76,6 +76,7 @@ _EXPORTS = {
     'FragmentKind': ('fastraml.parser.fragments', 'FragmentKind'),
     'Graph': ('fastraml.views.graph', 'Graph'),
     'to_json_schema': ('fastraml.views.jsonschema', 'to_json_schema'),
+    'to_raml': ('fastraml.views.raml', 'to_raml'),
     'SampleError': ('fastraml.views.samples', 'SampleError'),
     'SampleOptions': ('fastraml.views.samples', 'SampleOptions'),
     'declared_values': ('fastraml.views.samples', 'declared_values'),
@@ -358,4 +359,5 @@ __all__ = [  # noqa: RUF022
     'side_of_rule',
     'to_json_schema',
     'to_openapi',
+    'to_raml',
 ]

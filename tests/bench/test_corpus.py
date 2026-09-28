@@ -29,6 +29,8 @@ WRITERS = {
     'extensions': lambda root: corpus.write_extensions(root, resource_count=11),
     'validate': lambda root: corpus.write_validate(root, type_count=3),
     'jsonschema': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
+    'schema-export': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
+    'raml-schema': lambda root: corpus.write_validate(root, type_count=6),
     'enums': lambda root: corpus.write_enums(root, family_count=1),
     'unions': lambda root: corpus.write_unions(root, family_count=1),
     'facets': lambda root: corpus.write_facets(root, family_count=1),
@@ -144,6 +146,43 @@ class TestFeatureCorporaReachTheirCode:
         assert len(validated) == count * corpus.EXAMPLES_PER_SCHEMA
         # Each example reaches both `$ref` targets, in another file.
         assert all({'detail', 'more'} <= value.keys() for value in validated)
+
+    def test_schema_export_visits_every_schema(self, tmp_path, monkeypatch):
+        import fastraml.views.raml as export_module
+        from bench.__main__ import run_one
+
+        visited: list[str] = []
+        original = export_module.to_raml
+
+        def counting(shape, **kwargs):
+            visited.append(shape.document_uri)
+            return original(shape, **kwargs)
+
+        monkeypatch.setattr(export_module, 'to_raml', counting)
+        entry = corpus.write_jsonschema(tmp_path, schema_count=6, shared_count=2)
+        run_one('schema-export', 'parse', entry, repeat=1)
+        assert visited == [], 'parse must not time an export'
+        run_one('schema-export', 'unwrap', entry, repeat=1)
+        assert len(set(visited)) == 6
+
+    def test_raml_schema_export_visits_every_declared_type(self, tmp_path, monkeypatch):
+        import fastraml.views.jsonschema as export_module
+        from bench.__main__ import run_one
+
+        visited: list[str] = []
+        original = export_module.to_json_schema
+
+        def counting(base, **kwargs):
+            visited.append(base.name)
+            return original(base, **kwargs)
+
+        monkeypatch.setattr(export_module, 'to_json_schema', counting)
+        entry = corpus.write_validate(tmp_path, type_count=6)
+        run_one('raml-schema', 'parse', entry, repeat=1)
+        assert visited == [], 'parse must not time a schema export'
+        run_one('raml-schema', 'unwrap', entry, repeat=1)
+        assert visited
+        assert set(visited) == {f'V{index}' for index in range(6)}
 
     def test_facets_walks_every_parent_count(self, tmp_path, monkeypatch):
         import fastraml.types.validate as validate_module

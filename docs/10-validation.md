@@ -178,6 +178,13 @@ view objects and must not re-enter parser passes. The projection can lose
 semantics: `oneOf` becomes a union, unsupported conditionals,
 schema-form `additionalProperties`, tuple `items`, and false schemas fail
 projection, and a schema with incompatible inferred kinds projects as `any`.
+`as_shape_definitions()` additionally projects unused top-level `definitions`
+and `$defs` entries and collects named references inside cached subtrees for
+document exports, without changing the cached `as_shape_defs()` result. Its
+names are distinct when two referenced files have the same stem or both
+definition keywords contain the same key; their declaration order is retained.
+JSON Pointer escapes in definition keys are decoded. A reference-only cycle has no
+RAML type head and fails projection with a diagnostic rather than recursing.
 `contents` exposes the decoded schema object by convention only; consumers must
 not mutate it.
 

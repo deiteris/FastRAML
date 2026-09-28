@@ -137,6 +137,19 @@ eagerly resolves `$ref` through the parse's `ResourceLoader`, and caches fetched
 resources in one `SchemaRegistry` per parse. Schema instance validation delegates
 to the compiled validator.
 
+A schema file is one document per parse: the one it compiles from and the one
+a `$ref` into it retrieves are the same resource, so every walk recognises a
+reference back into it. An inline schema is not the RAML file it is written
+in and is not registered under that file's URI.
+
+Each schema has its own registry: its document and every document the eager
+walk reached, crawled once at compilation. The validator, the projection and
+the bundle all resolve through it. `referencing` keeps a retrieved document
+only in the registry the lookup returns, so on the entry document alone each
+of them would re-crawl it and re-retrieve every other document at each `$ref`.
+Only what the schema reaches is in it: a parse-wide registry would let one
+schema resolve another's `$id` depending on parse order.
+
 RAML sibling facets that reach `JsonShape.decode_facets()` are rejected. Common
 facets are removed earlier by `make_shape()` and are therefore currently
 accepted, including `displayName`, `description`, `default`, `required`,
@@ -149,12 +162,29 @@ declarations. A JSON Schema type may be aliased, but RAML inheritance can only
 merge an identical schema; attempts to specialize it with RAML constraints fail.
 
 `JsonShape.as_schema()` returns a cached self-contained schema view with external
-references bundled locally. `JsonShape.as_shape()` returns a cached nearest-RAML
-shape projection for consumers. Projection shapes are unregistered, positionless,
-already unwrapped view objects and must not re-enter parser passes. The projection
-can lose semantics: `oneOf` becomes a union, unsupported conditionals,
+references bundled locally. A reference back into the bundled file, from a
+document pulled in, points into the result (`#`, `#/definitions/line`) rather
+than pulling in a copy of it. A pointer within the document stands only when
+the bundle is the whole document: a subschema included by pointer
+(`schema.json#/definitions/User`) is bundled on its own, so what its
+`#/definitions/...` name is pulled in, and a reference to the subschema
+itself is `#`. When a referenced document defines an exact external alias
+(`definitions: {uuid: {$ref: "uuid.json"}}`), the target is expanded in that
+slot, or the slot points to an earlier claim of the same target. References to
+the alias point to its slot in the bundle, without creating another copy.
+`JsonShape.as_shape()` returns a cached nearest-RAML shape projection for
+consumers. Projection shapes are unregistered, positionless, already unwrapped
+view objects and must not re-enter parser passes. The projection can lose
+semantics: `oneOf` becomes a union, unsupported conditionals,
 schema-form `additionalProperties`, tuple `items`, and false schemas fail
 projection, and a schema with incompatible inferred kinds projects as `any`.
+`as_shape_definitions()` additionally projects unused top-level `definitions`
+and `$defs` entries and collects named references inside cached subtrees for
+document exports, without changing the cached `as_shape_defs()` result. Its
+names are distinct when two referenced files have the same stem or both
+definition keywords contain the same key; their declaration order is retained.
+JSON Pointer escapes in definition keys are decoded. A reference-only cycle has no
+RAML type head and fails projection with a diagnostic rather than recursing.
 `contents` exposes the decoded schema object by convention only; consumers must
 not mutate it.
 

@@ -61,7 +61,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures ten workloads:
+`bench/` generates deterministic corpora and measures thirteen workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -70,13 +70,16 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `endpoints` | template and endpoint construction |
 | `extensions` | the `endpoints` corpus under an Overlay and an Extension: chain load, merge, overlay check, and document provenance |
 | `validate` | declaration and example validation |
-| `jsonschema` | shared JSON Schema references |
+| `jsonschema` | shared JSON Schema references, and five examples per schema validated through them |
+| `schema-export` | project and export each JSON Schema in the `jsonschema` corpus as a standalone RAML document |
+| `raml-schema` | export each effective RAML type in the `validate` corpus as a JSON Schema document |
 | `enums` | enum narrowing and enum membership at 5, 20, 100, and 1000 values, and `uniqueItems` examples at 10, 50, and 500 items, for string, integer, and number |
 | `unions` | `properties` and `items` beside unions of 2, 4, and 8 members, flat and nested, with an enum each member narrows differently ([07](07-resolution-and-inheritance.md) § 5) |
 | `facets` | custom facets declared up every parent of types that inherit from 2, 4, and 8 parents, and a diamond ([10](10-validation.md) § 4) |
+| `inheritance` | a union of 2 and 4 members among a type's parents: after an object, first, and paired with a second union; and a property, pattern property and items property that every parent declares, folded on each merge ([07](07-resolution-and-inheritance.md) § 4 and § 5) |
 | `templates` | resource types and a trait with parameters and transforms: a collection per resource and an item child, applied as real APIs apply them ([08](08-templates-and-endpoints.md) § 5) |
 
-The first six are general workloads. The last four are feature workloads:
+The first six are general workloads. The last seven are feature workloads:
 each exists because no general workload runs the code it covers. Their tests
 (`tests/bench/test_corpus.py`) count calls and fail if a corpus stops reaching
 that code at every size it covers.
@@ -86,7 +89,18 @@ fails or skips the work. Measure it by linearity instead: at `--scale 0.5` the
 time should halve.
 
 Each workload supports `parse`, `unwrap`, `validate`, `unwrap+validate`,
-`unwrap+graph`, and `unwrap+lint`. Corpus generation is outside the timed region.
+`unwrap+graph`, `unwrap+lint`, `unwrap+occurrences`, which builds the
+occurrence index ([16](16-graph.md) § 9), and `service`: one edit to the root's
+buffer in the language service, run tuned as its host is, with the reparse, the
+diagnostics and the occurrence index ([21](21-language-service.md) § 2). Like
+every configuration's, its peak RSS includes tracemalloc's overhead, which
+grows with the allocation, here nearly twice `unwrap+validate`'s. Without
+tracemalloc, a run of edits on `large` settles at 75 MB. Corpus generation is outside the
+timed region.
+For `schema-export`, `unwrap` additionally exports each schema as RAML after
+parsing; its other configurations keep their ordinary meanings. The reach test
+guards both sides, so `parse` cannot accidentally measure the export.
+`raml-schema` does the same for effective RAML types exported as JSON Schema.
 The small corpus-validity tests run in the ordinary test suite.
 
 ```bash
@@ -147,9 +161,9 @@ profiler for elapsed-time evidence.
 
 ## 6. Garbage collection
 
-A parse, a graph, a lint run and an OpenAPI export each build a large set of
-long-lived objects, and none of them creates cyclic garbage: at 2000
-resources no collection during a parse freed anything. CPython's young
+A parse, a graph, a lint run, an OpenAPI export and an occurrence index each
+build a large set of long-lived objects, and none of them creates cyclic
+garbage: at 2000 resources no collection during a parse freed anything. CPython's young
 collections scan only new objects, so their cost is linear. A full collection
 re-scans every tracked object, and the heap grows throughout the operation,
 so repeated full collections make the operation superlinear. At the default
@@ -172,6 +186,12 @@ batches, which are expensive to scan, and still allows full collections.
 Disabling the collector, or `gc.freeze()`, would stop the host's own cyclic
 garbage from being collected. Python 3.14 measured the same. The free-threaded
 build has no generations and ignores the setting.
+
+A process hosting the language service stays tuned for its whole run:
+`fastraml lsp` enters `tuned_gc` before it serves ([21](21-language-service.md) § 5).
+What it discards is a whole model, which is cyclic garbage that only a full
+collection frees. So the workspace runs one full collection before a parse
+whenever it has dropped a snapshot ([21](21-language-service.md) § 2).
 
 The collector's thresholds are process-wide, so `tuned_gc` follows these rules:
 

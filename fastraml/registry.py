@@ -17,9 +17,11 @@ import itertools
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, Literal
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, cast
 
 from fastraml.domains import DomainLocation
+from fastraml.errors import Accumulator, RamlError
 from fastraml.loaders import SchemeLoader
 from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, NodeKind, mark_subtree
 
@@ -31,6 +33,7 @@ if TYPE_CHECKING:
     from fastraml.parser.fragments import ExtensionFragment, Fragment, ReferenceResolver
     from fastraml.parser.includes import IncludeRef
     from fastraml.parser.structural_merge import ProvenanceOverlay
+    from fastraml.parser.substitutions import Substitutions
     from fastraml.positions import Position
     from fastraml.types.expressions import ExprCache
     from fastraml.types.jsonschema_ import SchemaRegistry
@@ -52,10 +55,36 @@ __all__ = [
     'DEFAULT_MAX_INCLUDE_SIZE',
     'ParseCtx',
     'Raml',
+    'Stage',
 ]
 
 #: Per-file ceiling for an `!include` target, in bytes. `0` disables the limit.
 DEFAULT_MAX_INCLUDE_SIZE: Final = 65536
+
+
+class Stage(Enum):
+    """One step of the pass driver, in the order it runs them (docs/02 § 1).
+
+    Named for what a finished step settles rather than numbered: P6 runs with
+    P4, before P5, and the discriminator declaration check runs with P7. Two
+    steps are optional, so a consumer asks whether a stage is in
+    `Raml.completed`, not whether a later one is.
+    """
+
+    DECODED = 'decoded'  # P0-P3: fragments, declarations and `uses:`
+    ENDPOINTS = 'endpoints'  # P4 and P6
+    SECURITY = 'security'  # P5
+    RESOLVED = 'resolved'  # P7, and the discriminator declaration check
+    ANNOTATIONS = 'annotations'  # P8
+    UNWRAPPED = 'unwrapped'  # P9, when requested
+    VALIDATED = 'validated'  # P10, when requested
+
+
+class _Identified(Protocol):
+    """Anything `Raml.broken` can mark: every model entity has an id."""
+
+    @property
+    def id(self) -> int: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +131,25 @@ class _TargetScope:
         self._raml._parse_ctx_stack.pop()  # noqa: SLF001
 
 
+class _Marking:
+    """`Raml.marking`. A class rather than `@contextmanager`, as for
+    `_TargetScope`: a decoder enters one per response, operation and resource.
+    """
+
+    __slots__ = ('_entity', '_raml')
+
+    def __init__(self, raml: Raml, entity: _Identified) -> None:
+        self._raml = raml
+        self._entity = entity
+
+    def __enter__(self) -> None:
+        pass
+
+    def __exit__(self, kind: object, error: BaseException | None, traceback: object) -> None:
+        if isinstance(error, RamlError):
+            self._raml.mark(self._entity, error)
+
+
 class _MarkedScope:
     """`Raml.provenance_scope`: push the scope recorded for a node, if any."""
 
@@ -139,6 +187,7 @@ class Raml:
         'max_include_size',
         'regex_engine',
         'retain_source',
+        'retain_text',
         'workspace_root_uri',
         # --- caches ----------------------------------------------------------
         'expr_cache',
@@ -154,6 +203,7 @@ class Raml:
         'fragment_types',
         'include_refs',
         'shapes',
+        'substitutions',
         # --- work queues -----------------------------------------------------
         '_discriminator_shapes',
         'unresolved_shapes',
@@ -168,12 +218,14 @@ class Raml:
         '_id_counter',
         '_parse_ctx_stack',
         'annotation_type_changes',
+        'broken',
+        'completed',
         'entry_point',
         'extensions',
         'source_info',
         'source_nodes',
         'source_texts',
-        'unwrapped',
+        'stopped_at',
     )
 
     def __init__(  # noqa: PLR0913 - the parse's configuration, keyword-only, one field each
@@ -184,6 +236,7 @@ class Raml:
         max_include_size: int = DEFAULT_MAX_INCLUDE_SIZE,
         max_depth: int = DEFAULT_MAX_DEPTH,
         retain_source: bool = False,
+        retain_text: bool = False,
         regex_engine: Literal['re', 're2'] = 're',
     ) -> None:
         # An empty SchemeLoader rather than None: a registry built without one
@@ -193,6 +246,7 @@ class Raml:
         self.max_include_size = max_include_size
         self.max_depth = max_depth
         self.retain_source = retain_source
+        self.retain_text = retain_text or retain_source
         self.regex_engine = regex_engine
 
         self.fragments: dict[str, Fragment] = {}
@@ -215,6 +269,9 @@ class Raml:
         self.shapes: list[BaseShape] = []
         self.domain_extensions: list[DomainExtension] = []
         self.include_refs: dict[str, list[IncludeRef]] = {}
+        #: Each scalar a template substitution produced, and the caller's
+        #: values in it: where a name in it was written (docs/08 § 5.1).
+        self.substitutions: Substitutions = {}
 
         # A worklist, drained from the left in P7 while resolution appends to
         # the right; a deque keeps both ends O(1).
@@ -242,7 +299,14 @@ class Raml:
         #: Root annotation types an extension document changed: name ->
         #: (document URI, position of the change) (docs/19 § 4.4).
         self.annotation_type_changes: dict[str, tuple[str, Position]] = {}
-        self.unwrapped = False
+        #: The stages that finished, in order, and the one that raised: how far
+        #: a model `parse_lenient` returned got (docs/13 § 1).
+        self.completed: list[Stage] = []
+        self.stopped_at: Stage | None = None
+        #: Entity id -> why it is incomplete. The entity is in the model and
+        #: its identity (name, positions) is sound; its content is partial
+        #: (docs/13 § 1).
+        self.broken: dict[int, RamlError] = {}
         self.source_nodes: dict[str, Node] = {}
         self.source_texts: dict[str, str] = {}
         self.source_info: SourceInfo | None = {} if retain_source else None
@@ -280,6 +344,37 @@ class Raml:
         mid-construct must not leave the site behind on the stack.
         """
         return _TargetScope(self, target)
+
+    @contextmanager
+    def stage(self, stage: Stage) -> Iterator[None]:
+        """Run one step of the pass driver, recording whether it finished."""
+        try:
+            yield
+        except BaseException:
+            self.stopped_at = stage
+            raise
+        self.completed.append(stage)
+
+    def mark(self, entity: _Identified, error: RamlError) -> None:
+        """Record that `entity` is in the model but incomplete (docs/13 § 1).
+
+        A second failure of the same entity joins the first: a template that
+        failed to apply, then the merged content, are both on the mark. The
+        same failure met again, by a second referrer or an inherited copy, is
+        kept once, as `Accumulator` keeps it (docs/11 § 2).
+        """
+        earlier = self.broken.get(entity.id)
+        if earlier is None:
+            self.broken[entity.id] = error
+            return
+        both = Accumulator()
+        both.add(earlier)
+        both.add(error)
+        self.broken[entity.id] = cast('RamlError', both.result())
+
+    def marking(self, entity: _Identified) -> _Marking:
+        """Decode `entity`'s content, marking it if that fails."""
+        return _Marking(self, entity)
 
     def _scope(self, anchor: ReferenceResolver | None, target: DomainLocation) -> ParseCtx:
         """The one `ParseCtx` for this anchor and target."""
@@ -466,8 +561,8 @@ class Raml:
             self.source_nodes[uri] = node
 
     def store_source_text(self, uri: str, text: str) -> None:
-        """Keep source text for comment-aware tooling when retention is on."""
-        if self.retain_source:
+        """Keep source text when `retain_text` or `retain_source` is on."""
+        if self.retain_text:
             self.source_texts[uri] = text
 
     def put_source_info(self, entity_id: int, key: Node | None, value: Node) -> None:
@@ -482,8 +577,9 @@ class Raml:
         return '' if self.entry_point is None else self.entry_point.location
 
     @property
-    def is_unwrapped(self) -> bool:
-        return self.unwrapped
+    def unwrapped(self) -> bool:
+        """Whether P9 finished: `Stage.UNWRAPPED in completed` (docs/02 § 1)."""
+        return Stage.UNWRAPPED in self.completed
 
     def types_in(self, uri: str) -> Mapping[str, BaseShape]:
         return self.fragment_types.get(uri, {})

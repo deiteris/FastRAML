@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
+from fastraml.parser.source_ir import note_failure
 from fastraml.parser.structural_merge import merge_structural
 from fastraml.parser.templates import (
     TemplateDefinition,
@@ -42,10 +43,11 @@ from fastraml.parser.uritemplates import resource_path_name
 from fastraml.registry import ParseCtx
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.source_ir import SourceEndPoint, SourceOperation
+    from fastraml.parser.substitutions import Substitutions
     from fastraml.registry import Raml
     from fastraml.yamlnode import Node
 
@@ -65,21 +67,23 @@ class TraitDefinition(TemplateDefinition):
     """
 
 
-def make_trait_definition(raml: Raml, key_node: Node | None, value_node: Node, location: str) -> TraitDefinition:
+def make_trait_definition(
+    raml: Raml, key_node: Node | None, value_node: Node, location: str, *, attach: Callable[[TraitDefinition], None]
+) -> TraitDefinition:
     """Decode one trait declaration. Everything but `usage:` is kept as YAML."""
-    return make_template_definition(TraitDefinition, raml, key_node, value_node, location, what='trait')
+    return make_template_definition(TraitDefinition, raml, key_node, value_node, location, what='trait', attach=attach)
 
 
 # -- applying traits (docs/08 § 3.2) ------------------------------------------
 
 
-def apply_traits(endpoint: SourceEndPoint) -> None:
+def apply_traits(raml: Raml, endpoint: SourceEndPoint) -> None:
     """Apply every trait that reaches each of `endpoint`'s operations.
 
-    No registry parameter: every name resolves through its own reference's
-    scope, and every merge target is reachable from `endpoint`. Errors
-    accumulate — one unresolvable trait must not discard the rest of the
-    resource.
+    Every name resolves through its own reference's scope, and every merge
+    target is reachable from `endpoint`; `raml` only records where each
+    substituted value came from (docs/08 § 5.1). Errors accumulate — one
+    unresolvable trait must not discard the rest of the resource.
     """
     # `resourcePath` and `resourcePathName` are constant across every operation
     # and every trait of this resource, so their nodes are built once. They are
@@ -89,6 +93,7 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
     path_name = parameter_node(resource_path_name(endpoint.full_uri))
 
     accumulator = Accumulator()
+    looked_up: set[DirectiveRef] = set()
     for method, operation in endpoint.operations.items():
         method_name = parameter_node(method)
         seen: set[str] = set()
@@ -99,6 +104,7 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
                 # and the trait is applied exactly once.
                 continue
             seen.add(ref.name)
+            looked_up.add(ref)
             params = {
                 **ref.params,
                 'resourcePath': path,
@@ -107,12 +113,49 @@ def apply_traits(endpoint: SourceEndPoint) -> None:
             }
             try:
                 definition = _definition_for(ref)
-                merge_trait_into(operation, definition, params, caller_scope=endpoint.scope)
-            except RamlError as err:
-                accumulator.add(
-                    RamlError.wrap('apply trait', err, ref.location, ref.value_pos, info={'trait': ref.name})
+                merge_trait_into(
+                    operation,
+                    definition,
+                    params,
+                    caller_scope=endpoint.scope,
+                    application=ref,
+                    substitutions=raml.substitutions,
                 )
+            except RamlError as err:
+                wrapped = _wrap(ref, err)
+                # The operation it was merging into lacks its contribution.
+                note_failure(operation, wrapped)
+                accumulator.add(wrapped)
+
+    # A reference the name rule skipped, or one on a resource with no methods,
+    # is applied nowhere but still names a trait: bind it, so a consumer can
+    # follow it, and report a name that matches nothing (docs/08 § 3.2). One
+    # written on an operation is noted there; the caller notes the resource.
+    for operation in endpoint.operations.values():
+        _bind_unapplied(chain(operation.traits, operation.rt_traits), looked_up, accumulator, operation)
+    _bind_unapplied(chain(endpoint.traits, endpoint.rt_traits), looked_up, accumulator, None)
     accumulator.raise_if_any()
+
+
+def _bind_unapplied(
+    refs: Iterable[DirectiveRef], looked_up: set[DirectiveRef], acc: Accumulator, operation: SourceOperation | None
+) -> None:
+    for ref in refs:
+        if ref in looked_up:
+            continue
+        # Once: a resource's reference is reached from each of its operations.
+        looked_up.add(ref)
+        try:
+            _definition_for(ref)
+        except RamlError as err:
+            wrapped = _wrap(ref, err)
+            if operation is not None:
+                note_failure(operation, wrapped)
+            acc.add(wrapped)
+
+
+def _wrap(ref: DirectiveRef, err: RamlError) -> RamlError:
+    return RamlError.wrap('apply trait', err, ref.location, ref.value_pos, info={'trait': ref.name})
 
 
 def _in_priority_order(endpoint: SourceEndPoint, operation: SourceOperation) -> Iterator[DirectiveRef]:
@@ -138,18 +181,22 @@ def _definition_for(ref: DirectiveRef) -> TraitDefinition:
     return definition
 
 
-def merge_trait_into(
+def merge_trait_into(  # noqa: PLR0913 - the application, and where its values are recorded
     operation: SourceOperation,
     definition: TraitDefinition,
     params: dict[str, Node],
     *,
     caller_scope: ParseCtx | None,
+    application: DirectiveRef,
+    substitutions: Substitutions,
 ) -> None:
-    """Substitute `params` into the trait body and merge it under the operation."""
+    """Substitute `params`, written at `application`, into the trait body and
+    merge it under the operation.
+    """
     definition = definition.resolved()
     if definition.source is None:
         return
-    check_parameters(definition.declared_variables, params, definition.location, definition.value_pos)
+    check_parameters(definition, params, application)
 
     compiled = compile_source_provenance(
         definition.source,
@@ -157,6 +204,8 @@ def merge_trait_into(
         definition.variable_index,
         caller_scope if caller_scope is not None else ParseCtx(),
         operation.provenance,
+        written_in=application.location,
+        substitutions=substitutions,
     )
     trait_scope = ParseCtx(anchor=definition.anchor, target=DomainLocation.TRAIT)
     operation.body = merge_structural(operation.body, compiled, trait_scope, operation.provenance)

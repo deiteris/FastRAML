@@ -11,9 +11,10 @@ lives in `fastraml.parser.fragments`, which is what keeps the import graph acycl
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 from fastraml.domains import DomainLocation
+from fastraml.facet_names import FACET_CONTENT, FACET_TITLE
 from fastraml.parser.annotations import DomainExtension, add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_string_facet
 from fastraml.positions import UNKNOWN, Position
@@ -30,9 +31,6 @@ __all__ = [
     'DocumentationItem',
     'decode_documentation_item',
 ]
-
-FACET_TITLE: Final = 'title'
-FACET_CONTENT: Final = 'content'
 
 
 @dataclass(slots=True, eq=False)

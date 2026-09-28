@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
 from fastraml.errors import Accumulator, RamlError
+from fastraml.facet_names import FACET_IS, FACET_SECURED_BY, FACET_TYPE
 from fastraml.parser.directives import DirectiveRef, decode_secured_by, decode_trait_refs, decode_type_ref
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import Node, NodeKind, is_null, node_error, pairs, with_content
@@ -34,6 +35,7 @@ __all__ = [
     'SourceEndPoint',
     'SourceOperation',
     'make_source_endpoint',
+    'note_failure',
 ]
 
 #: The HTTP methods a resource may declare (spec section Methods). `?`-suffixed
@@ -41,10 +43,6 @@ __all__ = [
 #: only if the target already declares it"; the suffix is chomped by whoever
 #: compiles the template, so plain names are what reach here.
 METHODS: Final = frozenset({'get', 'patch', 'put', 'post', 'delete', 'options', 'head', 'trace', 'connect'})
-
-FACET_TYPE: Final = 'type'
-FACET_IS: Final = 'is'
-FACET_SECURED_BY: Final = 'securedBy'
 
 
 @dataclass(slots=True, eq=False)
@@ -72,6 +70,9 @@ class SourceOperation:
     provenance: dict[Node, ParseCtx] = field(default_factory=dict)
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
+    #: Set by P4 when a trait or resource type failed to apply here. Stage 2
+    #: marks the entity this becomes (docs/13 § 1).
+    failure: RamlError | None = None
 
     def __repr__(self) -> str:
         return f'SourceOperation({self.method!r})'
@@ -101,9 +102,21 @@ class SourceEndPoint:
     provenance: dict[Node, ParseCtx] = field(default_factory=dict)
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
+    #: Set by P4 when a trait or resource type failed to apply here, or to
+    #: anything this resource holds. Stage 2 marks the entity this becomes
+    #: (docs/13 § 1).
+    failure: RamlError | None = None
 
     def __repr__(self) -> str:
         return f'SourceEndPoint({self.full_uri!r})'
+
+
+def note_failure(source: SourceOperation | SourceEndPoint, error: RamlError) -> None:
+    """Record that a trait or resource type failed to apply to `source`.
+
+    Every failure is kept, since two traits can fail on one operation.
+    """
+    source.failure = error if source.failure is None else source.failure.append(error)
 
 
 def _retained(kept: list[Node], source: Node) -> Node | None:
@@ -192,12 +205,8 @@ def make_source_endpoint(raml: Raml, key: Node, value: Node, location: str, *, p
                 )
                 endpoint.explicit_secured_by = True
             elif name in METHODS:
-                if name in endpoint.operations:
-                    raise node_error('duplicate method', location, child_key, info={'method': name})
                 endpoint.operations[name] = make_source_operation(raml, name, child_key, child_value, location)
             elif name.startswith('/'):
-                if name in endpoint.endpoints:
-                    raise node_error('duplicate resource', location, child_key, info={'resource': name})
                 endpoint.endpoints[name] = make_source_endpoint(
                     raml, child_key, child_value, location, parent_uri=endpoint.full_uri
                 )

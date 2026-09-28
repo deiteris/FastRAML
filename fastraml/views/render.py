@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from fastraml.parser.fragments import every_declaration
 from fastraml.types.base import facets_of
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.jsonschema_ import JsonShape, projected, subschema_document
@@ -44,7 +45,7 @@ if TYPE_CHECKING:
     from fastraml.registry import Raml
     from fastraml.types.base import BaseShape, Parameter, Property
 
-__all__ = ['Sources', 'render', 'render_endpoint', 'render_operation']
+__all__ = ['Sources', 'render', 'render_endpoint', 'render_operation', 'type_name']
 
 #: Wide enough that PyYAML never folds a value onto a second line: a wrapped
 #: scalar would break the one-value-per-line shape everything here assumes.
@@ -104,38 +105,31 @@ class Sources:
     **trait's** file and line. That is the provenance, and it is free; turning
     it back into a name needs the span the line falls in.
 
-    The span is exact, not inferred: `key_pos.line` to `value_pos.end_line`,
-    both of which the parser records.
+    The span is exact, not inferred: key through value, columns included,
+    both of which the parser records, so two declarations written on one
+    line in flow style are told apart. Declarations do not nest, so at most
+    one holds a member.
 
-    The narrowest containing span wins, so a nested declaration beats the
-    enclosing one. Attribution is *also* gated on the site having applied the
-    declaration — a confident wrong name is worse than none, and one bound
-    checking the other is cheap.
+    Attribution is *also* gated on the site having applied the declaration —
+    a confident wrong name is worse than none, and one bound checking the
+    other is cheap.
     """
 
-    #: file URI -> (start line, end line, name), narrowest first.
-    spans: dict[str, list[tuple[int, int, str]]]
+    #: file URI -> each declaration's span and name.
+    spans: dict[str, list[tuple[Position, str]]]
 
     @classmethod
     def of(cls, raml: Raml) -> Sources:
-        spans: dict[str, list[tuple[int, int, str]]] = {}
-        for location, fragment in raml.fragments.items():
-            found: list[tuple[int, int, str]] = []
-            for group in ('traits', 'resource_types', 'types', 'annotation_types', 'security_schemes'):
-                for name, declared in (getattr(fragment, group, None) or {}).items():
-                    start, end = getattr(declared, 'key_pos', None), getattr(declared, 'value_pos', None)
-                    if start is not None and start.is_known and end is not None and end.end_line >= start.line:
-                        found.append((start.line, end.end_line, name))
-            if found:
-                spans[location] = sorted(found, key=lambda span: (span[1] - span[0], span[0]))
+        spans: dict[str, list[tuple[Position, str]]] = {}
+        for _key, name, declared in every_declaration(raml):
+            if declared.key_pos.is_known:
+                span = declared.key_pos.spanning(declared.value_pos)
+                spans.setdefault(declared.location, []).append((span, name))
         return cls(spans=spans)
 
-    def containing(self, location: str, line: int) -> str | None:
-        """The narrowest declaration whose span covers `line`."""
-        for start, end, name in self.spans.get(location, ()):
-            if start <= line <= end:
-                return name
-        return None
+    def containing(self, location: str, at: Position) -> str | None:
+        """The declaration whose span holds `at`."""
+        return next((name for span, name in self.spans.get(location, ()) if span.contains(at)), None)
 
 
 def _contributor(base: BaseShape, sources: Sources | None, applied: frozenset[str]) -> str | None:
@@ -148,7 +142,7 @@ def _contributor(base: BaseShape, sources: Sources | None, applied: frozenset[st
     """
     if sources is None or not applied or not base.key_pos.is_known:
         return None
-    found = sources.containing(base.location, base.key_pos.line)
+    found = sources.containing(base.location, base.key_pos)
     return found if found in applied else None
 
 
@@ -204,7 +198,7 @@ def render(base: BaseShape, *, depth: int = 1, root: str = '') -> Iterator[str]:
 
 
 def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
-    named = _type_name(base)
+    named = type_name(base)
     yield _Line(f'{level.indent}type: {named}', _from_schema(base, level))
 
     # The structure is read from the *projected* shape, so a type defined by a
@@ -212,7 +206,7 @@ def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
     # which for a schema type is nothing: the schema carries the constraints.
     view = projected(base)
     parents = [parent.name or '<anonymous>' for parent in base.inherits]
-    # `inherits: [User]` under `type: User` is the same fact twice — `_type_name`
+    # `inherits: [User]` under `type: User` is the same fact twice — `type_name`
     # returns the sole parent's name by construction. Two parents or more is
     # where the line earns its place, because `type:` cannot show both. A
     # schema type's only parent is named for its file, which the note gives.
@@ -232,7 +226,7 @@ def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
     elif isinstance(shape, UnionShape) and shape.any_of:
         yield _Line(f'{level.indent}anyOf:')
         for member in shape.any_of:
-            yield _Line(f'{level.indent}  - {_type_name(member)}')
+            yield _Line(f'{level.indent}  - {type_name(member)}')
 
 
 def _properties(base: BaseShape, shape: ObjectShape, level: _Level) -> Iterator[_Line]:
@@ -268,10 +262,10 @@ def _one(name: str, base: BaseShape, origin: str | None, level: _Level) -> Itera
     if not facets:
         # One line, so the two notes share it.
         both = ', '.join(part for part in (note, schema) if part)
-        yield _Line(f'{inner.indent}{key}: {_type_name(base)}', both)
+        yield _Line(f'{inner.indent}{key}: {type_name(base)}', both)
         return
     yield _Line(f'{inner.indent}{key}:', note)
-    yield _Line(f'{inner.indent}  type: {_type_name(base)}', schema)
+    yield _Line(f'{inner.indent}  type: {type_name(base)}', schema)
     yield from facets
 
 
@@ -289,7 +283,7 @@ def _member(base: BaseShape, key: str, level: _Level) -> Iterator[_Line]:
         yield _Line(f'{level.indent}{key}:')
         yield from _body(base, level.inside(base))
     else:
-        yield _Line(f'{level.indent}{key}: {_type_name(base)}')
+        yield _Line(f'{level.indent}{key}: {type_name(base)}')
 
 
 # -- reading the model --------------------------------------------------------
@@ -307,7 +301,7 @@ def _has_structure(base: BaseShape) -> bool:
     return False
 
 
-def _type_name(base: BaseShape, *, nested: bool = False) -> str:  # noqa: PLR0911 - one per naming rule
+def type_name(base: BaseShape, *, nested: bool = False) -> str:  # noqa: PLR0911 - one per naming rule
     """What to call this type in one word.
 
     `alias` first, and that is not a detail: `address: Address` and
@@ -363,9 +357,9 @@ def _type_name(base: BaseShape, *, nested: bool = False) -> str:  # noqa: PLR091
     if view is base and len(base.inherits) == 1 and base.inherits[0].name:
         return base.inherits[0].name
     if not nested and isinstance(view.shape, UnionShape) and view.shape.any_of:
-        return ' | '.join(_type_name(member, nested=True) for member in view.shape.any_of)
+        return ' | '.join(type_name(member, nested=True) for member in view.shape.any_of)
     if isinstance(view.shape, ArrayShape) and view.shape.items is not None:
-        member = _type_name(view.shape.items, nested=nested)
+        member = type_name(view.shape.items, nested=nested)
         # `(a | b)[]`, not `a | b[]`, which reads as a union with an array on
         # one side. RAML's own type expressions parenthesise this too.
         return f'({member})[]' if ' | ' in member else f'{member}[]'
@@ -446,7 +440,7 @@ def _extensions(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]
         yield _Line(f'{indent}facets:')
         for name, declared in base.custom_facet_defs.items():
             key = name if declared.required else f'{name}?'
-            yield _Line(f'{indent}  {_key(key)}: {_type_name(declared.base)}')
+            yield _Line(f'{indent}  {_key(key)}: {type_name(declared.base)}')
     for name, supplied in base.custom_facets.items():
         yield _Line(f'{indent}{_key(name)}: {_dumped(_plain(supplied.raw))}')
     for name, extension in base.annotations.items():
@@ -613,7 +607,7 @@ def _message(owner: Any, level: _Level, sources: Sources | None, applied: frozen
     yield from _parameters(owner.headers, 'headers', level, sources, applied)
     yield from _parameters(owner.query_parameters, 'queryParameters', level, sources, applied)
     if owner.query_string is not None:
-        yield _Line(f'{level.indent}queryString: {_type_name(owner.query_string)}')
+        yield _Line(f'{level.indent}queryString: {type_name(owner.query_string)}')
     yield from _bodies(getattr(owner, 'bodies', None) or {}, level, sources, applied)
 
 
@@ -655,7 +649,7 @@ def _bodies(
             yield _Line(f'{inner.indent}{_key(media)}:', note)
             yield from _body(body.shape, inner.inside(body.shape))
         else:
-            yield _Line(f'{inner.indent}{_key(media)}: {_type_name(body.shape)}', note)
+            yield _Line(f'{inner.indent}{_key(media)}: {type_name(body.shape)}', note)
 
 
 def _parameters(

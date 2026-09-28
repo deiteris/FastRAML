@@ -20,11 +20,13 @@ if TYPE_CHECKING:
 __all__ = [
     'ENUM_SIZES',
     'FACET_PARENTS',
+    'INHERITED_UNION_WIDTHS',
     'UNION_WIDTHS',
     'UNIQUE_LENGTHS',
     'write_endpoints',
     'write_enums',
     'write_facets',
+    'write_inheritance',
     'write_jsonschema',
     'write_large',
     'write_small',
@@ -536,15 +538,67 @@ def write_facets(root: Path, *, family_count: int = 150) -> Path:
     return root / 'lib.raml'
 
 
+# -- unions among the parents -------------------------------------------------
+
+#: Members of the union each multiply-inheriting type takes a parent from.
+INHERITED_UNION_WIDTHS: tuple[int, ...] = (2, 4)
+
+
+def _inherited_parent(name: str, own: str, bound: str) -> str:
+    """A parent declaring what every other parent declares too, bounded its own way."""
+    return (
+        f'  {name}:\n    properties:\n      {own}: string\n'
+        f'      tag:\n        type: string\n        {bound}\n'
+        f'      /^x-/:\n        type: string\n        {bound}\n'
+        f'      list:\n        type: array\n        items:\n          properties:\n'
+        f'            code:\n              type: string\n              {bound}'
+    )
+
+
+def write_inheritance(root: Path, *, family_count: int = 150) -> Path:
+    """Unions among a type's parents, and declarations two parents both make.
+
+    Each family declares two parents, `H` and `O`, and per width in
+    `INHERITED_UNION_WIDTHS` that many members. Every one of them declares
+    `tag`, a `/^x-/` pattern property and `list` of items with `code`, each
+    bounded differently, so every merge of two of them folds the like-named
+    declarations (docs/07 § 4). The types inheriting from them take a union
+    after an object, a union first, and a union of `H | O` with the members,
+    which pairs each member with each of the two (docs/07 § 5).
+    `tests/bench/test_corpus.py` pins that each path is reached.
+    """
+    lines = ['#%RAML 1.0 Library', 'types:']
+    for family in range(family_count):
+        stem = f'F{family}'
+        lines.append(_inherited_parent(f'{stem}H', 'home', 'maxLength: 64'))
+        lines.append(_inherited_parent(f'{stem}O', 'farm', 'minLength: 1'))
+        lines.append(f'  {stem}Both:\n    type: [{stem}H, {stem}O]')
+        for width in INHERITED_UNION_WIDTHS:
+            members = [f'{stem}W{width}M{member}' for member in range(width)]
+            for member, name in enumerate(members):
+                lines.append(_inherited_parent(name, f'm{member}', f'pattern: ^m{member}'))
+            union = ' | '.join(members)
+            lines.append(f'  {stem}W{width}After:\n    type: [{stem}H, {union}]')
+            lines.append(f'  {stem}W{width}First:\n    type: [{union}, {stem}H]')
+            lines.append(f'  {stem}W{width}Pairs:\n    type: [{stem}H | {stem}O, {union}]')
+    _write(root, {'lib.raml': '\n'.join(lines) + '\n'})
+    return root / 'lib.raml'
+
+
 # -- JSON Schema --------------------------------------------------------------
+
+#: Examples per schema: about what a real API with example-rich schemas holds.
+EXAMPLES_PER_SCHEMA: int = 5
 
 
 def write_jsonschema(root: Path, *, schema_count: int = 200, shared_count: int = 20) -> Path:
-    """`schema_count` schemas over `shared_count` shared `$ref` targets.
+    """`schema_count` schemas over `shared_count` shared `$ref` targets, each
+    with `EXAMPLES_PER_SCHEMA` examples validated through its references.
 
     Measures the per-parse registry (docs/10 § 7). Without it each of the
     200 schemas compiles its own copy of the definition it points at, and the
-    curve against `shared_count` is flat instead of falling.
+    curve against `shared_count` is flat instead of falling. The examples
+    measure validation across files, which resolves each `$ref` again.
     """
     files: dict[str, str] = {}
     for index in range(shared_count):
@@ -572,7 +626,14 @@ def write_jsonschema(root: Path, *, schema_count: int = 200, shared_count: int =
             '}\n'
         )
     lines = ['#%RAML 1.0 Library', 'types:']
-    lines.extend(f'  S{index}: !include schemas/s{index}.json' for index in range(schema_count))
+    for index in range(schema_count):
+        target, more = index % shared_count, (index % shared_count + 1) % shared_count
+        lines += [f'  S{index}:', f'    type: !include schemas/s{index}.json', '    examples:']
+        lines += [
+            f'      e{number}: {{"id": "i{number}", "detail": {{"d{target}Name": "n", "d{target}Size": {number}}}, '
+            f'"more": {{"d{more}Name": "m"}}}}'
+            for number in range(EXAMPLES_PER_SCHEMA)
+        ]
     files['lib.raml'] = '\n'.join(lines) + '\n'
     _write(root, files)
     return root / 'lib.raml'

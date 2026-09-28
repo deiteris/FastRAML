@@ -47,7 +47,7 @@ from fastraml.types.complex_ import ArrayShape, ComplexKind, ObjectShape, Recurs
 from fastraml.types.examples import Example, Examples
 from fastraml.types.inherit import inherit
 from fastraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
-from fastraml.types.values import EnumValues
+from fastraml.types.values import EnumValues, index_path, key_path, rejected
 from fastraml.uris import uri_stem
 from fastraml.yamlnode import node_error
 
@@ -126,11 +126,13 @@ class SchemaRegistry:
     them, so the memo has to live here.
     """
 
-    __slots__ = ('_projections', '_raml', '_resources')
+    __slots__ = ('_projections', '_raml', '_reached', '_resources')
 
     def __init__(self, raml: Raml) -> None:
         self._raml = raml
         self._resources: dict[str, Resource[Any]] = {}
+        #: The documents the schema being compiled reached, by URI.
+        self._reached: set[str] = set()
         #: Projections by the subschema's canonical URI, with the named
         #: definitions a walk of the whole document collected.
         #:
@@ -172,25 +174,55 @@ class SchemaRegistry:
                 location,
                 position,
                 kind=ErrorKind.PARSING,
-                info={'error': err.message, 'path': '/'.join(str(part) for part in err.absolute_path)},
+                info={'keyword': str(err.validator), 'path': '/'.join(str(part) for part in err.absolute_path)},
             ) from err
 
+        entry = Resource.from_contents(contents, default_specification=specification)
+        if _is_one_schema(self._raml, document_uri):
+            # One document, one resource, per parse: a `$ref` back into this
+            # file is then this very document, which the bundle and the
+            # projection recognise by identity. An inline schema is not the
+            # document it is written in, and stays out.
+            entry = self._resources.setdefault(document_uri, entry)
+            contents = entry.contents
         # `retrieve` is the init alias of the private `_retrieve` field, which
-        # mypy's attrs plugin does not derive.
-        registry: Registry[Any] = Registry(retrieve=self._retrieve).with_resource(  # type: ignore[call-arg]
-            document_uri, Resource.from_contents(contents, default_specification=specification)
+        # mypy's attrs plugin does not derive. Crawled now: a lookup that
+        # misses crawls whatever is uncrawled, so an uncrawled entry would be
+        # crawled again for every document it names.
+        registry: Registry[Any] = (
+            Registry(retrieve=self._retrieve).with_resource(document_uri, entry).crawl()  # type: ignore[call-arg]
         )
-        resolver = registry.resolver(document_uri)
-        if pointer:
-            resolved = self._lookup(resolver, '#' + pointer, location, position)
-            contents, resolver = resolved.contents, resolved.resolver
-        self._prefetch(contents, resolver, specification, location, position, set())
+        self._reached = set()
+        selected, resolver = self._select(registry, document_uri, pointer, contents, location, position)
+        self._prefetch(selected, resolver, specification, location, position, set())
+        # The schema's own registry: every document it reaches, crawled once.
+        # `referencing` keeps what a lookup retrieves only in the registry that
+        # lookup returns, so on the registry above the validator and both views
+        # would re-crawl and re-retrieve each other document at every `$ref`.
+        registry = registry.with_resources((uri, self._resources[uri]) for uri in self._reached).crawl()
+        contents, resolver = self._select(registry, document_uri, pointer, contents, location, position)
         return CompiledSchema(
             validator=validator_class(contents, registry=registry, _resolver=resolver),
             contents=contents,
             resolver=resolver,
             uri=f'{_document_of(resolver) or document_uri}#{pointer}',
         )
+
+    def _select(  # noqa: PLR0913, PLR0917 - a lookup with its diagnostic context
+        self,
+        registry: Registry[Any],
+        document_uri: str,
+        pointer: str,
+        contents: Any,
+        location: str,
+        position: Position | None,
+    ) -> tuple[Any, Resolver[Any]]:
+        """The subschema `pointer` selects in the document, and its resolver."""
+        resolver = registry.resolver(document_uri)
+        if not pointer:
+            return contents, resolver
+        resolved = self._lookup(resolver, '#' + pointer, location, position)
+        return resolved.contents, resolved.resolver
 
     # -- reading --------------------------------------------------------------
 
@@ -235,13 +267,17 @@ class SchemaRegistry:
                 stack.extend((item, depth + 1) for item in node)
 
     def _retrieve(self, uri: str) -> Resource[Any]:
-        """`referencing`'s hook: every `$ref` target is read through the loader."""
+        """`referencing`'s hook: every `$ref` target is read through the loader,
+        once per parse, and recorded as reached by the schema being compiled.
+        """
+        resource = self._resources.get(uri) or self._load(uri)
+        self._reached.add(uri)
+        return resource
+
+    def _load(self, uri: str) -> Resource[Any]:
         from referencing import Resource  # noqa: PLC0415 - deferred for startup cost
         from referencing.jsonschema import DRAFT7  # noqa: PLC0415
 
-        cached = self._resources.get(uri)
-        if cached is not None:
-            return cached
         raml = self._raml
         limit = raml.max_include_size
         try:
@@ -441,14 +477,15 @@ class JsonShape(ComplexKind):
         try:
             self.validator.validate(value)
         except ValidationError as err:
-            raise RamlError.new(
+            # The failing instance's path, in RAML's spelling, so the value is
+            # found in the example (docs/11 § 3).
+            for part in err.absolute_path:
+                path = index_path(path, part) if isinstance(part, int) else key_path(path, part)
+            raise rejected(
                 'value does not match the JSON schema',
-                self.base.location,
-                self.base.value_pos,
-                kind=ErrorKind.VALIDATING,
+                self.base,
                 info={
                     'path': path,
-                    'error': err.message,
                     'schema_path': '/'.join(str(part) for part in err.absolute_schema_path),
                 },
             ) from err
@@ -492,6 +529,46 @@ class JsonShape(ComplexKind):
         """
         return self._cached_defs
 
+    def as_shape_definitions(self) -> dict[str, BaseShape]:
+        """Named reference targets and every top-level definition, including unused ones.
+
+        `as_shape_defs()` is the traversal's encountered references; an export
+        also needs definitions the root did not reference. Project those only
+        when requested, without changing the cached projection or parser model.
+        """
+        root = self.as_shape()
+        if self._compiled is None:
+            return {}
+        defs = dict(self._cached_defs or {})
+        contents = self._compiled.contents
+        declared: dict[str, BaseShape] = {}
+        if isinstance(contents, dict):
+            _, _, pointer = self._compiled.uri.partition('#')
+            context = _Projection(self.base, self._compiled.resolver, defs, pointer)
+            for keyword, entries in contents.items():
+                if keyword not in {'definitions', '$defs'}:
+                    continue
+                if not isinstance(entries, dict):
+                    continue
+                for name in entries:
+                    reference = f'#/{keyword}/{escape_json_pointer_segment(name)}'
+                    candidate, suffix = name, 2
+                    while candidate in declared:
+                        candidate = f'{name}{suffix}'
+                        suffix += 1
+                    declared[candidate] = _project_reference(context, reference, {})
+        # A local alias to `node.json` can register the same shape under both
+        # `Node` (the author's definition) and `node` (the file stem). The
+        # declared name wins; otherwise recursive references would name the
+        # file stem without a corresponding Library declaration.
+        result = dict(declared)
+        used = set(result.values())
+        if root is not None:
+            _collect_projection_names(root, result, used, declared, defs)
+        for name, base in defs.items():
+            _claim_projection_name(result, used, name, base)
+        return result
+
     @property
     def canonical_uri(self) -> str | None:
         """The subschema's identity, or `None` for a schema written inline.
@@ -518,10 +595,12 @@ class JsonShape(ComplexKind):
 
     @property
     def document_uri(self) -> str | None:
-        """The document this schema compiled from; `None` if it was inline.
+        """The resolver's base document, including the RAML file for inline schemas.
 
         Not `base.location`, which for `type: !include person.json` is the RAML
-        file. The resolver is re-based onto the document it retrieved.
+        file. The resolver is re-based onto the document it retrieved. For an
+        inline schema this is the RAML file, not a schema identity; use
+        `canonical_uri` to distinguish it from a schema file.
         """
         if self._compiled is None:
             return None
@@ -544,8 +623,54 @@ class JsonShape(ComplexKind):
         if self._compiled is None:
             return None
         if self._cached_schema is None:
-            self._cached_schema = _bundle(self._compiled)
+            self._cached_schema = _bundle(self._compiled, self.canonical_uri)
         return self._cached_schema
+
+
+def _claim_projection_name(found: dict[str, BaseShape], used: set[BaseShape], name: str, base: BaseShape) -> None:
+    if base in used:
+        return
+    candidate, suffix = name, 2
+    while candidate in found:
+        candidate = f'{name}{suffix}'
+        suffix += 1
+    found[candidate] = base
+    used.add(base)
+
+
+def _collect_projection_names(
+    root: BaseShape,
+    found: dict[str, BaseShape],
+    used: set[BaseShape],
+    declared: dict[str, BaseShape],
+    defs: dict[str, BaseShape],
+) -> None:
+    """Find named targets inside cached subtrees that did not re-enter the walk."""
+    stack = list(reversed([root, *declared.values(), *defs.values()]))
+    seen: set[BaseShape] = set()
+    while stack:
+        base = stack.pop()
+        if base in seen:
+            continue
+        seen.add(base)
+        if (
+            base is not root
+            and base.location != root.location
+            and base.name
+            and '#' in base.location
+            and not isinstance(base.shape, RecursiveShape)
+        ):
+            _claim_projection_name(found, used, base.name, base)
+        shape = base.shape
+        if isinstance(shape, RecursiveShape):
+            stack.append(shape.head)
+        elif isinstance(shape, ObjectShape):
+            stack.extend(reversed([prop.base for prop in (shape.properties or {}).values()]))
+            stack.extend(reversed([prop.base for prop in (shape.pattern_properties or {}).values()]))
+        elif isinstance(shape, ArrayShape) and shape.items is not None:
+            stack.append(shape.items)
+        elif isinstance(shape, UnionShape):
+            stack.extend(reversed(shape.any_of or ()))
 
 
 def projected(base: BaseShape) -> BaseShape:
@@ -704,7 +829,10 @@ def _view_base(context: _Projection, name: str | None = None) -> BaseShape:
     return base
 
 
-def _project(context: _Projection, contents: Any, visiting: dict[int, BaseShape]) -> BaseShape:
+type _Visiting = dict[int, BaseShape | None]
+
+
+def _project(context: _Projection, contents: Any, visiting: _Visiting) -> BaseShape:
     """One schema node, projected onto the nearest RAML shape (docs/10 § 7)."""
     # `visiting` holds one entry per level currently open — it is added to
     # before descending and removed in a `finally` — so its size *is* the depth,
@@ -726,7 +854,13 @@ def _project(context: _Projection, contents: Any, visiting: dict[int, BaseShape]
 
     reference = contents.get('$ref')
     if isinstance(reference, str):
-        return _project_reference(context, reference, visiting)
+        # Reference-only chains can cycle without ever opening a body. Mark
+        # these nodes too; a back-edge to one cannot yield a RAML shape head.
+        visiting[id(contents)] = None
+        try:
+            return _project_reference(context, reference, visiting)
+        finally:
+            del visiting[id(contents)]
     if 'if' in contents:
         raise _unsupported(context, 'if/then/else')
 
@@ -738,7 +872,7 @@ def _project(context: _Projection, contents: Any, visiting: dict[int, BaseShape]
         del visiting[id(contents)]
 
 
-def _project_reference(context: _Projection, reference: str, visiting: dict[int, BaseShape]) -> BaseShape:
+def _project_reference(context: _Projection, reference: str, visiting: _Visiting) -> BaseShape:
     resolved = context.resolver.lookup(reference)
     # Where the reference lands, split the way `Resolver.lookup` splits it. A
     # reference moves the walk outright rather than deeper, so this replaces the
@@ -746,8 +880,10 @@ def _project_reference(context: _Projection, reference: str, visiting: dict[int,
     # for a bare `#...`: it appends the fragment to the base, which is what
     # `lookup` shortcuts to.
     document, target = urldefrag(urljoin(_document_of(context.resolver) or '', reference))
-    head = visiting.get(id(resolved.contents))
-    if head is not None:
+    if id(resolved.contents) in visiting:
+        head = visiting[id(resolved.contents)]
+        if head is None:
+            raise _unsupported(context, 'reference-only cycle')
         # The back-edge of a cycle, which is exactly what P9 produces for a
         # recursive RAML type (docs/07 § 6).
         base = _view_base(context, head.name)
@@ -762,7 +898,7 @@ def _project_reference(context: _Projection, reference: str, visiting: dict[int,
     name = _subschema_name(uri) if target else None
     if name is not None:
         existing = context.defs.get(name)
-        if existing is not None:
+        if existing is not None and existing.location == uri:
             return existing
     # Only a target in a file of its own has a canonical URI to share under. An
     # inline schema compiles under the RAML file's URI, which it shares with
@@ -799,7 +935,7 @@ def _subschema_name(location: str) -> str | None:
     if not pointer:
         return uri_stem(document) or None
     parent, _, key = pointer.rpartition('/')
-    return key if parent in {'/definitions', '/$defs'} else None
+    return key.replace('~1', '/').replace('~0', '~') if parent in {'/definitions', '/$defs'} else None
 
 
 def _pointer_tail(reference: str) -> str | None:
@@ -816,7 +952,7 @@ def _pointer_tail(reference: str) -> str | None:
     return segment or None
 
 
-def _project_body(context: _Projection, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+def _project_body(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
     if contents.get('allOf'):
         return _project_all_of(context, contents['allOf'], base, visiting)
     for keyword in ('oneOf', 'anyOf'):
@@ -902,7 +1038,7 @@ def _inferred_type(contents: dict) -> str | None:
     return implied.pop() if len(implied) == 1 else None
 
 
-def _project_all_of(context: _Projection, members: list, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+def _project_all_of(context: _Projection, members: list, base: BaseShape, visiting: _Visiting) -> BaseShape:
     """Sequential inheritance, which is the nearest thing RAML has to `allOf`."""
     merged = _project(context.into('allOf', '0'), members[0], visiting)
     for index, member in enumerate(members[1:], start=1):
@@ -923,14 +1059,14 @@ def _project_all_of(context: _Projection, members: list, base: BaseShape, visiti
 
 
 def _project_union(
-    context: _Projection, keyword: str, members: list, base: BaseShape, visiting: dict[int, BaseShape]
+    context: _Projection, keyword: str, members: list, base: BaseShape, visiting: _Visiting
 ) -> BaseShape:
     projected = [_project(context.into(keyword, str(i)), member, visiting) for i, member in enumerate(members)]
     return _kind(base, TYPE_UNION, UnionShape, any_of=projected)
 
 
 def _project_type(  # noqa: PLR0911 - one return per projected kind
-    context: _Projection, declared: str, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]
+    context: _Projection, declared: str, contents: dict, base: BaseShape, visiting: _Visiting
 ) -> BaseShape:
     match declared:
         case 'object':
@@ -963,7 +1099,7 @@ def _project_type(  # noqa: PLR0911 - one return per projected kind
             raise _unsupported(context, f'type: {declared}')
 
 
-def _project_object(context: _Projection, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+def _project_object(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
     extras = contents.get('additionalProperties')
     if isinstance(extras, dict):
         raise _unsupported(context, 'schema-form additionalProperties')
@@ -990,7 +1126,7 @@ def _project_object(context: _Projection, contents: dict, base: BaseShape, visit
     return _attach(base, TYPE_OBJECT, shape)
 
 
-def _project_array(context: _Projection, contents: dict, base: BaseShape, visiting: dict[int, BaseShape]) -> BaseShape:
+def _project_array(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
     items = contents.get('items')
     if isinstance(items, list):
         raise _unsupported(context, 'tuple-form items')
@@ -1107,33 +1243,53 @@ class _Bundling:
     resolver: Resolver[Any]
     #: Name -> the pulled-in subschema, in encounter order.
     pulled: dict[str, Any]
-    #: The identity of a resolved document -> the name it was given, so a second
-    #: reference to it points at the first copy and a cycle terminates.
+    #: The identity of a resolved schema -> the local reference that stands for
+    #: it, so a second reference points at the first copy, a cycle terminates,
+    #: and the bundled root answers `#`.
     named: dict[int, str]
     #: Every name in use, including the ones the document already had.
     taken: set[str]
-    #: True while walking the document the bundle is *of*. A pointer there is a
-    #: pointer into the result and stands. Inside anything pulled in it is a
-    #: pointer into the file that was pulled, which the result is not: left
-    #: alone it names whatever the result happens to have at that path, and a
-    #: schema that validates something else is worse than one that is opaque.
+    #: True while walking a whole document the bundle is *of*. A pointer there
+    #: is a pointer into the result and stands. Inside anything pulled in, or
+    #: in a subschema bundled on its own, it is a pointer into a file the
+    #: result is not: left alone it names whatever the result happens to have
+    #: at that path, and a schema that validates something else is worse than
+    #: one that is opaque.
     root: bool
+    #: The file the bundle is of, where it is a whole file of its own: a
+    #: reference back into it, from anywhere, is a pointer into the result.
+    document: str | None = None
+    #: The bundled location of this document, for aliases in its definitions.
+    slot: str = '#'
 
-    def at(self, resolver: Resolver[Any]) -> _Bundling:
-        return _Bundling(resolver, self.pulled, self.named, self.taken, root=False)
+    def at(self, resolver: Resolver[Any], slot: str) -> _Bundling:
+        return _Bundling(resolver, self.pulled, self.named, self.taken, root=False, document=self.document, slot=slot)
 
 
-def _bundle(compiled: CompiledSchema) -> Any:
-    """`compiled`'s document with every reference out of it pulled in."""
+def _bundle(compiled: CompiledSchema, canonical: str | None) -> Any:
+    """`compiled`'s document with every reference out of it pulled in.
+
+    `canonical` is the schema's identity (`JsonShape.canonical_uri`); without
+    a pointer it names the whole file, which references back into it then
+    point into rather than copy.
+    """
     document = compiled.contents
     taken = (
         set(document[_BUNDLE_KEY])
         if isinstance(document, dict) and isinstance(document.get(_BUNDLE_KEY), dict)
         else set()
     )
-    context = _Bundling(compiled.resolver, {}, {}, taken, root=True)
-    aliases = _definition_aliases(context, document)
-    bundled = _bundle_root(context, document, aliases)
+    whole, _, pointer = (canonical or '').partition('#')
+    selected = compiled.uri.partition('#')[2]
+    context = _Bundling(
+        compiled.resolver,
+        {},
+        {id(document): '#'},
+        taken,
+        root=not selected,
+        document=None if pointer else whole or None,
+    )
+    bundled = _bundle_root(context, document)
     if not context.pulled or not isinstance(bundled, dict):
         return bundled
     existing = bundled.get(_BUNDLE_KEY)
@@ -1142,13 +1298,12 @@ def _bundle(compiled: CompiledSchema) -> Any:
 
 
 def _definition_aliases(context: _Bundling, document: Any) -> dict[str, Any]:
-    """Claim exact external aliases under the names the document already gave them.
+    """Claim exact external aliases at the document's bundled location.
 
     Without this first pass, `definitions: {uuid: {$ref: "uuid.json"}}`
-    reserves `uuid`, then the ordinary pull has to call the target `uuid2`. The
-    original slot is already the right place for that target. Claim aliases
-    before walking the rest of the document so an earlier direct reference to
-    the same target uses the author's name too.
+    reserves `uuid`, then the ordinary pull has to call the target `uuid2`.
+    Claim aliases in every document before walking its properties, including
+    documents pulled into a definition of the entry schema.
     """
     from referencing.exceptions import Unresolvable  # noqa: PLC0415 - deferred for startup cost
 
@@ -1165,22 +1320,35 @@ def _definition_aliases(context: _Bundling, document: Any) -> dict[str, Any]:
             resolved = context.resolver.lookup(reference)
         except Unresolvable:
             continue
+        local = f'{context.slot}/{_BUNDLE_KEY}/{escape_json_pointer_segment(name)}'
         if id(resolved.contents) in context.named:
+            # Another document already claimed the target. Keep this alias as
+            # a reference to it, but local pointers must still find this slot.
+            context.named[id(node)] = local
             continue
-        context.named[id(resolved.contents)] = name
+        context.named[id(resolved.contents)] = local
+        # A local pointer resolves to the alias node, whereas a direct external
+        # reference resolves to its target. Both already occupy this one slot.
+        context.named[id(node)] = local
         aliases[name] = resolved
     return aliases
 
 
-def _bundle_root(context: _Bundling, document: Any, aliases: dict[str, Any]) -> Any:
-    """Bundle the root, expanding its claimed definition aliases in place."""
+def _bundle_root(context: _Bundling, document: Any) -> Any:
+    """Bundle one document, expanding its claimed definition aliases in place."""
     if not isinstance(document, dict):
         return _bundle_node(context, document)
+    aliases = _definition_aliases(context, document)
     bundled: dict[str, Any] = {}
     for key, value in document.items():
         if key == _BUNDLE_KEY and isinstance(value, dict):
             bundled[key] = {
-                name: _bundle_node(context.at(aliases[name].resolver), aliases[name].contents)
+                name: _bundle_root(
+                    context.at(
+                        aliases[name].resolver, f'{context.slot}/{_BUNDLE_KEY}/{escape_json_pointer_segment(name)}'
+                    ),
+                    aliases[name].contents,
+                )
                 if name in aliases
                 else _bundle_node(context, node)
                 for name, node in value.items()
@@ -1203,17 +1371,19 @@ def _bundle_node(context: _Bundling, node: Any) -> Any:
     reference = node.get('$ref')
     if not isinstance(reference, str) or (context.root and reference.startswith('#')):
         return {key: _bundle_node(context, value) for key, value in node.items()}
-    name = _pull(context, reference)
-    if name is None:
+    local = _pull(context, reference)
+    if local is None:
         return {key: _bundle_node(context, value) for key, value in node.items()}
     # `$ref` first, where the author wrote it, and its siblings after: draft 2019
     # onward gives a schema beside a `$ref` meaning, so they are not dropped.
     rest = {key: _bundle_node(context, value) for key, value in node.items() if key != '$ref'}
-    return {'$ref': f'#/{_BUNDLE_KEY}/{name}', **rest}
+    return {'$ref': local, **rest}
 
 
 def _pull(context: _Bundling, reference: str) -> str | None:
-    """Resolve `reference`, register what it names, and answer with that name.
+    """Resolve `reference` and answer with the local reference that replaces
+    it: a pointer into the result where it lands in the bundled file itself,
+    else a `definitions` entry holding what it names, registered on first use.
 
     `None` where it does not resolve, which leaves the reference as the author
     wrote it. `_prefetch` has already resolved every reference in the schema by
@@ -1222,6 +1392,9 @@ def _pull(context: _Bundling, reference: str) -> str | None:
     """
     from referencing.exceptions import Unresolvable  # noqa: PLC0415 - deferred for startup cost
 
+    document, fragment = urldefrag(urljoin(_document_of(context.resolver) or '', reference))
+    if document == context.document:
+        return f'#{fragment}'
     try:
         resolved = context.resolver.lookup(reference)
     except Unresolvable:
@@ -1230,12 +1403,13 @@ def _pull(context: _Bundling, reference: str) -> str | None:
     if known is not None:
         return known
     name = _bundle_name(reference, context.taken)
+    local = f'#/{_BUNDLE_KEY}/{name}'
     # Registered before the walk into it, so a reference that leads back here
     # finds the name rather than descending again.
-    context.named[id(resolved.contents)] = name
+    context.named[id(resolved.contents)] = local
     context.pulled[name] = None
-    context.pulled[name] = _bundle_node(context.at(resolved.resolver), resolved.contents)
-    return name
+    context.pulled[name] = _bundle_root(context.at(resolved.resolver, local), resolved.contents)
+    return local
 
 
 def _bundle_name(reference: str, taken: set[str]) -> str:

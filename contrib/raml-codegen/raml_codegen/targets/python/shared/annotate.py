@@ -174,7 +174,10 @@ class Annotator:
 
     def members(self, shape: Shape) -> list[Member]:
         """A union's members, each with what the document says of it."""
-        return [self._member(node) for node in members_of(shape)]
+        nodes = members_of(shape)
+        for node in nodes:
+            self._name_variant(shape, node)
+        return [self._member(node) for node in nodes]
 
     def pending(self) -> Iterator[tuple[str, Shape]]:
         """Models reached so far, in the order they were first reached."""
@@ -249,6 +252,32 @@ class Annotator:
         if content['type'] != 'object' or set(properties_of(shape)) != set(properties_of(content)):
             return None
         return self._of_shape(content, only['$ref'])
+
+    def _name_variant(self, union: Shape, node: ShapeNode | None) -> None:
+        """Claim a variant's name from the union and the members it took.
+
+        A variant is anonymous (docs/07 § 5), so the tree gives it no name, and
+        its address, `HomelyPet/anyOf/0`, says only where it sits. What tells
+        variants apart is `inherits`: each union among the declared parents is
+        replaced by the member the variant took. The members the union's own
+        parents do not name are those, so `type: [HasHome, Cat | Dog]` gives
+        `HomelyPetCat` and `HomelyPetDog`, and `[HasHome | OnFarm, Cat | Dog]`
+        gives one name per pair, such as `PetOnFarmDog`. The union's name comes
+        first because two declarations may pair the same members.
+        """
+        if node is None or is_ref(node) or is_recursion(node):
+            return
+        shape = cast('Shape', node)
+        address = shape.get('id')
+        parents = shape.get('inherits', [])
+        refs = [parent['$ref'] for parent in parents if is_ref(parent)]
+        if address is None or not refs or len(refs) != len(parents):
+            return
+        own = {parent['$ref'] for parent in union.get('inherits', []) if is_ref(parent)}
+        taken = [ref for ref in refs if ref not in own] or refs
+        names = [name for target in map(self.tree.at, taken) if target is not None and (name := target.get('name'))]
+        if names:
+            self.names.claim(address, class_name('-'.join([union.get('name') or '', *names])))
 
     def _member(self, node: ShapeNode | None) -> Member:
         resolved = self.tree.resolve(node)

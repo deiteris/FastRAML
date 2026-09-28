@@ -73,17 +73,27 @@ class TestStores:
         assert off.source_info is None
         assert on.source_info == {}
 
+    def test_retain_text_keeps_the_text_and_nothing_else(self):
+        # docs/13 § 2: what the occurrence index needs, without the YAML trees.
+        raml = Raml(retain_text=True)
+        raml.store_source_node('file:///a.raml', 'node')
+        raml.store_source_text('file:///a.raml', 'text')
+        assert raml.source_texts == {'file:///a.raml': 'text'}
+        assert raml.source_node('file:///a.raml') is None
+        assert raml.source_info is None
+
 
 class TestDefaults:
     def test_a_registry_without_a_loader_reports_the_missing_scheme(self):
         # Better than an AttributeError from a None loader: the message names
         # what was asked for.
-        with pytest.raises(UnsupportedSchemeError, match='file'):
+        with pytest.raises(UnsupportedSchemeError) as caught:
             Raml().loader.load('file:///a.raml')
+        assert caught.value.info['scheme'] == 'file'
 
     def test_include_limit_defaults_to_the_documented_value(self):
         assert Raml().max_include_size == DEFAULT_MAX_INCLUDE_SIZE == 65536
 
     def test_location_is_empty_until_an_entry_point_is_set(self):
         assert Raml().location == ''
-        assert Raml().is_unwrapped is False
+        assert Raml().unwrapped is False

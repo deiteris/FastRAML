@@ -44,6 +44,7 @@ _NOT_EMITTED: Final = frozenset(
         '_unwrapped',
         '_visiting',
         'type_expr_refs',
+        'items_written',
         'pending_facets',
         'link',
         'alias',

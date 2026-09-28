@@ -16,24 +16,40 @@ See docs/09-security-and-annotations.md § A. Three rules carry the design:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlparse
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
+from fastraml.facet_names import (
+    FACET_ACCESS_TOKEN_URI,
+    FACET_AUTHORIZATION_GRANTS,
+    FACET_AUTHORIZATION_URI,
+    FACET_DESCRIBED_BY,
+    FACET_DESCRIPTION,
+    FACET_DISPLAY_NAME,
+    FACET_REQUEST_TOKEN_URI,
+    FACET_RESPONSES,
+    FACET_SCOPES,
+    FACET_SETTINGS,
+    FACET_SIGNATURES,
+    FACET_TOKEN_CREDENTIALS_URI,
+    FACET_TYPE,
+)
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_string_facet, scalar_str
 from fastraml.parser.includes import note_include_ref
 from fastraml.parser.source_decode import decode_request_facet, decode_responses, query_exclusion_error
+from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.directives import SecurityScheme
     from fastraml.parser.endpoints import EndPoint, Response
-    from fastraml.positions import Position
     from fastraml.registry import Raml
     from fastraml.types.base import BaseShape, Parameter, ScalarFacet
 
@@ -45,12 +61,6 @@ __all__ = [
     'apply_security_schemes',
     'make_security_scheme_definition',
 ]
-
-FACET_TYPE: Final = 'type'
-FACET_DISPLAY_NAME: Final = 'displayName'
-FACET_DESCRIPTION: Final = 'description'
-FACET_DESCRIBED_BY: Final = 'describedBy'
-FACET_SETTINGS: Final = 'settings'
 
 TYPE_NULL: Final = 'null'
 TYPE_OAUTH1: Final = 'OAuth 1.0'
@@ -64,8 +74,10 @@ TYPE_PASS_THROUGH: Final = 'Pass Through'  # noqa: S105 - a scheme type name, no
 #: is what catches `type: Basic Authentication` with an `accessTokenUri`
 #: (docs/09 § A2).
 SCHEME_TYPES: Final[dict[str, frozenset[str]]] = {
-    TYPE_OAUTH1: frozenset({'requestTokenUri', 'authorizationUri', 'tokenCredentialsUri', 'signatures'}),
-    TYPE_OAUTH2: frozenset({'authorizationUri', 'accessTokenUri', 'authorizationGrants', 'scopes'}),
+    TYPE_OAUTH1: frozenset(
+        {FACET_REQUEST_TOKEN_URI, FACET_AUTHORIZATION_URI, FACET_TOKEN_CREDENTIALS_URI, FACET_SIGNATURES}
+    ),
+    TYPE_OAUTH2: frozenset({FACET_AUTHORIZATION_URI, FACET_ACCESS_TOKEN_URI, FACET_AUTHORIZATION_GRANTS, FACET_SCOPES}),
     TYPE_BASIC: frozenset(),
     TYPE_DIGEST: frozenset(),
     TYPE_PASS_THROUGH: frozenset(),
@@ -103,7 +115,7 @@ class SecuritySchemeSettings:
     #: The sequence-valued ones: `signatures`, `authorizationGrants`, `scopes`.
     lists: dict[str, list[str]] = field(default_factory=dict)
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
-    value_pos: Position | None = None
+    value_pos: Position = UNKNOWN
 
     def __repr__(self) -> str:
         return f'SecuritySchemeSettings({self.scheme_type!r})'
@@ -125,7 +137,7 @@ class SecuritySchemeDescription:
     query_string: BaseShape | None = None
     responses: dict[str, Response] = field(default_factory=dict)
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
-    value_pos: Position | None = None
+    value_pos: Position = UNKNOWN
 
 
 @dataclass(slots=True, eq=False)
@@ -143,8 +155,8 @@ class SecuritySchemeDefinition:
     link: SecuritySchemeDefinition | None = None
     link_uri: str | None = None
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
-    key_pos: Position | None = None
-    value_pos: Position | None = None
+    key_pos: Position = UNKNOWN
+    value_pos: Position = UNKNOWN
 
     def __repr__(self) -> str:
         return f'SecuritySchemeDefinition({self.name!r}, {self.type!r})'
@@ -158,9 +170,18 @@ class SecuritySchemeDefinition:
 
 
 def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declaration's key vocabulary
-    raml: Raml, key_node: Node | None, value_node: Node, location: str
+    raml: Raml,
+    key_node: Node | None,
+    value_node: Node,
+    location: str,
+    *,
+    attach: Callable[[SecuritySchemeDefinition], None],
 ) -> SecuritySchemeDefinition:
-    """Decode one security-scheme declaration."""
+    """Decode one security-scheme declaration.
+
+    `attach` places the definition before its content is read; one whose
+    content fails stays placed, marked in `Raml.broken` (docs/13 § 1).
+    """
     location = raml.document_location(value_node, location)
     definition = SecuritySchemeDefinition(
         id=raml.next_id(),
@@ -169,76 +190,84 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
         key_pos=(key_node if key_node is not None else value_node).position,
         value_pos=value_node.full_position,
     )
-    if value_node.tag == TAG_INCLUDE:
-        definition.link_uri = note_include_ref(raml, value_node, location)
-        return definition
-    if is_null(value_node):
-        raise node_error('security scheme must declare a type', location, value_node)
-    if value_node.kind is not NodeKind.MAPPING:
-        raise node_error('security scheme definition must be a mapping', location, value_node)
+    attach(definition)
+    with raml.marking(definition):
+        if value_node.tag == TAG_INCLUDE:
+            definition.link_uri = note_include_ref(raml, value_node, location)
+            return definition
+        if is_null(value_node):
+            raise node_error('security scheme must declare a type', location, value_node)
+        if value_node.kind is not NodeKind.MAPPING:
+            raise node_error('security scheme definition must be a mapping', location, value_node)
 
-    settings_node: Node | None = None
-    type_node: Node | None = None
-    accumulator = Accumulator()
-    with raml.target_scope(DomainLocation.SECURITY_SCHEME):
-        for key, value in pairs(value_node):
-            name = key.value
+        settings_node: Node | None = None
+        type_node: Node | None = None
+        accumulator = Accumulator()
+        with raml.target_scope(DomainLocation.SECURITY_SCHEME):
+            for key, value in pairs(value_node):
+                name = key.value
+                try:
+                    if name == FACET_TYPE:
+                        definition.type = scalar_str(value, location)
+                        type_node = value
+                    elif name == FACET_DISPLAY_NAME:
+                        definition.display_name = make_string_facet(raml, key, value, location)
+                    elif name == FACET_DESCRIPTION:
+                        definition.description = make_string_facet(raml, key, value, location)
+                    elif name == FACET_DESCRIBED_BY:
+                        _decode_described_by(raml, value, location, partial(setattr, definition, 'described_by'))
+                    elif name == FACET_SETTINGS:
+                        settings_node = value
+                    elif is_annotation_key(name):
+                        add_domain_extension(raml, definition.annotations, location, key, value)
+                    else:
+                        raise node_error('unknown field', location, key, info={'field': name})
+                except RamlError as err:
+                    accumulator.add(err)
+
+        if type_node is None:
+            accumulator.add(node_error('security scheme must declare a type', location, value_node))
+        else:
             try:
-                if name == FACET_TYPE:
-                    definition.type = scalar_str(value, location)
-                    type_node = value
-                elif name == FACET_DISPLAY_NAME:
-                    definition.display_name = make_string_facet(raml, key, value, location)
-                elif name == FACET_DESCRIPTION:
-                    definition.description = make_string_facet(raml, key, value, location)
-                elif name == FACET_DESCRIBED_BY:
-                    definition.described_by = _decode_described_by(raml, value, location)
-                elif name == FACET_SETTINGS:
-                    settings_node = value
-                elif is_annotation_key(name):
-                    add_domain_extension(raml, definition.annotations, location, key, value)
-                else:
-                    raise node_error('unknown field', location, key, info={'field': name})
+                definition.settings = _make_settings(raml, definition.type, type_node, settings_node, location)
             except RamlError as err:
                 accumulator.add(err)
-
-    if type_node is None:
-        accumulator.add(node_error('security scheme must declare a type', location, value_node))
-    else:
-        try:
-            definition.settings = _make_settings(raml, definition.type, type_node, settings_node, location)
-        except RamlError as err:
-            accumulator.add(err)
-    accumulator.raise_if_any()
+        accumulator.raise_if_any()
     return definition
 
 
-def _decode_described_by(raml: Raml, node: Node, location: str) -> SecuritySchemeDescription:
-    """`describedBy:` — headers, query, responses, decoded exactly as a method's."""
+def _decode_described_by(
+    raml: Raml, node: Node, location: str, attach: Callable[[SecuritySchemeDescription], None]
+) -> None:
+    """`describedBy:` — headers, query, responses, decoded exactly as a method's.
+
+    Attached before its content is decoded, and marked if that fails.
+    """
     description = SecuritySchemeDescription(id=raml.next_id(), location=location, value_pos=node.full_position)
-    if is_null(node):
-        return description
-    if node.kind is not NodeKind.MAPPING:
-        raise node_error('describedBy must be a mapping', location, node)
+    attach(description)
+    with raml.marking(description):
+        if is_null(node):
+            return
+        if node.kind is not NodeKind.MAPPING:
+            raise node_error('describedBy must be a mapping', location, node)
 
-    accumulator = Accumulator()
-    for key, value in pairs(node):
-        name = key.value
-        try:
-            if decode_request_facet(raml, description, key, value, location):
-                continue
-            if name == 'responses':
-                description.responses = decode_responses(raml, value, location)
-            elif is_annotation_key(name):
-                add_domain_extension(raml, description.annotations, location, key, value)
-            else:
-                raise node_error('unknown field in describedBy', location, key, info={'field': name})
-        except RamlError as err:
-            accumulator.add(err)
+        accumulator = Accumulator()
+        for key, value in pairs(node):
+            name = key.value
+            try:
+                if decode_request_facet(raml, description, key, value, location):
+                    continue
+                if name == FACET_RESPONSES:
+                    decode_responses(raml, value, location, description.responses)
+                elif is_annotation_key(name):
+                    add_domain_extension(raml, description.annotations, location, key, value)
+                else:
+                    raise node_error('unknown field in describedBy', location, key, info={'field': name})
+            except RamlError as err:
+                accumulator.add(err)
 
-    accumulator.add(query_exclusion_error(description, location, node))
-    accumulator.raise_if_any()
-    return description
+        accumulator.add(query_exclusion_error(description, location, node))
+        accumulator.raise_if_any()
 
 
 def _make_settings(
@@ -266,7 +295,7 @@ def _make_settings(
 
 
 #: Which of the accepted keys hold a sequence rather than a scalar.
-_LIST_SETTINGS: Final = frozenset({'signatures', 'authorizationGrants', 'scopes'})
+_LIST_SETTINGS: Final = frozenset({FACET_SIGNATURES, FACET_AUTHORIZATION_GRANTS, FACET_SCOPES})
 
 
 def _decode_settings(
@@ -317,10 +346,24 @@ def _validate_settings(settings: SecuritySchemeSettings, node: Node, location: s
                 )
         for signature in settings.lists.get('signatures', []):
             if signature not in OAUTH1_SIGNATURES:
-                accumulator.add(node_error('unknown signature', location, node, info={'signature': signature}))
+                at = _item(node, 'signatures', signature)
+                accumulator.add(node_error('unknown signature', location, at, info={'signature': signature}))
     elif settings.scheme_type == TYPE_OAUTH2:
         accumulator.add(_validate_oauth2(settings, node, location))
     accumulator.raise_if_any()
+
+
+def _item(settings: Node, key: str, value: str) -> Node:
+    """The item of the `settings:` list `key` that wrote `value`, so a
+    diagnostic points at it and not at every setting (docs/11 § 3).
+    """
+    for name, items in pairs(settings) if settings.kind is NodeKind.MAPPING else ():
+        if name.value == key:
+            for item in items.content if items.kind is NodeKind.SEQUENCE else (items,):
+                if item.value == value:
+                    return item
+            return items
+    return settings
 
 
 def _validate_oauth2(settings: SecuritySchemeSettings, node: Node, location: str) -> RamlError | None:
@@ -330,7 +373,8 @@ def _validate_oauth2(settings: SecuritySchemeSettings, node: Node, location: str
     for grant in grants:
         if grant not in OAUTH2_GRANTS and not _is_absolute_uri(grant):
             # Not one of the four RFC 6749 names, and not an extension grant.
-            return node_error('unknown authorization grant', location, node, info={'grant': grant})
+            at = _item(node, 'authorizationGrants', grant)
+            return node_error('unknown authorization grant', location, at, info={'grant': grant})
     if any(grant in OAUTH2_GRANTS_NEEDING_AUTHORIZATION_URI for grant in grants) and not settings.values.get(
         'authorizationUri', None
     ):
@@ -375,8 +419,11 @@ def apply_security_schemes(raml: Raml) -> None:
     extensions = {fragment.location: fragment for fragment in raml.extensions}
     accumulator = Accumulator()
     for scheme in _every_reference(raml):
+        # Stays where it was written, marked (docs/13 § 1). An inherited copy
+        # is the same object, so it is marked once.
         try:
-            _bind(raml, scheme, extensions.get(scheme.location, resolver))
+            with raml.marking(scheme):
+                _bind(raml, scheme, extensions.get(scheme.location, resolver))
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()

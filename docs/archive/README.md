@@ -18,5 +18,7 @@ Topic records:
 - [Performance](performance-history.md)
 - [Testing](testing-history.md)
 - [Views and consumers](views-consumers-history.md)
+- [Language server design](language-server.md): the LSP and MCP design the
+  service was built from, superseded by `docs/21`
 
 Use the numbered current documents for the implementation as it stands today.

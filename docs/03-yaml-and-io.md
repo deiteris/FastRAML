@@ -25,20 +25,32 @@ class Node:
 - Tags use short YAML names such as `!!str`, `!!int`, `!!null`, and
   `!!timestamp`; `!include` is the only RAML local tag.
 - Positions are 1-based and include token end positions. `full_position`
-  extends through a node's descendants.
+  extends through a node's descendants, past the bracket of every flow
+  collection that closes on its last leaf's line, so a block ending in
+  `{ rt: {item: T} }` ends after the outer `}`. A container a merge, an
+  Overlay or a substitution rebuilds holds nodes written elsewhere in the file
+  or in another file, so `with_grafts` builds it spanning what the node it was
+  rebuilt from spans: a container's extent is where it was written. A filter,
+  which keeps some of a container's own children, uses `with_content`, and its
+  extent is read from what it kept.
 - `Node` defines neither equality nor hashing, so identity is preserved. The
   endpoint provenance overlay is keyed by node identity.
 - YAML aliases are expanded to independent nodes. Recursive anchors are
-  rejected, and alias expansion is bounded by the document node limit.
-- Duplicate keys remain in the tree. Decoders call `duplicate_keys()` where
-  their RAML construct forbids duplicates.
+  rejected, and alias expansion is bounded by the document node limit. A copy
+  keeps its anchor's position, so a block whose last value is an alias ends
+  at the alias's key: `full_position` never ends before it starts.
+- A mapping key written twice is rejected as `duplicate key` at the repeat,
+  with `info['key']`, as YAML 1.2 requires. Keys compare as text, so `200` and
+  `'200'` are one key, which is how RAML reads a status code. A file with a
+  repeated key composes to nothing, as one with a syntax error does. go-raml
+  accepts a repeated key.
 
 ## 2. Composition and source decoding
 
 `compose(text, uri=...)` uses a PyYAML loader configured for YAML 1.2 scalar
 resolution, then converts the result to `Node`. It rejects unknown local tags,
-syntax errors, excessive nesting, recursive anchors, and excessive alias
-expansion.
+syntax errors, repeated mapping keys, excessive nesting, recursive anchors, and
+excessive alias expansion.
 
 `decode_source(data)` decodes source bytes as UTF-8 with an optional BOM. Other
 encodings raise `UnicodeDecodeError`.
@@ -140,7 +152,10 @@ class ResourceLoader(Protocol):
 
 `SafeFileLoader` rejects lexical traversal, final-component symlinks where the
 platform supports `O_NOFOLLOW`, paths resolving outside the root, and
-non-regular files. It protects against document-controlled path escape, but it
+non-regular files. `contains(uri)` is its lexical check alone, and
+`files(suffix)` lists the regular files beneath the root, entering no symlink
+and no directory whose name starts with `.`; the language service reads a
+folder through these (`docs/21` § 2). It protects against document-controlled path escape, but it
 cannot provide the atomic filesystem guarantees of `openat2` against concurrent
 local filesystem mutation.
 

@@ -36,8 +36,8 @@ message. For a new feature with no base number, use `bench linearity --bench NAM
   `nodes.py`, `registry.py`, `datanode.py` — never imports `fastraml.views`; outside
   `views/`, only `cli.py` does. One view imports another only through the substrates
   `walk`, `graph` and `severity`. `tests/unit/test_views.py` enforces all three.
-  `pyoxigraph` and `fastraml-viewer` are optional extras imported inside their CLI
-  verb.
+  `pyoxigraph`, `fastraml-viewer` and `pygls` are optional extras imported inside
+  their CLI verb.
 - `fastraml/views/bindings/`: TypeScript, Python and Go backends for the tree's wire
   contract (`docs/16-graph.md` § 7). `bindings/schema.py` decides key sets and each key's
   structural kind; a backend only spells a kind. Code that does not vary with the
@@ -46,7 +46,8 @@ message. For a new feature with no base number, use `bench linearity --bench NAM
   `tests/unit/test_conformance.py` compares them.
 - Consumers (`docs/17-consumers.md`): `viewer/` (React SPA, `npm run check`) and
   `contrib/` (eight separate `uv` projects, each with its own lock and gate, run by CI
-  as a matrix). Nothing under `fastraml/` imports a consumer. A consumer may not hold
+  as a matrix, and the npm project `fastraml-vscode`, the editor client). Nothing
+  under `fastraml/` imports a consumer. A consumer may not hold
   a rule the RAML language states, nor invent one it does not; a missing rule is a
   gap in a pass or a view.
 - Generated files, never edited by hand: `viewer/src/tree.d.ts`, `viewer/src/walk.ts`,

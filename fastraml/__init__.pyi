@@ -52,6 +52,7 @@ from fastraml.parser.security import SecuritySchemeSettings as SecuritySchemeSet
 from fastraml.positions import Position as Position
 from fastraml.registry import ParseCtx as ParseCtx
 from fastraml.registry import Raml as Raml
+from fastraml.registry import Stage as Stage
 from fastraml.types.base import BaseShape as BaseShape
 from fastraml.types.base import Parameter as Parameter
 from fastraml.types.base import PatternProperty as PatternProperty
@@ -136,6 +137,7 @@ from fastraml.views.jsonschema import Conversion as Conversion
 from fastraml.views.jsonschema import to_json_schema as to_json_schema
 from fastraml.views.openapi import OAS3Document as OAS3Document
 from fastraml.views.openapi import to_openapi as to_openapi
+from fastraml.views.raml import to_raml as to_raml
 from fastraml.views.samples import SampleError as SampleError
 from fastraml.views.samples import SampleOptions as SampleOptions
 from fastraml.views.samples import declared_values as declared_values
@@ -252,6 +254,7 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'SecuritySchemeDescription',
     'SecuritySchemeFragment',
     'SecuritySchemeSettings',
+    'Stage',
     'StringShape',
     'Subject',
     'TimeOnlyShape',
@@ -302,4 +305,5 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'side_of_rule',
     'to_json_schema',
     'to_openapi',
+    'to_raml',
 )

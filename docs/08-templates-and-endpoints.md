@@ -106,6 +106,12 @@ Each application resolves its definition lexically, injects `resourcePath`,
 `resourcePathName`, and `methodName`, checks parameters in both directions,
 substitutes, and merges the compiled body beneath the operation body.
 
+Every `is:` entry is bound to its definition whether or not it is applied: an
+entry the first-occurrence rule skipped, and one on a resource with no methods,
+still names a trait, and a name that matches nothing is reported as `apply
+trait`. go-raml resolves a name only when it applies it, so it accepts
+`is: [nosuch]` on a resource with no methods.
+
 `resourcePath` and `resourcePathName` are built once per resource. `methodName`
 is built once per operation. These scalar nodes are read-only and are never
 inserted by pointer into a compiled tree.
@@ -211,6 +217,32 @@ substitution.
 
 Code: `parser/templates.py`. Tests: `tests/unit/test_templates.py`.
 
+### 5.1 Where a substituted value was written
+
+A substituted scalar keeps the template's position, which is where
+`<<item>>` is written, and resolves in the caller's scope (§ 4.1). The
+caller's value is written somewhere else: `item: User`, in the file of the
+application. `Raml.substitutions` records, for each scalar a substitution
+produced, where each caller's value lies in its text: the offsets, the
+caller's node, and the file the application is written in. A value that was
+itself substituted, one template applying another, brings its own records.
+
+A value is recorded only when its text is the caller's text:
+
+- A transformed value, `<<item | !pluralize>>`, is not recorded.
+- The parameters the parser supplies, `resourcePath`, `resourcePathName` and
+  `methodName`, are not recorded.
+
+P7 reads the record, so a name inside a caller's value is reported and
+recorded where the caller wrote it ([06](06-type-expressions.md) § 3). In
+`type: <<item>>[]`, `User` is placed at `item: User`, and the `[]` at the
+template. The decoders read it for what P7 never sees: a built-in,
+`type: <<item>>` with `item: string`, and an annotation name,
+`(<<tag>>): ...`, whose `DomainExtension.name_site` P8 reports an unknown
+name at ([09](09-security-and-annotations.md) § B1). A name only partly the
+caller's, `(<<tag>>Suffix)`, is written in two places and is not placed.
+Nothing reads the record after P7, which drops it.
+
 ## 6. Endpoint construction
 
 ### 6.1 URIs and responses
@@ -246,8 +278,10 @@ undeclared base URI variable.
 
 A `body` mapping whose keys all contain `/` is a media-type map. Otherwise it
 is one declaration instantiated separately for every API default media type;
-without a default media type this spelling is an error. A mapping that mixes
-media-type keys and type facets is an error. API default media types must use
+without a default media type this spelling is an error. Each body it becomes
+is placed at the `body:` key and records `media_type_written=False`, so a
+reader tells one declaration from several written under their own keys. A
+mapping that mixes media-type keys and type facets is an error. API default media types must use
 valid RFC 6838 `type/subtype` syntax.
 
 ### 6.4 Query strings

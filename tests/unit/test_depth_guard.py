@@ -15,10 +15,15 @@ import json
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 from fastraml.yamlnode import DEFAULT_MAX_DEPTH
 
 LIB = '#%RAML 1.0 Library\n'
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 def messages(error: RamlError) -> list[str]:
@@ -58,26 +63,26 @@ class TestEachGuardNamesItself:
     def test_a_deep_type_graph_is_a_positioned_diagnostic(self, workspace):
         root = workspace({'lib.raml': deep_graph(40)})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True, max_depth=10))
+            workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, max_depth=10))
         assert 'type nesting too deep' in messages(caught.value)
 
     def test_a_deep_document_is_a_positioned_diagnostic(self, workspace):
         root = workspace({'lib.raml': deep_document(40)})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml', ParseOptions(max_depth=10))
+            workspace.parse(root / 'lib.raml', ParseOptions(max_depth=10))
         assert 'document nesting too deep' in messages(caught.value)
 
     def test_a_deep_json_schema_is_a_positioned_diagnostic(self, workspace):
         root = workspace({'lib.raml': LIB + 'types:\n  S: !include s.json\n', 's.json': deep_schema(40)})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml', ParseOptions(max_depth=10))
+            workspace.parse(root / 'lib.raml', ParseOptions(max_depth=10))
         assert 'JSON schema nesting too deep' in messages(caught.value)
 
     def test_the_limit_travels_in_the_diagnostic(self, workspace):
         """A caller who raises the ceiling has to be able to see what it was."""
         root = workspace({'lib.raml': deep_graph(40)})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True, max_depth=17))
+            workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, max_depth=17))
         limits = [trace.info.get('limit') for chain in caught.value.chains() for trace in chain]
         assert 17 in limits
 
@@ -96,9 +101,9 @@ class TestOneOptionGovernsThemAll:
     def test_raising_the_option_admits_what_the_default_would_refuse(self, workspace, name, files):
         root = workspace(files)
         with pytest.raises(RamlError):
-            parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True, max_depth=10))
+            workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, max_depth=10))
         # Same input, same passes, one number changed.
-        parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True, max_depth=500))
+        workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, max_depth=500))
 
 
 class TestNoRecursionErrorEscapes:
@@ -114,7 +119,7 @@ class TestNoRecursionErrorEscapes:
     def test_a_schema_past_the_default_ceiling_raises_ramlerror(self, workspace, depth):
         root = workspace({'lib.raml': LIB + 'types:\n  S: !include s.json\n', 's.json': deep_schema(depth)})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
+            workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
         assert 'JSON schema nesting too deep' in messages(caught.value)
 
     def test_a_ref_to_a_deep_schema_is_bounded_too(self, workspace):
@@ -127,7 +132,7 @@ class TestNoRecursionErrorEscapes:
             }
         )
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
+            workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
         assert 'JSON schema nesting too deep' in messages(caught.value)
 
     def test_many_references_are_not_deep_references(self, workspace):
@@ -150,4 +155,4 @@ class TestNoRecursionErrorEscapes:
         for index in range(count):
             files[f'd{index}.json'] = json.dumps({'type': 'string'})
         root = workspace(files)
-        parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
+        workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))

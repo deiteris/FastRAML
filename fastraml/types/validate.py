@@ -19,11 +19,12 @@ from __future__ import annotations
 from collections import deque
 from typing import TYPE_CHECKING
 
-from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.datanode import at_value, locate
+from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.examples import examples_of
 from fastraml.types.unwrap import finish_unwrap, unwrap_shape
-from fastraml.types.values import failure
+from fastraml.types.values import failure, key_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -333,8 +334,8 @@ def _check_one(  # noqa: PLR0913, PLR0917 - as above
         failure(
             'discriminator value names no known type',
             data.location,
-            data.value_pos,
-            info={'path': path, 'discriminator': discriminator, 'value': written, 'known': sorted(allowed)},
+            locate(data, key_path(path, discriminator)),
+            info={'path': path, 'discriminator': discriminator, 'known': sorted(allowed)},
         )
     )
 
@@ -359,7 +360,7 @@ def _validate_examples(base: BaseShape, known: DiscriminatorIndex, acc: Accumula
             acc.add(
                 RamlError.wrap(
                     'invalid default',
-                    err,
+                    at_value(err, base.default),
                     base.default.location,
                     base.default.value_pos,
                     kind=ErrorKind.VALIDATING,
@@ -375,12 +376,20 @@ def _validate_example(base: BaseShape, example: Example, acc: Accumulator) -> No
     try:
         base.validate_at(example.data.raw, '$')
     except RamlError as err:
+        # At the example as written: for an included one, the `!include`.
+        site = (
+            (example.location, example.value_pos)
+            if example.value_pos.is_known
+            else (
+                example.data.location,
+                example.data.value_pos,
+            )
+        )
         acc.add(
             RamlError.wrap(
                 'invalid example',
-                err,
-                example.data.location,
-                example.data.value_pos,
+                at_value(err, example.data),
+                *site,
                 kind=ErrorKind.VALIDATING,
                 info={'example': example.name} if example.name else None,
             )
@@ -440,12 +449,20 @@ def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
     declared = _facet_declarations(base, acc)
     for name, prop in declared.items():
         if prop.required and name not in base.custom_facets:
+            # At the type that lacks it, beside the facet's declaration.
+            facet = prop.base
+            origin = Trace('declared here', facet.location, facet.key_pos)
+            at = base.key_pos if base.key_pos.is_known else base.value_pos
             acc.add(
-                failure(
-                    'required custom facet is missing',
-                    base.location,
-                    base.value_pos,
-                    info={'facet': name},
+                RamlError(
+                    Trace(
+                        'required custom facet is missing',
+                        base.location,
+                        at,
+                        ErrorKind.VALIDATING,
+                        {'facet': name},
+                        origin=origin,
+                    )
                 )
             )
     for name, value in base.custom_facets.items():
@@ -462,7 +479,7 @@ def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
             acc.add(
                 RamlError.wrap(
                     'invalid custom facet value',
-                    err,
+                    at_value(err, value),
                     value.location,
                     value.value_pos,
                     kind=ErrorKind.VALIDATING,
@@ -492,7 +509,7 @@ def _validate_domain_extensions(raml: Raml, cache: dict[int, BaseShape], acc: Ac
         except RamlError as err:
             invalid = RamlError.wrap(
                 'invalid annotation value',
-                err,
+                at_value(err, extension.value),
                 extension.location,
                 extension.value_pos,
                 kind=ErrorKind.VALIDATING,

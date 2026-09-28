@@ -12,13 +12,18 @@ from typing import ClassVar
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
 
 
-def parse(root, name: str = 'api.raml'):
-    return parse_from_path(root / name, ParseOptions())
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
+def parse(workspace, root, name: str = 'api.raml'):
+    return workspace.parse(root / name)
 
 
 def operation(raml, uri: str, method: str):
@@ -34,7 +39,7 @@ class TestApplication:
                 + '/users:\n  get:\n    is: [paged]\n    description: mine\n'
             }
         )
-        get = operation(parse(root), '/users', 'get')
+        get = operation(parse(workspace, root), '/users', 'get')
         assert list(get.request.query_parameters) == ['page']
         assert get.description.value == 'mine'
 
@@ -46,7 +51,7 @@ class TestApplication:
                 + '/users:\n  get:\n    is: [paged]\n    description: mine\n'
             }
         )
-        assert operation(parse(root), '/users', 'get').description.value == 'mine'
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'mine'
 
     def test_a_resource_level_trait_reaches_every_method(self, workspace):
         root = workspace(
@@ -56,7 +61,7 @@ class TestApplication:
                 + '/users:\n  is: [paged]\n  get:\n  post:\n'
             }
         )
-        raml = parse(root)
+        raml = parse(workspace, root)
         for method in ('get', 'post'):
             assert operation(raml, '/users', method).description.value == 'from the trait'
 
@@ -70,7 +75,7 @@ class TestApplication:
                 + '/users:\n  is: [t]\n  get:\n    is: [t]\n'
             }
         )
-        query = operation(parse(root), '/users', 'get').request.query_parameters['q']
+        query = operation(parse(workspace, root), '/users', 'get').request.query_parameters['q']
         assert [member.raw for member in query.base.enum] == ['a']
 
     def test_the_closest_occurrence_wins(self, workspace):
@@ -85,7 +90,57 @@ class TestApplication:
                 + '/users:\n  is: [{t: {who: resource}}]\n  get:\n    is: [{t: {who: method}}]\n'
             }
         )
-        assert operation(parse(root), '/users', 'get').description.value == 'method'
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'method'
+
+
+class TestEveryReferenceIsBound:
+    """docs/08 § 3.2: an `is:` entry names a trait whether or not it is applied.
+
+    The name rule skips the farther of two same-named references, and a
+    resource with no methods applies nothing. Either reference used to stay
+    unbound: a misspelt name went unreported, and a library-qualified one left
+    the graph an unresolved node, which lint refuses.
+    """
+
+    LIBRARY: ClassVar[str] = '#%RAML 1.0 Library\ntraits:\n  drm:\n    description: d\n'
+
+    def test_a_reference_the_name_rule_skipped_is_bound(self, workspace):
+        root = workspace(
+            {
+                'lib.raml': self.LIBRARY,
+                'api.raml': API + 'uses:\n  l: lib.raml\n/a:\n  is: [l.drm]\n  get:\n    is: [l.drm]\n',
+            }
+        )
+        endpoint = parse(workspace, root).endpoints['/a']
+        assert endpoint.traits[0].resolved is not None
+        assert endpoint.traits[0].resolved is endpoint.operations['get'].traits[0].resolved
+
+    @pytest.mark.parametrize(
+        'body',
+        [
+            pytest.param('/a:\n  is: [l.drm]\n', id='resource'),
+            pytest.param('resourceTypes:\n  rt:\n    is: [l.drm]\n/a:\n  type: rt\n', id='resource type'),
+        ],
+    )
+    def test_a_reference_on_a_resource_with_no_methods_is_bound(self, workspace, body):
+        root = workspace({'lib.raml': self.LIBRARY, 'api.raml': API + 'uses:\n  l: lib.raml\n' + body})
+        assert parse(workspace, root).endpoints['/a'].traits[0].resolved is not None
+
+    @pytest.mark.parametrize(
+        'body',
+        [
+            pytest.param('/a:\n  is: [nosuch]\n', id='resource'),
+            pytest.param('resourceTypes:\n  rt:\n    is: [nosuch]\n/a:\n  type: rt\n', id='resource type'),
+            pytest.param('/a:\n  is: [nosuch]\n  get:\n', id='applied'),
+        ],
+    )
+    def test_a_name_that_matches_nothing_is_reported_once(self, workspace, body):
+        root = workspace({'api.raml': API + body})
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        chains = list(caught.value.chains())
+        assert [[frame.message for frame in chain][:2] for chain in chains] == [['apply trait', 'get trait definition']]
+        assert chains[0][0].info == {'trait': 'nosuch'}
 
 
 class TestParameters:
@@ -97,7 +152,7 @@ class TestParameters:
                 + '/users:\n  get:\n    is: [{t: {what: users}}]\n'
             }
         )
-        assert operation(parse(root), '/users', 'get').description.value == 'about users'
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'about users'
 
     def test_the_reserved_parameters_are_injected(self, workspace):
         root = workspace(
@@ -107,7 +162,7 @@ class TestParameters:
                 + '/users/{id}:\n  get:\n    is: [t]\n'
             }
         )
-        assert operation(parse(root), '/users/{id}', 'get').description.value == 'get /users/{id} users'
+        assert operation(parse(workspace, root), '/users/{id}', 'get').description.value == 'get /users/{id} users'
 
     def test_an_action_transforms_the_value(self, workspace):
         root = workspace(
@@ -117,26 +172,26 @@ class TestParameters:
                 + '/users:\n  get:\n    is: [t]\n'
             }
         )
-        assert operation(parse(root), '/users', 'get').description.value == 'user'
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'user'
 
     def test_an_undeclared_parameter_is_rejected(self, workspace):
         root = workspace(
             {'api.raml': API + 'traits:\n  t:\n    description: d\n/users:\n  get:\n    is: [{t: {nope: 1}}]\n'}
         )
         with pytest.raises(RamlError) as caught:
-            parse(root)
+            parse(workspace, root)
         assert 'unexpected parameter' in str(caught.value)
 
     def test_a_missing_parameter_is_rejected(self, workspace):
         root = workspace({'api.raml': API + 'traits:\n  t:\n    description: <<what>>\n/users:\n  get:\n    is: [t]\n'})
         with pytest.raises(RamlError) as caught:
-            parse(root)
+            parse(workspace, root)
         assert 'missing required parameter' in str(caught.value)
 
     def test_an_unresolvable_trait_names_itself(self, workspace):
         root = workspace({'api.raml': API + '/users:\n  get:\n    is: [nowhere]\n'})
         with pytest.raises(RamlError) as caught:
-            parse(root)
+            parse(workspace, root)
         assert caught.value.head.info == {'trait': 'nowhere'}
 
 
@@ -167,7 +222,7 @@ class TestProvenance:
 
     @pytest.fixture
     def three_way_body(self, workspace):
-        raml = parse(workspace(dict(self.THREE_WAY)))
+        raml = parse(workspace, workspace(dict(self.THREE_WAY)))
         return raml.endpoints['/items'].operations['get'].responses['200'].bodies['application/json']
 
     def test_all_three_namespaces_resolve_at_once(self, three_way_body):
@@ -184,6 +239,52 @@ class TestProvenance:
     def test_a_trait_contributed_shape_is_attributed_to_the_trait_file(self, three_way_body):
         assert three_way_body.shape.location.endswith('traits/paged.raml')
 
+    def test_a_substituted_name_is_recorded_where_the_caller_wrote_it(self, three_way_body):
+        # docs/08 § 5.1: the trait's scalar is `<<responseType>>`; the prefix and
+        # the name are written in api.raml, in the `is:` entry.
+        line = self.THREE_WAY['api.raml'].splitlines().index('    is: [{paged: {responseType: types.PagedResult}}]')
+        column = len('    is: [{paged: {responseType: ') + 1
+        refs = three_way_body.shape.type_expr_refs
+        assert [(ref.location.rsplit('/', 1)[-1], ref.line, ref.column) for ref in refs] == [
+            ('api.raml', line + 1, column),
+            ('api.raml', line + 1, column + len('types.')),
+        ]
+
+    def test_the_record_of_substitutions_is_dropped_after_resolution(self, workspace):
+        # Only P7 reads it; kept, it would hold every application's values.
+        assert parse(workspace, workspace(dict(self.THREE_WAY))).substitutions == {}
+
+    def test_a_substituted_name_that_resolves_nowhere_is_reported_where_it_was_written(self, workspace):
+        files = dict(self.THREE_WAY)
+        files['api.raml'] = files['api.raml'].replace('types.PagedResult', 'types.Nope')
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, workspace(files))
+        frames = {
+            (frame.location.rsplit('/', 1)[-1], frame.position.line)
+            for chain in caught.value.chains()
+            for frame in chain
+            if frame.info.get('type') == 'types.Nope'
+        }
+        assert frames == {
+            ('api.raml', files['api.raml'].splitlines().index('    is: [{paged: {responseType: types.Nope}}]') + 1)
+        }
+
+    def test_a_substituted_annotation_name_that_resolves_nowhere_is_reported_where_it_was_written(self, workspace):
+        files = dict(self.THREE_WAY)
+        # A template's annotation key names what the caller supplied.
+        files['api.raml'] = files['api.raml'].replace('PagedResult}', 'PagedResult, tag: nope}')
+        files['traits/paged.raml'] = files['traits/paged.raml'].replace('responses:\n', '(<<tag>>): 1\nresponses:\n')
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, workspace(files))
+        frames = {
+            (frame.location.rsplit('/', 1)[-1], frame.position.line, frame.position.column)
+            for chain in caught.value.chains()
+            for frame in chain
+            if frame.info.get('annotation') == 'nope'
+        }
+        line = files['api.raml'].splitlines().index('    is: [{paged: {responseType: types.PagedResult, tag: nope}}]')
+        assert frames == {('api.raml', line + 1, len('    is: [{paged: {responseType: types.PagedResult, tag: ') + 1)}
+
     def test_static_trait_content_resolves_in_the_trait_not_the_caller(self, workspace):
         # api.raml declares a `Thing` of its own. The trait's unqualified
         # `Thing` must not find it: the trait fragment declares no such name and
@@ -198,7 +299,7 @@ class TestProvenance:
             }
         )
         with pytest.raises(RamlError) as caught:
-            parse(root)
+            parse(workspace, root)
         assert 'Thing' in str(caught.value)
 
     def test_a_caller_substituted_type_resolves_in_the_caller(self, workspace):
@@ -213,7 +314,7 @@ class TestProvenance:
                 't.raml': '#%RAML 1.0 Trait\nbody:\n  application/json:\n    type: <<kind>>\n',
             }
         )
-        body = parse(root).endpoints['/items'].operations['get'].request.bodies['application/json']
+        body = parse(workspace, root).endpoints['/items'].operations['get'].request.bodies['application/json']
         assert [inherited.name for inherited in body.shape.inherits] == ['Thing']
 
     def test_a_trait_contributed_shape_joins_the_later_passes(self, workspace):
@@ -228,5 +329,5 @@ class TestProvenance:
             }
         )
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+            workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
         assert 'example' in str(caught.value)

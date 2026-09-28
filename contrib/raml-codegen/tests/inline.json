@@ -28,6 +28,331 @@
             }
           }
         }
+      },
+      "HasHome": {
+        "id": "fastraml://id#/declarations/types/HasHome",
+        "name": "HasHome",
+        "type": "object",
+        "properties": {
+          "home": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/HasHome/property/home/schema",
+              "name": "home",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "OnFarm": {
+        "id": "fastraml://id#/declarations/types/OnFarm",
+        "name": "OnFarm",
+        "type": "object",
+        "properties": {
+          "farm": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/OnFarm/property/farm/schema",
+              "name": "farm",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "Cat": {
+        "id": "fastraml://id#/declarations/types/Cat",
+        "name": "Cat",
+        "type": "object",
+        "properties": {
+          "purrs": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Cat/property/purrs/schema",
+              "name": "purrs",
+              "type": "boolean",
+              "type_expr": "boolean"
+            }
+          }
+        }
+      },
+      "Dog": {
+        "id": "fastraml://id#/declarations/types/Dog",
+        "name": "Dog",
+        "type": "object",
+        "properties": {
+          "barks": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Dog/property/barks/schema",
+              "name": "barks",
+              "type": "boolean",
+              "type_expr": "boolean"
+            }
+          }
+        }
+      },
+      "Homely": {
+        "id": "fastraml://id#/declarations/types/Homely",
+        "name": "Homely",
+        "type": "union",
+        "inherits": [
+          {
+            "$ref": "fastraml://id#/declarations/types/HasHome"
+          },
+          {
+            "id": "fastraml://id#/declarations/types/Homely/inherits/Cat%20%7C%20Dog",
+            "name": "Cat | Dog",
+            "type": "union",
+            "type_expr": "Cat | Dog",
+            "any_of": [
+              {
+                "$ref": "fastraml://id#/declarations/types/Cat"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Dog"
+              }
+            ]
+          }
+        ],
+        "any_of": [
+          {
+            "id": "fastraml://id#/declarations/types/Homely/anyOf/0",
+            "name": null,
+            "type": "object",
+            "inherits": [
+              {
+                "$ref": "fastraml://id#/declarations/types/HasHome"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Cat"
+              }
+            ],
+            "properties": {
+              "home": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/HasHome/property/home/schema",
+                  "name": "home",
+                  "type": "string",
+                  "type_expr": "string"
+                }
+              },
+              "purrs": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/Cat/property/purrs/schema",
+                  "name": "purrs",
+                  "type": "boolean",
+                  "type_expr": "boolean"
+                }
+              }
+            }
+          },
+          {
+            "id": "fastraml://id#/declarations/types/Homely/anyOf/1",
+            "name": null,
+            "type": "object",
+            "inherits": [
+              {
+                "$ref": "fastraml://id#/declarations/types/HasHome"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Dog"
+              }
+            ],
+            "properties": {
+              "home": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/HasHome/property/home/schema",
+                  "name": "home",
+                  "type": "string",
+                  "type_expr": "string"
+                }
+              },
+              "barks": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/Dog/property/barks/schema",
+                  "name": "barks",
+                  "type": "boolean",
+                  "type_expr": "boolean"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Kept": {
+        "id": "fastraml://id#/declarations/types/Kept",
+        "name": "Kept",
+        "type": "union",
+        "inherits": [
+          {
+            "id": "fastraml://id#/declarations/types/Kept/inherits/HasHome%20%7C%20OnFarm",
+            "name": "HasHome | OnFarm",
+            "type": "union",
+            "type_expr": "HasHome | OnFarm",
+            "any_of": [
+              {
+                "$ref": "fastraml://id#/declarations/types/HasHome"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/OnFarm"
+              }
+            ]
+          },
+          {
+            "id": "fastraml://id#/declarations/types/Kept/inherits/Cat%20%7C%20Dog",
+            "name": "Cat | Dog",
+            "type": "union",
+            "type_expr": "Cat | Dog",
+            "any_of": [
+              {
+                "$ref": "fastraml://id#/declarations/types/Cat"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Dog"
+              }
+            ]
+          }
+        ],
+        "any_of": [
+          {
+            "id": "fastraml://id#/declarations/types/Kept/anyOf/0",
+            "name": null,
+            "type": "object",
+            "inherits": [
+              {
+                "$ref": "fastraml://id#/declarations/types/HasHome"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Cat"
+              }
+            ],
+            "properties": {
+              "home": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/HasHome/property/home/schema",
+                  "name": "home",
+                  "type": "string",
+                  "type_expr": "string"
+                }
+              },
+              "purrs": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/Cat/property/purrs/schema",
+                  "name": "purrs",
+                  "type": "boolean",
+                  "type_expr": "boolean"
+                }
+              }
+            }
+          },
+          {
+            "id": "fastraml://id#/declarations/types/Kept/anyOf/1",
+            "name": null,
+            "type": "object",
+            "inherits": [
+              {
+                "$ref": "fastraml://id#/declarations/types/OnFarm"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Cat"
+              }
+            ],
+            "properties": {
+              "farm": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/OnFarm/property/farm/schema",
+                  "name": "farm",
+                  "type": "string",
+                  "type_expr": "string"
+                }
+              },
+              "purrs": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/Cat/property/purrs/schema",
+                  "name": "purrs",
+                  "type": "boolean",
+                  "type_expr": "boolean"
+                }
+              }
+            }
+          },
+          {
+            "id": "fastraml://id#/declarations/types/Kept/anyOf/2",
+            "name": null,
+            "type": "object",
+            "inherits": [
+              {
+                "$ref": "fastraml://id#/declarations/types/HasHome"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Dog"
+              }
+            ],
+            "properties": {
+              "home": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/HasHome/property/home/schema",
+                  "name": "home",
+                  "type": "string",
+                  "type_expr": "string"
+                }
+              },
+              "barks": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/Dog/property/barks/schema",
+                  "name": "barks",
+                  "type": "boolean",
+                  "type_expr": "boolean"
+                }
+              }
+            }
+          },
+          {
+            "id": "fastraml://id#/declarations/types/Kept/anyOf/3",
+            "name": null,
+            "type": "object",
+            "inherits": [
+              {
+                "$ref": "fastraml://id#/declarations/types/OnFarm"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Dog"
+              }
+            ],
+            "properties": {
+              "farm": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/OnFarm/property/farm/schema",
+                  "name": "farm",
+                  "type": "string",
+                  "type_expr": "string"
+                }
+              },
+              "barks": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/Dog/property/barks/schema",
+                  "name": "barks",
+                  "type": "boolean",
+                  "type_expr": "boolean"
+                }
+              }
+            }
+          }
+        ]
       }
     }
   },

@@ -52,6 +52,7 @@ from fastraml.views.bindings.python import python_runtime
 from fastraml.views.bindings.schema import Container, Holds, Structural, contract_schema
 from fastraml.views.bindings.typescript import typescript_runtime
 from fastraml.views.tree import build_tree
+from tests.unit.conftest import MemoryWorkspace
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 TYPESCRIPT_DESTINATION = 'viewer/src/tree.d.ts'
@@ -62,6 +63,11 @@ PYTHON_DESTINATION = 'contrib/raml-codegen/raml_codegen/tree.py'
 #: shape (docs/16 § 7).
 TYPESCRIPT_RUNTIME = 'viewer/src/walk.ts'
 PYTHON_RUNTIME = 'contrib/raml-codegen/raml_codegen/walk.py'
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 #: Generated records that carry shape fields but are not named `*Shape`.
@@ -861,7 +867,7 @@ types:
     @pytest.fixture
     def cyclic(self, workspace):
         root = workspace({'api.raml': self.SOURCE})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         shapes = raml.shapes if isinstance(raml.shapes, dict) else {shape.id: shape for shape in raml.shapes}
         outer = next(shape for shape in shapes.values() if shape.name == 'Outer')
         inner = outer.shape.properties['inner'].base
@@ -940,7 +946,7 @@ class TestEveryProjectorMethodTheGeneratorReadsActuallyRuns:
         with contextlib.ExitStack() as stack:
             for patch in patches:
                 stack.enter_context(patch)
-            build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+            build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
             build_tree(
                 parse_from_path(ROOT / SAMPLE_SOURCE, ParseOptions(unwrap=True, workspace_root=ROOT / SAMPLE_ROOT))
             )
@@ -1068,13 +1074,18 @@ class TestTheGeneratedGoCompilesAndReadsTheTree:
     runtime. No check that reads generated output can settle any of them.
     """
 
-    @pytest.fixture
-    def decoded(self, tmp_path, workspace):
-        """Both documents, decoded by the generated Go and written back."""
-        module = _go_module(tmp_path, ('contract_test.go', GO_TEST))
+    @pytest.fixture(scope='class')
+    @staticmethod
+    def decoded(tmp_path_factory):
+        """Both documents, decoded by the generated Go and written back.
+
+        Once per class: each `go test` run compiles and links anew.
+        """
+        module = _go_module(tmp_path_factory.mktemp('go'), ('contract_test.go', GO_TEST))
+        workspace = MemoryWorkspace(module / 'documents')
         root = workspace({'api.raml': DOCUMENT})
         trees = {
-            'kinds': build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))),
+            'kinds': build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))),
             'sample': build_tree(
                 parse_from_path(
                     ROOT / SAMPLE_SOURCE,
@@ -1179,7 +1190,7 @@ class TestEveryKindLandsInTheContract:
     @pytest.fixture
     def keys(self, workspace):
         root = workspace({'api.raml': DOCUMENT})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         seen: set[str] = set()
         _observe(build_tree(raml), seen)
         return seen
@@ -1206,7 +1217,7 @@ class TestEveryKindLandsInTheContract:
         # true. A fraction such as `1/100` is exact but is not what the author
         # wrote.
         root = workspace({'api.raml': DOCUMENT})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         bounded = build_tree(raml)['types']['api.raml']['Bounded']
         assert bounded['multiple_of'] == '0.01'
         assert bounded['minimum'] == '0.5'
@@ -1312,7 +1323,7 @@ class TestTheGeneratedWalkReachesEveryShape:
     @pytest.fixture
     def document(self, workspace):
         root = workspace({'api.raml': DOCUMENT})
-        return build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
     def test_every_addressed_shape_is_reached(self, document, tmp_path):
         walk = _vendored(tmp_path)

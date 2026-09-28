@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 from fastraml.domains import DomainLocation
 
 API = '#%RAML 1.0\ntitle: T\n'
@@ -20,9 +20,14 @@ LIB = '#%RAML 1.0 Library\n'
 DECLARE = 'annotationTypes:\n  ann: any\n'
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def parse(workspace, files: dict[str, str], entry: str = 'api.raml', **options):
     root = workspace(files)
-    return parse_from_path(root / entry, ParseOptions(**options) if options else None)
+    return workspace.parse(root / entry, ParseOptions(**options) if options else None)
 
 
 def extensions(raml) -> dict[str, object]:

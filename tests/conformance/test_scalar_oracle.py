@@ -141,7 +141,10 @@ KNOWN_DIVERGENCES: dict[str, str] = {}
 #: The seventh is `EdgeCases/include-no-whitespace/invalid-include-no-whitespace.raml`.
 #: An unrecognised local tag is an error here, and `!includeexample.json` is
 #: one; both YAML libraries compose it, so this parser refuses it deliberately.
-MAX_UNCOMPARABLE = 7
+#: The eighth and ninth are `invalid-duplicate-prop.raml` and
+#: `invalid-duplicate-codes.raml`: YAML 1.2 forbids a repeated mapping key and
+#: this parser refuses one (docs/03 § 1), where both composers keep it.
+MAX_UNCOMPARABLE = 9
 
 
 def _oracle_compose(text: str) -> Any:

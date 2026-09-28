@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions
 from fastraml.views.tree import build_tree
 
 #: Past this, the walker has failed to terminate. Deep enough that no legitimate
@@ -29,6 +29,11 @@ RUNAWAY = 60
 #: (docs/16 § 6.1). `kind`, `link` and `is_annotation_type` were here too,
 #: until the projection stopped emitting them.
 PARSER_STATE = frozenset({'id', 'type_expr'})
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 class RunawayError(RecursionError):
@@ -73,7 +78,7 @@ CYCLES = {
 
 def project(workspace, body: str) -> object:
     root = workspace({'api.raml': '#%RAML 1.0\ntitle: T\n' + body})
-    return build_tree(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+    return build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
 
 class TestANaiveWalkTerminates:

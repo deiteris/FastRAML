@@ -6,7 +6,7 @@ raw HTML would not.
 
 GitHub-flavoured Markdown only (`gfm_only`), and deliberately not MyST's own
 syntax. A description is read by every consumer of the RAML file -- the viewer,
-`fastraml openapi`, code generators -- and a Sphinx role written in one would be
+`fastraml convert openapi`, code generators -- and a Sphinx role written in one would be
 literal text everywhere but here. So links go from the prose to the API, never
 from the API to the prose, and every link in a description is external.
 

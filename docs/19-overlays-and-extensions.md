@@ -313,6 +313,8 @@ target in effect.
 - `make_scalar_facet`, for location;
 - `resolve_include` and `note_include_ref`, for the base of a relative path;
 - `make_data_node`, for location;
+- `make_example`, for location, so an example an extension document added or
+  replaced is located where its key is written;
 - `unmarshal_domain_extension`, for location and anchor;
 - `decode_documentation_item`, for location;
 - `make_template_definition`, for location and anchor;

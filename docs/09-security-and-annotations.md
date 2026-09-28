@@ -9,7 +9,9 @@ extension decoding, P8 binding, and P10 validation.
 
 `SecuritySchemeDefinition` is a centrally declared scheme. It holds its name,
 type, display and description facets, optional `describedBy`, optional settings,
-include link information, annotations, and positions.
+include link information, annotations, and positions. The definition, its
+settings and its description spell a position with no source `UNKNOWN`, as
+every entity does, never `None`.
 
 `SecuritySchemeDescription` reuses endpoint decoders:
 
@@ -25,7 +27,8 @@ unwrapping, and validation reach them.
 
 `SecurityScheme` is the model-side form of one `securedBy` entry. It holds the
 name, original parameter nodes, an optional bound definition, optional compiled
-parameters, the null marker, and its position. It lives in `parser/directives.py`
+parameters, the null marker, and two positions: `key_pos` for the name alone
+and `value_pos` for the whole entry. It lives in `parser/directives.py`
 with `DirectiveRef`; stage 2 can construct it without importing P5 resolution.
 
 Includes are followed by `fragments.py`. The declaration records `link_uri`; the
@@ -119,7 +122,12 @@ key_pos: Position
 value_pos: Position
 anchor: ReferenceResolver | None
 target: DomainLocation
+name_site: tuple[str, Position] | None
 ```
+
+`name_site` is where a name a template substituted was written: the caller's
+file and value (docs/08 § 5.1). P8 reports an unknown name there; `key_pos`
+stays the template's key, where the application is.
 
 Any nonempty mapping key of the form `(name)` is an application. The decoder
 converts its value to `DataNode`, captures the current anchor and target,

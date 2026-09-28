@@ -49,6 +49,10 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check . && uv run mypy raml_document/
 ```
 
-`fastraml` is a **dev** dependency, for one reason: every construct in the tests is
-built, rendered, and parsed back with `validate=True`. A facet spelled wrongly
-fails here rather than in whichever emitter first used it.
+`fastraml` is a **dev** dependency: every construct in the tests is built,
+rendered, and parsed back with `validate=True`. A facet spelled wrongly fails
+here rather than in whichever emitter first used it.
+
+The fastRAML JSON Schema exporter also writes RAML declarations. The conformance
+tests compare its DataType and Library output with `TypeDecl.render()` for the
+fields both support, without making the parser import this authoring package.

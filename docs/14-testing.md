@@ -56,9 +56,16 @@ the default root, the entry's own directory, would refuse
 | Property | Structural merge laws and generated inheritance/validation laws. |
 | Golden | Whole effective-model projections, including positions where relevant, and the rendered compatibility report for `examples/compatibility`. |
 | Corpus invariants | Cache canonicalization, positions, determinism, unwrap invariants, rendering, graph/tree validity, and binding contract coverage over the TCK. |
+| Partial models | The `parse_lenient` contract (docs/13 § 1) over one-mistake mutations of every valid TCK document, exhaustively, and of every seventh mutation of the fixtures: nothing but a fatal entry failure escapes, the stage record agrees with the error, fragments agree with the registry, every mark is on an entity the model holds, containment terminates, and the views run on an unwrapped model. `tests/partial/`, run only with `pytest --mutations`: an exploration that finds defects by volume, not part of the gate. Each defect it finds gets a unit test that names the rule. |
 | YAML conformance | YAML 1.2 scalar and structure agreement against `ruamel.yaml`. |
 | Bindings | TypeScript, Python, and Go tree-contract conformance. |
 | Benchmark tests | Generated corpus validity and the optional linearity assertion. |
+
+Unit tests that check parser behavior can use `memory_workspace` from
+`tests/unit/conftest.py`: it supplies file-shaped paths and serves their bytes
+through `ParseOptions(file_loader=...)` without creating directories or files. The
+ordinary `workspace` fixture writes real files for tests of filesystem behavior
+and callers that read paths outside the parser's loader.
 
 Golden cases live in `tests/golden/cases/`, and rendered reports in
 `tests/golden/reports/`. Regenerate only with

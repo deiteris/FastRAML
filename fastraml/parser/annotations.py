@@ -20,6 +20,7 @@ from fastraml.datanode import make_data_node
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.parser.references import UnresolvedReferenceError
+from fastraml.parser.substitutions import substituted_site
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import node_error
 
@@ -58,6 +59,9 @@ class DomainExtension:
     target: DomainLocation = DomainLocation.API
     #: The annotation type this application was bound to. Filled by P8.
     defined_by: BaseShape | None = None
+    #: Where the name was written, when a template substituted it: the file
+    #: and position of the caller's value (docs/08 § 5.1). P8 reports there.
+    name_site: tuple[str, Position] | None = None
 
     def __repr__(self) -> str:
         return f'DomainExtension({self.name!r})'
@@ -90,6 +94,7 @@ def unmarshal_domain_extension(raml: Raml, location: str, key_node: Node, value_
         value_pos=value_node.full_position,
         anchor=ctx.anchor,
         target=ctx.target,
+        name_site=substituted_site(raml.substitutions, key_node, 1, len(name) + 1),
     )
     raml.domain_extensions.append(extension)
     return extension
@@ -120,21 +125,27 @@ def resolve_domain_extensions(raml: Raml) -> None:
         # construction, or a test — has no anchor, so fall back to the index
         # the decoder fills, exactly as P7 does for a shape.
         anchor = extension.anchor or raml.resolver_at(extension.location)
-        if anchor is None:
-            accumulator.add(_unresolved(extension, 'annotation type not found'))
-            continue
+        # One that names nothing stays in the model with `defined_by is None`,
+        # marked (docs/13 § 1).
         try:
-            extension.defined_by = anchor.reference_annotation_type(extension.name)
-        except UnresolvedReferenceError as err:
-            accumulator.add(_unresolved(extension, err.reason))
+            with raml.marking(extension):
+                if anchor is None:
+                    raise _unresolved(extension, 'annotation type not found')
+                try:
+                    extension.defined_by = anchor.reference_annotation_type(extension.name)
+                except UnresolvedReferenceError as err:
+                    raise _unresolved(extension, err.reason) from err
+        except RamlError as err:
+            accumulator.add(err)
     accumulator.raise_if_any()
 
 
 def _unresolved(extension: DomainExtension, reason: str) -> RamlError:
+    location, at = extension.name_site or (extension.location, extension.key_pos)
     return RamlError.new(
         reason,
-        extension.location,
-        extension.key_pos,
+        location,
+        at,
         kind=ErrorKind.RESOLVING,
         info={'annotation': extension.name},
     )

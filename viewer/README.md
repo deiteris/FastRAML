@@ -42,9 +42,7 @@ basename for a dedicated viewer path).
 ```tsx
 import { MemoryRouter } from 'react-router';
 import type { ReactNode } from 'react';
-import { Viewer } from './viewer/src/Viewer';
-import './viewer/src/tokens.css';
-import './viewer/src/styles.css';
+import { Viewer } from './viewer/src/index';
 
 function ApiWorkspace({ contents, picker }: { contents: string; picker: ReactNode }) {
   return (
@@ -69,10 +67,17 @@ give it a stable callback, since a changed loader starts a new request. Both
 forms leave the host's document title, route-change scrolling and global `/` /
 Ctrl+K shortcuts alone.
 The standalone `App` opts into those page-wide behaviours with `managePage`.
+An embedding host that provides the theme can set `themeToggle={false}` on
+`App`, `Viewer`, or `LoadedViewer`: this hides the viewer's theme switch and
+ignores its saved theme preference. The host can then set `color-scheme` and
+the viewer tokens on `.fastraml-viewer` (the VS Code preview mounts the viewer
+in a shadow root and maps inherited theme variables in
+`contrib/fastraml-vscode/webview/src/theme.css`).
 
-The host provides its own HTML entry and imports the two viewer stylesheets.
-`Viewer` does not import `main.tsx` or require a `#root` element. Its styles are
-scoped under `.fastraml-viewer`, and the drawer follows its container width;
+The host provides its own HTML entry and imports the viewer's package entry.
+`Viewer` does not import `main.tsx` or require a `#root` element. Its component
+styles are scoped under `.fastraml-viewer` (the normalizer applies to the page),
+and the drawer follows its container width;
 the host can style its surrounding page independently. For a running example
 with a narrow host panel and an API switcher, open `examples/host.html` through
 the Vite dev server. It switches JSON text between `Viewer` and `App` and
@@ -84,11 +89,14 @@ build.
 ### Reuse and customize the design system
 
 `src/tokens.css` defines the viewer's colours and font stacks. `src/styles.css`
-defines its typography, layout, and component styles. `src/main.tsx` imports
-them in that order. If you render `Viewer` in another app, import both
-stylesheets once alongside it; you do not need the standalone `index.html`.
+defines its typography, layout, and component styles. The package entry
+`src/index.ts` imports `normalize.css` before both stylesheets; if you render
+`Viewer` in another app, import the package entry once alongside it. You do
+not need the standalone `index.html`.
 Styles in `styles.css` are nested under `.fastraml-viewer`, the viewer's root,
 so element rules such as `h4`, `button`, and `main` do not style the host app.
+`normalize.css` sets browser defaults at page scope; a host needing full CSS
+isolation can mount the viewer in a shadow root, as the VS Code preview does.
 The standalone page sets its own body margin in `index.html`.
 
 The tokens are CSS custom properties on `.fastraml-viewer`:
@@ -99,10 +107,23 @@ The tokens are CSS custom properties on `.fastraml-viewer`:
 | `--ink`, `--dim`, `--faint` | Primary, secondary, and quiet text |
 | `--line`, `--line-soft` | Container and row dividers |
 | `--accent` | Links, selected tabs, and active controls |
+| `--sidebar-bg` | Navigation column and narrow top bar; defaults to `--panel` |
+| `--nav-hover-bg`, `--nav-hover-ink`, `--nav-selected-bg`, `--nav-selected-ink` | Hovered and current navigation rows; default to the existing divider and text colors |
+| `--search-active-bg` | Active search result; defaults to `--line-soft` |
+| `--input-bg`, `--input-border` | Search opener surface and border; default to `--bg` and `--line` |
+| `--code-bg`, `--inline-code-bg` | Fenced/structured code and inline prose code; default to `--panel` |
+| `--focus-border` | Keyboard focus ring on links, buttons, and inputs other than the search dialog field; defaults to `--accent` |
 | `--required`, `--warn`, `--recursive`, `--enum` | Semantic markers; keep these distinct from links |
 | `--syntax-keyword`, `--syntax-name`, `--syntax-literal`, `--syntax-string`, `--syntax-comment` | Highlighted code |
 | `--verb-default`, `--verb-get`, `--verb-post`, `--verb-put`, `--verb-patch`, `--verb-delete` | Method badges; success/info/warning/error status dots share the GET/POST/PUT/DELETE colours |
 | `--sans`, `--mono` | Body and code/type/attribute-name font stacks |
+
+Role tokens use `var()` fallbacks to the base palette, so overriding `--panel`
+still changes code and the sidebar unless the host gives those roles their own
+colors. For example, the VS Code preview maps navigation selection separately
+from dividers, and code blocks separately from the sidebar surface. Inside an
+`.extra` region, code still uses the page background so it stays distinct from
+the enclosing panel.
 
 Light is the default; when the system prefers dark, the viewer uses dark tokens
 unless it has an explicit `data-theme`. The switch sets that attribute **on
@@ -308,6 +329,16 @@ expanding it printed the same rows a second time a few pixels from the first.
 That is the one reference position where expansion shows nothing new; a
 property's `$ref` is not, because `Money`'s attributes are genuinely not
 inlined into `Book`.
+
+**Multiple supertypes stay separate links.** The `extends` line separates their
+names with commas and shows the merged attributes below. When a subtype supplies
+a custom facet, its type and declaration link come from whichever ancestor
+declared it, even if that ancestor is the second parent or farther up a chain.
+An inline union parent such as `type: [HasHome, Cat | Dog]` names its alternatives
+in that line; the effective `anyOf` below shows the merged attributes once per
+variant. Each variant inherits the parents it took, the union replaced by one
+member (docs/07 § 5), so its tab reads `HasHome, Cat` or `HasHome, Dog`, and the
+heading spells the type `[HasHome, Cat] | [HasHome, Dog]`, each name a link.
 
 No ancestor set and no depth budget exist anywhere in `Shape.tsx`, because the
 emitter guarantees a cycle is always *marked*. Collapsing the two into a bare

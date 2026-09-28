@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
+from fastraml.errors import ErrorKind, RamlError, Trace
 from fastraml.parser.includes import IncludeInfo, resolve_include
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import (
@@ -42,6 +43,8 @@ __all__ = [
     'SequenceItem',
     'SequenceValue',
     'ValueNode',
+    'at_value',
+    'locate',
     'make_data_node',
     'parse_int',
     'value_node_of',
@@ -147,6 +150,75 @@ class DataNode:
     @property
     def raw(self) -> Any:
         return self.value.raw
+
+
+def locate(data: DataNode, path: str, key: str | None = None) -> Position:
+    """Where the value at `path` (`$.a[0]`, docs/10 § 3) was written in `data`,
+    or its key when `key` names one of its entries: the nearest known position
+    on the way down, `UNKNOWN` above it.
+
+    A key is matched against the entries rather than split out of the path,
+    since a key may hold a `.` itself. The root of an included value has no
+    position here: `value_pos` is the `!include`'s, in the including file.
+    """
+    node: ValueNode | None = data.value
+    position = UNKNOWN if data.include is not None else data.value_pos
+    rest = path[1:] if path.startswith('$') else ''
+    while rest and node is not None:
+        if rest[0] == '[' and node.sequence is not None and (end := rest.find(']')) > 0:
+            index = int(rest[1:end])
+            items = node.sequence.items
+            if not 0 <= index < len(items):
+                break
+            item = items[index]
+            node, rest, position = item.value, rest[end + 1 :], item.value_pos
+        elif rest[0] == '.' and node.mapping is not None:
+            entry = _entry(node.mapping, rest[1:])
+            if entry is None:
+                break
+            node, rest, position = entry.value, rest[1 + len(entry.key) :], entry.value_pos
+        else:
+            break
+    if key is not None and not rest and node is not None and node.mapping is not None:
+        for entry in node.mapping.entries:
+            if entry.key == key:
+                return entry.key_pos
+    return position
+
+
+def at_value(err: RamlError, data: DataNode) -> RamlError:
+    """`err`, raised by `validate_at` against a declaration, placed at the value
+    in `data` each frame rejected. Where the frame was, the constraint, becomes
+    its `origin` (docs/11 § 3).
+
+    A frame on a key names it in `info['property']`, and is placed at that key.
+    """
+    return RamlError(_placed(err.head, data), tuple(at_value(sibling, data) for sibling in err.siblings))
+
+
+def _placed(frame: Trace, data: DataNode) -> Trace:
+    cause = None if frame.cause is None else _placed(frame.cause, data)
+    path, key = frame.info.get('path'), frame.info.get('property')
+    if frame.kind is not ErrorKind.VALIDATING or not isinstance(path, str):
+        return Trace(frame.message, frame.location, frame.position, frame.kind, frame.info, cause, frame.origin)
+    position = locate(data, path, key if isinstance(key, str) else None)
+    origin = None if frame.position is None else Trace('declared here', frame.location, frame.position)
+    placed = position if position.is_known else None
+    return Trace(frame.message, data.location, placed, frame.kind, frame.info, cause, origin)
+
+
+def _entry(mapping: MappingValue, rest: str) -> MappingEntry | None:
+    """The longest key `rest` starts with that ends at a step boundary."""
+    found: MappingEntry | None = None
+    for entry in mapping.entries:
+        key = entry.key
+        if (
+            rest.startswith(key)
+            and rest[len(key) : len(key) + 1] in ('', '.', '[')
+            and (found is None or len(key) > len(found.key))
+        ):
+            found = entry
+    return found
 
 
 def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location: str) -> DataNode:

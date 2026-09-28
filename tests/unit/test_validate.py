@@ -22,10 +22,15 @@ from fastraml.types.values import ValueSet, is_subset, same_value, unique_items
 API = '#%RAML 1.0\ntitle: T\n'
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def declared_in(workspace, body: str, name: str = 'T'):
     """The parse and the named type from `types:\n<body>`, unwrapped."""
     root = workspace({'api.raml': API + 'types:\n' + body})
-    raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
     return raml, raml.types_in(raml.location)[name]
 
 
@@ -37,7 +42,7 @@ def declared(workspace, body: str, name: str = 'T'):
 def parse_validating(workspace, body: str):
     root = workspace({'api.raml': API + 'types:\n' + body})
     try:
-        parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
     except RamlError as err:
         return err
     return None
@@ -199,7 +204,7 @@ class TestNumericExactness:
         integer = declared(workspace, '  T:\n    type: integer\n    maximum: 10\n')
         error = integer.validate(11)
         assert error is not None
-        assert error.head.info == {'path': '$', 'value': '11', 'maximum': '10'}
+        assert error.head.info == {'path': '$', 'maximum': '10'}
 
 
 class TestString:
@@ -421,7 +426,6 @@ class TestUnionDispatchesOnADiscriminator:
         assert error is not None
         trace = next(t for chain in error.chains() for t in chain if t.message == 'unknown discriminator value')
         assert trace.info['discriminator'] == 'kind'
-        assert trace.info['value'] == 'Fish'
         assert trace.info['known'] == ['Cat', 'Dog']
 
     def test_the_selected_member_reports_its_own_failure(self, workspace):
@@ -615,7 +619,7 @@ class TestUnionDispatchesOnADiscriminator:
         # what its own declaration wrote, so it accepts a value missing the
         # property its parent made required — silently, which is the hazard.
         root = workspace({'api.raml': API + 'types:\n' + TAGGED})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=False))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=False))
         with pytest.raises(AssertionError, match='unwrapped shape'):
             raml.types_in(raml.location)['Cat'].validate({'meows': True})
 
@@ -803,6 +807,20 @@ class TestCustomFacets:
         error = parse_validating(workspace, body)
         assert error is not None
         assert messages(error) >= {'invalid custom facet value'}
+
+    def test_a_union_members_facet_is_required_of_the_variant_that_took_it(self, workspace):
+        # docs/07 § 5: the variant of `[A, Cat | Dog]` that took Dog inherits
+        # Dog, so the walk reaches Dog's declaration from it.
+        body = (
+            '  A:\n    type: object\n    properties:\n      a: string\n'
+            '  Cat:\n    type: object\n    properties:\n      purrs: boolean\n'
+            '  Dog:\n    type: object\n    properties:\n      barks: boolean\n    facets:\n      breed: string\n'
+            '  C:\n    type: [A, Cat | Dog]\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert messages(error) == {'required custom facet is missing'}
+        assert [trace.info for chain in error.chains() for trace in chain if trace.info] == [{'facet': 'breed'}]
         assert 'unknown facet' not in messages(error)
 
     def test_a_diamond_reaches_its_shared_ancestor_once(self, workspace):
@@ -902,7 +920,7 @@ class TestUnionFacetsAreDistributed:
                 + '  Wide:\n    type: U\n    example: 99999\n'
             }
         )
-        assert parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
+        assert workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
 
 
 class TestUnionDeclarationFacetsAreDistributed:
@@ -998,9 +1016,9 @@ class TestPrivateUnwrap:
                 'api.raml': API + 'types:\n  P:\n    properties:\n      a: string\n  T:\n    type: P\n',
             }
         )
-        raml = parse_from_path(root / 'api.raml', ParseOptions(validate=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(validate=True))
         child = raml.types_in(raml.location)['T']
-        assert not raml.is_unwrapped
+        assert not raml.unwrapped
         assert [parent.name for parent in child.inherits] == ['P']
         # Flattening would have copied `a` onto the child.
         assert list(child.shape.properties or {}) == []
@@ -1015,7 +1033,7 @@ class TestPrivateUnwrap:
             }
         )
         with pytest.raises(RamlError):
-            parse_from_path(root / 'api.raml', ParseOptions(validate=True))
+            workspace.parse(root / 'api.raml', ParseOptions(validate=True))
 
 
 # -- property-based: inheritance narrows ----------------------------------

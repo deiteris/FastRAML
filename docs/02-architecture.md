@@ -23,6 +23,20 @@ precedes P9 because inheritance cannot merge an unresolved shape. P9 and P10
 are optional parser passes: validation without public unwrapping uses private
 unwrapped copies.
 
+The driver (`parser/entry.py`) runs the passes as seven stages, in this order,
+and records each one that finishes in `Raml.completed` and the one that raised
+in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
+
+| Stage | Passes |
+|---|---|
+| `DECODED` | P0-P3 |
+| `ENDPOINTS` | P4, P6 |
+| `SECURITY` | P5 |
+| `RESOLVED` | P7, and the discriminator declaration check (docs/05 § 6) |
+| `ANNOTATIONS` | P8 |
+| `UNWRAPPED` | P9, when requested |
+| `VALIDATED` | P10, when requested |
+
 ## 2. Package ownership
 
 | Area | Modules | Owning document |
@@ -30,18 +44,21 @@ unwrapped copies.
 | Diagnostics, positions, URIs, loaders | `errors.py`, `positions.py`, `uris.py`, `loaders.py` | [03](03-yaml-and-io.md), [11](11-diagnostics.md) |
 | YAML and arbitrary data | `yamlnode.py`, `datanode.py` | [03](03-yaml-and-io.md) |
 | Parse state | `registry.py`, `domains.py` | this document, [04](04-fragments-and-namespaces.md) |
+| RAML field names | `facet_names.py` | [05](05-type-model.md), [08](08-templates-and-endpoints.md), [09](09-security-and-annotations.md) |
 | Garbage-collector tuning | `gctuning.py` | [12](12-performance.md) |
 | Entry and RAML decoding | `parser/entry.py`, `parser/fragments.py`, `parser/includes.py`, `parser/references.py` | [03](03-yaml-and-io.md), [04](04-fragments-and-namespaces.md) |
 | Overlays and Extensions | `parser/extensions.py`, `parser/extension_merge.py` | [19](19-overlays-and-extensions.md) |
-| Endpoints and templates | `parser/source_ir.py`, `parser/structural_merge.py`, `parser/source_decode.py`, `parser/endpoint_build.py`, `parser/traits.py`, `parser/resourcetypes.py` | [08](08-templates-and-endpoints.md) |
+| Endpoints and templates | `parser/source_ir.py`, `parser/structural_merge.py`, `parser/source_decode.py`, `parser/endpoint_build.py`, `parser/traits.py`, `parser/resourcetypes.py`, `parser/substitutions.py` | [08](08-templates-and-endpoints.md) |
 | Security and annotations | `parser/security.py`, `parser/annotations.py`, `parser/directives.py` | [09](09-security-and-annotations.md) |
 | Type system | `types/` | [05](05-type-model.md) through [10](10-validation.md) |
-| Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, value samples, and linting | [16](16-graph.md), [18](18-linting.md) |
+| Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, value samples, occurrences, authorship, and linting | [16](16-graph.md), [18](18-linting.md) |
 | Joining API documents | `join/` | [20](20-join.md) |
+| Language service | `service/` | [21](21-language-service.md) |
 | CLI | `cli.py` | [13](13-public-api.md) |
 
 `views/` is a consumer layer, not a parser pass. Nothing under `parser/` or
-`types/` may import `fastraml.views`; outside `views/`, only `cli.py` may do so.
+`types/` may import `fastraml.views`; outside `views/`, only the composition
+roots `cli.py` and `service/` may do so, and only `cli.py` imports `service/`.
 Views requiring effective types require their caller to provide an unwrapped
 model; CLI commands do this through `ParseOptions(unwrap=True)`.
 
@@ -62,7 +79,8 @@ One `Raml` instance owns one parse. It holds:
 - fragment, include-node, expression, and JSON Schema caches;
 - declaration, resolver, endpoint, shape, annotation, and include-reference
   indices;
-- the unresolved-shape worklist and parse-context/provenance state; and
+- the unresolved-shape worklist and parse-context/provenance state;
+- the stages that finished and the one that raised (§ 1); and
 - optional retained source nodes, text, and entity-to-source information.
 
 Every model entity receives a parse-local monotonically increasing integer ID.
@@ -85,6 +103,10 @@ serialized views; they are not content hashes.
 | I10 | Structural merge preserves node identity for provenance lookup. | P4 |
 | I11 | Addresses are assigned by the shared view traversal; an address can be shared by linked entities. | views |
 | I12 | P10 validates unwrapped shapes, either public P9 results or private copies. | P10 |
+
+A model `parse_lenient()` returns holds these for the stages in
+`Raml.completed`, and only for entities not marked in `Raml.broken`
+(docs/13 § 1).
 
 ## 5. Errors and recovery
 

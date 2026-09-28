@@ -2,8 +2,8 @@
 
 `object`, `array` and `union` hold declarations, so each publishes a
 `DECLARATION_FACETS` table naming the facets whose values are declarations.
-`make_shape` reads the table off the class, builds those children itself and
-passes them to the constructor; nothing here calls back into `shape.py`.
+`make_shape` reads the table off the class and builds those children into
+the constructed kind; nothing here calls back into `shape.py`.
 
 `UnknownShape` and `RecursiveShape` are not names a document may write.
 `UnknownShape` is what a decoder produces for a declaration whose kind cannot
@@ -35,6 +35,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, NamedTuple, cast
 
+from fastraml import facet_names as fn
 from fastraml.datanode import make_data_node
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.parser.facets import make_bool_facet, make_int_facet, make_string_facet
@@ -50,10 +51,12 @@ from fastraml.types.base import (
 )
 from fastraml.types.values import (
     as_fraction,
+    broken,
     check_non_negative,
     failure,
     index_path,
     key_path,
+    rejected,
     type_name,
     unique_items,
 )
@@ -90,10 +93,9 @@ class ComplexKind(KindBase):
         return False
 
     def wrong_type(self, value: Any, path: str, expected: str) -> RamlError:
-        return failure(
+        return rejected(
             'invalid type',
-            self.base.location,
-            self.base.value_pos,
+            self.base,
             info={'path': path, 'expected': expected, 'found': type_name(value)},
         )
 
@@ -155,7 +157,7 @@ class ObjectShape(ComplexKind):
         'properties',
     )
 
-    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {'properties': PROPERTIES}
+    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {fn.FACET_PROPERTIES: PROPERTIES}
 
     def __init__(
         self,
@@ -182,18 +184,18 @@ class ObjectShape(ComplexKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'minProperties':
+                case fn.FACET_MIN_PROPERTIES:
                     self.min_properties = make_int_facet(raml, key, value, location)
-                case 'maxProperties':
+                case fn.FACET_MAX_PROPERTIES:
                     self.max_properties = make_int_facet(raml, key, value, location)
-                case 'additionalProperties':
+                case fn.FACET_ADDITIONAL_PROPERTIES:
                     self.additional_properties = make_bool_facet(raml, key, value, location)
-                case 'discriminator':
+                case fn.FACET_DISCRIMINATOR:
                     # Whether the named property exists is P10's question: it may
                     # be inherited, and so invisible until unwrap (docs/05 § 6).
                     self.discriminator = make_string_facet(raml, key, value, location)
                     declares_discriminator = True
-                case 'discriminatorValue':
+                case fn.FACET_DISCRIMINATOR_VALUE:
                     self.discriminator_value = make_data_node(raml, key, value, location)
                     declares_discriminator = True
                 case _:
@@ -212,7 +214,9 @@ class ObjectShape(ComplexKind):
     def check(self) -> None:
         accumulator = Accumulator()
         try:
-            _count_bounds(self.base, self.min_properties, self.max_properties, ('minProperties', 'maxProperties'))
+            _count_bounds(
+                self.base, self.min_properties, self.max_properties, (fn.FACET_MIN_PROPERTIES, fn.FACET_MAX_PROPERTIES)
+            )
         except RamlError as err:
             accumulator.add(err)
         forbids_extras = self.additional_properties is not None and not self.additional_properties.value
@@ -280,10 +284,9 @@ class ObjectShape(ComplexKind):
         missing = [name for name, prop in declared.items() if prop.required and name not in value]
         if missing:
             accumulator.add(
-                failure(
+                rejected(
                     'missing required properties',
-                    self.base.location,
-                    self.base.value_pos,
+                    self.base,
                     info={'path': path, 'properties': missing},
                 )
             )
@@ -308,15 +311,13 @@ class ObjectShape(ComplexKind):
 
         count = len(value)
         if self.min_properties is not None and count < self.min_properties.value:
-            accumulator.add(self._count_failure('too few properties', path, count, self.min_properties.value))
+            accumulator.add(self._count_failure('too few properties', path, count, self.min_properties))
         if self.max_properties is not None and count > self.max_properties.value:
-            accumulator.add(self._count_failure('too many properties', path, count, self.max_properties.value))
+            accumulator.add(self._count_failure('too many properties', path, count, self.max_properties))
         accumulator.raise_if_any()
 
-    def _count_failure(self, message: str, path: str, count: int, bound: int) -> RamlError:
-        return failure(
-            message, self.base.location, self.base.value_pos, info={'path': path, 'count': count, 'bound': bound}
-        )
+    def _count_failure(self, message: str, path: str, count: int, bound: ScalarFacet[int]) -> RamlError:
+        return broken(message, bound, info={'path': path, 'count': count, 'bound': bound.value})
 
     def _validate_extra(self, name: str, item: Any, path: str) -> None:
         """A key the declaration did not name: a pattern property, or refused."""
@@ -332,10 +333,9 @@ class ObjectShape(ComplexKind):
             # properties to be a string". So declaring any pattern makes the
             # set of them exhaustive — a key matching none is refused whatever
             # `additionalProperties` says (docs/05 § 4).
-            raise failure(
+            raise rejected(
                 'property name matches no pattern property',
-                self.base.location,
-                self.base.value_pos,
+                self.base,
                 info={
                     'path': path,
                     'property': name,
@@ -343,24 +343,29 @@ class ObjectShape(ComplexKind):
                 },
             )
         if self.additional_properties is not None and not self.additional_properties.value:
-            raise failure(
+            raise broken(
                 'additional properties are not allowed',
-                self.base.location,
-                self.base.value_pos,
+                self.additional_properties,
                 info={'path': path, 'property': name},
             )
 
 
 class ArrayShape(ComplexKind):
-    """`array`. `items` is one declaration, built before construction."""
+    """`array`. `items` is one declaration, built before construction.
 
-    __slots__ = ('items', 'max_items', 'min_items', 'unique_items')
+    `items_written` says whether this declaration wrote its items, as an
+    `items:` facet: not `Book[]`'s, which the expression built, nor ones
+    inherited, which a parent wrote (docs/06 § 3).
+    """
 
-    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {'items': ONE_SHAPE}
+    __slots__ = ('items', 'items_written', 'max_items', 'min_items', 'unique_items')
 
-    def __init__(self, base: BaseShape, *, items: BaseShape | None = None) -> None:
+    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {fn.FACET_ITEMS: ONE_SHAPE}
+
+    def __init__(self, base: BaseShape, *, items: BaseShape | None = None, items_written: bool = True) -> None:
         super().__init__(base)
         self.items = items
+        self.items_written = items_written
         self.min_items: ScalarFacet[int] | None = None
         self.max_items: ScalarFacet[int] | None = None
         self.unique_items: ScalarFacet[bool] | None = None
@@ -371,11 +376,11 @@ class ArrayShape(ComplexKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'minItems':
+                case fn.FACET_MIN_ITEMS:
                     self.min_items = make_int_facet(raml, key, value, location)
-                case 'maxItems':
+                case fn.FACET_MAX_ITEMS:
                     self.max_items = make_int_facet(raml, key, value, location)
-                case 'uniqueItems':
+                case fn.FACET_UNIQUE_ITEMS:
                     self.unique_items = make_bool_facet(raml, key, value, location)
                 case _:
                     rest.append(key)
@@ -390,7 +395,7 @@ class ArrayShape(ComplexKind):
     def check(self) -> None:
         accumulator = Accumulator()
         try:
-            _count_bounds(self.base, self.min_items, self.max_items, ('minItems', 'maxItems'))
+            _count_bounds(self.base, self.min_items, self.max_items, (fn.FACET_MIN_ITEMS, fn.FACET_MAX_ITEMS))
         except RamlError as err:
             accumulator.add(err)
         if self.items is not None:
@@ -407,19 +412,17 @@ class ArrayShape(ComplexKind):
         count = len(value)
         if self.min_items is not None and count < self.min_items.value:
             accumulator.add(
-                failure(
+                broken(
                     'too few items',
-                    self.base.location,
-                    self.base.value_pos,
+                    self.min_items,
                     info={'path': path, 'count': count, 'minItems': self.min_items.value},
                 )
             )
         if self.max_items is not None and count > self.max_items.value:
             accumulator.add(
-                failure(
+                broken(
                     'too many items',
-                    self.base.location,
-                    self.base.value_pos,
+                    self.max_items,
                     info={'path': path, 'count': count, 'maxItems': self.max_items.value},
                 )
             )
@@ -433,10 +436,9 @@ class ArrayShape(ComplexKind):
             duplicate = unique_items(value)
             if duplicate is not None:
                 accumulator.add(
-                    failure(
+                    broken(
                         'items are not unique',
-                        self.base.location,
-                        self.base.value_pos,
+                        self.unique_items,
                         info={'path': index_path(path, duplicate)},
                     )
                 )
@@ -624,7 +626,7 @@ class UnionShape(ComplexKind):
 
     __slots__ = ('_dispatch', '_member_declarations', 'any_of', 'pending_facets')
 
-    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {'anyOf': SHAPE_LIST}
+    DECLARATION_FACETS: ClassVar[Mapping[str, DeclarationFacet]] = {fn.FACET_ANY_OF: SHAPE_LIST}
 
     def __init__(self, base: BaseShape, *, any_of: list[BaseShape] | None = None) -> None:
         super().__init__(base)
@@ -653,7 +655,7 @@ class UnionShape(ComplexKind):
         rest: list[Node] = []
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
-            if key.value in ('discriminator', 'discriminatorValue'):
+            if key.value in (fn.FACET_DISCRIMINATOR, fn.FACET_DISCRIMINATOR_VALUE):
                 # The one discriminator rule checked at decode time: a union has
                 # no properties, so this can never become valid (docs/05 § 6).
                 raise node_error(
@@ -748,11 +750,10 @@ class UnionShape(ComplexKind):
             return None
         member = table.members.get(key)
         if member is None:
-            raise failure(
+            raise rejected(
                 'unknown discriminator value',
-                self.base.location,
-                self.base.value_pos,
-                info={'path': path, 'discriminator': table.name, 'value': _spell(tag), 'known': list(table.known)},
+                self.base,
+                info={'path': path, 'discriminator': table.name, 'known': list(table.known)},
             )
         return member
 

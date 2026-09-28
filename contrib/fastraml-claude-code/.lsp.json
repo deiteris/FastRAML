@@ -1,0 +1,9 @@
+{
+  "fastraml": {
+    "command": "fastraml",
+    "args": ["lsp"],
+    "extensionToLanguage": {
+      ".raml": "raml"
+    }
+  }
+}

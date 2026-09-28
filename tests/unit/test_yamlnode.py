@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from fastraml.errors import RamlError
+from fastraml.positions import Position
 from fastraml.yamlnode import (
     TAG_INCLUDE,
     TAG_INT,
@@ -23,13 +24,12 @@ from fastraml.yamlnode import (
     backend_name,
     compose,
     decode_source,
-    duplicate_keys,
     end_column,
     end_line,
     is_null,
-    last_leaf,
     pairs,
     read_head,
+    with_grafts,
 )
 
 URI = 'file:///t/api.raml'
@@ -118,9 +118,48 @@ class TestPositions:
         assert span.line == 2
         assert span.end_line == 3
 
-    def test_last_leaf_helpers(self):
+    @pytest.mark.parametrize('text', ['a: [a, b]\n', 'a: {x: 1}  # c\n'])
+    def test_full_position_of_a_flow_collection_reaches_its_bracket(self, text):
+        # The last leaf ends before `]`: a value squiggle stopped one short.
+        _, flow = next(pairs(parse(text)))
+        assert (flow.full_position.column, flow.full_position.end_column) == (4, 10)
+
+    def test_a_block_ending_in_a_flow_collection_reaches_its_bracket(self):
+        # `type: { rt: {item: T} }`: the block ended at the inner bracket, and
+        # the directive written in it ran past the resource holding it.
+        _, block = next(pairs(parse('r:\n  type: { rt: {item: T} }\n')))
+        assert (block.full_position.end_line, block.full_position.end_column) == (2, 26)
+
+    @pytest.mark.parametrize(
+        ('text', 'end'),
+        [
+            pytest.param('a: &x |\n  t\nb:\n  p: *x\n', (4, 4), id='below its anchor'),
+            pytest.param('a: &x 1\nb:\n  p: *x\n', (3, 4), id='beside its anchor'),
+            pytest.param('a: &x {k: 1}\nb:\n  - 1\n  - *x\n', (3, 6), id='in a sequence'),
+        ],
+    )
+    def test_a_block_ending_in_an_alias_ends_after_it_starts(self, text, end):
+        # The alias's copy sits at its anchor: its end, taken as the block's,
+        # came before the block's start, which VS Code refuses for an outline.
+        _, block = list(pairs(parse(text)))[1]
+        span = block.full_position
+        assert (span.line, span.column) < (span.end_line, span.end_column) == end
+
+    def test_a_grafted_container_spans_what_its_model_spans(self):
+        # docs/03 § 1: a resource type written above the resource merged its
+        # body under the resource's, and the body ended at the template's
+        # last line, before its own start; an Overlay's value ended in the
+        # other file.
+        root = parse('t:\n  x: 1\nr:\n  a: 1\n  b: 2\n')
+        (_, template), (_, written) = pairs(root)
+        merged = with_grafts(written, [*written.content, *template.content])
+        assert merged.full_position == written.full_position == Position(4, 3, 5, 7)
+        # And a container holding one ends where that one was written.
+        holder = Node(NodeKind.MAPPING, root.tag, '', [*root.content[:3], merged], root.line, root.column)
+        assert holder.full_position.end_line == 5
+
+    def test_end_helpers(self):
         root = parse('a:\n  b:\n    c: value\n')
-        assert last_leaf(root).value == 'value'
         assert end_line(root) == 3
         assert end_column(root) == 13
 
@@ -231,6 +270,9 @@ class TestLimitsAndErrors:
         frame = excinfo.value.frames()[0]
         assert frame.position is not None
         assert frame.location == URI
+        # A point, so the character at it: an editor has an end to underline to.
+        position = frame.position
+        assert (position.end_line, position.end_column) == (position.line, position.column + 1)
 
     def test_syntax_error_message_drops_the_pyyaml_position_prose(self):
         with pytest.raises(RamlError) as excinfo:
@@ -249,17 +291,33 @@ class TestEmptyDocuments:
 
 
 class TestDuplicateKeys:
-    def test_duplicates_are_recorded_not_rejected(self):
-        root = parse('a: 1\nb: 2\na: 3\n')
-        found = duplicate_keys(root)
-        assert [name for name, _ in found] == ['a']
-        assert found[0][1].line == 3
+    """docs/03 § 1: YAML 1.2 requires a mapping's keys to be unique.
 
-    def test_no_duplicates_reports_nothing(self):
-        assert duplicate_keys(parse('a: 1\nb: 2\n')) == []
+    A repeated key used to stay in the tree, and most decoders let the later
+    one win silently: what the earlier one held was resolved and reported,
+    then dropped from the model.
+    """
 
-    def test_a_scalar_has_no_duplicates(self):
-        assert duplicate_keys(Node(NodeKind.SCALAR, TAG_STR, 'x')) == []
+    @pytest.mark.parametrize(
+        ('source', 'line'),
+        [
+            pytest.param('a: 1\nb: 2\na: 3\n', 3, id='top level'),
+            pytest.param('t:\n  properties:\n    x: string\n  properties:\n    y: string\n', 4, id='nested'),
+            pytest.param('r:\n  200:\n  "200":\n', 3, id='a number and its quoted form'),
+            pytest.param('- {a: 1, a: 2}\n', 1, id='flow'),
+        ],
+    )
+    def test_a_repeated_key_is_rejected_at_the_repeat(self, source, line):
+        with pytest.raises(RamlError) as caught:
+            parse(source)
+        assert caught.value.head.message == 'duplicate key'
+        assert caught.value.head.position.line == line
+        assert caught.value.head.info is not None
+        assert set(caught.value.head.info) == {'key'}
+
+    def test_the_same_key_in_sibling_mappings_is_not_a_repeat(self):
+        root = parse('a: {k: 1}\nb: {k: 2}\n')
+        assert [key.value for key, _ in pairs(root)] == ['a', 'b']
 
 
 class TestReadHead:

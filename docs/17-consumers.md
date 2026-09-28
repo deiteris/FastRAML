@@ -58,6 +58,10 @@ behavior and local development. The standalone app loads `api.json` by default;
 both `App` and the source-level `Viewer` component accept tree JSON contents
 directly. `Viewer` also accepts a decoded document from a frontend with its own
 HTML entry and router. The viewer is not an npm library build.
+The package `fastraml-viewer` exports `App` and `Viewer` from
+`src/index.ts`, as source, with the stylesheets: a host depends on it and
+bundles it, as `contrib/fastraml-vscode/webview` does (§ 4). The viewer holds
+no host's entry.
 
 The viewer's checked-in contract artifacts are generated:
 
@@ -97,10 +101,26 @@ CI runs `npm run ci`; screenshots are not a CI gate.
 own lock, dependencies, and test gate. The root `pyproject.toml` does not package
 them; CI runs their gates as a matrix.
 
+It also holds two clients of `fastraml lsp` ([21](21-language-service.md) § 5):
+
+- `fastraml-vscode`, an npm project, starts the server and offers a preview in
+  its `webview/` package. The webview depends on `fastraml-viewer` and renders
+  its `App` from the server's `fastraml/tree` answer. It is not published and
+  has no test suite; CI type-checks both and builds the page.
+- `fastraml-claude-code`, a Claude Code plugin directory, declares the server
+  for `.raml` files in its root `.lsp.json`. It requires a separate installation
+  of `fastraml[lsp]` on the user's `PATH`; it is not a Python distribution.
+  Validate its layout with `claude plugin validate --strict ./contrib/fastraml-claude-code`
+  when Claude Code is available.
+
 See `contrib/README.md` for the current project inventory and each project's
 README for its supported behavior. In particular:
 
 - `raml-document` is an authoring model, separate from fastRAML's parsed model.
+  The fastRAML JSON Schema exporter writes standalone DataType and Library
+  fragments, which the authoring model does not represent. Its output is checked
+  against `raml-document.TypeDecl.render()` for shared declaration spellings in
+  the consumer's tests; fastRAML does not import the consumer.
 - `raml-codegen` reads the tree contract and deliberately depends on no parser.
   Its optional `raml` extra installs `fastraml` so the command line can accept a
   `.raml` path; it runs the `tree` projection in-process and generates from the
@@ -156,6 +176,7 @@ source.
 - optional-extra, bindings, benchmark-linearity, and TCK jobs
 - the eight-project contrib matrix
 - the viewer production gate
+- the VS Code extension's type check and preview build
 
 The `bindings` job installs Go and Node and rejects skipped binding or
 cross-language conformance checks. The `contrib` job runs each project with its

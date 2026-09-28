@@ -37,11 +37,16 @@ PERSON = json.dumps(
 )
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def parse(workspace, files: dict[str, str], **options):
     """Parse `api.raml` out of `files`; return the error, or `None`."""
     root = workspace(files)
     try:
-        parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
+        workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
     except RamlError as err:
         return err
     return None
@@ -49,7 +54,7 @@ def parse(workspace, files: dict[str, str], **options):
 
 def parsed(workspace, files: dict[str, str], **options):
     root = workspace(files)
-    return parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
+    return workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
 
 
 def messages(error: RamlError) -> set[str]:
@@ -96,7 +101,7 @@ class TestCompilation:
         # error in the document rather than something only `validate=True` sees.
         root = workspace({'api.raml': API + 'types:\n  Person: |\n    {"type": "object"\n'})
         with pytest.raises(RamlError):
-            parse_from_path(root / 'api.raml')
+            workspace.parse(root / 'api.raml')
 
     def test_an_external_json_file_compiles_through_the_same_path(self, workspace):
         raml = parsed(workspace, {'api.raml': API + 'types:\n  Person: !include person.json\n', 'person.json': PERSON})
@@ -180,7 +185,7 @@ class TestReferences:
             for index in range(8)
         )
         root = workspace({'api.raml': API + 'types:\n' + holders, 'person.json': PERSON})
-        loader = CountingLoader(root)
+        loader = CountingLoader(root, workspace)
         parse_from_path(
             root / 'api.raml', ParseOptions(validate=True, unwrap=True, file_loader=loader, workspace_root=root)
         )
@@ -200,6 +205,26 @@ class TestReferences:
 
 class TestInstanceValidation:
     """Section 5's `json` row: the compiled validator decides."""
+
+    def test_validating_through_a_ref_to_another_file_neither_crawls_nor_retrieves(self, workspace, monkeypatch):
+        # docs/10 § 7: the validator's registry already holds every document
+        # the schema reaches, so each validation does not rebuild one.
+        from referencing import Registry
+
+        from fastraml.types.jsonschema_ import SchemaRegistry
+
+        holder = json.dumps({'type': 'object', 'properties': {'p': {'$ref': 'person.json'}}})
+        files = {'api.raml': API + 'types:\n  Holder: !include holder.json\n', 'holder.json': holder}
+        raml = parsed(workspace, {**files, 'person.json': PERSON})
+        shape = raml.types_in(raml.location)['Holder'].shape
+        calls: list[str] = []
+        crawl, retrieve = Registry.crawl, SchemaRegistry._retrieve
+        monkeypatch.setattr(Registry, 'crawl', lambda self: calls.append('crawl') or crawl(self))
+        monkeypatch.setattr(SchemaRegistry, '_retrieve', lambda self, uri: calls.append(uri) or retrieve(self, uri))
+        shape.validate({'p': {'name': 'n'}}, '')
+        with pytest.raises(RamlError):
+            shape.validate({'p': {'age': 1}}, '')
+        assert calls == []
 
     def test_a_conforming_example_passes(self, workspace):
         body = 'types:\n' + declaration('Person', PERSON, 'example:', '  name: Ada', '  age: 36')
@@ -231,6 +256,98 @@ class TestInstanceValidation:
             'schema.json': document,
         }
         assert parse(workspace, files) is None
+
+    def test_a_pointer_included_subschema_bundles_the_pointers_it_uses(self, workspace):
+        # docs/10 § 7: its `#/definitions/...` point into the file, which the
+        # bundle of the subschema is not, so what they name is pulled in, and
+        # a reference back to the subschema itself is the bundle's root.
+        from jsonschema import Draft7Validator
+
+        user = {
+            'type': 'object',
+            'required': ['home'],
+            'properties': {'home': {'$ref': '#/definitions/Address'}, 'friend': {'$ref': '#/definitions/User'}},
+        }
+        document = json.dumps({'definitions': {'User': user, 'Address': {'type': 'string'}}})
+        files = {'api.raml': API + 'types:\n  User: !include schema.json#/definitions/User\n', 'schema.json': document}
+        raml = parsed(workspace, files)
+        bundle = raml.types_in(raml.location)['User'].shape.as_schema()
+        assert bundle['definitions'] == {'Address': {'type': 'string'}}
+        assert bundle['properties']['friend'] == {'$ref': '#'}
+        validator = Draft7Validator(bundle)
+        assert validator.is_valid({'home': 'x', 'friend': {'home': 'y'}})
+        assert not validator.is_valid({'home': 1})
+
+    def test_a_referenced_document_claims_its_own_definition_aliases(self, workspace):
+        from jsonschema import Draft7Validator
+
+        files = {
+            'api.raml': API + 'types:\n  Batch: !include batch.json\n',
+            'batch.json': json.dumps(
+                {
+                    'definitions': {'idp': {'$ref': 'idp.json'}},
+                    'type': 'array',
+                    'items': {'$ref': '#/definitions/idp'},
+                }
+            ),
+            # Put properties before definitions: aliases must be claimed before
+            # the first reference to them, regardless of object member order.
+            'idp.json': json.dumps(
+                {
+                    'type': 'object',
+                    'properties': {'id': {'$ref': '#/definitions/uuid'}},
+                    'definitions': {'uuid': {'$ref': 'uuid.json'}},
+                }
+            ),
+            'uuid.json': json.dumps({'type': 'string', 'pattern': '^u$'}),
+        }
+        raml = parsed(workspace, files)
+        bundle = raml.types_in(raml.location)['Batch'].shape.as_schema()
+        assert list(bundle['definitions']) == ['idp']
+        idp = bundle['definitions']['idp']
+        assert idp['definitions'] == {'uuid': {'type': 'string', 'pattern': '^u$'}}
+        assert idp['properties']['id'] == {'$ref': '#/definitions/idp/definitions/uuid'}
+        validator = Draft7Validator(bundle)
+        assert validator.is_valid([{'id': 'u'}])
+        assert not validator.is_valid([{'id': 'wrong'}])
+
+    def test_two_referenced_documents_can_alias_the_same_target(self, workspace):
+        from jsonschema import Draft7Validator
+
+        files = {
+            'api.raml': API + 'types:\n  Batch: !include batch.json\n',
+            'batch.json': json.dumps(
+                {
+                    'type': 'object',
+                    'properties': {'first': {'$ref': 'first.json'}, 'second': {'$ref': 'second.json'}},
+                }
+            ),
+            'first.json': json.dumps(
+                {
+                    'definitions': {'uuid': {'$ref': 'uuid.json'}},
+                    'type': 'object',
+                    'properties': {'id': {'$ref': '#/definitions/uuid'}},
+                }
+            ),
+            'second.json': json.dumps(
+                {
+                    'definitions': {'uuid': {'$ref': 'uuid.json'}},
+                    'type': 'object',
+                    'properties': {'id': {'$ref': '#/definitions/uuid'}},
+                }
+            ),
+            'uuid.json': json.dumps({'type': 'string', 'pattern': '^u$'}),
+        }
+        raml = parsed(workspace, files)
+        bundle = raml.types_in(raml.location)['Batch'].shape.as_schema()
+        assert list(bundle['definitions']) == ['first', 'second']
+        assert bundle['definitions']['second']['definitions']['uuid'] == {
+            '$ref': '#/definitions/first/definitions/uuid'
+        }
+        assert bundle['definitions']['second']['properties']['id'] == {'$ref': '#/definitions/second/definitions/uuid'}
+        validator = Draft7Validator(bundle)
+        assert validator.is_valid({'first': {'id': 'u'}, 'second': {'id': 'u'}})
+        assert not validator.is_valid({'second': {'id': 'wrong'}})
 
     def test_a_pointer_that_names_nothing_is_an_error(self, workspace):
         document = json.dumps({'definitions': {'Person': json.loads(PERSON)}})
@@ -515,7 +632,7 @@ types:
 
     def test_each_inline_schema_keeps_its_own_properties(self, workspace):
         root = workspace({'api.raml': self.INLINE})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         declared = raml.types_in(raml.location)
         assert sorted(projected(declared['A']).shape.properties) == ['alpha']
         assert sorted(projected(declared['B']).shape.properties) == ['beta']
@@ -541,7 +658,7 @@ types:
     @pytest.fixture
     def declared(self, workspace):
         root = workspace({'api.raml': self.RECURSIVE, 'node.json': self.NODE})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         return raml.types_in(raml.location)
 
     def test_both_types_project_the_whole_schema(self, declared):
@@ -564,7 +681,7 @@ types:
         one thing, at the schema's own URI.
         """
         root = workspace({'api.raml': self.RECURSIVE, 'node.json': self.NODE})
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         assert f'{DEFAULT_BASE}/node.json#/properties/value' in graph.nodes
         for name in ('A', 'B'):
             assert f'{DEFAULT_BASE}#/declarations/types/{name}/property/value' in graph.nodes

@@ -29,9 +29,12 @@ WRITERS = {
     'extensions': lambda root: corpus.write_extensions(root, resource_count=11),
     'validate': lambda root: corpus.write_validate(root, type_count=3),
     'jsonschema': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
+    'schema-export': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
+    'raml-schema': lambda root: corpus.write_validate(root, type_count=6),
     'enums': lambda root: corpus.write_enums(root, family_count=1),
     'unions': lambda root: corpus.write_unions(root, family_count=1),
     'facets': lambda root: corpus.write_facets(root, family_count=1),
+    'inheritance': lambda root: corpus.write_inheritance(root, family_count=1),
 }
 
 
@@ -127,6 +130,61 @@ class TestFeatureCorporaReachTheirCode:
         assert facets >= {'properties', 'items'}
         assert any(depth > 0 for depth in nested), 'a nested union must distribute in turn'
 
+    def test_jsonschema_validates_every_example_through_its_references(self, tmp_path, monkeypatch):
+        from fastraml.types.jsonschema_ import JsonShape
+
+        validated: list[object] = []
+        original = JsonShape.validate
+
+        def counting(self, value, path):
+            validated.append(value)
+            return original(self, value, path)
+
+        monkeypatch.setattr(JsonShape, 'validate', counting)
+        count = 6
+        entry = corpus.write_jsonschema(tmp_path, schema_count=count, shared_count=2)
+        parse_from_path(entry, ParseOptions(unwrap=True, validate=True))
+        assert len(validated) == count * corpus.EXAMPLES_PER_SCHEMA
+        # Each example reaches both `$ref` targets, in another file.
+        assert all({'detail', 'more'} <= value.keys() for value in validated)
+
+    def test_schema_export_visits_every_schema(self, tmp_path, monkeypatch):
+        import fastraml.views.raml as export_module
+        from bench.__main__ import run_one
+
+        visited: list[str] = []
+        original = export_module.to_raml
+
+        def counting(shape, **kwargs):
+            visited.append(shape.document_uri)
+            return original(shape, **kwargs)
+
+        monkeypatch.setattr(export_module, 'to_raml', counting)
+        entry = corpus.write_jsonschema(tmp_path, schema_count=6, shared_count=2)
+        run_one('schema-export', 'parse', entry, repeat=1)
+        assert visited == [], 'parse must not time an export'
+        run_one('schema-export', 'unwrap', entry, repeat=1)
+        assert len(set(visited)) == 6
+
+    def test_raml_schema_export_visits_every_declared_type(self, tmp_path, monkeypatch):
+        import fastraml.views.jsonschema as export_module
+        from bench.__main__ import run_one
+
+        visited: list[str] = []
+        original = export_module.to_json_schema
+
+        def counting(base, **kwargs):
+            visited.append(base.name)
+            return original(base, **kwargs)
+
+        monkeypatch.setattr(export_module, 'to_json_schema', counting)
+        entry = corpus.write_validate(tmp_path, type_count=6)
+        run_one('raml-schema', 'parse', entry, repeat=1)
+        assert visited == [], 'parse must not time a schema export'
+        run_one('raml-schema', 'unwrap', entry, repeat=1)
+        assert visited
+        assert set(visited) == {f'V{index}' for index in range(6)}
+
     def test_facets_walks_every_parent_count(self, tmp_path, monkeypatch):
         import fastraml.types.validate as validate_module
 
@@ -140,6 +198,39 @@ class TestFeatureCorporaReachTheirCode:
         monkeypatch.setattr(validate_module, '_facet_declarations', counting)
         parse_from_path(corpus.write_facets(tmp_path, family_count=1), ParseOptions(unwrap=True, validate=True))
         assert set(widths) >= set(corpus.FACET_PARENTS)
+
+    def test_inheritance_takes_every_union_path_and_folds_every_declaration_kind(self, tmp_path, monkeypatch):
+        import fastraml.types.inherit as inherit_module
+        from fastraml.types.complex_ import UnionShape
+
+        paths: list[str] = []
+        folded: set[str] = set()
+
+        def counting(name, original):
+            def call(*args):
+                paths.append(name)
+                return original(*args)
+
+            return call
+
+        original_fold = inherit_module.fold
+
+        def fold(parents):
+            folded.add(parents[0].name)
+            return original_fold(parents)
+
+        monkeypatch.setattr(inherit_module, '_inherit_from_union', counting('from', inherit_module._inherit_from_union))
+        monkeypatch.setattr(inherit_module, '_inherit_into_union', counting('into', inherit_module._inherit_into_union))
+        # `_narrow` dispatches through the table, not the module attribute.
+        monkeypatch.setitem(inherit_module._RULES, UnionShape, counting('both', inherit_module._narrow_union))
+        monkeypatch.setattr(inherit_module, 'fold', fold)
+        raml = parse_from_path(corpus.write_inheritance(tmp_path, family_count=1), ParseOptions(unwrap=True))
+        assert {'from', 'into', 'both'} <= set(paths)
+        assert folded >= {'tag', '/^x-/', 'items'}, 'a property, a pattern property and items'
+        types = raml.types_in(raml.location)
+        for width in corpus.INHERITED_UNION_WIDTHS:
+            counts = [len(types[f'F0W{width}{kind}'].shape.any_of) for kind in ('After', 'First', 'Pairs')]
+            assert counts == [width, width, 2 * width]
 
 
 @pytest.mark.parametrize('name', sorted(WRITERS))

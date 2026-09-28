@@ -13,9 +13,15 @@ from hypothesis import strategies as st
 
 from fastraml import ParseOptions, RamlError, parse_from_path
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from fastraml.types.unwrap import unwrap_shape
 
 LIB = '#%RAML 1.0 Library\n'
 UNWRAP = ParseOptions(unwrap=True)
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 def unwrapped(workspace, body: str, extra: dict[str, str] | None = None):
@@ -23,7 +29,7 @@ def unwrapped(workspace, body: str, extra: dict[str, str] | None = None):
     files = {'lib.raml': LIB + 'types:\n' + body}
     files.update(extra or {})
     root = workspace(files)
-    raml = parse_from_path(root / 'lib.raml', UNWRAP)
+    raml = workspace.parse(root / 'lib.raml', UNWRAP)
     return raml, raml.types_in(raml.location)
 
 
@@ -67,8 +73,31 @@ class TestSingleInheritance:
         )
 
 
+class TestWhoWroteTheItems:
+    """docs/06 § 3: an array records whether it wrote its items itself."""
+
+    @pytest.mark.parametrize(
+        ('body', 'written'),
+        [
+            pytest.param('  A:\n    type: array\n    items: string\n', True, id='an items facet'),
+            pytest.param('  A: string[]\n', False, id='a type expression'),
+            pytest.param(
+                '  P:\n    type: array\n    items: string\n  A:\n    type: P\n    minItems: 1\n',
+                False,
+                id='inherited',
+            ),
+        ],
+    )
+    def test_an_array_records_whether_it_wrote_its_items(self, workspace, body, written):
+        _raml, types = unwrapped(workspace, body)
+        shape = types['A'].shape
+        assert isinstance(shape, ArrayShape)
+        assert shape.items is not None
+        assert shape.items_written is written
+
+
 class TestParentIsNotMutated:
-    """docs/07 § 4 — the corruption the synthetic shape exists to prevent."""
+    """docs/07 § 4 — the corruption the fold exists to prevent."""
 
     def test_two_children_do_not_corrupt_their_shared_parent(self, workspace):
         _raml, types = unwrapped(
@@ -106,6 +135,123 @@ class TestParentIsNotMutated:
         assert types['First'].shape.properties['shared'].base.shape.min_length.value == 2
         assert types['Parent'].shape.properties['shared'].base.shape.min_length is None
 
+    @pytest.mark.parametrize(
+        ('body', 'declaration'),
+        [
+            pytest.param(
+                '  L:\n    properties:\n      x: string\n'
+                '  R:\n    properties:\n      x:\n        type: string\n        maxLength: 3\n',
+                lambda shape: shape.properties['x'].base,
+                id='a property',
+            ),
+            pytest.param(
+                '  L:\n    properties:\n      /^x/: string\n'
+                '  R:\n    properties:\n      /^x/:\n        type: string\n        maxLength: 3\n',
+                lambda shape: next(iter(shape.pattern_properties.values())).base,
+                id='a pattern property',
+            ),
+            pytest.param(
+                '  L:\n    type: array\n    items:\n      properties:\n        x: string\n'
+                '  R:\n    type: array\n    items:\n      properties:\n        x:\n          type: string\n'
+                '          maxLength: 3\n',
+                lambda shape: shape.items.shape.properties['x'].base,
+                id='a property of the items',
+            ),
+        ],
+    )
+    def test_a_declaration_both_parents_make_is_folded_not_narrowed_in_place(self, workspace, body, declaration):
+        # The fold holds the first parent's declaration by reference, so
+        # narrowing it by the second parent's would write into the first parent.
+        _raml, types = unwrapped(workspace, body + '  Both:\n    type: [L, R]\n')
+        assert declaration(types['L'].shape).shape.max_length is None, 'L must not have gained maxLength'
+        assert declaration(types['Both'].shape).shape.max_length.value == 3
+
+    def test_a_union_first_among_the_parents_does_not_narrow_its_members(self, workspace):
+        # The fold adopts `Cat | Dog`'s members, which are aliases sharing
+        # `Cat`'s and `Dog`'s containers, and then narrows each by `HasHome`.
+        _raml, types = unwrapped(
+            workspace,
+            '  HasHome:\n    properties:\n      home: string\n'
+            '  Cat:\n    properties:\n      purrs: boolean\n'
+            '  Dog:\n    properties:\n      barks: boolean\n'
+            '  Pet:\n    type: [Cat | Dog, HasHome]\n',
+        )
+        assert list(types['Cat'].shape.properties) == ['purrs'], 'Cat must not have gained home'
+        assert list(types['Dog'].shape.properties) == ['barks']
+        assert [list(member.shape.properties) for member in types['Pet'].shape.any_of] == [
+            ['purrs', 'home'],
+            ['barks', 'home'],
+        ]
+
+
+class TestUnionAmongTheParents:
+    """docs/07 § 5: each variant names the parents it took, not the union."""
+
+    BODY = (
+        '  HasHome:\n    properties:\n      home: string\n'
+        '  Cat:\n    properties:\n      purrs: boolean\n'
+        '  Dog:\n    properties:\n      barks: boolean\n'
+        '  Named:\n    properties:\n      name: string\n'
+        '  OnFarm:\n    properties:\n      farm: string\n'
+        '  Pet: Cat | Dog\n'
+    )
+
+    @staticmethod
+    def parents(variant):
+        # A name among the parents, or an inline union's member, is an alias
+        # of the type it names.
+        return [parent.alias or parent for parent in variant.inherits]
+
+    @pytest.mark.parametrize(
+        ('declared', 'expected'),
+        [
+            pytest.param('[HasHome, Cat | Dog]', [['HasHome', 'Cat'], ['HasHome', 'Dog']], id='union last'),
+            pytest.param('[Cat | Dog, HasHome]', [['Cat', 'HasHome'], ['Dog', 'HasHome']], id='union first'),
+            pytest.param(
+                '[HasHome, Cat | Dog, Named]',
+                [['HasHome', 'Cat', 'Named'], ['HasHome', 'Dog', 'Named']],
+                id='union between',
+            ),
+            pytest.param('[HasHome, Pet]', [['HasHome', 'Cat'], ['HasHome', 'Dog']], id='declared union'),
+            pytest.param(
+                '[HasHome | OnFarm, Cat | Dog]',
+                [['HasHome', 'Cat'], ['OnFarm', 'Cat'], ['HasHome', 'Dog'], ['OnFarm', 'Dog']],
+                id='two unions',
+            ),
+        ],
+    )
+    def test_each_variant_names_the_member_it_took(self, workspace, declared, expected):
+        _raml, types = unwrapped(workspace, self.BODY + f'  Homely:\n    type: {declared}\n')
+        homely = types['Homely']
+        assert isinstance(homely.shape, UnionShape)
+        assert [[types[name] for name in names] for names in expected] == [
+            self.parents(variant) for variant in homely.shape.any_of
+        ]
+
+    def test_a_variant_is_anonymous(self, workspace):
+        # Each variant starts as a copy of the declaration; its name, display
+        # name and description are the union's, not the variant's.
+        _raml, types = unwrapped(
+            workspace,
+            self.BODY
+            + '  Homely:\n    displayName: Homely\n    description: Either.\n    type: [HasHome, Cat | Dog]\n',
+        )
+        homely = types['Homely']
+        assert (homely.name, homely.display_name.value, homely.description.value) == ('Homely', 'Homely', 'Either.')
+        assert [(variant.name, variant.display_name, variant.description) for variant in homely.shape.any_of] == [
+            (None, None, None),
+            (None, None, None),
+        ]
+
+    def test_a_sole_survivor_keeps_the_declarations_name(self, workspace):
+        # It replaces the declaration rather than being one variant of it.
+        _raml, types = unwrapped(workspace, self.BODY + '  Homely:\n    type: [HasHome, Cat | string]\n')
+        assert types['Homely'].name == 'Homely'
+
+    def test_the_union_itself_keeps_the_declared_parents(self, workspace):
+        _raml, types = unwrapped(workspace, self.BODY + '  Homely:\n    type: [HasHome, Pet]\n')
+        assert self.parents(types['Homely']) == [types['HasHome'], types['Pet']]
+
 
 class TestMultipleInheritance:
     def test_facets_from_every_parent_are_folded_in(self, workspace):
@@ -126,7 +272,7 @@ class TestMultipleInheritance:
             '  A:\n    type: string\n  B:\n    type: integer\n  Both:\n    type: [A, B]\n',
         )
 
-    def test_an_array_synthetic_gets_its_own_items(self, workspace):
+    def test_an_array_fold_takes_the_parents_items(self, workspace):
         _raml, types = unwrapped(
             workspace,
             '  Short:\n    type: string[]\n    minItems: 1\n'
@@ -310,6 +456,13 @@ class TestRecursionMarking:
         assert marker.shape.head is node
         assert marker.type == 'recursive'
 
+    def test_the_marker_is_placed_where_the_slot_was_written(self, workspace):
+        # `next: Node` is the property's key, not `Node`'s declaration: the
+        # occurrence index reads the property's definition from it (docs/16 § 9).
+        _raml, types = unwrapped(workspace, '  Node:\n    properties:\n      next: Node\n')
+        marker = types['Node'].shape.properties['next'].base
+        assert (marker.key_pos.line, marker.key_pos.column) == (5, 7)
+
     def test_the_marker_is_not_the_head_itself(self, workspace):
         _raml, types = unwrapped(workspace, '  Node:\n    properties:\n      next: Node\n')
         node = types['Node']
@@ -355,6 +508,67 @@ class TestRecursionMarking:
         assert walk(types['Node']) == 2
 
 
+#: A merge P9 rejects: a string and an integer have no common kind.
+FAILING_MERGE = '  N: integer\n  C:\n    type: [string, N]\n'
+RECURSIVE = '  Node:\n    properties:\n      next?: Node\n'
+
+
+def lenient(workspace, body: str):
+    root = workspace({'lib.raml': LIB + 'types:\n' + body})
+    raml, error = workspace.lenient(root / 'lib.raml', UNWRAP)
+    assert error is not None
+    return raml, raml.types_in(raml.location), error
+
+
+class TestAFailedMerge:
+    """docs/11 § 2 — what P9 leaves behind when one declaration fails.
+
+    `parse_lenient` returns this model, and the Sphinx extension walks it.
+    """
+
+    @pytest.mark.parametrize('body', [FAILING_MERGE + RECURSIVE, RECURSIVE + FAILING_MERGE], ids=['after', 'before'])
+    def test_recursion_is_still_marked(self, workspace, body):
+        """Unmarked, the cycle closes two levels down and a walker never stops."""
+        _raml, types, _error = lenient(workspace, body)
+        assert isinstance(types['Node'].shape.properties['next'].base.shape, RecursiveShape)
+
+    def test_the_failed_shape_is_not_flagged_unwrapped(self, workspace):
+        raml, types, _error = lenient(workspace, FAILING_MERGE)
+        assert not types['C']._unwrapped
+        assert [parent.name for parent in types['C'].inherits] == ['string', 'N']
+        assert types['N']._unwrapped
+        assert not raml.unwrapped
+
+    def test_a_shape_the_failure_was_nested_in_is_not_flagged_either(self, workspace):
+        raml, types, _error = lenient(
+            workspace, '  N: integer\n  Outer:\n    properties:\n      c:\n        type: [string, N]\n'
+        )
+        assert not types['Outer']._unwrapped
+        assert not types['Outer'].shape.properties['c'].base._unwrapped
+        assert types['Outer'] in raml.shapes
+
+    def test_the_error_is_the_strict_one(self, workspace):
+        _raml, _types, error = lenient(workspace, FAILING_MERGE + RECURSIVE)
+        assert [trace.message for chain in error.chains() for trace in chain] == failure(
+            workspace, FAILING_MERGE + RECURSIVE
+        )
+
+    def test_a_second_route_to_the_failed_shape_reports_nothing_more(self, workspace):
+        _raml, _types, error = lenient(
+            workspace, FAILING_MERGE + '  D:\n    type: C\n  E:\n    properties:\n      c: C\n'
+        )
+        assert len(list(error.chains())) == 1
+
+    def test_unwrap_shape_leaves_a_failed_clone_unflagged(self, workspace):
+        """The one-declaration entry point, which P10 calls on a detached clone."""
+        root = workspace({'lib.raml': LIB + 'types:\n' + FAILING_MERGE})
+        raml = workspace.parse(root / 'lib.raml')
+        clone = raml.types_in(raml.location)['C'].clone_detached()
+        with pytest.raises(RamlError):
+            unwrap_shape(raml, clone)
+        assert not clone._unwrapped
+
+
 class TestInvariantI6:
     def test_every_reachable_shape_is_flattened_and_unlinked(self, workspace):
         raml, _types = unwrapped(
@@ -364,7 +578,7 @@ class TestInvariantI6:
             '  Listed: Child[]\n'
             '  Node:\n    properties:\n      next: Node\n',
         )
-        assert raml.is_unwrapped
+        assert raml.unwrapped
         offenders = [
             f'{shape.id} ({shape.name!r})' for shape in raml.shapes if not shape._unwrapped or shape.link is not None
         ]

@@ -19,11 +19,24 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import TYPE_CHECKING, Final, Self
 
-from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
+from fastraml.facet_names import FACET_USAGE
 from fastraml.parser.facets import make_string_facet
 from fastraml.parser.includes import note_include_ref
+from fastraml.parser.substitutions import Substitution
 from fastraml.positions import UNKNOWN, Position
-from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, is_null, node_error, pairs, with_content, with_value
+from fastraml.yamlnode import (
+    TAG_INCLUDE,
+    TAG_STR,
+    Node,
+    NodeKind,
+    is_null,
+    node_error,
+    pairs,
+    with_content,
+    with_grafts,
+    with_value,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -33,6 +46,7 @@ if TYPE_CHECKING:
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.fragments import ReferenceResolver
     from fastraml.parser.structural_merge import ProvenanceOverlay
+    from fastraml.parser.substitutions import Substitutions
     from fastraml.registry import ParseCtx, Raml
     from fastraml.types.base import ScalarFacet
 
@@ -72,8 +86,6 @@ def parameter_node(value: str) -> Node:
 #: What one scan of a template body produces: every `<<...>>` bearing scalar,
 #: keyed by the node itself.
 type VariableIndex = dict[Node, list[VariableInfo]]
-
-FACET_USAGE: Final = 'usage'
 
 
 # -- the two template declarations (docs/08 § 3) -------------------------------
@@ -122,6 +134,7 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
     location: str,
     *,
     what: str,
+    attach: Callable[[T], None],
     retain: Callable[[T, Node], Node] | None = None,
 ) -> T:
     """Decode one template declaration. Everything but `usage:` is kept as YAML.
@@ -130,6 +143,9 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
     where a resource type checks its keys and chomps `?` off an optional method.
     The body is a fresh mapping, so a merge into it cannot reach the declaring
     document — the same reason stage 1 rebuilds an endpoint's body.
+
+    `attach` places the definition before its body is read; one whose body
+    fails stays placed, marked in `Raml.broken` (docs/13 § 1).
     """
     # A declaration an extension document added is that document's, body and
     # all; one it only amended stays the declaring document's (docs/19 § 5.3).
@@ -142,24 +158,28 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
         key_pos=(key_node if key_node is not None else value_node).position,
         value_pos=value_node.full_position,
     )
-    if is_null(value_node):
-        return definition
-    if value_node.tag == TAG_INCLUDE:
-        definition.link_uri = note_include_ref(raml, value_node, location)
-        return definition
-    if value_node.kind is not NodeKind.MAPPING:
-        raise node_error(f'{what} definition must be a mapping', location, value_node)
+    attach(definition)
+    with raml.marking(definition):
+        if is_null(value_node):
+            return definition
+        if value_node.tag == TAG_INCLUDE:
+            definition.link_uri = note_include_ref(raml, value_node, location)
+            return definition
+        if value_node.kind is not NodeKind.MAPPING:
+            raise node_error(f'{what} definition must be a mapping', location, value_node)
 
-    kept: list[Node] = []
-    for key, value in pairs(value_node):
-        if key.value == FACET_USAGE:
-            definition.usage = make_string_facet(raml, key, value, location)
-        else:
-            kept.append(key if retain is None else retain(definition, key))
-            kept.append(value)
-    if kept:
-        definition.source = with_content(value_node, kept)
-        definition.declared_variables, definition.variable_index = collect_variables_index(definition.source, location)
+        kept: list[Node] = []
+        for key, value in pairs(value_node):
+            if key.value == FACET_USAGE:
+                definition.usage = make_string_facet(raml, key, value, location)
+            else:
+                kept.append(key if retain is None else retain(definition, key))
+                kept.append(value)
+        if kept:
+            definition.source = with_content(value_node, kept)
+            definition.declared_variables, definition.variable_index = collect_variables_index(
+                definition.source, location
+            )
     return definition
 
 
@@ -185,14 +205,17 @@ def find_template_definition[T: TemplateDefinition](
 
 
 def check_parameters(
-    declared: set[str],
+    definition: TemplateDefinition,
     params: dict[str, Node],
-    location: str,
-    position: Position,
+    application: DirectiveRef,
     *,
     required: set[str] | None = None,
 ) -> None:
     """Both directions: nothing supplied undeclared, nothing required unsupplied.
+
+    At the application, where the fix goes (docs/11 § 3.1): an unexpected
+    parameter at its value, beside the template it is not used in; a missing
+    one at the parameters, beside its first `<<use>>` in the template.
 
     The two sets differ for a resource type. Everything the template mentions is
     accepted as a parameter, but only what survives optional-method filtering is
@@ -203,14 +226,39 @@ def check_parameters(
     Reserved parameters are always accepted and never required: the parser
     injects them at every application site.
     """
+    declared = definition.declared_variables
     accumulator = Accumulator()
-    for name in params:
+    for name, value in params.items():
         if name not in RESERVED_PARAMETERS and name not in declared:
-            accumulator.add(RamlError.new('unexpected parameter', location, position, info={'parameter': name}))
+            template = Trace('declared here', definition.location, definition.key_pos)
+            # At its value: the parse keeps no key nodes for an application.
+            error = _parameter_error('unexpected parameter', application, value.full_position, name, template)
+            accumulator.add(error)
     for name in declared if required is None else required:
         if name not in RESERVED_PARAMETERS and name not in params:
-            accumulator.add(RamlError.new('missing required parameter', location, position, info={'parameter': name}))
+            use = Trace('used here', definition.location, _first_use(definition.variable_index, name))
+            accumulator.add(
+                _parameter_error('missing required parameter', application, application.value_pos, name, use)
+            )
     accumulator.raise_if_any()
+
+
+def _parameter_error(message: str, application: DirectiveRef, at: Position, name: str, origin: Trace) -> RamlError:
+    return RamlError(Trace(message, application.location, at, info={'parameter': name}, origin=origin))
+
+
+def _first_use(index: VariableIndex, name: str) -> Position:
+    """Where `<<name>>` is first written in the template: the variable itself
+    in a one-line scalar, the scalar otherwise (docs/11 § 3).
+    """
+    for node, variables in index.items():
+        for variable in variables:
+            if variable.name == name:
+                offset = node.value.find(variable.substring)
+                if offset < 0 or '\n' in node.value:
+                    return node.position
+                return node.position.within(node.value).shifted(offset, len(variable.substring))
+    return UNKNOWN
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,12 +518,15 @@ def collect_required_variables(node: Node, index: VariableIndex) -> set[str]:
 # -- substitution, recording where each value came from (docs/08 § 4.1) -------
 
 
-def compile_source_provenance(
+def compile_source_provenance(  # noqa: PLR0913 - the body, its values, and where each is recorded
     node: Node,
     params: dict[str, Node],
     index: VariableIndex,
     caller_scope: ParseCtx,
     overlay: ProvenanceOverlay,
+    *,
+    written_in: str,
+    substitutions: Substitutions,
 ) -> Node:
     """Substitute `params` into a template body, marking what the caller supplied.
 
@@ -484,31 +535,39 @@ def compile_source_provenance(
     `caller_scope`: static content resolves at its declaration and substituted
     values resolve at their application site (docs/08 § 4.1).
 
+    Each substituted scalar is also recorded in `substitutions`, with where
+    in `written_in`, the file the application is written in, each value came
+    from (docs/08 § 5.1).
+
     Unchanged node pointers are shared with the input, so the result is still a
     valid key set for the overlay and for the merge that follows.
     """
     if node.kind is NodeKind.SCALAR:
-        return _compile_scalar(node, params, index, caller_scope, overlay)
+        return _compile_scalar(node, params, index, caller_scope, overlay, written_in, substitutions)
 
     modified = False
     content: list[Node] = []
     for child in node.content:
-        compiled = compile_source_provenance(child, params, index, caller_scope, overlay)
+        compiled = compile_source_provenance(
+            child, params, index, caller_scope, overlay, written_in=written_in, substitutions=substitutions
+        )
         modified = modified or compiled is not child
         content.append(compiled)
     if not modified:
         # A container is structural: it keeps the enclosing scope, and reusing
         # it keeps every mark already recorded against it reachable.
         return node
-    return with_content(node, content)
+    return with_grafts(node, content)
 
 
-def _compile_scalar(
+def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arguments
     node: Node,
     params: dict[str, Node],
     index: VariableIndex,
     caller_scope: ParseCtx,
     overlay: ProvenanceOverlay,
+    written_in: str,
+    substitutions: Substitutions,
 ) -> Node:
     variables = index.get(node)
     if not variables:
@@ -523,8 +582,13 @@ def _compile_scalar(
             overlay[param] = caller_scope
             return param
 
-    text = node.value
-    substituted = False
+    # One pass substitutes and places each caller's value (docs/08 § 5.1).
+    # `str.replace` puts a value where a walk left to right does unless an
+    # earlier value held a `<<` of its own; then nothing is placed.
+    template = text = node.value
+    placed: list[Substitution] = []
+    substituted, exact = False, True
+    start = shift = 0
     for variable in variables:
         param = params.get(variable.name)
         if param is None:
@@ -534,10 +598,27 @@ def _compile_scalar(
             value = apply_template_action(value, action)
         text = text.replace(variable.substring, value, 1)
         substituted = True
+        at = template.find(variable.substring, start)
+        start = at + len(variable.substring)
+        if not variable.actions and variable.name not in RESERVED_PARAMETERS:
+            # A transformed value and a parameter the parser supplies are not
+            # the caller's text; a value that was itself substituted brings
+            # its own placements.
+            begin = at + shift
+            inner = substitutions.get(param)
+            if inner is None:
+                placed.append(Substitution(begin, begin + len(value), written_in, param))
+            else:
+                placed += [
+                    Substitution(begin + part.start, begin + part.end, part.location, part.node) for part in inner
+                ]
+        shift += len(value) - len(variable.substring)
+        exact = exact and '<<' not in value
     if not substituted:
         # An unsubstituted scalar is static: it keeps the declaration scope.
         return node
 
     compiled = with_value(node, text)
     overlay[compiled] = caller_scope
+    substitutions[compiled] = tuple(placed) if exact and placed else ()
     return compiled

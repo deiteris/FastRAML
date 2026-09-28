@@ -2,7 +2,7 @@
 
 **Status: built.** `fastraml.views` contains read-only projections of a parsed,
 effective RAML model. The CLI exposes them through `graph`, `tree`, `show`,
-`list`, `refs`, `deps`, `query`, `compat`, `openapi`, and `serve`.
+`list`, `refs`, `deps`, `query`, `compat`, `convert`, and `serve`.
 
 This document owns the view-layer boundary and durable contracts shared by view
 consumers. It does not restate RAML rules, implementation history, or generated
@@ -90,7 +90,8 @@ fastraml deps api.raml User
 
 `refs` follows use edges in reverse. `deps` follows type structure for types and
 use containment for other node kinds. Both commands can filter by kind, depth,
-and result limit.
+and result limit. `refs --sites` prints where the name is written instead,
+from the occurrence index (§ 9).
 
 ### 3.1 SPARQL catalogue
 
@@ -124,6 +125,11 @@ The output is RAML-shaped YAML with source notes where model provenance is
 available. It shows effective inheritance, properties, constraints, annotations,
 custom facets, security descriptions, and structured JSON Schema projections.
 `--depth` controls structural expansion; recursion remains finite.
+
+A member a trait or resource type contributed is noted with its name: the
+declaration whose span, key through value and columns included, holds the
+member's key, and only when the site applied it. A line alone would not tell
+two declarations written on one line apart.
 
 Traits, resource types, security schemes, and other declaration kinds without an
 effective standalone form are reported as such. Use `refs` to locate their
@@ -230,12 +236,40 @@ kinds. Generation fails when the emitter writes an undeclared key.
 
 ## 8. Other exports
 
+`fastraml.views.raml.to_raml(json_shape, name=None)` returns a complete RAML
+document from a compiled `JsonShape`. A schema without named definitions or
+nested external targets becomes a DataType; a root-only external reference can
+also be inlined unless recursive. With definitions (including unused ones),
+recursive root references, or named targets needed by other types, it becomes
+a Library containing the named types and
+the root type, named for the schema file stem by default. References become
+type names; recursive uses refer back to their named head. An inline schema
+needs an explicit `name` when the result is a Library. JSON Pointer keys and
+file stems that cannot be written as RAML type expressions are given safe names;
+collisions (including with built-in types) receive numeric suffixes. Optional
+properties write `required: false`; a literal name ending in `?` writes
+`required:` explicitly for either value so the question mark stays in the name.
+A literal `/regex/`-looking property cannot be distinguished from RAML's
+pattern-property syntax, so export rejects it. RAML also rejects pattern
+properties together with `additionalProperties: false`; export refuses that
+combination rather than emitting an invalid document. A constrained anonymous
+union member, an anonymous recursion, or a root name colliding with a definition
+fails rather than silently losing a constraint. Fraction facets are written as
+exact YAML numbers. The export uses the nearest-RAML shape
+projection (docs/10 § 7), with its documented semantic losses; it is not a
+lossless translation of JSON Schema. `fastraml convert raml FILE.json [-o FILE]`
+parses the schema through the normal loader and writes this document.
+
 `fastraml.views.jsonschema.to_json_schema(shape)` returns a JSON Schema draft-07
 document and any information the export could not represent. The input shape
-must be unwrapped.
+must be unwrapped. A JSON-backed entry exports its bundled schema at the root
+so local pointers still resolve. `fastraml convert jsonschema FILE.raml [TYPE]`
+exports a DataType fragment directly; an API or Library requires the name of
+one declared type. It writes JSON (`-o FILE` saves it) and reports dropped
+information on stderr.
 
 `fastraml.views.openapi.to_openapi(raml)` returns an OpenAPI 3.0.3 document and
-loss notices. `fastraml openapi` emits YAML by default or JSON with
+loss notices. `fastraml convert openapi` emits YAML by default or JSON with
 `--format json`; notices go to stderr.
 
 `fastraml.bound_base_uri(api)` is `baseUri` with `{version}` bound to the
@@ -286,10 +320,103 @@ name, even if it is marked `strict: false`, provided it validates.
 Every returned value has been validated against the shape, and none shares a
 container with the model. Tests: `tests/unit/test_samples.py`.
 
-## 9. Verification
+## 9. Occurrence index
+
+`fastraml.views.occurrences.build_occurrences(raml)` lists where each name is
+written and which entity it names. It is what definition, references and
+rename read. The model must be parsed with `retain_text=True`, which keeps
+each file's text and none of its YAML tree; `retain_source=True` implies it.
+
+An `Occurrence` holds five things:
+
+- the file the name is written in;
+- the span of the name token alone, so `lib.User` gives two occurrences;
+- a role: `definition`, `reference`, `alias_prefix`, `builtin` or `link`;
+- a kind;
+- the target entity's `id`, and the text it expects at the span.
+
+The index reads what the passes bound and resolves no name itself:
+
+- **Definitions.** The five declaration tables of every API and library,
+  `uses:` keys, object properties and `facets:` entries.
+- **References.** The names in type expressions, which P7 records
+  ([06](06-type-expressions.md) § 3). A built-in written alone, such as
+  `type: string`, never reaches P7; it is read from the `type:` node the
+  shape keeps, or, where a caller's value supplied it, recorded where the
+  caller wrote it. The `type:` and `is:` entries of every
+  resource and method. `securedBy:` names, and the name in each
+  `(annotation)` key.
+- **Links.** Each `!include` argument and each `uses:` value, as a `Link`:
+  an occurrence that also records the URI its path resolved to, found or
+  not, without a `#fragment`. The target is the fragment the file decoded
+  to, or `None` for a file that is not one, such as a schema or a text file;
+  the resolved URI names it either way.
+
+A name in a quoted scalar is placed past its quote, as diagnostics are
+(docs/11 § 3). A lenient model gives the occurrences of the stages it
+completed. A span met
+more than once, for example in a template applied twice, is kept once per
+target.
+
+**The law.** A candidate is kept only if the retained text at its span equals
+the name it records. For a reference, that is the name its target is declared
+under, so a wrong position and a wrong binding both fail. A rejected candidate
+is kept in `Occurrences.dropped`. A name a template substituted is placed
+where the caller wrote it (docs/08 § 5.1). One known cause remains: a
+transformed value, `<<item | !pluralize>>`, which is written nowhere.
+
+The law checks only the candidates the index finds. A name nothing records is
+not a candidate, and nothing checks for one.
+
+`Occurrences.at(uri, line, column)` finds the occurrences under a cursor.
+`Occurrences.of(id)` lists an entity's definition and every use of it.
+
+## 10. Authorship view
+
+`fastraml.views.authored` answers what a file, or an entity, wrote, for every
+consumer that lists a document as its author wrote it: the outline
+(`docs/21` § 4), and later completion, rename and semantic tokens. It reads
+facts the model records and selects by `location` over the merged model, so a
+file an Extension or an Overlay adds to lists what it added there: a type in
+the master's `types`, a method on a master resource.
+
+- `declarations(raml, uri)`: every declaration located in `uri`, through
+  `every_declaration` (`docs/04` § 1).
+- `metadata`, `base_uri_parameters`, `documentation`, `uses` (each
+  `(raml, uri)`): the API's `title`, `version` and `baseUri`, its base URI
+  parameters and documentation items located in `uri` (a DocumentationItem
+  file's own item among them), and `uri`'s own `uses:`.
+- `fragment_body(raml, uri)`: what a DataType, AnnotationTypeDeclaration or
+  SecurityScheme file is, its shape or definition.
+- `properties(base)`, `pattern_properties(base)`, `facets(base)`: the members
+  a type declares, not those it inherits. An inherited member keeps its
+  declaration's shape, which a parent holds too; an alias declares none, since
+  it shares its referent's containers (docs/07 § 3).
+- `items(base)`: the items an array wrote, by `items_written` (docs/06 § 3).
+- `bodies(owner, written)`: each body `owner` wrote, the bodies of one `body:`
+  without a media type together, by `media_type_written` (docs/08 § 6.3).
+- `resources(raml, uri)`: the resources `uri` wrote, or added methods or
+  resources to, as it nests them; `here` says whether the resource's key is
+  written in `uri`.
+- `members(owner, found)`, `parameters(owner, written)`, `secured_by(owner)`,
+  `wrote(parent, location, key)`: which responses, `is:` entries, parameters
+  and schemes a resource, method, response or security scheme wrote.
+
+Which template contributed a member is not recorded: `wrote` tells it from
+the spans, and that is exact. A trait or resource type is declared in its
+table or its own fragment, never inside a resource, a method or a type, so a
+member it contributed lies outside its parent's span even in the parent's
+file, and a member inside was written there. The placement law makes spans
+hold what they were written with (`research/language-service-architecture.md`
+§ 7). The same test tells a property a template merged into a declaration, and
+an inherited one recursion marking gave a shape of its own, from the
+declaration's own.
+
+## 11. Verification
 
 - View boundary: `tests/unit/test_views.py`
 - Graph and tree behavior: `tests/unit/test_graph.py`, `tests/unit/test_cli.py`
+- Occurrence index: `tests/unit/test_occurrences.py`; the law over the corpora, `tests/unit/test_occurrence_law.py`
 - Tree bindings: `tests/unit/test_bindings.py`, `tests/unit/test_conformance.py`
 - Consumer traversal law: `tests/unit/test_consumer_traversal.py`
 

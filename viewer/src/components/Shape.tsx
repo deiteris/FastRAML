@@ -72,6 +72,7 @@ import {
   namedByItems,
   namedByMembers,
   spellingOf,
+  variantOf,
   MEMBERS_SPELLED,
 } from '../model';
 import { Extra } from './Extra';
@@ -92,6 +93,7 @@ interface Props {
    */
   hideType?: boolean;
   hideDescription?: boolean;
+  hideInherits?: boolean;
   /**
    * This shape's `type_expr` belongs to its container, so only its `type` is
    * its own. True of a union member and an inlined supertype -- see `spelling`.
@@ -99,11 +101,11 @@ interface Props {
   borrowed?: boolean;
 }
 
-export function ShapeView({ shape, index, hideType, hideDescription, borrowed }: Props) {
+export function ShapeView({ shape, index, hideType, hideDescription, hideInherits, borrowed }: Props) {
   if (shape === null || shape === undefined) return <TypeName shape={shape} index={index} />;
   if (isRef(shape)) return <RefView node={shape} index={index} />;
   if (isRecursive(shape)) return <RecursionView node={shape} index={index} />;
-  return <Body shape={shape} index={index} hideType={hideType} hideDescription={hideDescription} borrowed={borrowed} />;
+  return <Body shape={shape} index={index} hideType={hideType} hideDescription={hideDescription} hideInherits={hideInherits} borrowed={borrowed} />;
 }
 
 /**
@@ -285,6 +287,7 @@ export function TypeName({
     return <TypeName shape={shape.items} index={index} suffix={`[]${suffix}`} borrowed />;
   }
   if (shape.type === 'union' && shape.any_of && shape.any_of.length > 0 && namedByMembers(shape, borrowed ?? false)) {
+    if (spellingOf(shape, index, borrowed) === 'union') return <span className="attr-type">union{suffix}</span>;
     return <UnionName members={shape.any_of} index={index} suffix={suffix} />;
   }
   const spelled = spellingOf(shape, index, borrowed);
@@ -312,7 +315,7 @@ function UnionName({ members, index, suffix }: { members: (Shape | Ref | Recursi
       {shown.map((member, at) => (
         <span key={at}>
           {at > 0 && <span className="union-bar">|</span>}
-          <TypeName shape={member} index={index} borrowed />
+          <MemberName member={member} index={index} />
         </span>
       ))}
       {rest > 0 && (
@@ -321,6 +324,28 @@ function UnionName({ members, index, suffix }: { members: (Shape | Ref | Recursi
         </span>
       )}
       {suffix && <span className="attr-type">{suffix}</span>}
+    </span>
+  );
+}
+
+/**
+ * One member in a union's name. A variant is named by the declarations it
+ * took, each a link, and bracketed as `spellingOf` spells it.
+ */
+function MemberName({ member, index }: { member: Shape | Ref | Recursion; index: Index }) {
+  const parents = isRef(member) || isRecursive(member) ? null : variantOf(member);
+  if (!parents) return <TypeName shape={member} index={index} borrowed />;
+  const several = parents.length > 1;
+  return (
+    <span className="variant-name">
+      {several && <span className="attr-type">[</span>}
+      {parents.map((parent, at) => (
+        <span key={at}>
+          {at > 0 && <span className="attr-type">, </span>}
+          <TypeName shape={parent} index={index} />
+        </span>
+      ))}
+      {several && <span className="attr-type">]</span>}
     </span>
   );
 }
@@ -396,7 +421,10 @@ function Body({
         <div className="shape-line">
           <span className="label">extends</span>
           {inherits.map((parent, at) => (
-            <RefLink key={at} parent={parent} index={index} />
+            <span key={at}>
+              <RefLink parent={parent} index={index} />
+              {at < inherits.length - 1 && ','}
+            </span>
           ))}
         </div>
       )}
@@ -471,7 +499,7 @@ function Body({
         </Expandable>
       )}
 
-      {members.length > 0 && <Union members={members} index={index} />}
+      {members.length > 0 && <Union members={members} index={index} inherits={inherits} description={shape.description} />}
 
       {/* What an array holds, wherever an array appears -- a declaration page, a
           response body, an attribute row. One construct, because an array is
@@ -611,14 +639,33 @@ export function restates(shape: Shape, index: Index): boolean {
  * object members rendered in sequence produce two attribute lists with nothing
  * between them saying where the first ended.
  */
-function Union({ members, index }: { members: (Shape | Ref | Recursion)[]; index: Index }) {
+function Union({
+  members,
+  index,
+  inherits,
+  description,
+}: {
+  members: (Shape | Ref | Recursion)[];
+  index: Index;
+  inherits: (Shape | Ref | Recursion)[];
+  description?: string;
+}) {
   return (
     <Tabs
       label="anyOf"
       items={members.map((member, at) => ({
         key: String(at),
         label: labelOf(member, index),
-        body: <ShapeView shape={member} index={index} hideType borrowed />,
+        body: (
+          <ShapeView
+            shape={member}
+            index={index}
+            hideType
+            hideDescription={!isRef(member) && !isRecursive(member) && member.description === description}
+            hideInherits={!isRef(member) && !isRecursive(member) && inherits.length > 0 && JSON.stringify(member.inherits) === JSON.stringify(inherits)}
+            borrowed
+          />
+        ),
       }))}
     />
   );
@@ -643,6 +690,9 @@ function Union({ members, index }: { members: (Shape | Ref | Recursion)[]; index
  * so it is rendered where it sits.
  */
 function RefLink({ parent, index }: { parent: Shape | Ref | Recursion; index: Index }) {
+  // An inline union is already represented by the merged members below. Its
+  // parent position names the alternatives, not another nested anyOf selector.
+  if (!isRef(parent) && !isRecursive(parent) && parent.type === 'union') return <TypeName shape={parent} index={index} />;
   if (!isRef(parent)) return <ShapeView shape={parent} index={index} borrowed />;
   const entry = index.get(parent.$ref);
   if (!entry) {

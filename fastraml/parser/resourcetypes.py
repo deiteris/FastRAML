@@ -25,6 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
+from fastraml import facet_names as fn
 from fastraml.domains import DomainLocation
 from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.source_ir import METHODS, make_source_endpoint
@@ -43,6 +44,8 @@ from fastraml.registry import ParseCtx
 from fastraml.yamlnode import TAG_STR, Node, NodeKind, node_error, pairs, with_content, with_value
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.source_ir import SourceEndPoint
     from fastraml.parser.structural_merge import ProvenanceOverlay
@@ -59,7 +62,16 @@ __all__ = [
 #: The non-method keys a resource type may declare. `usage:` is consumed by the
 #: shared decoder; the rest are kept and flow into the compiled endpoint
 #: (docs/08 § 3.1).
-RESOURCE_TYPE_FACETS: Final = frozenset({'displayName', 'description', 'uriParameters', 'type', 'is', 'securedBy'})
+RESOURCE_TYPE_FACETS: Final = frozenset(
+    {
+        fn.FACET_DISPLAY_NAME,
+        fn.FACET_DESCRIPTION,
+        fn.FACET_URI_PARAMETERS,
+        fn.FACET_TYPE,
+        fn.FACET_IS,
+        fn.FACET_SECURED_BY,
+    }
+)
 
 
 @dataclass(slots=True, eq=False)
@@ -74,11 +86,23 @@ class ResourceTypeDefinition(TemplateDefinition):
 
 
 def make_resource_type_definition(
-    raml: Raml, key_node: Node | None, value_node: Node, location: str
+    raml: Raml,
+    key_node: Node | None,
+    value_node: Node,
+    location: str,
+    *,
+    attach: Callable[[ResourceTypeDefinition], None],
 ) -> ResourceTypeDefinition:
     """Decode one resource-type declaration, checking the keys it may carry."""
     return make_template_definition(
-        ResourceTypeDefinition, raml, key_node, value_node, location, what='resource type', retain=_retained_key
+        ResourceTypeDefinition,
+        raml,
+        key_node,
+        value_node,
+        location,
+        what='resource type',
+        attach=attach,
+        retain=_retained_key,
     )
 
 
@@ -134,7 +158,11 @@ def apply_resource_type(raml: Raml, endpoint: SourceEndPoint, ref: DirectiveRef,
         params,
         existing_methods=set(endpoint.operations),
         caller_scope=endpoint.scope,
-        location=endpoint.location,
+        application=ref,
+        # Static template structure is located at its declaration (docs/08
+        # § 4.2): a method a library's resource type contributes is written in
+        # the library, at the library's positions.
+        location=definition.location,
         uri=endpoint.uri,
         parent_uri=endpoint.full_uri[: len(endpoint.full_uri) - len(endpoint.uri)],
     )
@@ -171,6 +199,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
     *,
     existing_methods: set[str],
     caller_scope: ParseCtx | None,
+    application: DirectiveRef,
     location: str,
     uri: str,
     parent_uri: str,
@@ -186,6 +215,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
             params,
             existing_methods=existing_methods,
             caller_scope=caller_scope,
+            application=application,
             location=definition.link.location,
             uri=uri,
             parent_uri=parent_uri,
@@ -195,16 +225,18 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
 
     source = _filter_optional_methods(definition, definition.source, existing_methods)
     check_parameters(
-        definition.declared_variables,
-        params,
-        definition.location,
-        definition.value_pos,
-        required=collect_required_variables(source, definition.variable_index),
+        definition, params, application, required=collect_required_variables(source, definition.variable_index)
     )
 
     overlay: ProvenanceOverlay = {}
     compiled = compile_source_provenance(
-        source, params, definition.variable_index, caller_scope if caller_scope is not None else ParseCtx(), overlay
+        source,
+        params,
+        definition.variable_index,
+        caller_scope if caller_scope is not None else ParseCtx(),
+        overlay,
+        written_in=application.location,
+        substitutions=raml.substitutions,
     )
 
     key = Node(NodeKind.SCALAR, TAG_STR, uri, None, compiled.line, compiled.column, compiled.line, compiled.column)

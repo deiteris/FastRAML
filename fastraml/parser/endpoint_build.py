@@ -23,7 +23,7 @@ from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
 from fastraml.parser.resourcetypes import apply_resource_type
 from fastraml.parser.source_decode import decode_source_endpoint
-from fastraml.parser.source_ir import make_source_endpoint
+from fastraml.parser.source_ir import make_source_endpoint, note_failure
 from fastraml.parser.traits import apply_traits
 from fastraml.parser.uritemplates import extract_uri_template_params, unused_uri_parameters
 from fastraml.registry import ParseCtx
@@ -31,6 +31,7 @@ from fastraml.types.base import TYPE_STRING, BaseShape, Parameter, Property
 from fastraml.types.shape import attach_kind
 
 if TYPE_CHECKING:
+    from fastraml.datanode import DataNode
     from fastraml.parser.endpoints import EndPoint
     from fastraml.parser.source_ir import SourceEndPoint
     from fastraml.registry import Raml
@@ -71,12 +72,17 @@ def build_endpoints(raml: Raml) -> None:
         for source in sources:
             _resolve_directives(raml, source, accumulator)
 
-        # Stage 2, over the whole tree.
+        # Stage 2, over the whole tree. A resource is attached before its
+        # content is decoded, so one that failed is still walked: it is in the
+        # model, marked (docs/13 § 1).
         for source in sources:
+            decoded: list[EndPoint] = []
             try:
-                _walk(raml, decode_source_endpoint(raml, source), accumulator, inherited={})
+                decode_source_endpoint(raml, source, decoded.append)
             except RamlError as err:
                 accumulator.add(err)
+            for endpoint in decoded:
+                _walk(raml, endpoint, accumulator, inherited={})
     finally:
         raml.pop_ctx()
 
@@ -86,32 +92,42 @@ def build_endpoints(raml: Raml) -> None:
     raw.clear()
 
 
-def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) -> None:
+def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) -> RamlError | None:
     """Apply the resource-type chain, then the traits, then recurse.
 
     Resource types first: they contribute `is:` entries of their own, which
     `apply_traits` then orders behind the resource's and the method's
     (docs/08 § 3.2).
+
+    Returns what failed here or below, so the enclosing resource notes it
+    too: a failure passes through every resource that holds it
+    (docs/13 § 1).
     """
     if source.resource_type is not None:
         try:
             apply_resource_type(raml, source, source.resource_type, set())
         except RamlError as err:
-            acc.add(
-                RamlError.wrap(
-                    'apply resource type',
-                    err,
-                    source.location,
-                    source.resource_type.value_pos,
-                    info={'resourceType': source.resource_type.name},
-                )
+            wrapped = RamlError.wrap(
+                'apply resource type',
+                err,
+                source.location,
+                source.resource_type.value_pos,
+                info={'resourceType': source.resource_type.name},
             )
+            note_failure(source, wrapped)
+            acc.add(wrapped)
     try:
-        apply_traits(source)
+        apply_traits(raml, source)
     except RamlError as err:
+        # Each operation a trait failed on has noted it; the failure passed
+        # through this resource too (docs/13 § 1).
+        note_failure(source, err)
         acc.add(err)
     for child in source.endpoints.values():
-        _resolve_directives(raml, child, acc)
+        failure = _resolve_directives(raml, child, acc)
+        if failure is not None:
+            note_failure(source, failure)
+    return source.failure
 
 
 def _walk(raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[str, Parameter]) -> None:
@@ -198,25 +214,26 @@ def _check_slash_free(prop: Parameter) -> RamlError | None:
     parameter can never match.
     """
     base = prop.base
-    candidates: list[tuple[str, object]] = []
+    candidates: list[tuple[str, DataNode]] = []
     if base.default is not None:
-        candidates.append(('default', base.default.raw))
+        candidates.append(('default', base.default))
     if base.example is not None and base.example.data is not None:
-        candidates.append(('example', base.example.data.raw))
+        candidates.append(('example', base.example.data))
     if base.examples is not None:
         candidates += [
-            (f'examples.{name}', example.data.raw)
+            (f'examples.{name}', example.data)
             for name, example in base.examples.entries().items()
             if example.data is not None
         ]
-    candidates += [(f'enum[{index}]', member.raw) for index, member in enumerate(base.enum or ())]
+    candidates += [(f'enum[{index}]', member) for index, member in enumerate(base.enum or ())]
 
-    for facet, raw in candidates:
-        if isinstance(raw, str) and '/' in raw:
+    for facet, data in candidates:
+        if isinstance(data.raw, str) and '/' in data.raw:
+            # At the value that holds it (docs/11 § 3).
             return RamlError.new(
                 'uri parameter value must not contain a slash',
-                base.location,
-                base.value_pos,
+                data.location,
+                data.value_pos,
                 info={'parameter': prop.name, 'facet': facet},
             )
     return None

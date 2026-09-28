@@ -9,16 +9,21 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 from fastraml.domains import DomainLocation
 
 API = '#%RAML 1.0\ntitle: T\n'
 JSON = API + 'mediaType: application/json\n'
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def parse(workspace, body: str, head: str = API, **options):
     root = workspace({'api.raml': head + body})
-    return parse_from_path(root / 'api.raml', ParseOptions(**options) if options else None)
+    return workspace.parse(root / 'api.raml', ParseOptions(**options) if options else None)
 
 
 def fails(workspace, body: str, head: str = API) -> RamlError | None:
@@ -146,7 +151,8 @@ class TestResponses:
     def test_numeric_and_quoted_forms_are_duplicate_response_keys(self, workspace):
         error = fails(workspace, '/users:\n  get:\n    responses:\n      200:\n      "200":\n')
         assert error is not None
-        assert 'duplicate response' in messages(error)
+        assert error.head.message == 'duplicate key'
+        assert error.head.info == {'key': '200'}
 
     @pytest.mark.parametrize('code', ['2xx', 'default', '099', '600'])
     def test_response_code_must_be_a_concrete_100_to_599_status(self, workspace, code):
@@ -192,6 +198,26 @@ class TestBodies:
         assert list(bodies) == ['application/json', 'application/xml']
         # Separate shapes: sharing one would alias their facets through P7.
         assert bodies['application/json'].shape is not bodies['application/xml'].shape
+        # And each records that its media type was not written, so a reader
+        # tells them from bodies written under their own keys (docs/08 § 6.3).
+        assert [body.media_type_written for body in bodies.values()] == [False, False]
+
+    def test_a_body_under_its_media_type_records_that_it_was_written(self, workspace):
+        raml = parse(workspace, '/users:\n  post:\n    body:\n      application/json: string\n')
+        (body,) = raml.endpoints['/users'].operations['post'].request.bodies.values()
+        assert body.media_type_written
+
+    @pytest.mark.parametrize('site', ['request', 'response'])
+    def test_a_bodyless_declaration_is_placed_at_its_body_key(self, workspace, site):
+        # It was placed nowhere: a lint finding on it fell back to the file's start.
+        text = '/users:\n  post:\n    ' + (
+            'body:\n' if site == 'request' else 'responses:\n      200:\n        body:\n'
+        )
+        raml = parse(workspace, text + '          type: string\n', head=JSON)
+        operation = raml.endpoints['/users'].operations['post']
+        (body,) = (operation.request.bodies if site == 'request' else operation.responses['200'].bodies).values()
+        line = (JSON + text).count('\n')
+        assert (body.key_pos.line, body.key_pos.end_column - body.key_pos.column) == (line, len('body'))
 
     def test_no_media_type_anywhere_is_an_error(self, workspace):
         error = fails(workspace, '/users:\n  post:\n    body:\n      type: string\n')
@@ -337,7 +363,7 @@ class TestRegisteredForLaterPasses:
             }
         )
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
         assert 'invalid example' in {t.message for c in caught.value.chains() for t in c}
 
 
@@ -386,7 +412,7 @@ class TestAnnotationTargets:
 class TestNonApiFragments:
     def test_a_library_has_no_endpoints(self, workspace):
         root = workspace({'lib.raml': '#%RAML 1.0 Library\ntypes:\n  T: string\n'})
-        assert parse_from_path(root / 'lib.raml').endpoints == {}
+        assert workspace.parse(root / 'lib.raml').endpoints == {}
 
 
 class TestParameterEntity:
@@ -447,5 +473,5 @@ class TestParameterEntity:
                 'baseUriParameters:\n  host:\n    type: string\n'
             }
         )
-        raml = parse_from_path(root / 'api.raml')
+        raml = workspace.parse(root / 'api.raml')
         assert raml.entry_point.base_uri_parameters['host'].binding == 'uri'

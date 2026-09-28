@@ -1,0 +1,6 @@
+src/**
+webview/**
+tsconfig.json
+.vscode/**
+**/*.map
+.gitignore

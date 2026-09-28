@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
+from fastraml import facet_names as fn
 from fastraml.types.base import (
     TYPE_ARRAY,
     TYPE_FILE,
@@ -32,28 +33,28 @@ __all__ = [
 #: Facets that belong to exactly one built-in type. Every other facet name is
 #: either common to all kinds or a user-defined one, and hints at nothing.
 FACET_TYPE_HINT: Final[Mapping[str, str]] = {
-    'minLength': TYPE_STRING,
-    'maxLength': TYPE_STRING,
-    'pattern': TYPE_STRING,
-    'minimum': TYPE_NUMBER,
-    'maximum': TYPE_NUMBER,
-    'multipleOf': TYPE_NUMBER,
-    'minItems': TYPE_ARRAY,
-    'maxItems': TYPE_ARRAY,
-    'uniqueItems': TYPE_ARRAY,
-    'items': TYPE_ARRAY,
-    'properties': TYPE_OBJECT,
-    'minProperties': TYPE_OBJECT,
-    'maxProperties': TYPE_OBJECT,
-    'additionalProperties': TYPE_OBJECT,
-    'discriminator': TYPE_OBJECT,
-    'fileTypes': TYPE_FILE,
+    fn.FACET_MIN_LENGTH: TYPE_STRING,
+    fn.FACET_MAX_LENGTH: TYPE_STRING,
+    fn.FACET_PATTERN: TYPE_STRING,
+    fn.FACET_MINIMUM: TYPE_NUMBER,
+    fn.FACET_MAXIMUM: TYPE_NUMBER,
+    fn.FACET_MULTIPLE_OF: TYPE_NUMBER,
+    fn.FACET_MIN_ITEMS: TYPE_ARRAY,
+    fn.FACET_MAX_ITEMS: TYPE_ARRAY,
+    fn.FACET_UNIQUE_ITEMS: TYPE_ARRAY,
+    fn.FACET_ITEMS: TYPE_ARRAY,
+    fn.FACET_PROPERTIES: TYPE_OBJECT,
+    fn.FACET_MIN_PROPERTIES: TYPE_OBJECT,
+    fn.FACET_MAX_PROPERTIES: TYPE_OBJECT,
+    fn.FACET_ADDITIONAL_PROPERTIES: TYPE_OBJECT,
+    fn.FACET_DISCRIMINATOR: TYPE_OBJECT,
+    fn.FACET_FILE_TYPES: TYPE_FILE,
 }
 
 #: `pattern` hints at string like `minLength` does, but unlike `minLength` it is
 #: string-only: a file has no pattern, so seeing one blocks the reconciliation
 #: below for the rest of the declaration.
-_STRING_ONLY_FACET: Final = 'pattern'
+_STRING_ONLY_FACET: Final = fn.FACET_PATTERN
 
 
 def identify_shape_type(facets: list[Node], default_type: str, location: str) -> str:

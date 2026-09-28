@@ -20,6 +20,7 @@ import binascii
 import re
 from typing import TYPE_CHECKING, ClassVar, Final
 
+from fastraml import facet_names as fn
 from fastraml.errors import Accumulator
 from fastraml.parser.facets import (
     make_fraction_facet,
@@ -33,11 +34,13 @@ from fastraml.types.base import KindBase
 from fastraml.types.values import (
     INTEGER_RANGES,
     as_exact,
+    broken,
     check_non_negative,
     failure,
     is_multiple_of,
     parse_rfc2616,
     parse_rfc3339,
+    rejected,
     type_name,
     valid_date_only,
     valid_datetime_only,
@@ -117,7 +120,7 @@ def _bounds_error(base: BaseShape, message: str, low: ScalarFacet[Any], high: Sc
 def _check_lengths(base: BaseShape, low: ScalarFacet[int] | None, high: ScalarFacet[int] | None) -> None:
     """`minLength`/`maxLength`: non-negative, and ordered (docs/10 § 2)."""
     accumulator = Accumulator()
-    for name, facet in (('minLength', low), ('maxLength', high)):
+    for name, facet in ((fn.FACET_MIN_LENGTH, low), (fn.FACET_MAX_LENGTH, high)):
         if facet is not None:
             accumulator.add(check_non_negative(name, facet.value, base.location, facet.value_pos))
     pair = _disordered(low, high)
@@ -148,8 +151,7 @@ def _check_numeric(
         raise failure('multipleOf must not be zero', base.location, multiple_of.value_pos)
 
 
-def _validate_numeric(  # noqa: PLR0913 - three facets, and each names itself at the call site
-    base: BaseShape,
+def _validate_numeric(
     number: int | Fraction,
     path: str,
     *,
@@ -163,25 +165,22 @@ def _validate_numeric(  # noqa: PLR0913 - three facets, and each names itself at
     goes through `float`, which is what lets `multipleOf: 1.1` accept `2.2`.
     """
     if minimum is not None and number < minimum.value:
-        raise failure(
+        raise broken(
             'value is below the minimum',
-            base.location,
-            base.value_pos,
-            info={'path': path, 'value': str(number), 'minimum': str(minimum.value)},
+            minimum,
+            info={'path': path, 'minimum': str(minimum.value)},
         )
     if maximum is not None and number > maximum.value:
-        raise failure(
+        raise broken(
             'value is above the maximum',
-            base.location,
-            base.value_pos,
-            info={'path': path, 'value': str(number), 'maximum': str(maximum.value)},
+            maximum,
+            info={'path': path, 'maximum': str(maximum.value)},
         )
     if multiple_of is not None and not is_multiple_of(number, multiple_of.value):
-        raise failure(
+        raise broken(
             'value is not a multiple',
-            base.location,
-            base.value_pos,
-            info={'path': path, 'value': str(number), 'multipleOf': str(multiple_of.value)},
+            multiple_of,
+            info={'path': path, 'multipleOf': str(multiple_of.value)},
         )
 
 
@@ -202,10 +201,9 @@ class ScalarKind(KindBase):
         return
 
     def wrong_type(self, value: Any, path: str, expected: str) -> RamlError:
-        return failure(
+        return rejected(
             'invalid type',
-            self.base.location,
-            self.base.value_pos,
+            self.base,
             info={'path': path, 'expected': expected, 'found': type_name(value)},
         )
 
@@ -254,11 +252,10 @@ class _DateKind(ScalarKind):
         if not isinstance(value, str):
             raise self.wrong_type(value, path, self.GRAMMAR)
         if not self.accepts(value):
-            raise failure(
+            raise rejected(
                 'invalid date',
-                self.base.location,
-                self.base.value_pos,
-                info={'path': path, 'expected': self.GRAMMAR, 'value': value},
+                self.base,
+                info={'path': path, 'expected': self.GRAMMAR},
             )
 
 
@@ -299,7 +296,7 @@ class DateTimeShape(ScalarKind):
         rest: list[Node] = []
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
-            if key.value == 'format':
+            if key.value == fn.FACET_FORMAT:
                 # The value is checked in P10 (docs/10 § 2), after an inherited
                 # format has been merged in.
                 self.format = make_string_facet(self.base._raml, key, value, self.base.location)  # noqa: SLF001
@@ -318,11 +315,10 @@ class DateTimeShape(ScalarKind):
         # they share nothing, so this is a choice rather than a fallback.
         rfc2616 = self.format is not None and self.format.value == 'rfc2616'
         if not (parse_rfc2616(value) if rfc2616 else parse_rfc3339(value)):
-            raise failure(
+            raise rejected(
                 'invalid date',
-                self.base.location,
-                self.base.value_pos,
-                info={'path': path, 'expected': 'rfc2616' if rfc2616 else 'rfc3339', 'value': value},
+                self.base,
+                info={'path': path, 'expected': 'rfc2616' if rfc2616 else 'rfc3339'},
             )
 
 
@@ -343,11 +339,11 @@ class StringShape(ScalarKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'pattern':
+                case fn.FACET_PATTERN:
                     self.pattern = make_pattern_facet(raml, key, value, location)
-                case 'minLength':
+                case fn.FACET_MIN_LENGTH:
                     self.min_length = make_int_facet(raml, key, value, location)
-                case 'maxLength':
+                case fn.FACET_MAX_LENGTH:
                     self.max_length = make_int_facet(raml, key, value, location)
                 case _:
                     rest.append(key)
@@ -361,17 +357,15 @@ class StringShape(ScalarKind):
         if not isinstance(value, str):
             raise self.wrong_type(value, path, 'string')
         if self.min_length is not None and len(value) < self.min_length.value:
-            raise failure(
+            raise broken(
                 'value is too short',
-                self.base.location,
-                self.base.value_pos,
+                self.min_length,
                 info={'path': path, 'length': len(value), 'minLength': self.min_length.value},
             )
         if self.max_length is not None and len(value) > self.max_length.value:
-            raise failure(
+            raise broken(
                 'value is too long',
-                self.base.location,
-                self.base.value_pos,
+                self.max_length,
                 info={'path': path, 'length': len(value), 'maxLength': self.max_length.value},
             )
         if self.pattern is not None and self.pattern.value.search(value) is None:
@@ -381,11 +375,10 @@ class StringShape(ScalarKind):
             # noise under a full match. go-raml agrees: `regexp.Compile` on the
             # raw pattern and `MatchString`, which is Go's unanchored search
             # (docs/10 § 5).
-            raise failure(
+            raise broken(
                 'value does not match pattern',
-                self.base.location,
-                self.base.value_pos,
-                info={'path': path, 'pattern': self.pattern.value.pattern, 'value': value},
+                self.pattern,
+                info={'path': path, 'pattern': self.pattern.value.pattern},
             )
 
 
@@ -407,13 +400,13 @@ class NumberShape(ScalarKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'minimum':
+                case fn.FACET_MINIMUM:
                     self.minimum = make_fraction_facet(raml, key, value, location)
-                case 'maximum':
+                case fn.FACET_MAXIMUM:
                     self.maximum = make_fraction_facet(raml, key, value, location)
-                case 'multipleOf':
+                case fn.FACET_MULTIPLE_OF:
                     self.multiple_of = make_fraction_facet(raml, key, value, location)
-                case 'format':
+                case fn.FACET_FORMAT:
                     self.format = make_string_facet(raml, key, value, location)
                 case _:
                     rest.append(key)
@@ -432,9 +425,7 @@ class NumberShape(ScalarKind):
             # A numeric string is accepted for `integer` but not for `number`
             # (docs/10 § 5).
             raise self.wrong_type(value, path, 'number')
-        _validate_numeric(
-            self.base, number, path, minimum=self.minimum, maximum=self.maximum, multiple_of=self.multiple_of
-        )
+        _validate_numeric(number, path, minimum=self.minimum, maximum=self.maximum, multiple_of=self.multiple_of)
 
 
 class IntegerShape(ScalarKind):
@@ -458,13 +449,13 @@ class IntegerShape(ScalarKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'minimum':
+                case fn.FACET_MINIMUM:
                     self.minimum = make_int_facet(raml, key, value, location)
-                case 'maximum':
+                case fn.FACET_MAXIMUM:
                     self.maximum = make_int_facet(raml, key, value, location)
-                case 'multipleOf':
+                case fn.FACET_MULTIPLE_OF:
                     self.multiple_of = make_fraction_facet(raml, key, value, location)
-                case 'format':
+                case fn.FACET_FORMAT:
                     self.format = make_string_facet(raml, key, value, location)
                 case _:
                     rest.append(key)
@@ -482,23 +473,19 @@ class IntegerShape(ScalarKind):
         if number.denominator != 1:
             # `4.0` is an integer and `4.5` is not: docs/10 § 5 accepts a
             # float or Decimal whose value is integral.
-            raise failure(
+            raise rejected(
                 'value is not an integer',
-                self.base.location,
-                self.base.value_pos,
-                info={'path': path, 'value': str(number)},
+                self.base,
+                info={'path': path},
             )
-        _validate_numeric(
-            self.base, number, path, minimum=self.minimum, maximum=self.maximum, multiple_of=self.multiple_of
-        )
+        _validate_numeric(number, path, minimum=self.minimum, maximum=self.maximum, multiple_of=self.multiple_of)
         if self.format is not None:
             low, high = INTEGER_RANGES[self.format.value]
             if not low <= number <= high:
-                raise failure(
+                raise broken(
                     'value is outside the format range',
-                    self.base.location,
-                    self.base.value_pos,
-                    info={'path': path, 'value': str(number), 'format': self.format.value},
+                    self.format,
+                    info={'path': path, 'format': self.format.value},
                 )
 
 
@@ -521,13 +508,13 @@ class FileShape(ScalarKind):
         for index in range(0, len(pairs), 2):
             key, value = pairs[index], pairs[index + 1]
             match key.value:
-                case 'fileTypes':
+                case fn.FACET_FILE_TYPES:
                     if value.kind is not NodeKind.SEQUENCE:
                         raise node_error('fileTypes must be a sequence', location, value)
                     self.file_types = [make_seq_facet(raml, item, location, scalar_str) for item in value.content]
-                case 'minLength':
+                case fn.FACET_MIN_LENGTH:
                     self.min_length = make_int_facet(raml, key, value, location)
-                case 'maxLength':
+                case fn.FACET_MAX_LENGTH:
                     self.max_length = make_int_facet(raml, key, value, location)
                 case _:
                     rest.append(key)
@@ -555,16 +542,14 @@ class FileShape(ScalarKind):
         # In bytes, not characters (docs/10 § 5); for base64 the two differ
         # by about a third.
         if self.min_length is not None and size < self.min_length.value:
-            raise failure(
+            raise broken(
                 'value is too short',
-                self.base.location,
-                self.base.value_pos,
+                self.min_length,
                 info={'path': path, 'bytes': size, 'minLength': self.min_length.value},
             )
         if self.max_length is not None and size > self.max_length.value:
-            raise failure(
+            raise broken(
                 'value is too long',
-                self.base.location,
-                self.base.value_pos,
+                self.max_length,
                 info={'path': path, 'bytes': size, 'maxLength': self.max_length.value},
             )

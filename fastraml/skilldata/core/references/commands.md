@@ -169,7 +169,7 @@ Project the model as a graph.
   JSON. Default: `turtle`.
 - `-o FILE`, `--output FILE` — write to a file, UTF-8 with LF newlines.
 
-## `fastraml openapi FILE`
+## `fastraml convert openapi FILE.raml`
 
 Convert the effective API to OpenAPI 3.0.3.
 
@@ -180,6 +180,20 @@ Convert the effective API to OpenAPI 3.0.3.
 
 The exit code stays 0 when the conversion drops information. Each dropped or
 substituted piece is reported as a `warning:` line on stderr.
+
+## `fastraml convert jsonschema FILE.raml [TYPE]`
+
+Export a RAML DataType fragment as JSON Schema draft-07, or give `TYPE` to
+export one named type from an API or Library. The type is unwrapped first, so
+inherited facets are included. Output is JSON. `-o FILE` writes UTF-8 with LF
+newlines; any information the schema cannot represent is reported as a
+`warning:` line on stderr without changing the exit code.
+
+## `fastraml convert raml FILE.json`
+
+Export JSON Schema as a RAML DataType or Library. Definitions and named
+references become Library types; a simple schema becomes a DataType.
+`-o FILE` writes UTF-8 with LF newlines instead of printing to stdout.
 
 ## `fastraml join INPUT INPUT...`
 

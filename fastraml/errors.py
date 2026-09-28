@@ -16,8 +16,9 @@ See docs/11-diagnostics.md.
 
 from __future__ import annotations
 
+import errno
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Final, Self
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
@@ -49,11 +50,14 @@ class Trace:
     `info` holds the values that vary between occurrences of the same message.
     Keeping them out of `message` means diagnostics group cleanly and tests can
     match on the message alone. See docs/11-diagnostics.md § 6.
+
+    `origin` is a second place that explains this one: the constraint a value
+    broke, where the frame itself is at the value (docs/11 § 3).
     """
 
-    __slots__ = ('cause', 'info', 'kind', 'location', 'message', 'position')
+    __slots__ = ('cause', 'info', 'kind', 'location', 'message', 'origin', 'position')
 
-    def __init__(  # noqa: PLR0913, PLR0917 - a diagnostic frame carries six fields
+    def __init__(  # noqa: PLR0913, PLR0917 - a diagnostic frame carries seven fields
         self,
         message: str,
         location: str,
@@ -61,6 +65,7 @@ class Trace:
         kind: ErrorKind = ErrorKind.PARSING,
         info: Mapping[str, Any] | None = None,
         cause: Trace | None = None,
+        origin: Trace | None = None,
     ) -> None:
         self.message = message
         self.location = location
@@ -68,6 +73,7 @@ class Trace:
         self.kind = kind
         self.info = info or {}
         self.cause = cause
+        self.origin = origin
 
     def __repr__(self) -> str:
         return f'Trace({self.message!r}, {self.where()!r})'
@@ -86,12 +92,15 @@ class Trace:
         return f'{self.message}: {details}'
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        found: dict[str, Any] = {
             'message': self.rendered_message(),
             'position': self.where(),
             'severity': 'error',
             'type': str(self.kind),
         }
+        if self.origin is not None:
+            found['origin'] = {'message': self.origin.rendered_message(), 'position': self.origin.where()}
+        return found
 
 
 class RamlError(Exception):
@@ -171,7 +180,8 @@ class RamlError(Exception):
             inner = cause.head
             siblings = cause.siblings
         else:
-            inner = Trace(str(cause), location, position, kind, getattr(cause, 'info', None))
+            text, variables = _described(cause)
+            inner = Trace(text, location, position, kind, variables)
             siblings = ()
         return cls(Trace(message, location, position, kind, info, cause=inner), siblings)
 
@@ -210,6 +220,8 @@ class RamlError(Exception):
             lines.append(f'[{index}]')
             for depth, frame in enumerate(chain):
                 lines.append(f'{"  " * (depth + 1)}{frame.where()} {frame.rendered_message()}')
+                if frame.origin is not None:
+                    lines.append(f'{"  " * (depth + 2)}{frame.origin.where()} {frame.origin.rendered_message()}')
         return '\n'.join(lines)
 
     def to_dict(self) -> dict[str, Any]:
@@ -244,16 +256,69 @@ class Accumulator:
         """All recorded failures as one error, or `None` if there were none.
 
         A single failure is returned unchanged; several are returned as the
-        first with the rest attached as siblings.
+        first chain with the rest attached as siblings, in `chains()` order.
+
+        A chain identical to one already kept, frame for frame, is dropped
+        (docs/11 § 2). One mistake reaches a pass once per copy of the
+        construct that holds it: a trait applied three times resolves three
+        shapes, all written at the trait's line. Nothing but the count tells
+        the copies apart.
         """
         if not self._errors:
             return None
         first, *rest = self._errors
         if not rest:
             return first
-        return RamlError(first.head, (*first.siblings, *rest))
+        seen: set[tuple[Any, ...]] = set()
+        heads: list[Trace] = []
+        dropped = False
+        for error in self._errors:
+            for chain in error.chains():
+                key = tuple(_frame_key(frame) for frame in chain)
+                if key in seen:
+                    dropped = True
+                else:
+                    seen.add(key)
+                    heads.append(chain[0])
+        if not dropped:
+            # The errors themselves, so a sibling keeps its own class.
+            return RamlError(first.head, (*first.siblings, *rest))
+        return RamlError(heads[0], tuple(RamlError(head) for head in heads[1:]))
 
     def raise_if_any(self) -> None:
         error = self.result()
         if error is not None:
             raise error
+
+
+#: What an `OSError` any loader raises says, as a message key (docs/11 § 6).
+_OS_ERRORS: Final = {
+    errno.ENOENT: 'file not found',
+    errno.ENOTDIR: 'file not found',
+    errno.EACCES: 'permission denied',
+    errno.EPERM: 'permission denied',
+    errno.EISDIR: 'not a regular file',
+}
+
+
+def _described(cause: BaseException) -> tuple[str, Mapping[str, Any] | None]:
+    """A foreign exception as a message key and its `info`.
+
+    An `OSError` from any loader, a caller's included, is keyed by its
+    `errno`: its text holds the OS path and the platform's wording. Anything
+    else carries its key as its text, and its variables, where it has any, as
+    `info`, as `LoaderError` and `UnresolvedReferenceError` do.
+    """
+    if isinstance(cause, OSError) and cause.errno is not None:
+        key = _OS_ERRORS.get(cause.errno)
+        return (key, None) if key is not None else ('cannot read file', {'error': cause.strerror})
+    return str(cause), getattr(cause, 'info', None)
+
+
+def _frame_key(frame: Trace) -> tuple[Any, ...]:
+    """What makes two frames the same report. `info` values are compared by
+    `repr`, because some are lists and a key must hash.
+    """
+    info = tuple((key, repr(value)) for key, value in frame.info.items())
+    origin = None if frame.origin is None else (frame.origin.location, frame.origin.position)
+    return (frame.message, frame.location, frame.position, frame.kind, info, origin)

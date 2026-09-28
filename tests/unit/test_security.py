@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError
 from fastraml.domains import DomainLocation
 
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
@@ -29,9 +29,14 @@ OAUTH2 = (
 )
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def parse(workspace, body: str, **options):
     root = workspace({'api.raml': API + body})
-    return parse_from_path(root / 'api.raml', ParseOptions(**options) if options else None)
+    return workspace.parse(root / 'api.raml', ParseOptions(**options) if options else None)
 
 
 def rejected(workspace, body: str) -> RamlError:
@@ -175,6 +180,22 @@ class TestOAuth2:
             "      authorizationGrants: ['example.com']\n",
         )
         assert {'grant': 'example.com'} in infos(error)
+
+
+def test_a_scheme_built_with_no_source_is_placed_as_every_entity_is():
+    # docs/09 § A1: `None` where every other entity says `UNKNOWN` made each
+    # consumer guard both.
+    from fastraml.parser.security import (
+        SecuritySchemeDefinition,
+        SecuritySchemeDescription,
+        SecuritySchemeSettings,
+    )
+    from fastraml.positions import UNKNOWN
+
+    definition = SecuritySchemeDefinition(id=1, name='s', location='file:///a.raml')
+    settings = SecuritySchemeSettings(scheme_type='OAuth 2.0', location='file:///a.raml')
+    description = SecuritySchemeDescription(id=2, location='file:///a.raml')
+    assert (definition.key_pos, definition.value_pos, settings.value_pos, description.value_pos) == (UNKNOWN,) * 4
 
 
 class TestDescribedBy:
@@ -341,7 +362,7 @@ class TestFragment:
                 ),
             }
         )
-        raml = parse_from_path(root / 'api.raml')
+        raml = workspace.parse(root / 'api.raml')
         scheme = raml.endpoints['/users'].operations['get'].secured_by[0]
         assert scheme.definition.resolved().type == 'OAuth 2.0'
 
@@ -361,5 +382,5 @@ class TestFragment:
             }
         )
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml')
+            workspace.parse(root / 'api.raml')
         assert 'scope is not declared by the security scheme' in keys(caught.value)

@@ -24,6 +24,15 @@ HTTP loader, `http(s)://`. Every supported fragment may have root-level `uses:`.
 Library and API decoders read it with their root declarations. Other typed
 fragment decoders remove it before decoding their kind-specific body.
 
+A Library or API fragment keeps one table per declaration kind, and
+`declarations()` lists them all as `(key, name, entity)`, where `key` is the
+RAML key the table is written under. The tables come in a fixed order (`types`,
+`annotationTypes`, `traits`, `resourceTypes`, `securitySchemes`), each in
+declaration order. Anything that reads every declaration, such as the
+occurrence index, the walk, `render` or the language service, reads it rather
+than listing the tables; `every_declaration(raml)` reads it over every
+fragment of a parse, so a reader tests no fragment's class.
+
 ## 2. Resolver capabilities
 
 All supported fragments implement `ReferenceResolver`:

@@ -1399,6 +1399,248 @@
             }
           }
         }
+      },
+      "Curated": {
+        "id": "fastraml://id#/declarations/types/Curated",
+        "name": "Curated",
+        "type": "object",
+        "declared_facets": {
+          "reviewWindow": {
+            "required": false,
+            "type": {
+              "id": null,
+              "name": "reviewWindow?",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          }
+        },
+        "type_expr": "object",
+        "properties": {
+          "curator": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Curated/property/curator/schema",
+              "name": "curator",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "CuratedCollection": {
+        "id": "fastraml://id#/declarations/types/CuratedCollection",
+        "name": "CuratedCollection",
+        "type": "object",
+        "description": "A collection with identity and a curator, inherited from two types.",
+        "example": {
+          "value": {
+            "id": "collection-1",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "curator": "Ada",
+            "name": "Staff picks"
+          }
+        },
+        "inherits": [
+          {
+            "$ref": "fastraml://id#/declarations/types/Entity"
+          },
+          {
+            "$ref": "fastraml://id#/declarations/types/Curated"
+          }
+        ],
+        "custom_facets": {
+          "stewardedBy": "catalogue-team",
+          "reviewWindow": 30
+        },
+        "properties": {
+          "name": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/CuratedCollection/property/name/schema",
+              "name": "name",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "id": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entity/property/id/schema",
+              "name": "id",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "createdAt": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entity/property/createdAt/schema",
+              "name": "createdAt",
+              "type": "datetime",
+              "type_expr": "datetime"
+            }
+          },
+          "curator": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Curated/property/curator/schema",
+              "name": "curator",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "HasHome": {
+        "id": "fastraml://id#/declarations/types/HasHome",
+        "name": "HasHome",
+        "type": "object",
+        "type_expr": "object",
+        "properties": {
+          "home": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/HasHome/property/home/schema",
+              "name": "home",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
+      "Cat": {
+        "id": "fastraml://id#/declarations/types/Cat",
+        "name": "Cat",
+        "type": "object",
+        "type_expr": "object",
+        "properties": {
+          "purrs": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Cat/property/purrs/schema",
+              "name": "purrs",
+              "type": "boolean",
+              "type_expr": "boolean"
+            }
+          }
+        }
+      },
+      "Dog": {
+        "id": "fastraml://id#/declarations/types/Dog",
+        "name": "Dog",
+        "type": "object",
+        "type_expr": "object",
+        "properties": {
+          "barks": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Dog/property/barks/schema",
+              "name": "barks",
+              "type": "boolean",
+              "type_expr": "boolean"
+            }
+          }
+        }
+      },
+      "HomelyPet": {
+        "id": "fastraml://id#/declarations/types/HomelyPet",
+        "name": "HomelyPet",
+        "type": "union",
+        "description": "Either kind of pet, with a home required in both cases.",
+        "example": {
+          "value": {
+            "home": "12 Book Lane",
+            "purrs": true
+          }
+        },
+        "inherits": [
+          {
+            "$ref": "fastraml://id#/declarations/types/HasHome"
+          },
+          {
+            "id": "fastraml://id#/declarations/types/HomelyPet/inherits/Cat%20%7C%20Dog",
+            "name": "Cat | Dog",
+            "type": "union",
+            "type_expr": "Cat | Dog",
+            "any_of": [
+              {
+                "$ref": "fastraml://id#/declarations/types/Cat"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Dog"
+              }
+            ]
+          }
+        ],
+        "any_of": [
+          {
+            "id": "fastraml://id#/declarations/types/HomelyPet/anyOf/0",
+            "name": null,
+            "type": "object",
+            "inherits": [
+              {
+                "$ref": "fastraml://id#/declarations/types/HasHome"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Cat"
+              }
+            ],
+            "properties": {
+              "home": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/HasHome/property/home/schema",
+                  "name": "home",
+                  "type": "string",
+                  "type_expr": "string"
+                }
+              },
+              "purrs": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/Cat/property/purrs/schema",
+                  "name": "purrs",
+                  "type": "boolean",
+                  "type_expr": "boolean"
+                }
+              }
+            }
+          },
+          {
+            "id": "fastraml://id#/declarations/types/HomelyPet/anyOf/1",
+            "name": null,
+            "type": "object",
+            "inherits": [
+              {
+                "$ref": "fastraml://id#/declarations/types/HasHome"
+              },
+              {
+                "$ref": "fastraml://id#/declarations/types/Dog"
+              }
+            ],
+            "properties": {
+              "home": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/HasHome/property/home/schema",
+                  "name": "home",
+                  "type": "string",
+                  "type_expr": "string"
+                }
+              },
+              "barks": {
+                "required": true,
+                "type": {
+                  "id": "fastraml://id#/declarations/types/Dog/property/barks/schema",
+                  "name": "barks",
+                  "type": "boolean",
+                  "type_expr": "boolean"
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "sample/common.raml": {

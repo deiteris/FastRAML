@@ -4,17 +4,21 @@
 fastraml validate [-v] [--json] FILE...
 fastraml info FILE
 fastraml graph [--format nt|turtle|dot|json] FILE
-fastraml openapi [--format yaml|json] FILE
+fastraml convert openapi [--format yaml|json] FILE.raml
+fastraml convert jsonschema FILE.raml [TYPE]
+fastraml convert raml FILE.json
 fastraml tree [--positions] FILE
 fastraml serve [--host H] [--port P] FILE
 fastraml list FILE [PATTERN]
 fastraml refs|deps FILE NAME
+fastraml refs --sites FILE NAME
 fastraml show [--depth N] FILE NAME
 fastraml compat [--types] [--json] OLD NEW
 fastraml join [--title T] [--version V] [--description D] [--base-uri INPUT=URI]... INPUT INPUT...
 fastraml query [FILE] (-q SPARQL | -Q FILE.rq | -n NAME | --list | --show NAME)
 fastraml lint [--config FILE] [--format human|text|json|summary] FILE...
 fastraml skills (list | get NAME... | install [NAME...])
+fastraml lsp [--config FILE] [-r]
 ```
 
 Every parsing verb also takes `--config`, `-w ROOT`, `--no-workspace-guard`
@@ -104,16 +108,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_output(graph)
     _add_common(graph)
 
-    openapi = commands.add_parser('openapi', help='export the effective API as OpenAPI 3.0.3')
-    openapi.add_argument('files', metavar='FILE', nargs=1)
-    openapi.add_argument(
-        '--format',
-        choices=('yaml', 'json'),
-        default='yaml',
-        help='YAML or JSON output (default: yaml)',
-    )
-    _add_output(openapi)
-    _add_common(openapi)
+    _add_convert(commands)
 
     tree = commands.add_parser('tree', help='the effective document as an addressed JSON tree')
     tree.add_argument('files', metavar='FILE', nargs=1)
@@ -122,6 +117,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_common(tree)
 
     _add_serve(commands)
+    _add_lsp(commands)
     _add_navigation(commands)
 
     _add_compat(commands)
@@ -148,9 +144,10 @@ def _parser() -> argparse.ArgumentParser:
         validate=_validate,
         info=_info,
         graph=_graph,
-        openapi=_openapi,
+        convert=_convert,
         tree=_tree,
         serve=_serve,
+        lsp=_lsp,
         refs=_walk,
         deps=_walk,
         show=_show_type,
@@ -162,6 +159,32 @@ def _parser() -> argparse.ArgumentParser:
         join=_join,
     )
     return parser
+
+
+def _add_convert(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    convert = commands.add_parser('convert', help='convert between RAML and other schema formats')
+    targets = convert.add_subparsers(dest='target', required=True)
+    openapi = targets.add_parser('openapi', help='export the effective API as OpenAPI 3.0.3')
+    openapi.add_argument('files', metavar='FILE', nargs=1)
+    openapi.add_argument(
+        '--format',
+        choices=('yaml', 'json'),
+        default='yaml',
+        help='YAML or JSON output (default: yaml)',
+    )
+    _add_output(openapi)
+    _add_common(openapi)
+
+    jsonschema = targets.add_parser('jsonschema', help='export an effective RAML type as JSON Schema draft-07')
+    jsonschema.add_argument('files', metavar='FILE.raml', nargs=1)
+    jsonschema.add_argument('name', metavar='TYPE', nargs='?')
+    _add_output(jsonschema)
+    _add_common(jsonschema)
+
+    raml = targets.add_parser('raml', help='export a JSON Schema as a RAML DataType or Library')
+    raml.add_argument('file', metavar='FILE.json')
+    _add_output(raml)
+    _add_common(raml)
 
 
 def _add_lint(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -296,6 +319,13 @@ def _add_serve(commands: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     _add_common(serve)
 
 
+def _add_lsp(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """`lsp`: a language server on stdin and stdout. The editor names the folders."""
+    lsp = commands.add_parser('lsp', help='a language server over stdio (needs pygls)')
+    lsp.add_argument('--config', metavar='FILE', help='common FastRAML configuration in YAML')
+    lsp.add_argument('-r', '--remote', action='store_true', help='allow http(s) includes')
+
+
 def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """`list` (what can be named), `refs`/`deps` (what reaches a name), `show`."""
     for name, direction in (('refs', 'uses'), ('deps', 'is made of')):
@@ -303,6 +333,10 @@ def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser
         walk.add_argument('files', metavar='FILE', nargs=1)
         walk.add_argument('name', metavar='NAME', help='a declared name, or a whole node IRI')
         walk.add_argument('--json', action='store_true', help='one JSON object per result')
+        if name == 'refs':
+            walk.add_argument(
+                '--sites', action='store_true', help='where the name is written, as FILE:LINE:COLUMN, instead'
+            )
         walk.add_argument('--depth', type=int, default=None, metavar='N', help='stop after N hops')
         walk.add_argument(
             '--kind',
@@ -725,6 +759,24 @@ def _serve(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _lsp(args: argparse.Namespace) -> int:
+    """The language server (docs/21 § 5), deferring full collections for its
+    whole run (docs/12 § 6). pygls is an optional extra imported here only.
+    """
+    try:
+        from fastraml.service.lsp import RamlServer  # noqa: PLC0415 - optional: fastraml[lsp]
+    except ImportError:
+        print('lsp needs pygls: pip install "fastraml[lsp]"', file=sys.stderr)
+        return EXIT_INVALID
+    from fastraml.gctuning import tuned_gc  # noqa: PLC0415
+
+    config = args.fastraml_config
+    http_client = _http_client() if args.remote or config.parser.remote else None
+    with tuned_gc():
+        RamlServer(config, http_client).start_io()
+    return EXIT_OK
+
+
 def _show_type(args: argparse.Namespace) -> int:
     """The effective view: every inherited property in one place, with origins.
 
@@ -801,13 +853,16 @@ def _walk(args: argparse.Namespace) -> int:
     """`refs` walks the edges backwards, `deps` forwards."""
     from fastraml.views.graph import TYPE_EDGES, USE_EDGES  # noqa: PLC0415 - graph commands only
 
-    built = _built(args)
+    sites = getattr(args, 'sites', False)
+    built = _built(args, retain_text=sites)
     if built is None:
         return EXIT_INVALID
-    graph, _ = built
+    graph, raml = built
     origin = _resolve(graph, args.name)
     if origin is None:
         return EXIT_INVALID
+    if sites:
+        return _sites(args, graph, raml, origin)
 
     reverse = args.command == 'refs'
     # `deps` follows type structure from a type, and use containment from
@@ -841,6 +896,33 @@ def _walk(args: argparse.Namespace) -> int:
         print(f'... {len(routes) - len(paths)} more; raise --limit or narrow with --kind', file=sys.stderr)
     if not paths and not args.json:
         print(f'{args.name}: nothing found', file=sys.stderr)
+    return EXIT_OK
+
+
+def _sites(args: argparse.Namespace, graph: Graph, raml: Raml, origin: str) -> int:
+    """`refs --sites`: where the name is written, from the occurrence index (docs/16 § 9)."""
+    from fastraml.types.base import Property  # noqa: PLC0415 - graph commands only
+    from fastraml.uris import relative_to  # noqa: PLC0415
+    from fastraml.views.occurrences import build_occurrences  # noqa: PLC0415
+    from fastraml.views.walk import workspace_of  # noqa: PLC0415
+
+    entity = graph.entity_at(origin)
+    # A property is a record; the index names its declaration.
+    if isinstance(entity, Property):
+        entity = entity.base
+    target = getattr(entity, 'id', None)
+    found = [] if target is None else build_occurrences(raml).of(target)
+    root = workspace_of(raml)
+    for occurrence in sorted(found, key=lambda o: (o.uri, o.span.line, o.span.column)):
+        where = f'{relative_to(occurrence.uri, root)}:{occurrence.span.line}:{occurrence.span.column}'
+        if args.json:
+            import json  # noqa: PLC0415 - only JSON output needs the encoder
+
+            print(json.dumps({'at': where, 'role': str(occurrence.role), 'kind': str(occurrence.kind)}))
+        else:
+            print(f'{where:<30} {occurrence.role}')
+    if not found and not args.json:
+        print(f'{args.name}: written nowhere the index records', file=sys.stderr)
     return EXIT_OK
 
 
@@ -1015,7 +1097,9 @@ def _parsed(args: argparse.Namespace, path: str | None = None) -> Raml | None:
         return None
 
 
-def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Raml] | None:
+def _built(
+    args: argparse.Namespace, path: str | None = None, *, retain_text: bool = False
+) -> tuple[Graph, Raml] | None:
     """Parse and project, or report why not. Returns the graph and the model.
 
     Validation is off, as for every reading verb, so a document with a bad
@@ -1027,7 +1111,7 @@ def _built(args: argparse.Namespace, path: str | None = None) -> tuple[Graph, Ra
 
     path = path or args.files[0]
     try:
-        raml = parse_from_path(path, _options(args, validate=False))
+        raml = parse_from_path(path, _options(args, validate=False, retain_text=retain_text))
     except RamlError as err:
         _invalid(path, err)
         return None
@@ -1369,7 +1453,85 @@ def _join(args: argparse.Namespace) -> int:
     return _emit_document(args, text)
 
 
-def _options(args: argparse.Namespace, *, validate: bool = True, retain_source: bool = False) -> ParseOptions:
+def _convert(args: argparse.Namespace) -> int:
+    if args.target == 'openapi':
+        return _openapi(args)
+    if args.target == 'jsonschema':
+        return _convert_jsonschema(args)
+    return _convert_raml(args)
+
+
+def _convert_jsonschema(args: argparse.Namespace) -> int:
+    """Export one effective type, reporting any semantics JSON Schema cannot carry."""
+    import json  # noqa: PLC0415 - this target writes JSON only
+
+    from fastraml.parser.fragments import APIFragment, DataTypeFragment, Library  # noqa: PLC0415
+    from fastraml.views.jsonschema import to_json_schema  # noqa: PLC0415
+
+    raml = _parsed(args)
+    if raml is None:
+        return EXIT_INVALID
+    if isinstance(raml.entry_point, DataTypeFragment):
+        if args.name is not None:
+            print('convert jsonschema: a DataType fragment does not take TYPE', file=sys.stderr)
+            return EXIT_INVALID
+        base = raml.entry_point.shape
+    elif isinstance(raml.entry_point, (APIFragment, Library)):
+        if args.name is None:
+            print('convert jsonschema: TYPE is required for an API or Library', file=sys.stderr)
+            return EXIT_INVALID
+        base = raml.types_in(raml.location).get(args.name)
+    else:
+        print('convert jsonschema: expected an API, Library, or DataType', file=sys.stderr)
+        return EXIT_INVALID
+    if base is None:
+        print(f'convert jsonschema: no type {args.name!r} in {args.files[0]}', file=sys.stderr)
+        return EXIT_INVALID
+    document, dropped = to_json_schema(base)
+    code = _emit_document(args, json.dumps(document, indent=2, ensure_ascii=False) + '\n')
+    for message in dropped:
+        print(f'warning: {message}', file=sys.stderr)
+    return code
+
+
+def _convert_raml(args: argparse.Namespace) -> int:
+    """Parse an external schema through the ordinary include loader, then export it."""
+    import json  # noqa: PLC0415 - only the schema path needs quoting
+    from pathlib import Path  # noqa: PLC0415
+
+    from fastraml.errors import RamlError  # noqa: PLC0415
+    from fastraml.parser.entry import parse_from_string  # noqa: PLC0415
+    from fastraml.parser.fragments import DataTypeFragment  # noqa: PLC0415
+    from fastraml.types.jsonschema_ import JsonShape  # noqa: PLC0415
+    from fastraml.views.raml import to_raml  # noqa: PLC0415
+
+    path = Path(args.file).absolute()
+    if path.suffix.lower() != '.json':
+        print(f'{args.file}: expected a .json schema', file=sys.stderr)
+        return EXIT_INVALID
+    source = f'#%RAML 1.0 DataType\ntype: !include {json.dumps(path.name)}\n'
+    try:
+        parsed = parse_from_string(
+            source, file_name='_schema.raml', base_dir=path.parent, options=_options(args, validate=False)
+        )
+        entry = parsed.entry_point
+        if not isinstance(entry, DataTypeFragment) or entry.shape is None:
+            print(f'{args.file}: expected a JSON Schema DataType', file=sys.stderr)
+            return EXIT_INVALID
+        schema = entry.shape.shape
+        if not isinstance(schema, JsonShape):
+            print(f'{args.file}: expected a JSON Schema type', file=sys.stderr)
+            return EXIT_INVALID
+        text = to_raml(schema, name=path.stem)
+    except (RamlError, ValueError) as err:
+        print(f'{args.file}: {err}', file=sys.stderr)
+        return EXIT_INVALID
+    return _emit_document(args, text)
+
+
+def _options(
+    args: argparse.Namespace, *, validate: bool = True, retain_source: bool = False, retain_text: bool = False
+) -> ParseOptions:
     """`unwrap` is always on; `validate` is on wherever the job is to find faults."""
     from fastraml.loaders import FileLoader  # noqa: PLC0415 - parsing commands only
     from fastraml.parser.entry import ParseOptions  # noqa: PLC0415
@@ -1379,6 +1541,7 @@ def _options(args: argparse.Namespace, *, validate: bool = True, retain_source: 
         unwrap=True,
         validate=validate,
         retain_source=retain_source,
+        retain_text=retain_text,
         workspace_root=args.workspace_root or configured.workspace_root,
         max_include_size=configured.max_include_size,
         file_loader=FileLoader() if args.no_workspace_guard else None,

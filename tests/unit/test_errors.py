@@ -6,6 +6,8 @@ See docs/11-diagnostics.md.
 from __future__ import annotations
 
 import copy
+import errno
+import os
 import pickle
 from concurrent.futures import ProcessPoolExecutor
 from fractions import Fraction
@@ -33,6 +35,29 @@ class TestChains:
         err = RamlError.wrap('load resource', OSError('no such file'), LOC, kind=ErrorKind.LOADING)
         assert [f.message for f in err.frames()] == ['load resource', 'no such file']
         assert err.frames()[-1].location == LOC
+
+    @pytest.mark.parametrize(
+        ('code', 'message', 'info'),
+        [
+            (errno.ENOENT, 'file not found', {}),
+            (errno.EACCES, 'permission denied', {}),
+            (errno.EIO, 'cannot read file', {'error': os.strerror(errno.EIO)}),
+        ],
+    )
+    def test_an_os_error_is_keyed_by_its_errno(self, code, message, info):
+        # docs/11 § 6: its text holds the OS path, and `[Errno 2]` twice once
+        # a loader re-raised it.
+        cause = OSError(code, os.strerror(code), r'C:\secret\path.raml')
+        (_, inner) = RamlError.wrap('load resource', cause, LOC).frames()
+        assert (inner.message, inner.info) == (message, info)
+
+    def test_an_unresolved_reference_keeps_the_name_out_of_its_key(self):
+        from fastraml.parser.references import UnresolvedReferenceError
+
+        (_, inner) = RamlError.wrap(
+            'get trait definition', UnresolvedReferenceError('reference not found', 'x'), LOC
+        ).frames()
+        assert (inner.message, inner.info) == ('reference not found', {'missing': 'x'})
 
     def test_wrap_preserves_siblings(self):
         first = RamlError.new('bad response', LOC)
@@ -106,6 +131,16 @@ class TestRendering:
         assert stack[1]['type'] == 'unwrapping'
         assert all(f['severity'] == 'error' for f in stack)
         assert stack[1]['position'] == f'{LOC}:17:10'
+
+    def test_an_origin_is_rendered_under_its_frame(self):
+        # docs/11 § 3: the constraint a value broke, in both renderings.
+        origin = Trace('declared here', LOC, Position(4, 5, 4, 17))
+        err = RamlError(Trace('value is too short', LOC, POS, ErrorKind.VALIDATING, origin=origin))
+        assert f'{LOC}:4:5 declared here' in str(err)
+        assert err.to_dict()['traces'][0]['stack'][0]['origin'] == {
+            'message': 'declared here',
+            'position': f'{LOC}:4:5',
+        }
 
     def test_exception_message_is_the_head(self):
         err = RamlError.new('title is required', LOC, POS)
@@ -204,3 +239,86 @@ class TestAccumulator:
         result = acc.result()
         assert result is not None
         assert result.messages() == ['a', 'b', 'c']
+
+
+class TestOneMistakeOneChain:
+    """docs/11 § 2 — a chain identical to one already kept is dropped."""
+
+    @staticmethod
+    def _missing(info: dict | None = None, position: Position | None = None) -> RamlError:
+        cause = RamlError.new('reference not found', LOC, position or Position(6, 10), info=info or {'missing': 'X'})
+        return RamlError.wrap('resolve shape', cause, LOC, Position(6, 7))
+
+    def test_identical_chains_collapse_to_one(self):
+        acc = Accumulator()
+        for _ in range(3):
+            acc.add(self._missing())
+        result = acc.result()
+        assert result is not None
+        assert [[frame.message for frame in chain] for chain in result.chains()] == [
+            ['resolve shape', 'reference not found']
+        ]
+
+    def test_chains_with_different_origins_are_kept_apart(self):
+        # One value breaking two constraints is two reports.
+        def broken(line: int) -> RamlError:
+            origin = Trace('declared here', LOC, Position(line, 5))
+            return RamlError(Trace('value is too short', LOC, POS, ErrorKind.VALIDATING, origin=origin))
+
+        acc = Accumulator()
+        acc.add(broken(4))
+        acc.add(broken(5))
+        assert len(list(acc.result().chains())) == 2
+
+    def test_distinct_errors_are_kept_as_they_are(self):
+        class SpecialError(RamlError):
+            pass
+
+        special = SpecialError.new('other', LOC)
+        acc = Accumulator()
+        acc.add(self._missing())
+        acc.add(special)
+        result = acc.result()
+        assert result is not None
+        assert result.siblings == (special,)
+
+    def test_a_duplicate_among_siblings_collapses_too(self):
+        acc = Accumulator()
+        acc.add(self._missing().append(RamlError.new('other', LOC)))
+        acc.add(self._missing())
+        result = acc.result()
+        assert result is not None
+        assert result.messages() == ['reference not found: missing: X', 'other']
+
+    @pytest.mark.parametrize(
+        'other',
+        [
+            pytest.param({'info': {'missing': 'Y'}}, id='info'),
+            pytest.param({'position': Position(7, 10)}, id='position'),
+        ],
+    )
+    def test_chains_that_differ_in_any_frame_stay_distinct(self, other):
+        acc = Accumulator()
+        acc.add(self._missing())
+        acc.add(self._missing(**other))
+        result = acc.result()
+        assert result is not None
+        assert len(list(result.chains())) == 2
+
+    def test_unhashable_info_values_are_compared(self):
+        acc = Accumulator()
+        acc.add(RamlError.new('bad', LOC, info={'values': [1, 2]}))
+        acc.add(RamlError.new('bad', LOC, info={'values': [1, 2]}))
+        acc.add(RamlError.new('bad', LOC, info={'values': [1, 3]}))
+        result = acc.result()
+        assert result is not None
+        assert len(list(result.chains())) == 2
+
+    def test_the_collapsed_error_pickles(self):
+        acc = Accumulator()
+        acc.add(self._missing())
+        acc.add(self._missing())
+        acc.add(RamlError.new('other', LOC))
+        result = acc.result()
+        assert result is not None
+        assert pickle.loads(pickle.dumps(result)).to_dict() == result.to_dict()  # noqa: S301 - our own bytes

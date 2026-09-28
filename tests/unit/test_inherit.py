@@ -13,18 +13,22 @@ from fractions import Fraction
 import pytest
 
 from fastraml import RamlError
-from fastraml.parser.entry import parse_from_path
 from fastraml.types.complex_ import UnionShape
 from fastraml.types.inherit import alias_to, inherit
 
 LIB = '#%RAML 1.0 Library\n'
 
 
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
 def shapes(workspace, body: str, extra: dict[str, str] | None = None):
     files = {'lib.raml': LIB + 'types:\n' + body}
     files.update(extra or {})
     root = workspace(files)
-    raml = parse_from_path(root / 'lib.raml')
+    raml = workspace.parse(root / 'lib.raml')
     return raml.types_in(raml.location)
 
 

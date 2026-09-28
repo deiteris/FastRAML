@@ -9,10 +9,13 @@ import { parseDocument } from './load';
 import { type Document, Index, Tree } from './model';
 import { Pages } from './pages/Routes';
 
-type ViewerProps = ({ document: Document; contents?: never } | { contents: string; document?: never }) & { managePage?: boolean };
+type ViewerProps = ({ document: Document; contents?: never } | { contents: string; document?: never }) & {
+  managePage?: boolean;
+  themeToggle?: boolean;
+};
 
 /** Supply a decoded tree or its JSON text; the host supplies the router. */
-export function Viewer({ document, contents, managePage = false }: ViewerProps) {
+export function Viewer({ document, contents, managePage = false, themeToggle = true }: ViewerProps) {
   const parsed = useMemo(() => {
     if (contents === undefined) return null;
     try {
@@ -22,12 +25,12 @@ export function Viewer({ document, contents, managePage = false }: ViewerProps) 
     }
   }, [contents]);
   const selected = document ?? parsed?.document;
-  if (!selected) return <ViewerMessage error={parsed?.error ?? 'No API definition supplied.'} managePage={managePage} />;
-  return <ViewerDocument document={selected} managePage={managePage} />;
+  if (!selected) return <ViewerMessage error={parsed?.error ?? 'No API definition supplied.'} managePage={managePage} themeToggle={themeToggle} />;
+  return <ViewerDocument document={selected} managePage={managePage} themeToggle={themeToggle} />;
 }
 
-function ViewerDocument({ document, managePage }: { document: Document; managePage: boolean }) {
-  const [initialTheme] = useState(storedTheme);
+function ViewerDocument({ document, managePage, themeToggle }: { document: Document; managePage: boolean; themeToggle: boolean }) {
+  const [initialTheme] = useState(() => (themeToggle ? storedTheme() : null));
   const index = useMemo(() => new Index(Tree.of(document)), [document]);
   const revision = useRef({ document, number: 0 });
   if (revision.current.document !== document) {
@@ -75,7 +78,7 @@ function ViewerDocument({ document, managePage }: { document: Document; managePa
             Search
           </button>
         </header>
-        <Sidebar document={document} index={index} onSearch={openSearch} shortcuts={managePage} projectLink={managePage} />
+        <Sidebar document={document} index={index} onSearch={openSearch} shortcuts={managePage} projectLink={managePage} themeToggle={themeToggle} />
         {navOpen && <div className="scrim" onClick={close} />}
         <main ref={main} tabIndex={-1}>
           <Pages key={revision.current.number} document={document} index={index} />
@@ -99,9 +102,11 @@ function ViewerDocument({ document, managePage }: { document: Document; managePa
 export function LoadedViewer({
   load,
   managePage = false,
+  themeToggle = true,
 }: {
   load: () => Promise<Document>;
   managePage?: boolean;
+  themeToggle?: boolean;
 }) {
   const [document, setDocument] = useState<Document | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -123,12 +128,12 @@ export function LoadedViewer({
       active = false;
     };
   }, [load]);
-  if (document) return <Viewer document={document} managePage={managePage} />;
-  return <ViewerMessage error={error} managePage={managePage} />;
+  if (document) return <Viewer document={document} managePage={managePage} themeToggle={themeToggle} />;
+  return <ViewerMessage error={error} managePage={managePage} themeToggle={themeToggle} />;
 }
 
-function ViewerMessage({ error, managePage }: { error: string | null; managePage: boolean }) {
-  const [initialTheme] = useState(storedTheme);
+function ViewerMessage({ error, managePage, themeToggle }: { error: string | null; managePage: boolean; themeToggle: boolean }) {
+  const [initialTheme] = useState(() => (themeToggle ? storedTheme() : null));
   return (
     <div className="fastraml-viewer-frame">
       <div className={`fastraml-viewer viewer-loading ${managePage ? 'viewer-standalone' : ''}`} data-theme={initialTheme ?? undefined}>

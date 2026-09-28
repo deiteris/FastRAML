@@ -22,6 +22,7 @@ from fastraml.parser.source_ir import make_source_endpoint
 from fastraml.parser.templates import make_template_definition
 from fastraml.parser.traits import TraitDefinition
 from fastraml.registry import ParseCtx, Raml
+from fastraml.types.examples import make_example
 from fastraml.uris import path_to_file_uri
 from fastraml.yamlnode import compose, node_error, pairs
 
@@ -167,6 +168,15 @@ class TestDecodingSites:
         key, value = root.content
         assert make_data_node(raml, key, value, MASTER).location == EXTENSION
 
+    def test_an_example_is_located_where_its_key_was_written(self):
+        # Its key is the extension's, so the placement law reads its name there.
+        raml = Raml()
+        root = tree('test: {name: 7}\n')
+        raml.mark_authored(root, Document(EXTENSION))
+        key, value = root.content
+        example = make_example(raml, key, value, 'test', MASTER)
+        assert (example.location, example.data.location) == (EXTENSION, EXTENSION)
+
     def test_an_include_resolves_relative_to_its_author(self, tmp_path):
         # Spec section Overlays and Extensions: paths resolve "relative to the
         # document from which the reference is made".
@@ -199,7 +209,9 @@ class TestDecodingSites:
         root = tree('paged:\n  queryParameters:\n    page: integer\n')
         raml.mark_authored(root, author)
         key, value = root.content
-        definition = make_template_definition(TraitDefinition, raml, key, value, MASTER, what='trait')
+        definition = make_template_definition(
+            TraitDefinition, raml, key, value, MASTER, what='trait', attach=lambda _: None
+        )
         assert definition.location == EXTENSION
         assert definition.anchor is author
 
@@ -208,7 +220,7 @@ class TestDecodingSites:
         root = tree('basic:\n  type: Basic Authentication\n')
         raml.mark_authored(root, Document(EXTENSION))
         key, value = root.content
-        assert make_security_scheme_definition(raml, key, value, MASTER).location == EXTENSION
+        assert make_security_scheme_definition(raml, key, value, MASTER, attach=lambda _: None).location == EXTENSION
 
     def test_a_resource_an_extension_added_is_the_extensions(self):
         raml = Raml()

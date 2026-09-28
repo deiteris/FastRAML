@@ -23,11 +23,19 @@ from .anything import Anything
 from .author import Author
 from .barcode import Barcode
 from .book import Book
+from .cat import Cat
 from .chain import Chain
+from .curated import Curated
+from .curated_collection import CuratedCollection
 from .delivery import Delivery
 from .delivery_query import DeliveryQuery
+from .dog import Dog
 from .entity import Entity
 from .grams import Grams
+from .has_home import HasHome
+from .homely_pet import HomelyPet
+from .homely_pet_cat import HomelyPetCat
+from .homely_pet_dog import HomelyPetDog
 from .invoice import Invoice
 from .isbn import Isbn
 from .line import Line
@@ -53,11 +61,19 @@ __all__ = [
     'Author',
     'Barcode',
     'Book',
+    'Cat',
     'Chain',
+    'Curated',
+    'CuratedCollection',
     'Delivery',
     'DeliveryQuery',
+    'Dog',
     'Entity',
     'Grams',
+    'HasHome',
+    'HomelyPet',
+    'HomelyPetCat',
+    'HomelyPetDog',
     'Invoice',
     'Isbn',
     'Line',

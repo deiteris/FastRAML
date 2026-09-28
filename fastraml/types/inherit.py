@@ -10,17 +10,19 @@ like-named properties, which dispatches back to a kind), and the union rules
 construct a `UnionShape`, which `base.py` cannot import.
 
 Nothing here flattens a chain. `unwrap` (docs/07 § 4) decides what to merge
-into what and calls `inherit` once per edge.
+into what and calls `inherit` once per edge, or `fold` once for several
+parents.
 """
 
 from __future__ import annotations
 
 import operator
 from fractions import Fraction
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
-from fastraml.types.base import TYPE_JSON, TYPE_UNION, BaseShape, copyable_slots
+from fastraml.types.base import TYPE_JSON, TYPE_UNION, BaseShape, PatternProperty, copyable_slots
 from fastraml.types.complex_ import (
     ArrayShape,
     ObjectShape,
@@ -46,6 +48,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     'alias_to',
+    'fold',
     'inherit',
 ]
 
@@ -163,23 +166,33 @@ def _is_subset(target: list[DataNode], source: list[DataNode]) -> bool:
 # -- union interaction (docs/07 § 5) ------------------------------------------
 
 
-def _inherit_from_union(target: BaseShape, source: UnionShape) -> BaseShape:
+def _inherit_from_union(target: BaseShape, union: UnionShape) -> BaseShape:
     """Source is a union, target is not.
 
-    Each compatible member is merged into its *own* detached copy of the
-    target, because the survivors are genuinely new shapes; reusing the target
-    would corrupt the declared model.
+    Each compatible member is merged into its *own* copy of the target,
+    because the survivors are genuinely new shapes; reusing the target would
+    corrupt the declared model. The copy shares the target's parents: nothing
+    narrows a parent, and a detached copy of one would be a second, frozen
+    version of a type unwrap flattens in place. Each survivor's parents name
+    the member it took (`_variant_parents`).
+
+    A survivor is anonymous: the target's name, display name and description
+    it arrived with are the union's. Only the one survivor that replaces the
+    target keeps them.
     """
     survivors: list[BaseShape] = []
     failures = Accumulator()
-    for member in source.any_of or ():
+    for member in union.any_of or ():
         if isinstance(member.shape, AnyShape):
             # One `any` member makes the whole union constrain nothing.
             return target
         if member.type != target.type:
             continue
-        candidate = target.clone_detached()
+        candidate = target.clone({parent.id: parent for parent in target.inherits})
         candidate.id = target._raml.next_id()  # noqa: SLF001 - a new shape needs a new identity
+        parents = _variant_parents(target, [member])
+        if parents is not None:
+            candidate.inherits = parents
         try:
             survivors.append(inherit(candidate, member))
         except RamlError as err:
@@ -209,6 +222,10 @@ def _inherit_from_union(target: BaseShape, source: UnionShape) -> BaseShape:
         survivor.example = None
         survivor.examples = None
         survivor.default = None
+        survivor.name = None
+        survivor.display_name = None
+        if survivor.description is target.description:
+            survivor.description = None
     return target
 
 
@@ -218,19 +235,146 @@ def _raise_with_details(error: RamlError, failures: Accumulator) -> BaseShape:
 
 
 def _inherit_into_union(target: BaseShape, target_shape: UnionShape, source: BaseShape) -> BaseShape:
-    """Target is a union, source is not: every member must accept the source."""
+    """Target is a union, source is not: every member must accept the source.
+
+    Each member is replaced by a fold of the member and the source, never
+    narrowed in place. A member may be an alias, which shares its referent's
+    containers (docs/07 § 3), or one the union adopted from its parent by
+    reference (`_narrow_union`); narrowing either would give a declared type
+    the source's constraints.
+    """
     failures = Accumulator()
+    members: list[BaseShape] = []
     for member in target_shape.any_of or ():
+        variant = _empty_subtype([member, source])
         try:
+            variant = inherit(variant, member)
             # `_inherit`, not `inherit`: the guard is already held by the frame
             # that called us, and the members are siblings rather than a
             # descent. Going through `inherit` would see `source._visiting` set
             # and return without merging anything at all.
-            _inherit(member, source)
+            variant = _inherit(variant, source)
         except RamlError as err:
             failures.add(err)
+        variant.inherits = _variant_parents(target, [member]) or [member, source]
+        members.append(variant)
     failures.raise_if_any()
+    target_shape.any_of = members
     return target
+
+
+def _variant_parents(target: BaseShape, taken: list[BaseShape]) -> list[BaseShape] | None:
+    """The parents of a variant of `target` built from `taken`, or `None` if none applies.
+
+    Spec § Union Type expands every union in a type's hierarchy, so each
+    variant of `type: [HasHome | IsOnFarm, Cat | Dog]` is a subtype of one
+    member of each: `[HasHome, Cat]`, `[HasHome, Dog]`, `[IsOnFarm, Cat]` and
+    `[IsOnFarm, Dog]`. Each union among the target's parents is replaced by the
+    member of it the variant took, in the declared order.
+
+    What was taken is a union's member, or a variant an earlier merge of the
+    same parents built, whose own parents already say which member it took.
+    That is how unwrap folds several parents (docs/07 § 4): the fold's
+    variants name their members, and the declaration's variants take theirs.
+    """
+    parents = target.inherits
+    chosen = list(parents)
+    for at, parent in enumerate(parents):
+        members = parent.shape.any_of if isinstance(parent.shape, UnionShape) else None
+        if not members:
+            continue
+        for each in taken:
+            if any(member is each for member in members):
+                chosen[at] = each
+                break
+            if _descends(each, parents) and each.inherits[at] is not parent:
+                chosen[at] = each.inherits[at]
+                break
+    return chosen if any(map(operator.is_not, chosen, parents)) else None
+
+
+def _descends(variant: BaseShape, parents: list[BaseShape]) -> bool:
+    """Whether `variant`'s parents are `parents`, with some unions replaced by a member."""
+    if len(variant.inherits) != len(parents):
+        return False
+    for mine, parent in zip(variant.inherits, parents, strict=True):
+        if mine is parent:
+            continue
+        members = parent.shape.any_of if isinstance(parent.shape, UnionShape) else None
+        if not members or not any(member is mine for member in members):
+            return False
+    return True
+
+
+def fold(parents: list[BaseShape]) -> BaseShape:
+    """A new shape that is a subtype of every one of `parents`, in order.
+
+    Unwrap merges several parents through this (docs/07 § 4), and a union
+    member narrowed by a non-union through it (docs/07 § 5). The result holds
+    what it took from a parent by reference, and never narrows that in place
+    (`_borrowed`): a like-named property, pattern property or `items` two
+    parents both declare is folded in turn.
+    """
+    folded = _empty_subtype(parents)
+    for parent in parents:
+        folded = inherit(folded, parent)
+    return folded
+
+
+def _empty_subtype(parents: list[BaseShape]) -> BaseShape:
+    """An empty shape of the first parent's kind, to fold the parents into.
+
+    Its containers start empty rather than `None`. Otherwise the first merge
+    would take `_narrow_properties`' shortcut, and the first parent's dict
+    would become the fold's; the second merge would then add to it in place,
+    corrupting the parent for every other subtype of it.
+    """
+    first = parents[0]
+    raml = first._raml  # noqa: SLF001 - the shape's own registry, for a fresh id
+    folded = BaseShape(
+        id=raml.next_id(),
+        raml=raml,
+        location=first.location,
+        name=first.name,
+        key_pos=first.key_pos,
+        value_pos=first.value_pos,
+        anchor=first.anchor,
+    )
+    folded.type = first.type
+    folded.inherits = list(parents)
+    folded._unwrapped = True  # noqa: SLF001 - built from parents P9 has flattened
+    # `shape` reaches this module through `jsonschema_`.
+    from fastraml.types.shape import KIND_TO_CLASS  # noqa: PLC0415
+
+    kind = KIND_TO_CLASS.get(first.type)
+    if kind is ObjectShape:
+        folded.shape = ObjectShape(folded, properties={}, pattern_properties={})
+    elif kind is not None:
+        # Every remaining kind's constructor takes only the base. An array's
+        # `items` stays unset: the first parent's is borrowed, and a second
+        # parent's is folded with it.
+        folded.shape = kind(folded)  # type: ignore[call-arg]
+    else:  # pragma: no cover - P7 leaves every reachable shape with a known kind
+        raise RamlError.new(
+            'cannot merge parents of an unresolved type',
+            first.location,
+            first.key_pos,
+            kind=ErrorKind.UNWRAPPING,
+            info={'type': first.type},
+        )
+    return folded
+
+
+def _borrowed(target: BaseShape, source: Shape, held: BaseShape, find: Callable[[Shape], BaseShape | None]) -> bool:
+    """Whether `target` holds `held` by reference from a parent other than `source`.
+
+    Only a fold holds a declaration of two parents: a subtype's own
+    declaration, merged with its one parent, is narrowed in place.
+    """
+    return any(
+        parent.shape is not None and parent.shape is not source and find(parent.shape) is held
+        for parent in target.inherits
+    )
 
 
 # -- per-kind narrowing (docs/07 § 4) -----------------------------------------
@@ -359,8 +503,13 @@ def _narrow_datetime(target: BaseShape, mine: DateTimeShape, theirs: DateTimeSha
 def _narrow_array(target: BaseShape, mine: ArrayShape, theirs: ArrayShape) -> None:
     if mine.items is None:
         mine.items = theirs.items
+        # Written by the parent, not here (docs/06 § 3).
+        mine.items_written = False
     elif theirs.items is not None:
-        inherit(mine.items, theirs.items)
+        if _borrowed(target, theirs, mine.items, _items_of):
+            mine.items = fold([mine.items, theirs.items])
+        else:
+            inherit(mine.items, theirs.items)
     _bound(target, mine, theirs, 'min_items', 'minItems constraint violation', operator.lt)
     _bound(target, mine, theirs, 'max_items', 'maxItems constraint violation', operator.gt)
     if mine.unique_items is None:
@@ -377,7 +526,7 @@ def _narrow_object(target: BaseShape, mine: ObjectShape, theirs: ObjectShape) ->
     _bound(target, mine, theirs, 'min_properties', 'minProperties constraint violation', operator.lt)
     _bound(target, mine, theirs, 'max_properties', 'maxProperties constraint violation', operator.gt)
     _narrow_properties(target, mine, theirs)
-    _narrow_pattern_properties(mine, theirs)
+    _narrow_pattern_properties(target, mine, theirs)
 
 
 def _narrow_properties(target: BaseShape, mine: ObjectShape, theirs: ObjectShape) -> None:
@@ -397,10 +546,27 @@ def _narrow_properties(target: BaseShape, mine: ObjectShape, theirs: ObjectShape
                 kind=ErrorKind.UNWRAPPING,
                 info={'property': name},
             )
-        inherit(child.base, parent.base)
+        if _borrowed(target, theirs, child.base, partial(_property_of, name)):
+            mine.properties[name] = child.with_base(fold([child.base, parent.base]))
+        else:
+            inherit(child.base, parent.base)
 
 
-def _narrow_pattern_properties(mine: ObjectShape, theirs: ObjectShape) -> None:
+def _items_of(shape: Shape) -> BaseShape | None:
+    return shape.items if isinstance(shape, ArrayShape) else None
+
+
+def _property_of(name: str, shape: Shape) -> BaseShape | None:
+    held = shape.properties.get(name) if isinstance(shape, ObjectShape) and shape.properties else None
+    return held.base if held is not None else None
+
+
+def _pattern_property_of(key: str, shape: Shape) -> BaseShape | None:
+    held = shape.pattern_properties.get(key) if isinstance(shape, ObjectShape) and shape.pattern_properties else None
+    return held.base if held is not None else None
+
+
+def _narrow_pattern_properties(target: BaseShape, mine: ObjectShape, theirs: ObjectShape) -> None:
     if mine.pattern_properties is None:
         mine.pattern_properties = dict(theirs.pattern_properties) if theirs.pattern_properties is not None else None
         return
@@ -408,6 +574,8 @@ def _narrow_pattern_properties(mine: ObjectShape, theirs: ObjectShape) -> None:
         child = mine.pattern_properties.get(key)
         if child is None:
             mine.pattern_properties[key] = parent
+        elif _borrowed(target, theirs, child.base, partial(_pattern_property_of, key)):
+            mine.pattern_properties[key] = PatternProperty(pattern=child.pattern, base=fold([child.base, parent.base]))
         else:
             inherit(child.base, parent.base)
 
@@ -415,8 +583,9 @@ def _narrow_pattern_properties(mine: ObjectShape, theirs: ObjectShape) -> None:
 def _narrow_union(target: BaseShape, mine: UnionShape, theirs: UnionShape) -> None:
     """Both are unions: every source member needs a compatible target member.
 
-    Each pairing is tried on a detached copy, so a member that fails leaves no
-    partial merge behind.
+    Each pairing is a fold of the two members, so a pairing that fails leaves
+    no partial merge behind, and neither member is narrowed in place. Its
+    parents name both, as `_variant_parents` does.
     """
     if not mine.any_of:
         # `T: {type: SomeUnion, …}` declares no members of its own, so it takes
@@ -431,12 +600,13 @@ def _narrow_union(target: BaseShape, mine: UnionShape, theirs: UnionShape) -> No
         for member in mine.any_of or ():
             if member.type != parent.type:
                 continue
-            candidate = member.clone_detached()
-            candidate.id = target._raml.next_id()  # noqa: SLF001 - a new shape needs a new identity
+            taken = [member, parent]
             try:
-                survivors.append(inherit(candidate, parent))
+                variant = inherit(inherit(_empty_subtype(taken), member), parent)
             except RamlError:
                 continue
+            variant.inherits = _variant_parents(target, taken) or taken
+            survivors.append(variant)
             matched = True
         if not matched:
             raise RamlError.new(

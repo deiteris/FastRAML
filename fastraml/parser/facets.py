@@ -26,6 +26,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.datanode import parse_int
+from fastraml.facet_names import FACET_VALUE
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.includes import IncludeInfo, resolve_include
 from fastraml.positions import UNKNOWN
@@ -55,9 +56,6 @@ __all__ = [
     'scalar_str',
 ]
 
-#: The key that carries the value in the annotated-scalar form.
-FACET_VALUE: Final = 'value'
-
 #: Implicit `!!bool` is only `true`/`false` in the YAML 1.2 table; the YAML 1.1
 #: spellings are still honoured under an explicit `!!bool` tag.
 _TRUE_SCALARS: Final = frozenset({'true', 'yes', 'on', 'y'})
@@ -82,7 +80,7 @@ def scalar_int(node: Node, location: str) -> int:
     try:
         return parse_int(node.value)
     except ValueError as err:
-        raise node_error('expected an integer value', location, node, info={'value': node.value}) from err
+        raise node_error('expected an integer value', location, node) from err
 
 
 def scalar_fraction(node: Node, location: str) -> Fraction:
@@ -102,7 +100,7 @@ def scalar_fraction(node: Node, location: str) -> Fraction:
             return Fraction(parse_int(node.value))
         return Fraction(text)
     except (ValueError, ZeroDivisionError) as err:
-        raise node_error('expected a number value', location, node, info={'value': node.value}) from err
+        raise node_error('expected a number value', location, node) from err
 
 
 def regex_engine(raml: Raml) -> Any:

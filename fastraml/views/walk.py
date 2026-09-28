@@ -28,8 +28,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final, Literal, Protocol
 from urllib.parse import quote
 
+from fastraml.facet_names import (
+    FACET_ANNOTATION_TYPES,
+    FACET_RESOURCE_TYPES,
+    FACET_SECURITY_SCHEMES,
+    FACET_TRAITS,
+    FACET_TYPES,
+)
 from fastraml.parser.directives import SecurityScheme
 from fastraml.parser.fragments import APIFragment, DataTypeFragment, Library
+from fastraml.parser.security import SecuritySchemeDefinition
+from fastraml.parser.traits import TraitDefinition
+from fastraml.types.base import BaseShape
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.jsonschema_ import projected
 from fastraml.uris import relative_to
@@ -59,10 +69,8 @@ if TYPE_CHECKING:
     from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
     from fastraml.parser.fragments import Fragment
     from fastraml.parser.resourcetypes import ResourceTypeDefinition
-    from fastraml.parser.security import SecuritySchemeDefinition
-    from fastraml.parser.traits import TraitDefinition
     from fastraml.registry import Raml
-    from fastraml.types.base import BaseShape, Parameter, PatternProperty, Property, Shape
+    from fastraml.types.base import Parameter, PatternProperty, Property, Shape
 
 __all__ = [
     'DEFAULT_BASE',
@@ -85,6 +93,16 @@ DECLARATIONS: Final = '#/declarations/'
 
 #: The declaration maps a `type:`, `is:` or `securedBy:` can name.
 Bucket = Literal['traits', 'resourceTypes', 'securitySchemes']
+
+#: The address segment of each declaration table, by the key it is written
+#: under: annotation types are `annotations`, as the graph names them.
+_SEGMENTS: Final = {
+    FACET_TYPES: 'types',
+    FACET_ANNOTATION_TYPES: 'annotations',
+    FACET_TRAITS: 'traits',
+    FACET_RESOURCE_TYPES: 'resourceTypes',
+    FACET_SECURITY_SCHEMES: 'securitySchemes',
+}
 
 #: Nothing is safe in a path segment. A media type, a `/{userId}` template and a
 #: `/^x-/` pattern-property name all have to survive as one segment, so the safe
@@ -340,29 +358,22 @@ class Walk:
         if not isinstance(fragment, (APIFragment, Library)):
             return
         self.sink.unit(unit, fragment)
-        for name, shape in fragment.types.items():
-            self.declared(shape, self.shape(shape, self.declare(unit, 'types', name)))
-        for name, shape in fragment.annotation_types.items():
-            self.declared(shape, self.shape(shape, self.declare(unit, 'annotations', name)))
-        for name, scheme in fragment.security_schemes.items():
-            iri = self.declare(unit, 'securitySchemes', name)
-            self.sink.security_scheme(iri, scheme)
+        for key, name, entity in fragment.declarations():
+            if isinstance(entity, BaseShape):
+                self.declared(entity, self.shape(entity, self.declare(unit, _SEGMENTS[key], name)))
+                continue
+            iri = self.declare(unit, _SEGMENTS[key], name)
+            if isinstance(entity, SecuritySchemeDefinition):
+                self.sink.security_scheme(iri, entity)
+            elif isinstance(entity, TraitDefinition):
+                self.sink.trait(iri, entity)
+            else:
+                self.sink.resource_type(iri, entity)
             # Under both the declaration and whatever an `!include` resolved to,
-            # so a `securedBy:` bound to either finds this one node.
-            self.iris[scheme.id] = iri
-            self.iris[scheme.resolved().id] = iri
-            self.edge(unit, 'declares', iri)
-        for name, trait in fragment.traits.items():
-            iri = self.declare(unit, 'traits', name)
-            self.sink.trait(iri, trait)
-            self.iris[trait.id] = iri
-            self.iris[trait.resolved().id] = iri
-            self.edge(unit, 'declares', iri)
-        for name, resource_type in fragment.resource_types.items():
-            iri = self.declare(unit, 'resourceTypes', name)
-            self.sink.resource_type(iri, resource_type)
-            self.iris[resource_type.id] = iri
-            self.iris[resource_type.resolved().id] = iri
+            # so a `securedBy:`, `is:` or `type:` bound to either finds this one
+            # node.
+            self.iris[entity.id] = iri
+            self.iris[entity.resolved().id] = iri
             self.edge(unit, 'declares', iri)
 
     def api(self) -> None:

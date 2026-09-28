@@ -10,10 +10,14 @@ from __future__ import annotations
 import pytest
 
 from fastraml import RamlError
-from fastraml.parser.entry import parse_from_path
 from fastraml.types.complex_ import ArrayShape, UnionShape, UnknownShape
 
 LIB = '#%RAML 1.0 Library\n'
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 def library(workspace, body: str, extra: dict[str, str] | None = None):
@@ -21,7 +25,7 @@ def library(workspace, body: str, extra: dict[str, str] | None = None):
     files = {'lib.raml': LIB + 'types:\n' + body}
     files.update(extra or {})
     root = workspace(files)
-    raml = parse_from_path(root / 'lib.raml')
+    raml = workspace.parse(root / 'lib.raml')
     return raml.types_in(raml.location)
 
 
@@ -58,7 +62,7 @@ class TestInvariantI5:
 
     def test_the_worklist_is_empty_afterwards(self, workspace):
         root = workspace({'lib.raml': LIB + 'types:\n  A: string[]\n  B: A | nil\n'})
-        assert not parse_from_path(root / 'lib.raml').unresolved_shapes
+        assert not workspace.parse(root / 'lib.raml').unresolved_shapes
 
 
 #: go-raml's expression corpus, verbatim, paired with the shape each builds.
@@ -109,7 +113,7 @@ class TestExamplesCorpus:
                 **CORPUS_LIBRARY,
             }
         )
-        raml = parse_from_path(root / 'lib.raml')
+        raml = workspace.parse(root / 'lib.raml')
         assert describe(raml.types_in(raml.location)['T']) == expected
 
 
@@ -263,6 +267,30 @@ class TestDiagnostics:
     def test_an_unknown_name_is_reported(self, workspace):
         assert 'reference not found' in failure(workspace, '  A: Nope\n')
 
+    @pytest.mark.parametrize(
+        ('document', 'span'),
+        [
+            pytest.param(LIB + 'types:\n  A: string | Nope\n', (3, 15, 3, 19), id='plain'),
+            pytest.param(LIB + 'types:\n  A: "Nope | string"\n', (3, 7, 3, 11), id='quoted'),
+            pytest.param(
+                '#%RAML 1.0\ntitle: T\nresourceTypes:\n  rt:\n    get:\n      body:\n'
+                '        application/json:\n          type: <<item>> | string\n'
+                '/a:\n  type: {rt: {item: Nope}}\n',
+                (10, 21, 10, 25),
+                id='in a value the caller wrote',
+            ),
+        ],
+    )
+    def test_an_unknown_name_spans_the_name(self, workspace, document, span):
+        # docs/11 § 3: an editor underlines the whole name, not its first character.
+        root = workspace({'doc.raml': document})
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'doc.raml')
+        (chain,) = caught.value.chains()
+        assert chain[-1].message == 'reference not found'
+        position = chain[-1].position
+        assert (position.line, position.column, position.end_line, position.end_column) == span
+
     def test_an_unknown_library_is_reported(self, workspace):
         assert 'library not found' in failure(workspace, '  A: nolib.Thing\n')
 
@@ -280,9 +308,16 @@ class TestErrorPositions:
     def test_a_reference_error_points_inside_the_expression(self, workspace):
         root = workspace({'lib.raml': LIB + 'types:\n  A: Nope\n'})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml')
+            workspace.parse(root / 'lib.raml')
         trace = next(iter(caught.value.chains()))[-1]
         assert (trace.position.line, trace.position.column) == (3, 6), 'the column of `Nope`, not of `A`'
+
+    def test_an_error_in_a_quoted_expression_points_past_the_quote(self, workspace):
+        root = workspace({'lib.raml': LIB + 'types:\n  A: "Nope"\n'})
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'lib.raml')
+        trace = next(iter(caught.value.chains()))[-1]
+        assert (trace.position.line, trace.position.column) == (3, 7), 'the column of `Nope`, not of the quote'
 
     def test_one_cached_parse_still_yields_two_located_diagnostics(self, workspace):
         # docs/06 § 2: the AST is memoised on text alone, so the location and
@@ -294,7 +329,7 @@ class TestErrorPositions:
             }
         )
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'lib.raml')
+            workspace.parse(root / 'lib.raml')
         located = {
             (trace.location.rsplit('/', 1)[-1], trace.position.line)
             for chain in caught.value.chains()
@@ -329,6 +364,11 @@ class TestTypeExprRefs:
         # Past `models` and the dot it is written with.
         assert (name.resolved.name, name.column) == ('Thing', 13)
 
+    def test_a_dot_that_names_no_library_is_part_of_the_name(self, workspace):
+        types = library(workspace, '  Dot.Type: string\n  T: Dot.Type\n')
+        refs = types['T'].type_expr_refs
+        assert [(ref.resolved.name, ref.column, ref.library_link) for ref in refs] == [('Dot.Type', 6, None)]
+
     def test_an_unqualified_name_emits_one_ref(self, workspace):
         types = library(workspace, '  Thing: string\n  T: Thing\n')
         refs = types['T'].type_expr_refs
@@ -344,7 +384,7 @@ class TestAnnotationTypes:
                 'lib.raml': LIB + 'annotationTypes:\n  Base:\n    properties:\n      a: string\n  Derived: Base\n',
             }
         )
-        raml = parse_from_path(root / 'lib.raml')
+        raml = workspace.parse(root / 'lib.raml')
         declared = raml.annotation_types_in(raml.location)
         assert declared['Derived'].alias is declared['Base']
 
@@ -354,5 +394,5 @@ class TestAnnotationTypes:
         root = workspace(
             {'lib.raml': LIB + 'types:\n  Config:\n    properties:\n      a: string\nannotationTypes:\n  Use: Config\n'}
         )
-        raml = parse_from_path(root / 'lib.raml')
+        raml = workspace.parse(root / 'lib.raml')
         assert raml.annotation_types_in(raml.location)['Use'].type == 'object'

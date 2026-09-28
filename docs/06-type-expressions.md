@@ -49,7 +49,10 @@ P7 replaces an `UnknownShape` on its existing `BaseShape` with the expression's
 concrete kind. It creates fresh anonymous bases for expression-implied array
 items, optional members, and union members. Those bases inherit the outer
 expression's anchor and source expression, but sibling facets stay on the outer
-shape.
+shape. An array built from an expression records `items_written=False`: its
+items are the expression's, not an `items:` facet's. An array that inherits
+its items (P9) records the same, since a parent wrote them. A reader tells
+the items a declaration wrote by it, not by position.
 
 | AST | Result |
 |---|---|
@@ -68,8 +71,14 @@ A mapping declaration inherits even when it contains only `type:`:
 original YAML form is no longer available then.
 
 P7 records `TypeExprRef` entries for primitive keywords and resolved names.
+Each entry holds the file its name is written in: the shape's own, or, for a
+name inside a caller's value a template substituted, the application's, at
+the caller's text ([08](08-templates-and-endpoints.md) § 5.1). A diagnostic
+about that name is placed there too.
 Qualified names produce one entry for the library prefix and one for the
-referenced declaration.
+referenced declaration. A name is qualified only when its prefix names a
+`uses:` entry: `Dot.Type`, declared under that name, is one entry at the
+name's start.
 
 ## 4. JSON Schema operands
 

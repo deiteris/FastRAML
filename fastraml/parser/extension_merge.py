@@ -23,11 +23,12 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Final, Literal
 
+from fastraml import facet_names as fn
 from fastraml.errors import Accumulator
 from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.source_ir import METHODS
 from fastraml.parser.structural_merge import node_value_equal
-from fastraml.yamlnode import TAG_MAP, TAG_SEQ, TAG_STR, Node, NodeKind, is_null, node_error, with_content
+from fastraml.yamlnode import TAG_MAP, TAG_SEQ, TAG_STR, Node, NodeKind, is_null, node_error, with_grafts
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -92,49 +93,49 @@ _NAME_MAPS: Final = {
 #: key listed nowhere recurses as `GENERIC`.
 _CHILDREN: Final[dict[Site, dict[str, Site]]] = {
     Site.ROOT: {
-        'types': Site.TYPES,
-        'schemas': Site.TYPES,
-        'annotationTypes': Site.ANNOTATION_TYPES,
-        'traits': Site.TRAITS,
-        'resourceTypes': Site.RESOURCE_TYPES,
-        'securitySchemes': Site.SECURITY_SCHEMES,
-        'baseUriParameters': Site.NAMED_TYPES,
-        'documentation': Site.DOCUMENTATION,
-        'securedBy': Site.APPLICATION,
+        fn.FACET_TYPES: Site.TYPES,
+        fn.FACET_SCHEMAS: Site.TYPES,
+        fn.FACET_ANNOTATION_TYPES: Site.ANNOTATION_TYPES,
+        fn.FACET_TRAITS: Site.TRAITS,
+        fn.FACET_RESOURCE_TYPES: Site.RESOURCE_TYPES,
+        fn.FACET_SECURITY_SCHEMES: Site.SECURITY_SCHEMES,
+        fn.FACET_BASE_URI_PARAMETERS: Site.NAMED_TYPES,
+        fn.FACET_DOCUMENTATION: Site.DOCUMENTATION,
+        fn.FACET_SECURED_BY: Site.APPLICATION,
     },
     Site.RESOURCE: {
-        'uriParameters': Site.NAMED_TYPES,
-        'type': Site.APPLICATION,
-        'is': Site.APPLICATION,
-        'securedBy': Site.APPLICATION,
+        fn.FACET_URI_PARAMETERS: Site.NAMED_TYPES,
+        fn.FACET_TYPE: Site.APPLICATION,
+        fn.FACET_IS: Site.APPLICATION,
+        fn.FACET_SECURED_BY: Site.APPLICATION,
     },
     Site.METHOD: {
-        'headers': Site.NAMED_TYPES,
-        'queryParameters': Site.NAMED_TYPES,
-        'queryString': Site.TYPE,
-        'body': Site.BODY,
-        'responses': Site.RESPONSES,
-        'is': Site.APPLICATION,
-        'securedBy': Site.APPLICATION,
+        fn.FACET_HEADERS: Site.NAMED_TYPES,
+        fn.FACET_QUERY_PARAMETERS: Site.NAMED_TYPES,
+        fn.FACET_QUERY_STRING: Site.TYPE,
+        fn.FACET_BODY: Site.BODY,
+        fn.FACET_RESPONSES: Site.RESPONSES,
+        fn.FACET_IS: Site.APPLICATION,
+        fn.FACET_SECURED_BY: Site.APPLICATION,
     },
     Site.RESPONSE: {
-        'headers': Site.NAMED_TYPES,
-        'body': Site.BODY,
+        fn.FACET_HEADERS: Site.NAMED_TYPES,
+        fn.FACET_BODY: Site.BODY,
     },
     Site.TYPE: {
-        'properties': Site.NAMED_TYPES,
-        'facets': Site.NAMED_TYPES,
-        'items': Site.TYPE,
-        'type': Site.TYPE,
-        'schema': Site.TYPE,
-        'examples': Site.EXAMPLES,
-        'example': Site.DATA,
-        'default': Site.DATA,
+        fn.FACET_PROPERTIES: Site.NAMED_TYPES,
+        fn.FACET_FACETS: Site.NAMED_TYPES,
+        fn.FACET_ITEMS: Site.TYPE,
+        fn.FACET_TYPE: Site.TYPE,
+        fn.FACET_SCHEMA: Site.TYPE,
+        fn.FACET_EXAMPLES: Site.EXAMPLES,
+        fn.FACET_EXAMPLE: Site.DATA,
+        fn.FACET_DEFAULT: Site.DATA,
         # `enum` is not data: the spec's own example of a multi-value simple
         # property, so an extension's values are added to the target's.
     },
     Site.SECURITY_SCHEME: {
-        'describedBy': Site.METHOD,
+        fn.FACET_DESCRIBED_BY: Site.METHOD,
     },
 }
 
@@ -142,16 +143,16 @@ _CHILDREN: Final[dict[Site, dict[str, Site]]] = {
 #: (docs/19 § 3.4). Only pairs the spec itself declares exclusive and that
 #: are not synonyms.
 _CONFLICTS: Final[dict[Site, dict[str, str]]] = {
-    Site.METHOD: {'queryString': 'queryParameters', 'queryParameters': 'queryString'},
-    Site.TYPE: {'example': 'examples', 'examples': 'example'},
+    Site.METHOD: {fn.FACET_QUERY_STRING: fn.FACET_QUERY_PARAMETERS, fn.FACET_QUERY_PARAMETERS: fn.FACET_QUERY_STRING},
+    Site.TYPE: {fn.FACET_EXAMPLE: fn.FACET_EXAMPLES, fn.FACET_EXAMPLES: fn.FACET_EXAMPLE},
 }
 
 #: Deprecated spellings the spec calls synonymous with a current one. They are
 #: one property to the merge, so `schemas:` in an extension adds to the
 #: master's `types:` instead of displacing it (docs/19 § 3.2).
 _SYNONYMS: Final[dict[Site, dict[str, str]]] = {
-    Site.ROOT: {'schemas': 'types'},
-    Site.TYPE: {'schema': 'type'},
+    Site.ROOT: {fn.FACET_SCHEMAS: fn.FACET_TYPES},
+    Site.TYPE: {fn.FACET_SCHEMA: fn.FACET_TYPE},
 }
 
 #: Where a key can have a synonym: the two positions above, and a body that is
@@ -161,27 +162,37 @@ _SYNONYM_SITES: Final = frozenset({Site.ROOT, Site.TYPE, Site.BODY})
 #: Keys that accept one scalar or a sequence of them; a lone scalar is merged
 #: as a one-item sequence (docs/19 § 3.2). `type` is not one of them: a scalar
 #: there is a type expression, a sequence is multiple inheritance.
-_SEQUENCE_KEYS: Final = frozenset({'protocols', 'mediaType', 'is', 'securedBy', 'allowedTargets'})
+_SEQUENCE_KEYS: Final = frozenset(
+    {fn.FACET_PROTOCOLS, fn.FACET_MEDIA_TYPE, fn.FACET_IS, fn.FACET_SECURED_BY, fn.FACET_ALLOWED_TARGETS}
+)
 
 #: The spec's ignored properties, and `extends` itself; at the root only, since
 #: a trait's `usage` is an ordinary facet an Overlay may change.
-_IGNORED_AT_ROOT: Final = frozenset({'uses', 'usage', 'extends'})
+_IGNORED_AT_ROOT: Final = frozenset({fn.FACET_USES, fn.FACET_USAGE, 'extends'})
 
 #: Keys an Overlay may add or change anywhere they are facets (docs/19 § 4.2).
 _OVERLAY_FACETS: Final = frozenset(
-    {'title', 'displayName', 'description', 'usage', 'example', 'examples', 'documentation'}
+    {
+        fn.FACET_TITLE,
+        fn.FACET_DISPLAY_NAME,
+        fn.FACET_DESCRIPTION,
+        fn.FACET_USAGE,
+        fn.FACET_EXAMPLE,
+        fn.FACET_EXAMPLES,
+        fn.FACET_DOCUMENTATION,
+    }
 )
 
 #: The root keys whose entries are data types an Overlay may add.
-_TYPE_MAPS: Final = frozenset({'types', 'schemas'})
+_TYPE_MAPS: Final = frozenset({fn.FACET_TYPES, fn.FACET_SCHEMAS})
 
 #: The root declaration maps, by the name the visibility check uses (docs/19 § 5.2).
 _DECLARATION_KINDS: Final = {
-    Site.TYPES: 'types',
-    Site.ANNOTATION_TYPES: 'annotationTypes',
-    Site.TRAITS: 'traits',
-    Site.RESOURCE_TYPES: 'resourceTypes',
-    Site.SECURITY_SCHEMES: 'securitySchemes',
+    Site.TYPES: fn.FACET_TYPES,
+    Site.ANNOTATION_TYPES: fn.FACET_ANNOTATION_TYPES,
+    Site.TRAITS: fn.FACET_TRAITS,
+    Site.RESOURCE_TYPES: fn.FACET_RESOURCE_TYPES,
+    Site.SECURITY_SCHEMES: fn.FACET_SECURITY_SCHEMES,
 }
 
 
@@ -343,7 +354,7 @@ class _Merger:
                 self.mark(key)
         if not changed:
             return target
-        return with_content(target, [node for node in merged if node is not None] + added)
+        return with_grafts(target, [node for node in merged if node is not None] + added)
 
     def _value(  # noqa: PLR0911, PLR0913, PLR0917 - one decision table over the property kinds
         self,
@@ -413,7 +424,7 @@ class _Merger:
         if len(items) == len(old.content):
             return old
         self._change(site, name, key, 'added', free=free)
-        return with_content(old, items)
+        return with_grafts(old, items)
 
     # -- conflicts and declarations -------------------------------------------
 
@@ -471,7 +482,7 @@ class _Merger:
             return False
         if name in _OVERLAY_FACETS or is_annotation_key(name):
             return True
-        return site is Site.ROOT and name == 'annotationTypes'
+        return site is Site.ROOT and name == fn.FACET_ANNOTATION_TYPES
 
 
 def _scalars(sequence: Node) -> bool:
@@ -510,7 +521,7 @@ def _empty_mapping(at: Node) -> Node:
 
 def _type_mapping(scalar: Node) -> Node:
     """`string` as `{type: string}`, positioned at the scalar."""
-    key = Node(NodeKind.SCALAR, TAG_STR, 'type', None, scalar.line, scalar.column, scalar.line, scalar.column)
+    key = Node(NodeKind.SCALAR, TAG_STR, fn.FACET_TYPE, None, scalar.line, scalar.column, scalar.line, scalar.column)
     return Node(
         NodeKind.MAPPING, TAG_MAP, '', [key, scalar], scalar.line, scalar.column, scalar.end_line, scalar.end_column
     )

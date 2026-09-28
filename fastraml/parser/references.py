@@ -36,9 +36,15 @@ class UnresolvedReferenceError(LookupError):
     __slots__ = ('name', 'reason')
 
     def __init__(self, reason: str, name: str) -> None:
-        super().__init__(f'{reason}: {name}')
+        # The key alone, so a caller that wraps it as a frame keeps the name
+        # out of the message (docs/11 § 6).
+        super().__init__(reason)
         self.reason = reason
         self.name = name
+
+    @property
+    def info(self) -> dict[str, str]:
+        return {'missing': self.name}
 
 
 def cut_last(text: str, separator: str) -> tuple[str, str, bool]:

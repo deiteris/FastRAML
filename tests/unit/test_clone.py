@@ -9,17 +9,21 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml.parser.entry import parse_from_path
 from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
 
 LIB = '#%RAML 1.0 Library\n'
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 def library(workspace, body: str, extra: dict[str, str] | None = None):
     files = {'lib.raml': LIB + 'types:\n' + body}
     files.update(extra or {})
     root = workspace(files)
-    raml = parse_from_path(root / 'lib.raml')
+    raml = workspace.parse(root / 'lib.raml')
     return raml.types_in(raml.location)
 
 

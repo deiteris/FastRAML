@@ -15,6 +15,18 @@
   --warn: light-dark(#8a5a00, #d8ab5e);
   --recursive: light-dark(#6b3fb5, #b394f0);
   --enum: light-dark(#5a4b9c, #a396e8);
+  /* Surface and interaction roles fall back to the viewer's base palette. */
+  --sidebar-bg: var(--panel);
+  --nav-hover-bg: var(--line-soft);
+  --nav-hover-ink: var(--ink);
+  --nav-selected-bg: var(--line);
+  --nav-selected-ink: var(--ink);
+  --search-active-bg: var(--line-soft);
+  --input-bg: var(--bg);
+  --input-border: var(--line);
+  --code-bg: var(--panel);
+  --inline-code-bg: var(--panel);
+  --focus-border: var(--accent);
   --syntax-keyword: light-dark(#8b31a8, #d2a8ff);
   --syntax-name: light-dark(#075985, #79c0ff);
   --syntax-literal: light-dark(#a23a20, #ffa657);

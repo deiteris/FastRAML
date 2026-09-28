@@ -36,8 +36,7 @@ from fastraml.types.complex_ import (
     RecursiveShape,
     UnionShape,
 )
-from fastraml.types.inherit import alias_to, inherit
-from fastraml.types.shape import KIND_TO_CLASS
+from fastraml.types.inherit import alias_to, fold, inherit
 from fastraml.types.values import EnumValues
 
 if TYPE_CHECKING:
@@ -64,9 +63,12 @@ class _Walk:
     has to end up pointing at the replacement. Keyed on `BaseShape.id` — the
     model's own identity, not `id()`, which neither keeps the object alive nor
     stays unique.
+
+    `failed` is the ids of every shape an error passed through, so that a
+    second route to one returns it instead of failing, and reporting, again.
     """
 
-    __slots__ = ('done', 'max_depth', 'raml')
+    __slots__ = ('done', 'failed', 'max_depth', 'raml')
 
     def __init__(self, raml: Raml) -> None:
         self.raml = raml
@@ -75,6 +77,7 @@ class _Walk:
         # recursive path.
         self.max_depth = raml.max_depth
         self.done: dict[int, BaseShape] = {}
+        self.failed: set[int] = set()
 
 
 def unwrap_shapes(raml: Raml) -> None:
@@ -85,6 +88,11 @@ def unwrap_shapes(raml: Raml) -> None:
     been replaced by a merged copy, and a shape may have been dropped from the
     graph entirely — so keeping them would leave the index describing shapes no
     consumer can reach.
+
+    A failed declaration does not stop the pass from finishing (docs/11 § 2).
+    Recursion is marked over everything that did flatten, because a consumer of
+    the lenient model walks it too, and a failed shape is left unmerged rather
+    than claiming to be flattened (docs/07 § 6). `Raml.unwrapped` stays `False`.
     """
     walk = _Walk(raml)
     raml.shapes = []
@@ -111,9 +119,11 @@ def unwrap_shapes(raml: Raml) -> None:
         if extension.defined_by is not None:
             extension.defined_by = walk.done.get(extension.defined_by.id, extension.defined_by)
 
+    try:
+        finish_unwrap(raml)
+    except RamlError as err:
+        accumulator.add(err)
     accumulator.raise_if_any()
-    finish_unwrap(raml)
-    raml.unwrapped = True
 
 
 def unwrap_shape(raml: Raml, base: BaseShape) -> BaseShape:
@@ -132,6 +142,8 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
         raise RamlError.new('declaration has no shape', base.location, base.key_pos, kind=ErrorKind.UNWRAPPING)
     if base._unwrapped:  # noqa: SLF001 - this pass is the field's declared owner
         return walk.done.get(base.id, base)
+    if base.id in walk.failed:
+        return base
     if depth > walk.max_depth:
         raise RamlError.new(
             'type nesting too deep',
@@ -141,27 +153,32 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
             info={'limit': walk.max_depth},
         )
     base._unwrapped = True  # noqa: SLF001 - see above
+    try:
+        if base.link is not None:
+            _link_to_inherits(base)
 
-    if base.link is not None:
-        _link_to_inherits(base)
+        if base.alias is not None:
+            # An alias is not a source and is not merged into anything: it is
+            # resolved and returned as it stands (docs/07 § 3).
+            result = alias_to(base, _unwrap(walk, base.alias, depth + 1))
+        else:
+            source = _unwrap_parents(walk, base, depth)
+            _unwrap_children(walk, base.shape, depth)
+            _unwrap_custom_facet_defs(walk, base, depth)
 
-    if base.alias is not None:
-        # An alias is not a source and is not merged into anything: it is
-        # resolved and returned as it stands (docs/07 § 3).
-        result = alias_to(base, _unwrap(walk, base.alias, depth + 1))
-        walk.done[base.id] = result
-        walk.raml.put_shape(result)
-        return result
-
-    source = _unwrap_parents(walk, base, depth)
-    _unwrap_children(walk, base.shape, depth)
-    _unwrap_custom_facet_defs(walk, base, depth)
-
-    result = inherit(base, source) if source is not None else base
-    # After the merge, never before: the "both unions" branch adopts the
-    # parent's `anyOf`, so a child that merely narrows a union has no members of
-    # its own until `inherit` has run (docs/07 § 5).
-    _distribute_union_facets(walk, result, depth)
+            result = inherit(base, source) if source is not None else base
+            # After the merge, never before: the "both unions" branch adopts the
+            # parent's `anyOf`, so a child that merely narrows a union has no
+            # members of its own until `inherit` has run (docs/07 § 5).
+            _distribute_union_facets(walk, result, depth)
+    except RamlError as err:
+        # Every shape the error passes through is left unmerged, and must not
+        # claim to be flattened (docs/07 § 6). It is marked (docs/13 § 1).
+        base._unwrapped = False  # noqa: SLF001 - see above
+        walk.raml.mark(base, err)
+        walk.failed.add(base.id)
+        walk.raml.put_shape(base)
+        raise
     walk.done[base.id] = result
     walk.raml.put_shape(result)
     return result
@@ -439,77 +456,20 @@ def _link_to_inherits(base: BaseShape) -> None:
 
 
 def _unwrap_parents(walk: _Walk, base: BaseShape, depth: int) -> BaseShape | None:
-    """The merge source for one declaration: nothing, one parent, or a synthetic."""
+    """The merge source for one declaration: nothing, one parent, or their fold."""
     if not base.inherits:
         return None
 
-    # Every parent is flattened first, so the synthetic shape below can inspect
-    # what each of them actually declares.
+    # Every parent is flattened first, so the fold below merges what each of
+    # them actually declares.
     base.inherits = [_unwrap(walk, parent, depth + 1) for parent in base.inherits]
     if len(base.inherits) == 1:
         return base.inherits[0]
 
-    synthetic = _make_multiple_inheritance_shape(walk, base.inherits)
-    for parent in base.inherits:
-        synthetic = inherit(synthetic, parent)
-    return synthetic
-
-
-def _make_multiple_inheritance_shape(walk: _Walk, parents: list[BaseShape]) -> BaseShape:
-    """An empty shape of the first parent's kind, to fold the parents into.
-
-    This exists to prevent one specific corruption. If the child merged its
-    parents directly, the first merge would take the `if target.properties is
-    None: target.properties = source.properties` shortcut and alias the first
-    parent's dict into the child; the second merge would then mutate that dict
-    in place, corrupting the parent for every *other* subtype that inherits
-    from it. Pre-initialising the collections to empty forces the merge loop to
-    run instead of taking the shortcut (docs/07 § 4).
-    """
-    first = parents[0]
-    synthetic = BaseShape(
-        id=walk.raml.next_id(),
-        raml=walk.raml,
-        location=first.location,
-        key_pos=first.key_pos,
-        value_pos=first.value_pos,
-        anchor=first.anchor,
-    )
-    synthetic.type = first.type
-    synthetic._unwrapped = True  # noqa: SLF001 - built flattened; it has no parents of its own
-
-    kind = KIND_TO_CLASS.get(first.type)
-    if kind is ObjectShape:
-        synthetic.shape = ObjectShape(synthetic, properties={}, pattern_properties={})
-    elif kind is ArrayShape:
-        synthetic.shape = ArrayShape(synthetic, items=_synthetic_items(walk, parents))
-    elif kind is not None:
-        # Every remaining kind's constructor takes only the base; the two that
-        # take children are handled above.
-        synthetic.shape = kind(synthetic)  # type: ignore[call-arg]
-    else:  # pragma: no cover - P7 leaves every reachable shape with a known kind
-        raise RamlError.new(
-            'cannot merge parents of an unresolved type',
-            first.location,
-            first.key_pos,
-            kind=ErrorKind.UNWRAPPING,
-            info={'type': first.type},
-        )
-    return synthetic
-
-
-def _synthetic_items(walk: _Walk, parents: list[BaseShape]) -> BaseShape | None:
-    """An array's synthetic needs its own `items`, one level down.
-
-    Built from the first parent that declares one. A self-referential `items`
-    (`A.items is A`) is skipped: recursion has not been marked yet, so
-    following it would not terminate.
-    """
-    for parent in parents:
-        shape = parent.shape
-        if isinstance(shape, ArrayShape) and shape.items is not None and shape.items is not parent:
-            return _make_multiple_inheritance_shape(walk, [shape.items])
-    return None
+    # The fold stands for these parents. Where one of them is a union, each
+    # variant names the parents it took, the union replaced by one member
+    # (docs/07 § 5).
+    return fold(base.inherits)
 
 
 def _unwrap_children(walk: _Walk, shape: Shape, depth: int) -> None:
@@ -582,14 +542,14 @@ def _finish(raml: Raml, base: BaseShape, depth: int, max_depth: int, unions: lis
     as a side effect of the descent rather than by a second walk.
     """
     if base._visiting:  # noqa: SLF001 - unwrap and this pass co-own the flag
-        return _make_recursive(raml, base)
+        return _make_recursive(raml, base, base)
     if base.alias is not None and base.alias._visiting:  # noqa: SLF001 - see above
         # A bare reference is an alias, so what stands here is a *copy* of the
         # referent rather than the referent itself, and the cycle would
         # otherwise close one level further in with the copy as its head. The
         # cycle a reader means is the one back to the referent, so follow the
         # alias edge `alias_to` left in place and mark against that.
-        return _make_recursive(raml, base.alias)
+        return _make_recursive(raml, base.alias, base)
     if depth > max_depth:
         raise RamlError.new(
             'type nesting too deep',
@@ -639,17 +599,20 @@ def _finish_children(raml: Raml, shape: Shape, depth: int, max_depth: int, union
                 pattern_prop.base = marked
 
 
-def _make_recursive(raml: Raml, head: BaseShape) -> BaseShape:
+def _make_recursive(raml: Raml, head: BaseShape, slot: BaseShape) -> BaseShape:
     """The back-edge itself. Validation delegates to `head`, so behaviour is
     unchanged; only the object graph becomes a DAG.
+
+    Placed where `slot`, the shape it replaces, was written: `parent: Parent`
+    is the property's key, not `Parent`'s declaration.
     """
     base = BaseShape(
         id=raml.next_id(),
         raml=raml,
-        location=head.location,
+        location=slot.location,
         name=head.name,
-        key_pos=head.key_pos,
-        value_pos=head.value_pos,
+        key_pos=slot.key_pos,
+        value_pos=slot.value_pos,
         anchor=head.anchor,
     )
     base.type = TYPE_RECURSIVE

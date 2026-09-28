@@ -193,6 +193,9 @@ class SecurityScheme:
     #: `securedBy: [null]` — "may also be called with no scheme". It binds to a
     #: real definition of type `null`, so nothing downstream tests for absence.
     is_null: bool = False
+    #: The name as written, alone: `oauth2` in `oauth2: {scopes: [read]}`.
+    key_pos: Position = UNKNOWN
+    #: The whole entry, with its parameters.
     value_pos: Position = UNKNOWN
 
     def __repr__(self) -> str:
@@ -208,6 +211,7 @@ def make_security_schemes(raml: Raml, refs: list[DirectiveRef]) -> list[Security
             location=ref.location,
             params=ref.params,
             is_null=ref.is_null_scheme,
+            key_pos=ref.key_pos,
             value_pos=ref.value_pos,
         )
         for ref in refs

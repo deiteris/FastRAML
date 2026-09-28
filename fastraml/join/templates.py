@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from fastraml import facet_names as fn
 from fastraml.errors import RamlError
 from fastraml.parser.directives import decode_trait_refs, decode_type_ref
 from fastraml.parser.resourcetypes import ResourceTypeDefinition
@@ -61,14 +62,14 @@ def body_without_media_type(method: Node) -> bool:
     if method.kind is not NodeKind.MAPPING:
         return False
     for key, value in pairs(method):
-        if key.value == 'body' and not is_media_type_map(value):
+        if key.value == fn.FACET_BODY and not is_media_type_map(value):
             return True
-        if key.value == 'responses' and value.kind is NodeKind.MAPPING:
+        if key.value == fn.FACET_RESPONSES and value.kind is NodeKind.MAPPING:
             for _code, response in pairs(value):
                 if response.kind is not NodeKind.MAPPING:
                     continue
                 for response_key, body in pairs(response):
-                    if response_key.value == 'body' and not is_media_type_map(body):
+                    if response_key.value == fn.FACET_BODY and not is_media_type_map(body):
                         return True
     return False
 
@@ -161,7 +162,7 @@ class _Walker:
                     )
                     pending += _directives(inner, source)
                 else:
-                    pending += [(inner, value, False) for key, value in pairs(source) if key.value == 'is']
+                    pending += [(inner, value, False) for key, value in pairs(source) if key.value == fn.FACET_IS]
         return found
 
 
@@ -169,10 +170,10 @@ def _directives(scope: ReferenceResolver, resource: Node) -> list[tuple[Referenc
     """A resource-shaped mapping's `type:`, its `is:`, and each of its methods' `is:`."""
     found: list[tuple[ReferenceResolver, Node, bool]] = []
     for key, value in pairs(resource):
-        if key.value in {'type', 'is'}:
-            found.append((scope, value, key.value == 'type'))
+        if key.value in {fn.FACET_TYPE, fn.FACET_IS}:
+            found.append((scope, value, key.value == fn.FACET_TYPE))
         elif key.value in METHODS and value.kind is NodeKind.MAPPING:
-            found += [(scope, item, False) for name, item in pairs(value) if name.value == 'is']
+            found += [(scope, item, False) for name, item in pairs(value) if name.value == fn.FACET_IS]
     return found
 
 

@@ -27,10 +27,32 @@ from __future__ import annotations
 
 import collections.abc
 from enum import StrEnum
+from functools import partial
+from operator import setitem
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, runtime_checkable
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.facet_names import (
+    FACET_ANNOTATION_TYPES,
+    FACET_BASE_URI,
+    FACET_BASE_URI_PARAMETERS,
+    FACET_DESCRIPTION,
+    FACET_DOCUMENTATION,
+    FACET_MEDIA_TYPE,
+    FACET_PROTOCOLS,
+    FACET_RESOURCE_TYPES,
+    FACET_SCHEMAS,
+    FACET_SECURED_BY,
+    FACET_SECURITY_SCHEMES,
+    FACET_TITLE,
+    FACET_TRAITS,
+    FACET_TYPE,
+    FACET_TYPES,
+    FACET_USAGE,
+    FACET_USES,
+    FACET_VERSION,
+)
 from fastraml.parser.annotations import DomainExtension, add_domain_extension, is_annotation_key
 from fastraml.parser.directives import decode_secured_by, make_security_schemes
 from fastraml.parser.documentation import DocumentationItem, decode_documentation_item
@@ -42,7 +64,7 @@ from fastraml.parser.resourcetypes import ResourceTypeDefinition, make_resource_
 from fastraml.parser.security import SecuritySchemeDefinition, make_security_scheme_definition
 from fastraml.parser.traits import TraitDefinition, make_trait_definition
 from fastraml.parser.uritemplates import check_uri_reference, extract_uri_template_params, unused_uri_parameters
-from fastraml.positions import UNKNOWN
+from fastraml.positions import UNKNOWN, Position
 from fastraml.registry import ParseCtx
 from fastraml.types.examples import Example, make_example
 from fastraml.types.shape import make_parameter_map, make_shape, unmarshal_types
@@ -66,14 +88,15 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
 
     from fastraml.parser.extension_merge import RemovedProperty
-    from fastraml.positions import Position
     from fastraml.registry import Raml
     from fastraml.types.base import BaseShape, Parameter, ScalarFacet
 
 __all__ = [
+    'API_HEAD_SPAN',
     'HEADS',
     'APIFragment',
     'DataTypeFragment',
+    'Declaration',
     'DocumentationItemFragment',
     'ExtensionFragment',
     'Fragment',
@@ -90,11 +113,17 @@ __all__ = [
     'decode_resource_type_definitions',
     'decode_security_scheme_definitions',
     'decode_trait_definitions',
+    'every_declaration',
     'identify_fragment',
     'parse_fragment',
+    'parse_included_fragment',
     'parse_library',
     'resolve_uses',
 ]
+
+
+#: What a declaration table holds (`_DeclaringFragment.declarations`).
+type Declaration = BaseShape | TraitDefinition | ResourceTypeDefinition | SecuritySchemeDefinition
 
 
 class FragmentKind(StrEnum):
@@ -112,6 +141,10 @@ class FragmentKind(StrEnum):
     OVERLAY = 'Overlay'
     EXTENSION = 'Extension'
 
+
+#: Where an API document says what it is: its header, on line 1. A missing
+#: `title:` is reported there, not over the whole document (docs/11 § 3).
+API_HEAD_SPAN: Final = Position(1, 1, 1, len('#%RAML 1.0') + 1)
 
 #: The first line of a document identifies it. Matching is exact, after the
 #: line ending and trailing spaces are stripped. See docs/03 § 3.
@@ -155,33 +188,14 @@ FRAGMENT_TARGETS: Final[Mapping[FragmentKind, DomainLocation]] = {
 }
 
 
-# -- facet names --------------------------------------------------------------
-
-FACET_USES: Final = 'uses'
-FACET_TYPES: Final = 'types'
-FACET_SCHEMAS: Final = 'schemas'
-FACET_ANNOTATION_TYPES: Final = 'annotationTypes'
-FACET_RESOURCE_TYPES: Final = 'resourceTypes'
-FACET_TRAITS: Final = 'traits'
-FACET_SECURITY_SCHEMES: Final = 'securitySchemes'
-FACET_SECURED_BY: Final = 'securedBy'
-FACET_USAGE: Final = 'usage'
-FACET_TITLE: Final = 'title'
-FACET_DESCRIPTION: Final = 'description'
-FACET_VERSION: Final = 'version'
-FACET_BASE_URI: Final = 'baseUri'
-FACET_BASE_URI_PARAMETERS: Final = 'baseUriParameters'
-FACET_MEDIA_TYPE: Final = 'mediaType'
-FACET_PROTOCOLS: Final = 'protocols'
-FACET_DOCUMENTATION: Final = 'documentation'
-
-
 @runtime_checkable
 class Fragment(Protocol):
     """Anything a RAML file can decode to. Capability is checked, not inherited."""
 
+    id: int
     location: str
     kind: FragmentKind | None
+    uses: dict[str, LibraryLink]
 
 
 @runtime_checkable
@@ -246,8 +260,6 @@ def unmarshal_uses(raml: Raml, value_node: Node, location: str) -> dict[str, Lib
 
     uses: dict[str, LibraryLink] = {}
     for key, value in pairs(value_node):
-        if key.value in uses:
-            raise node_error('duplicate library name', location, key, info={'library': key.value})
         uses[key.value] = LibraryLink(
             id=raml.next_id(),
             value=value.value,
@@ -466,6 +478,16 @@ class _DeclaringFragment(_NameResolver, _BaseFragment):
     def _libraries(self) -> Mapping[str, LibraryLink]:
         return self.uses
 
+    def declarations(self) -> Iterator[tuple[str, str, Declaration]]:
+        """Every declaration, as `(key, name, entity)`: table by table in
+        `_DECLARATION_TABLES` order, each in declaration order (docs/04 § 1).
+        `key` is the RAML key the table is written under.
+        """
+        for key, table in _DECLARATION_TABLES.items():
+            declared: Mapping[str, Declaration] = getattr(self, table)
+            for name, entity in declared.items():
+                yield key, name, entity
+
     # -- decoding -------------------------------------------------------------
 
     def _decode_declarations(self, key: Node, value: Node, declarations: _Declarations) -> bool:
@@ -473,20 +495,29 @@ class _DeclaringFragment(_NameResolver, _BaseFragment):
         raml = self._raml
         name = key.value
         if name in (FACET_TYPES, FACET_SCHEMAS):
-            self.types = unmarshal_types(raml, declarations.types(key, value), self.location)
+            unmarshal_types(raml, declarations.types(key, value), self.location, self.types)
         elif name == FACET_ANNOTATION_TYPES:
-            self.annotation_types = unmarshal_types(raml, value, self.location, is_annotation=True)
+            unmarshal_types(raml, value, self.location, self.annotation_types, is_annotation=True)
         elif name == FACET_TRAITS:
-            self.traits = decode_trait_definitions(raml, value, self.location)
+            decode_trait_definitions(raml, value, self.location, self.traits)
         elif name == FACET_RESOURCE_TYPES:
-            self.resource_types = decode_resource_type_definitions(raml, value, self.location)
+            decode_resource_type_definitions(raml, value, self.location, self.resource_types)
         elif name == FACET_SECURITY_SCHEMES:
-            self.security_schemes = decode_security_scheme_definitions(raml, value, self.location)
+            decode_security_scheme_definitions(raml, value, self.location, self.security_schemes)
         elif is_annotation_key(name):
             add_domain_extension(raml, self.annotations, self.location, key, value)
         else:
             return False
         return True
+
+
+def every_declaration(raml: Raml) -> Iterator[tuple[str, str, Declaration]]:
+    """`declarations()` of every fragment that declares any, the API and each
+    library, in the order they were parsed (docs/04 § 1).
+    """
+    for fragment in raml.fragments.values():
+        if isinstance(fragment, _DeclaringFragment):
+            yield from fragment.declarations()
 
 
 class Library(_DeclaringFragment):
@@ -586,7 +617,7 @@ class APIFragment(_DeclaringFragment):
                 accumulator.add(err)
 
         if self.title is None:
-            accumulator.add(node_error('title is required', self.location, node))
+            accumulator.add(RamlError.new('title is required', self.location, API_HEAD_SPAN))
         # After the loop, since `baseUri` and `baseUriParameters` come in either
         # order. A `baseUri` that failed has reported already, and is not
         # followed by one error per parameter (docs/08 § 6.2).
@@ -810,7 +841,7 @@ class DataTypeFragment(_UsesOnlyFragment):
                 NodeKind.MAPPING,
                 TAG_MAP,
                 '',
-                [Node(NodeKind.SCALAR, TAG_STR, 'type'), Node(NodeKind.SCALAR, TAG_STR, text)],
+                [Node(NodeKind.SCALAR, TAG_STR, FACET_TYPE), Node(NodeKind.SCALAR, TAG_STR, text)],
             )
         )
 
@@ -843,7 +874,7 @@ class NamedExample(_UsesOnlyFragment):
         filtered, uses = filter_fragment_uses(self._raml, node, self.location)
         self.uses = uses
         for key, value in pairs(filtered):
-            self.examples[key.value] = make_example(self._raml, value, key.value, self.location)
+            self.examples[key.value] = make_example(self._raml, key, value, key.value, self.location)
 
 
 class DocumentationItemFragment(_UsesOnlyFragment):
@@ -880,8 +911,12 @@ class _DefinitionFragment(_UsesOnlyFragment):
 
     def decode(self, node: Node) -> None:
         filtered, self.uses = filter_fragment_uses(self._raml, node, self.location)
-        self.definition = _one_definition(self._raml, None, filtered, self.location, self._KIND)
-        self.definition.name = uri_base(self.location)
+        _one_definition(self._raml, None, filtered, self.location, self._KIND, attach=self._attach)
+
+    def _attach(self, definition: Any) -> None:
+        """The definition is named after the file, which is part of its identity."""
+        definition.name = uri_base(self.location)
+        self.definition = definition
 
 
 class TraitFragment(_DefinitionFragment):
@@ -917,67 +952,88 @@ class SecuritySchemeFragment(_DefinitionFragment):
 # would be a cycle (docs/02 § 2).
 
 
+class _DefinitionBuilder(Protocol):
+    def __call__(
+        self, raml: Raml, key_node: Node | None, value_node: Node, location: str, *, attach: Callable[[Any], None]
+    ) -> Any: ...
+
+
 #: The builder for each kind a definition fragment or declaration map holds.
-_DEFINITION_BUILDERS: Final[Mapping[FragmentKind, Callable[[Raml, Node | None, Node, str], Any]]] = {
+_DEFINITION_BUILDERS: Final[Mapping[FragmentKind, _DefinitionBuilder]] = {
     FragmentKind.TRAIT: make_trait_definition,
     FragmentKind.RESOURCE_TYPE: make_resource_type_definition,
     FragmentKind.SECURITY_SCHEME: make_security_scheme_definition,
 }
 
 
-def _one_definition(raml: Raml, key: Node | None, value: Node, location: str, kind: FragmentKind) -> Any:
-    """Build one definition, following an `!include` to the linked fragment's."""
-    definition = _DEFINITION_BUILDERS[kind](raml, key, value, location)
+def _one_definition(  # noqa: PLR0913 - the declaration, its kind, and where to attach it
+    raml: Raml, key: Node | None, value: Node, location: str, kind: FragmentKind, *, attach: Callable[[Any], None]
+) -> None:
+    """Build one definition, following an `!include` to the linked fragment's.
+
+    The builder attaches it and marks a failure in its own content. A linked
+    fragment that fails marks it here (docs/13 § 1).
+    """
+    definition = _DEFINITION_BUILDERS[kind](raml, key, value, location, attach=attach)
     if definition.link_uri:
-        fragment = parse_fragment(raml, definition.link_uri, kind)
+        with raml.marking(definition):
+            fragment = parse_included_fragment(raml, definition.link_uri, kind, value, location)
         definition.link = getattr(fragment, 'definition', None)
-    return definition
 
 
-def _definitions(raml: Raml, node: Node, location: str, kind: FragmentKind) -> dict[str, Any]:
-    """Decode a `traits:`, `resourceTypes:` or `securitySchemes:` map, one definition per name."""
+def _definitions(raml: Raml, node: Node, location: str, kind: FragmentKind, declared: dict[str, Any]) -> None:
+    """Decode a `traits:`, `resourceTypes:` or `securitySchemes:` map into `declared`.
+
+    One definition per name. `declared` is the fragment's own map, filled
+    before the accumulated errors are raised, so one bad definition does not
+    hide the rest (docs/11 § 2).
+    """
     if node.tag == TAG_NULL:
-        return {}
+        return
     if node.kind is not NodeKind.MAPPING:
         raise node_error(f'{kind} declarations must be a mapping', location, node)
-    declared: dict[str, Any] = {}
     accumulator = Accumulator()
     for key, value in pairs(node):
         try:
-            declared[key.value] = _one_definition(raml, key, value, location, kind)
+            _one_definition(raml, key, value, location, kind, attach=partial(setitem, declared, key.value))
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()
-    return declared
 
 
-def decode_trait_definitions(raml: Raml, node: Node, location: str) -> dict[str, TraitDefinition]:
-    return _definitions(raml, node, location, FragmentKind.TRAIT)
+def decode_trait_definitions(raml: Raml, node: Node, location: str, declared: dict[str, TraitDefinition]) -> None:
+    _definitions(raml, node, location, FragmentKind.TRAIT, declared)
 
 
-def decode_resource_type_definitions(raml: Raml, node: Node, location: str) -> dict[str, ResourceTypeDefinition]:
-    return _definitions(raml, node, location, FragmentKind.RESOURCE_TYPE)
+def decode_resource_type_definitions(
+    raml: Raml, node: Node, location: str, declared: dict[str, ResourceTypeDefinition]
+) -> None:
+    _definitions(raml, node, location, FragmentKind.RESOURCE_TYPE, declared)
 
 
-def decode_security_scheme_definitions(raml: Raml, node: Node, location: str) -> dict[str, SecuritySchemeDefinition]:
-    return _definitions(raml, node, location, FragmentKind.SECURITY_SCHEME)
+def decode_security_scheme_definitions(
+    raml: Raml, node: Node, location: str, declared: dict[str, SecuritySchemeDefinition]
+) -> None:
+    _definitions(raml, node, location, FragmentKind.SECURITY_SCHEME, declared)
 
 
 class _Declarations:
-    """Tracks the `types:` / `schemas:` mutual exclusion within one document."""
+    """Tracks the `types:` / `schemas:` mutual exclusion within one document.
+
+    Composition rejects a key written twice (docs/03 § 1), so a second call
+    here is always the other key.
+    """
 
     __slots__ = ('_location', '_seen')
 
     def __init__(self, location: str) -> None:
         self._location = location
-        self._seen = ''
+        self._seen = False
 
     def types(self, key: Node, value: Node) -> Node:
-        if self._seen and self._seen != key.value:
-            raise node_error(
-                'types and schemas are mutually exclusive', self._location, value, info={'field': key.value}
-            )
-        self._seen = key.value
+        if self._seen:
+            raise node_error('types and schemas are mutually exclusive', self._location, key, info={'field': key.value})
+        self._seen = True
         return value
 
 
@@ -994,7 +1050,7 @@ def unmarshal_documentation_items(
             # The target is a fragment with its own cache, so the reference is
             # noted rather than resolved: resolving would read the file twice.
             target = note_include_ref(raml, item_node, location)
-            fragment = parse_fragment(raml, target, FragmentKind.DOCUMENTATION_ITEM)
+            fragment = parse_included_fragment(raml, target, FragmentKind.DOCUMENTATION_ITEM, item_node, location)
             if isinstance(fragment, DocumentationItemFragment) and fragment.item is not None:
                 items.append(fragment.item)
         else:
@@ -1072,7 +1128,7 @@ def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> None:
     head = read_head(text)
     found = identify_fragment(head)
     if found is None:
-        raise RamlError.new('unknown fragment kind', uri, info={'head': head}, kind=ErrorKind.PARSING)
+        raise RamlError.new('unknown fragment kind', uri, kind=ErrorKind.PARSING)
     if found is kind:
         return
     if kind is FragmentKind.DATA_TYPE and found is FragmentKind.ANNOTATION_TYPE:
@@ -1140,6 +1196,22 @@ def _decode_json_data_type(raml: Raml, uri: str, text: str) -> DataTypeFragment:
     raml.put_fragment(uri, fragment)
     fragment.decode_json_schema(text)
     return fragment
+
+
+def parse_included_fragment(raml: Raml, target: str, kind: FragmentKind, node: Node, location: str) -> Fragment:
+    """`parse_fragment` for the `!include` `node` names, `target`, with a
+    failure wrapped at the include: the fragment's own frames carry no place in
+    the including file, and one that fails to load carries none at all
+    (docs/11 § 3). `include` is no fatal key, so the failure stays local
+    (docs/11 § 2).
+    """
+    try:
+        return parse_fragment(raml, target, kind)
+    except RamlError as err:
+        written = raml.document_location(node, location)
+        raise RamlError.wrap(
+            'include', err, written, node.full_position, kind=ErrorKind.LOADING, info={'path': target}
+        ) from err
 
 
 def parse_library(raml: Raml, uri: str) -> Library:

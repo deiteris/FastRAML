@@ -36,17 +36,16 @@ __all__ = [
     'backend_name',
     'compose',
     'decode_source',
-    'duplicate_keys',
     'end_column',
     'end_line',
     'is_null',
-    'last_leaf',
     'mark_subtree',
     'node_error',
     'pairs',
     'plain_tag',
     'read_head',
     'with_content',
+    'with_grafts',
     'with_value',
 ]
 
@@ -302,20 +301,62 @@ class Node:
         """The span of this node including every descendant.
 
         For a scalar this equals `position`. For a mapping or sequence it runs
-        to the end of the last leaf, so an editor underlines the whole block.
+        to the end of the last leaf, so an editor underlines the whole block,
+        not the line break PyYAML ends a block collection at. A flow
+        collection ends past its bracket, on the last leaf's line, and keeps
+        that end, and so does a block that ends in one; one whose bracket is
+        on a line of its own loses it.
         """
         if not self.content:
             return self.position
-        leaf = last_leaf(self)
-        return Position(self.line, self.column, leaf.end_line, leaf.end_column)
+        end = _end(self)
+        if end == (self.end_line, self.end_column):
+            return self.position
+        return Position(self.line, self.column, *end)
+
+
+class _Grafted(Node):
+    """A container `with_grafts` rebuilt, which spans what its model spans.
+
+    Its content holds what a merge grafted, an Overlay replaced or a
+    substitution supplied, written elsewhere in the file or in another one,
+    so it ends where the node it was rebuilt from ends, taken when it is
+    built: keeping that node, or its last children, instead kept every
+    container an Overlay merged alive, 20 MB on `extensions` (docs/03 § 1).
+    """
+
+    __slots__ = ('written_end',)
+
+    def __init__(self, model: Node, content: list[Node]) -> None:
+        # Assigned here rather than through `Node.__init__`: a merge builds one
+        # per container it touches.
+        self.kind = model.kind
+        self.tag = model.tag
+        self.value = model.value
+        self.content = content
+        self.line = model.line
+        self.column = model.column
+        self.end_line = model.end_line
+        self.end_column = model.end_column
+        self._position = None
+        #: Where the model ends, as `full_position` reads it.
+        self.written_end: tuple[int, int] = model.written_end if isinstance(model, _Grafted) else _end(model)
+
+    @property
+    def full_position(self) -> Position:
+        end = self.written_end
+        if end == (self.end_line, self.end_column):
+            return self.position
+        return Position(self.line, self.column, *end)
 
 
 def with_content(model: Node, content: list[Node]) -> Node:
     """A fresh node with `model`'s kind, tag and span, holding `content`.
 
-    The one way a pass rebuilds a container: a filter, a merge or a
-    substitution never edits the tree it read, and every retained child keeps
-    its identity, so provenance lookups still find it.
+    The one way a pass rebuilds a container from some of its own children:
+    a filter never edits the tree it read, and every retained child keeps its
+    identity, so provenance lookups still find it. A container given children
+    written elsewhere is built by `with_grafts`.
     """
     return Node(
         model.kind,
@@ -327,6 +368,14 @@ def with_content(model: Node, content: list[Node]) -> Node:
         model.end_line,
         model.end_column,
     )
+
+
+def with_grafts(model: Node, content: list[Node]) -> Node:
+    """`with_content` for a merge, an Overlay or a substitution, whose
+    `content` holds nodes written elsewhere: the result spans what `model`
+    spans (docs/03 § 1).
+    """
+    return _Grafted(model, content)
 
 
 def with_value(model: Node, value: str) -> Node:
@@ -358,21 +407,48 @@ def mark_subtree[V](marks: dict[Node, V], node: Node, value: V) -> None:
         stack += current.content
 
 
-def last_leaf(node: Node) -> Node:
-    """The deepest last-child descendant. Iterative, so depth costs nothing."""
+def _end(node: Node) -> tuple[int, int]:
+    """Where `node` and its descendants end, as `full_position` reads it: its
+    deepest last-child descendant's end, or a grafted descendant's written
+    end, and past the bracket of any flow collection on the way down that
+    closes on that line. Iterative, so depth costs nothing.
+
+    An alias's copy keeps its anchor's position, which may be anywhere
+    earlier: a last child that starts before its previous sibling ends, or
+    before its container starts, is passed over for that sibling or container.
+    """
+    containers: list[Node] = []
     while node.content:
-        node = node.content[-1]
-    return node
+        containers.append(node)
+        last = node.content[-1]
+        before = node.content[-2] if len(node.content) > 1 else None
+        floor = (node.line, node.column) if before is None else (before.end_line, before.end_column)
+        if (last.line, last.column) < floor:
+            if before is None:
+                end = node.end_line, node.end_column
+                break
+            last = before
+        if isinstance(last, _Grafted):
+            end = last.written_end
+            break
+        node = last
+    else:
+        end = node.end_line, node.end_column
+    # The outermost bracket closing on the last leaf's line is the furthest.
+    for container in containers:
+        if container.end_line == end[0] and container.end_column > end[1]:
+            return container.end_line, container.end_column
+    return end
 
 
 def end_line(node: Node) -> int:
-    """The last source line occupied by this node and its descendants."""
-    return last_leaf(node).end_line
+    """The last line `full_position` spans."""
+    return node.full_position.end_line
 
 
 def end_column(node: Node) -> int:
-    """The exclusive end column of this node's last descendant token."""
-    return last_leaf(node).end_column
+    """The exclusive end column `full_position` spans."""
+    return node.full_position.end_column
 
 
 def is_null(node: Node) -> bool:
@@ -382,25 +458,6 @@ def is_null(node: Node) -> bool:
     test this constantly.
     """
     return node.tag == TAG_NULL
-
-
-def duplicate_keys(node: Node) -> list[tuple[str, Node]]:
-    """Keys appearing more than once in a mapping, with their later key nodes.
-
-    YAML permits duplicates; RAML does not, and no RAML construct gives them a
-    meaning. `compose` records rather than rejects them so that each decoder can
-    report the duplicate at the right position with the right message.
-    """
-    if node.kind is not NodeKind.MAPPING:
-        return []
-    seen: set[str] = set()
-    found: list[tuple[str, Node]] = []
-    for key, _value in pairs(node):
-        if key.value in seen:
-            found.append((key.value, key))
-        else:
-            seen.add(key.value)
-    return found
 
 
 def node_error(
@@ -539,11 +596,24 @@ class _Converter:
         try:
             if isinstance(node, yaml.MappingNode):
                 content: list[Node] = []
+                seen: set[str] = set()
                 for key, value in node.value:
                     key_node = self.convert(key, depth + 1)
                     # Decoders compare and hash mapping keys constantly;
                     # interning makes equal keys share one object.
-                    key_node.value = sys.intern(key_node.value)
+                    name = key_node.value = sys.intern(key_node.value)
+                    if key_node.kind is NodeKind.SCALAR:
+                        # YAML 1.2 requires unique keys. Compared as text, so
+                        # `200` and `'200'` are one key, as RAML reads them.
+                        if name in seen:
+                            raise RamlError.new(
+                                'duplicate key',
+                                self._uri,
+                                key_node.position,
+                                kind=ErrorKind.PARSING,
+                                info={'key': name},
+                            )
+                        seen.add(name)
                     content.append(key_node)
                     content.append(self.convert(value, depth + 1))
                 kind = NodeKind.MAPPING
@@ -667,7 +737,8 @@ def _syntax_error(err: yaml.MarkedYAMLError, uri: str) -> RamlError:
     it is not printed twice.
     """
     mark = err.problem_mark or err.context_mark
-    position = Position(mark.line + 1, mark.column + 1) if mark is not None else None
+    # A mark is a point: the character at it.
+    position = None if mark is None else Position(mark.line + 1, mark.column + 1, mark.line + 1, mark.column + 2)
     message = err.problem or err.context or str(err)
     info = {'context': err.context} if err.context and err.problem else None
     return RamlError.new(message.strip(), uri, position, kind=ErrorKind.PARSING, info=info)

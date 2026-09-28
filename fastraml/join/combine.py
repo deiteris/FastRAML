@@ -18,6 +18,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from fastraml import facet_names as fn
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.join.baseuri import CreatedEndpoint, common_segments, plan_created, split_base_uri, uri_variables
 from fastraml.join.compare import Difference, IncludeReader, Side, first_difference
@@ -59,16 +60,16 @@ __all__ = ['BaseUriOverride', 'JoinOptions', 'join']
 
 #: The name maps combined by name, and the `kind` a conflict reports for each.
 _NAME_MAPS: Final = (
-    ('types', 'type'),
-    ('annotationTypes', 'annotationType'),
-    ('traits', 'trait'),
-    ('resourceTypes', 'resourceType'),
-    ('securitySchemes', 'securityScheme'),
+    (fn.FACET_TYPES, 'type'),
+    (fn.FACET_ANNOTATION_TYPES, 'annotationType'),
+    (fn.FACET_TRAITS, 'trait'),
+    (fn.FACET_RESOURCE_TYPES, 'resourceType'),
+    (fn.FACET_SECURITY_SCHEMES, 'securityScheme'),
 )
 #: Root defaults (docs/20 § 5), in output order.
-_DEFAULTS: Final = ('protocols', 'mediaType', 'securedBy')
+_DEFAULTS: Final = (fn.FACET_PROTOCOLS, fn.FACET_MEDIA_TYPE, fn.FACET_SECURED_BY)
 #: The root values an option may give (docs/20 § 3.1), in output order.
-_SINGLE: Final = ('title', 'description', 'version')
+_SINGLE: Final = (fn.FACET_TITLE, fn.FACET_DESCRIPTION, fn.FACET_VERSION)
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,8 +179,8 @@ def _read_inputs(paths: Sequence[str | os.PathLike[str]], options: ParseOptions)
         source = _Input(os.fspath(path), uri, raml, api, reader)
         root = raml.source_nodes[uri]
         for key, value in pairs(root):
-            name = 'types' if key.value == 'schemas' else key.value
-            if key.value == 'uses':
+            name = fn.FACET_TYPES if key.value == fn.FACET_SCHEMAS else key.value
+            if key.value == fn.FACET_USES:
                 source.fields[name] = (key, value)
             else:
                 source.fields[name] = (key, _absolutize(value, uri, reader))
@@ -290,7 +291,7 @@ class _Pusher:
     def __init__(self, source: _Input) -> None:
         self._source = source
         self._push = source.push
-        media = source.push.get('mediaType')
+        media = source.push.get(fn.FACET_MEDIA_TYPE)
         self._media = _media_types(media) if media is not None else []
 
     def _wrap(self, body: Node) -> Node:
@@ -308,9 +309,9 @@ class _Pusher:
         changed = False
         for key, value in pairs(holder):
             new = value
-            if key.value == 'body':
+            if key.value == fn.FACET_BODY:
                 new = self._wrap(value)
-            elif key.value == 'responses' and value.kind is NodeKind.MAPPING:
+            elif key.value == fn.FACET_RESPONSES and value.kind is NodeKind.MAPPING:
                 items: list[Node] = []
                 for code, response in pairs(value):
                     items += [code, self._bodies(response) if response.kind is NodeKind.MAPPING else response]
@@ -328,9 +329,9 @@ class _Pusher:
         if self._media:
             base = self._bodies(base)
         added: list[Node] = []
-        for name in ('protocols', 'securedBy'):
+        for name in (fn.FACET_PROTOCOLS, fn.FACET_SECURED_BY):
             pushed = self._push.get(name)
-            if pushed is None or name in names or (name == 'securedBy' and resource_secured):
+            if pushed is None or name in names or (name == fn.FACET_SECURED_BY and resource_secured):
                 continue
             added += [_scalar(name), pushed]
         if not added and (base is method or not base.content):
@@ -340,7 +341,7 @@ class _Pusher:
     def resource(self, resource: Node) -> Node:
         if resource.kind is not NodeKind.MAPPING:
             return resource
-        secured = any(key.value == 'securedBy' for key, _ in pairs(resource))
+        secured = any(key.value == fn.FACET_SECURED_BY for key, _ in pairs(resource))
         content: list[Node] = []
         changed = False
         for key, item in pairs(resource):
@@ -379,16 +380,22 @@ def _check_pushed_templates(source: _Input, errors: Accumulator) -> None:
     """`join default reaches template` for each default a template would change."""
     for application in _applications(source):
         resource = application.resource
-        secured = resource.kind is NodeKind.MAPPING and any(key.value == 'securedBy' for key, _ in pairs(resource))
+        secured = resource.kind is NodeKind.MAPPING and any(
+            key.value == fn.FACET_SECURED_BY for key, _ in pairs(resource)
+        )
         for name in source.push:
             reasons: list[tuple[str, str]] = [(unresolved, 'parameter') for unresolved in application.unresolved]
             for applied in application.applied:
                 definition = applied.definition
-                if name != 'mediaType' and sets_key(definition, name):
+                if name != fn.FACET_MEDIA_TYPE and sets_key(definition, name):
                     reasons.append((applied.name, 'sets'))
-                if name == 'mediaType' and template_bodies_without_media_type(definition):
+                if name == fn.FACET_MEDIA_TYPE and template_bodies_without_media_type(definition):
                     reasons.append((applied.name, 'body'))
-            if name != 'mediaType' and application.contributed_methods and not (name == 'securedBy' and secured):
+            if (
+                name != fn.FACET_MEDIA_TYPE
+                and application.contributed_methods
+                and not (name == fn.FACET_SECURED_BY and secured)
+            ):
                 reasons.extend(
                     (applied.name, 'method')
                     for applied in application.applied
@@ -519,7 +526,7 @@ class _BaseUriPlan:
 
 def _declarations(source: _Input, parameters: Node | None) -> dict[str, tuple[Node, Node]]:
     if parameters is None:
-        found = source.fields.get('baseUriParameters')
+        found = source.fields.get(fn.FACET_BASE_URI_PARAMETERS)
         if found is None:
             return {}
         parameters = found[1]
@@ -536,7 +543,7 @@ def _effective_base_uris(
     declared: list[dict[str, tuple[Node, Node]]] = []
     for source in inputs:
         override = options.base_uris.get(source.uri)
-        own = source.fields.get('baseUri')
+        own = source.fields.get(fn.FACET_BASE_URI)
         if override is not None:
             texts.append(override.uri)
             kept = _declarations(source, override.parameters)
@@ -560,7 +567,7 @@ def _shared_parameters(
     """
     parameters: list[_Entry] = []
     for name in uri_variables(base_uri):
-        if name == 'version':
+        if name == fn.FACET_VERSION:
             continue
         entries = [
             None if found is None else _Entry(source, source.uri, *found)
@@ -655,7 +662,7 @@ def _plan_base_uri(
 
 
 def _version_text(source: _Input) -> str | None:
-    found = source.fields.get('version')
+    found = source.fields.get(fn.FACET_VERSION)
     return None if found is None else found[1].value
 
 
@@ -664,7 +671,11 @@ def _version_text(source: _Input) -> str | None:
 
 def _single_values(inputs: list[_Input], options: JoinOptions, errors: Accumulator) -> dict[str, Node]:
     """`title`, `description` and `version`: the option, else the shared value (docs/20 § 3.1)."""
-    given = {'title': options.title, 'description': options.description, 'version': options.version}
+    given = {
+        fn.FACET_TITLE: options.title,
+        fn.FACET_DESCRIPTION: options.description,
+        fn.FACET_VERSION: options.version,
+    }
     out: dict[str, Node] = {}
     for name in _SINGLE:
         option = given[name]
@@ -744,7 +755,7 @@ def _libraries(inputs: list[_Input], errors: Accumulator) -> dict[str, tuple[str
     """`uses` aliases, each with the library URI it names (docs/20 § 3.2)."""
     libraries: dict[str, tuple[str, _Entry]] = {}
     for source in inputs:
-        for name, entry in _map_entries(source, 'uses'):
+        for name, entry in _map_entries(source, fn.FACET_USES):
             target = resolve_ref_uri(source.raml, entry.value.value, entry.file, entry.value.position)
             earlier = libraries.get(name)
             if earlier is None:
@@ -762,7 +773,7 @@ def _libraries(inputs: list[_Input], errors: Accumulator) -> dict[str, tuple[str
 
 
 def _documentation(source: _Input, names: _Names) -> None:
-    found = source.fields.get('documentation')
+    found = source.fields.get(fn.FACET_DOCUMENTATION)
     if found is None:
         return
     if found[1].kind is not NodeKind.SEQUENCE:
@@ -770,7 +781,7 @@ def _documentation(source: _Input, names: _Names) -> None:
     for item in found[1].content:
         # An item may be a DocumentationItem fragment.
         expanded, item_file = _expand(source, item)
-        title = next((value for key, value in pairs(expanded) if key.value == 'title'), None)
+        title = next((value for key, value in pairs(expanded) if key.value == fn.FACET_TITLE), None)
         if title is not None:
             names.add(title.value, _Entry(source, item_file or source.uri, title, expanded))
 
@@ -790,7 +801,7 @@ def _collect(inputs: list[_Input], options: JoinOptions, errors: Accumulator) ->
 
     combined.libraries = _libraries(inputs, errors)
     combined.maps = {name: _Names(kind, errors) for name, kind in _NAME_MAPS}
-    combined.documentation = documentation = _Names('documentation', errors)
+    combined.documentation = documentation = _Names(fn.FACET_DOCUMENTATION, errors)
     combined.annotations = annotations = _Names('annotation', errors)
     for source in inputs:
         for name, names in combined.maps.items():
@@ -827,9 +838,9 @@ def _root_values(combined: _Combined, writer: _Writer) -> list[Node]:
             content += [_scalar(name), combined.singles[name]]
     plan = combined.plan
     if plan.base_uri is not None:
-        content += [_scalar('baseUri'), _scalar(plan.base_uri)]
+        content += [_scalar(fn.FACET_BASE_URI), _scalar(plan.base_uri)]
         if plan.parameters:
-            content += [_scalar('baseUriParameters'), _entries_mapping(plan.parameters, writer)]
+            content += [_scalar(fn.FACET_BASE_URI_PARAMETERS), _entries_mapping(plan.parameters, writer)]
     for name in _DEFAULTS:
         kept = combined.defaults.get(name)
         if kept is not None:
@@ -842,12 +853,12 @@ def _output(combined: _Combined, writer: _Writer) -> Node:
     content = _root_values(combined, writer)
     if combined.documentation is not None and combined.documentation.entries:
         items = [writer.value(entry.value, entry.input) for entry in combined.documentation.entries.values()]
-        content += [_scalar('documentation'), Node(NodeKind.SEQUENCE, TAG_SEQ, '', items)]
+        content += [_scalar(fn.FACET_DOCUMENTATION), Node(NodeKind.SEQUENCE, TAG_SEQ, '', items)]
     if combined.libraries:
         uses: list[Node] = []
         for target, entry in combined.libraries.values():
             uses += [entry.key, writer.library(target, entry)]
-        content += [_scalar('uses'), _mapping(uses)]
+        content += [_scalar(fn.FACET_USES), _mapping(uses)]
     for name, names in combined.maps.items():
         if names.entries:
             content += [_scalar(name), _entries_mapping(names.entries.values(), writer)]

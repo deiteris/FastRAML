@@ -44,10 +44,21 @@ if TYPE_CHECKING:
 
 BASELINE_PATH = Path(__file__).parent / 'baselines.json'
 
-#: The six configurations every bench runs (docs/12 § 4). `unwrap+graph` and
-#: `unwrap+lint` measure the consumer paths: parse, unwrap, then project or
-#: lint. Each runs in a fresh subprocess, so one bench cannot inflate another.
-CONFIGS: tuple[str, ...] = ('parse', 'unwrap', 'validate', 'unwrap+validate', 'unwrap+graph', 'unwrap+lint')
+#: The eight configurations every bench runs (docs/12 § 4). `unwrap+graph`,
+#: `unwrap+lint` and `unwrap+occurrences` measure the consumer paths: parse,
+#: unwrap, then project, lint or index. `service` is an edit in the language
+#: service: a changed buffer, its reparse, its diagnostics and its occurrence
+#: index. Each runs in a fresh subprocess, so one bench cannot inflate another.
+CONFIGS: tuple[str, ...] = (
+    'parse',
+    'unwrap',
+    'validate',
+    'unwrap+validate',
+    'unwrap+graph',
+    'unwrap+lint',
+    'unwrap+occurrences',
+    'service',
+)
 
 #: For `compare`. Generous on purpose: it flags a change that made something
 #: much slower, not a noisy machine (docs/12 § 5).
@@ -78,9 +89,12 @@ BENCHES: tuple[Bench, ...] = (
     Bench('extensions', lambda root, scale: corpus.write_extensions(root, resource_count=_at(500, scale))),
     Bench('validate', lambda root, scale: corpus.write_validate(root, type_count=_at(1000, scale))),
     Bench('jsonschema', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
+    Bench('schema-export', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
+    Bench('raml-schema', lambda root, scale: corpus.write_validate(root, type_count=_at(200, scale))),
     Bench('enums', lambda root, scale: corpus.write_enums(root, family_count=_at(40, scale))),
     Bench('unions', lambda root, scale: corpus.write_unions(root, family_count=_at(60, scale))),
     Bench('facets', lambda root, scale: corpus.write_facets(root, family_count=_at(150, scale))),
+    Bench('inheritance', lambda root, scale: corpus.write_inheritance(root, family_count=_at(150, scale))),
     Bench('templates', lambda root, scale: corpus.write_templates(root, resource_count=_at(250, scale))),
 )
 
@@ -108,7 +122,16 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     """Measure one configuration. Runs in the subprocess, not the driver."""
     from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - see module docstring
 
-    options = ParseOptions(unwrap='unwrap' in config, validate='validate' in config, retain_source='lint' in config)
+    if config == 'unwrap' and bench in {'schema-export', 'raml-schema'}:
+        return _measure_schema_export(bench, entry, repeat)
+    if config == 'service':
+        return _measure_edit(bench, entry, repeat)
+    options = ParseOptions(
+        unwrap='unwrap' in config,
+        validate='validate' in config,
+        retain_source='lint' in config,
+        retain_text='occurrences' in config,
+    )
     if 'lint' in config:
         from fastraml.views.lint import Config, Linter, builtin_registry  # noqa: PLC0415 - as above
 
@@ -118,7 +141,59 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
         from fastraml.views.graph import build_graph  # noqa: PLC0415 - as above
 
         return measure(bench, config, lambda: build_graph(parse_from_path(entry, options)), repeat=repeat)
+    if 'occurrences' in config:
+        from fastraml.views.occurrences import build_occurrences  # noqa: PLC0415 - as above
+
+        return measure(bench, config, lambda: build_occurrences(parse_from_path(entry, options)), repeat=repeat)
     return measure(bench, config, lambda: parse_from_path(entry, options), repeat=repeat)
+
+
+def _measure_schema_export(bench: str, entry: Path, repeat: int) -> Measurement:
+    from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - feature workload only
+
+    if bench == 'schema-export':
+        from fastraml.views.raml import to_raml  # noqa: PLC0415 - feature workload only
+
+        def export_raml() -> tuple[object, list[str]]:
+            raml = parse_from_path(entry, ParseOptions(unwrap=True))
+            return raml, [to_raml(base.shape) for base in raml.types_in(raml.location).values()]
+
+        return measure(bench, 'unwrap', export_raml, repeat=repeat)
+
+    from fastraml.views.jsonschema import to_json_schema  # noqa: PLC0415 - feature workload only
+
+    def export_json() -> tuple[object, list[str]]:
+        raml = parse_from_path(entry, ParseOptions(unwrap=True))
+        return raml, [json.dumps(to_json_schema(base)[0]) for base in raml.types_in(raml.location).values()]
+
+    return measure(bench, 'unwrap', export_json, repeat=repeat)
+
+
+def _measure_edit(bench: str, entry: Path, repeat: int) -> Measurement:
+    """One edit to the root's buffer, and what the editor then asks for first."""
+    from itertools import count  # noqa: PLC0415 - as above
+
+    from fastraml.gctuning import tuned_gc  # noqa: PLC0415 - as above
+    from fastraml.service import queries  # noqa: PLC0415 - as above
+    from fastraml.service.workspace import Workspace  # noqa: PLC0415 - as above
+    from fastraml.uris import path_to_file_uri  # noqa: PLC0415 - as above
+
+    root = path_to_file_uri(entry)
+    workspace = Workspace([path_to_file_uri(entry.parent)])
+    text = entry.read_text(encoding='utf-8')
+    versions = count(1)
+
+    def edit() -> object:
+        version = next(versions)
+        workspace.change(root, f'{text}\n# edit {version}\n', version)
+        # As the server does after the pause, before the parse (docs/21 § 2).
+        workspace.collect()
+        snapshot = workspace.snapshot(root)
+        return queries.diagnostics(snapshot, lint=False), snapshot.occurrences
+
+    # A server defers full collections for its whole run (docs/21 § 2).
+    with tuned_gc():
+        return measure(bench, 'service', edit, repeat=repeat)
 
 
 # -- the driver ---------------------------------------------------------------
@@ -241,7 +316,10 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'enums': 'unwrap+validate',
     'unions': 'unwrap+validate',
     'facets': 'unwrap+validate',
+    'inheritance': 'unwrap+validate',
     'templates': 'unwrap+validate',
+    'schema-export': 'unwrap',
+    'raml-schema': 'unwrap',
 }
 
 

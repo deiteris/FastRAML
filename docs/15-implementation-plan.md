@@ -28,6 +28,24 @@ covered (docs/20 § 11).
 Potential consumers and tooling include an LSP, more editor recovery in
 `parse_lenient`, and improved remote-include latency. These are not commitments
 and must not change parser rules without an owning design document and tests.
+An LSP and MCP design was drafted in
+[archive/language-server.md](archive/language-server.md). Its parser
+prerequisite, a trustworthy `parse_lenient` model, is analysed in
+[research/partial-models.md](research/partial-models.md), and the ordered plan
+is [research/language-service-plan.md](research/language-service-plan.md).
+The architecture the service is built to, and the parser facts it took, is
+[research/language-service-architecture.md](research/language-service-architecture.md).
+M1 to M3 are done and M4 is in progress; `docs/21` describes the service as
+built. Completion (M5) comes next.
+
+**Deprecated aliases as a model fact (proposed).** `deprecated-schemas` is on
+by default and reads `source_info`, so every lint-enabled parse, the language
+service's included, retains each declaration's YAML subtree: +7.66 MB on
+`large`, against +0.56 MB for the text alone. It needs only where a `schema:`
+or `schemas:` key was accepted, which the decoder knows. Recording those
+(file, position, key) on the model would let the default rule set run on
+`retain_text`; the three off-by-default rules that inspect how a declaration
+was written keep `retain_source`.
 
 **Sampled examples in the tree (undecided).** The viewer's request and response
 panel (parked on `feat/viewer-request-samples`) needs a working body for each

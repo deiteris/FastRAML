@@ -20,7 +20,7 @@ import re
 import pytest
 import yaml
 
-from fastraml import ParseOptions, parse_from_path
+from fastraml import ParseOptions
 from fastraml.types.base import facets_of
 from fastraml.types.jsonschema_ import projected
 from fastraml.views.graph import build_graph
@@ -77,9 +77,14 @@ types:
 
 
 @pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
+
+
+@pytest.fixture
 def shown(workspace):
     root = workspace({'lib.raml': LIB})
-    raml = parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True))
+    raml = workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True))
     graph = build_graph(raml)
 
     def show(name: str, depth: int = 1) -> str:
@@ -290,7 +295,7 @@ def endpoint(workspace):
     from fastraml.views.render import Sources, render_endpoint
 
     root = workspace({'api.raml': API})
-    raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
     graph = build_graph(raml)
     sources = Sources.of(raml)
 
@@ -337,6 +342,25 @@ class TestTheEndpointView:
         text = endpoint('/items')
         assert loaded(text)['/items']['get']['queryParameters']['shared?']['description'] == 'from the method itself'
         assert 'collection' not in TestOrigins.notes(text)['shared?']
+
+    def test_traits_written_on_one_line_are_told_apart_by_column(self, workspace):
+        """Both spans cover line 3, so a line test named `a` for `pb` as well:
+        a confident wrong name.
+        """
+        from fastraml.views.render import Sources, render_operation
+
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: t\n'
+                'traits: {a: {queryParameters: {pa: string}}, b: {queryParameters: {pb: string}}}\n'
+                '/r:\n  get:\n    is: [a, b]\n'
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        operation = raml.endpoints['/r'].operations['get']
+        notes = TestOrigins.notes('\n'.join(render_operation(operation, '/r', sources=Sources.of(raml))))
+        assert notes['pa'].startswith('a,')
+        assert notes['pb'].startswith('b,')
 
     def test_inherited_security_is_shown_where_it_applies(self, endpoint):
         """Inherited from the API root, and invisible at the resource itself."""
@@ -401,7 +425,7 @@ class TestJsonSchemaTypesExpand:
     @pytest.fixture
     def schema_shown(self, workspace):
         root = workspace({'api.raml': SCHEMA_API, 'err.json': ERR_JSON, 'uuid.json': UUID_JSON})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
 
         def show(name: str, depth: int = 1) -> str:
@@ -445,7 +469,7 @@ class TestJsonSchemaTypesExpand:
         schema type once P9 had run — unreachable at the shape a consumer holds.
         """
         root = workspace({'api.raml': SCHEMA_API, 'err.json': ERR_JSON, 'uuid.json': UUID_JSON})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         declared = raml.types_in(raml.location)['errorScheme']
         assert declared.shape.as_shape() is not None
 
@@ -508,7 +532,7 @@ class TestSchemaDefinitionsKeepTheirName:
         which drops the comments the note column is made of.
         """
         root = workspace({'api.raml': DEFS_API, 'item.json': ITEM_JSON, 'shared.json': SHARED_JSON})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
 
         def show(name: str, depth: int = 1) -> str:
@@ -521,7 +545,7 @@ class TestSchemaDefinitionsKeepTheirName:
     @pytest.fixture
     def defs_shown(self, workspace):
         root = workspace({'api.raml': DEFS_API, 'item.json': ITEM_JSON, 'shared.json': SHARED_JSON})
-        raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         graph = build_graph(raml)
 
         def show(name: str, depth: int = 1) -> dict:
@@ -637,7 +661,7 @@ class TestScalarsAreQuotedWhenPlainWouldNotParse:
     @pytest.fixture
     def quoted(self, workspace):
         root = workspace({'lib.raml': QUOTING})
-        graph = build_graph(parse_from_path(root / 'lib.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True)))
 
         def show(name: str) -> dict:
             shape = graph.shape_at(graph.find(name)[0])
@@ -732,7 +756,7 @@ class TestAUnionNamesItsMembers:
         assert body['application/json']['properties']['tag'] == 'string | nil'
 
     def test_a_declared_name_still_beats_the_members(self, shown):
-        """`_type_name` prefers the alias, so naming the members is the fallback
+        """`type_name` prefers the alias, so naming the members is the fallback
         for an anonymous one rather than a replacement for the declared name.
         """
         assert loaded(shown('UserList'))['UserList']['type'] == 'User[]'
@@ -827,7 +851,7 @@ class TestExtensionsAreShown:
     @pytest.fixture
     def extended(self, workspace):
         root = workspace({'api.raml': EXTENDED})
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
         def show(name: str) -> dict:
             text = '\n'.join(render(graph.shape_at(graph.find(name)[0]), root=graph.root))
@@ -896,7 +920,7 @@ types:
     @pytest.fixture
     def views(self, workspace):
         root = workspace({'api.raml': self.FACETED})
-        graph = build_graph(parse_from_path(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
 
         def of(name: str) -> tuple[set[str], set[str], set[str]]:
             iri = graph.find(name)[0]

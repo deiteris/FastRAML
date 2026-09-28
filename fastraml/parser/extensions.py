@@ -20,9 +20,11 @@ from typing import TYPE_CHECKING, Final
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.facet_names import FACET_TITLE, FACET_USAGE, FACET_USES
 from fastraml.parser.extension_merge import merge_extension
 from fastraml.parser.facets import make_string_facet
 from fastraml.parser.fragments import (
+    API_HEAD_SPAN,
     FRAGMENT_TARGETS,
     APIFragment,
     ExtensionFragment,
@@ -74,9 +76,9 @@ def decode_extension_chain(raml: Raml, uri: str, kind: FragmentKind, text: str) 
     raml.entry_point = _register(raml, api)
 
     accumulator = Accumulator()
-    if not any(key.value == 'title' for key, _ in pairs(root_api.root)):
+    if not any(key.value == FACET_TITLE for key, _ in pairs(root_api.root)):
         # The target tree takes its title from here (docs/19 § 2).
-        accumulator.add(node_error('title is required', root_api.uri, root_api.root))
+        accumulator.add(RamlError.new('title is required', root_api.uri, API_HEAD_SPAN))
 
     target = root_api.root
     declared_by: dict[str, dict[str, int]] = {}
@@ -150,7 +152,7 @@ def _load(raml: Raml, uri: str, kind: FragmentKind, text: str, *, seen: list[str
         head = read_head(master_text)
         master_kind = identify_fragment(head)
         if master_kind is None:
-            raise RamlError.new('unknown fragment kind', master, info={'head': head}, kind=ErrorKind.PARSING)
+            raise RamlError.new('unknown fragment kind', master, kind=ErrorKind.PARSING)
         if master_kind not in _MASTER_KINDS:
             raise RamlError.new(
                 'unexpected fragment kind',
@@ -189,9 +191,9 @@ def _decode_own_keys(raml: Raml, fragment: ExtensionFragment, document: _Documen
     try:
         for key, value in pairs(document.root):
             try:
-                if key.value == 'usage':
+                if key.value == FACET_USAGE:
                     fragment.usage = make_string_facet(raml, key, value, fragment.location)
-                elif key.value == 'uses':
+                elif key.value == FACET_USES:
                     fragment.uses = unmarshal_uses(raml, value, fragment.location)
             except RamlError as err:
                 accumulator.add(err)

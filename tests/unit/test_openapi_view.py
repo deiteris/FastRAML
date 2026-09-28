@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import OAS3Document, ParseOptions, parse_from_path, to_openapi
+from fastraml import OAS3Document, ParseOptions, to_openapi
 from fastraml.views.openapi import OAS3Schema
+
+
+@pytest.fixture
+def workspace(memory_workspace):
+    return memory_workspace
 
 
 def converted(workspace, body: str):
     root = workspace({'api.raml': '#%RAML 1.0\n' + body})
-    raml = parse_from_path(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
     return to_openapi(raml)
 
 
@@ -297,10 +302,10 @@ def test_an_unwrapped_model_and_an_api_are_required(workspace):
             'type.raml': '#%RAML 1.0 DataType\ntype: string\n',
         }
     )
-    declared = parse_from_path(root / 'api.raml')
+    declared = workspace.parse(root / 'api.raml')
     with pytest.raises(AssertionError, match='unwrapped model'):
         to_openapi(declared)
 
-    fragment = parse_from_path(root / 'type.raml', ParseOptions(unwrap=True))
+    fragment = workspace.parse(root / 'type.raml', ParseOptions(unwrap=True))
     with pytest.raises(TypeError, match='API fragment'):
         to_openapi(fragment)

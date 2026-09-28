@@ -353,6 +353,67 @@
             }
           }
         ]
+      },
+      "Entry": {
+        "id": "fastraml://id#/declarations/types/Entry",
+        "name": "Entry",
+        "type": "object",
+        "properties": {
+          "@odata.type": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entry/property/%40odata.type/schema",
+              "name": "@odata.type",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "$ref": {
+            "required": false,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entry/property/%24ref/schema",
+              "name": "$ref?",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "class": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entry/property/class/schema",
+              "name": "class",
+              "type": "integer",
+              "type_expr": "integer"
+            }
+          },
+          "1st": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entry/property/1st/schema",
+              "name": "1st",
+              "type": "boolean",
+              "type_expr": "boolean"
+            }
+          },
+          "userId": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entry/property/userId/schema",
+              "name": "userId",
+              "type": "string",
+              "type_expr": "string"
+            }
+          },
+          "user_id": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Entry/property/user_id/schema",
+              "name": "user_id",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
       }
     }
   },

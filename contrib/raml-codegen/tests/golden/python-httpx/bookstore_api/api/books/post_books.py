@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 from http import HTTPStatus
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient
-from ...models.book import Book
+from ...models.book import Book, read_book
 from ...types import Mismatch, Response, reading
 
 PATH = '/books'
@@ -41,14 +41,15 @@ def _kwargs(
         out['params'] = params
     if headers:
         out['headers'] = headers
-    out['json'] = body.to_dict()
+    out['json'] = body
     return out
 
 
 def _parse(*, client: AuthenticatedClient, response: httpx.Response) -> Book | None:
     if response.status_code == 201:
         payload = response.json()
-        return Book.from_dict(payload)
+        read_book(payload)
+        return cast('Book', payload)
     if response.status_code in {400}:
         # Documented, and either carries no body or is not the one `sync`
         # answers with. The raw response is on the detailed variants.
@@ -62,10 +63,10 @@ def _build(*, client: AuthenticatedClient, response: httpx.Response) -> Response
     """The response, and whatever could be made of its body.
 
     Nothing a *payload* does gets out of here. A body that is not what the
-    document describes -- a missing property, an unreadable date, HTML where
-    JSON was promised -- lands in `mismatches`, and `content` still holds the
-    bytes. Only `errors.UnexpectedStatus`, which the caller asked for, and a
-    transport error, which is not about the payload, travel further.
+    document describes -- a missing property, an object where an array was
+    promised, HTML where JSON was -- lands in `mismatches`, and `content` still
+    holds the bytes. Only `errors.UnexpectedStatus`, which the caller asked for,
+    and a transport error, which is not about the payload, travel further.
     """
     parsed: Book | None = None
     with reading(strict=client.strict) as mismatches:

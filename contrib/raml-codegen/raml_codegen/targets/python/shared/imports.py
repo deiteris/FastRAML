@@ -8,7 +8,7 @@ plan, so this works them out and runs no subprocess.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -47,6 +47,9 @@ class Needs:
     model_prefix: str = '.'
     #: The model this module defines, which it must not import.
     own: str | None = None
+    #: More names to import from a model's module, by the model's name: the
+    #: function a target writes beside a model, where this module calls it.
+    beside: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +86,7 @@ def imports_for(
     # `from __future__ import annotations`, and finite because of the marker.
     wanted.discard(needs.own or '')
     models = tuple(by_name[name] for name in sorted(wanted) if name in by_name)
+    beside = {name: names for name, names in needs.beside.items() if name != needs.own and names}
 
     standard: list[str] = []
     third_party: list[str] = []
@@ -101,7 +105,9 @@ def imports_for(
     from_runtime = sorted({*needs.runtime, *(name for one in listed for name in one.runtime)}, key=_by_kind)
     if from_runtime:
         own.append(f'from {needs.types_import} import {", ".join(from_runtime)}')
-    own += [f'from {needs.model_prefix}{model.module} import {model.name}' for model in models]
+    for model in models:
+        imported = ', '.join((model.name, *sorted(beside.get(model.name, ()))))
+        own.append(f'from {needs.model_prefix}{model.module} import {imported}')
 
     blocks = [
         ['from __future__ import annotations'],

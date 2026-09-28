@@ -54,7 +54,7 @@ class TestSpelling:
 
     def test_a_field_name_is_not_reversible_so_the_wire_name_is_kept(self):
         # `created_at` and `createdAt` are the same attribute and different
-        # keys. The generated `to_dict` carries the wire name for this reason.
+        # keys. Generated code carries the wire name beside it for this reason.
         assert field_name('createdAt') == field_name('created_at')
 
 

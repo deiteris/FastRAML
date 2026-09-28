@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 from http import HTTPStatus
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient
-from ...models.publication import Publication
-from ...types import Mismatch, Response, as_list, reading
+from ...models.publication import Publication, read_publication
+from ...types import Mismatch, Response, as_list, each, reading
 
 PATH = '/publications'
 """The path this module calls, before its `{...}` tokens are filled in."""
@@ -44,7 +44,8 @@ def _kwargs(
 def _parse(*, client: AuthenticatedClient, response: httpx.Response) -> list[Publication] | None:
     if response.status_code == 200:
         payload = response.json()
-        return [Publication.from_dict(_item) for _item in as_list(payload)]
+        each(read_publication(_item) for _item in as_list(payload))
+        return cast('list[Publication]', payload)
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     return None
@@ -54,10 +55,10 @@ def _build(*, client: AuthenticatedClient, response: httpx.Response) -> Response
     """The response, and whatever could be made of its body.
 
     Nothing a *payload* does gets out of here. A body that is not what the
-    document describes -- a missing property, an unreadable date, HTML where
-    JSON was promised -- lands in `mismatches`, and `content` still holds the
-    bytes. Only `errors.UnexpectedStatus`, which the caller asked for, and a
-    transport error, which is not about the payload, travel further.
+    document describes -- a missing property, an object where an array was
+    promised, HTML where JSON was -- lands in `mismatches`, and `content` still
+    holds the bytes. Only `errors.UnexpectedStatus`, which the caller asked for,
+    and a transport error, which is not about the payload, travel further.
     """
     parsed: list[Publication] | None = None
     with reading(strict=client.strict) as mismatches:

@@ -13,15 +13,17 @@ from __future__ import annotations
 
 import pathlib
 from dataclasses import replace
+from functools import partial
 from typing import TYPE_CHECKING, Final
 
+from ....naming import Names
 from ....targets import Generated, Settings
 from ..shared import docs
 from ..shared.annotate import fill
 from ..shared.imports import Needs, Source, imports_for
 from ..shared.plan import plan
 from ..shared.templating import template_environment
-from .annotate import make_annotator
+from .annotate import CHECKS, make_annotator, reader
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -31,7 +33,7 @@ if TYPE_CHECKING:
     from ....reader import Tree
     from ..shared.annotate import Annotation
     from ..shared.imports import Imports
-    from ..shared.plan import Endpoint, Model
+    from ..shared.plan import Endpoint, Field, Model
 
 __all__ = ['generate_httpx']
 
@@ -48,7 +50,8 @@ _RESERVED = frozenset({'types', 'client', 'errors'})
 
 def generate_httpx(tree: Tree, settings: Settings) -> Generated:
     """The whole package, as paths to text."""
-    package = plan(tree, settings, make_annotator, _RESERVED)
+    readers = Names()
+    package = plan(tree, settings, partial(make_annotator, readers=readers), _RESERVED)
     environment = _environment()
     files: dict[str, str] = {}
     root = package.module
@@ -61,29 +64,18 @@ def generate_httpx(tree: Tree, settings: Settings) -> Generated:
         files[f'{root}/{name}'] = f'{HEADER}\n{(_RUNTIME / name).read_text(encoding="utf-8")}'
 
     by_name = {model.name: model for model in package.models}
+    checked = {model.name: reader(readers, model.name) for model in package.models if not model.is_alias}
     files[f'{root}/models/__init__.py'] = environment.get_template('models_init.py.jinja').render(
-        header=HEADER, package=package
+        header=HEADER,
+        package=package,
+        readers=checked,
+        exported=sorted([*by_name, *checked.values()]),
     )
     for model in package.models:
-        # An alias is a bare assignment. It still *names* the models it is built
-        # from, so those are imported; it defines no class and converts nothing,
-        # so what a dataclass body and a converter would need never applies.
-        annotations = (
-            [replace(one, runtime=frozenset()) for one in model.annotations] if model.is_alias else model.annotations
-        )
-        files[f'{root}/models/{model.module}.py'] = environment.get_template('model.py.jinja').render(
-            header=HEADER,
-            model=model,
-            imports=_imports_for(
-                annotations,
-                by_name,
-                Needs(
-                    names=() if model.is_alias else ('Mapping', 'dataclass', 'Any'),
-                    runtime=_model_runtime(model),
-                    own=model.name,
-                ),
-            ),
-        )
+        if model.is_alias:
+            files[f'{root}/models/{model.module}.py'] = _alias(environment, model, by_name)
+        else:
+            files[f'{root}/models/{model.module}.py'] = _model(environment, model, by_name, readers)
 
     files[f'{root}/api/__init__.py'] = environment.get_template('api_init.py.jinja').render(
         header=HEADER, package=package
@@ -94,27 +86,7 @@ def generate_httpx(tree: Tree, settings: Settings) -> Generated:
             header=HEADER, group=group, endpoints=endpoints
         )
         for endpoint in endpoints:
-            optional = any(not one.required for one in endpoint.arguments)
-            clients = 'AuthenticatedClient, Client' if endpoint.optional_auth else _client_type(endpoint)
-            files[f'{root}/api/{group}/{endpoint.module}.py'] = environment.get_template('endpoint.py.jinja').render(
-                header=HEADER,
-                endpoint=endpoint,
-                client_type=_client_type(endpoint),
-                imports=_imports_for(
-                    endpoint.annotations,
-                    by_name,
-                    Needs(
-                        names=('HTTPStatus', 'Any', 'httpx'),
-                        lines=('from ... import errors', f'from ...client import {clients}'),
-                        # `UNSET` and `Unset` only where an argument is optional.
-                        runtime=('UNSET', 'Mismatch', 'Response', 'Unset', 'reading')
-                        if optional
-                        else ('Mismatch', 'Response', 'reading'),
-                        types_import='...types',
-                        model_prefix='...models.',
-                    ),
-                ),
-            )
+            files[f'{root}/api/{group}/{endpoint.module}.py'] = _endpoint(environment, endpoint, by_name, readers)
 
     files[f'{root}/security.py'] = environment.get_template('security.py.jinja').render(header=HEADER, package=package)
     files['pyproject.toml'] = environment.get_template('pyproject.toml.jinja').render(package=package)
@@ -126,12 +98,92 @@ def generate_httpx(tree: Tree, settings: Settings) -> Generated:
 # -- assembling ----------------------------------------------------------------
 
 
-def _model_runtime(model: Model) -> tuple[str, ...]:
-    if not model.fields:
-        return ()
-    if any(one.required for one in model.fields):
-        return ('UNSET', 'Unset', 'absent')
-    return ('UNSET', 'Unset')
+def _alias(environment: jinja2.Environment, model: Model, by_name: Mapping[str, Model]) -> str:
+    """A bare assignment, with no reader of its own.
+
+    It still *names* the models it is built from, so those are imported; it
+    checks nothing, so what a check calls is not.
+    """
+    annotations = [_spelled(one) for one in model.annotations]
+    return environment.get_template('model.py.jinja').render(
+        header=HEADER,
+        model=model,
+        imports=_imports_for(annotations, by_name, Needs(own=model.name)),
+    )
+
+
+def _model(environment: jinja2.Environment, model: Model, by_name: Mapping[str, Model], readers: Names) -> str:
+    keys = [(one, _key(model, one)) for one in model.fields]
+    required = [one.wire for one in model.fields if one.required]
+    needs = Needs(
+        names=(
+            'Any',
+            'TypedDict',
+            'cast',
+            *(('NotRequired',) if len(required) < len(model.fields) else ()),
+            *(('Literal',) if model.discriminator else ()),
+        ),
+        runtime=('as_dict', 'require') if required else ('as_dict',),
+        own=model.name,
+        beside=_readers(model.annotations, readers),
+    )
+    return environment.get_template('model.py.jinja').render(
+        header=HEADER,
+        model=model,
+        keys=keys,
+        required=required,
+        reader=reader(readers, model.name),
+        imports=_imports_for(model.annotations, by_name, needs),
+    )
+
+
+def _key(model: Model, one: Field) -> str:
+    """The type one key holds, before `NotRequired` is wrapped round it.
+
+    Where the document states the value that means this type, the discriminator
+    is that value's `Literal`, so a type checker narrows a union on it.
+    """
+    if model.discriminator is not None and one.wire == model.discriminator[0]:
+        return f'Literal[{model.discriminator[1]!r}]'
+    return one.annotation.spelling
+
+
+def _endpoint(environment: jinja2.Environment, endpoint: Endpoint, by_name: Mapping[str, Model], readers: Names) -> str:
+    optional = any(not one.required for one in endpoint.arguments)
+    clients = 'AuthenticatedClient, Client' if endpoint.optional_auth else _client_type(endpoint)
+    # Only the answer is read; every other annotation is a spelling.
+    answer = endpoint.success.annotation if endpoint.success else None
+    annotations = [one if one is answer else _spelled(one) for one in endpoint.annotations]
+    return environment.get_template('endpoint.py.jinja').render(
+        header=HEADER,
+        endpoint=endpoint,
+        client_type=_client_type(endpoint),
+        imports=_imports_for(
+            annotations,
+            by_name,
+            Needs(
+                names=('HTTPStatus', 'Any', 'httpx', *(('cast',) if answer else ())),
+                lines=('from ... import errors', f'from ...client import {clients}'),
+                # `UNSET` and `Unset` only where an argument is optional.
+                runtime=('UNSET', 'Mismatch', 'Response', 'Unset', 'reading')
+                if optional
+                else ('Mismatch', 'Response', 'reading'),
+                types_import='...types',
+                model_prefix='...models.',
+                beside=_readers([answer] if answer else [], readers),
+            ),
+        ),
+    )
+
+
+def _spelled(annotation: Annotation) -> Annotation:
+    """An annotation whose check is not run here, so only its spelling is imported."""
+    return replace(annotation, runtime=annotation.runtime - CHECKS)
+
+
+def _readers(annotations: Iterable[Annotation], readers: Names) -> dict[str, tuple[str, ...]]:
+    """The readers each model's module must hand over, where these checks call them."""
+    return {name: (reader(readers, name),) for one in annotations for name in one.readers}
 
 
 def _client_type(endpoint: Endpoint) -> str:
@@ -145,6 +197,7 @@ def _environment() -> jinja2.Environment:
     environment = template_environment(_TEMPLATES)
     environment.filters['format_with'] = fill
     environment.filters['attribute'] = docs.attribute
+    environment.filters['key'] = docs.key
     return environment
 
 
@@ -156,8 +209,9 @@ _FROM: Final = {
     'httpx': Source(None, third_party=True),
     'Any': Source('typing', third_party=False),
     'Literal': Source('typing', third_party=False),
-    'Mapping': Source('collections.abc', third_party=False),
-    'dataclass': Source('dataclasses', third_party=False),
+    'NotRequired': Source('typing', third_party=False),
+    'TypedDict': Source('typing', third_party=False),
+    'cast': Source('typing', third_party=False),
     'HTTPStatus': Source('http', third_party=False),
 }
 

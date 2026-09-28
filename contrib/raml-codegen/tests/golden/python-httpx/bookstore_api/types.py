@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import datetime
-from collections.abc import Iterator, Mapping, MutableMapping
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from typing import IO, Any, BinaryIO, Literal, Self
@@ -18,16 +17,22 @@ from .errors import UnexpectedPayload
 
 __all__ = [
     'UNSET',
+    'DateOnly',
+    'DateTime',
+    'DateTimeOnly',
     'File',
     'FileTypes',
+    'HttpDate',
     'Mismatch',
     'RequestFiles',
     'Response',
+    'TimeOnly',
     'Unset',
-    'absent',
+    'as_dict',
     'as_list',
+    'each',
     'reading',
-    'to_json',
+    'require',
 ]
 
 
@@ -35,7 +40,8 @@ class Unset:
     """An argument that was not supplied at all.
 
     Distinct from `None`, which is a value a document may declare: `?param=` and
-    a parameter left off the call are different requests.
+    a parameter left off the call are different requests. A model has no use for
+    it: a key the payload does not carry is not in the dictionary.
     """
 
     _instance: Self | None = None
@@ -53,6 +59,24 @@ class Unset:
 
 
 UNSET: Unset = Unset()
+
+# A date is the string the server sent. Each kind is named so a signature says
+# which string it is; parsing one is the caller's, with the kind in hand.
+
+DateTime = str
+"""An RFC 3339 date-time with an offset, `2024-01-01T00:00:00Z`: `datetime.fromisoformat`."""
+
+HttpDate = str
+"""An RFC 2616 date-time, `Sun, 06 Nov 1994 08:49:37 GMT`: `email.utils.parsedate_to_datetime`."""
+
+DateTimeOnly = str
+"""A date-time with no offset, `2024-01-01T00:00:00`: `datetime.fromisoformat`."""
+
+DateOnly = str
+"""A date, `2024-01-01`: `date.fromisoformat`."""
+
+TimeOnly = str
+"""A time of day, `00:00:00`: `time.fromisoformat`."""
 
 FileContent = IO[bytes] | bytes | str
 FileTypes = tuple[str | None, FileContent, str | None] | tuple[str | None, FileContent, str | None, Mapping[str, str]]
@@ -90,8 +114,8 @@ class Response[T]:
     """One response, with the parsed body beside the raw one.
 
     `mismatches` is empty when the payload was what the document described. When
-    it is not, `parsed` still holds everything that *did* arrive, and `content`
-    still holds the bytes -- nothing is thrown away because one property was.
+    it is not, `parsed` is still the whole payload, and `content` still holds the
+    bytes -- nothing is thrown away because one property was missing.
     """
 
     status_code: HTTPStatus
@@ -107,7 +131,7 @@ class Response[T]:
 
 
 #: Set for the duration of one response read. Outside one -- somebody calling
-#: `Model.from_dict` directly -- nothing is collected and nothing is raised.
+#: a model's reader directly -- nothing is collected and nothing is raised.
 _collecting: contextvars.ContextVar[list[Mismatch] | None] = contextvars.ContextVar('_collecting', default=None)
 _strict: contextvars.ContextVar[bool] = contextvars.ContextVar('_strict', default=False)
 
@@ -125,50 +149,54 @@ def reading(*, strict: bool = False) -> Iterator[list[Mismatch]]:
         _strict.reset(strictly)
 
 
-def absent(model: str, field: str) -> Any:
-    """A required property did not arrive. Record it and carry on.
+def require(values: Mapping[str, Any], model: str, keys: tuple[str, ...]) -> None:
+    """Record each of `keys` that `values` does not carry, and carry on.
 
     Raising here would be the client breaking because the *server* changed, and
     would take the whole response with it -- including every property that did
     arrive, which is usually all of them and usually all the caller wanted. The
-    discrepancy reaches `Response.mismatches` instead, and the attribute holds
-    `UNSET`, which is falsy.
+    discrepancy reaches `Response.mismatches` instead, and the payload is handed
+    back as it arrived: read a key it may lack with `.get`.
 
     `Client(strict=True)` turns it back into an exception for a caller that
     would rather not proceed on a payload the document does not describe.
     """
-    found = _collecting.get()
-    if found is not None:
-        found.append(Mismatch(model, field))
-    if _strict.get():
-        raise UnexpectedPayload(model, field, None)
-    return UNSET
+    for key in keys:
+        if key in values:
+            continue
+        found = _collecting.get()
+        if found is not None:
+            found.append(Mismatch(model, key))
+        if _strict.get():
+            raise UnexpectedPayload(model, key, None)
+
+
+def as_dict(value: Any) -> dict[str, Any]:
+    """A JSON object, or a mismatch.
+
+    A reader hands back what it was given, typed as the model it checked. A
+    string typed as a `Book` would be the client vouching for a shape the
+    payload does not have, so a value that is not an object reaches the
+    backstop in `_build` instead, which records it and returns no body.
+    """
+    if isinstance(value, dict):
+        return value
+    raise TypeError(f'expected an object, got {type(value).__name__}')
 
 
 def as_list(value: Any) -> list[Any]:
     """A JSON array, or a mismatch.
 
     Iterating the wrong thing is worse than failing to: a `dict` where an array
-    was promised yields its *keys*, and the client would hand back a list of
-    models built from strings without anything having gone wrong. Raising here
-    reaches the backstop in `_build`, which records it and returns no body.
+    was promised yields its *keys*, and each would be checked as a model. Raising
+    here reaches the backstop in `_build`, which records it and returns no body.
     """
     if isinstance(value, list):
         return value
     raise TypeError(f'expected an array, got {type(value).__name__}')
 
 
-def to_json(value: Any) -> Any:
-    """Anything a generated model can hold, as the JSON it is sent as.
-
-    Only a *union* needs this. Every other field knows its own type, so the
-    generated `to_dict` calls `.to_dict()` or `.isoformat()` in place; a union
-    does not know which member it is holding until it is holding one.
-    """
-    if hasattr(value, 'to_dict'):
-        return value.to_dict()
-    if isinstance(value, (list, tuple)):
-        return [to_json(one) for one in value]
-    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
-        return value.isoformat()
-    return value
+def each(checks: Iterable[object]) -> None:
+    """Run one check per item of an array, for what the checks report."""
+    for _ in checks:
+        pass

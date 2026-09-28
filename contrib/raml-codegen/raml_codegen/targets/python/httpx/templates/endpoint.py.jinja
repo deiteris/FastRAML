@@ -103,10 +103,10 @@ def _kwargs(
     params: dict[str, Any] = {}
 {% for one in endpoint.query_arguments %}
 {% if one.required %}
-    params[{{ one.wire | repr }}] = {{ one.annotation.encode | format_with(one.name) }}
+    params[{{ one.wire | repr }}] = {{ one.name }}
 {% else %}
     if not isinstance({{ one.name }}, Unset):
-        params[{{ one.wire | repr }}] = {{ one.annotation.encode | format_with(one.name) }}
+        params[{{ one.wire | repr }}] = {{ one.name }}
 {% endif %}
 {% endfor %}
 
@@ -129,7 +129,7 @@ def _kwargs(
     if headers:
         out['headers'] = headers
 {% if endpoint.body %}
-    out['json'] = {{ endpoint.body.annotation.encode | format_with('body') }}
+    out['json'] = body
 {% endif %}
     return out
 
@@ -148,7 +148,10 @@ def _parse(*, client: {{ client_type }}, response: httpx.Response) -> {{ optiona
 {% else %}
     if response.status_code == {{ parsed_status }}:
         payload = response.json()
-        return {{ endpoint.success.annotation.decode | format_with('payload') }}
+{% if not endpoint.success.annotation.transparent %}
+        {{ endpoint.success.annotation.decode | format_with('payload') }}
+{% endif %}
+        return cast({{ returned | repr }}, payload)
 {% if other_statuses %}
     if response.status_code in {{ '{' }}{{ other_statuses | join(', ') }}{{ '}' }}:
         # Documented, and either carries no body or is not the one `sync`
@@ -165,10 +168,10 @@ def _build(*, client: {{ client_type }}, response: httpx.Response) -> Response[{
     """The response, and whatever could be made of its body.
 
     Nothing a *payload* does gets out of here. A body that is not what the
-    document describes -- a missing property, an unreadable date, HTML where
-    JSON was promised -- lands in `mismatches`, and `content` still holds the
-    bytes. Only `errors.UnexpectedStatus`, which the caller asked for, and a
-    transport error, which is not about the payload, travel further.
+    document describes -- a missing property, an object where an array was
+    promised, HTML where JSON was -- lands in `mismatches`, and `content` still
+    holds the bytes. Only `errors.UnexpectedStatus`, which the caller asked for,
+    and a transport error, which is not about the payload, travel further.
     """
     parsed: {{ optional }} = None
     with reading(strict=client.strict) as mismatches:

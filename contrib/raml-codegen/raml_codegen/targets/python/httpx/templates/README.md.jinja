@@ -30,14 +30,19 @@ through the detailed variants, and an undocumented one raises
 `errors.UnexpectedStatus` when the client is built with
 `raise_on_unexpected_status=True`.
 
+A body is the JSON itself: a model is a `TypedDict` keyed by the property names
+as the document spells them, so a request body is a dict literal and a response
+body is what the server sent, typed. Read a key the server may leave out with
+`.get`.
+
 ## What is in here
 
 | | |
 |---|---|
 | `client.py` | `Client` and `AuthenticatedClient`, over `httpx` |
-| `models/` | {{ package.models | length }} declared and nested types, as dataclasses and aliases |
+| `models/` | {{ package.models | length }} declared and nested types, as `TypedDict`s and aliases |
 | `api/` | {{ package.endpoints | length }} operations, grouped by the first path segment |
-| `types.py` | `Unset`/`UNSET`, `Response[T]`, `File` |
+| `types.py` | `Unset`/`UNSET`, `Response[T]`, `File`, and the names of the date strings |
 | `errors.py` | `UnexpectedStatus` |
 
 ## What it does not do

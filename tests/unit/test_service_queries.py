@@ -11,13 +11,11 @@ from fastraml.service import outline, queries
 from fastraml.service.queries import SymbolKind
 from fastraml.service.workspace import Workspace
 from fastraml.uris import path_to_file_uri
-from tests.unit.conftest import write_files
 from tests.unit.test_lenient import TestTheModelSaysHowFarItGot as _Lenient
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from fastraml.service.workspace import Snapshot
+    from tests.unit.conftest import MemoryWorkspace
 
 API = """#%RAML 1.0
 title: Demo
@@ -62,10 +60,9 @@ COVER = '#%RAML 1.0 DataType\ntype: file\n'
 
 
 @pytest.fixture
-def parsed(tmp_path: Path) -> tuple[Snapshot, str]:
-    write_files(tmp_path, {'api.raml': API, 'lib.raml': LIBRARY, 'cover.raml': COVER})
-    folder = path_to_file_uri(tmp_path)
-    snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
+def parsed(memory_workspace: MemoryWorkspace) -> tuple[Snapshot, str]:
+    workspace, folder = _buffered(memory_workspace, {'api.raml': API, 'lib.raml': LIBRARY, 'cover.raml': COVER})
+    snapshot = workspace.snapshot(f'{folder}/api.raml')
     return snapshot, folder
 
 
@@ -84,7 +81,7 @@ def _tree(symbols: list[queries.Symbol]) -> list[object]:
     ]
 
 
-def _buffered(memory_workspace, files: dict[str, str]) -> tuple[Workspace, str]:
+def _buffered(memory_workspace: MemoryWorkspace, files: dict[str, str]) -> tuple[Workspace, str]:
     """A service workspace over open buffers only, under a folder that does
     not exist: nothing is written, and discovery counts unsaved buffers.
     """
@@ -152,7 +149,7 @@ class TestHover:
         text, _ = queries.hover(snapshot, f'{folder}/api.raml', *_where(API, 'paged: {'))
         assert '`max`' in text
 
-    def test_an_included_declaration_shows_what_its_file_holds(self, tmp_path):
+    def test_an_included_declaration_shows_what_its_file_holds(self, memory_workspace):
         # A declaration written `!include` holds its body in the file it
         # names: read through `getattr`, its parameters and its type were none.
         document = (
@@ -166,9 +163,8 @@ class TestHover:
             'paged.raml': '#%RAML 1.0 Trait\nqueryParameters:\n  limit: <<max>>\n',
             'basic.raml': '#%RAML 1.0 SecurityScheme\ntype: Basic Authentication\n',
         }
-        write_files(tmp_path, files)
-        folder = path_to_file_uri(tmp_path)
-        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
+        workspace, folder = _buffered(memory_workspace, files)
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
         trait, _ = queries.hover(snapshot, f'{folder}/api.raml', *_where(document, 'paged: {'))
         scheme, _ = queries.hover(snapshot, f'{folder}/api.raml', *_where(document, 'basic]'))
         assert 'parameters: `max`' in trait
@@ -200,7 +196,7 @@ class TestSymbols:
             ('post', ''),
         ]
 
-    def test_the_outline_holds_what_each_declaration_writes_and_not_what_it_inherits(self, tmp_path):
+    def test_the_outline_holds_what_each_declaration_writes_and_not_what_it_inherits(self, memory_workspace):
         document = (
             '#%RAML 1.0\ntitle: T\nmediaType: [application/json, application/xml]\n'
             'annotationTypes:\n  note: string\n'
@@ -214,9 +210,8 @@ class TestSymbols:
             '    headers:\n      X-Trace: string\n    queryParameters:\n      q?: string\n'
             '    responses:\n      200:\n        headers:\n          ETag: string\n        body: Item\n'
         )
-        write_files(tmp_path, {'api.raml': document})
-        folder = path_to_file_uri(tmp_path)
-        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
         section = SymbolKind.SECTION
         # Item holds no `id`: Base wrote it; nor its facet value, annotation or
         # example, which are not declarations. `related?: Item[]` holds no
@@ -303,15 +298,13 @@ class TestSymbols:
             ('C', SymbolKind.TYPE, 'A'),
         ])  # fmt: skip
 
-    def test_a_file_outlines_what_it_wrote_an_extension_what_it_added(self, tmp_path):
+    def test_a_file_outlines_what_it_wrote_an_extension_what_it_added(self, memory_workspace):
         # docs/21 § 4: selected by location over the merged model. The type an
         # Extension declares sits in the master's table, and the method it
         # adds sits on the master's resource; both are the Extension's.
         api = '#%RAML 1.0\ntitle: T\ntypes:\n  A: string\n/a:\n  get:\n'
         extension = '#%RAML 1.0 Extension\nextends: api.raml\ntypes:\n  B: string\n/a:\n  post:\n/b:\n  get:\n'
-        write_files(tmp_path, {'api.raml': api, 'ext.raml': extension})
-        folder = path_to_file_uri(tmp_path)
-        workspace = Workspace([folder])
+        workspace, folder = _buffered(memory_workspace, {'api.raml': api, 'ext.raml': extension})
         section, resource, method = SymbolKind.SECTION, SymbolKind.RESOURCE, SymbolKind.METHOD
         added = _tree(outline.document_symbols(workspace.snapshot(f'{folder}/ext.raml'), f'{folder}/ext.raml'))
         assert added == [
@@ -341,15 +334,15 @@ class TestSymbols:
         assert (book.selection.line, book.selection.column, book.selection.end_column) == (line, column, column + 4)
         assert (book.span.line, book.span.end_line) == (line, _where(API, 'cover.raml')[0])
 
-    def test_a_documentation_item_selects_its_title_and_an_included_one_is_not_listed(self, tmp_path):
+    def test_a_documentation_item_selects_its_title_and_an_included_one_is_not_listed(self, memory_workspace):
         # An item has no key: selecting its mapping's first line ran past the
         # span, which VS Code refuses for the whole outline.
         document = '#%RAML 1.0\ntitle: T\ndocumentation:\n - title: Home\n   content: |\n    a\n - !include item.raml\n'
-        write_files(
-            tmp_path, {'api.raml': document, 'item.raml': '#%RAML 1.0 DocumentationItem\ntitle: Inc\ncontent: x\n'}
+        workspace, folder = _buffered(
+            memory_workspace,
+            {'api.raml': document, 'item.raml': '#%RAML 1.0 DocumentationItem\ntitle: Inc\ncontent: x\n'},
         )
-        folder = path_to_file_uri(tmp_path)
-        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
         _title, documentation = outline.document_symbols(snapshot, f'{folder}/api.raml')
         (home,) = documentation.children
         line, column = _where(document, 'Home')
@@ -403,14 +396,13 @@ class TestStructure:
             ('lib.raml', _where(API, 'lib.raml')[0]),
         ]
 
-    def test_a_path_to_a_file_that_is_no_fragment_links_goes_and_hovers(self, tmp_path):
+    def test_a_path_to_a_file_that_is_no_fragment_links_goes_and_hovers(self, memory_workspace):
         # docs/16 § 9: a path records the file it resolved to, so a schema or
         # a text file is reached as a fragment is, not paired with the path
         # text written on its line.
         document = '#%RAML 1.0\ntitle: T\ndescription: !include notes.md\n'
-        write_files(tmp_path, {'api.raml': document, 'notes.md': 'Notes.'})
-        folder = path_to_file_uri(tmp_path)
-        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document, 'notes.md': 'Notes.'})
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
         at = _where(document, 'notes.md')
         assert [(site.uri, site.span.line) for site in queries.links(snapshot, f'{folder}/api.raml')] == [
             (f'{folder}/notes.md', at[0])
@@ -444,10 +436,8 @@ class TestTypeHierarchy:
         entity = queries.supertypes(snapshot, book)[0]
         assert [symbol.name for symbol in queries.subtypes(snapshot, entity)] == ['Book']
 
-    def test_an_item_is_found_again_in_a_later_snapshot_by_where_it_is_written(self, tmp_path):
-        write_files(tmp_path, {'api.raml': API, 'lib.raml': LIBRARY, 'cover.raml': COVER})
-        folder = path_to_file_uri(tmp_path)
-        workspace = Workspace([folder])
+    def test_an_item_is_found_again_in_a_later_snapshot_by_where_it_is_written(self, memory_workspace):
+        workspace, folder = _buffered(memory_workspace, {'api.raml': API, 'lib.raml': LIBRARY, 'cover.raml': COVER})
         root = f'{folder}/api.raml'
         book = queries.type_at(workspace.snapshot(root), root, *_where(API, 'Book:'))
         workspace.change(root, API + 'version: v2\n', 2)
@@ -455,24 +445,21 @@ class TestTypeHierarchy:
 
 
 class TestDiagnostics:
-    def test_a_chain_is_reported_at_its_innermost_frame_with_a_position(self, tmp_path):
-        write_files(
-            tmp_path, {'api.raml': API.replace('lib.Person', 'lib.Nobody'), 'lib.raml': LIBRARY, 'cover.raml': COVER}
+    def test_a_chain_is_reported_at_its_innermost_frame_with_a_position(self, memory_workspace):
+        workspace, folder = _buffered(
+            memory_workspace,
+            {'api.raml': API.replace('lib.Person', 'lib.Nobody'), 'lib.raml': LIBRARY, 'cover.raml': COVER},
         )
-        folder = path_to_file_uri(tmp_path)
-        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
         (found,) = queries.diagnostics(snapshot, lint=False)[f'{folder}/api.raml']
         assert (found.site.span.line, found.site.span.column) == _where(API, 'lib.Person')
         assert found.info.get('type') == 'lib.Nobody'
         assert found.source == queries.SOURCE
 
-    def test_the_constraint_a_value_broke_is_related_information(self, tmp_path):
+    def test_the_constraint_a_value_broke_is_related_information(self, memory_workspace):
         document = '#%RAML 1.0\ntitle: T\ntypes:\n  Name:\n    minLength: 5\n    example: d\n'
-        write_files(tmp_path, {'api.raml': document})
-        folder = path_to_file_uri(tmp_path)
-        (found,) = queries.diagnostics(Workspace([folder]).snapshot(f'{folder}/api.raml'), lint=False)[
-            f'{folder}/api.raml'
-        ]
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        (found,) = queries.diagnostics(workspace.snapshot(f'{folder}/api.raml'), lint=False)[f'{folder}/api.raml']
         assert (found.code, found.site.span.line, found.site.span.column) == ('value is too short', 6, 14)
         assert [(r.message, r.site.span.line) for r in found.related] == [('declared here', 5)]
 
@@ -485,14 +472,14 @@ class TestDiagnostics:
         (found,) = (d for d in queries.diagnostics(snapshot)[f'{folder}/api.raml'] if d.source != queries.SOURCE)
         assert (found.code, found.site.span.line) == ('unused-trait', _where(API, 'spare:')[0])
 
-    def test_the_suppression_line_silences_the_finding(self, parsed):
-        snapshot, folder = parsed
+    def test_the_suppression_line_silences_the_finding(self, memory_workspace):
+        workspace, folder = _buffered(memory_workspace, {'api.raml': API, 'lib.raml': LIBRARY, 'cover.raml': COVER})
         root = f'{folder}/api.raml'
+        snapshot = workspace.snapshot(root)
         (finding,) = (d for d in queries.diagnostics(snapshot)[root] if d.source == queries.LINT_SOURCE)
         lines = API.splitlines(keepends=True)
         line = finding.site.span.line
         lines.insert(line - 1, queries.suppression(lines[line - 1], finding.code))
-        workspace = Workspace([folder])
         workspace.change(root, ''.join(lines), 2)
         assert root not in queries.diagnostics(workspace.snapshot(root))
 
@@ -507,7 +494,7 @@ class TestAStoppedParseAnswersFromItsStages:
     """
 
     @pytest.mark.parametrize('stage', list(FAILURES), ids=[s.value for s in FAILURES])
-    def test_every_query_answers(self, tmp_path, stage):
+    def test_every_query_answers(self, memory_workspace, stage):
         failure = FAILURES[stage]
         # A second `types:` would be a duplicate key: the mistake joins the first.
         text = (
@@ -515,9 +502,7 @@ class TestAStoppedParseAnswersFromItsStages:
             if failure.startswith('types:\n')
             else API.replace('uses:\n', failure + 'uses:\n', 1)
         )
-        write_files(tmp_path, {'api.raml': text, 'lib.raml': LIBRARY, 'cover.raml': COVER})
-        folder = path_to_file_uri(tmp_path)
-        workspace = Workspace([folder])
+        workspace, folder = _buffered(memory_workspace, {'api.raml': text, 'lib.raml': LIBRARY, 'cover.raml': COVER})
         root = f'{folder}/api.raml'
         snapshot = workspace.snapshot(root)
         assert snapshot.raml is not None
@@ -536,13 +521,12 @@ class TestAStoppedParseAnswersFromItsStages:
         queries.links(snapshot, root)
         assert queries.diagnostics(snapshot)[root]
 
-    def test_a_declaration_answers_before_the_names_that_use_it_are_bound(self, tmp_path):
+    def test_a_declaration_answers_before_the_names_that_use_it_are_bound(self, memory_workspace):
         # P4 stops at the unknown trait; P7, which binds type names, never runs.
         text = API.replace('is: [{paged', 'is: [nosuch, {paged')
-        write_files(tmp_path, {'api.raml': text, 'lib.raml': LIBRARY, 'cover.raml': COVER})
-        folder = path_to_file_uri(tmp_path)
+        workspace, folder = _buffered(memory_workspace, {'api.raml': text, 'lib.raml': LIBRARY, 'cover.raml': COVER})
         root = f'{folder}/api.raml'
-        snapshot = Workspace([folder]).snapshot(root)
+        snapshot = workspace.snapshot(root)
         assert snapshot.raml.stopped_at is Stage.ENDPOINTS
         assert _starts(queries.definition(snapshot, root, *_where(text, 'Entity:'))) == [
             ('api.raml', *_where(text, 'Entity:'))

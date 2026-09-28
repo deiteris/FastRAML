@@ -272,6 +272,26 @@ class Resource:
             node = node.children.setdefault(f'/{segment}', Resource())
         return node
 
+    def declare_uri_parameter(self, path: str, name: str, decl: TypeDecl) -> bool:
+        """Declare `name` on the resource along `path` whose segment templates it.
+
+        Not on the leaf. `/books/{isbn}/cover` nests as `/books`, `/{isbn}`,
+        `/cover`, and `isbn` belongs to the middle one: RAML requires a
+        `uriParameters` entry to name a template in *that* resource's relative
+        URI and rejects the document otherwise. A segment may hold more than the
+        template -- `/{name}.json` -- so containment is what is tested.
+
+        Returns False, and declares nothing, where no segment names it.
+        """
+        template = f'{{{name}}}'
+        prefix = ''
+        for segment in (part for part in path.split('/') if part):
+            prefix = f'{prefix}/{segment}'
+            if template in segment:
+                self.at(prefix).uri_parameters[name] = decl
+                return True
+        return False
+
     def render(self) -> dict[str, Yaml]:
         out: dict[str, Yaml] = {}
         if self.uri_parameters:

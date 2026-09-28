@@ -578,6 +578,13 @@ def test_a_uri_parameter_sits_on_the_resource_whose_segment_names_it() -> None:
     assert dropped == []
 
 
+def test_a_template_sharing_its_segment_is_placed_and_not_reported() -> None:
+    """`/{isbn}.json` holds the template and more; the segment still names it."""
+    document, dropped = rendered(one_view('/books/{isbn}.json', Nested))
+    assert document['/books']['/{isbn}.json']['uriParameters'] == {'isbn': 'string'}
+    assert dropped == []
+
+
 class Stray(RamlView):
     async def get(self, nowhere: Annotated[str, UriParam()] = 'x') -> Annotated[web.Response, Responds(204)]: ...
 

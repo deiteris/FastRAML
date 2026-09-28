@@ -118,24 +118,10 @@ def _file(facets: File) -> TypeDecl:
 
 
 def _place_uri(root: Resource, path: str, uri: Parameters, at: str, walk: Walk) -> None:
-    """Put each URI parameter on the resource whose segment names it.
-
-    Not on the leaf. `/books/{isbn}/cover` nests as `/books`, `/{isbn}`,
-    `/cover`, and `isbn` belongs to the middle one -- RAML requires a
-    `uriParameters` entry to name a template in *that* resource's relative URI,
-    and rejects the document otherwise. It only looks equivalent while the
-    parameter happens to be the last segment.
-    """
-    remaining = dict(uri)
-    prefix = ''
-    for segment in (part for part in path.split('/') if part):
-        prefix = f'{prefix}/{segment}'
-        if segment.startswith('{') and segment.endswith('}'):
-            declaration = remaining.pop(segment[1:-1], None)
-            if declaration is not None:
-                root.at(prefix).uri_parameters[segment[1:-1]] = declaration
-    for name in remaining:
-        walk.drop(at, f'uri parameter {name!r} names no segment of {path}; not written')
+    """Put each URI parameter on the resource whose segment names it (`Resource.declare_uri_parameter`)."""
+    for name, declaration in uri.items():
+        if not root.declare_uri_parameter(path, name, declaration):
+            walk.drop(at, f'uri parameter {name!r} names no segment of {path}; not written')
 
 
 def _responses(entry: Described, method: Method, at: str, walk: Walk) -> None:

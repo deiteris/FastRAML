@@ -131,6 +131,26 @@ class TestResourceNesting:
         assert 'get' not in rendered
         assert rendered['/'] == {'get': {}}
 
+    def test_a_uri_parameter_is_declared_where_its_segment_is_and_not_on_the_leaf(self):
+        """RAML rejects a `uriParameters` entry its own relative URI does not template."""
+        document = Document(title='T')
+        document.root.at('/books/{isbn}/cover').methods['get'] = Method()
+        assert document.root.declare_uri_parameter('/books/{isbn}/cover', 'isbn', TypeDecl(type='integer'))
+        assert document.root.at('/books/{isbn}').uri_parameters == {'isbn': TypeDecl(type='integer')}
+        assert document.root.at('/books/{isbn}/cover').uri_parameters == {}
+        parsed(document)
+
+    def test_a_template_sharing_its_segment_is_still_found(self):
+        document = Document(title='T')
+        document.root.at('/files/{name}.json').methods['get'] = Method()
+        assert document.root.declare_uri_parameter('/files/{name}.json', 'name', TypeDecl(type='string'))
+        parsed(document)
+
+    def test_a_parameter_no_segment_names_is_not_declared(self):
+        root = Resource()
+        assert not root.declare_uri_parameter('/books', 'isbn', TypeDecl(type='string'))
+        assert root.children == {}
+
 
 class TestParsesBack:
     def test_the_smallest_document(self):

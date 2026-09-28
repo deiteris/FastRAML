@@ -25,6 +25,7 @@ from fastraml.positions import Position
 from fastraml.service import outline, queries
 from fastraml.service.text import Encoding, Lines
 from fastraml.service.workspace import Workspace, canonical
+from fastraml.views.lint import configured_linter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -140,12 +141,16 @@ class RamlServer(LanguageServer):
     """A language server over one `Workspace`, built at `initialize`."""
 
     def __init__(self, config: FastRamlConfig | None = None, http_client: object | None = None) -> None:
+        """Raises `ValueError` for a `lint:` section naming what is not
+        registered, before anything is served: a parse needs the linter.
+        """
         super().__init__('fastraml', __version__)
         self._config = config
         self._http_client = http_client
+        self._linter = configured_linter({} if config is None else config.lint)
         #: The `roots` globs the client sent at `initialize` (docs/21 § 2).
         self._globs: tuple[str, ...] = ()
-        self.service = Workspace([], config=config)
+        self.service = Workspace([], config=config, linter=self._linter)
         #: Files whose diagnostics wait for the pause after a change.
         self._pending: set[str] = set()
         self._timer: asyncio.TimerHandle | None = None
@@ -167,6 +172,7 @@ class RamlServer(LanguageServer):
             config=self._config,
             roots=self._globs,
             http_client=self._http_client,
+            linter=self._linter,
         )
         for uri, document in self.workspace.text_documents.items():
             if (file := _file(uri)) is not None:

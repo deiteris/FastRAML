@@ -206,7 +206,10 @@ the extra `fastraml[lsp]`, imported inside the verb. The adapter converts
 positions (§ 3) and shapes, and nothing else: every answer is a query's.
 
 **Run.** The whole server runs under `tuned_gc` (`docs/12` § 6), and on one
-event loop, so the workspace takes no lock. The folders are the client's
+event loop, so the workspace takes no lock. The linter is built once, before
+anything is served, and every workspace shares it: every parse reads it, so a
+`lint:` section naming a rule set, rule, category or plugin that is not
+registered, which its type cannot check, stops `fastraml lsp` with the error. The folders are the client's
 workspace folders, or its root URI; the `roots` globs of § 2 come as
 `initializationOptions.roots`. A change of folders builds a new workspace
 holding the open buffers. A URI that is not `file:` is not served, and no

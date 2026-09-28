@@ -470,8 +470,6 @@ def _info(args: argparse.Namespace) -> int:
 def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 - command failures return at their source
     from pathlib import Path  # noqa: PLC0415 - lint's display root only
 
-    import yaml  # noqa: PLC0415 - lint section handoff only
-
     from fastraml.errors import RamlError  # noqa: PLC0415
     from fastraml.parser.entry import parse_from_path  # noqa: PLC0415
     from fastraml.uris import path_to_file_uri  # noqa: PLC0415
@@ -479,9 +477,9 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 -
         Linter,
         at_least,
         builtin_registry,
+        decode_config,
         discover_plugins,
         limit_findings,
-        parse_config,
         parse_severity,
         render_findings,
         render_metrics,
@@ -492,10 +490,8 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 -
         print('lint: finding limits must be non-negative', file=sys.stderr)
         return EXIT_INVALID
     try:
-        plugins = discover_plugins(registry)
-        config_text = yaml.safe_dump(dict(args.fastraml_config.lint))
-        config = parse_config(config_text, registry, plugins=plugins)
-    except (OSError, TypeError, ValueError, yaml.YAMLError) as err:
+        config = decode_config(args.fastraml_config.lint, registry, plugins=discover_plugins(registry))
+    except (OSError, TypeError, ValueError) as err:
         print(f'lint config: {err}', file=sys.stderr)
         return EXIT_INVALID
     try:
@@ -772,8 +768,13 @@ def _lsp(args: argparse.Namespace) -> int:
 
     config = args.fastraml_config
     http_client = _http_client() if args.remote or config.parser.remote else None
+    try:
+        server = RamlServer(config, http_client)
+    except ValueError as err:
+        print(f'lint config: {err}', file=sys.stderr)
+        return EXIT_INVALID
     with tuned_gc():
-        RamlServer(config, http_client).start_io()
+        server.start_io()
     return EXIT_OK
 
 

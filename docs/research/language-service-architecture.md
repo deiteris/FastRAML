@@ -247,7 +247,8 @@ Each step is its own commit, amends its owning document, and passes the gate.
 7. Done: F6, and `links()`, path definitions and path hovers reading it.
 8. The authorship view (§ 4) with F3 and F4; the outline and `render` read it;
    the outline moves to `service/outline.py`; hover dispatches on the entity's
-   class. Done so far: F3, F4, the view (`docs/16` § 10) and the outline over
+   class. Done, but for `render`, whose contributor note waits for F2 (step
+   9): F3, F4, hover's dispatch, the view (`docs/16` § 10) and the outline over
    it, with an Extension outlined by location and a JSON schema named by its
    `JsonShape`. The view keeps the span test as F2's stand-in, now also for
    the properties and `items` a template merged into a declaration, and for an

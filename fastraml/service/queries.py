@@ -24,7 +24,9 @@ from fastraml.facet_names import (
     FACET_TRAITS,
     FACET_TYPES,
 )
-from fastraml.parser.fragments import APIFragment, Library
+from fastraml.parser.fragments import APIFragment, Library, LibraryLink
+from fastraml.parser.security import SecuritySchemeDefinition
+from fastraml.parser.templates import TemplateDefinition
 from fastraml.positions import Position
 from fastraml.types.base import BaseShape
 from fastraml.uris import relative_to
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
 
     from fastraml.errors import Trace
+    from fastraml.parser.fragments import Declaration
     from fastraml.registry import Raml
     from fastraml.service.workspace import Snapshot
     from fastraml.views.authored import Placed
@@ -331,28 +334,36 @@ def _describe(snapshot: Snapshot, raml: Raml, occurrence: Occurrence) -> str | N
     if target is None:
         return None
     entity = _entity(raml, target)
-    if isinstance(entity, BaseShape):
-        return '```yaml\n' + '\n'.join(render(entity, root=root)) + '\n```'
     if entity is None:
         return None
+    if isinstance(entity, BaseShape):
+        return '```yaml\n' + '\n'.join(render(entity, root=root)) + '\n```'
+    return _declaration_text(occurrence, entity)
+
+
+def _declaration_text(occurrence: Occurrence, entity: Declaration | LibraryLink) -> str:
+    """A declaration's kind and name, and what its body says of it."""
     kind = occurrence.kind.replace('_', ' ')
-    lines = [f'**{kind}** `{getattr(entity, "name", occurrence.written)}`']
-    if occurrence.kind is Kind.LIBRARY:
-        lines.append(f'`{entity.value}`')
-    scheme_type = getattr(entity, 'type', '')
-    if scheme_type:
-        lines.append(f'type: {scheme_type}')
-    variables = getattr(entity, 'declared_variables', None)
-    if variables:
-        lines.append('parameters: ' + ', '.join(f'`{name}`' for name in sorted(variables)))
-    for facet in ('usage', 'description'):
-        value = getattr(entity, facet, None)
-        if value is not None:
-            lines.append(str(value.value))
+    if isinstance(entity, LibraryLink):
+        return f'**{kind}** `{occurrence.written}`\n\n`{entity.value}`'
+    lines = [f'**{kind}** `{entity.name}`']
+    # What an `!include` names holds the body: its type, its parameters.
+    if isinstance(entity, SecuritySchemeDefinition):
+        scheme = entity.resolved()
+        if scheme.type:
+            lines.append(f'type: {scheme.type}')
+        if scheme.description is not None:
+            lines.append(str(scheme.description.value))
+    elif isinstance(entity, TemplateDefinition):
+        template = entity.resolved()
+        if template.declared_variables:
+            lines.append('parameters: ' + ', '.join(f'`{name}`' for name in sorted(template.declared_variables)))
+        if template.usage is not None:
+            lines.append(str(template.usage.value))
     return '\n\n'.join(lines)
 
 
-def _entity(raml: Raml, target: int) -> Any:
+def _entity(raml: Raml, target: int) -> Declaration | LibraryLink | None:
     """The declaration, `uses:` entry or shape with the id `target`."""
     for fragment in raml.fragments.values():
         for link in fragment.uses.values():

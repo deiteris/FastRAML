@@ -141,6 +141,28 @@ class TestHover:
         text, _ = queries.hover(snapshot, f'{folder}/api.raml', *_where(API, 'paged: {'))
         assert '`max`' in text
 
+    def test_an_included_declaration_shows_what_its_file_holds(self, tmp_path):
+        # A declaration written `!include` holds its body in the file it
+        # names: read through `getattr`, its parameters and its type were none.
+        document = (
+            '#%RAML 1.0\ntitle: T\n'
+            'traits:\n  paged: !include paged.raml\n'
+            'securitySchemes:\n  basic: !include basic.raml\n'
+            '/a:\n  get:\n    is: [{paged: {max: 1}}]\n    securedBy: [basic]\n'
+        )
+        files = {
+            'api.raml': document,
+            'paged.raml': '#%RAML 1.0 Trait\nqueryParameters:\n  limit: <<max>>\n',
+            'basic.raml': '#%RAML 1.0 SecurityScheme\ntype: Basic Authentication\n',
+        }
+        write_files(tmp_path, files)
+        folder = path_to_file_uri(tmp_path)
+        snapshot = Workspace([folder]).snapshot(f'{folder}/api.raml')
+        trait, _ = queries.hover(snapshot, f'{folder}/api.raml', *_where(document, 'paged: {'))
+        scheme, _ = queries.hover(snapshot, f'{folder}/api.raml', *_where(document, 'basic]'))
+        assert 'parameters: `max`' in trait
+        assert 'type: Basic Authentication' in scheme
+
     def test_a_built_in_says_so(self, parsed):
         snapshot, folder = parsed
         text, _ = queries.hover(snapshot, f'{folder}/api.raml', *_where(API, 'string'))

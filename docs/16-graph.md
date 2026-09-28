@@ -126,6 +126,11 @@ available. It shows effective inheritance, properties, constraints, annotations,
 custom facets, security descriptions, and structured JSON Schema projections.
 `--depth` controls structural expansion; recursion remains finite.
 
+A member a trait or resource type contributed is noted with its name: the
+declaration whose span, key through value and columns included, holds the
+member's key, and only when the site applied it. A line alone would not tell
+two declarations written on one line apart.
+
 Traits, resource types, security schemes, and other declaration kinds without an
 effective standalone form are reported as such. Use `refs` to locate their
 effective application sites.

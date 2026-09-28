@@ -243,7 +243,7 @@ def _applied(name: str, refs: Sequence[DirectiveRef | SecurityScheme], owner: au
     placed = [ref for ref in refs if authored.wrote(owner, ref.location, ref.key_pos)]
     if not placed:
         return None
-    spans = [Position.covering((ref.key_pos, ref.value_pos)) for ref in placed]
+    spans = [ref.key_pos.spanning(ref.value_pos) for ref in placed]
     names = detail_line(', '.join(ref.name for ref in placed))
     return Symbol(
         name, SymbolKind.METADATA, placed[0].location, Position.covering(spans), placed[0].key_pos, detail=names

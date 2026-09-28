@@ -105,35 +105,31 @@ class Sources:
     **trait's** file and line. That is the provenance, and it is free; turning
     it back into a name needs the span the line falls in.
 
-    The span is exact, not inferred: `key_pos.line` to `value_pos.end_line`,
-    both of which the parser records.
+    The span is exact, not inferred: key through value, columns included,
+    both of which the parser records, so two declarations written on one
+    line in flow style are told apart. Declarations do not nest, so at most
+    one holds a member.
 
-    The narrowest containing span wins, so a nested declaration beats the
-    enclosing one. Attribution is *also* gated on the site having applied the
-    declaration — a confident wrong name is worse than none, and one bound
-    checking the other is cheap.
+    Attribution is *also* gated on the site having applied the declaration —
+    a confident wrong name is worse than none, and one bound checking the
+    other is cheap.
     """
 
-    #: file URI -> (start line, end line, name), narrowest first.
-    spans: dict[str, list[tuple[int, int, str]]]
+    #: file URI -> each declaration's span and name.
+    spans: dict[str, list[tuple[Position, str]]]
 
     @classmethod
     def of(cls, raml: Raml) -> Sources:
-        spans: dict[str, list[tuple[int, int, str]]] = {}
+        spans: dict[str, list[tuple[Position, str]]] = {}
         for _key, name, declared in every_declaration(raml):
-            start, end = declared.key_pos, declared.value_pos
-            if start.is_known and end.end_line >= start.line:
-                spans.setdefault(declared.location, []).append((start.line, end.end_line, name))
-        for found in spans.values():
-            found.sort(key=lambda span: (span[1] - span[0], span[0]))
+            if declared.key_pos.is_known:
+                span = declared.key_pos.spanning(declared.value_pos)
+                spans.setdefault(declared.location, []).append((span, name))
         return cls(spans=spans)
 
-    def containing(self, location: str, line: int) -> str | None:
-        """The narrowest declaration whose span covers `line`."""
-        for start, end, name in self.spans.get(location, ()):
-            if start <= line <= end:
-                return name
-        return None
+    def containing(self, location: str, at: Position) -> str | None:
+        """The declaration whose span holds `at`."""
+        return next((name for span, name in self.spans.get(location, ()) if span.contains(at)), None)
 
 
 def _contributor(base: BaseShape, sources: Sources | None, applied: frozenset[str]) -> str | None:
@@ -146,7 +142,7 @@ def _contributor(base: BaseShape, sources: Sources | None, applied: frozenset[st
     """
     if sources is None or not applied or not base.key_pos.is_known:
         return None
-    found = sources.containing(base.location, base.key_pos.line)
+    found = sources.containing(base.location, base.key_pos)
     return found if found in applied else None
 
 

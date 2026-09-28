@@ -114,3 +114,9 @@ class TestSpans:
     def test_covering_nothing_is_an_error(self):
         with pytest.raises(ValueError, match='no span'):
             Position.covering([])
+
+    def test_spanning_holds_a_key_and_a_value_that_starts_first(self):
+        # A documentation item selects its title, inside its value.
+        key, value = Position(3, 5, 3, 10), Position(2, 3, 4, 1)
+        assert key.spanning(value) == Position(2, 3, 4, 1)
+        assert key.spanning(UNKNOWN) == key

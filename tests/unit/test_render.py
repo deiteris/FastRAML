@@ -343,6 +343,25 @@ class TestTheEndpointView:
         assert loaded(text)['/items']['get']['queryParameters']['shared?']['description'] == 'from the method itself'
         assert 'collection' not in TestOrigins.notes(text)['shared?']
 
+    def test_traits_written_on_one_line_are_told_apart_by_column(self, workspace):
+        """Both spans cover line 3, so a line test named `a` for `pb` as well:
+        a confident wrong name.
+        """
+        from fastraml.views.render import Sources, render_operation
+
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: t\n'
+                'traits: {a: {queryParameters: {pa: string}}, b: {queryParameters: {pb: string}}}\n'
+                '/r:\n  get:\n    is: [a, b]\n'
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        operation = raml.endpoints['/r'].operations['get']
+        notes = TestOrigins.notes('\n'.join(render_operation(operation, '/r', sources=Sources.of(raml))))
+        assert notes['pa'].startswith('a,')
+        assert notes['pb'].startswith('b,')
+
     def test_inherited_security_is_shown_where_it_applies(self, endpoint):
         """Inherited from the API root, and invisible at the resource itself."""
         assert set(loaded(endpoint('/items'))['/items']['securedBy']) == {'oauth', 'plain'}

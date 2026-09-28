@@ -408,12 +408,7 @@ def symbol(
     key = placed.key_pos if key is None else key
     if key is None or not key.is_known:
         return None
-    return Symbol(name, kind, placed.location, _spanning(key, placed.value_pos), key, detail=detail_line(detail))
-
-
-def _spanning(key: Position, value: Position) -> Position:
-    """The span from `key` through `value`, holding both."""
-    return Position.covering((key, value)) if value.is_known else key
+    return Symbol(name, kind, placed.location, key.spanning(placed.value_pos), key, detail=detail_line(detail))
 
 
 def workspace_symbols(snapshots: Iterable[Snapshot], query: str) -> list[Symbol]:

@@ -72,6 +72,13 @@ class Position:
             return last
         return Position(self.line, self.column, last.end_line, last.end_column)
 
+    def spanning(self, value: Position) -> Position:
+        """The span of an entry keyed here with `value`, holding both, which
+        `through` does not where the value starts first (a documentation
+        item's title); this key alone when `value` is unknown.
+        """
+        return Position.covering((self, value)) if value.is_known else self
+
     def with_end(self, end_line: int, end_column: int) -> Position:
         return replace(self, end_line=end_line, end_column=end_column)
 

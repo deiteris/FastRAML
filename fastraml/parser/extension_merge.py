@@ -28,7 +28,7 @@ from fastraml.errors import Accumulator
 from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.source_ir import METHODS
 from fastraml.parser.structural_merge import node_value_equal
-from fastraml.yamlnode import TAG_MAP, TAG_SEQ, TAG_STR, Node, NodeKind, is_null, node_error, with_content
+from fastraml.yamlnode import TAG_MAP, TAG_SEQ, TAG_STR, Node, NodeKind, is_null, node_error, with_grafts
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -354,7 +354,7 @@ class _Merger:
                 self.mark(key)
         if not changed:
             return target
-        return with_content(target, [node for node in merged if node is not None] + added)
+        return with_grafts(target, [node for node in merged if node is not None] + added)
 
     def _value(  # noqa: PLR0911, PLR0913, PLR0917 - one decision table over the property kinds
         self,
@@ -424,7 +424,7 @@ class _Merger:
         if len(items) == len(old.content):
             return old
         self._change(site, name, key, 'added', free=free)
-        return with_content(old, items)
+        return with_grafts(old, items)
 
     # -- conflicts and declarations -------------------------------------------
 

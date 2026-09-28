@@ -39,13 +39,13 @@ __all__ = [
     'end_column',
     'end_line',
     'is_null',
-    'last_leaf',
     'mark_subtree',
     'node_error',
     'pairs',
     'plain_tag',
     'read_head',
     'with_content',
+    'with_grafts',
     'with_value',
 ]
 
@@ -308,18 +308,54 @@ class Node:
         """
         if not self.content:
             return self.position
-        leaf = last_leaf(self)
-        if self.end_line == leaf.end_line and self.end_column > leaf.end_column:
+        end = _end(self)
+        if self.end_line == end[0] and self.end_column > end[1]:
             return self.position
-        return Position(self.line, self.column, leaf.end_line, leaf.end_column)
+        return Position(self.line, self.column, *end)
+
+
+class _Grafted(Node):
+    """A container `with_grafts` rebuilt, which spans what its model spans.
+
+    Its content holds what a merge grafted, an Overlay replaced or a
+    substitution supplied, written elsewhere in the file or in another one,
+    so it ends where the node it was rebuilt from ends, taken when it is
+    built: keeping that node, or its last children, instead kept every
+    container an Overlay merged alive, 20 MB on `extensions` (docs/03 § 1).
+    """
+
+    __slots__ = ('written_end',)
+
+    def __init__(self, model: Node, content: list[Node]) -> None:
+        # Assigned here rather than through `Node.__init__`: a merge builds one
+        # per container it touches.
+        self.kind = model.kind
+        self.tag = model.tag
+        self.value = model.value
+        self.content = content
+        self.line = model.line
+        self.column = model.column
+        self.end_line = model.end_line
+        self.end_column = model.end_column
+        self._position = None
+        #: Where the model ends, as `full_position` reads it.
+        self.written_end: tuple[int, int] = model.written_end if isinstance(model, _Grafted) else _written_end(model)
+
+    @property
+    def full_position(self) -> Position:
+        end = self.written_end
+        if end == (self.end_line, self.end_column):
+            return self.position
+        return Position(self.line, self.column, *end)
 
 
 def with_content(model: Node, content: list[Node]) -> Node:
     """A fresh node with `model`'s kind, tag and span, holding `content`.
 
-    The one way a pass rebuilds a container: a filter, a merge or a
-    substitution never edits the tree it read, and every retained child keeps
-    its identity, so provenance lookups still find it.
+    The one way a pass rebuilds a container from some of its own children:
+    a filter never edits the tree it read, and every retained child keeps its
+    identity, so provenance lookups still find it. A container given children
+    written elsewhere is built by `with_grafts`.
     """
     return Node(
         model.kind,
@@ -331,6 +367,14 @@ def with_content(model: Node, content: list[Node]) -> Node:
         model.end_line,
         model.end_column,
     )
+
+
+def with_grafts(model: Node, content: list[Node]) -> Node:
+    """`with_content` for a merge, an Overlay or a substitution, whose
+    `content` holds nodes written elsewhere: the result spans what `model`
+    spans (docs/03 § 1).
+    """
+    return _Grafted(model, content)
 
 
 def with_value(model: Node, value: str) -> Node:
@@ -362,8 +406,10 @@ def mark_subtree[V](marks: dict[Node, V], node: Node, value: V) -> None:
         stack += current.content
 
 
-def last_leaf(node: Node) -> Node:
-    """The deepest last-child descendant. Iterative, so depth costs nothing.
+def _end(node: Node) -> tuple[int, int]:
+    """Where `node` and its descendants end: its deepest last-child
+    descendant's end, or a grafted descendant's written end. Iterative, so
+    depth costs nothing.
 
     An alias's copy keeps its anchor's position, which may be anywhere
     earlier: a last child that starts before its previous sibling ends, or
@@ -375,20 +421,35 @@ def last_leaf(node: Node) -> Node:
         floor = (node.line, node.column) if before is None else (before.end_line, before.end_column)
         if (last.line, last.column) < floor:
             if before is None:
-                return node
+                return node.end_line, node.end_column
             last = before
+        if isinstance(last, _Grafted):
+            return last.written_end
         node = last
-    return node
+    return node.end_line, node.end_column
+
+
+def _written_end(node: Node) -> tuple[int, int]:
+    """Where `full_position` ends a node that is not grafted: a flow
+    collection past its bracket, when that is on its last leaf's line; any
+    other container at its last leaf.
+    """
+    if not node.content:
+        return node.end_line, node.end_column
+    end = _end(node)
+    if node.end_line == end[0] and node.end_column > end[1]:
+        return node.end_line, node.end_column
+    return end
 
 
 def end_line(node: Node) -> int:
-    """The last source line occupied by this node and its descendants."""
-    return last_leaf(node).end_line
+    """The last line `full_position` spans."""
+    return node.full_position.end_line
 
 
 def end_column(node: Node) -> int:
-    """The exclusive end column of this node's last descendant token."""
-    return last_leaf(node).end_column
+    """The exclusive end column `full_position` spans."""
+    return node.full_position.end_column
 
 
 def is_null(node: Node) -> bool:

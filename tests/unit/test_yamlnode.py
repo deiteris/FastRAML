@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from fastraml.errors import RamlError
+from fastraml.positions import Position
 from fastraml.yamlnode import (
     TAG_INCLUDE,
     TAG_INT,
@@ -26,9 +27,9 @@ from fastraml.yamlnode import (
     end_column,
     end_line,
     is_null,
-    last_leaf,
     pairs,
     read_head,
+    with_grafts,
 )
 
 URI = 'file:///t/api.raml'
@@ -138,9 +139,21 @@ class TestPositions:
         span = block.full_position
         assert (span.line, span.column) < (span.end_line, span.end_column) == end
 
-    def test_last_leaf_helpers(self):
+    def test_a_grafted_container_spans_what_its_model_spans(self):
+        # docs/03 § 1: a resource type written above the resource merged its
+        # body under the resource's, and the body ended at the template's
+        # last line, before its own start; an Overlay's value ended in the
+        # other file.
+        root = parse('t:\n  x: 1\nr:\n  a: 1\n  b: 2\n')
+        (_, template), (_, written) = pairs(root)
+        merged = with_grafts(written, [*written.content, *template.content])
+        assert merged.full_position == written.full_position == Position(4, 3, 5, 7)
+        # And a container holding one ends where that one was written.
+        holder = Node(NodeKind.MAPPING, root.tag, '', [*root.content[:3], merged], root.line, root.column)
+        assert holder.full_position.end_line == 5
+
+    def test_end_helpers(self):
         root = parse('a:\n  b:\n    c: value\n')
-        assert last_leaf(root).value == 'value'
         assert end_line(root) == 3
         assert end_column(root) == 13
 

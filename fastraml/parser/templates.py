@@ -25,7 +25,18 @@ from fastraml.parser.facets import make_string_facet
 from fastraml.parser.includes import note_include_ref
 from fastraml.parser.substitutions import Substitution
 from fastraml.positions import UNKNOWN, Position
-from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, is_null, node_error, pairs, with_content, with_value
+from fastraml.yamlnode import (
+    TAG_INCLUDE,
+    TAG_STR,
+    Node,
+    NodeKind,
+    is_null,
+    node_error,
+    pairs,
+    with_content,
+    with_grafts,
+    with_value,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -546,7 +557,7 @@ def compile_source_provenance(  # noqa: PLR0913 - the body, its values, and wher
         # A container is structural: it keeps the enclosing scope, and reusing
         # it keeps every mark already recorded against it reachable.
         return node
-    return with_content(node, content)
+    return with_grafts(node, content)
 
 
 def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arguments

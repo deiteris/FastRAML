@@ -16,7 +16,7 @@ from typing import Annotated, Any, Generic, Literal, TypeVar
 
 import pytest
 from fastraml import ParseOptions, parse_from_path
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, RootModel, Tag
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, RootModel, Tag, computed_field
 
 from raml_document import Document, TypeDecl
 from raml_document.from_pydantic import Walk
@@ -373,3 +373,250 @@ class TestInheritance:
         walk = Walk()
         walk.model(Books)
         assert walk.types['Books'].render() == {'type': 'object', 'properties': {'items': 'integer[]'}}
+
+
+def parsed_types(walk: Walk) -> Any:
+    """Every type `walk` declared, through fastraml. Raises if it is not RAML."""
+    document = Document(title='T', types=walk.types)
+    with tempfile.TemporaryDirectory() as directory:
+        source = pathlib.Path(directory) / 'api.raml'
+        source.write_text(document.to_raml(), encoding='utf-8')
+        raml = parse_from_path(source, ParseOptions(unwrap=True, validate=True))
+        return raml.types_in(raml.location)
+
+
+def _model(name: str, module: str, **fields: Any) -> type[BaseModel]:
+    """A model called `name` that claims to live in `module`."""
+    return type(name, (BaseModel,), {'__annotations__': fields, '__module__': module})
+
+
+class TestNames:
+    """Every model gets a RAML name of its own, and a name RAML can read."""
+
+    def test_a_parametrised_generic_gets_a_name_a_parser_reads(self):
+        """`Page[Item]` is a type expression -- an array suffix -- to a RAML parser."""
+        T = TypeVar('T')
+
+        class Page(BaseModel, Generic[T]):
+            items: list[T]
+
+        class M(BaseModel):
+            page: Page[int]
+
+        walk = Walk()
+        walk.model(M)
+        assert walk.types['M'].properties['page'].type == 'Page_int_'
+        assert parsed_types(walk)['M'].validate({'page': {'items': [1]}}) is None
+
+    def test_same_named_models_in_same_named_modules_stay_apart(self):
+        """Two packages each keeping a `User` in `models.py` agree on the last segment."""
+        users = _model('User', 'app.users.models', a=int)
+        admins = _model('User', 'app.admin.models', b=str)
+        third = _model('User', 'other.models', c=bool)
+        walk = Walk()
+        names = [walk.model(model) for model in (users, admins, third)]
+        assert len(set(names)) == 3
+        assert [list(walk.types[name].properties) for name in names] == [['a'], ['b'], ['c']]
+        assert len(walk.dropped) == 2
+
+    def test_two_classes_from_one_factory_are_numbered_rather_than_merged(self):
+        first, second, third = (_model('Item', 'here', a=int) for _ in range(3))
+        walk = Walk()
+        names = [walk.model(model) for model in (first, second, third)]
+        assert len(set(names)) == 3
+
+    def test_a_synthesised_base_does_not_overwrite_a_model_of_that_name(self):
+        class PetBase(BaseModel):
+            real: int
+
+        class Cat(BaseModel):
+            kind: Literal['cat']
+
+        class Dog(BaseModel):
+            kind: Literal['dog']
+
+        class M(BaseModel):
+            owned: PetBase
+            pet: Annotated[Cat | Dog, Field(discriminator='kind')]
+
+        walk = Walk()
+        walk.model(M)
+        assert list(walk.types['PetBase'].properties) == ['real']
+        assert walk.types['Cat'].type != 'PetBase'
+        parsed_types(walk)
+
+
+class _Cat(BaseModel):
+    kind: Literal['cat']
+    species: Literal['c']
+
+
+class _Dog(BaseModel):
+    kind: Literal['dog']
+    species: Literal['d']
+
+
+class TestTaggedUnionsShareTheirBase:
+    def test_two_fields_selecting_by_one_property_share_one_base(self):
+        """A base per use would give each member two bases naming one discriminator."""
+
+        class M(BaseModel):
+            pet: Annotated[_Cat | _Dog, Field(discriminator='kind')]
+            animal: Annotated[_Cat | _Dog, Field(discriminator='kind')]
+
+        walk = Walk()
+        walk.model(M)
+        assert walk.types['_Cat'].type == 'PetBase'
+        assert 'AnimalBase' not in walk.types
+        shape = parsed_types(walk)['M']
+        assert shape.validate({'pet': {'kind': 'cat', 'species': 'c'}, 'animal': {'kind': 'dog', 'species': 'd'}}) is None
+
+    def test_a_member_already_selected_by_another_property_leaves_the_union_plain(self):
+        """RAML gives a type one `discriminatorValue`; overwriting it breaks the first union."""
+
+        class M(BaseModel):
+            pet: Annotated[_Cat | _Dog, Field(discriminator='kind')]
+            zoo: Annotated[_Cat | _Dog, Field(discriminator='species')]
+
+        walk = Walk()
+        walk.model(M)
+        assert walk.types['_Cat'].discriminator_value == 'cat'
+        assert walk.types['PetBase'].discriminator == 'kind'
+        assert any('already selected by' in message for message in walk.dropped)
+        parsed_types(walk)
+
+    def test_a_list_of_tagged_unions_keeps_its_discriminator(self):
+        """`list[Annotated[A | B, Field(discriminator=...)]]`: pydantic lifts nothing."""
+
+        class M(BaseModel):
+            pets: list[Annotated[_Cat | _Dog, Field(discriminator='kind')]]
+
+        walk = Walk()
+        walk.model(M)
+        assert walk.types['_Cat'].discriminator_value == 'cat'
+        assert 'PetsBase' in walk.types
+        shape = parsed_types(walk)['M']
+        assert shape.validate({'pets': [{'kind': 'cat', 'species': 'c'}]}) is None
+        assert shape.validate({'pets': [{'kind': 'cat', 'species': 'd'}]}) is not None
+
+
+class TestConstraintsInsideUnionsAndItems:
+    """A type expression holds names, so a narrowed member is declared by name."""
+
+    def test_a_constrained_optional_string_parses_and_keeps_its_bound(self):
+        """`{type: string | nil, maxLength: 3}` is an unknown facet to a parser."""
+
+        class M(BaseModel):
+            code: str | None = Field(default=None, max_length=3)
+
+        walk = Walk()
+        walk.model(M)
+        shape = parsed_types(walk)['M']
+        assert shape.validate({'code': 'abc'}) is None
+        assert shape.validate({'code': None}) is None
+        assert shape.validate({'code': 'abcd'}) is not None
+
+    def test_a_constraint_on_a_union_member_is_kept(self):
+        class M(BaseModel):
+            code: Annotated[str, Field(max_length=3)] | None = None
+
+        walk = Walk()
+        walk.model(M)
+        assert parsed_types(walk)['M'].validate({'code': 'abcd'}) is not None
+
+    def test_a_literal_union_member_keeps_its_enum(self):
+        class M(BaseModel):
+            status: Literal['a', 'b'] | None = None
+
+        walk = Walk()
+        walk.model(M)
+        shape = parsed_types(walk)['M']
+        assert shape.validate({'status': 'a'}) is None
+        assert shape.validate({'status': 'c'}) is not None
+
+    def test_an_array_items_constraint_is_kept(self):
+        class M(BaseModel):
+            scores: list[Annotated[int, Field(ge=1)]]
+
+        walk = Walk()
+        walk.model(M)
+        shape = parsed_types(walk)['M']
+        assert shape.validate({'scores': [1]}) is None
+        assert shape.validate({'scores': [0]}) is not None
+
+    def test_a_non_nullable_position_reads_optional_as_its_member(self):
+        """A query parameter is text or absent; `None` there means only optional."""
+
+        class M(BaseModel):
+            q: str | None = Field(default=None, max_length=3)
+
+        walk = Walk()
+        decl = walk.field(M.model_fields['q'], 'q', nullable=False)
+        assert decl.render() == {'type': 'string', 'maxLength': 3}
+
+
+class TestExtraScalars:
+    def test_a_registered_class_and_its_subclasses_are_that_builtin(self):
+        class Upload:
+            pass
+
+        class Special(Upload):
+            pass
+
+        walk = Walk(scalars={Upload: 'file'})
+        assert walk.annotation(Special, 'x').type == 'file'
+        assert walk.annotation(list[Upload], 'x').type == 'file[]'
+        assert not walk.dropped
+
+
+class TestOutputShapes:
+    """What a model writes is not always what it reads."""
+
+    def test_a_serialization_alias_declares_an_output_type(self):
+        class User(BaseModel):
+            user_name: str = Field(serialization_alias='userName')
+
+        walk = Walk()
+        assert walk.model(User) == 'User'
+        with walk.output():
+            assert walk.model(User) == 'UserOutput'
+        assert list(walk.types['User'].properties) == ['user_name']
+        assert list(walk.types['UserOutput'].properties) == ['userName']
+        parsed_types(walk)
+
+    def test_an_excluded_field_and_a_computed_one(self):
+        class User(BaseModel):
+            first: str
+            secret: str = Field(exclude=True)
+
+            @computed_field  # type: ignore[prop-decorator]
+            @property
+            def initial(self) -> str:
+                return self.first[:1]
+
+        walk = Walk()
+        with walk.output():
+            name = walk.model(User)
+        assert walk.types[name].render()['properties'] == {'first': 'string', 'initial': 'string'}
+
+    def test_a_model_that_writes_what_it_reads_is_declared_once(self):
+        class Plain(BaseModel):
+            a: int
+
+        walk = Walk()
+        walk.model(Plain)
+        with walk.output():
+            assert walk.model(Plain) == 'Plain'
+        assert list(walk.types) == ['Plain']
+
+    def test_a_model_holding_a_diverging_one_diverges_too(self):
+        class Inner(BaseModel):
+            a: int = Field(serialization_alias='A')
+
+        class Outer(BaseModel):
+            inner: list[Inner]
+
+        walk = Walk()
+        with walk.output():
+            assert walk.model(Outer) == 'OuterOutput'
+        assert walk.types['OuterOutput'].properties['inner'].type == 'InnerOutput[]'

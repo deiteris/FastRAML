@@ -18,6 +18,12 @@ has to be undone to get back to what the annotation already said. Reading
 What cannot be carried is reported on `Walk.dropped`, never dropped in silence.
 Constraints RAML has no facet for -- an exclusive bound, `strict=True`, an
 `AfterValidator` -- are named there rather than approximated.
+
+**A model has two shapes when it serialises differently from how it
+validates**: a `serialization_alias`, an `exclude=True` field, a
+`computed_field`. Inside `Walk.output()` such a model is declared a second time
+as `{Name}Output`, which is what a response body refers to; a model that reads
+and writes alike is declared once and shared.
 """
 
 from __future__ import annotations
@@ -25,17 +31,22 @@ from __future__ import annotations
 import datetime
 import decimal
 import enum
+import re
 import types
 import typing
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Final, Literal, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Final, Literal, get_args, get_origin
 
 import annotated_types
-from pydantic import BaseModel
+from pydantic import BaseModel, Tag
 from pydantic.fields import FieldInfo
 
 from raml_document.model import UNSET, TypeDecl, Unset, Yaml
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 __all__ = ['SCALARS', 'Walk']
 
@@ -66,6 +77,12 @@ _KEY_PATTERNS: Final[dict[Any, str]] = {
     uuid.UUID: r'/^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/',
 }
 
+#: What a RAML type name may not contain. `Page[Book]`, the `__name__` pydantic
+#: gives a parametrised generic, is a type *expression* to a RAML parser -- an
+#: array suffix it then fails to read -- so the brackets become underscores, the
+#: spelling pydantic's own JSON Schema uses for the same class.
+_NOT_NAME: Final = re.compile(r'[^A-Za-z0-9_]')
+
 
 @dataclass(slots=True)
 class Walk:
@@ -79,37 +96,86 @@ class Walk:
 
     types: dict[str, TypeDecl] = field(default_factory=dict)
     dropped: list[str] = field(default_factory=list)
-    #: model -> the RAML name it was registered under, which is not always
-    #: `__name__`: two models may share one.
-    _names: dict[type, str] = field(default_factory=dict)
+    #: Classes this module cannot know, and the RAML built-in each is: a web
+    #: framework's upload class as `file`, say. Read before `SCALARS`, down the
+    #: MRO, so a subclass of one is the same built-in.
+    scalars: dict[Any, str] = field(default_factory=dict)
+    #: (model, output?) -> the RAML name it was registered under, which is not
+    #: always `__name__`: two models may share one.
+    _names: dict[tuple[type, bool], str] = field(default_factory=dict)
+    #: (discriminator, tag type) -> the synthesised base every union tagged
+    #: that way shares.
+    _bases: dict[tuple[str, str], str] = field(default_factory=dict)
+    #: member name -> the discriminator it has been tagged by.
+    _tagged: dict[str, str] = field(default_factory=dict)
+    _diverging: dict[type, bool] = field(default_factory=dict)
+    _output: bool = False
 
     def drop(self, at: str, what: str) -> None:
-        self.dropped.append(f'{at}: {what}')
+        message = f'{at}: {what}'
+        if message not in self.dropped:
+            self.dropped.append(message)
+
+    @contextmanager
+    def output(self) -> Iterator[None]:
+        """Walk what models *serialise to* inside this block, not what they accept.
+
+        For a response body. A model whose two shapes differ is declared again
+        as `{Name}Output`; one whose shapes agree keeps its single declaration.
+        """
+        previous, self._output = self._output, True
+        try:
+            yield
+        finally:
+            self._output = previous
 
     # -- models ---------------------------------------------------------------
 
     def model(self, model: type[BaseModel]) -> str:
         """Register `model` and every model it reaches; return its RAML name."""
-        known = self._names.get(model)
+        output = self._output and self._diverges(model)
+        known = self._names.get((model, output))
         if known is not None:
             return known
-        name = self._name_for(model)
-        self._names[model] = name
+        name = self._name_for(model, output=output)
+        self._names[model, output] = name
         # Reserved before the body is walked, so a self-reference finds it.
         self.types[name] = TypeDecl(type='object')
-        self.types[name] = self._body(model, name)
+        self.types[name] = self._body(model, name, output=output)
         return name
 
-    def _name_for(self, model: type[BaseModel]) -> str:
-        """`__name__`, qualified by module where two models would collide."""
-        name = model.__name__
+    def _name_for(self, model: type[BaseModel], *, output: bool) -> str:
+        """`__name__`, qualified by module where two models would collide.
+
+        Qualified by the last module segment first and the whole module path
+        after, because two packages that each keep a `User` in `models.py` agree
+        on the last segment. A number is the last resort -- two classes built by
+        one factory share even their module -- and every step past the plain
+        name is reported, since a reader looks for the class by its name.
+        """
+        suffix = 'Output' if output else ''
+        name = f'{_NOT_NAME.sub("_", model.__name__)}{suffix}'
         if name not in self.types:
             return name
-        qualified = f'{model.__module__.rsplit(".", 1)[-1]}.{name}'.replace('.', '_')
+        module = model.__module__
+        for qualifier in (module.rsplit('.', 1)[-1], module):
+            qualified = _NOT_NAME.sub('_', f'{qualifier}_{name}')
+            if qualified not in self.types:
+                break
+        else:
+            qualified = self.unique(qualified)
         self.drop(name, f'a second model of this name is declared as {qualified}')
         return qualified
 
-    def _body(self, model: type[BaseModel], at: str) -> TypeDecl:
+    def unique(self, name: str) -> str:
+        """`name`, or `name_2`, `name_3`... -- the first `types` does not hold."""
+        candidate, number = name, 1
+        while candidate in self.types:
+            number += 1
+            candidate = f'{name}_{number}'
+        return candidate
+
+    def _body(self, model: type[BaseModel], at: str, *, output: bool) -> TypeDecl:
         root = model.model_fields.get('root')
         if root is not None and len(model.model_fields) == 1:
             # A RootModel: the declaration *is* its single field.
@@ -127,14 +193,53 @@ class Walk:
         for name, info in model.model_fields.items():
             if parents and name not in _own_fields(model):
                 continue
-            decl.properties[info.alias or name] = self.optional(self.field(info, f'{at}.{name}'), info)
+            if output and info.exclude is True:
+                continue
+            decl.properties[_wire_name(name, info, output=output)] = self.optional(
+                self.field(info, f'{at}.{name}'), info
+            )
+        if output:
+            for name, computed in model.model_computed_fields.items():
+                if parents and name not in vars(model):
+                    continue
+                # Always present in what the model writes, so required.
+                prop = self.annotation(computed.return_type, f'{at}.{name}')
+                if computed.description:
+                    prop.description = computed.description
+                decl.properties[computed.alias or name] = prop
         return decl
+
+    def _diverges(self, model: type[BaseModel]) -> bool:
+        """Does `model` -- or any model it reaches -- write a shape it does not read?
+
+        Assumed not while being decided, so a recursive model settles on what
+        the rest of it says rather than looping.
+        """
+        known = self._diverging.get(model)
+        if known is not None:
+            return known
+        self._diverging[model] = False
+        verdict = bool(model.model_computed_fields) or any(
+            info.exclude is True
+            or _wire_name(name, info, output=True) != _wire_name(name, info, output=False)
+            or any(self._diverges(reached) for reached in _models_in(info.annotation))
+            for name, info in model.model_fields.items()
+        )
+        verdict = verdict or any(self._diverges(base) for base in _supertypes(model))
+        self._diverging[model] = verdict
+        return verdict
 
     # -- fields ---------------------------------------------------------------
 
-    def field(self, info: FieldInfo, at: str) -> TypeDecl:
-        """One `FieldInfo` -> one declaration, constraints and all."""
-        decl = self.annotation(info.annotation, at, discriminator=self._tag_name(info, at))
+    def field(self, info: FieldInfo, at: str, *, nullable: bool = True) -> TypeDecl:
+        """One `FieldInfo` -> one declaration, constraints and all.
+
+        `nullable=False` reads `X | None` as `X`, for a position whose value is
+        never null on the wire -- a query parameter or a header is text or
+        absent, and `None` there means only that it may be left out.
+        """
+        annotation = info.annotation if nullable else _without_none(info.annotation)
+        decl = self.annotation(annotation, at, discriminator=self._tag_name((info, *info.metadata), at))
         self.constrain(decl, info.metadata, at)
         if info.description:
             decl.description = info.description
@@ -167,23 +272,25 @@ class Walk:
             decl.default = _as_yaml(info.default)
         return decl
 
-    def _tag_name(self, info: FieldInfo, at: str) -> str | None:
-        """The discriminator property a field names, if it names one at all.
+    def _tag_name(self, items: tuple[Any, ...], at: str) -> str | None:
+        """The discriminator property `items` name, if they name one at all.
 
         Two spellings land in two places, which is why both are read:
         `Field(discriminator='kind')` sets `info.discriminator`, while
         `Annotated[Union[...], Discriminator('kind')]` leaves a `Discriminator`
         in `info.metadata`. Reading only the first renders the second as a plain
-        union -- valid RAML that says less than the model does.
+        union -- valid RAML that says less than the model does. `items` is
+        either a field's pair of places, or the extras of an `Annotated` that
+        pydantic did not lift into a field -- `list[Annotated[A | B, ...]]`.
 
         A `Discriminator` may instead wrap a **callable** that computes the tag.
         RAML names a property, so that has no spelling: the union stays an
         ordinary one, which is correct and less precise.
         """
-        for tag in (info.discriminator, *(info.metadata or ())):
-            if isinstance(tag, str):
-                return tag
-            inner = getattr(tag, 'discriminator', None)
+        for item in items:
+            inner = getattr(item, 'discriminator', None)
+            # `Field(discriminator=Discriminator(...))`: a `FieldInfo` holding one.
+            inner = getattr(inner, 'discriminator', inner)
             if isinstance(inner, str):
                 return inner
             if inner is not None:
@@ -191,11 +298,32 @@ class Walk:
                 return None
         return None
 
-    def annotation(  # noqa: PLR0911 - one return per kind reads better than nesting
-        self, annotation: Any, at: str, *, discriminator: str | None = None
-    ) -> TypeDecl:
-        """One type annotation -> one declaration."""
+    def annotation(self, annotation: Any, at: str, *, discriminator: str | None = None) -> TypeDecl:
+        """One type annotation -> one declaration.
+
+        An `Annotated` pydantic did not lift into a `FieldInfo` -- an array's
+        item, a dict's value, a union member -- keeps its constraints and its
+        discriminator here, and both are read from it rather than lost.
+        """
         annotation, extra = _unwrap_annotated(annotation)
+        if not extra:
+            return self._bare(annotation, at, discriminator=discriminator)
+        # A `Field(...)` inside `Annotated` arrives as a whole `FieldInfo`.
+        items = tuple(
+            part for item in extra for part in ((*item.metadata, item) if isinstance(item, FieldInfo) else (item,))
+        )
+        if discriminator is None:
+            discriminator = self._tag_name(items, at)
+        decl = self._bare(annotation, at, discriminator=discriminator)
+        self.constrain(decl, [item for item in items if not isinstance(item, (FieldInfo, Tag))], at)
+        for item in items:
+            if isinstance(item, FieldInfo) and item.description:
+                decl.description = item.description
+        return decl
+
+    def _bare(  # noqa: PLR0911 - one return per kind reads better than nesting
+        self, annotation: Any, at: str, *, discriminator: str | None
+    ) -> TypeDecl:
         origin = get_origin(annotation)
 
         if origin in (typing.Union, types.UnionType):
@@ -216,7 +344,7 @@ class Walk:
             # `bool` a subclass of `int` and no RAML author means that; the same
             # order keeps `datetime` from being read as its base `date`.
             for base in annotation.__mro__:
-                spelling = SCALARS.get(base)
+                spelling = self.scalars.get(base) or SCALARS.get(base)
                 if spelling is not None:
                     return TypeDecl(type=spelling)
         if annotation in SCALARS:
@@ -225,9 +353,7 @@ class Walk:
             return TypeDecl(type='nil')
 
         self.drop(at, f'no RAML spelling for {annotation!r}; rendered as any')
-        decl = TypeDecl(type='any')
-        self.constrain(decl, extra, at)
-        return decl
+        return TypeDecl(type='any')
 
     def union(self, args: tuple[Any, ...], at: str, *, discriminator: str | None) -> TypeDecl:
         if discriminator is not None:
@@ -235,11 +361,26 @@ class Walk:
         members = [self.annotation(arg, at) for arg in args]
         # A list type is multiple inheritance, which has no place in a `|`
         # expression -- so it fails the same test as a member with no type.
-        spellings = [member.type for member in members if isinstance(member.type, str)]
-        if len(spellings) != len(members):
+        if not all(isinstance(member.type, str) for member in members):
             self.drop(at, 'a union member has no type expression; rendered as any')
             return TypeDecl(type='any')
-        return TypeDecl(type=' | '.join(dict.fromkeys(spellings)))
+        return TypeDecl(type=' | '.join(dict.fromkeys(self._spelled(member, at) for member in members)))
+
+    def _spelled(self, decl: TypeDecl, at: str) -> str:
+        """`decl` as a name a type expression can hold.
+
+        A `|` joins names, and a member that carries facets -- `Literal['a', 'b']`
+        is `string` with an `enum`, `constr(max_length=3)` is `string` with a
+        `maxLength` -- has none. Joining its bare `type` would keep the member
+        and silently lose what narrows it, so it is declared under a name of its
+        own and the expression refers to that.
+        """
+        assert isinstance(decl.type, str)  # noqa: S101 - the caller checked
+        if decl.render() == decl.type:
+            return decl.type
+        name = self.unique(_NOT_NAME.sub('_', at).strip('_') or 'Member')
+        self.types[name] = decl
+        return name
 
     def tagged_union(self, args: tuple[Any, ...], at: str, discriminator: str) -> TypeDecl:
         """A discriminated union -> a synthesised RAML base its members inherit.
@@ -276,13 +417,35 @@ class Walk:
             if spelling is not None and isinstance(spelling.type, str):
                 tag_type = spelling.type
 
-        base = f'{at.rsplit(".", 1)[-1].title()}Base'
-        self.types[base] = TypeDecl(
-            type='object',
-            discriminator=discriminator,
-            properties={discriminator: TypeDecl(type=tag_type or 'string')},
-        )
+        # RAML gives a type one `discriminatorValue`, so a member can answer to
+        # one tag property. A second union selecting it by another is still a
+        # union -- of the same members, without the selector.
+        for name, _ in members:
+            tagged_by = self._tagged.get(name)
+            if tagged_by is not None and tagged_by != discriminator:
+                self.drop(
+                    at,
+                    f'member {name} is already selected by {tagged_by!r}, and a RAML type has one '
+                    f'discriminatorValue; rendered as a plain union',
+                )
+                return TypeDecl(type=' | '.join(name for name, _ in members))
+
+        # One base per tag property and tag type, shared by every union that
+        # selects that way. A base per *use* would give a member that sits in
+        # two unions two bases naming one discriminator.
+        key = (discriminator, tag_type or 'string')
+        base = self._bases.get(key)
+        if base is None:
+            stem = re.sub(r'[^A-Za-z0-9]', '', at.rsplit('.', 1)[-1]) or 'Union'
+            base = self.unique(f'{stem[:1].upper()}{stem[1:]}Base')
+            self._bases[key] = base
+            self.types[base] = TypeDecl(
+                type='object',
+                discriminator=discriminator,
+                properties={discriminator: TypeDecl(type=key[1])},
+            )
         for name, value in members:
+            self._tagged[name] = discriminator
             member = self.types[name]
             # Added, not assigned: a member may already inherit a real model,
             # and overwriting would drop that supertype without a word.
@@ -335,6 +498,17 @@ class Walk:
         can because it was built first.
         """
         spelling = decl.type if isinstance(decl.type, str) else ''
+        if '|' in spelling and metadata:
+            # A union holds no facets of its own -- `{type: string | nil,
+            # maxLength: 3}` does not parse -- and pydantic applies them to each
+            # member that can take them. So does this: each member that picks
+            # one up is declared by name.
+            members = [
+                member if member == 'nil' else self._spelled(self._constrained(member, metadata, at), at)
+                for member in (part.strip() for part in spelling.split('|'))
+            ]
+            decl.type = ' | '.join(members)
+            return
         sequence = spelling == 'array' or spelling.endswith('[]')
         for item in metadata or ():
             match item:
@@ -358,6 +532,11 @@ class Walk:
                         _set_length(decl, 'max', high, sequence=sequence)
                 case _:
                     self._general(decl, item, at)
+
+    def _constrained(self, spelling: str, metadata: Any, at: str) -> TypeDecl:
+        decl = TypeDecl(type=spelling)
+        self.constrain(decl, metadata, at)
+        return decl
 
     def _general(self, decl: TypeDecl, item: Any, at: str) -> None:
         """Pydantic's own metadata objects, which carry several fields at once."""
@@ -384,7 +563,7 @@ def _inherit(existing: str | list[str] | None, added: str) -> str | list[str]:
     `object` is the absence of a supertype rather than one of them, so it is
     replaced; a real name is kept and the two become multiple inheritance.
     """
-    if existing is None or existing == 'object':
+    if existing is None or existing in ('object', added):
         return added
     current = [existing] if isinstance(existing, str) else list(existing)
     return current if added in current else [*current, added]
@@ -407,6 +586,33 @@ def _as_number(value: Any, decl: TypeDecl, at: str, walk: Walk) -> Any:
     # A date bound, say: RAML has no minimum on a date.
     walk.drop(at, f'bound {value!r} has no RAML facet on {decl.type}; not written')
     return None
+
+
+def _wire_name(name: str, info: FieldInfo, *, output: bool) -> str:
+    """The key a field travels under: read by its validation alias, written by its serialization one."""
+    chosen = info.serialization_alias if output else info.validation_alias
+    if isinstance(chosen, str):
+        return chosen
+    return info.alias or name
+
+
+def _without_none(annotation: Any) -> Any:
+    """`X | None` -> `X`; `X | Y | None` -> `X | Y`; anything else unchanged."""
+    if get_origin(annotation) not in (typing.Union, types.UnionType):
+        return annotation
+    kept = tuple(arg for arg in get_args(annotation) if arg is not type(None))
+    if not kept or len(kept) == len(get_args(annotation)):
+        return annotation
+    return kept[0] if len(kept) == 1 else typing.Union[kept]  # noqa: UP007 - built from a tuple
+
+
+def _models_in(annotation: Any) -> Iterator[type[BaseModel]]:
+    """Every model an annotation names, however deeply it is nested."""
+    annotation, _ = _unwrap_annotated(annotation)
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        yield annotation
+    for arg in get_args(annotation):
+        yield from _models_in(arg)
 
 
 def _unwrap_annotated(annotation: Any) -> tuple[Any, tuple[Any, ...]]:

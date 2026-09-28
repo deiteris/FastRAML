@@ -1,8 +1,9 @@
 # Language server and MCP server
 
 **Status: archived, 2026-09-28.** `docs/21` describes the service as built and
-supersedes this document where they differ; where the service goes next is
-`research/language-service-architecture.md`. Kept as the design record.
+supersedes this document where they differ, and
+`archive/language-service-architecture.md` records the review that followed.
+Kept as the design record.
 
 **As accepted.** The § 7 options were decided as
 recommended (`research/language-service-plan.md`, D3–D7). It proposes a design for a

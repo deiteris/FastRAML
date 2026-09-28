@@ -1,11 +1,10 @@
 # Plan: partial models, then the language service
 
-**Status: accepted; M1 to M3 done, M4 in progress.** This document orders the work proposed in
-`research/partial-models.md` (PM) and `archive/language-server.md` (LS). It
-is not normative. Each milestone amends its owning numbered document in the
-same commit, as `AGENTS.md` requires. When the service lands, a normative
-`docs/21-language-service.md` takes over from LS, and `docs/15` records
-what remains.
+**Status: accepted; M1 to M4 done, M5 next.** This document orders the work
+proposed in `research/partial-models.md` (PM) and `archive/language-server.md`
+(LS). It is not normative. Each milestone amends its owning numbered document
+in the same commit, as `AGENTS.md` requires. `docs/21-language-service.md`
+describes the service as built, and `docs/15` records what remains.
 
 Rules for every milestone:
 
@@ -321,18 +320,23 @@ As done so far:
   body without a media type, a block ending in an alias), and a message key
   written with markup.
 - Latency on `large`, measured again on 2026-09-28: 475 ms per edit, against
-  366 ms for a plain parse.
-  Composing the unchanged libraries is about a quarter of the parse, which
-  bounds what G8 can save. Whether that asks for G8 is still open.
-- LS moved to `archive/` on 2026-09-28: `docs/21` supersedes it, and
-  `research/language-service-architecture.md` holds where the service goes.
-- The consolidation `research/language-service-architecture.md` orders
+  366 ms for a plain parse (`docs/21` § 5). Composing the unchanged libraries
+  is about a quarter of the parse, which bounds what G8 can save. Decided on
+  2026-09-28: no compose cache for now; G8 stays deferred below.
+- LS moved to `archive/` on 2026-09-28: `docs/21` supersedes it.
+- The consolidation `archive/language-service-architecture.md` orders
   (§ 11), done on 2026-09-28: requests parse only the snapshots they read,
   the declaration tables and span arithmetic have one home each, the model
-  records F3 to F6, a placement law holds over the TCK, and the outline reads
-  the authorship view (`docs/16` § 10). F2 and failure containment were
-  dropped (§ 12 there). It precedes M5, whose completion needs the same
-  authorship and positions.
+  records F3 to F6, a placement law holds over the TCK (`docs/11` § 3.2), and
+  the outline reads the authorship view (`docs/16` § 10). F2 and failure
+  containment were dropped (§ 12 there). That document was archived on
+  2026-09-29.
+- A review on 2026-09-29 found a `lint:` section naming an unregistered
+  rule set made every parse raise, so the server answered nothing; the
+  server now builds its linter before it serves (`docs/21` § 5). The lint
+  and parser sections each have one decoding, shared with the CLI.
+
+M4 is done.
 
 ## M5: Completion
 

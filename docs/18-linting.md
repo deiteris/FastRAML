@@ -199,7 +199,10 @@ gate.
 The public lint surface is in `fastraml.views.lint`:
 
 - `builtin_registry()` returns built-in rules and rulesets.
-- `parse_config()` decodes lint configuration.
+- `parse_config()` decodes lint configuration from YAML text, and
+  `decode_config()` from a loaded mapping, such as `FastRamlConfig.lint`.
+  `configured_linter()` builds the linter a `lint:` section describes, over
+  the built-in rules and the installed plugins.
 - `Linter.run(raml, graph=None)` returns every finding without output limits.
 - `Linter.report(...)` returns a bounded `LintReport` with complete totals.
 - `Linter.measure(...)` returns findings and `LintMetrics`.
@@ -208,7 +211,8 @@ The optional `graph` argument is for Python callers that already built one. The
 CLI builds the graph as part of each lint invocation.
 
 Lint requires an unwrapped model. Source-sensitive rules additionally require
-`ParseOptions(retain_source=True)`.
+`ParseOptions(retain_source=True)`; `Linter.requires_source` says whether an
+enabled rule is one.
 
 ## 7. What lint is not
 

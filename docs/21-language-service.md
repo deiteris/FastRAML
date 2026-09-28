@@ -3,12 +3,13 @@
 This document owns `fastraml/service/`: a workspace of editor buffers, one
 lenient parse per root, and the queries an editor asks of them. It holds no
 RAML rule. Every answer is read from a parse (`docs/13` § 1) or a view
-(`docs/16`). The LSP adapter and the MCP verb are protocols over it.
+(`docs/16`). The LSP adapter is a protocol over it; the MCP verb will be
+another (M7 of `research/language-service-plan.md`).
 
-The design and its decisions are in `archive/language-server.md` and
+The design and its decisions are in `archive/language-server.md`,
+`archive/language-service-architecture.md` and
 `research/language-service-plan.md`, which this document supersedes where they
-differ. Where the service is headed, and the parser facts that takes, is
-`research/language-service-architecture.md`.
+differ. The plan orders what comes next.
 
 ## 1. Place
 
@@ -206,7 +207,10 @@ the extra `fastraml[lsp]`, imported inside the verb. The adapter converts
 positions (§ 3) and shapes, and nothing else: every answer is a query's.
 
 **Run.** The whole server runs under `tuned_gc` (`docs/12` § 6), and on one
-event loop, so the workspace takes no lock. The folders are the client's
+event loop, so the workspace takes no lock. The linter is built once, before
+anything is served, and every workspace shares it: every parse reads it, so a
+`lint:` section naming a rule set, rule, category or plugin that is not
+registered, which its type cannot check, stops `fastraml lsp` with the error. The folders are the client's
 workspace folders, or its root URI; the `roots` globs of § 2 come as
 `initializationOptions.roots`. A change of folders builds a new workspace
 holding the open buffers. A URI that is not `file:` is not served, and no
@@ -220,8 +224,12 @@ allows it.
 
 **Diagnostics.** A change publishes 0.3 s after the last one; an open, at
 once. Parser diagnostics go first; the lint tier follows on the next turn of
-the loop, and a change that comes in between postpones it. A request never waits: a query
-parses whatever is stale.
+the loop, and a change that comes in between postpones it. A request never
+waits: a query parses whatever is stale.
+
+The parser tier publishes a file without its lint findings, so they are
+cleared for that turn and shown again by the lint tier: the findings of the
+model the edit replaced are not the new model's. A known limit, not a rule.
 
 A file shows the diagnostics of every root that reads it (`readers`),
 merged and deduplicated; a file no root reads shows its own only while it is

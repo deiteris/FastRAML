@@ -25,18 +25,18 @@ covered (docs/20 § 11).
 
 ## 3. Potential future work
 
-Potential consumers and tooling include an LSP, more editor recovery in
-`parse_lenient`, and improved remote-include latency. These are not commitments
-and must not change parser rules without an owning design document and tests.
-An LSP and MCP design was drafted in
-[archive/language-server.md](archive/language-server.md). Its parser
-prerequisite, a trustworthy `parse_lenient` model, is analysed in
-[research/partial-models.md](research/partial-models.md), and the ordered plan
-is [research/language-service-plan.md](research/language-service-plan.md).
-The architecture the service is built to, and the parser facts it took, is
-[research/language-service-architecture.md](research/language-service-architecture.md).
-M1 to M3 are done and M4 is in progress; `docs/21` describes the service as
-built. Completion (M5) comes next.
+Potential tooling includes more editor recovery in `parse_lenient` and
+improved remote-include latency. These are not commitments and must not change
+parser rules without an owning design document and tests.
+
+The language service and its LSP are built ([21](21-language-service.md)).
+The ordered plan for the rest, completion, editing features and MCP, is
+[research/language-service-plan.md](research/language-service-plan.md): M1 to
+M4 are done, and completion (M5) comes next. Its design records are
+[archive/language-server.md](archive/language-server.md) and
+[archive/language-service-architecture.md](archive/language-service-architecture.md);
+its parser prerequisite, a trustworthy `parse_lenient` model, is analysed in
+[research/partial-models.md](research/partial-models.md).
 
 **Deprecated aliases as a model fact (proposed).** `deprecated-schemas` is on
 by default and reads `source_info`, so every lint-enabled parse, the language

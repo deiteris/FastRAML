@@ -8,7 +8,7 @@ section is passed through as a mapping; `fastraml.views.lint.config` decodes it.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     import os
     from collections.abc import Mapping
 
+    from fastraml.parser.entry import ParseOptions
     from fastraml.types.base import BaseShape
 
 __all__ = [
@@ -49,6 +50,20 @@ class ParserConfig:
     max_depth: int = DEFAULT_MAX_DEPTH
     regex_engine: Literal['re', 're2'] = 're'
     remote: bool = False
+
+    def limits(self, options: ParseOptions) -> ParseOptions:
+        """`options` with this section's limits and regex engine: every host
+        that parses under a configuration reads them here.
+
+        `workspace_root` and `remote` are the host's to weigh against its own
+        flags and folders, so they are not applied.
+        """
+        return replace(
+            options,
+            max_include_size=self.max_include_size,
+            max_depth=self.max_depth,
+            regex_engine=self.regex_engine,
+        )
 
 
 @dataclass(frozen=True, slots=True)

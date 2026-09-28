@@ -320,6 +320,19 @@ def test_the_server_runs_with_full_collections_deferred(monkeypatch):
     assert seen[0][2] >= FULL_COLLECTION_THRESHOLD
 
 
+def test_a_lint_section_naming_no_ruleset_stops_the_server_before_it_serves(tmp_path, monkeypatch, capsys):
+    """Its type admits any name; the linter every parse needs does not, so
+    the server would answer nothing (docs/21 § 5).
+    """
+    started: list[RamlServer] = []
+    monkeypatch.setattr(RamlServer, 'start_io', started.append)
+    config = tmp_path / 'fastraml.yaml'
+    config.write_text('lint:\n  extends: nope\n', encoding='utf-8')
+    assert main(['lsp', '--config', str(config)]) == 1
+    assert not started
+    assert 'unknown ruleset: nope' in capsys.readouterr().err
+
+
 class TestTree:
     def tree(self, lsp: _Client, uri: str) -> dict[str, object] | None:
         async def ask() -> str | None:

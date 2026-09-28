@@ -1,6 +1,6 @@
 """Policy above RAML conformance — docs/18-linting.md."""
 
-from fastraml.views.lint.config import config_shape, parse_config
+from fastraml.views.lint.config import config_shape, configured_linter, decode_config, parse_config
 from fastraml.views.lint.engine import (
     DEFAULT_MAX_FINDINGS,
     DEFAULT_MAX_FINDINGS_PER_RULE,
@@ -50,6 +50,8 @@ __all__ = [
     'at_least',
     'builtin_registry',
     'config_shape',
+    'configured_linter',
+    'decode_config',
     'discover_plugins',
     'limit_findings',
     'parse_config',

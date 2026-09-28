@@ -30,7 +30,7 @@ from fastraml.parser.entry import ParseOptions, parse_lenient
 from fastraml.parser.fragments import FragmentKind, identify_fragment
 from fastraml.service.text import Lines
 from fastraml.uris import file_uri_to_path, path_to_file_uri, relative_to
-from fastraml.views.lint import Linter, builtin_registry, discover_plugins, parse_config
+from fastraml.views.lint import configured_linter
 from fastraml.views.occurrences import build_occurrences
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
     from fastraml.config import FastRamlConfig
     from fastraml.registry import Raml
-    from fastraml.views.lint import Finding
+    from fastraml.views.lint import Finding, Linter
     from fastraml.views.occurrences import Occurrences
 
 __all__ = ['Buffer', 'Snapshot', 'Workspace', 'canonical']
@@ -143,10 +143,12 @@ class Workspace:
         config: FastRamlConfig | None = None,
         roots: Sequence[str] = (),
         http_client: object | None = None,
+        linter: Linter | None = None,
     ) -> None:
         """`folders` are the workspace folders' URIs; each is a sandbox root.
         `roots`, when given, are globs over paths relative to a folder, and
-        replace discovery (docs/21 § 2).
+        replace discovery (docs/21 § 2). `linter`, when given, is the one
+        `config`'s `lint:` section describes, already built.
         """
         from fastraml.config import FastRamlConfig  # noqa: PLC0415 - only for the default
 
@@ -162,7 +164,7 @@ class Workspace:
         self._last_read: dict[str, frozenset[str]] = {}
         #: Whether a snapshot was dropped since the last collection.
         self._garbage = False
-        self._linter: Linter | None = None
+        self._linter = linter
 
     # -- buffers --------------------------------------------------------------
 
@@ -329,20 +331,18 @@ class Workspace:
         if disk is None:
             refused = RamlError.new('path is outside the workspace root', root, info={'path': root})
             return Snapshot(root, None, refused, frozenset({root}))
-        parser = self.config.parser
-        options = ParseOptions(
-            unwrap=True,
-            validate=True,
-            # The index needs the texts; the YAML trees only for a lint rule
-            # that reads them.
-            retain_text=True,
-            retain_source=self._lint_reads_source,
-            workspace_root=disk.root,
-            max_include_size=parser.max_include_size,
-            file_loader=_Overlay(self.buffers, disk),
-            http_client=self._http_client,
-            regex_engine=parser.regex_engine,
-            max_depth=parser.max_depth,
+        options = self.config.parser.limits(
+            ParseOptions(
+                unwrap=True,
+                validate=True,
+                # The index needs the texts; the YAML trees only for a lint
+                # rule that reads them.
+                retain_text=True,
+                retain_source=self.linter.requires_source,
+                workspace_root=disk.root,
+                file_loader=_Overlay(self.buffers, disk),
+                http_client=self._http_client,
+            )
         )
         try:
             raml, error = parse_lenient(file_uri_to_path(root), options)
@@ -352,19 +352,12 @@ class Workspace:
         return Snapshot(root, raml, error, _read(raml, root), linter=self.linter)
 
     @property
-    def _lint_reads_source(self) -> bool:
-        return any(getattr(rule, 'requires_source', False) for rule in self.linter.rules)
-
-    @property
     def linter(self) -> Linter:
-        """The linter the configuration's `lint:` section describes."""
+        """The linter the configuration's `lint:` section describes, or the
+        one the host built from it (`configured_linter`).
+        """
         if self._linter is None:
-            import yaml  # noqa: PLC0415 - the lint section's hand-off, as the CLI does it
-
-            registry = builtin_registry()
-            plugins = discover_plugins(registry)
-            config = parse_config(yaml.safe_dump(dict(self.config.lint)), registry, plugins=plugins)
-            self._linter = Linter(registry, config)
+            self._linter = configured_linter(self.config.lint)
         return self._linter
 
     def _disk(self, uri: str) -> SafeFileLoader | None:

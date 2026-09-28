@@ -1043,6 +1043,12 @@ class TestConfiguration:
         with pytest.raises(RuntimeError, match='need retained source'):
             Linter(builtin_registry(), config).run(raml)
 
+    def test_a_linter_requires_source_only_for_an_enabled_rule_that_reads_it(self):
+        reads = Config(extends=(), rules=(RuleSetting(id='prefer-array-expression'),))
+        silent = Config(extends=(), rules=(RuleSetting(id='prefer-array-expression', disabled=True),))
+        assert Linter(builtin_registry(), reads).requires_source
+        assert not Linter(builtin_registry(), silent).requires_source
+
     def test_registered_rule_id_must_be_configurable_and_suppressible(self):
         class InvalidIdRule:
             meta = RuleMeta('house/rule', Category.STYLE, 'test', 'test', Severity.INFO)

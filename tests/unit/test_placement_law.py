@@ -1,5 +1,4 @@
-"""The placement law, over the fixtures and the TCK
-(research/language-service-architecture.md § 7).
+"""The placement law, over the fixtures and the TCK (docs/11 § 3.2).
 
 Every entity the walk reaches that the model positions:
 
@@ -8,8 +7,8 @@ Every entity the walk reaches that the model positions:
    key as its `<<parameter>>`;
 2. has a value that ends after it starts and starts after its key does;
 3. and, for a resource nested in one written in the same file, lies in that
-   resource's span. Members a template can contribute are not checked yet:
-   what a template contributed is not recorded (§ 6, F2).
+   resource's span. Members a template can contribute are not checked: under
+   a method, what a template wrote lies in the template, outside its span.
 
 What the walk does not report is checked from the model: each `uses:` entry,
 each documentation item, placed at its title, which its span holds, and each

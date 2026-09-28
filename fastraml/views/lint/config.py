@@ -21,14 +21,16 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from fastraml.config import schema_type
-from fastraml.views.lint.engine import Config, Registry, RuleSetting, parse_severity
+from fastraml.views.lint.engine import Config, Linter, Registry, RuleSetting, parse_severity
+from fastraml.views.lint.plugins import discover_plugins
+from fastraml.views.lint.rules import builtin_registry
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from fastraml.types.base import BaseShape
 
-__all__ = ['config_shape', 'parse_config']
+__all__ = ['config_shape', 'configured_linter', 'decode_config', 'parse_config']
 
 #: The RAML library declaring the configuration's shape. Shipped inside the
 #: package, so the schema an editor is given is the one this build enforces.
@@ -56,8 +58,13 @@ def parse_config(text: str, registry: Registry, *, plugins: set[str] | None = No
     up — so the type runs first and this returns on its failure.
     """
     raw = yaml.safe_load(text)
-    if raw is None:
-        raw = {}
+    return decode_config({} if raw is None else raw, registry, plugins=plugins)
+
+
+def decode_config(raw: Any, registry: Registry, *, plugins: set[str] | None = None) -> Config:
+    """`parse_config` for a configuration already loaded, such as the `lint:`
+    section of a `FastRamlConfig`.
+    """
     _check_category_keys(raw)
     failure = config_shape().validate(raw)
     if failure is not None:
@@ -87,6 +94,17 @@ def parse_config(text: str, registry: Registry, *, plugins: set[str] | None = No
             raise ValueError(f'unknown rule: {rule_id}')
         rules.append(_setting(rule_id, value))
     return Config(extends=extends, plugins=enabled_plugins, categories=configured_categories, rules=tuple(rules))
+
+
+def configured_linter(section: Mapping[str, object]) -> Linter:
+    """The linter a `lint:` section describes, over the built-in rules and
+    every installed plugin.
+
+    Raises `ValueError` for a section that names what is not registered, which
+    its type cannot check: a host builds it before it serves anything.
+    """
+    registry = builtin_registry()
+    return Linter(registry, decode_config(section, registry, plugins=discover_plugins(registry)))
 
 
 def _check_category_keys(value: object) -> None:

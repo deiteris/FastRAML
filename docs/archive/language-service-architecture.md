@@ -1,6 +1,10 @@
 # Language service: target architecture
 
-**Status: done, 2026-09-28; F2 and failure containment dropped (§ 12); reviewed against the code (§ 11, step 11).**
+**Status: archived, 2026-09-29.** Done on 2026-09-28, F2 and failure
+containment dropped (§ 12), reviewed against the code (§ 11, step 11).
+`docs/21` describes the service as built, and the placement law (§ 7) is
+normative in `docs/11` § 3.2. Kept as the design record.
+
 Proposed on 2026-09-27. This document records how the language
 service should sit on the parser and its model, from a review of the service as
 built against `docs/21`, `archive/language-server.md` (LS) and

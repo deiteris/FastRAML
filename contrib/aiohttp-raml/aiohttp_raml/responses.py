@@ -25,6 +25,9 @@ __all__ = ['Responds', 'read_responses']
 
 _LOWEST: Final = 100
 _HIGHEST: Final = 599
+#: A 1xx response has no body, and neither do these.
+_FIRST_WITH_CONTENT: Final = 200
+_NO_CONTENT: Final = frozenset({204, 304})
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +46,9 @@ class Responds:
     def __post_init__(self) -> None:
         if not (_LOWEST <= self.code <= _HIGHEST):
             raise ValueError(f'{self.code} is not an HTTP status code')
+        # RFC 9110 § 6.4.1: these responses end at their headers.
+        if self.body is not None and (self.code < _FIRST_WITH_CONTENT or self.code in _NO_CONTENT):
+            raise ValueError(f'a {self.code} response has no body, so it cannot be declared with one')
 
 
 def read_responses(handler: Any, hints: dict[str, Any] | None = None) -> list[Responds]:

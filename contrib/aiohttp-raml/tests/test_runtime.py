@@ -610,3 +610,10 @@ async def test_a_repeated_header_becomes_a_list(aiohttp_client: Any) -> None:
     client = await aiohttp_client(app)
     assert await (await client.get('/x', headers=CIMultiDict([('X-Tag', 'a'), ('X-Tag', 'b')]))).json() == ['a', 'b']
     assert await (await client.get('/x', headers={'X-Tag': 'a'})).json() == ['a']
+
+
+@pytest.mark.parametrize('code', [101, 204, 304])
+def test_a_body_on_a_status_that_has_none_is_refused(code: int) -> None:
+    with pytest.raises(ValueError, match='has no body'):
+        Responds(code, Book)
+    Responds(code)

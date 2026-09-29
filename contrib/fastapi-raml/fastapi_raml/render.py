@@ -312,7 +312,8 @@ def _parameters(route: Any, method: Method, at: str, walk: Walk) -> Parameters:
                 continue
             # A parameter is text or absent: `None` in its annotation means
             # only that it may be left out, never that the wire carries a null.
-            targets[place][wire] = walk.optional(walk.field(info, f'{at}.{wire}', nullable=False), info)
+            where = f'{at}.{wire}'
+            targets[place][wire] = walk.optional(walk.field(info, where, nullable=False), info, where)
     return uri
 
 

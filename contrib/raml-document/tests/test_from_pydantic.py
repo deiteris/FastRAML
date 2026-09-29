@@ -18,7 +18,7 @@ import pytest
 from fastraml import ParseOptions, parse_from_path
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, RootModel, Tag, computed_field
 
-from raml_document import Document, TypeDecl
+from raml_document import UNSET, Document, TypeDecl
 from raml_document.from_pydantic import Walk
 
 
@@ -626,3 +626,60 @@ class TestOutputShapes:
         with walk.output():
             assert walk.model(Outer) == 'OuterOutput'
         assert walk.types['OuterOutput'].properties['inner'].type == 'InnerOutput[]'
+
+
+class _Inner(BaseModel):
+    x: int = 1
+
+
+class TestDefaultsAreJsonValues:
+    """A default or example is written as the JSON value pydantic would send."""
+
+    def test_a_datetime_default_is_rfc3339(self):
+        class M(BaseModel):
+            when: datetime.datetime = datetime.datetime(2024, 1, 1, 12, tzinfo=datetime.UTC)
+
+        walk = Walk()
+        walk.model(M)
+        assert walk.types['M'].properties['when'].default == '2024-01-01T12:00:00Z'
+        parsed_types(walk)
+
+    def test_a_model_default_is_an_object(self):
+        class M(BaseModel):
+            inner: _Inner = _Inner(x=2)
+
+        walk = Walk()
+        walk.model(M)
+        assert walk.types['M'].properties['inner'].default == {'x': 2}
+        parsed_types(walk)
+
+    def test_a_decimal_stays_a_number_and_a_duration_is_text(self):
+        class M(BaseModel):
+            price: Decimal = Decimal('1.5')
+            items: list[Decimal] = Field(default=[Decimal('2.5')])
+            wait: datetime.timedelta = datetime.timedelta(seconds=5)
+
+        walk = Walk()
+        walk.model(M)
+        properties = walk.types['M'].properties
+        assert properties['price'].default == 1.5
+        assert properties['items'].default == [2.5]
+        assert properties['wait'].default == 'PT5S'
+
+    def test_a_naive_datetime_is_reported_rather_than_written(self):
+        """RAML's `datetime` requires an offset; pydantic's does not."""
+
+        naive = datetime.datetime(2024, 1, 1)  # noqa: DTZ001 - the case under test
+
+        class M(BaseModel):
+            when: datetime.datetime = Field(default=naive, examples=[naive, naive.replace(tzinfo=datetime.UTC)])
+            maybe: datetime.datetime | None = naive
+
+        walk = Walk()
+        walk.model(M)
+        when = walk.types['M'].properties['when']
+        assert when.default is UNSET
+        assert walk.types['M'].properties['maybe'].default is UNSET
+        assert when.examples == {'e1': '2024-01-01T00:00:00Z'}
+        assert any('has no offset' in message for message in walk.dropped)
+        parsed_types(walk)

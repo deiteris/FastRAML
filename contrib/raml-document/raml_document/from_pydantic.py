@@ -28,6 +28,7 @@ and writes alike is declared once and shared.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import decimal
 import enum
@@ -42,6 +43,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, get_args, get_origin
 import annotated_types
 from pydantic import BaseModel, Tag
 from pydantic.fields import FieldInfo
+from pydantic_core import PydanticSerializationError, to_jsonable_python
 
 from raml_document.model import UNSET, TypeDecl, Unset, Yaml
 
@@ -196,7 +198,7 @@ class Walk:
             if output and info.exclude is True:
                 continue
             decl.properties[_wire_name(name, info, output=output)] = self.optional(
-                self.field(info, f'{at}.{name}'), info
+                self.field(info, f'{at}.{name}'), info, f'{at}.{name}'
             )
         if output:
             for name, computed in model.model_computed_fields.items():
@@ -244,10 +246,25 @@ class Walk:
         if info.description:
             decl.description = info.description
         if info.examples:
-            decl.examples = {f'e{index}': _as_yaml(value) for index, value in enumerate(info.examples)}
+            examples = {f'e{index}': self._value(decl, value, at) for index, value in enumerate(info.examples)}
+            kept = {key: value for key, value in examples.items() if not isinstance(value, Unset)}
+            if kept:
+                decl.examples = kept
         return decl
 
-    def optional(self, decl: TypeDecl, info: FieldInfo) -> TypeDecl:
+    def _value(self, decl: TypeDecl, value: Any, at: str) -> Yaml | Unset:
+        """A default or an example as the JSON value it stands for, or `UNSET` if RAML refuses it.
+
+        RAML's `datetime` is RFC 3339 and requires an offset, which a naive
+        `datetime` does not have -- pydantic accepts both under the one type.
+        """
+        members = {part.strip() for part in decl.type.split('|')} if isinstance(decl.type, str) else set()
+        if isinstance(value, datetime.datetime) and value.tzinfo is None and 'datetime' in members:
+            self.drop(at, f'{value.isoformat()} has no offset, which a RAML datetime requires; not written')
+            return UNSET
+        return _as_yaml(value)
+
+    def optional(self, decl: TypeDecl, info: FieldInfo, at: str = '') -> TypeDecl:
         """Apply a field's optionality and its default to its declaration.
 
         Separate from `field` because the two are not the same question and only
@@ -263,13 +280,14 @@ class Walk:
         because every request the tests send does carry the parameter.
 
         `default: ~` is not written for a field defaulting to `None`: RAML would
-        take it as a value, and the field is simply absent.
+        take it as a value, and the field is simply absent. `at` names the
+        position in what is reported.
         """
         if info.is_required():
             return decl
         decl.required = False
         if info.default is not None and info.default is not PydanticUndefined:
-            decl.default = _as_yaml(info.default)
+            decl.default = self._value(decl, info.default, at)
         return decl
 
     def _tag_name(self, items: tuple[Any, ...], at: str) -> str | None:
@@ -645,19 +663,33 @@ def _enum(annotation: type[enum.Enum]) -> TypeDecl:
     return TypeDecl(type=kinds.pop() if len(kinds) == 1 else 'any', enum=values)
 
 
-def _as_yaml(value: Any) -> Yaml:
-    """A Python value as something `yaml.safe_dump` writes."""
+def _as_yaml(value: Any) -> Yaml:  # noqa: PLR0911 - one return per kind
+    """A Python value as the JSON value it travels as, in a form `yaml.safe_dump` writes.
+
+    Not `str()`: a `datetime` would read `2024-01-01 12:00:00`, which is not
+    RFC 3339, and a model `x=1`, which is not an object. A `Decimal` is a
+    number here, where pydantic's JSON mode would write a string, because
+    the declaration it lands under is a RAML `number`.
+    """
     if isinstance(value, enum.Enum):
         return _as_yaml(value.value)
     if isinstance(value, (str, int, float, bool, type(None))):
         return value
     if isinstance(value, decimal.Decimal):
         return float(value)
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, (list, tuple, set, frozenset)):
         return [_as_yaml(item) for item in value]
     if isinstance(value, dict):
         return {str(key): _as_yaml(item) for key, item in value.items()}
-    return str(value)
+    if isinstance(value, BaseModel):
+        return _as_yaml(value.model_dump(by_alias=True))
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return _as_yaml(dataclasses.asdict(value))
+    try:
+        # A date, a duration, a UUID, a URL: what pydantic writes for each.
+        return _as_yaml(to_jsonable_python(value))
+    except PydanticSerializationError:
+        return str(value)
 
 
 def _supertypes(model: type[BaseModel]) -> list[type[BaseModel]]:

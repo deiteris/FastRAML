@@ -12,7 +12,7 @@ from typing import Annotated, Literal, NotRequired, TypedDict
 
 import pytest
 from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field, computed_field
 
@@ -250,3 +250,67 @@ def test_a_tagged_union_body_keeps_its_discriminator() -> None:
     types = render(local).document.types
     assert (types['_Cat'].discriminator_value, types['_Dog'].discriminator_value) == ('cat', 'dog')
     parsed(local)
+
+
+# -- what the route's settings make the model write ---------------------------
+
+
+class Account(BaseModel):
+    user_name: str = Field(alias='userName')
+    nickname: str | None
+    note: str = 'x'
+
+
+shaped = FastAPI(title='Shaped')
+
+
+@shaped.get('/by-name', response_model_by_alias=False)
+def by_name() -> Account:
+    return Account(userName='a', nickname=None)
+
+
+@shaped.get('/no-nulls', response_model_exclude_none=True)
+def no_nulls() -> Account:
+    return Account(userName='a', nickname=None)
+
+
+@shaped.get('/public', response_model_exclude={'note'})
+def public() -> Account:
+    return Account(userName='a', nickname='n')
+
+
+@shaped.get('/named', response_model_include={'user_name'})
+def named() -> Account:
+    return Account(userName='a', nickname='n')
+
+
+@shaped.get('/moved', response_class=RedirectResponse)
+def moved() -> str:
+    return '/public'
+
+
+SHAPED = ['/by-name', '/no-nulls', '/public', '/named']
+
+
+@pytest.mark.parametrize('path', SHAPED)
+def test_what_a_shaped_route_writes_validates(path: str) -> None:
+    """The differential again, for each setting that changes what the model writes."""
+    shape = operation(shaped, path, 'get').responses['200'].bodies['application/json'].shape
+    body = TestClient(shaped).get(path).json()
+    assert shape.validate(body) is None, body
+
+
+def test_a_shaped_response_is_not_the_whole_model() -> None:
+    """Each shape is strict enough to refuse what the route never writes."""
+    written = {
+        path: operation(shaped, path, 'get').responses['200'].bodies['application/json'].shape for path in SHAPED
+    }
+    assert written['/by-name'].validate({'userName': 'a', 'nickname': None, 'note': 'x'}) is not None
+    assert written['/no-nulls'].validate({'userName': 'a', 'nickname': None, 'note': 'x'}) is not None
+    assert dropped(shaped) == []
+
+
+def test_a_response_class_answers_with_its_own_status() -> None:
+    """`RedirectResponse` answers 307, and FastAPI's schema says so."""
+    assert list(operation(shaped, '/moved', 'get').responses) == ['307']
+    assert TestClient(shaped).get('/moved', follow_redirects=False).status_code == 307

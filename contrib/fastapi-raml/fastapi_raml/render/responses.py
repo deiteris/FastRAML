@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, Any, Final
 
 from fastapi.datastructures import DefaultPlaceholder
 from fastapi.responses import JSONResponse
 from fastapi.utils import is_body_allowed_for_status_code
 from raml_document import Body, Response, TypeDecl
+from raml_document.from_pydantic import Shape
 
 if TYPE_CHECKING:
     from raml_document import Method
@@ -28,18 +30,49 @@ def _response_class(route: Any) -> type:
 
 
 def _payload(route: Any, info: Any, at: str, walk: Walk) -> TypeDecl:
-    """A response body's type: what the model *writes*, when FastAPI writes by alias."""
-    if getattr(route, 'response_model_by_alias', True):
-        with walk.output():
+    """A response body's type: what the model *writes*, as the route's settings have it write.
+
+    `response_model_by_alias` and `response_model_exclude_none` are a `Shape`;
+    `response_model_include` and `response_model_exclude` leave fields out,
+    which is a type of its own, declared for this route.
+    """
+    shape = Shape(
+        by_alias=getattr(route, 'response_model_by_alias', True),
+        exclude_none=getattr(route, 'response_model_exclude_none', False),
+    )
+    include = getattr(route, 'response_model_include', None)
+    exclude = getattr(route, 'response_model_exclude', None)
+    with walk.output(shape):
+        if include is None and exclude is None:
             return walk.field(info, at)
-    return walk.field(info, at)
+        model = info.annotation
+        name = f'{getattr(model, "__name__", "Response")}{shape.suffix}_{route.name}'
+        subset = walk.subset(model, name, at, include=include, exclude=exclude)
+    if subset is None:
+        walk.drop(at, f'response_model_include or _exclude on {model!r}, which is not a model; written as any')
+        return TypeDecl(type='any')
+    return subset
+
+
+def _status_code(route: Any, response_class: type) -> int:
+    """The status the route answers with: its own, else its response class's default.
+
+    `RedirectResponse` answers 307 unless told otherwise, and FastAPI's schema
+    reads the default off the class's `__init__` in just this way.
+    """
+    if route.status_code is not None:
+        return int(route.status_code)
+    parameter = inspect.signature(response_class).parameters.get('status_code')
+    if parameter is not None and isinstance(parameter.default, int):
+        return parameter.default
+    return 200
 
 
 def responses(route: Any, method: Method, at: str, walk: Walk) -> None:
     """The route's own response, then each one `responses=` adds."""
     response_class = _response_class(route)
     media = getattr(response_class, 'media_type', None)
-    code = route.status_code or 200
+    code = _status_code(route, response_class)
     response = method.responses.setdefault(code, Response())
     if route.response_description != DEFAULT_RESPONSE_DESCRIPTION:
         response.description = route.response_description

@@ -310,10 +310,7 @@ def _parameters(route: Any, method: Method, at: str, walk: Walk) -> Parameters:
             if place == 'cookie':
                 walk.drop(at, f'cookie parameter {wire!r} has no RAML form')
                 continue
-            # A parameter is text or absent: `None` in its annotation means
-            # only that it may be left out, never that the wire carries a null.
-            where = f'{at}.{wire}'
-            targets[place][wire] = walk.optional(walk.field(info, where, nullable=False), info, where)
+            targets[place][wire] = walk.parameter(info, f'{at}.{wire}')
     return uri
 
 

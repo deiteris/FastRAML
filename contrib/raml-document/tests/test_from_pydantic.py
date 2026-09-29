@@ -39,7 +39,7 @@ from pydantic import (
 )
 
 from raml_document import UNSET, Document, TypeDecl
-from raml_document.from_pydantic import Walk
+from raml_document.from_pydantic import Shape, Walk
 
 
 def rendered(model: type[BaseModel]) -> tuple[Walk, Any]:
@@ -934,7 +934,7 @@ class TestResponseShapes:
 
     def test_written_by_field_name(self):
         walk = Walk()
-        with walk.output(by_alias=False):
+        with walk.output(Shape(by_alias=False)):
             name = walk.model(_Account)
         assert name == '_AccountOutputByName'
         assert list(walk.types[name].properties) == ['user_name', 'nickname', 'age']
@@ -943,7 +943,7 @@ class TestResponseShapes:
 
     def test_written_without_nulls(self):
         walk = Walk()
-        with walk.output(exclude_none=True):
+        with walk.output(Shape(exclude_none=True)):
             name = walk.model(_Account)
         assert walk.types[name].properties['nickname'].render() == {'type': 'string', 'required': False}
         shape = parsed_types(walk)[name]
@@ -957,7 +957,7 @@ class TestResponseShapes:
 
         walk = Walk()
         walk.model(Plain)
-        with walk.output(exclude_none=True, by_alias=False):
+        with walk.output(Shape(exclude_none=True, by_alias=False)):
             assert walk.model(Plain) == 'Plain'
 
     def test_a_subset_declares_only_the_fields_kept(self):

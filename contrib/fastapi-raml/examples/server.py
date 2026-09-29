@@ -1,7 +1,7 @@
 """A FastAPI server that serves its own RAML, with handlers that really run.
 
-    pip install fastapi pydantic pyyaml uvicorn
-    PYTHONPATH=. uvicorn fastapi_raml.examples.server:app --reload
+    cd contrib/fastapi-raml
+    uv run --extra examples uvicorn examples.server:app --reload
 
 Then:
 
@@ -79,5 +79,5 @@ def add_book(body: Book) -> Book:
 
 
 # After the routes, so the first request renders every one of them. The cache
-# keys on the router's version counter, so a route added later is picked up too.
+# is rebuilt when the routes change, so a route added later is picked up too.
 add_raml_routes(app)

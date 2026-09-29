@@ -7,11 +7,12 @@ second implementation to disagree with, so each rule here names itself.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from dataclasses import dataclass
+from typing import Annotated, Any, TypedDict
 
 import pytest
 from aiohttp import web
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from aiohttp_raml import (
     AuthenticationError,
@@ -28,12 +29,14 @@ from aiohttp_raml import (
     Responds,
     UploadedFile,
     UriParam,
+    build,
     exclude,
     render,
     secured,
     validate,
 )
 from aiohttp_raml.params import wire_name
+from aiohttp_raml.render.routes import crosses_segments
 from aiohttp_raml.security import setup as setup_security
 
 
@@ -96,6 +99,12 @@ def test_an_optional_query_parameter_is_not_required() -> None:
     assert pages['default'] == 10
 
 
+def test_an_optional_parameter_is_absent_rather_than_null() -> None:
+    """A query value is text or missing; `str | None` means only that it may be left out."""
+    document, _ = rendered(one_view('/books/{isbn}', ParamsView))
+    assert document['/books']['/{isbn}']['get']['queryParameters']['title'] == {'type': 'string', 'required': False}
+
+
 class Defaulted(RamlView):
     async def get(self, isbn: str = 'x', /) -> Annotated[web.Response, Responds(200, Book)]: ...
 
@@ -129,7 +138,7 @@ def test_a_marker_names_the_header_rather_than_guessing_it() -> None:
 def test_the_marker_does_not_reach_the_type_walk() -> None:
     """`Header(...)` is metadata about the position, not a facet of the value."""
     document, dropped = rendered(one_view('/x', Marked))
-    assert document['/x']['get']['headers']['X-Request-Id']['type'] == 'string | nil'
+    assert document['/x']['get']['headers']['X-Request-Id']['type'] == 'string'
     assert dropped == []
 
 
@@ -367,7 +376,7 @@ class Either(RamlView):
 
 
 def test_stacked_secured_is_the_list_of_alternatives_raml_means() -> None:
-    schemes = {'oauth': Books(access_token_uri='t', grants=['authorization_code']), 'basic': Basic()}
+    schemes = {'oauth': Books(access_token_uri='t', grants=['authorization_code'], scopes=['read']), 'basic': Basic()}
     document, dropped = rendered(secured_app(schemes, Either))
     assert document['/x']['get']['securedBy'] == [{'oauth': {'scopes': ['read']}}, 'basic']
     assert dropped == []
@@ -483,7 +492,7 @@ def test_an_upload_is_a_multipart_body_with_ramls_file_type() -> None:
     assert list(body) == ['multipart/form-data']
     assert body['multipart/form-data']['properties'] == {
         'meta': 'Meta',
-        'note': {'type': 'string', 'required': False},
+        'note': {'type': 'string', 'required': False, 'default': ''},
         'cover': {
             'type': 'file',
             'minLength': 1,
@@ -578,6 +587,13 @@ def test_a_uri_parameter_sits_on_the_resource_whose_segment_names_it() -> None:
     assert dropped == []
 
 
+def test_a_template_sharing_its_segment_is_placed_and_not_reported() -> None:
+    """`/{isbn}.json` holds the template and more; the segment still names it."""
+    document, dropped = rendered(one_view('/books/{isbn}.json', Nested))
+    assert document['/books']['/{isbn}.json']['uriParameters'] == {'isbn': 'string'}
+    assert dropped == []
+
+
 class Stray(RamlView):
     async def get(self, nowhere: Annotated[str, UriParam()] = 'x') -> Annotated[web.Response, Responds(204)]: ...
 
@@ -669,3 +685,422 @@ def test_documentation_is_written_at_the_root() -> None:
 
 def test_no_documentation_writes_no_node() -> None:
     assert 'documentation' not in rendered(one_view('/x', OneLiner))[0]
+
+
+def test_a_method_raml_has_no_node_for_is_reported_and_left_out() -> None:
+    """`purge:` under a resource is an unknown key; the document would not parse."""
+
+    @validate
+    async def purge() -> web.Response: ...
+
+    @validate
+    async def fetch() -> web.Response: ...
+
+    app = web.Application()
+    app.router.add_route('PURGE', '/cache', purge)
+    app.router.add_get('/cache', fetch)
+    document, dropped = rendered(app)
+    assert list(document['/cache']) == ['get']
+    assert dropped == ['PURGE /cache: RAML has no PURGE method; not described']
+    build(app, title='T')
+
+
+class Shelved(BaseModel):
+    isbn: str
+    shelf: str = Field(default='a', deprecated='use isbn')
+
+
+class ShelvedView(RamlView):
+    async def get(self) -> Annotated[web.Response, Responds(200, Shelved)]: ...
+
+
+def test_a_deprecated_field_is_annotated_and_its_type_declared() -> None:
+    """An annotation applied without its type declared does not parse."""
+    app = one_view('/legacy', ShelvedView)
+    document, dropped = rendered(app)
+    assert document['types']['Shelved']['properties']['shelf']['(deprecated)'] == 'use isbn'
+    assert 'deprecated' in document['annotationTypes']
+    assert dropped == []
+    build(app, title='T')
+
+
+class AliasedView(RamlView):
+    async def get(
+        self,
+        search: Annotated[str, Field(alias='q')] = '',
+        *,
+        token: Annotated[str | None, Field(alias='X-Token')] = None,
+    ) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    async def post(
+        self,
+        note: Annotated[str, Body()] = Field(min_length=1),
+        *,
+        cover: Annotated[UploadedFile, Body()],
+    ) -> Annotated[web.Response, Responds(201, Book)]: ...
+
+
+def test_a_parameter_is_named_by_its_alias() -> None:
+    document, _ = rendered(one_view('/x', AliasedView))
+    assert list(document['/x']['get']['queryParameters']) == ['q']
+    assert list(document['/x']['get']['headers']) == ['X-Token']
+
+
+def test_a_form_field_whose_field_has_no_default_is_required() -> None:
+    document, _ = rendered(one_view('/x', AliasedView))
+    properties = document['/x']['post']['body']['multipart/form-data']['properties']
+    assert properties['note'] == {'type': 'string', 'minLength': 1}
+
+
+# -- what is a body -------------------------------------------------------------
+
+
+@dataclass
+class Point:
+    x: int
+
+
+class Tagged(TypedDict):
+    name: str
+
+
+@pytest.mark.parametrize(
+    ('annotation', 'expected'),
+    [
+        (Point, 'Point'),
+        (Tagged, 'Tagged'),
+        (list[Book], 'Book[]'),
+        (Annotated[Book, Field(description='the book')], {'type': 'Book', 'description': 'the book'}),
+    ],
+)
+def test_anything_reaching_a_model_is_the_body(annotation: Any, expected: Any) -> None:
+    """An object has no spelling in a query string."""
+
+    async def post(body):  # type: ignore[no-untyped-def]
+        ...
+
+    # Set rather than written: a local annotation is a string under
+    # `from __future__ import annotations`, and nothing resolves it.
+    post.__annotations__ = {'body': annotation, 'return': Annotated[web.Response, Responds(201, None)]}
+    app = web.Application()
+    app.router.add_post('/x', validate(post))
+    document, dropped = rendered(app)
+    assert 'queryParameters' not in document['/x']['post']
+    assert document['/x']['post']['body'] == {'application/json': expected}
+    assert dropped == []
+
+
+def test_an_optional_body_is_the_body_and_its_optionality_is_reported() -> None:
+    @validate
+    async def post(body: Book | None = None) -> Annotated[web.Response, Responds(201, None)]: ...
+
+    app = web.Application()
+    app.router.add_post('/x', post)
+    document, dropped = rendered(app)
+    assert document['/x']['post']['body'] == {'application/json': 'Book | nil'}
+    assert dropped == ['POST /x.body: the body may be left out, and RAML has no optional body; written as required']
+
+
+def test_a_body_that_is_not_json_is_written_as_text_or_a_file() -> None:
+    @validate
+    async def text(doc: Annotated[str, Body(media='application/xml')]) -> Annotated[web.Response, Responds(200)]: ...
+
+    @validate
+    async def image(png: Annotated[bytes, Body(media='image/png')]) -> Annotated[web.Response, Responds(200)]: ...
+
+    app = web.Application()
+    app.router.add_post('/text', text)
+    app.router.add_post('/image', image)
+    document, dropped = rendered(app)
+    assert document['/text']['post']['body'] == {'application/xml': 'string'}
+    assert document['/image']['post']['body'] == {'image/png': 'file'}
+    assert dropped == []
+
+
+# -- which routes -----------------------------------------------------------------
+
+
+def test_the_head_add_get_adds_is_not_described() -> None:
+    """A HEAD is a GET without its body; described, it would claim the GET's bodies."""
+
+    @validate
+    async def fetch() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    app.router.add_get('/x', fetch)
+    document, dropped = rendered(app)
+    assert list(document['/x']) == ['get']
+    assert dropped == []
+
+
+def test_a_head_with_a_handler_of_its_own_is_described() -> None:
+    @validate
+    async def fetch() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    @validate
+    async def probe() -> Annotated[web.Response, Responds(204)]: ...
+
+    app = web.Application()
+    app.router.add_get('/x', fetch, allow_head=False)
+    app.router.add_head('/x', probe)
+    document, _ = rendered(app)
+    assert list(document['/x']) == ['get', 'head']
+    assert document['/x']['head']['responses'] == {'204': {}}
+
+
+@validate
+async def inner() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+
+def test_a_sub_applications_routes_are_described_under_its_prefix() -> None:
+    deep = web.Application()
+    deep.router.add_get('/deep', inner)
+    sub = web.Application()
+    sub.router.add_get('/books', inner)
+    sub.add_subapp('/more', deep)
+    app = web.Application()
+    app.add_subapp('/v1', sub)
+    document, dropped = rendered(app)
+    assert list(document['/v1']) == ['/books', '/more']
+    assert list(document['/v1']['/more']['/deep']) == ['get']
+    assert dropped == []
+
+
+def test_an_excluded_sub_application_is_silent() -> None:
+    sub = web.Application()
+    sub.router.add_get('/books', inner)
+    app = web.Application()
+    exclude(app.add_subapp('/v1', sub))
+    document, dropped = rendered(app)
+    assert '/v1' not in document
+    assert dropped == []
+
+
+def test_a_sub_application_matched_by_host_is_reported() -> None:
+    """Its routes are not under the document's one baseUri."""
+    sub = web.Application()
+    sub.router.add_get('/books', inner)
+    app = web.Application()
+    app.add_domain('api.example.com', sub)
+    document, dropped = rendered(app)
+    assert '/books' not in document
+    assert len(dropped) == 1
+    assert 'matched by host' in dropped[0]
+
+
+class Keyed(PassThrough):
+    async def authenticate(self, request: web.Request) -> Any:
+        raise AuthenticationError
+
+
+def test_a_sub_application_uses_the_schemes_its_parents_register() -> None:
+    @secured('key')
+    @validate
+    async def guarded() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    sub = web.Application()
+    sub.router.add_get('/books', guarded)
+    app = web.Application()
+    setup_security(app, {'key': Keyed(headers={'X-Key': 'string'})})
+    app.add_subapp('/v1', sub)
+    document, dropped = rendered(app)
+    assert document['/v1']['/books']['get']['securedBy'] == ['key']
+    assert dropped == []
+
+
+def test_schemes_two_sub_applications_register_under_one_name_are_declared_apart() -> None:
+    @secured('key')
+    @validate
+    async def guarded() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    for prefix, header in (('/a', 'X-A'), ('/b', 'X-B')):
+        sub = web.Application()
+        setup_security(sub, {'key': Keyed(headers={header: 'string'})})
+        sub.router.add_get('/books', guarded)
+        app.add_subapp(prefix, sub)
+    document, dropped = rendered(app)
+    assert document['securitySchemes']['key']['describedBy'] == {'headers': {'X-A': 'string'}}
+    assert document['securitySchemes']['key_2']['describedBy'] == {'headers': {'X-B': 'string'}}
+    assert document['/a']['/books']['get']['securedBy'] == ['key']
+    assert document['/b']['/books']['get']['securedBy'] == ['key_2']
+    assert dropped == ["securitySchemes: two schemes are registered as 'key'; the second is declared as key_2"]
+    build(app, title='T')
+
+
+# -- a segment's own regex ----------------------------------------------------------
+
+
+def test_a_segments_regex_is_its_parameters_pattern() -> None:
+    @validate
+    async def one(isbn: str, /) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    app.router.add_get(r'/books/{isbn:\d{13}}/{shelf:[a-z]+}', one)
+    document, dropped = rendered(app)
+    books = document['/books']['/{isbn}']
+    assert books['uriParameters'] == {'isbn': {'type': 'string', 'pattern': r'^(?:\d{13})$'}}
+    assert books['/{shelf}']['uriParameters'] == {'shelf': {'type': 'string', 'pattern': '^(?:[a-z]+)$'}}
+    assert dropped == []
+    build(app, title='T')
+
+
+def test_a_regex_matching_across_segments_is_reported() -> None:
+    @validate
+    async def tail(rest: str, /) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    app.router.add_get('/files/{rest:.*}', tail)
+    document, dropped = rendered(app)
+    assert document['/files']['/{rest}']['uriParameters'] == {'rest': 'string'}
+    assert dropped == ['/files/{rest}: {rest} matches .*, which crosses "/", and a RAML URI parameter is one segment']
+
+
+def test_a_regex_on_a_parameter_that_is_no_string_is_reported() -> None:
+    @validate
+    async def one(n: int, /) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    app.router.add_get(r'/n/{n:\d+}', one)
+    document, dropped = rendered(app)
+    assert document['/n']['/{n}']['uriParameters'] == {'n': 'integer'}
+    assert dropped == [r'/n/{n}: n: the route matches \d+, and RAML has no pattern facet for type integer']
+
+
+@pytest.mark.parametrize('regex', ['.*', r'[\w/]+', '[^a]+', r'\S+', '[!-0]'])
+def test_a_regex_that_can_match_a_slash_crosses_segments(regex: str) -> None:
+    assert crosses_segments(regex)
+
+
+@pytest.mark.parametrize('regex', [r'[^/]+', r'\d+', r'[\d.]+', '(?:ab|cd)', '(?=/)x'])
+def test_a_regex_that_cannot_match_a_slash_stays_in_its_segment(regex: str) -> None:
+    assert not crosses_segments(regex)
+
+
+class Narrow(OAuth2):
+    async def authenticate(self, request: web.Request) -> Any:
+        raise AuthenticationError
+
+
+@pytest.mark.parametrize('declared', [['read'], []])
+def test_a_scope_the_scheme_does_not_declare_is_reported_not_written(declared: list[str]) -> None:
+    """RAML refuses a securedBy scope its scheme does not list; the document would not parse."""
+
+    @secured('books', scopes=['read', 'admin'])
+    @validate
+    async def guarded() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    setup_security(app, {'books': Narrow(access_token_uri='https://a/t', grants=['password'], scopes=declared)})
+    app.router.add_get('/x', guarded)
+    document, dropped = rendered(app)
+    unlisted = [scope for scope in ('read', 'admin') if scope not in declared]
+    assert document['/x']['get']['securedBy'] == ([{'books': {'scopes': declared}}] if declared else ['books'])
+    assert dropped == [f"GET /x: 'books' is asked for scopes {unlisted} it does not declare; not written"]
+    build(app, title='T')
+
+
+def test_a_secured_handler_declares_the_401_and_403_the_middleware_answers() -> None:
+    document, dropped = rendered(secured_app({'oauth': Books(access_token_uri='t', scopes=['read'])}, Guarded))
+    responses = document['/x']['get']['responses']
+    assert responses['401']['body'] == {'application/json': 'Refused'}
+    assert responses['403']['body'] == {'application/json': 'Refused'}
+    assert document['types']['Refused']['properties'] == {'error': 'string', 'detail': 'string'}
+    assert dropped == []
+
+
+def test_an_open_handler_declares_neither() -> None:
+    responses = rendered(one_view('/x', Open))[0]['/x']['get'].get('responses', {})
+    assert '401' not in responses
+    assert '403' not in responses
+
+
+class OwnRefusal(RamlView):
+    @secured('books')
+    async def get(self) -> Annotated[web.Response, Responds(401, Error, 'log in')]: ...
+
+
+def test_a_handler_declaring_its_own_401_keeps_it() -> None:
+    responses = rendered(secured_app({'books': Books(access_token_uri='t')}, OwnRefusal))[0]['/x']['get']['responses']
+    assert responses['401'] == {'description': 'log in', 'body': {'application/json': 'Error'}}
+    assert responses['403']['body'] == {'application/json': 'Refused'}
+
+
+class Welcoming(RamlView):
+    @secured('oauth', scopes=['read'])
+    @secured(None)
+    async def get(self) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+
+def test_secured_none_is_the_anonymous_alternative() -> None:
+    app = secured_app({'oauth': Books(access_token_uri='t', scopes=['read'])}, Welcoming)
+    document, dropped = rendered(app)
+    get = document['/x']['get']
+    assert get['securedBy'] == [{'oauth': {'scopes': ['read']}}, None]
+    assert list(get['responses']) == ['200']
+    assert dropped == []
+    build(app, title='T')
+
+
+def test_the_anonymous_alternative_asks_for_no_scopes() -> None:
+    with pytest.raises(ValueError, match='no scopes'):
+        secured(None, scopes=['read'])
+
+
+def test_a_deprecated_handler_is_annotated_whichever_side_of_validate_it_is_marked() -> None:
+    from typing_extensions import deprecated
+
+    @deprecated('use /v2')
+    @validate
+    async def outer() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    class Inner(RamlView):
+        @deprecated('')
+        async def get(self) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    app.router.add_get('/outer', outer)
+    app.router.add_view('/inner', Inner)
+    document, dropped = rendered(app)
+    assert document['/outer']['get']['(deprecated)'] == 'use /v2'
+    assert document['/inner']['get']['(deprecated)'] is None
+    assert 'deprecated' in document['annotationTypes']
+    assert dropped == []
+    build(app, title='T')
+
+
+# -- a response body is what the handler writes --------------------------------------
+
+
+class Shelf(BaseModel):
+    label: str = Field(alias='shelfLabel')
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def upper(self) -> str:
+        return self.label.upper()
+
+
+class ShelfView(RamlView):
+    async def get(
+        self,
+    ) -> Annotated[web.Response, Responds(200, Shelf), Responds(201, Shelf, by_alias=True), Responds(202, Book)]: ...
+
+    async def post(self, shelf: Shelf) -> Annotated[web.Response, Responds(204)]: ...
+
+
+def test_a_response_body_is_described_as_model_dump_writes_it() -> None:
+    """By name, with its computed fields: what `web.json_response(shelf.model_dump())` sends."""
+    app = one_view('/x', ShelfView)
+    document, dropped = rendered(app)
+    responses = document['/x']['get']['responses']
+    assert responses['200']['body'] == {'application/json': 'ShelfOutputByName'}
+    assert document['types']['ShelfOutputByName']['properties'] == {'label': 'string', 'upper': 'string'}
+    assert responses['201']['body'] == {'application/json': 'ShelfOutput'}
+    assert document['types']['ShelfOutput']['properties'] == {'shelfLabel': 'string', 'upper': 'string'}
+    # A model that writes what it reads keeps its one declaration, and the
+    # request body reads by alias as it always did.
+    assert responses['202']['body'] == {'application/json': 'Book'}
+    assert document['types']['Shelf']['properties'] == {'shelfLabel': 'string'}
+    assert dropped == []
+    build(app, title='T')

@@ -232,6 +232,12 @@ jobs:
         # `[tool.mypy] files`.
         run: if [ -d "${DIST//-/_}" ]; then uv run mypy "${DIST//-/_}"; else uv run mypy; fi
       - run: uv run pytest -q
+      # `fastapi-raml` reads FastAPI's route and dependency layout, which has
+      # changed between releases, so the oldest release it admits is tested too.
+      # Starlette's TestClient at that release predates httpx 0.28.
+      - name: Test at the oldest FastAPI admitted
+        if: matrix.dist == 'fastapi-raml'
+        run: uv run --with 'fastapi==0.110.0' --with 'httpx<0.28' pytest -q -p no:cacheprovider
 
   # `viewer/` is outside the Python gate and has its own. It renders
   # `fixtures/sample`, so it is also what notices when a change to the tree

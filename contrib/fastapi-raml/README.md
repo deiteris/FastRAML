@@ -17,7 +17,7 @@ contrib/fastapi-raml/
 ```bash
 cd contrib/fastapi-raml
 uv sync                       # resolves fastraml from the working tree
-uv run pytest                 # 34 tests
+uv run pytest
 uv run ruff check . && uv run ruff format --check . && uv run mypy fastapi_raml/
 ```
 
@@ -56,6 +56,18 @@ add_raml_routes(app)
 add_raml_routes(app, mount_viewer=None)
 ```
 
+Check it in a test, so a document that will not parse fails there rather than
+at the first request:
+
+```python
+from fastapi_raml import build
+
+
+def test_the_app_describes_itself():
+    build(app)  # raises BuildError if the RAML does not parse
+    build(app, strict=True)  # ...or if the renderer had to leave anything out
+```
+
 Or render without serving:
 
 ```python
@@ -71,14 +83,16 @@ print(report.dropped)
 
 | Module | Depends on | Holds |
 |--------|-----------|-------|
-| `raml-document` | nothing but `yaml` | the typed model of a RAML document, and its serialisation |
-| `render.py` | `fastapi`, `pydantic` | reading an app and building one |
-| `serve.py` | `starlette`, `fastraml` | the routes, the cache, and the parse back |
+| `raml-document` | `yaml`; `pydantic` and `fastraml` as extras | the document model, `Walk` over pydantic models, `Report`, and the parse back |
+| `render/` | `fastapi`, `pydantic` | reading an app: `routes`, `security`, `parameters`, `responses`, `metadata` |
+| `serve.py` | `starlette` | the routes and the cache |
 
 `raml-document` is a separate distribution, not a module here. It states the
 RAML spelling of every facet once — the `camelCase` names, the order keys appear
 in, and the shorthand that writes `title: string` rather than
-`title: {type: string}`. Nothing in `render.py` formats RAML.
+`title: {type: string}`. Nothing in `render/` formats RAML, and nothing here
+reads a pydantic model: `render/` reads what is FastAPI's and hands each model
+to `Walk`.
 
 `aiohttp-raml` builds on the same model, so a change to it moves both. That is
 the point: two integrations that disagree about what a RAML document is would be
@@ -87,7 +101,8 @@ two bugs waiting.
 ## What the renderer reads
 
 The models, through `raml_document.from_pydantic.Walk`, which reads
-`model_fields` and the annotations directly.
+`model_fields` and the annotations directly. A standard or pydantic dataclass
+and a `TypedDict` are models too: FastAPI accepts each as a body or a response.
 
 **Not through JSON Schema.** `model_json_schema()` is a projection built for a
 different target and drops things RAML can carry: `Decimal(max_digits=8,
@@ -111,14 +126,84 @@ Tracked:    {type: [Audiobook, Timestamped]}
 ```
 
 Several bases become RAML's multiple inheritance. Two kinds of base are left
-out, because neither is a name a document can declare: `RootModel`, which *is*
-its single field, and a parametrised generic such as `Page[Book]`. A model
-deriving from either keeps its properties inline.
+out: `RootModel`, which *is* its single field, and a generic. `Page[Book]` is
+declared as `Page_Book_` with its fields resolved; inheriting `Page`, whose
+`items` is still `list[T]`, would say `any[]`. A subclass that redeclares an
+inherited field differently -- `kind: str` narrowed to `Literal['cat']`, or
+`x: int` retyped `str` -- is declared whole and without supertypes: RAML reads a
+redeclared property as a narrowing, and which ones it accepts is the parser's
+rule.
 
-Everything else is on the `APIRoute`: `path_format` already uses `{param}` as
-RAML does, `get_flat_params` splits path from query from header, `body_field` and
-`response_field` carry the payload models, and security comes off the dependency
-tree.
+**A response is what the model writes.** A model with a `serialization_alias`,
+an `exclude=True` field or a `computed_field` writes a different shape from the
+one it reads, so it is declared twice: `User` for a request body, `UserOutput`
+for a response. A model that reads and writes alike is declared once. The
+route's settings change the shape too: `response_model_by_alias=False` is
+`UserOutputByName`, `response_model_exclude_none=True` is `UserOutputNoNulls`
+(each nullable field optional and never null), and `response_model_include` or
+`_exclude` declares a type of the fields kept for that route. A route with no
+`status_code` answers with its response class's default -- 307 for a
+`RedirectResponse` -- as FastAPI's schema says.
+
+Everything else is on the route: `path_format` already uses `{param}` as RAML
+does, the dependency tree holds the path, query and header parameters and the
+security schemes, and `body_field` and `response_field` carry the payload
+models. An included router's routes are read through
+`fastapi.routing.iter_route_contexts`, the walk `get_openapi` makes, because
+FastAPI 0.139 no longer copies them into `app.routes`.
+
+Only public FastAPI names are imported. CI runs the suite at the oldest FastAPI
+`pyproject.toml` admits (0.110) as well as the newest.
+
+### Parameters
+
+A path parameter is declared on the resource whose segment templates it:
+`/books/{isbn}/cover` puts `isbn` on `/{isbn}`, which RAML requires. A query
+parameter or header with a default is `required: false` and carries the
+default. RAML's default in that position is `required: true`, so leaving it out
+would make the document stricter than the code. `str | None = None` is
+`type: string`: a parameter is text or absent, never null. A FastAPI parameter
+model (`Annotated[Filters, Query()]`) is its fields; a header model's fields are
+named as they travel (`x_token` is `x-token`). A parameter hidden from the
+app's schema (`Query(include_in_schema=False)`) is hidden here too.
+
+### Security
+
+Every scheme in `fastapi.security` is declared:
+
+| FastAPI | RAML |
+|---------|------|
+| `HTTPBasic`, `HTTPDigest` | `Basic Authentication`, `Digest Authentication` |
+| `HTTPBearer`, any other `HTTPBase` | `Pass Through`, the `Authorization` header |
+| `APIKeyHeader`, `APIKeyQuery` | `Pass Through`, that header or query parameter |
+| `APIKeyCookie` | `Pass Through`, the `Cookie` header |
+| `OAuth2` and its subclasses | `OAuth 2.0`, every flow a grant |
+| `OpenIdConnect` | `x-openid-connect`, its discovery URL in the description |
+
+`securedBy` names only a scheme that was declared: one naming an undeclared
+scheme does not parse. Two schemes configured differently are declared apart
+even under one `scheme_name` -- FastAPI names a scheme after its class, so two
+`APIKeyHeader`s share one -- and the second is reported as `APIKeyHeader_2`. A
+scope a route asks for is declared on its OAuth scheme, as RAML requires. A
+route whose schemes all have `auto_error=False` answers without a credential,
+and its `securedBy` ends with RAML's `null` entry.
+
+### Metadata
+
+What the app and each route say about themselves, beside their shapes:
+
+| FastAPI | RAML |
+|---------|------|
+| `summary`, `description` | `description`, the summary first |
+| `contact`, `license_info`, `terms_of_service`, `openapi_tags` | `documentation:` entries |
+| `servers`, `root_path` | `baseUri`, the `root_path` first as in FastAPI's schema |
+| a route's `deprecated`, `tags`, `operation_id` | the `(deprecated)`, `(tags)`, `(operationId)` annotations |
+| `Field(deprecated=...)`, `Query(deprecated=True)` | `(deprecated)` on the property or parameter |
+| `Field(title=...)` | `displayName` |
+| `Body(openapi_examples=...)` | named `examples`, validated by the parse |
+
+The annotation types are `raml-document`'s, declared in the document wherever
+one is applied.
 
 ## The pipeline
 
@@ -135,9 +220,8 @@ It is also the only way to reach the third stage: `build_tree` projects a parsed
 `Raml`, so there is no route from the renderer to the tree that does not go
 through RAML text.
 
-`parse_from_string` needs a `base_dir` for relative `!include` to resolve
-against. Nothing rendered here writes an include, so `build()` uses a throwaway
-directory: a real path, nothing left in it.
+The pipeline is `raml_document.serve`, shared with `aiohttp-raml`: one parse,
+one `BuildError`, one explanation of what failed and where.
 
 ## Serving
 
@@ -150,13 +234,24 @@ directory: a real path, nothing left in it.
 | `/raml-viewer/api.json` | this app's tree, where the bundle looks for it | `application/json` |
 
 **Nothing runs at import time.** The first request to `/raml` or `/raml.json`
-triggers `build()`; the result is held and reused. The cache key is the router's
-`_get_routes_version()`, a counter that changes whenever a route is added, so a
-route registered after `add_raml_routes` is still picked up — the next request
-rebuilds.
+triggers `build()`, in a worker thread so the event loop keeps serving. The
+result is held and reused until the app's routes change. The routes themselves
+are the cache key, an included router's among them, so a route registered after
+`add_raml_routes` is picked up by the next request.
 
-Measured on `examples/server.py`: **6 ms** to render, parse and project; **1.7 ms**
-to serve from the cache. The 6 ms is paid once per route change, not per request.
+Measured on `examples/server.py`: **2 ms** to render, parse and project; **1.4
+ms** per cached `/raml.json` through `TestClient`, most of it the client. The
+build is paid once per route change, not per request.
+
+**A document that does not build answers 500 with the reason.** Each problem is
+cited at its line in the rendered RAML, with that line quoted, and the failure
+is held like a success until the routes change. Everything the renderer had to
+leave out is logged as a warning on the `fastapi_raml` logger at each build.
+
+A browser asking for `/raml` gets `text/plain`, which it shows, rather than
+`application/raml+yaml`, which it downloads. Calling `add_raml_routes` twice
+raises `ValueError`, because the second pair of routes would be shadowed by the
+first.
 
 ### The viewer
 
@@ -205,10 +300,20 @@ tests/test_differential.py::test_everything_agrees[tagged: unknown tag] PASSED
 tests/test_differential.py::test_book_agrees[pages below minimum]       PASSED
 ```
 
-`tests/test_serve.py` covers the other half: every route answers, the tree has
-the four keys `viewer/src/load.ts` refuses a document without, the routes stay
-out of the app's own schema, and a route added *after* `add_raml_routes` still
-shows up — which is what the cache key exists for.
+The endpoint half has two differentials of its own.
+`tests/test_parameters.py` omits each parameter in turn, and FastAPI must answer
+422 exactly when the RAML says the parameter is required.
+`tests/test_responses.py` calls each route, and the body it actually writes must
+validate against the RAML type of its response -- once per `response_model_*`
+setting, since each changes what is written. `test_security.py` renders every
+`fastapi.security` scheme; `test_routes.py` covers included routers, mounts and
+methods RAML has no node for; `test_metadata.py` covers the annotations and the
+document root.
+
+`tests/test_serve.py` covers serving: every route answers, the tree has the four
+keys `viewer/src/load.ts` refuses a document without, the routes stay out of the
+app's own schema, a route added *after* `add_raml_routes` still shows up, and a
+document that does not build says why.
 
 A diff against expected output would miss both directions the differential
 catches: the
@@ -225,9 +330,26 @@ to be spellable as a type expression.
 
 ## What it cannot express
 
-Named in `Report.dropped`, never omitted silently: a schema keyword with no RAML
-facet (`exclusiveMinimum`, `contains`, `not`), a tuple, a second `servers` entry,
-a cookie parameter, callbacks, and a union member that is an inline declaration.
+Named in `Report.dropped`, never omitted silently:
+
+- a constraint with no RAML facet (an exclusive bound, a validator,
+  `constr(to_upper=True)`);
+- a fixed-length tuple;
+- a naive `datetime` as a default or example: RAML's `datetime` needs an offset;
+- a field read from several keys (`AliasChoices`) or from a nested path
+  (`AliasPath`);
+- a field `response_model_include` keeps in part;
+- a second `servers` entry;
+- a cookie parameter;
+- a path parameter matching across segments (`{name:path}`);
+- a method RAML has no node for (`PURGE`);
+- callbacks;
+- a `default` or ranged (`4XX`) response;
+- a JSON Schema or headers given in `responses=`;
+- a streamed response's items;
+- a mounted sub-application;
+- two security schemes that are each required, since RAML reads a `securedBy`
+  list as alternatives.
 
 One asymmetry the gate surfaces rather than fixes: **pydantic's lax mode coerces
 where RAML does not** (`'42'` to `42`, `'yes'` to `True`). In JSON mode most of it

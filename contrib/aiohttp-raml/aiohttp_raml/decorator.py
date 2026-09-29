@@ -48,8 +48,9 @@ class Described:
     """Everything this package knows about one handler."""
 
     bound: Bound
-    #: `securedBy:` as alternatives, each a scheme name and its scopes.
-    secured_by: list[tuple[str, list[str]]] = field(default_factory=list)
+    #: `securedBy:` as alternatives, each a scheme name and its scopes; `None`
+    #: for the anonymous alternative.
+    secured_by: list[tuple[str | None, list[str]]] = field(default_factory=list)
     description: str | None = None
     display_name: str | None = None
 
@@ -73,12 +74,17 @@ def described(target: Any) -> Described | None:
     return found if isinstance(found, Described) else None
 
 
-def secured(scheme: str, *, scopes: Sequence[str] = ()) -> Any:
+def secured(scheme: str | None, *, scopes: Sequence[str] = ()) -> Any:
     """Require `scheme` for this handler.
 
     Stacks: each application is one entry of `securedBy:`, which RAML reads as
     alternatives. There is no `and`, because RAML has no spelling for one.
+
+    `secured(None)` is RAML's `null` alternative: the handler also answers a
+    caller no scheme authenticates, and `request` then holds no `identity`.
     """
+    if scheme is None and scopes:
+        raise ValueError('the anonymous alternative has no scopes to ask for')
 
     def decorate(handler: Any) -> Any:
         pending = getattr(handler, '_aiohttp_raml_secured', [])
@@ -175,13 +181,20 @@ async def _authorise(request: web.Request, entry: Described) -> None:
     """Try each alternative in turn; the first that authenticates decides.
 
     `securedBy:` is a list of alternatives, so one success is enough and the
-    last failure is what the caller is told about.
+    last failure is what the caller is told about -- unless `None` is among
+    them, when a caller no scheme lets through is let through anonymously.
     """
     if not entry.secured_by:
         return
-    registry = request.app.get(AUTH_SCHEMES) or {}
+    anonymous = False
+    # Through `config_dict`: a handler in a sub-application sees the schemes
+    # its parents registered.
+    registry = request.config_dict.get(AUTH_SCHEMES) or {}
     failure: Exception | None = None
     for name, scopes in entry.secured_by:
+        if name is None:
+            anonymous = True
+            continue
         scheme = registry.get(name)
         if scheme is None:
             raise RuntimeError(f'securedBy names {name!r}, which security.setup() did not register')
@@ -194,6 +207,8 @@ async def _authorise(request: web.Request, entry: Described) -> None:
             failure = AuthorizationError(f'{name}: {sorted(scopes)}')
             continue
         request['identity'] = identity
+        return
+    if anonymous:
         return
     raise failure if failure is not None else AuthenticationError('no scheme accepted the request')
 

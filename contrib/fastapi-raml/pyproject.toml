@@ -9,7 +9,7 @@ license = "MIT"
 # A consumer of fastraml, so fastraml is a dependency here and this is not one
 # there. The parser must not depend on a web framework.
 dependencies = [
-    "raml-document>=0.1,<0.2",
+    "raml-document[pydantic,serve]>=0.1,<0.2",
     "fastraml>=0.1,<0.2",
     "fastapi>=0.110",
     "pydantic>=2.7",
@@ -29,6 +29,7 @@ dev = [
     "mypy>=1.10",
     "ruff>=0.6",
     "httpx>=0.27",   # starlette's TestClient
+    "python-multipart>=0.0.9",   # FastAPI's `Form` and `File`, which the tests render
     "uvicorn>=0.27",
     # So the gate exercises the mount rather than only the absent branch.
     "fastraml-viewer",
@@ -90,8 +91,9 @@ multiline-quotes = "double"
 # Examples are written to be read: they declare models and routes and little
 # else, and their handlers are stubs where the body is not the point.
 "examples/*.py" = ["ANN", "D", "INP001", "ARG001"]
-# Tests assert on private state and print their table.
-"tests/*.py" = ["S101", "ANN", "D", "INP001", "T201", "SLF001", "PLR2004", "PLC0415"]
+# Tests assert on private state and print their table; their route handlers
+# declare parameters to be rendered, not used.
+"tests/*.py" = ["S101", "ANN", "D", "INP001", "T201", "SLF001", "PLR2004", "PLC0415", "ARG001", "PLR0913", "PLR0917"]
 
 [tool.mypy]
 python_version = "3.12"

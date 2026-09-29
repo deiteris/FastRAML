@@ -11,21 +11,25 @@ parameter the injector takes from somewhere else.
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import dataclass
 from json import JSONDecodeError
-from typing import TYPE_CHECKING, Any, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Final, get_args, get_origin
 
 from aiohttp import web
 from pydantic import BaseModel, TypeAdapter, ValidationError, create_model
+from raml_document.from_pydantic.introspect import unwrap_annotated
 
 from aiohttp_raml.errors import STATUS, RequestError, describe
 from aiohttp_raml.multipart import File, PartRejected, Parts, UploadedFile
-from aiohttp_raml.params import BODY, HEADER, QUERY, URI, Declared
+from aiohttp_raml.params import BODY, HEADER, MISSING, QUERY, URI, Declared, is_json
 from aiohttp_raml.responses import Responds
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from raml_document.from_pydantic import Shape
 
 __all__ = ['Bound', 'bind', 'error_response']
 
@@ -60,12 +64,15 @@ def _dumps(value: Any) -> str:
 def _model(name: str, fields: Sequence[Declared]) -> type[BaseModel]:
     """One pydantic model over the parameters of a single node.
 
-    Keyed by the *handler's* parameter name, not the wire name: `X-Request-Id`
-    is not an identifier, and a model whose fields are not identifiers only
-    works by way of pydantic storing them in `__dict__`. `_collect` does the
-    wire-to-name mapping before anything reaches here.
+    Fields are the *handler's* parameter names, not the wire names:
+    `X-Request-Id` is not an identifier, and a model whose fields are not
+    identifiers only works by way of pydantic storing them in `__dict__`.
+    `_collect` maps each wire name to the key the field validates under --
+    its name, or the alias its `Field` gives it.
     """
-    spec: dict[str, Any] = {item.name: (item.annotation, ... if item.required else item.default) for item in fields}
+    spec: dict[str, Any] = {
+        item.name: (item.annotation, ... if item.default is MISSING else item.default) for item in fields
+    }
     return create_model(name, **spec)
 
 
@@ -83,6 +90,8 @@ class Bound:
     declared_responses: list[Responds]
     #: The same, compiled, for `check`.
     responses: dict[int, TypeAdapter[Any] | None]
+    #: How each declared response writes its body, for `check` to read it back.
+    shapes: dict[int, Shape]
 
     async def call(self, handler: Any, request: web.Request, first: Any = None) -> tuple[bool, Any]:
         """Validate, then call.
@@ -108,17 +117,37 @@ class Bound:
             refused = await _multipart(request, self.parts, kwargs)
             if refused is not None:
                 return False, refused
-        elif self.body is not None and self.body_adapter is not None:
+        elif self.body is not None:
+            refused = await self._body(request, self.body, kwargs)
+            if refused is not None:
+                return False, refused
+
+        return True, await handler(*args, **kwargs)
+
+    async def _body(self, request: web.Request, body: Declared, kwargs: dict[str, Any]) -> web.Response | None:
+        """Read and validate the body into `kwargs`, or return the 400 refusing it.
+
+        A body with a default may be left out, and is then its default -- built
+        per request, so a `default_factory` hands no two requests one object.
+        """
+        if not request.body_exists and not body.required:
+            kwargs[body.name] = body.info.get_default(call_default_factory=True)
+            return None
+        payload: Any
+        if not is_json(body.media):
+            # Not parsed: `read_signature` holds such a body to `str` or `bytes`.
+            payload = await request.read() if unwrap_annotated(body.annotation)[0] is bytes else await request.text()
+        else:
             try:
                 payload = await request.json()
             except JSONDecodeError:
-                return False, _failures([describe('body', 'the body is not valid JSON', kind='json_invalid')])
-            try:
-                kwargs[self.body.name] = self.body_adapter.validate_python(payload)
-            except ValidationError as error:
-                return False, error_response(error, BODY)
-
-        return True, await handler(*args, **kwargs)
+                return _failures([describe('body', 'the body is not valid JSON', kind='json_invalid')])
+        assert self.body_adapter is not None  # noqa: S101 - `bind` builds one beside every body
+        try:
+            kwargs[body.name] = self.body_adapter.validate_python(payload)
+        except ValidationError as error:
+            return error_response(error, BODY)
+        return None
 
     def check(self, response: Any, handler: Any) -> None:
         """Assert a response matches what the handler declared.
@@ -138,9 +167,26 @@ class Bound:
         if adapter is None:
             return
         try:
-            adapter.validate_python(json.loads(body))
+            adapter.validate_python(json.loads(body), **_written_keys(self.shapes[response.status]))
         except (ValidationError, JSONDecodeError) as error:
             raise ResponseMismatch(f'{name} returned a {response.status} body it does not declare: {error}') from error
+
+
+#: Can a validation read a model by its fields' names alone? pydantic 2.11 and later.
+_BY_NAME: Final = 'by_name' in inspect.signature(TypeAdapter.validate_python).parameters
+
+
+def _written_keys(shape: Shape) -> dict[str, Any]:
+    """The keys `validate_python` should read a body by: the ones `shape` writes it under.
+
+    A body written by name is read back by name. Before pydantic 2.11 a
+    validation reads aliases only, so there a model with aliases, written by
+    name, is not checked by name. Under `exclude_none` a field left out reads
+    as missing wherever the model gives it no default, which the check reports.
+    """
+    if not _BY_NAME:
+        return {}
+    return {'by_alias': shape.by_alias, 'by_name': not shape.by_alias}
 
 
 class ResponseMismatch(AssertionError):  # noqa: N818 - not an Error; it is an assertion
@@ -160,34 +206,31 @@ def _place(declared: list[Declared], node: str, validated: BaseModel, args: list
 
 
 def _collect(node: str, request: web.Request, declared: list[Declared]) -> dict[str, Any]:
-    """The raw values for one node, keyed by the handler's parameter names.
+    """The raw values for one node, keyed as `_model` validates them.
 
     Only declared parameters are looked up, so an undeclared query parameter or
     header is ignored rather than offered to the model.
     """
     fields = [item for item in declared if item.place == node]
     if node == URI:
-        return {item.name: request.match_info[item.wire] for item in fields if item.wire in request.match_info}
-    if node == HEADER:
-        # Case-insensitively: `X-Request-Id` and `x-request-id` are one header.
-        available = {key.lower(): value for key, value in request.headers.items()}
-        return {item.name: available[item.wire.lower()] for item in fields if item.wire.lower() in available}
-    return _query(request, fields)
+        return {item.key: request.match_info[item.wire] for item in fields if item.wire in request.match_info}
+    # Headers case-insensitively: `X-Request-Id` and `x-request-id` are one.
+    return _values(request.headers if node == HEADER else request.query, fields)
 
 
-def _query(request: web.Request, fields: list[Declared]) -> dict[str, Any]:
-    """The query string, with repeated keys collected for a sequence parameter.
+def _values(source: Any, fields: list[Declared]) -> dict[str, Any]:
+    """A query string's or the headers' values, a repeated key collected for a sequence parameter.
 
-    `?tags=a&tags=b` is one parameter with two values. A parameter whose
-    annotation accepts a sequence gets a list even when one value arrived, so
-    `?tags=a` is `['a']` rather than `'a'`.
+    `?tags=a&tags=b` is one parameter with two values, and so are two `X-Tag`
+    lines. A parameter whose annotation accepts a sequence gets a list even
+    when one value arrived, so `?tags=a` is `['a']` rather than `'a'`.
     """
     out: dict[str, Any] = {}
     for item in fields:
-        values = request.query.getall(item.wire, [])
+        values = source.getall(item.wire, [])
         if not values:
             continue
-        out[item.name] = values if len(values) > 1 or _is_sequence(item.annotation) else values[0]
+        out[item.key] = values if len(values) > 1 or _is_sequence(item.annotation) else values[0]
     return out
 
 
@@ -233,7 +276,7 @@ async def _read_field(part: Any, item: Declared, kwargs: dict[str, Any]) -> web.
         if (part.headers.get('Content-Type') or '').startswith('application/json'):
             return _failures([describe('body', 'the part is not valid JSON', kind='json_invalid', loc=[item.wire])])
     try:
-        kwargs[item.name] = TypeAdapter(item.annotation).validate_python(raw)
+        kwargs[item.name] = TypeAdapter(item.validated).validate_python(raw)
     except ValidationError as error:
         return error_response(error, BODY)
     return None
@@ -258,7 +301,7 @@ def bind(declared: list[Declared], responses: Sequence[Responds]) -> Bound:
     bodies = [item for item in declared if item.place == BODY]
     parts = bodies if any(item.is_file for item in bodies) else []
     body = None if parts else next(iter(bodies), None)
-    body_adapter = TypeAdapter(body.annotation) if body is not None else None
+    body_adapter = TypeAdapter(body.validated) if body is not None else None
     described = _with_request_error(declared, responses)
 
     return Bound(
@@ -269,6 +312,7 @@ def bind(declared: list[Declared], responses: Sequence[Responds]) -> Bound:
         parts=parts,
         declared_responses=described,
         responses={item.code: (TypeAdapter(item.body) if item.body is not None else None) for item in described},
+        shapes={item.code: item.shape for item in described},
     )
 
 
@@ -282,5 +326,6 @@ def _with_request_error(declared: list[Declared], responses: Sequence[Responds])
     out = list(responses)
     if not declared or any(item.code == STATUS for item in out):
         return out
-    out.append(Responds(STATUS, list[RequestError], 'the request did not validate'))
+    # `describe` writes each error under its alias: `in`, not `in_`.
+    out.append(Responds(STATUS, list[RequestError], 'the request did not validate', by_alias=True))
     return out

@@ -1,15 +1,17 @@
-"""The 400 this package returns, as a declared type.
+"""The 400, 401 and 403 this package answers with, as declared types.
 
 Every operation that takes a parameter can answer 400, so every such operation
 declares one -- otherwise the document describes a response the API demonstrably
 produces and does not mention it.
 
-The payload is exactly these four fields. pydantic's `errors()` also carries
+`RequestError` is exactly four fields. pydantic's `errors()` also carries
 `input` and `ctx`, and neither is written: `input` echoes request data back, and
 `ctx` varies by constraint so no single type describes it. What they add is
 already in `msg`.
 
-A handler that declares its own 400 keeps it; nothing is added over the top.
+A secured operation declares the 401 and 403 its middleware answers, each a
+`Refused`, for the same reason. A handler that declares its own 400, 401 or 403
+keeps it; nothing is added over the top.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-__all__ = ['STATUS', 'RequestError', 'describe']
+__all__ = ['STATUS', 'Refused', 'RequestError', 'describe']
 
 #: The status code an invalid request is answered with.
 STATUS = 400
@@ -46,3 +48,16 @@ def describe(
 ) -> dict[str, object]:
     """One `RequestError` as the dict that goes on the wire."""
     return {'in': node, 'loc': loc or [], 'type': kind, 'msg': message}
+
+
+class Refused(BaseModel):
+    """Why a secured request was not let through.
+
+    What `security.middleware` answers: 401 when no scheme authenticates the
+    caller, 403 when the one that does will not permit the scopes asked for.
+    """
+
+    #: `Authentication required` or `Permission denied`.
+    error: str
+    #: The reason the scheme gave.
+    detail: str

@@ -17,6 +17,7 @@ import yaml
 from fastraml import ParseOptions, parse_from_path
 
 from raml_document import (
+    METHODS,
     UNSET,
     Body,
     Document,
@@ -103,6 +104,11 @@ class TestFacetSpelling:
         assert SecuredBy(scheme='oauth').render() == 'oauth'
         assert SecuredBy(scheme='oauth', scopes=['read']).render() == {'oauth': {'scopes': ['read']}}
 
+    def test_an_anonymous_entry_is_null(self):
+        """RAML's `securedBy: [oauth, null]`: the scheme, or none at all."""
+        method = Method(secured_by=[SecuredBy(scheme='oauth'), SecuredBy(scheme=None)])
+        assert method.render()['securedBy'] == ['oauth', None]
+
 
 class TestResourceNesting:
     def test_at_creates_each_segment(self):
@@ -130,6 +136,26 @@ class TestResourceNesting:
         rendered = document.render()
         assert 'get' not in rendered
         assert rendered['/'] == {'get': {}}
+
+    def test_a_uri_parameter_is_declared_where_its_segment_is_and_not_on_the_leaf(self):
+        """RAML rejects a `uriParameters` entry its own relative URI does not template."""
+        document = Document(title='T')
+        document.root.at('/books/{isbn}/cover').methods['get'] = Method()
+        assert document.root.declare_uri_parameter('/books/{isbn}/cover', 'isbn', TypeDecl(type='integer'))
+        assert document.root.at('/books/{isbn}').uri_parameters == {'isbn': TypeDecl(type='integer')}
+        assert document.root.at('/books/{isbn}/cover').uri_parameters == {}
+        parsed(document)
+
+    def test_a_template_sharing_its_segment_is_still_found(self):
+        document = Document(title='T')
+        document.root.at('/files/{name}.json').methods['get'] = Method()
+        assert document.root.declare_uri_parameter('/files/{name}.json', 'name', TypeDecl(type='string'))
+        parsed(document)
+
+    def test_a_parameter_no_segment_names_is_not_declared(self):
+        root = Resource()
+        assert not root.declare_uri_parameter('/books', 'isbn', TypeDecl(type='string'))
+        assert root.children == {}
 
 
 class TestParsesBack:
@@ -246,3 +272,33 @@ def test_the_header_is_written_once():
 def test_render_is_plain_yaml_safe():
     # No custom encoder anywhere: `render()` returns only builtin types.
     yaml.safe_dump(Document(title='T', types={'A': TypeDecl(type='string')}).render())
+
+
+def test_every_method_named_is_one_a_parser_reads():
+    """`METHODS` is what a renderer checks a verb against, so each must parse."""
+    import pathlib
+
+    from fastraml import ParseOptions, parse_from_string
+
+    document = Document(title='T')
+    for verb in METHODS:
+        document.root.at('/x').methods[verb] = Method()
+    raml = parse_from_string(
+        document.to_raml(), file_name='api.raml', base_dir=pathlib.Path.cwd(), options=ParseOptions()
+    )
+    assert set(raml.endpoints['/x'].operations) == METHODS
+
+
+def test_an_annotation_is_written_in_parentheses_and_its_type_declared():
+    from raml_document.annotations import annotate
+
+    document = Document(title='T')
+    method = Method()
+    annotate(method.annotations, document.annotation_types, 'tags', ['books'])
+    decl = TypeDecl(type='string')
+    annotate(decl.annotations, document.annotation_types, 'deprecated', None)
+    document.root.at('/x').methods['get'] = method
+    rendered = document.render()
+    assert rendered['/x']['get'] == {'(tags)': ['books']}
+    assert decl.render() == {'type': 'string', '(deprecated)': None}
+    assert list(rendered['annotationTypes']) == ['tags', 'deprecated']

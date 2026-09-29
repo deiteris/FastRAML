@@ -118,16 +118,18 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27" },
     { name = "jsonschema", specifier = ">=4.21" },
     { name = "pluralizer", specifier = ">=2.0" },
+    { name = "pygls", marker = "extra == 'lsp'", specifier = ">=2" },
     { name = "pyoxigraph", marker = "extra == 'graph'", specifier = ">=0.4" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "referencing", specifier = ">=0.35" },
 ]
-provides-extras = ["graph", "http", "re2", "serve"]
+provides-extras = ["graph", "http", "lsp", "re2", "serve"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "hypothesis" },
     { name = "mypy" },
+    { name = "pygls", specifier = ">=2" },
     { name = "pytest" },
     { name = "ruamel-yaml", specifier = ">=0.18,<0.20" },
     { name = "ruff" },
@@ -545,6 +547,9 @@ pydantic = [
     { name = "annotated-types" },
     { name = "pydantic" },
 ]
+serve = [
+    { name = "fastraml" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -559,10 +564,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "annotated-types", marker = "extra == 'pydantic'", specifier = ">=0.6" },
+    { name = "fastraml", marker = "extra == 'serve'", editable = "../../" },
     { name = "pydantic", marker = "extra == 'pydantic'", specifier = ">=2.7" },
     { name = "pyyaml", specifier = ">=6" },
 ]
-provides-extras = ["pydantic"]
+provides-extras = ["pydantic", "serve"]
 
 [package.metadata.requires-dev]
 dev = [

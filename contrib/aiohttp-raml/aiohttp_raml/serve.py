@@ -12,17 +12,13 @@ Two routes, plus an optional viewer:
 itself, so the mount serves this app's tree at that name and the bundle is
 pointed at the right document by where it is mounted.
 
-The pipeline behind the first two:
+Behind the first two is `raml_document.serve.build`: the rendered document is
+parsed back with `validate=True` before anything is served, and one that does
+not parse raises `BuildError` rather than reaching a client -- a request
+answers 500 with the reason, each problem cited at its line.
 
-    app --render()--> RAML text --parse_from_string()--> Raml --build_tree()--> tree
-
-**The parse is not a formality.** It runs with `validate=True`, so a document
-that will not parse, or whose examples do not validate, raises here rather than
-reaching a client. It is also the only route to the third stage: `build_tree`
-projects a parsed `Raml`, so nothing reaches the viewer without going through
-RAML text first.
-
-Nothing runs at import time. The first request builds, and the result is held.
+Nothing runs at import time. The first request builds, and the result -- or the
+failure -- is held.
 There is no cache key, and there does not need to be one: aiohttp freezes its
 router when the application starts, so no route can appear after a request has
 been answered. FastAPI's integration keys its cache on a router version for
@@ -34,13 +30,13 @@ the app do not describe themselves.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import web
-from fastraml import ParseOptions, build_tree, parse_from_string
+from raml_document import serve
+from raml_document.serve import RAML_MEDIA_TYPE, BuildError, Served, media_type
 
 from aiohttp_raml.decorator import exclude
 from aiohttp_raml.render import render
@@ -48,45 +44,20 @@ from aiohttp_raml.render import render
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-__all__ = ['RAML_MEDIA_TYPE', 'Served', 'add_raml_routes', 'build']
+__all__ = ['RAML_MEDIA_TYPE', 'BuildError', 'Served', 'add_raml_routes', 'build']
 
-#: RAML's registered media type (spec § Introduction).
-RAML_MEDIA_TYPE = 'application/raml+yaml'
-
-
-@dataclass(slots=True)
-class Served:
-    """One app, rendered and parsed back."""
-
-    #: The RAML source.
-    text: str
-    #: `fastraml tree` output for it, ready for `json.dumps`.
-    tree: Any
-    #: Everything the renderer could not express (`Report.dropped`).
-    dropped: list[str]
+logger = logging.getLogger('aiohttp_raml')
 
 
-def build(app: web.Application, **metadata: Any) -> Served:
+def build(app: web.Application, *, strict: bool = False, **metadata: Any) -> Served:
     """Render `app` to RAML, parse it back, and project the tree.
 
-    The parse is what makes this more than string formatting: `validate=True`
-    also checks every example, and `unwrap=True` is required by the tree view,
-    which is the effective document rather than the declared one.
-
-    `parse_from_string` still needs a `base_dir` for a relative `!include` to
-    resolve against. Nothing here writes an include, so a throwaway directory is
-    the honest answer -- it names a real place without leaving anything in it.
+    Raises `BuildError` if the rendered document does not parse -- or, with
+    `strict=True`, if the renderer had to leave anything out. What was left out
+    is logged as warnings on the `aiohttp_raml` logger. `**metadata` is passed
+    to `render`.
     """
-    report = render(app, **metadata)
-    text = report.to_raml()
-    with TemporaryDirectory() as directory:
-        raml = parse_from_string(
-            text,
-            file_name='api.raml',
-            base_dir=directory,
-            options=ParseOptions(unwrap=True, validate=True),
-        )
-        return Served(text=text, tree=build_tree(raml), dropped=report.dropped)
+    return serve.build(render(app, **metadata), strict=strict, log=logger)
 
 
 def _mount_viewer(app: web.Application, path: str, tree: Callable[[web.Request], Awaitable[web.Response]]) -> bool:
@@ -163,20 +134,37 @@ def add_raml_routes(
     A viewer you host yourself needs no argument here: serve this app's
     `{tree_url}` as `api.json` beside your copy of the bundle.
     """
-    held: list[Served] = []
+    held: list[Served | BuildError] = []
 
     def served() -> Served:
         if not held:
-            held.append(build(app, **metadata))
+            try:
+                held.append(build(app, **metadata))
+            except BuildError as error:
+                # Held too: the router is frozen, so it fails the same way on
+                # every request, and rendering it again is only slower.
+                logger.exception('RAML does not build')
+                held.append(error)
+        if isinstance(held[0], BuildError):
+            raise held[0]
         return held[0]
 
     @exclude
-    async def raml_source(request: web.Request) -> web.Response:  # noqa: ARG001 - the signature aiohttp calls
-        return web.Response(text=served().text, content_type=RAML_MEDIA_TYPE)
+    async def raml_source(request: web.Request) -> web.Response:
+        try:
+            text = served().text
+        except BuildError as error:
+            return web.Response(text=str(error), status=500)
+        accept = request.headers.get('Accept', '')
+        return web.Response(text=text, content_type=media_type(accept), headers={'Vary': 'Accept'})
 
     @exclude
-    async def raml_tree(request: web.Request) -> web.Response:  # noqa: ARG001 - as above
-        return web.json_response(served().tree)
+    async def raml_tree(request: web.Request) -> web.Response:  # noqa: ARG001 - the signature aiohttp calls
+        try:
+            body = served().tree_json
+        except BuildError as error:
+            return web.Response(text=str(error), status=500)
+        return web.Response(body=body, content_type='application/json')
 
     if mount_viewer is not None:
         _mount_viewer(app, mount_viewer.rstrip('/'), raml_tree)

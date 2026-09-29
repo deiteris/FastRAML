@@ -27,6 +27,7 @@ from aiohttp_raml import (
     UriParam,
     validate,
 )
+from aiohttp_raml.injectors import _BY_NAME
 
 
 class Book(BaseModel):
@@ -711,6 +712,7 @@ class Written(RamlView):
         return web.json_response(Labelled(shelfLabel='a').model_dump())
 
 
+@pytest.mark.skipif(not _BY_NAME, reason='validating by name alone needs pydantic 2.11')
 def test_a_body_declared_by_name_is_checked_by_name() -> None:
     """`model_dump()` writes `label`, which is what `Responds` declares by default."""
     bound = Written.get.aiohttp_raml_described.bound

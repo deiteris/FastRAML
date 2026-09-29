@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, cast
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.parser.references import UnresolvedReferenceError, cut_last
 from fastraml.parser.substitutions import substituted_site
+from fastraml.registry import ParseCtx
 from fastraml.types.base import (
     TYPE_ARRAY,
     TYPE_COMPOSITE,
@@ -107,15 +108,21 @@ def resolve_shape(raml: Raml, base: BaseShape) -> None:
             info={'type': base.type},
         )
     base._visiting = True  # noqa: SLF001 - see above
+    # P7 runs after fragment decoding has popped its context. Pending facets
+    # may be authored in a typed trait even when a substituted `type:` gave the
+    # base the caller's anchor; its children belong to the authored namespace.
+    # Headerless included content has no resolver of its own, so it inherits
+    # the namespace captured by the declaration (docs/04 § 4.1; docs/08 § 4.2).
+    anchor = raml.resolver_at(base.location) or base.anchor
+    raml.push_ctx(ParseCtx(anchor=anchor, target=shape.pending_target))
     try:
         # The pending facets decode now, at the target they were written at.
-        with raml.target_scope(shape.pending_target):
-            if base.link is not None:
-                _resolve_link(raml, base, shape)
-            elif base.type == TYPE_COMPOSITE:
-                _resolve_multiple_inheritance(raml, base, shape)
-            else:
-                _build(raml, shape, _parse(raml, base))
+        if base.link is not None:
+            _resolve_link(raml, base, shape)
+        elif base.type == TYPE_COMPOSITE:
+            _resolve_multiple_inheritance(raml, base, shape)
+        else:
+            _build(raml, shape, _parse(raml, base))
     except RamlError as err:
         # Left an `UnknownShape`, or its kind if one of its declaration facets
         # failed. It is marked, as is every shape the failure passes through on
@@ -123,6 +130,7 @@ def resolve_shape(raml: Raml, base: BaseShape) -> None:
         raml.mark(base, err)
         raise
     finally:
+        raml.pop_ctx()
         base._visiting = False  # noqa: SLF001 - see above
 
 

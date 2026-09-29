@@ -27,6 +27,12 @@ declaration facet can create more shapes.
 Resolution is idempotent and re-entrant: resolving a reference may resolve its
 referent out of queue order. A cycle through type resolution (`A: B`, `B: A`) is
 an error. A cycle through child declarations is legal and is marked in P9.
+While settling a declaration, P7 restores the namespace of the file that wrote
+its deferred facets and the captured annotation target. For a headerless include
+with no namespace of its own, it uses the declaration's captured namespace, so
+children resolve as if written in the includer while staying located in the
+included file (docs/04 § 4.1). This also keeps a typed trait's static facets in
+the trait's namespace when the caller supplied its `type:` (docs/08 § 4.2).
 
 P7 resolves these forms:
 

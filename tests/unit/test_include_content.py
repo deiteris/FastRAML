@@ -179,6 +179,42 @@ def test_an_included_type_is_named_in_the_api_and_checked_in_its_file(memory_wor
     assert (frame.message, frame.where().rsplit('/', 1)[-1]) == ('invalid example', 'c.yaml:4:12')
 
 
+def test_a_subtype_in_an_included_types_map_resolves_deferred_property_names(memory_workspace):
+    root = memory_workspace(
+        {
+            'api.raml': ROOT + 'types: !include types.yaml\n',
+            'types.yaml': (
+                'Derived:\n  type: Base\n  properties:\n    items: Item[]\n'
+                'Base:\n  properties:\n    id: string\n'
+                'Item:\n  properties:\n    name: string\n'
+            ),
+        }
+    )
+    raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+    types = raml.entry_point.types
+    assert list(types) == ['Derived', 'Base', 'Item']
+    assert list(types['Derived'].shape.properties) == ['items', 'id']
+    assert types['Derived'].shape.properties['items'].base.shape.items.type == 'object'
+    assert types['Derived'].shape.properties['items'].base.location.endswith('/types.yaml')
+
+
+def test_a_missing_deferred_property_name_in_an_included_types_map_reports_its_file(memory_workspace):
+    root = memory_workspace(
+        {
+            'api.raml': ROOT + 'types: !include types.yaml\n',
+            'types.yaml': 'Base: object\nDerived:\n  type: Base\n  properties:\n    items: Missing[]\n',
+        }
+    )
+    with pytest.raises(RamlError) as caught:
+        memory_workspace.parse(root / 'api.raml')
+    frame = next(caught.value.chains())[-1]
+    assert (frame.message, frame.info, frame.where().rsplit('/', 1)[-1]) == (
+        'reference not found',
+        {'type': 'Missing', 'missing': 'Missing'},
+        'types.yaml:5:12',
+    )
+
+
 def test_a_resource_is_keyed_where_it_is_written_and_decoded_in_its_file(memory_workspace):
     root = memory_workspace({'api.raml': ROOT + '/x: !include c.yaml\n', 'c.yaml': 'displayName: X\n/y:\n'})
     raml = memory_workspace.parse(root / 'api.raml')

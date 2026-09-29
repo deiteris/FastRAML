@@ -55,6 +55,9 @@ __all__ = [
 #: and `y` are strings and never reach here tagged `!!bool`.
 _TRUE_SCALARS: Final = frozenset({'true'})
 
+#: Only matching outer delimiters identify an inline JSON data value.
+_INLINE_JSON_DELIMITERS: Final = {'{': '}', '[': ']', '"': '"'}
+
 #: Float scalars YAML spells in words rather than digits.
 _SPECIAL_FLOATS: Final = {
     '.inf': float('inf'),
@@ -240,16 +243,20 @@ def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location
 
     Three forms are recognised, in this order: an `!include`, whose content is
     read and whose `location` becomes the *included* file so that a bad example
-    reports that file's path; an inline JSON scalar, which is how
-    `type: '{"type":"object"}'` and inline JSON examples work; and ordinary
-    YAML.
+    reports that file's path; a scalar enclosed by matching JSON delimiters,
+    decoded once without reinterpreting its result; and ordinary YAML.
     """
     location = raml.document_location(value_node, location)
     if value_node.tag == TAG_INCLUDE:
         target, content = resolve_include(raml, value_node, location)
         return included_data_node(raml, key_node, value_node, target, content)
 
-    if value_node.kind is NodeKind.SCALAR and value_node.value[:1] in ('{', '['):
+    if (
+        value_node.kind is NodeKind.SCALAR
+        and (closing := _INLINE_JSON_DELIMITERS.get(value_node.value[:1])) is not None
+        and len(text := value_node.value.rstrip(' \t\r\n')) > 1
+        and text.endswith(closing)
+    ):
         import json  # noqa: PLC0415 - most RAML data is already represented by YAML nodes
 
         try:

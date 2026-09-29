@@ -37,6 +37,7 @@ WRITERS = {
     'inheritance': lambda root: corpus.write_inheritance(root, family_count=1),
     'includes': lambda root: corpus.write_includes(root, resource_count=corpus._LEADING_TAB_EVERY + 1),
     'include-content': lambda root: corpus.write_include_content(root, resource_count=3),
+    'inline-json': lambda root: corpus.write_inline_json(root, type_count=3),
 }
 
 
@@ -48,6 +49,24 @@ class TestFeatureCorporaReachTheirCode:
     (docs/12 § 4). Each feature corpus pins, by counting calls, that it runs the
     code it was written for, at every size it was written to cover.
     """
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_inline_json_decodes_every_string_once(self, tmp_path, monkeypatch, count):
+        decoded: list[str] = []
+        original = json.loads
+
+        def counting(value, *args, **kwargs):
+            if isinstance(value, str) and value.startswith('"'):
+                decoded.append(value)
+            return original(value, *args, **kwargs)
+
+        entry = corpus.write_inline_json(tmp_path, type_count=count)
+        monkeypatch.setattr(json, 'loads', counting)
+        raml = parse_from_path(entry, ParseOptions(unwrap=True, validate=True))
+        assert len(decoded) == count * 5
+        assert set(decoded) == {json.dumps(f'{{"attr":{index}}}') for index in range(count)}
+        for index in range(count):
+            assert raml.types_in(raml.location)[f'T{index}'].example.data.raw == f'{{"attr":{index}}}'
 
     def test_enums_runs_the_subset_check_at_every_size(self, tmp_path, monkeypatch):
         import fastraml.types.inherit as inherit_module

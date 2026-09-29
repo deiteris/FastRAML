@@ -213,8 +213,35 @@ annotation values, custom facets, and discriminator values. It retains a
 position-bearing structure and a plain Python `raw` projection. Scalar values
 are derived from their YAML tag and literal text; timestamp values retain text.
 
-Scalar text beginning with `{` or `[` is parsed as inline JSON. An included data
-value records both the included location and include metadata.
+At a data-value root, scalar text enclosed by a matching pair of `{` and `}`,
+`[` and `]`, or `"` and `"` is parsed as inline JSON exactly once. The opening
+delimiter must be the first character; the end check ignores trailing JSON
+whitespace (space, tab, carriage return, and newline). This applies to an example's
+actual value, each enum member, a default, an annotation value, a custom-facet value,
+and a discriminator value. Decoding does not depend on the declared type or on
+whether validation is enabled. Other scalar text keeps its YAML-derived value.
+
+Text without a matching pair keeps its literal value: for example,
+`'"the dispossessed" le guin'` and `'[2026-07-20] (John): Hi'` stay strings.
+To express a literal string that has a matching pair, encode it as a JSON string
+inside the YAML scalar:
+
+```yaml
+type: string
+example: '"{\"attr\": 1}"'
+```
+
+The example's actual string content is `{"attr": 1}`, with no surrounding quotes
+or backslashes. Similarly, `'"[1, 2]"'` produces the string `[1, 2]`, while
+`'[1, 2]'` produces an array. The decoded result is not decoded again, and string
+children of YAML or JSON collections keep their values. A matching pair selects
+JSON decoding even if the contents are invalid: `'{not JSON}'` reports
+`invalid inline JSON` at the scalar. A decoding failure does not fall back to
+literal text.
+
+An included data value records both the included location and include metadata.
+Include content is decoded through the include path ([§ 4.2](#42-include-result)),
+so a text file's contents stay a string and a structured file is parsed once.
 
 ## 7. Annotated scalars
 

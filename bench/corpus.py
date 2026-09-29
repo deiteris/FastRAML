@@ -12,6 +12,7 @@ it was taken on.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -29,6 +30,7 @@ __all__ = [
     'write_include_content',
     'write_includes',
     'write_inheritance',
+    'write_inline_json',
     'write_jsonschema',
     'write_large',
     'write_small',
@@ -392,6 +394,40 @@ def write_validate(root: Path, *, type_count: int = 1000) -> Path:
         lines.append(example)
     _write(root, {'lib.raml': '\n'.join(lines) + '\n'})
     return root / 'lib.raml'
+
+
+# -- inline JSON --------------------------------------------------------------
+
+
+def write_inline_json(root: Path, *, type_count: int = 1000) -> Path:
+    """JSON-encoded strings at five data-value roots per type (docs/03 § 6)."""
+    lines = [
+        '#%RAML 1.0',
+        'title: Generated inline JSON benchmark',
+        'annotationTypes:',
+        '  literal: string',
+        'types:',
+        '  Base:',
+        '    type: string',
+        '    facets:',
+        '      literal: string',
+    ]
+    for index in range(type_count):
+        encoded = "'" + json.dumps(f'{{"attr":{index}}}') + "'"
+        lines.extend(
+            (
+                f'  T{index}:',
+                '    type: Base',
+                f'    enum: [{encoded}]',
+                f'    default: {encoded}',
+                '    example:',
+                f'      value: {encoded}',
+                f'    (literal): {encoded}',
+                f'    literal: {encoded}',
+            )
+        )
+    _write(root, {'api.raml': '\n'.join(lines) + '\n'})
+    return root / 'api.raml'
 
 
 # -- enums --------------------------------------------------------------------

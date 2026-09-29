@@ -5,14 +5,16 @@ See docs/03-yaml-and-io.md § 6 and § 7.
 
 from __future__ import annotations
 
+import json
 import math
 
 import pytest
 
-from fastraml import RamlError, path_to_file_uri
+from fastraml import ParseOptions, RamlError, path_to_file_uri
 from fastraml.datanode import make_data_node, value_node_of
 from fastraml.parser.facets import make_string_facet, resolve_annotated_scalar
 from fastraml.registry import Raml
+from fastraml.types.examples import examples_of
 from fastraml.yamlnode import compose, pairs
 
 #: Several tests here carry their value on an annotation key, which accepts
@@ -99,7 +101,7 @@ class TestStructure:
 
 class TestInlineJson:
     def test_a_scalar_beginning_with_a_brace_is_parsed_as_json(self):
-        # This is how `type: '{"type":"object"}'` and inline JSON examples work.
+        # JSON-encoded examples keep their object structure.
         node = first_value(Raml(), 'v: \'{"type": "object", "n": [1, 2]}\'')
         assert node.raw == {'type': 'object', 'n': [1, 2]}
         assert [entry.key for entry in node.value.mapping.entries] == ['type', 'n']
@@ -107,10 +109,137 @@ class TestInlineJson:
     def test_a_scalar_beginning_with_a_bracket_is_parsed_as_json(self):
         assert first_value(Raml(), "v: '[1, 2, 3]'").raw == [1, 2, 3]
 
-    def test_malformed_inline_json_is_reported_at_the_value(self):
+    @pytest.mark.parametrize(
+        'text',
+        [
+            '"the dispossessed" le guin',
+            '"unterminated',
+            '"',
+            '{',
+            '[',
+            '{"attr": 1]',
+            '[1, 2}',
+            '{"attr": 1} suffix',
+            '[2026-07-20] (John): Hi',
+            ' {"attr": 1}',
+        ],
+    )
+    def test_text_without_matching_outer_delimiters_stays_literal(self, text):
+        node = first_value(Raml(), f"v: '{text}'")
+        assert node.value.is_scalar
+        assert node.raw == text
+
+    @pytest.mark.parametrize(
+        ('text', 'expected'), [('{"attr": 1}', {'attr': 1}), ('[1, 2]', [1, 2]), ('"text"', 'text')]
+    )
+    @pytest.mark.parametrize('suffix', ['\n', ' \t\r\n'])
+    def test_trailing_json_whitespace_does_not_hide_the_closing_delimiter(self, text, expected, suffix):
+        node = first_value(Raml(), 'v: ' + json.dumps(text + suffix))
+        assert node.raw == expected
+
+    def test_a_block_scalar_with_a_final_newline_is_decoded(self):
+        assert first_value(Raml(), 'v: |\n  "[1, 2]"\n').raw == '[1, 2]'
+
+    @pytest.mark.parametrize(
+        ('source', 'expected'),
+        [
+            (r"""v: '"{\"attr\": 1}"'""", '{"attr": 1}'),
+            (r"""v: '"[1, 2]"'""", '[1, 2]'),
+            (r"""v: '"[not JSON]"'""", '[not JSON]'),
+            (r"""v: '"\"quoted\""'""", '"quoted"'),
+            (r"""v: '""'""", ''),
+            (r"""v: '"true"'""", 'true'),
+        ],
+    )
+    def test_an_encoded_string_is_decoded_once(self, source, expected):
+        node = first_value(Raml(), source)
+        assert node.value.is_scalar
+        assert node.raw == expected
+        assert node.value_pos.line == 1
+        assert node.value_pos.column == 4
+
+    def test_collection_children_are_not_decoded_again(self):
+        node = first_value(Raml(), r"""v: '{"object": "{\"attr\": 1}", "array": "[1, 2]", "quote": "\"text\""}'""")
+        assert node.raw == {'object': '{"attr": 1}', 'array': '[1, 2]', 'quote': '"text"'}
+
+    def test_yaml_collection_children_keep_their_literal_strings(self):
+        node = first_value(Raml(), """v:\n  object: '{"attr": 1}'\n  array: '[1, 2]'\n  quote: '"text"'\n""")
+        assert node.raw == {'object': '{"attr": 1}', 'array': '[1, 2]', 'quote': '"text"'}
+
+    @pytest.mark.parametrize('text', ['{not json}', '[not JSON]', r'"bad\q"'])
+    def test_malformed_json_with_matching_delimiters_is_reported_at_the_value(self, text):
+        with pytest.raises(json.JSONDecodeError) as json_error:
+            json.loads(text)
         with pytest.raises(RamlError) as caught:
-            first_value(Raml(), "v: '{not json}'")
-        assert next(iter(caught.value.chains()))[-1].message == 'invalid inline JSON'
+            first_value(Raml(), f"v: '{text}'")
+        trace = next(iter(caught.value.chains()))[-1]
+        assert trace.message == 'invalid inline JSON'
+        assert trace.info == {'error': str(json_error.value)}
+        assert (trace.location, trace.position.line, trace.position.column) == ('file:///a.raml', 1, 4)
+
+
+class TestEncodedStringSites:
+    @pytest.mark.parametrize('unwrap', [False, True])
+    @pytest.mark.parametrize('validate', [False, True])
+    @pytest.mark.parametrize('value', ['{"installation_id":0}', '[2026-07-20] (John): Hi', '"quoted"'])
+    def test_the_same_encoding_works_at_every_data_value_root(self, workspace, unwrap, validate, value):
+        encoded = "'" + json.dumps(value) + "'"
+        source = f"""#%RAML 1.0
+title: T
+annotationTypes:
+  literal: string
+(literal): {encoded}
+types:
+  Single:
+    type: string
+    enum: [{encoded}]
+    default: {encoded}
+    example: {encoded}
+  Wrapped:
+    type: string
+    example:
+      value: {encoded}
+  Named:
+    type: string
+    examples:
+      literal: {encoded}
+  Included:
+    type: string
+    example: !include example.yaml
+  Fragment:
+    type: string
+    examples: !include examples.raml
+  Base:
+    type: string
+    facets:
+      literal: string
+  Child:
+    type: Base
+    literal: {encoded}
+/x:
+  get:
+    queryParameters:
+      since:
+        type: string
+        example: {encoded}
+"""
+        root = workspace(
+            {
+                'api.raml': source,
+                'example.yaml': f'value: {encoded}\n',
+                'examples.raml': f'#%RAML 1.0 NamedExample\nliteral:\n  value: {encoded}\n',
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=unwrap, validate=validate))
+        types = raml.types_in(raml.location)
+        for name in ('Single', 'Wrapped', 'Named', 'Included', 'Fragment'):
+            assert [example.data.raw for example in examples_of(types[name])] == [value], name
+        assert [member.raw for member in types['Single'].enum] == [value]
+        assert types['Single'].default.raw == value
+        assert raml.entry_point.annotations['literal'].value.raw == value
+        assert types['Child'].custom_facets['literal'].raw == value
+        parameter = raml.endpoints['/x'].operations['get'].request.query_parameters['since']
+        assert parameter.base.example.data.raw == value
 
 
 class TestIncludedValues:

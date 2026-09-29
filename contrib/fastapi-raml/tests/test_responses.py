@@ -7,7 +7,8 @@ serialization alias, without `exclude=True` fields, with computed fields -- so
 a document built from what the model reads would fail it.
 """
 
-from typing import Annotated, Literal
+import dataclasses
+from typing import Annotated, Literal, NotRequired, TypedDict
 
 import pytest
 from fastapi import FastAPI, File, Form, UploadFile
@@ -52,7 +53,28 @@ def add_user(user: User) -> User:
     return user
 
 
-CASES = [('/user', 'get', '200'), ('/team', 'get', '200')]
+@dataclasses.dataclass
+class Point:
+    x: int
+    label: str = 'origin'
+
+
+class Movie(TypedDict):
+    title: str
+    year: NotRequired[int]
+
+
+@app.get('/point')
+def get_point() -> Point:
+    return Point(x=1)
+
+
+@app.get('/movie')
+def get_movie() -> Movie:
+    return {'title': 'M'}
+
+
+CASES = [('/user', 'get', '200'), ('/team', 'get', '200'), ('/point', 'get', '200'), ('/movie', 'get', '200')]
 
 
 @pytest.mark.parametrize(('path', 'verb', 'code'), CASES, ids=[path for path, _, _ in CASES])
@@ -60,6 +82,12 @@ def test_what_the_route_writes_validates(path: str, verb: str, code: str) -> Non
     shape = operation(app, path, verb).responses[code].bodies['application/json'].shape
     body = TestClient(app).request(verb, path).json()
     assert shape.validate(body) is None, body
+
+
+def test_a_dataclass_and_a_typeddict_are_described() -> None:
+    """Neither is a pydantic model; FastAPI serves both, and both used to be `any`."""
+    assert operation(app, '/point', 'get').responses['200'].bodies['application/json'].shape.validate({'x': 'a'})
+    assert dropped(app) == []
 
 
 def test_the_request_body_is_what_the_model_reads() -> None:

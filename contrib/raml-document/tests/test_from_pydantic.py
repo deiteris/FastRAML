@@ -6,14 +6,19 @@ change back to converting from JSON Schema fails by name.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
+import ipaddress
 import pathlib
 import tempfile
 import uuid
+from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from decimal import Decimal
 from enum import StrEnum
-from typing import Annotated, Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, NewType, NotRequired, TypedDict, TypeVar
 
+import pydantic.dataclasses
 import pytest
 from fastraml import ParseOptions, parse_from_path
 from pydantic import (
@@ -23,7 +28,9 @@ from pydantic import (
     ConfigDict,
     Discriminator,
     Field,
+    HttpUrl,
     RootModel,
+    SecretStr,
     Tag,
     computed_field,
     condecimal,
@@ -831,3 +838,92 @@ class TestKeysAFieldIsReadFrom:
         walk.model(M)
         assert list(walk.types['M'].properties) == ['userName']
         assert not walk.dropped
+
+
+@dataclasses.dataclass
+class _Point:
+    x: int
+    label: str = 'origin'
+
+
+class _Movie(TypedDict):
+    title: str
+    year: NotRequired[int]
+
+
+type _Scores = list[int]
+_UserId = NewType('_UserId', int)
+
+
+class TestMoreTypes:
+    """Types pydantic validates that used to fall to `any`."""
+
+    def test_a_dataclass_and_a_typeddict_are_objects(self):
+        @pydantic.dataclasses.dataclass
+        class Tagged:
+            tag: str = Field(max_length=3)
+
+        class M(BaseModel):
+            point: _Point
+            movie: _Movie
+            tagged: Tagged
+
+        walk = Walk()
+        walk.model(M)
+        assert not walk.dropped
+        assert walk.types['_Point'].render() == {
+            'type': 'object',
+            'properties': {'x': 'integer', 'label': {'type': 'string', 'required': False, 'default': 'origin'}},
+        }
+        assert walk.types['_Movie'].properties['year'].required is False
+        assert walk.types['Tagged'].properties['tag'].max_length == 3
+        shape = parsed_types(walk)['M']
+        good = {'point': {'x': 1}, 'movie': {'title': 't'}, 'tagged': {'tag': 'a'}}
+        assert shape.validate(good) is None
+        assert shape.validate({**good, 'movie': {'year': 1}}) is not None
+
+    def test_containers_bare_or_abstract(self):
+        class M(BaseModel):
+            bag: dict
+            items: list
+            pair: tuple
+            seq: Sequence[int]
+            unique: AbstractSet[str]
+            table: Mapping[str, int]
+
+        walk = Walk()
+        walk.model(M)
+        assert not walk.dropped
+        assert walk.types['M'].render()['properties'] == {
+            'bag': {'type': 'object', 'properties': {'//': 'any'}},
+            'items': 'any[]',
+            'pair': 'any[]',
+            'seq': 'integer[]',
+            'unique': {'type': 'string[]', 'uniqueItems': True},
+            'table': {'type': 'object', 'properties': {'//': 'integer'}},
+        }
+        parsed_types(walk)
+
+    def test_an_alias_and_a_new_type_are_what_they_name(self):
+        class M(BaseModel):
+            scores: _Scores
+            user: _UserId
+
+        walk = Walk()
+        walk.model(M)
+        assert walk.types['M'].render()['properties'] == {'scores': 'integer[]', 'user': 'integer'}
+
+    def test_what_pydantic_writes_as_text_is_a_string(self):
+        class M(BaseModel):
+            url: HttpUrl
+            ip: ipaddress.IPv4Address
+            path: pathlib.Path
+            secret: SecretStr
+            wait: datetime.timedelta
+
+        walk = Walk()
+        walk.model(M)
+        assert not walk.dropped
+        assert set(walk.types['M'].render()['properties'].values()) == {'string'}
+        value = M(url='https://x.org', ip='1.2.3.4', path='a/b', secret='s', wait=5).model_dump(mode='json')  # noqa: S106
+        assert parsed_types(walk)['M'].validate(value) is None

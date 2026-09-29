@@ -28,20 +28,36 @@ and writes alike is declared once and shared.
 
 from __future__ import annotations
 
+import collections
+import collections.abc
 import dataclasses
 import datetime
 import decimal
 import enum
+import ipaddress
+import pathlib
 import re
 import types
 import typing
 import uuid
+import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal, get_args, get_origin
 
 import annotated_types
-from pydantic import AliasChoices, AliasPath, BaseModel, Tag
+from pydantic import (
+    AliasChoices,
+    AliasPath,
+    AnyUrl,
+    BaseModel,
+    EmailStr,
+    Field,
+    NameEmail,
+    SecretBytes,
+    SecretStr,
+    Tag,
+)
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticSerializationError, to_jsonable_python
 
@@ -66,7 +82,38 @@ SCALARS: Final[dict[Any, str]] = {
     uuid.UUID: 'string',
     type(None): 'nil',
     Any: 'any',
+    # What pydantic writes as text. A duration is ISO 8601 -- `PT5S` -- by
+    # default; `ser_json_timedelta='float'` would make it a number.
+    datetime.timedelta: 'string',
+    pathlib.PurePath: 'string',
+    ipaddress.IPv4Address: 'string',
+    ipaddress.IPv6Address: 'string',
+    ipaddress.IPv4Network: 'string',
+    ipaddress.IPv6Network: 'string',
+    ipaddress.IPv4Interface: 'string',
+    ipaddress.IPv6Interface: 'string',
+    AnyUrl: 'string',
+    EmailStr: 'string',
+    NameEmail: 'string',
+    SecretStr: 'string',
+    SecretBytes: 'string',
 }
+
+#: The containers read as an array, the ones of them whose items are unique,
+#: and the ones read as a map -- concrete or abstract, bare or parametrised.
+_SETS: Final = frozenset({set, frozenset, collections.abc.Set, collections.abc.MutableSet})
+_SEQUENCES: Final = _SETS | {
+    list,
+    tuple,
+    collections.deque,
+    collections.abc.Sequence,
+    collections.abc.MutableSequence,
+    collections.abc.Collection,
+    collections.abc.Iterable,
+}
+_MAPPINGS: Final = frozenset(
+    {dict, collections.OrderedDict, collections.defaultdict, collections.abc.Mapping, collections.abc.MutableMapping}
+)
 
 #: Where a `dict` key type narrows RAML's pattern-any property.
 #:
@@ -133,8 +180,12 @@ class Walk:
 
     # -- models ---------------------------------------------------------------
 
-    def model(self, model: type[BaseModel]) -> str:
-        """Register `model` and every model it reaches; return its RAML name."""
+    def model(self, model: type) -> str:
+        """Register `model` and every model it reaches; return its RAML name.
+
+        A model is a pydantic model, a dataclass or a `TypedDict`: each is an
+        object with named fields, and pydantic validates each the same way.
+        """
         output = self._output and self._diverges(model)
         known = self._names.get((model, output))
         if known is not None:
@@ -146,7 +197,7 @@ class Walk:
         self.types[name] = self._body(model, name, output=output)
         return name
 
-    def _name_for(self, model: type[BaseModel], *, output: bool) -> str:
+    def _name_for(self, model: type, *, output: bool) -> str:
         """`__name__`, qualified by module where two models would collide.
 
         Qualified by the last module segment first and the whole module path
@@ -177,17 +228,19 @@ class Walk:
             candidate = f'{name}_{number}'
         return candidate
 
-    def _body(self, model: type[BaseModel], at: str, *, output: bool) -> TypeDecl:
-        root = model.model_fields.get('root')
-        if root is not None and len(model.model_fields) == 1:
+    def _body(self, model: type, at: str, *, output: bool) -> TypeDecl:
+        fields = _fields_of(model)
+        root = fields.get('root')
+        if root is not None and len(fields) == 1 and issubclass(model, BaseModel):
             # A RootModel: the declaration *is* its single field.
             return self.field(root, f'{at}.root')
 
         parents = [self.model(base) for base in _supertypes(model)]
-        everything = {*model.model_fields, *model.model_computed_fields}
+        computed = _computed_of(model)
+        everything = {*fields, *computed}
         # Only what this class declares. RAML inherits the rest, so repeating an
         # inherited property would state twice what the supertype already says.
-        own = {*_own_fields(model), *(set(model.model_computed_fields) & set(vars(model)))} if parents else everything
+        own = {*_own_fields(model), *(set(computed) & set(vars(model)))} if parents else everything
         properties = self._properties(model, at, own, output=output)
         clash = next((wire for wire, prop in properties.items() if not self._keeps(parents, wire, prop)), None)
         if clash is not None:
@@ -210,7 +263,7 @@ class Walk:
         return decl
 
     def _properties(
-        self, model: type[BaseModel], at: str, names: set[str], *, output: bool, known: Parameters | None = None
+        self, model: type, at: str, names: set[str], *, output: bool, known: Parameters | None = None
     ) -> Parameters:
         """The properties for the fields -- and, in output, computed fields -- named in `names`.
 
@@ -219,7 +272,7 @@ class Walk:
         """
         known = known or {}
         out: Parameters = {}
-        for name, info in model.model_fields.items():
+        for name, info in _fields_of(model).items():
             if name not in names or (output and info.exclude is True):
                 continue
             wire = _wire_name(name, info, output=output)
@@ -229,7 +282,7 @@ class Walk:
                 continue
             out[wire] = known.get(wire) or self.optional(self.field(info, f'{at}.{name}'), info, f'{at}.{name}')
         if output:
-            for name, computed in model.model_computed_fields.items():
+            for name, computed in _computed_of(model).items():
                 wire = computed.alias or name
                 if name not in names:
                     continue
@@ -325,7 +378,7 @@ class Walk:
             return False
         return any(self._extends(parent, target) for parent in _parents(decl) if parent != name)
 
-    def _diverges(self, model: type[BaseModel]) -> bool:
+    def _diverges(self, model: type) -> bool:
         """Does `model` -- or any model it reaches -- write a shape it does not read?
 
         Assumed not while being decided, so a recursive model settles on what
@@ -335,11 +388,11 @@ class Walk:
         if known is not None:
             return known
         self._diverging[model] = False
-        verdict = bool(model.model_computed_fields) or any(
+        verdict = bool(_computed_of(model)) or any(
             info.exclude is True
             or _wire_name(name, info, output=True) != _wire_name(name, info, output=False)
             or any(self._diverges(reached) for reached in _models_in(info.annotation))
-            for name, info in model.model_fields.items()
+            for name, info in _fields_of(model).items()
         )
         verdict = verdict or any(self._diverges(base) for base in _supertypes(model))
         self._diverging[model] = verdict
@@ -453,7 +506,7 @@ class Walk:
                 decl.description = item.description
         return decl
 
-    def _bare(  # noqa: PLR0911 - one return per kind reads better than nesting
+    def _bare(  # noqa: PLR0911, PLR0912 - one return per kind reads better than nesting
         self, annotation: Any, at: str, *, discriminator: str | None
     ) -> TypeDecl:
         origin = get_origin(annotation)
@@ -462,12 +515,18 @@ class Walk:
             return self.union(get_args(annotation), at, discriminator=discriminator)
         if origin is Literal:
             return _literal(get_args(annotation))
-        if origin in (list, set, frozenset, tuple):
+        if isinstance(annotation, typing.NewType):
+            return self.annotation(annotation.__supertype__, at, discriminator=discriminator)
+        if isinstance(annotation, typing.TypeAliasType):
+            return self.annotation(annotation.__value__, at, discriminator=discriminator)
+        if origin is None and annotation in _SEQUENCES | _MAPPINGS:
+            origin = annotation  # a bare `list` or `dict`: of anything
+        if origin in _SEQUENCES:
             return self.sequence(annotation, origin, at)
-        if origin is dict:
+        if origin in _MAPPINGS:
             return self.mapping(get_args(annotation), at)
         if isinstance(annotation, type):
-            if issubclass(annotation, BaseModel):
+            if _is_model(annotation):
                 return TypeDecl(type=self.model(annotation))
             if issubclass(annotation, enum.Enum):
                 return _enum(annotation)
@@ -535,11 +594,11 @@ class Walk:
         tag_type: str | None = None
         for arg in args:
             model, _ = _unwrap_annotated(arg)
-            if not (isinstance(model, type) and issubclass(model, BaseModel)):
+            if not _is_model(model):
                 self.drop(at, 'a discriminated union member is not a model')
                 return TypeDecl(type='any')
             name = self.model(model)
-            tag = model.model_fields.get(discriminator)
+            tag = _fields_of(model).get(discriminator)
             value = _literal_value(tag.annotation) if tag is not None else UNSET
             if isinstance(value, Unset):
                 self.drop(at, f'member {name} has no Literal {discriminator!r} to identify it')
@@ -594,11 +653,11 @@ class Walk:
 
     def sequence(self, annotation: Any, origin: Any, at: str) -> TypeDecl:
         args = get_args(annotation)
-        if origin is tuple and not (len(args) == 2 and args[1] is Ellipsis):  # noqa: PLR2004 - `tuple[X, ...]`
+        if origin is tuple and args and not (len(args) == 2 and args[1] is Ellipsis):  # noqa: PLR2004 - `tuple[X, ...]`
             self.drop(at, 'a fixed-length tuple has no RAML form; rendered as an array')
         items = self.annotation(args[0], f'{at}[]') if args else TypeDecl(type='any')
         decl = TypeDecl(type='array', items=items)
-        if origin in (set, frozenset):
+        if origin in _SETS:
             decl.unique_items = True
         # `string[]` where the item has a plain spelling, which is what a union
         # member and a nested `items` both need.
@@ -797,10 +856,10 @@ def _without_none(annotation: Any) -> Any:
     return kept[0] if len(kept) == 1 else typing.Union[kept]  # noqa: UP007 - built from a tuple
 
 
-def _models_in(annotation: Any) -> Iterator[type[BaseModel]]:
+def _models_in(annotation: Any) -> Iterator[type]:
     """Every model an annotation names, however deeply it is nested."""
     annotation, _ = _unwrap_annotated(annotation)
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+    if _is_model(annotation):
         yield annotation
     for arg in get_args(annotation):
         yield from _models_in(arg)
@@ -865,7 +924,7 @@ def _as_yaml(value: Any) -> Yaml:  # noqa: PLR0911 - one return per kind
         return str(value)
 
 
-def _supertypes(model: type[BaseModel]) -> list[type[BaseModel]]:
+def _supertypes(model: type) -> list[type[BaseModel]]:
     """The bases RAML should inherit from, which is not every Python base.
 
     `BaseModel` itself is not a RAML type. Neither is `RootModel`, whose job is
@@ -888,20 +947,82 @@ def _is_supertype(base: Any) -> bool:
     return generic.get('origin') is None and not generic.get('parameters')
 
 
-def _own_fields(model: type[BaseModel]) -> set[str]:
+def _own_fields(model: type) -> set[str]:
     """The fields declared on this class, not the ones it inherits.
 
     An override re-annotates, so a narrowed property is its own and is written
     again -- which is what RAML expects of a subtype that restricts one.
     """
-    return set(getattr(model, '__annotations__', {})) & set(model.model_fields)
+    return set(getattr(model, '__annotations__', {})) & set(_fields_of(model))
 
 
-def _forbids_extra(model: type[BaseModel]) -> bool:
-    return bool(getattr(model, 'model_config', {}).get('extra') == 'forbid')
+def _forbids_extra(model: type) -> bool:
+    config = getattr(model, 'model_config', None) or getattr(model, '__pydantic_config__', None) or {}
+    return bool(config.get('extra') == 'forbid')
 
 
-def _is_default_doc(model: type[BaseModel]) -> bool:
+def _is_model(annotation: Any) -> bool:
+    """Is `annotation` a class pydantic validates as an object of named fields?"""
+    if not isinstance(annotation, type):
+        return False
+    return issubclass(annotation, BaseModel) or dataclasses.is_dataclass(annotation) or typing.is_typeddict(annotation)
+
+
+def _computed_of(model: type) -> dict[str, Any]:
+    """A model's computed fields; a dataclass or `TypedDict` has none this reads."""
+    return dict(getattr(model, 'model_computed_fields', {}))
+
+
+def _fields_of(model: type) -> dict[str, FieldInfo]:
+    """A model's fields as the `FieldInfo` pydantic would build for each.
+
+    A pydantic model or dataclass has them already. A standard dataclass or a
+    `TypedDict` is read from its annotations: pydantic validates both, so a
+    FastAPI body or response may be either.
+    """
+    if issubclass(model, BaseModel):
+        return dict(model.model_fields)
+    ready = getattr(model, '__pydantic_fields__', None)
+    if ready is not None:
+        return dict(ready)
+    known = _ANNOTATED_FIELDS.get(model)
+    if known is None:
+        known = _ANNOTATED_FIELDS[model] = _annotated_fields(model)
+    return known
+
+
+#: `_annotated_fields` per class, built once and let go with the class.
+_ANNOTATED_FIELDS: Final[weakref.WeakKeyDictionary[type, dict[str, FieldInfo]]] = weakref.WeakKeyDictionary()
+
+
+def _annotated_fields(model: type) -> dict[str, FieldInfo]:
+    """`_fields_of` for a class pydantic has built nothing for."""
+    hints = typing.get_type_hints(model, include_extras=True)
+    out: dict[str, FieldInfo] = {}
+    if dataclasses.is_dataclass(model):
+        for item in dataclasses.fields(model):
+            default: Any = PydanticUndefined
+            if item.default is not dataclasses.MISSING:
+                default = item.default
+            elif item.default_factory is not dataclasses.MISSING:
+                default = Field(default_factory=item.default_factory)
+            out[item.name] = FieldInfo.from_annotated_attribute(hints[item.name], default)
+        return out
+    required_keys: frozenset[str] = getattr(model, '__required_keys__', frozenset())
+    for name, hint in hints.items():
+        # `NotRequired[X]` and `Required[X]` are read off the annotation, which
+        # decides over `__required_keys__`: under `from __future__ import
+        # annotations` the class body held strings, and `TypedDict` could not
+        # see either marker in them.
+        bare, required = hint, name in required_keys
+        while get_origin(bare) in (typing.NotRequired, typing.Required):
+            required = get_origin(bare) is typing.Required
+            bare = get_args(bare)[0]
+        out[name] = FieldInfo.from_annotated_attribute(bare, PydanticUndefined if required else None)
+    return out
+
+
+def _is_default_doc(model: type) -> bool:
     """Is `__doc__` the one pydantic generates for a model with no docstring?"""
     return (model.__doc__ or '').startswith(f'{model.__name__}(')
 

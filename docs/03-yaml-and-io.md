@@ -147,8 +147,17 @@ included file. A declaration in an included `types:` map is named in the
 declaring document's namespace and indexed for unwrap and validation by the
 file it is written in. Content is not a fragment, so invariant I3 does not
 cover it: a file included twice is decoded twice, as the same text written
-twice would be. A position that builds a shape (`type:`, a `body:`) reads an
-`!include` as a DataType fragment.
+twice would be.
+
+A position that takes a typed fragment — a `traits:`, `resourceTypes:`,
+`securitySchemes:`, `types:` or `annotationTypes:` entry, `type:`, a `body:`,
+`examples:`, a documentation item — reads a file without a header as the
+declaration, written in that file (`content_include`). The declaration at the
+key links to it, as it would to a fragment's, so it keeps its key's place; a
+`.json` file where a type goes is a JSON Schema, as before. Which namespace
+each kind of include resolves in is [04](04-fragments-and-namespaces.md) § 4.1.
+Telling the two apart reads the file's first line, and the read is handed to
+whichever reader follows, so a typed fragment is still read once.
 
 ### 4.3 Caching, limits, and cycles
 

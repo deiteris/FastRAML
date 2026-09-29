@@ -39,7 +39,7 @@ from fastraml.facet_names import (
 )
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_string_facet, scalar_str
-from fastraml.parser.includes import inline_include, note_include_ref
+from fastraml.parser.includes import content_include, inline_include, note_include_ref
 from fastraml.parser.source_decode import decode_request_facet, decode_responses, query_exclusion_error
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind, is_null, node_error, pairs
@@ -169,6 +169,10 @@ class SecuritySchemeDefinition:
 # -- decoding a declaration ---------------------------------------------------
 
 
+def _detached(_definition: SecuritySchemeDefinition) -> None:
+    """A linked body is reached through its declaration, not declared itself."""
+
+
 def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declaration's key vocabulary
     raml: Raml,
     key_node: Node | None,
@@ -193,7 +197,15 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
     attach(definition)
     with raml.marking(definition):
         if value_node.tag == TAG_INCLUDE:
-            definition.link_uri = note_include_ref(raml, value_node, location)
+            content = content_include(raml, value_node, location)
+            if content is None:
+                definition.link_uri = note_include_ref(raml, value_node, location)
+                return definition
+            # A file without a header is this declaration's body, written there
+            # (docs/03 § 4.2), linked as a SecurityScheme fragment's would be.
+            body, written = content
+            definition.link_uri = written
+            definition.link = make_security_scheme_definition(raml, None, body, written, attach=_detached)
             return definition
         if is_null(value_node):
             raise node_error('security scheme must declare a type', location, value_node)

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Self
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
 from fastraml.facet_names import FACET_USAGE
 from fastraml.parser.facets import make_string_facet
-from fastraml.parser.includes import note_include_ref
+from fastraml.parser.includes import content_anchor, content_include, note_include_ref
 from fastraml.parser.substitutions import Substitution
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import (
@@ -143,6 +143,10 @@ class TemplateDefinition:
         return self if self.link is None else self.link
 
 
+def _detached(_definition: TemplateDefinition) -> None:
+    """A linked body is reached through its declaration, not declared itself."""
+
+
 def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the declaration, plus what differs per kind
     cls: type[T],
     raml: Raml,
@@ -171,7 +175,8 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
         id=raml.next_id(),
         name=key_node.value if key_node is not None else '',
         location=location,
-        anchor=scope.anchor,
+        # Content an included file wrote resolves here and is located there.
+        anchor=content_anchor(scope.anchor, location),
         key_pos=(key_node if key_node is not None else value_node).position,
         value_pos=value_node.full_position,
     )
@@ -180,7 +185,17 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
         if is_null(value_node):
             return definition
         if value_node.tag == TAG_INCLUDE:
-            definition.link_uri = note_include_ref(raml, value_node, location)
+            content = content_include(raml, value_node, location)
+            if content is None:
+                definition.link_uri = note_include_ref(raml, value_node, location)
+                return definition
+            # A file without a header is this declaration's body, written there:
+            # linked as a fragment's would be, so the declaration keeps its key.
+            body, written = content
+            definition.link_uri = written
+            definition.link = make_template_definition(
+                cls, raml, None, body, written, what=what, attach=_detached, retain=retain
+            )
             return definition
         if value_node.kind is not NodeKind.MAPPING:
             raise node_error(f'{what} definition must be a mapping', location, value_node)

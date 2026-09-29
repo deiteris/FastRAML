@@ -192,6 +192,7 @@ class Raml:
         # --- caches ----------------------------------------------------------
         'expr_cache',
         'fragments',
+        'include_data',
         'include_heads',
         'include_nodes',
         'json_schema_registry',
@@ -255,6 +256,9 @@ class Raml:
         # The `#%RAML` first line of an included file that has one, by target:
         # a comment to YAML, so the composed node no longer carries it.
         self.include_heads: dict[str, str] = {}
+        # A file `content_include` read to see its first line, held for whichever
+        # reader comes next, so deciding content from fragment costs no second read.
+        self.include_data: dict[str, bytes] = {}
         # One parse per distinct expression text, not per occurrence. Held here
         # rather than on the expression parser so it dies with the parse.
         self.expr_cache: ExprCache = {}

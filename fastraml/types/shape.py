@@ -26,7 +26,7 @@ from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import compile_pattern, make_bool_facet, make_string_facet, scalar_str
-from fastraml.parser.includes import inline_include, note_include_ref
+from fastraml.parser.includes import content_include, inline_include, note_include_ref
 from fastraml.parser.substitutions import substituted_site
 from fastraml.types.base import (
     BUILTIN_TYPES,
@@ -397,19 +397,24 @@ def _decode_example(raml: Raml, base: BaseShape, key: Node, value_node: Node) ->
 def _decode_examples(raml: Raml, base: BaseShape, value_node: Node) -> None:
     if base.example is not None:
         raise node_error('example and examples cannot be defined together', base.location, value_node)
-    if value_node.tag == TAG_INCLUDE:
+    position, location = value_node.full_position, base.location
+    content = content_include(raml, value_node, location)
+    if content is not None:
+        # A file without a header is the map of examples, written there.
+        value_node, location = content
+    elif value_node.tag == TAG_INCLUDE:
         base.examples = Examples(
             location=base.location,
-            position=value_node.full_position,
+            position=position,
             link=_parse_named_example(raml, value_node, base.location),
         )
         return
     if is_null(value_node):
         return
     if value_node.kind is not NodeKind.MAPPING:
-        raise node_error('examples must be a mapping', base.location, value_node)
-    values = {key.value: make_example(raml, key, value, key.value, base.location) for key, value in pairs(value_node)}
-    base.examples = Examples(location=base.location, position=value_node.full_position, values=values)
+        raise node_error('examples must be a mapping', location, value_node)
+    values = {key.value: make_example(raml, key, value, key.value, location) for key, value in pairs(value_node)}
+    base.examples = Examples(location=base.location, position=position, values=values)
 
 
 def _decode_custom_facet_defs(raml: Raml, base: BaseShape, value_node: Node) -> None:
@@ -774,6 +779,15 @@ def _parse_data_type(raml: Raml, type_node: Node, location: str) -> DataTypeFrag
     """
     from fastraml.parser.fragments import DataTypeFragment, FragmentKind, parse_included_fragment  # noqa: PLC0415
 
+    content = content_include(raml, type_node, location, schema=True)
+    if content is not None:
+        # A file without a header is the declaration, written there
+        # (docs/03 § 4.2); not a fragment, so decoded wherever it is included.
+        body, written = content
+        included = DataTypeFragment(raml, written)
+        included.kind = FragmentKind.DATA_TYPE
+        included.decode_content(body)
+        return included
     target = note_include_ref(raml, type_node, location)
     fragment = parse_included_fragment(raml, target, FragmentKind.DATA_TYPE, type_node, location)
     if not isinstance(fragment, DataTypeFragment):  # pragma: no cover - the kind check guarantees this

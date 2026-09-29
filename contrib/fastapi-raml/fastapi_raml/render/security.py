@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import functools
+import json
+from dataclasses import dataclass, field
+from itertools import count
 from typing import TYPE_CHECKING, Any, Final
 
 from fastapi.security.base import SecurityBase
@@ -13,7 +16,7 @@ if TYPE_CHECKING:
 
     from raml_document.from_pydantic import Walk
 
-__all__ = ['requirements', 'schemes', 'secured_by']
+__all__ = ['Security', 'requirements']
 
 #: An OAuth2 flow as FastAPI names it -> as RAML names it.
 GRANTS: Final[dict[str, str]] = {
@@ -50,17 +53,101 @@ def requirements(dependant: Any) -> Iterator[tuple[SecurityBase, list[str]]]:
         yield from requirements(sub)
 
 
-def schemes(routes: list[Any], walk: Walk) -> dict[str, SecurityScheme]:
-    """`securitySchemes:`, harvested off each route's dependency tree."""
-    schemes: dict[str, SecurityScheme] = {}
-    for route in routes:
-        for scheme, _ in requirements(route.dependant):
-            if scheme.scheme_name in schemes:
+@dataclass(slots=True)
+class Security:
+    """The schemes the routes run, each declared once under a name of its own.
+
+    `declared` is `securitySchemes:`, filled as routes are read: a scheme is
+    declared the first time a route runs it, so one no route runs is not.
+    """
+
+    walk: Walk
+    declared: dict[str, SecurityScheme] = field(default_factory=dict)
+    #: A scheme's configuration -> the name it was declared under, or `None`
+    #: where it has no RAML form.
+    _names: dict[tuple[str, str, str], str | None] = field(default_factory=dict)
+
+    def name(self, scheme: SecurityBase) -> str | None:
+        """The name `scheme` is declared under, declaring it on first sight.
+
+        Two schemes configured alike are one, whichever instance a route holds.
+        Two configured differently are two, even under one `scheme_name` --
+        which FastAPI defaults to the class name, so two `APIKeyHeader`s for
+        different headers share it -- and the second is renamed and reported,
+        rather than described as the first.
+        """
+        signature = _signature(scheme)
+        if signature in self._names:
+            return self._names[signature]
+        built = _scheme(scheme, self.walk)
+        name: str | None = None
+        if built is not None:
+            name = scheme.scheme_name
+            if name in self.declared:
+                name = next(f'{name}_{number}' for number in count(2) if f'{name}_{number}' not in self.declared)
+                self.walk.drop(
+                    'securitySchemes', f'two schemes are named {scheme.scheme_name!r}; the second is declared as {name}'
+                )
+            self.declared[name] = built
+        self._names[signature] = name
+        return name
+
+    def secured_by(self, route: Any, at: str) -> list[SecuredBy]:
+        """`securedBy:` for one route: each scheme it runs that could be declared.
+
+        A scheme that could not be declared is left out, since a `securedBy`
+        naming an undeclared scheme does not parse; its drop already says why.
+        One scheme reached twice, with different scopes, is one entry with
+        both. Where none of them refuses a request without its credential
+        (`auto_error=False`), the route also answers anonymously, which RAML
+        writes as a `null` entry.
+        """
+        merged: dict[str, list[str]] = {}
+        enforcing: list[str] = []
+        for scheme, scopes in requirements(route.dependant):
+            name = self.name(scheme)
+            if name is None:
                 continue
-            built = _scheme(scheme, walk)
-            if built is not None:
-                schemes[scheme.scheme_name] = built
-    return schemes
+            if name not in merged and getattr(scheme, 'auto_error', True):
+                enforcing.append(name)
+            known = merged.setdefault(name, [])
+            known.extend(scope for scope in scopes if scope not in known)
+        if len(enforcing) > 1:
+            # FastAPI runs every dependency, and each of these refuses a request
+            # without its credential; RAML reads a `securedBy` list as choices.
+            self.walk.drop(at, f'{", ".join(enforcing)} are each required, and RAML reads securedBy as alternatives')
+        out: list[SecuredBy] = []
+        for name, scopes in merged.items():
+            declared = self.declared[name]
+            oauth = declared.type == 'OAuth 2.0'
+            if scopes and not oauth:
+                self.walk.drop(at, f'{name!r} carries scopes {scopes}, and RAML scopes belong to OAuth 2.0')
+            if oauth:
+                _declare_scopes(declared, scopes)
+            out.append(SecuredBy(scheme=name, scopes=scopes if oauth else []))
+        if merged and not enforcing:
+            out.append(SecuredBy(scheme=None))
+        return out
+
+
+def _signature(scheme: SecurityBase) -> tuple[str, str, str]:
+    """What makes two scheme instances the same scheme: their name, kind and configuration."""
+    dump = getattr(scheme.model, 'model_dump', None)
+    config = json.dumps(dump(mode='json', exclude_none=True), sort_keys=True) if dump else repr(vars(scheme.model))
+    return scheme.scheme_name, type(scheme).__qualname__, config
+
+
+def _declare_scopes(declared: SecurityScheme, scopes: list[str]) -> None:
+    """Add to an OAuth scheme's `scopes` each one a route asks for that it does not list.
+
+    FastAPI lets a route ask for any scope; RAML refuses a `securedBy` scope
+    its scheme does not declare. A scope asked for is one the scheme grants.
+    """
+    if not scopes:
+        return
+    listed = declared.settings.setdefault('scopes', [])
+    assert isinstance(listed, list)  # noqa: S101 - `_oauth2` writes a list
+    listed.extend(scope for scope in scopes if scope not in listed)
 
 
 def _value(item: Any) -> Any:
@@ -133,35 +220,5 @@ def _oauth2(model: dict[str, Any], description: str | None) -> SecurityScheme:
         settings['accessTokenUri'] = token
     scopes = [scope for config in flows.values() for scope in config.get('scopes') or {}]
     if scopes:
-        settings['scopes'] = sorted(set(scopes))
+        settings['scopes'] = list(dict.fromkeys(scopes))
     return SecurityScheme(type='OAuth 2.0', description=description, settings=settings)
-
-
-def secured_by(route: Any, schemes: dict[str, SecurityScheme], at: str, walk: Walk) -> list[SecuredBy]:
-    """`securedBy:` for one route: each scheme it runs that the document declares.
-
-    A scheme that could not be declared is left out, since a `securedBy`
-    naming an undeclared scheme does not parse; its drop already says why. One
-    scheme reached twice, with different scopes, is one entry with both.
-    """
-    merged: dict[str, list[str]] = {}
-    enforcing: list[str] = []
-    for scheme, scopes in requirements(route.dependant):
-        name = scheme.scheme_name
-        if name not in schemes:
-            continue
-        if name not in merged and getattr(scheme, 'auto_error', True):
-            enforcing.append(name)
-        known = merged.setdefault(name, [])
-        known.extend(scope for scope in scopes if scope not in known)
-    if len(enforcing) > 1:
-        # FastAPI runs every dependency, and each of these refuses a request
-        # without its credential; RAML reads a `securedBy` list as choices.
-        walk.drop(at, f'{", ".join(enforcing)} are each required, and RAML reads securedBy as alternatives')
-    out: list[SecuredBy] = []
-    for name, scopes in merged.items():
-        oauth = schemes[name].type == 'OAuth 2.0'
-        if scopes and not oauth:
-            walk.drop(at, f'{name!r} carries scopes {scopes}, and RAML scopes belong to OAuth 2.0')
-        out.append(SecuredBy(scheme=name, scopes=scopes if oauth else []))
-    return out

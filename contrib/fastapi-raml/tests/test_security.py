@@ -105,8 +105,8 @@ def test_two_enforcing_schemes_are_reported_as_both_required() -> None:
     assert any('each required' in entry for entry in dropped(app))
 
 
-def test_a_scheme_that_does_not_refuse_is_not_counted_as_required() -> None:
-    """`auto_error=False` hands a missing credential to the handler: an alternative, as RAML reads it."""
+def test_schemes_that_do_not_refuse_also_admit_an_anonymous_call() -> None:
+    """`auto_error=False` hands a missing credential to the handler: RAML's `null` entry."""
     app = FastAPI(title='S')
 
     @app.get('/me')
@@ -116,7 +116,58 @@ def test_a_scheme_that_does_not_refuse_is_not_counted_as_required() -> None:
     ) -> int: ...
 
     assert dropped(app) == []
-    assert len(operation(app, '/me', 'get').secured_by) == 2
+    assert [scheme.name for scheme in operation(app, '/me', 'get').secured_by] == ['HTTPBearer', 'APIKeyHeader', 'null']
+
+
+def test_one_scheme_that_refuses_admits_no_anonymous_call() -> None:
+    app = FastAPI(title='S')
+
+    @app.get('/me')
+    def me(
+        a: Annotated[Any, Depends(HTTPBearer())],
+        b: Annotated[Any, Depends(APIKeyHeader(name='K', auto_error=False))],
+    ) -> int: ...
+
+    assert 'null' not in [scheme.name for scheme in operation(app, '/me', 'get').secured_by]
+
+
+def test_two_schemes_sharing_a_name_are_declared_apart() -> None:
+    """FastAPI names a scheme after its class, so two API-key headers share `APIKeyHeader`."""
+    app = FastAPI(title='S')
+
+    @app.get('/a')
+    def a(key: Annotated[Any, Depends(APIKeyHeader(name='X-A'))]) -> int: ...
+
+    @app.get('/b')
+    def b(key: Annotated[Any, Depends(APIKeyHeader(name='X-B'))]) -> int: ...
+
+    @app.get('/c')
+    def c(key: Annotated[Any, Depends(APIKeyHeader(name='X-A'))]) -> int: ...
+
+    raml = parsed(app)
+    declared = raml.entry_point.security_schemes
+    assert list(declared) == ['APIKeyHeader', 'APIKeyHeader_2']
+    assert [raml.endpoints[path].operations['get'].secured_by[0].name for path in ('/a', '/b', '/c')] == [
+        'APIKeyHeader',
+        'APIKeyHeader_2',
+        'APIKeyHeader',
+    ]
+    assert dropped(app) == [
+        "securitySchemes: two schemes are named 'APIKeyHeader'; the second is declared as APIKeyHeader_2"
+    ]
+
+
+def test_a_scope_the_scheme_does_not_list_is_declared_on_it() -> None:
+    """FastAPI lets a route ask for any scope; RAML refuses one its scheme does not declare."""
+    app = FastAPI(title='S')
+    listed = OAuth2PasswordBearer(tokenUrl='/token', scopes={'read': 'r'})
+
+    @app.get('/me')
+    def me(token: Annotated[str, Security(listed, scopes=['admin'])]) -> int: ...
+
+    raml = parsed(app)
+    assert raml.entry_point.security_schemes['OAuth2PasswordBearer'].settings.scopes == ['read', 'admin']
+    assert dropped(app) == []
 
 
 oauth = OAuth2PasswordBearer(tokenUrl='/token', scopes={'read': 'r', 'write': 'w'})

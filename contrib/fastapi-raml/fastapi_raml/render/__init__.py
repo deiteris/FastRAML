@@ -43,15 +43,15 @@ from starlette.datastructures import UploadFile
 from fastapi_raml.render.parameters import parameters
 from fastapi_raml.render.responses import responses
 from fastapi_raml.render.routes import api_routes, routes_of
-from fastapi_raml.render.security import schemes, secured_by
+from fastapi_raml.render.security import Security
 
 if TYPE_CHECKING:
-    from raml_document import Parameters, SecurityScheme
+    from raml_document import Parameters
 
 __all__ = ['Report', 'render', 'routes_of']
 
 
-def _method(route: Any, verb: str, declared: dict[str, SecurityScheme], walk: Walk) -> tuple[Method, Parameters]:
+def _method(route: Any, verb: str, security: Security, walk: Walk) -> tuple[Method, Parameters]:
     at = f'{verb} {route.path_format}'
     method = Method(display_name=route.summary or None, description=route.description or None)
     uri = parameters(route, method, at, walk)
@@ -62,7 +62,7 @@ def _method(route: Any, verb: str, declared: dict[str, SecurityScheme], walk: Wa
         method.body = Body({media: walk.field(info, f'{at}.body')})
 
     responses(route, method, at, walk)
-    method.secured_by = secured_by(route, declared, at, walk)
+    method.secured_by = security.secured_by(route, at)
     if route.callbacks:
         walk.drop(at, 'callbacks have no RAML form')
     return method, uri
@@ -81,13 +81,15 @@ def render(app: Any) -> Report:
             walk.drop('servers', f'{len(app.servers) - 1} extra server(s); RAML has one baseUri')
 
     routes = api_routes(app, walk)
-    document.security_schemes = schemes(routes, walk)
+    security = Security(walk)
+    # Filled as the routes are read, like `types`.
+    document.security_schemes = security.declared
 
     for route in routes:
         path = route.path_format
         resource = document.root.at(path)
         for verb in sorted(route.methods or ()):
-            method, uri = _method(route, verb, document.security_schemes, walk)
+            method, uri = _method(route, verb, security, walk)
             resource.methods[verb.lower()] = method
             for name, decl in uri.items():
                 if not document.root.declare_uri_parameter(path, name, decl):

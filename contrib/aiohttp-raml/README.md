@@ -205,7 +205,7 @@ the request it comes from:
 | Signature position | Comes from | RAML node |
 |---|---|---|
 | positional-only (before `/`) | the URL path | `uriParameters` |
-| a `BaseModel` | the request body | `body` |
+| a model, or anything holding one | the request body | `body` |
 | positional-or-keyword | the query string | `queryParameters` |
 | keyword-only (after `*`) | a request header | `headers` |
 
@@ -226,7 +226,11 @@ async def get(
 A marker says *where* a value comes from. A pydantic `Field` says what the value
 must look like. Use both together when you need both.
 
-### Name a header explicitly
+A model is a pydantic model, a dataclass or a `TypedDict`. `Book | None`,
+`list[Book]` and anything else that holds a model is the body too, because a
+query string cannot carry an object.
+
+### Name a parameter explicitly
 
 A Python parameter cannot be named `X-Request-Id`, so `aiohttp-raml` converts
 the parameter name to a header name: `x_request_id` becomes `X-Request-Id`.
@@ -234,13 +238,38 @@ the parameter name to a header name: `x_request_id` becomes `X-Request-Id`.
 `Header`**, as in the example above. Incoming headers are matched
 case-insensitively either way.
 
-### Repeated query parameters
+A `Field` alias names a parameter as well: `search: Annotated[str,
+Field(alias='q')]` is read from `?q=` and documented as `q`. A parameter is
+read from one key, so `AliasChoices` and `AliasPath` are refused when the
+handler is decorated.
+
+### Repeated query parameters and headers
 
 If a parameter's annotation accepts a sequence, repeated query keys collect into
 a list. With `tags: list[str] | None = None`, the request `?tags=a&tags=b`
-arrives as `['a', 'b']`, and `?tags=a` arrives as `['a']`.
+arrives as `['a', 'b']`, and `?tags=a` arrives as `['a']`. A repeated header
+collects the same way, one item per header line.
 
 Query parameters and headers that you have not declared are ignored.
+
+### The request body
+
+A JSON body is parsed and validated against its annotation. A body with a
+default, such as `book: Book | None = None`, may be left out, and the handler
+then receives the default. RAML has no way to mark a body optional, so the
+document shows it as required and the report says so.
+
+Only JSON is parsed; `+json` media types such as `application/merge-patch+json`
+count as JSON. A body of any other media type reaches the handler as its text
+or its bytes, so annotate it `str` or `bytes`:
+
+```python
+async def post(self, doc: Annotated[str, Body(media='application/xml'), Field(max_length=65536)]) -> ...: ...
+```
+
+It is documented as `string`, or as `file` for `bytes`. A model annotated on
+such a body is refused when the handler is decorated, because nothing would
+parse it.
 
 ## Declare responses
 
@@ -264,10 +293,41 @@ class BookView(RamlView):
 `Responds` takes a status code, a body type, an optional description, and an
 optional media type that defaults to `application/json`. The body type is a
 normal annotation, so `list[Book]` and `Book | None` work as they do anywhere
-else. Pass `None` for a response with no body.
+else. Pass `None` for a response with no body. A 1xx, 204 or 304 response has
+no body, so declaring one with a body raises `ValueError`.
 
 A handler that declares no response gets no `responses:` node. `aiohttp-raml`
 does not invent a 200 you did not ask for.
+
+### A response body is what the handler writes
+
+Your handler builds the JSON itself, so the document describes a body the way
+`model_dump()` writes it by default: each field under its name, `None` written
+as `null`, computed fields included. Where a model writes something other than
+what it reads, such as a field with an alias or a `computed_field`, the
+response gets a type of its own, such as `BookOutputByName`. A model that
+writes what it reads keeps its one declaration.
+
+If your handler dumps differently, say so with the same arguments you pass to
+`model_dump`:
+
+```python
+Responds(200, Book, by_alias=True)  # web.json_response(book.model_dump(by_alias=True))
+Responds(200, Book, exclude_none=True)  # ...model_dump(exclude_none=True)
+```
+
+`check_responses` reads a body by the same keys, on pydantic 2.11 or later.
+
+### Mark a method deprecated
+
+Mark the handler with `warnings.deprecated` (Python 3.13 or later) or
+`typing_extensions.deprecated`. The mark works above or below `@validate`, and
+the method gets RAML's `deprecated` annotation with your message:
+
+```python
+@deprecated('use /v2/books')
+async def get(self) -> ...: ...
+```
 
 ## Accept file uploads
 
@@ -387,12 +447,26 @@ Implement `authenticate` to return the caller's identity or raise
 `AuthenticationError`. Implement `permits` to decide whether that identity may
 act under the requested scopes; the default accepts any authenticated caller.
 A failed `authenticate` produces a 401 and a failed `permits` produces a 403.
-`request['identity']` holds whatever `authenticate` returned.
+Both responses are added to every secured method in the document, and each body
+is a `Refused`, with an `error` and a `detail` field. A 401 or 403 that you
+declare yourself is kept instead. `request['identity']` holds whatever
+`authenticate` returned.
 
 `@secured` stacks, and **each application is an alternative**, because RAML's
 `securedBy:` is a list of alternatives. The first scheme that authenticates
 handles the request. There is no decorator for requiring two schemes together,
 because RAML cannot express that.
+
+`@secured(None)` is RAML's anonymous alternative. The handler also answers a
+caller that no scheme authenticates, and in that case `request` holds no
+`identity`. Such a method declares no 401 or 403, because it never sends one.
+
+A scope must be one that its scheme lists in `scopes`, because RAML refuses any
+other. A scope that is not listed is reported and left out of the document.
+
+A handler in a sub-application can use the schemes its parent registered. If
+two sub-applications register different schemes under the same name, the
+second is declared under a new name, such as `key_2`, and the report says so.
 
 ## Validate your own responses
 
@@ -506,6 +580,20 @@ async def health(request):
 The routes added by `add_raml_routes` are excluded already, so `/raml` does not
 describe itself.
 
+### Which routes are described
+
+- **Sub-applications** mounted with `add_subapp` are described under their
+  prefix. Pass the resource `add_subapp` returns to `exclude` to leave one out.
+  A sub-application matched by host with `add_domain` is reported instead,
+  because the document has one `baseUri`.
+- **The HEAD that `add_get` adds** runs the GET handler, and HTTP defines a HEAD
+  as that GET without its body, so it is not described. A HEAD route with a
+  handler of its own is described.
+- **A regex in the path**, as in `/books/{isbn:\d{13}}`, becomes the URI
+  parameter's `pattern`. A regex that can match `/`, such as `{tail:.*}`, spans
+  several path segments. A RAML URI parameter cannot do that, so the regex is
+  reported instead.
+
 ### The browsable viewer
 
 Install the `viewer` extra and `add_raml_routes` mounts a browsable UI at
@@ -534,37 +622,37 @@ print(report.to_raml())
 print(report.dropped)
 ```
 
-It reports scopes given to a non-OAuth scheme, a `@secured` naming a scheme that
-was never registered, a URI parameter that matches no segment of its path, a
-static mount, a prefixed sub-application, and a handler with no `@validate`,
-which is still described by its path and method.
+It reports:
 
-### Custom metadata is not supported
+- scopes given to a non-OAuth scheme, or not listed by their scheme;
+- a `@secured` that names a scheme nobody registered;
+- two schemes registered under the same name;
+- a URI parameter that matches no segment of its path;
+- a path regex that crosses segments, or one RAML cannot write as a pattern;
+- a body that may be left out;
+- a static mount, and a sub-application matched by host;
+- a method RAML has no node for;
+- a handler with no `@validate`, which is still described by its path and
+  method.
 
-RAML has two extension mechanisms, and `aiohttp-raml` reaches neither:
+### Custom annotations
 
-- **Annotations** — `annotationTypes:` declarations and `(name): value`
-  applications on almost any node.
-- **User-defined facets** — a `facets:` block declaring extra facets that
-  subtypes of a type must supply.
-
-Both are RAML 1.0 features that the fastRAML parser reads in full. The gap is in
-the authoring model this package writes through, which has no node for either.
-
-You can still add them by post-processing the document yourself, at the cost of
-giving up `add_raml_routes`:
+`aiohttp-raml` applies RAML's `deprecated` annotation itself (see
+[Mark a method deprecated](#mark-a-method-deprecated)). To add annotations of
+your own, edit the document before rendering it, at the cost of giving up
+`add_raml_routes`:
 
 ```python
-import yaml
 from aiohttp_raml import render
+from raml_document import TypeDecl
 
-raw = render(app, title='Library').document.render()  # a plain dict
-raw['annotationTypes'] = {'owner': 'string'}
-raw['/books']['get']['(owner)'] = 'platform-team'
-source = '#%RAML 1.0\n' + yaml.safe_dump(raw, sort_keys=False)
+report = render(app, title='Library')
+report.document.annotation_types['owner'] = TypeDecl(type='string')
+report.document.root.at('/books').methods['get'].annotations['owner'] = 'platform-team'
+source = report.document.to_raml()
 ```
 
-That document parses, and `fastraml` reads the annotation back.
+User-defined facets (a `facets:` block) have no node in the authoring model.
 
 Not supported:
 

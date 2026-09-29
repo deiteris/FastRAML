@@ -29,6 +29,32 @@ take this without taking either.
 more of it than they do — the framework-specific part is reading an application,
 not writing RAML.
 
+## What is in it
+
+| Module | Needs | Holds |
+|--------|-------|-------|
+| `raml_document.model` | `pyyaml` | the document model, and the RAML spelling of each node; `METHODS` |
+| `raml_document.report` | — | `Report`: a rendered document, and everything left out of it |
+| `raml_document.annotations` | — | the annotations for what RAML has no node for: `deprecated`, `tags`, `operationId` |
+| `raml_document.from_pydantic` | the `pydantic` extra | `Walk`: pydantic models, dataclasses and `TypedDict`s as RAML types |
+| `raml_document.serve` | the `serve` extra (`fastraml`) | `build`: a report parsed back, explained where it fails, and projected |
+
+`from_pydantic` is a package of its own, split by what each part decides:
+`tables` (which RAML built-in each Python type is), `values` (Python values as
+JSON), `introspect` (what a class or annotation says, and `Shape`, how a
+response writes a model), `facets` (constraints as facets), `unions`, and
+`walk`, the traversal. Only `walk` and `unions` hold state.
+
+`Walk`'s surface is small: `model`, `annotation`, `field` and `parameter` read
+something; `subset` declares a model with fields left out; `output(Shape(...))`
+walks what models *write*; `annotate` applies an annotation; `types`,
+`annotation_types` and `dropped` are the result. A renderer copies the first
+two onto its `Document` and returns the third in its `Report`.
+
+A subclass that redeclares an inherited field differently is declared whole,
+without supertypes: RAML reads a redeclared property as a narrowing, and
+which retypings it accepts is the parser's rule, not this package's.
+
 ## Not the tree view
 
 `fastraml.views.tree` describes the **effective** document: it requires

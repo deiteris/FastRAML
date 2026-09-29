@@ -133,6 +133,23 @@ facet — a file with a RAML header, known kind or not, is `fragment is not
 allowed here`, with the header in `info`. The spec is silent on this; the rule
 keeps a NamedExample, a map of named examples, out of the place of one.
 
+Where a position takes a mapping or a sequence — a resource or method value,
+the `types:`, `annotationTypes:`, `traits:`, `resourceTypes:` and
+`securitySchemes:` maps, `documentation:`, `responses:` and a response,
+parameter and property maps, `facets:`, `enum`, `allowedTargets`, `xml`,
+`fileTypes`, `protocols`, `mediaType`, `describedBy:`, `settings:` and a
+setting's list, `is:` and `securedBy:` — `inline_include` reads an `!include`
+of a file without a header as its content, located in that file, and one with
+a header as `fragment is not allowed here`. A file that is not YAML is left for
+the position to reject at the `!include`. A resource or a response stays keyed
+where its key is written; its content is decoded, and located, in the
+included file. A declaration in an included `types:` map is named in the
+declaring document's namespace and indexed for unwrap and validation by the
+file it is written in. Content is not a fragment, so invariant I3 does not
+cover it: a file included twice is decoded twice, as the same text written
+twice would be. A position that builds a shape (`type:`, a `body:`) reads an
+`!include` as a DataType fragment.
+
 ### 4.3 Caching, limits, and cycles
 
 - A composed include target is read and composed once per parse through

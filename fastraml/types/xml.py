@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from fastraml.parser.facets import make_bool_facet, make_string_facet
+from fastraml.parser.includes import inline_include
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import NodeKind, node_error, pairs
 
@@ -45,6 +46,7 @@ class XmlSerialization:
 
 def decode_xml_serialization(raml: Raml, value_node: Node, location: str) -> XmlSerialization:
     """Build the record from an `xml:` value node."""
+    value_node, location = inline_include(raml, value_node, location)
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('xml must be a mapping', location, value_node)
 

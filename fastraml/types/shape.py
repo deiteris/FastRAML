@@ -26,7 +26,7 @@ from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import compile_pattern, make_bool_facet, make_string_facet, scalar_str
-from fastraml.parser.includes import note_include_ref
+from fastraml.parser.includes import inline_include, note_include_ref
 from fastraml.parser.substitutions import substituted_site
 from fastraml.types.base import (
     BUILTIN_TYPES,
@@ -257,6 +257,9 @@ def unmarshal_types(
     fragment's own map is filled before they are raised, so it lists the same
     declarations as the registry (docs/11 § 2).
     """
+    # Named in the declaring document, whichever file the map is written in.
+    namespace = location
+    node, location = inline_include(raml, node, location)
     if is_null(node):
         # `types:` with nothing under it. RAML uses an empty value widely.
         return
@@ -274,23 +277,26 @@ def unmarshal_types(
                 if name in BUILTIN_TYPES:
                     raise node_error('cannot redefine a built-in type', location, key, info={'type': name})
                 make_shape(
-                    raml, key, value, location, attach=partial(_declare, raml, declared, location, is_annotation)
+                    raml, key, value, location, attach=partial(_declare, raml, declared, namespace, is_annotation)
                 )
             except RamlError as err:
                 accumulator.add(err)
     accumulator.raise_if_any()
 
 
-def _declare(raml: Raml, declared: dict[str, BaseShape], location: str, is_annotation: bool, base: BaseShape) -> None:  # noqa: FBT001 - bound by `partial`
-    """Register a declaration under its name, before its content is decoded."""
+def _declare(raml: Raml, declared: dict[str, BaseShape], namespace: str, is_annotation: bool, base: BaseShape) -> None:  # noqa: FBT001 - bound by `partial`
+    """Register a declaration under its name in `namespace`, the declaring
+    document, before its content is decoded. The flat index that unwrap and
+    validation iterate is by the file it is written in.
+    """
     name = cast('str', base.name)
     base.is_annotation_type = is_annotation
     declared[name] = base
     if is_annotation:
-        raml.put_annotation_type(name, location, base)
+        raml.put_annotation_type(name, namespace, base)
     else:
-        raml.put_type(name, location, base)
-    raml.put_typedef(location, base)
+        raml.put_type(name, namespace, base)
+    raml.put_typedef(base.location, base)
 
 
 def make_body_shape(raml: Raml, key_node: Node | None, value_node: Node, location: str) -> BaseShape:
@@ -344,7 +350,7 @@ def _decode(  # noqa: PLR0912 - one pass over the common-facet vocabulary (docs/
             case fn.FACET_XML:
                 base.xml = decode_xml_serialization(raml, value, location)
             case fn.FACET_ALLOWED_TARGETS:
-                base.allowed_targets = _decode_allowed_targets(value, location)
+                base.allowed_targets = _decode_allowed_targets(raml, value, location)
             case name if is_annotation_key(name):
                 add_domain_extension(raml, base.annotations, location, key, value)
             case _:
@@ -353,13 +359,14 @@ def _decode(  # noqa: PLR0912 - one pass over the common-facet vocabulary (docs/
     return type_node, facets
 
 
-def _decode_allowed_targets(value_node: Node, location: str) -> list[DomainLocation]:
+def _decode_allowed_targets(raml: Raml, value_node: Node, location: str) -> list[DomainLocation]:
     """`allowedTargets:` — one target name or a sequence of them (docs/09 § B4).
 
     The result is a list either way, but an *absent* facet stays `None` on the
     base: absent means any target is allowed and empty means none is, and P10
     has to tell them apart.
     """
+    value_node, location = inline_include(raml, value_node, location)
     items = value_node.content if value_node.kind is NodeKind.SEQUENCE else [value_node]
     targets: list[DomainLocation] = []
     accumulator = Accumulator()
@@ -375,6 +382,7 @@ def _decode_allowed_targets(value_node: Node, location: str) -> list[DomainLocat
 
 
 def _decode_enum(raml: Raml, value_node: Node, location: str) -> list:
+    value_node, location = inline_include(raml, value_node, location)
     if value_node.kind is not NodeKind.SEQUENCE:
         raise node_error('enum must be a sequence', location, value_node)
     return EnumValues(make_data_node(raml, None, item, location) for item in value_node.content)
@@ -406,15 +414,16 @@ def _decode_examples(raml: Raml, base: BaseShape, value_node: Node) -> None:
 
 def _decode_custom_facet_defs(raml: Raml, base: BaseShape, value_node: Node) -> None:
     """`facets:` — a properties declaration, so it reuses `make_property`."""
+    value_node, location = inline_include(raml, value_node, base.location)
     if is_null(value_node):
         return
     if value_node.kind is not NodeKind.MAPPING:
-        raise node_error('facets must be a mapping', base.location, value_node)
+        raise node_error('facets must be a mapping', location, value_node)
     for key, value in pairs(value_node):
         if key.value.startswith('('):
             # Otherwise a facet name would be ambiguous with an annotation.
-            raise node_error("facet name must not begin with '('", base.location, key, info={'facet': key.value})
-        prop = make_property(raml, key, value, base.location)
+            raise node_error("facet name must not begin with '('", location, key, info={'facet': key.value})
+        prop = make_property(raml, key, value, location)
         base.custom_facet_defs[prop.name] = prop
 
 
@@ -600,13 +609,14 @@ def _decode_declarations(raml: Raml, shape: Shape, facets: list[Node], location:
                         )
                     setattr(shape, spec.fields[0], make_shape(raml, key, value, location))
                 case 'shape_list':
+                    value, written = inline_include(raml, value, location)
                     if value.kind is not NodeKind.SEQUENCE:
-                        raise node_error('anyOf must be a sequence', location, value)
+                        raise node_error('anyOf must be a sequence', written, value)
                     members: list[BaseShape] = []
                     setattr(shape, spec.fields[0], members)
                     for item in value.content:
                         try:
-                            members.append(make_shape(raml, None, item, location))
+                            members.append(make_shape(raml, None, item, written))
                         except RamlError as err:
                             accumulator.add(err)
                 case 'properties':
@@ -670,6 +680,7 @@ def make_declarations(
     Both maps are the holder's own, filled as each property is built, so one
     that fails leaves the rest. The failures are raised after all of them.
     """
+    value_node, location = inline_include(raml, value_node, location)
     if is_null(value_node):
         # `properties:` with nothing under it declares no properties.
         return
@@ -701,6 +712,7 @@ def make_parameter_map(raml: Raml, value_node: Node, location: str, binding: Bin
     syntax declares all four, and which one it is is a fact about the map that
     holds them (`Parameter` in docs/05 § 4).
     """
+    value_node, location = inline_include(raml, value_node, location)
     if is_null(value_node):
         return {}
     if value_node.kind is not NodeKind.MAPPING:

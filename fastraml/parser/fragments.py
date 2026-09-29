@@ -58,7 +58,7 @@ from fastraml.parser.directives import decode_secured_by, make_security_schemes
 from fastraml.parser.documentation import DocumentationItem, decode_documentation_item
 from fastraml.parser.endpoints import VALID_PROTOCOLS
 from fastraml.parser.facets import make_scalar_facet, make_string_facet, scalar_str
-from fastraml.parser.includes import note_include_ref, resolve_ref_uri, strip_uri_suffix
+from fastraml.parser.includes import inline_include, note_include_ref, resolve_ref_uri, strip_uri_suffix
 from fastraml.parser.references import resolve_library_reference, resolve_reference
 from fastraml.parser.resourcetypes import ResourceTypeDefinition, make_resource_type_definition
 from fastraml.parser.security import SecuritySchemeDefinition, make_security_scheme_definition
@@ -708,31 +708,33 @@ class APIFragment(_DeclaringFragment):
         return remainder
 
     def _unmarshal_protocols(self, node: Node) -> list[ScalarFacet[str]]:
+        node, location = inline_include(self._raml, node, self.location)
         if node.kind is not NodeKind.SEQUENCE:
-            raise node_error('protocols must be an array', self.location, node)
+            raise node_error('protocols must be an array', location, node)
         if not node.content:
-            raise node_error('protocols must not be empty', self.location, node)
+            raise node_error('protocols must not be empty', location, node)
         protocols = []
         for item in node.content:
-            facet = make_scalar_facet(self._raml, None, item, self.location, scalar_str)
+            facet = make_scalar_facet(self._raml, None, item, location, scalar_str)
             if facet.value.lower() not in VALID_PROTOCOLS:
-                raise node_error('unknown protocol', self.location, item, info={'protocol': facet.value})
+                raise node_error('unknown protocol', location, item, info={'protocol': facet.value})
             protocols.append(facet)
         return protocols
 
     def _unmarshal_media_types(self, key: Node, node: Node) -> list[ScalarFacet[str]]:
+        node, location = inline_include(self._raml, node, self.location)
         if node.kind is NodeKind.SCALAR:
-            items = [make_scalar_facet(self._raml, key, node, self.location, scalar_str)]
+            items = [make_scalar_facet(self._raml, key, node, location, scalar_str)]
         elif node.kind is NodeKind.SEQUENCE:
-            items = [make_scalar_facet(self._raml, None, item, self.location, scalar_str) for item in node.content]
+            items = [make_scalar_facet(self._raml, None, item, location, scalar_str) for item in node.content]
         else:
-            raise node_error('media type must be a string or sequence', self.location, node)
+            raise node_error('media type must be a string or sequence', location, node)
 
         if not items:
-            raise node_error('media type must not be empty', self.location, node)
+            raise node_error('media type must not be empty', location, node)
         for item in items:
             if not _is_valid_media_type(item.value):
-                raise node_error('invalid media type', self.location, node, info={'media type': item.value})
+                raise node_error('invalid media type', location, node, info={'media type': item.value})
         return items
 
 
@@ -988,6 +990,7 @@ def _definitions(raml: Raml, node: Node, location: str, kind: FragmentKind, decl
     before the accumulated errors are raised, so one bad definition does not
     hide the rest (docs/11 § 2).
     """
+    node, location = inline_include(raml, node, location)
     if node.tag == TAG_NULL:
         return
     if node.kind is not NodeKind.MAPPING:
@@ -1041,6 +1044,7 @@ def unmarshal_documentation_items(
     raml: Raml, key_node: Node, value_node: Node, location: str
 ) -> list[DocumentationItem]:
     """Decode `documentation:`, which is a sequence of items or includes."""
+    value_node, location = inline_include(raml, value_node, location)
     if value_node.kind is not NodeKind.SEQUENCE:
         raise node_error('documentation must be a sequence', location, key_node)
 

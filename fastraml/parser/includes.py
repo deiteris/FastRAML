@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 __all__ = [
     'IncludeInfo',
     'IncludeRef',
+    'inline_include',
     'note_include_ref',
     'resolve_include',
     'resolve_include_uri',
@@ -174,6 +175,24 @@ def resolve_include(raml: Raml, node: Node, location: str) -> tuple[str, Node]:
     return target, cached
 
 
+def inline_include(raml: Raml, node: Node, location: str) -> tuple[Node, str]:
+    """What a position that takes a mapping or a sequence reads for `node`.
+
+    An `!include` of a file without a RAML header stands for its content,
+    located in that file, as if written in place (docs/03 § 4.2); a typed
+    fragment is `fragment is not allowed here`. Anything else, and a file that
+    is not YAML, is returned as written, for the position to judge.
+    """
+    if node.tag != TAG_INCLUDE or not _composes_as_yaml(node.value):
+        return node, location
+    target, content = resolve_include(raml, node, location)
+    return content, target
+
+
+def _composes_as_yaml(ref: str) -> bool:
+    return posixpath.splitext(strip_uri_suffix(ref))[1].lower() in _YAML_EXTENSIONS
+
+
 def _load(raml: Raml, node: Node, target: str, location: str) -> bytes:
     limit = raml.max_include_size
     try:
@@ -191,12 +210,11 @@ def _load(raml: Raml, node: Node, target: str, location: str) -> bytes:
 
 def _compose_include(raml: Raml, node: Node, data: bytes, target: str) -> Node:
     text = decode_source(data)
-    extension = posixpath.splitext(strip_uri_suffix(node.value))[1].lower()
-    if extension in _YAML_EXTENSIONS:
+    if _composes_as_yaml(node.value):
         head = read_head(text)
         if head.startswith(RAML_HEADER_PREFIX):
             raml.include_heads[target] = head
-        if extension == '.json':
+        if strip_uri_suffix(node.value).lower().endswith('.json'):
             text = _outer_tabs_as_spaces(text)
         return compose(text, uri=target, max_depth=raml.max_depth)
     # Spec section Resolving Includes: any other file is included as a scalar.

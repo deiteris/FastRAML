@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Final
 from fastraml.errors import Accumulator, RamlError
 from fastraml.facet_names import FACET_IS, FACET_SECURED_BY, FACET_TYPE
 from fastraml.parser.directives import DirectiveRef, decode_secured_by, decode_trait_refs, decode_type_ref
+from fastraml.parser.includes import inline_include
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import Node, NodeKind, is_null, node_error, pairs, with_content
 
@@ -68,6 +69,9 @@ class SourceOperation:
     #: Everything stage 1 did not consume, as a mapping node. `None` when the
     #: method was declared with no body at all (`get:`).
     body: Node | None = None
+    #: The file `body` was written in: `location`, unless the method's value
+    #: is an `!include` of content, which is located in that file.
+    body_location: str = ''
     #: The scope names in this branch resolve in, captured at decode time.
     scope: ParseCtx | None = None
     #: Filled by P4: which scope a grafted node came from (docs/08 § 4).
@@ -102,6 +106,9 @@ class SourceEndPoint:
     operations: dict[str, SourceOperation] = field(default_factory=dict)
     endpoints: dict[str, SourceEndPoint] = field(default_factory=dict)
     body: Node | None = None
+    #: As `SourceOperation.body_location`: `/x: !include x.raml` is keyed
+    #: here and written there.
+    body_location: str = ''
     scope: ParseCtx | None = None
     provenance: dict[Node, ParseCtx] = field(default_factory=dict)
     key_pos: Position = UNKNOWN
@@ -132,6 +139,15 @@ def _retained(kept: list[Node], source: Node) -> Node | None:
     return with_content(source, kept) if kept else None
 
 
+def _directive(raml: Raml, node: Node, location: str, scope: ParseCtx | None) -> tuple[Node, str, ParseCtx | None]:
+    """A directive's value, where it is written and the scope it resolves in.
+
+    An `!include` of content stands for it, located in its file (docs/03 § 4.2).
+    """
+    node, location = inline_include(raml, node, location)
+    return (node, *raml.document_site(node, location, scope))
+
+
 def make_source_operation(raml: Raml, method: str, key: Node, value: Node, location: str) -> SourceOperation:
     """Decode one method into IR. Directives out, everything else retained."""
     location, scope = raml.document_site(value, location, raml.current_ctx())
@@ -143,6 +159,8 @@ def make_source_operation(raml: Raml, method: str, key: Node, value: Node, locat
         key_pos=key.position,
         value_pos=value.full_position,
     )
+    value, location = inline_include(raml, value, location)
+    operation.body_location = location
     if is_null(value):
         # `get:` with nothing under it is a legal, empty method.
         return operation
@@ -153,13 +171,9 @@ def make_source_operation(raml: Raml, method: str, key: Node, value: Node, locat
     for child_key, child_value in pairs(value):
         # A method takes two of the three directives: `type:` is a resource's.
         if child_key.value == FACET_IS:
-            operation.traits = decode_trait_refs(
-                child_value, *raml.document_site(child_value, location, operation.scope)
-            )
+            operation.traits = decode_trait_refs(*_directive(raml, child_value, location, operation.scope))
         elif child_key.value == FACET_SECURED_BY:
-            operation.secured_by = decode_secured_by(
-                child_value, *raml.document_site(child_value, location, operation.scope)
-            )
+            operation.secured_by = decode_secured_by(*_directive(raml, child_value, location, operation.scope))
             operation.explicit_secured_by = True
         else:
             kept.append(child_key)
@@ -185,6 +199,8 @@ def make_source_endpoint(raml: Raml, key: Node, value: Node, location: str, *, p
         key_pos=key.position,
         value_pos=value.full_position,
     )
+    value, location = inline_include(raml, value, location)
+    endpoint.body_location = location
     if is_null(value):
         return endpoint
     if value.kind is not NodeKind.MAPPING:
@@ -196,17 +212,11 @@ def make_source_endpoint(raml: Raml, key: Node, value: Node, location: str, *, p
         name = child_key.value
         try:
             if name == FACET_TYPE:
-                endpoint.resource_type = decode_type_ref(
-                    child_value, *raml.document_site(child_value, location, endpoint.scope)
-                )
+                endpoint.resource_type = decode_type_ref(*_directive(raml, child_value, location, endpoint.scope))
             elif name == FACET_IS:
-                endpoint.traits = decode_trait_refs(
-                    child_value, *raml.document_site(child_value, location, endpoint.scope)
-                )
+                endpoint.traits = decode_trait_refs(*_directive(raml, child_value, location, endpoint.scope))
             elif name == FACET_SECURED_BY:
-                endpoint.secured_by = decode_secured_by(
-                    child_value, *raml.document_site(child_value, location, endpoint.scope)
-                )
+                endpoint.secured_by = decode_secured_by(*_directive(raml, child_value, location, endpoint.scope))
                 endpoint.explicit_secured_by = True
             elif name in METHODS:
                 endpoint.operations[name] = make_source_operation(raml, name, child_key, child_value, location)

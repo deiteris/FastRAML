@@ -43,6 +43,7 @@ from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.directives import make_security_schemes
 from fastraml.parser.endpoints import VALID_PROTOCOLS, Body, EndPoint, Operation, Request, Response
 from fastraml.parser.facets import make_string_facet, scalar_str
+from fastraml.parser.includes import inline_include
 from fastraml.types.shape import make_body_shape, make_parameter_map, make_shape
 from fastraml.yamlnode import NodeKind, is_null, node_error, pairs
 
@@ -92,8 +93,9 @@ def _secured_by(raml: Raml, source: SourceEndPoint | SourceOperation) -> list[Se
     return make_security_schemes(raml, source.secured_by)
 
 
-def _protocols(node: Node, location: str) -> list[str]:
+def _protocols(raml: Raml, node: Node, location: str) -> list[str]:
     """`protocols:` on a method. The same rule the API root applies to its own."""
+    node, location = inline_include(raml, node, location)
     if node.kind is not NodeKind.SEQUENCE:
         raise node_error('protocols must be a sequence', location, node)
     protocols = []
@@ -206,6 +208,8 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str, attach: 
     )
     attach(response)
     with raml.marking(response):
+        # Keyed here; an included body is decoded, and located, in its file.
+        value, location = inline_include(raml, value, location)
         if is_null(value):
             return
         if value.kind is not NodeKind.MAPPING:
@@ -239,6 +243,7 @@ def decode_responses(raml: Raml, node: Node, location: str, responses: dict[str,
     """A `responses:` map, into the holder's own. Public because `describedBy:`
     reuses it verbatim.
     """
+    node, location = inline_include(raml, node, location)
     if is_null(node):
         return
     location = raml.location_of(node, location)
@@ -305,7 +310,7 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
     elif name == FACET_DESCRIPTION:
         operation.description = make_string_facet(raml, key, value, location)
     elif name == FACET_PROTOCOLS:
-        operation.protocols = _protocols(value, location)
+        operation.protocols = _protocols(raml, value, location)
     elif name == FACET_BODY:
         request.bodies = _decode_bodies(raml, key, value, location, DomainLocation.REQUEST_BODY)
     elif name == FACET_RESPONSES:
@@ -338,7 +343,7 @@ def decode_source_operation(raml: Raml, source: SourceOperation, attach: Callabl
         if source.body is None:
             return
 
-        location = source.location
+        location = source.body_location
         request = Request(id=raml.next_id(), location=location, value_pos=source.value_pos)
         accumulator = Accumulator()
         with (
@@ -407,7 +412,7 @@ def decode_source_endpoint(raml: Raml, source: SourceEndPoint, attach: Callable[
     if source.failure is not None:
         raml.mark(endpoint, source.failure)
     with raml.marking(endpoint):
-        location = source.location
+        location = source.body_location
         accumulator = Accumulator()
 
         if source.body is not None:

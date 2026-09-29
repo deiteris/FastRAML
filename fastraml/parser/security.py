@@ -39,7 +39,7 @@ from fastraml.facet_names import (
 )
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_string_facet, scalar_str
-from fastraml.parser.includes import note_include_ref
+from fastraml.parser.includes import inline_include, note_include_ref
 from fastraml.parser.source_decode import decode_request_facet, decode_responses, query_exclusion_error
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind, is_null, node_error, pairs
@@ -246,6 +246,7 @@ def _decode_described_by(
     description = SecuritySchemeDescription(id=raml.next_id(), location=location, value_pos=node.full_position)
     attach(description)
     with raml.marking(description):
+        node, location = inline_include(raml, node, location)
         if is_null(node):
             return
         if node.kind is not NodeKind.MAPPING:
@@ -301,6 +302,7 @@ _LIST_SETTINGS: Final = frozenset({FACET_SIGNATURES, FACET_AUTHORIZATION_GRANTS,
 def _decode_settings(
     raml: Raml, settings: SecuritySchemeSettings, allowed: frozenset[str], node: Node, location: str
 ) -> None:
+    node, location = inline_include(raml, node, location)
     if node.kind is not NodeKind.MAPPING:
         raise node_error('security scheme settings must be a mapping', location, node)
     accumulator = Accumulator()
@@ -321,7 +323,7 @@ def _decode_settings(
                         info={'setting': name, 'type': settings.scheme_type},
                     )
                 elif name in _LIST_SETTINGS:
-                    settings.lists[name] = _string_sequence(value, location, name)
+                    settings.lists[name] = _string_sequence(*inline_include(raml, value, location), name)
                 else:
                     settings.values[name] = make_string_facet(raml, key, value, location)
             except RamlError as err:

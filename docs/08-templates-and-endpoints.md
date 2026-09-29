@@ -41,6 +41,9 @@ method bodies as YAML mappings. It consumes the three directive keys:
 
 HTTP-method and subresource keys recurse into source IR. Every other pair,
 including all type-bearing declarations and annotations, remains in `body`.
+A resource or method whose value is an `!include` of content
+([03](03-yaml-and-io.md) § 4.2) keeps `location` at its key and records the
+included file as `body_location`, which stage 2 decodes the body under.
 The retained mapping is fresh, carries the original position, and is `None`
 when no pairs remain. `scope` may be absent for programmatic IR construction;
 normal P4 construction establishes the API scope.

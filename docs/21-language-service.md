@@ -197,6 +197,10 @@ the line from `Lines`, so the document is not split again, and its lines are
 numbered as the protocol numbers them. A parser diagnostic cannot be
 suppressed.
 
+An included value's diagnostic belongs to the file containing the value, so a
+JSON example error appears in the included `.json` file rather than the API
+file. An invalid UTF-8 include instead points to its directive (docs/03 § 4.2).
+
 `diagnostics(snapshot)` has an entry only for a file holding a diagnostic.
 Clearing what a client showed before is the adapter's (§ 5).
 
@@ -216,6 +220,11 @@ workspace folders, or its root URI; the `roots` globs of § 2 come as
 holding the open buffers. A URI that is not `file:` is not served, and no
 diagnostic is published to one or links to one as related information: a
 remote document `--remote` read holds no lines here.
+
+Navigation also omits remote locations: definitions, references, workspace
+symbols and type-hierarchy items require a local file whose positions the
+service can convert. `textDocument/documentLink` still exposes the remote
+target URL on an `!include` or `uses:` path written in a local file.
 
 **Sync.** pygls applies incremental edits to its copy of a document, and the
 adapter hands the whole text to `Workspace.change`. File changes come from

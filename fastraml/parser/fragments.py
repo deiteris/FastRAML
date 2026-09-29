@@ -1168,7 +1168,10 @@ def load_fragment_text(raml: Raml, uri: str) -> str:
             data = raml.loader.load(uri)
         except OSError as err:
             raise RamlError.wrap('load resource', err, uri, kind=ErrorKind.LOADING) from err
-    return decode_source(data)
+    try:
+        return decode_source(data)
+    except UnicodeDecodeError as err:
+        raise RamlError.new('fragment is not UTF-8', uri, kind=ErrorKind.READING) from err
 
 
 def parse_fragment(raml: Raml, uri: str, kind: FragmentKind) -> Fragment:

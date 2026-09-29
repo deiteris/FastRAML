@@ -48,6 +48,27 @@ class TestUriResolution:
 
 
 class TestIncludeContent:
+    def test_binary_include_returns_a_diagnostic_from_lenient_parse(self, memory_workspace):
+        root = memory_workspace({'api.raml': API + '(a): !include blob.bin\n'})
+        memory_workspace.files[path_to_file_uri(root / 'blob.bin')] = b'\x00\xee\xff'
+        _raml, error = memory_workspace.lenient(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+        assert error is not None
+        assert error.head.message == 'include is not UTF-8'
+        assert error.head.info == {'path': path_to_file_uri(root / 'blob.bin')}
+        assert error.head.position is not None
+        assert error.head.position.line == API.count('\n') + 1
+
+    def test_binary_schema_fragment_returns_a_diagnostic_from_lenient_parse(self, memory_workspace):
+        root = memory_workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  T: !include schema.json\n'})
+        memory_workspace.files[path_to_file_uri(root / 'schema.json')] = b'\xff\x00'
+        _raml, error = memory_workspace.lenient(root / 'api.raml')
+        assert error is not None
+        assert error.head.message == 'include'
+        assert error.head.cause is not None
+        assert error.head.cause.message == 'fragment is not UTF-8'
+        assert error.head.position is not None
+        assert error.head.position.line == 4
+
     def test_a_non_yaml_extension_becomes_a_string_scalar(self, memory_workspace):
         # This is how `content: !include legal.md` works.
         root = memory_workspace({'legal.md': '# Terms\n'})

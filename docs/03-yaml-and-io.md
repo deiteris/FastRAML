@@ -123,6 +123,9 @@ first: there YAML does not let a tab start a token, while JSON allows it. One
 space for one tab keeps every position.
 Other targets become UTF-8 string scalar nodes. URI query and fragment suffixes
 are ignored when determining the extension.
+An included file with invalid UTF-8 produces a diagnostic at its `!include`
+directive, including when the target is a non-YAML file or a typed fragment.
+An entry file with invalid UTF-8 raises a reading diagnostic before parsing.
 
 An included file either is content or declares a kind. A file whose first line
 is a RAML header (`#%RAML ...`) is a typed fragment: it must be valid as its

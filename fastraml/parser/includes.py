@@ -186,7 +186,10 @@ def resolve_include(raml: Raml, node: Node, location: str) -> tuple[str, Node]:
         data = raml.include_data.pop(target, None)
         if data is None:
             data = _load(raml, node, target, location)
-        cached = raml.include_nodes[target] = _compose_include(raml, node, data, target)
+        try:
+            cached = raml.include_nodes[target] = _compose_include(raml, node, data, target)
+        except UnicodeDecodeError as err:
+            raise node_error('include is not UTF-8', location, node, info={'path': target}) from err
     head = raml.include_heads.get(target)
     if head is not None:
         # A typed fragment is a declaration of its kind, which has a place of

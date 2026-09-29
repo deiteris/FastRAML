@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml import ParseOptions, RamlError, Stage, parse_lenient
+from fastraml import ParseOptions, RamlError, Stage, parse_lenient, path_to_file_uri
 from tests.unit.conftest import write_files
 
 API = '#%RAML 1.0\ntitle: T\n'
@@ -30,6 +30,13 @@ def messages(error: RamlError) -> set[str]:
 
 
 class TestCleanInput:
+    def test_a_binary_entry_raises_a_reading_diagnostic(self, workspace):
+        root = workspace({'api.raml': API})
+        workspace.files[path_to_file_uri(root / 'api.raml')] = b'\xff\x00'
+        with pytest.raises(RamlError) as caught:
+            workspace.lenient(root / 'api.raml', BOTH)
+        assert caught.value.head.message == 'entry is not UTF-8'
+
     def test_a_valid_document_reports_no_error(self, workspace):
         root = workspace({'api.raml': API + 'types:\n  T: string\n'})
         raml, error = workspace.lenient(root / 'api.raml', BOTH)

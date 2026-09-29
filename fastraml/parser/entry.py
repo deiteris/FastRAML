@@ -95,6 +95,8 @@ def _open(path: str | os.PathLike[str], options: ParseOptions) -> tuple[Raml, st
         text = decode_source(raml.loader.load(uri))
     except OSError as err:
         raise RamlError.wrap('load resource', err, uri, kind=ErrorKind.READING) from err
+    except UnicodeDecodeError as err:
+        raise RamlError.new('entry is not UTF-8', uri, kind=ErrorKind.READING) from err
     return raml, uri, text
 
 

@@ -402,6 +402,7 @@ class RamlServer(LanguageServer):
                     kind=_kind(symbol),
                 )
                 for symbol in queries.workspace_symbols(snapshots, params.query)
+                if _file(symbol.uri) is not None
             ]
 
         @feature(types.TEXT_DOCUMENT_DOCUMENT_LINK)
@@ -441,7 +442,7 @@ class RamlServer(LanguageServer):
                 return None
             uri, line, column, positions = at
             symbol = _first(self.service.serving(uri), lambda s: queries.type_at(s, uri, line, column))
-            return None if symbol is None else [self._item(positions, symbol)]
+            return None if symbol is None or _file(symbol.uri) is None else [self._item(positions, symbol)]
 
         @feature(types.TYPE_HIERARCHY_SUPERTYPES)
         def supertypes(params: types.TypeHierarchySupertypesParams) -> list[types.TypeHierarchyItem] | None:
@@ -509,7 +510,7 @@ class RamlServer(LanguageServer):
             return None
         uri, line, column, positions = at
         sites = dict.fromkeys(_answers(self.service.serving(uri), lambda s: query(s, uri, line, column), every=every))
-        return [self._location(positions, site) for site in sites]
+        return [self._location(positions, site) for site in sites if _file(site.uri) is not None]
 
     def _hierarchy(
         self, item: types.TypeHierarchyItem, query: TypeQuery, *, every: bool
@@ -524,7 +525,7 @@ class RamlServer(LanguageServer):
         symbol = queries.Symbol(item.name, queries.SymbolKind.TYPE, uri, selection, selection)
         found = _answers(self.service.serving(uri), lambda s: query(s, symbol), every=every)
         unique = {(related.uri, related.selection): related for related in found}
-        return [self._item(positions, related) for related in unique.values()]
+        return [self._item(positions, related) for related in unique.values() if _file(related.uri) is not None]
 
 
 def _first[T](snapshots: Iterable[Snapshot], answer: Callable[[Snapshot], T | None]) -> T | None:

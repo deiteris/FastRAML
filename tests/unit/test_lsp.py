@@ -10,6 +10,7 @@ import asyncio
 import gc
 import json
 import sys
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -143,6 +144,26 @@ def _lint(diagnostics: list[types.Diagnostic]) -> list[types.Diagnostic]:
 
 
 class TestDiagnostics:
+    def test_binary_include_is_reported_without_stopping_the_server(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\n/blob:\n  post:\n    body:\n'
+            '      application/octet-stream:\n        example: !include blob.bin\n'
+        )
+        write_files(tmp_path, {'api.raml': source})
+        (tmp_path / 'blob.bin').write_bytes(b'\x00\xee\xff')
+        folder = path_to_file_uri(tmp_path)
+        client = _Client(folder)
+        client.start()
+        uri = f'{folder}/api.raml'
+        try:
+            client.open(uri, source)
+            (error,) = [d for d in client.diagnostics(uri, bool) if d.source == 'fastraml']
+            assert error.code == 'include is not UTF-8'
+            assert error.data == {'path': f'{folder}/blob.bin'}
+            assert error.range.start == _position(source, '!include')
+        finally:
+            client.stop()
+
     def test_a_lint_finding_is_published_under_its_rule(self, lsp):
         found = lsp.diagnostics(_uri(lsp, 'api.raml'), lambda ds: bool(_lint(ds)))
         (spare,) = [d for d in _lint(found) if d.code == 'unused-trait']
@@ -386,6 +407,57 @@ def test_a_remote_document_is_neither_published_nor_linked(tmp_path, monkeypatch
     server.publish([api])
     assert [params.uri for params in sent] == [api]
     assert sent[0].diagnostics[0].related_information is None
+
+
+class _RemoteClient:
+    def get(self, url):
+        content = b'#%RAML 1.0 Library\ntypes:\n  Hosted: string\n' if url.endswith('/lib.raml') else b'{}'
+        return SimpleNamespace(status_code=200, content=content)
+
+
+def test_definition_of_remote_include_has_no_local_location_but_keeps_document_link(tmp_path, monkeypatch):
+    from fastraml.service.lsp import _Positions
+    from fastraml.service.text import Encoding
+    from fastraml.service.workspace import Workspace
+
+    remote = 'https://json-schema.org/draft-07/schema'
+    source = f'#%RAML 1.0\ntitle: T\ntypes:\n  Remote: !include {remote}\n'
+    write_files(tmp_path, {'api.raml': source})
+    uri = path_to_file_uri(tmp_path / 'api.raml')
+    server = RamlServer()
+    server.service = Workspace([path_to_file_uri(tmp_path)], http_client=_RemoteClient())
+    monkeypatch.setattr(RamlServer, 'positions', lambda self: _Positions(self.service, Encoding.UTF16))
+
+    definition = server.protocol.fm.features[types.TEXT_DOCUMENT_DEFINITION]
+    assert definition(types.DefinitionParams(_document(uri), _position(source, remote))) == []
+    document_links = server.protocol.fm.features[types.TEXT_DOCUMENT_DOCUMENT_LINK]
+    (link,) = document_links(types.DocumentLinkParams(_document(uri)))
+    assert (link.target, link.range.start) == (remote, _position(source, remote))
+
+
+def test_remote_library_declarations_are_not_local_navigation_targets(tmp_path, monkeypatch):
+    from fastraml.service.lsp import _Positions
+    from fastraml.service.text import Encoding
+    from fastraml.service.workspace import Workspace
+
+    source = (
+        '#%RAML 1.0\ntitle: T\nuses:\n  lib: https://example.test/lib.raml\ntypes:\n  Local:\n    type: lib.Hosted\n'
+    )
+    write_files(tmp_path, {'api.raml': source})
+    uri = path_to_file_uri(tmp_path / 'api.raml')
+    server = RamlServer()
+    server.service = Workspace([path_to_file_uri(tmp_path)], http_client=_RemoteClient())
+    monkeypatch.setattr(RamlServer, 'positions', lambda self: _Positions(self.service, Encoding.UTF16))
+
+    definition = server.protocol.fm.features[types.TEXT_DOCUMENT_DEFINITION]
+    assert definition(types.DefinitionParams(_document(uri), _position(source, 'lib.Hosted', 4))) == []
+    symbols = server.protocol.fm.features[types.WORKSPACE_SYMBOL]
+    assert symbols(types.WorkspaceSymbolParams('Hosted')) == []
+    prepare = server.protocol.fm.features[types.TEXT_DOCUMENT_PREPARE_TYPE_HIERARCHY]
+    assert prepare(types.TypeHierarchyPrepareParams(_document(uri), _position(source, 'lib.Hosted', 4))) is None
+    (local,) = prepare(types.TypeHierarchyPrepareParams(_document(uri), _position(source, 'Local')))
+    supertypes = server.protocol.fm.features[types.TYPE_HIERARCHY_SUPERTYPES]
+    assert supertypes(types.TypeHierarchySupertypesParams(local)) == []
 
 
 def test_the_server_collects_after_the_pause_and_before_the_parse(monkeypatch):

@@ -31,9 +31,10 @@ def refusals(method: Method, at: str, walk: Walk) -> None:
 
     Added as the 400 is: the handler did not write them and the app answers
     them. A status the handler declared itself is left as it said. Read off
-    the `securedBy` written, so a scheme left out of it adds nothing.
+    the `securedBy` written, so a scheme left out of it adds nothing, and a
+    method that also answers anonymously refuses no one.
     """
-    if not method.secured_by:
+    if not method.secured_by or any(entry.scheme is None for entry in method.secured_by):
         return
     for code, description in (
         (UNAUTHENTICATED, 'no security scheme authenticated the request'),

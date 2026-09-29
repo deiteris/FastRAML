@@ -69,6 +69,8 @@ class Security:
     def secured_by(self, entry: Described, names: dict[str, str], at: str) -> list[SecuredBy]:
         """`securedBy:` for one handler, naming each scheme as `names` says it was declared.
 
+        `secured(None)` is RAML's `null` entry: the handler answers anonymously too.
+
         A scope is written only where RAML accepts it: on an OAuth 2.0 scheme
         whose `scopes` lists it. The app declares its schemes itself, so a scope
         they do not list is its own inconsistency -- reported, and left out
@@ -76,6 +78,9 @@ class Security:
         """
         out: list[SecuredBy] = []
         for name, scopes in entry.secured_by:
+            if name is None:
+                out.append(SecuredBy(scheme=None))
+                continue
             declared = names.get(name)
             if declared is None:
                 self.walk.drop(at, f'securedBy {name!r} is not written: no scheme of that name is registered')

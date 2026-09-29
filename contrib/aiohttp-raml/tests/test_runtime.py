@@ -671,3 +671,27 @@ async def test_the_401_and_403_are_what_the_document_declares(aiohttp_client: An
         assert response.status == status
         if status != 200:
             Refused.model_validate(await response.json())
+
+
+async def test_the_anonymous_alternative_lets_an_unauthenticated_caller_through(aiohttp_client: Any) -> None:
+    from aiohttp_raml import AuthenticationError, PassThrough, secured
+    from aiohttp_raml.security import setup
+
+    class Keyed(PassThrough):
+        async def authenticate(self, request: web.Request) -> Any:
+            if 'X-Key' not in request.headers:
+                raise AuthenticationError('no key')
+            return request.headers['X-Key']
+
+    @secured('key')
+    @secured(None)
+    @validate.and_request
+    async def greet(request: web.Request) -> Annotated[web.Response, Responds(200, None)]:
+        return web.json_response(request.get('identity'))
+
+    app = web.Application()
+    setup(app, {'key': Keyed()})
+    app.router.add_get('/x', greet)
+    client = await aiohttp_client(app)
+    assert await (await client.get('/x')).json() is None
+    assert await (await client.get('/x', headers={'X-Key': 'k'})).json() == 'k'

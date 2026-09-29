@@ -1024,3 +1024,24 @@ def test_a_handler_declaring_its_own_401_keeps_it() -> None:
     responses = rendered(secured_app({'books': Books(access_token_uri='t')}, OwnRefusal))[0]['/x']['get']['responses']
     assert responses['401'] == {'description': 'log in', 'body': {'application/json': 'Error'}}
     assert responses['403']['body'] == {'application/json': 'Refused'}
+
+
+class Welcoming(RamlView):
+    @secured('oauth', scopes=['read'])
+    @secured(None)
+    async def get(self) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+
+def test_secured_none_is_the_anonymous_alternative() -> None:
+    app = secured_app({'oauth': Books(access_token_uri='t', scopes=['read'])}, Welcoming)
+    document, dropped = rendered(app)
+    get = document['/x']['get']
+    assert get['securedBy'] == [{'oauth': {'scopes': ['read']}}, None]
+    assert list(get['responses']) == ['200']
+    assert dropped == []
+    build(app, title='T')
+
+
+def test_the_anonymous_alternative_asks_for_no_scopes() -> None:
+    with pytest.raises(ValueError, match='no scopes'):
+        secured(None, scopes=['read'])

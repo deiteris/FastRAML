@@ -202,7 +202,7 @@ class TestFile:
         assert error is not None
         assert 'minLength exceeds maxLength' in messages(error)
 
-    @pytest.mark.parametrize('declared', ["'*/*'", 'image/png', 'application/vnd.api+json'])
+    @pytest.mark.parametrize('declared', ["'*/*'", 'text/*', 'image/png', 'application/vnd.api+json'])
     def test_a_wellformed_media_type_is_accepted(self, workspace, declared):
         # `*/*` is quoted because a bare `*` opens a YAML alias, not because
         # anything in RAML requires it.

@@ -82,8 +82,10 @@ INTEGER_FORMATS: Final = {'int8': 0, 'int16': 1, 'int32': 2, 'int': 2, 'int64': 
 #: `format` on a number.
 NUMBER_FORMATS: Final = frozenset({'float', 'double'})
 
-#: A `fileTypes` entry: RFC 6838 `type/subtype`, the wildcard `*/*` aside.
-_MEDIA_TYPE: Final = re.compile(r'\A[A-Za-z0-9][\w.+-]*/[A-Za-z0-9][\w.+-]*\Z')
+#: A `fileTypes` entry: RFC 6838 `type/subtype`, or a media range, `type/*`
+#: or `*/*` (RFC 9110 § 12.5.1). The spec names only `*/*`; `text/*` is as
+#: meaningful (docs/10 § 2).
+_MEDIA_TYPE: Final = re.compile(r'\A(?:\*/\*|[A-Za-z0-9][\w.+-]*/(?:\*|[A-Za-z0-9][\w.+-]*))\Z')
 
 
 def _decode_base64(text: str) -> bytes:
@@ -524,7 +526,7 @@ class FileShape(ScalarKind):
     def check(self) -> None:
         _check_lengths(self.base, self.min_length, self.max_length)
         for declared in self.file_types or ():
-            if declared.value != '*/*' and _MEDIA_TYPE.match(declared.value) is None:
+            if _MEDIA_TYPE.match(declared.value) is None:
                 raise failure(
                     'invalid media type', self.base.location, declared.value_pos, info={'fileType': declared.value}
                 )

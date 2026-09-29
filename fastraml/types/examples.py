@@ -20,12 +20,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from fastraml import facet_names as fn
-from fastraml.datanode import make_data_node
+from fastraml.datanode import included_data_node, make_data_node
 from fastraml.domains import DomainLocation
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import make_bool_facet, make_string_facet
+from fastraml.parser.includes import resolve_include
 from fastraml.positions import UNKNOWN, Position
-from fastraml.yamlnode import NodeKind, node_error, pairs
+from fastraml.yamlnode import TAG_INCLUDE, NodeKind, node_error, pairs
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -121,7 +122,14 @@ def make_example(raml: Raml, key: Node, value_node: Node, name: str, location: s
     # An annotation inside an example targets the example, not the declaration
     # the example belongs to (docs/09 § B4).
     with raml.target_scope(DomainLocation.EXAMPLE):
-        if value_node.kind is NodeKind.MAPPING and _has_value_key(value_node):
+        if value_node.tag == TAG_INCLUDE:
+            # Included content reads as if written here, wrapper and all.
+            target, content = resolve_include(raml, value_node, location)
+            if content.kind is NodeKind.MAPPING and _has_value_key(content):
+                _fill_from_wrapper(raml, example, content, target)
+            else:
+                example.data = included_data_node(raml, None, value_node, target, content)
+        elif value_node.kind is NodeKind.MAPPING and _has_value_key(value_node):
             _fill_from_wrapper(raml, example, value_node, location)
         else:
             example.data = make_data_node(raml, None, value_node, location)

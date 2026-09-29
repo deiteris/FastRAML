@@ -101,7 +101,10 @@ pattern properties.
 ## 5. Examples, custom facets, and XML
 
 `example:` accepts raw data or a wrapper mapping containing `value`; the wrapper
-may also carry `displayName`, `description`, `strict`, and annotations.
+may also carry `displayName`, `description`, `strict`, and annotations. An
+example written as `!include`, alone or under a name, reads as its content
+would inline: a `value` key in the file is the wrapper, and the value is
+located in that file.
 `examples:` is a named mapping or a `NamedExample` include. `example` and
 `examples` are mutually exclusive. Consumers must use `Examples.entries()` so
 included named examples are included. `examples_of(base)` yields `example`,

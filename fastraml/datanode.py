@@ -44,6 +44,7 @@ __all__ = [
     'SequenceValue',
     'ValueNode',
     'at_value',
+    'included_data_node',
     'locate',
     'make_data_node',
     'parse_int',
@@ -221,6 +222,19 @@ def _entry(mapping: MappingValue, rest: str) -> MappingEntry | None:
     return found
 
 
+def included_data_node(raml: Raml, key_node: Node | None, value_node: Node, target: str, content: Node) -> DataNode:
+    """A value an `!include` supplied, once resolved: located in the included
+    file, so a bad example reports that file's path.
+    """
+    return DataNode(
+        value=_to_value(raml, content, target, {target}),
+        location=target,
+        include=IncludeInfo(path=value_node.value, abs_uri=target),
+        key_pos=key_node.position if key_node is not None else UNKNOWN,
+        value_pos=value_node.position,
+    )
+
+
 def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location: str) -> DataNode:
     """Build a `DataNode` from a key/value pair of the document.
 
@@ -233,13 +247,7 @@ def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location
     location = raml.document_location(value_node, location)
     if value_node.tag == TAG_INCLUDE:
         target, content = resolve_include(raml, value_node, location)
-        return DataNode(
-            value=_to_value(raml, content, target, {target}),
-            location=target,
-            include=IncludeInfo(path=value_node.value, abs_uri=target),
-            key_pos=key_node.position if key_node is not None else UNKNOWN,
-            value_pos=value_node.position,
-        )
+        return included_data_node(raml, key_node, value_node, target, content)
 
     if value_node.kind is NodeKind.SCALAR and value_node.value[:1] in ('{', '['):
         import json  # noqa: PLC0415 - most RAML data is already represented by YAML nodes

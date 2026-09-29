@@ -17,6 +17,7 @@ import yaml
 from fastraml import ParseOptions, parse_from_path
 
 from raml_document import (
+    METHODS,
     UNSET,
     Body,
     Document,
@@ -271,3 +272,18 @@ def test_the_header_is_written_once():
 def test_render_is_plain_yaml_safe():
     # No custom encoder anywhere: `render()` returns only builtin types.
     yaml.safe_dump(Document(title='T', types={'A': TypeDecl(type='string')}).render())
+
+
+def test_every_method_named_is_one_a_parser_reads():
+    """`METHODS` is what a renderer checks a verb against, so each must parse."""
+    import pathlib
+
+    from fastraml import ParseOptions, parse_from_string
+
+    document = Document(title='T')
+    for verb in METHODS:
+        document.root.at('/x').methods[verb] = Method()
+    raml = parse_from_string(
+        document.to_raml(), file_name='api.raml', base_dir=pathlib.Path.cwd(), options=ParseOptions()
+    )
+    assert set(raml.endpoints['/x'].operations) == METHODS

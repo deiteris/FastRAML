@@ -23,6 +23,7 @@ from typing import Final
 import yaml
 
 __all__ = [
+    'METHODS',
     'UNSET',
     'Body',
     'Document',
@@ -60,6 +61,10 @@ class Unset:
 
 
 UNSET: Final = Unset()
+
+#: The HTTP methods a RAML resource may hold (spec § Methods). Any other verb is
+#: an unknown key under a resource, and the document does not parse.
+METHODS: Final = frozenset({'get', 'patch', 'put', 'post', 'delete', 'head', 'options', 'trace', 'connect'})
 
 #: Facet fields on `TypeDecl` in the order they are rendered, as
 #: `(attribute, RAML spelling)`. One list so the spelling and the order are

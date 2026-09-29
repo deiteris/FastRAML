@@ -90,3 +90,23 @@ def test_a_route_added_to_an_included_router_later_shows_up() -> None:
     def later() -> int: ...
 
     assert '/later' in client.get('/raml.json').json()['endpoints']
+
+
+def test_a_method_raml_has_no_node_for_is_reported_and_left_out() -> None:
+    """`PURGE:` under a resource is an unknown key; the document would not parse."""
+    app = FastAPI(title='R')
+
+    @app.api_route('/cache', methods=['GET', 'PURGE'])
+    def cache() -> int: ...
+
+    assert list(parsed(app).endpoints['/cache'].operations) == ['get']
+    assert dropped(app) == ['PURGE /cache: RAML has no PURGE method; not described']
+
+
+def test_a_route_with_only_such_methods_leaves_no_empty_resource() -> None:
+    app = FastAPI(title='R')
+
+    @app.api_route('/cache', methods=['PURGE'])
+    def cache() -> int: ...
+
+    assert '/cache' not in parsed(app).endpoints

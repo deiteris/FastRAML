@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from aiohttp import hdrs
 from pydantic.fields import FieldInfo
 from raml_document import (
+    METHODS,
     Body,
     Document,
     Documentation,
@@ -220,6 +221,9 @@ def render(  # noqa: PLR0913 - five keyword-only metadata nodes; the count is th
                 continue
             for verb, handler in _operations(route, walk, path):
                 if excluded(handler):
+                    continue
+                if verb.lower() not in METHODS:
+                    walk.drop(f'{verb} {path}', f'RAML has no {verb} method; not described')
                     continue
                 found = described(handler)
                 if found is None:

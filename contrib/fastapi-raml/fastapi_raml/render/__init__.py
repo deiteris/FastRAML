@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from raml_document import UNSET, Body, Document, Method, Report, TypeDecl
+from raml_document import METHODS, UNSET, Body, Document, Method, Report, TypeDecl
 from raml_document.from_pydantic import Walk
 from starlette.datastructures import UploadFile
 
@@ -87,8 +87,15 @@ def render(app: Any) -> Report:
 
     for route in routes:
         path = route.path_format
+        verbs = sorted(route.methods or ())
+        for verb in verbs:
+            if verb.lower() not in METHODS:
+                walk.drop(f'{verb} {path}', f'RAML has no {verb} method; not described')
+        verbs = [verb for verb in verbs if verb.lower() in METHODS]
+        if not verbs:
+            continue
         resource = document.root.at(path)
-        for verb in sorted(route.methods or ()):
+        for verb in verbs:
             method, uri = _method(route, verb, security, walk)
             resource.methods[verb.lower()] = method
             for name, decl in uri.items():

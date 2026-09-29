@@ -18,6 +18,7 @@ does before serving one.
 from __future__ import annotations
 
 from raml_document.model import (
+    METHODS,
     UNSET,
     Body,
     Document,
@@ -35,6 +36,7 @@ from raml_document.model import (
 from raml_document.report import Report
 
 __all__ = [
+    'METHODS',
     'UNSET',
     'Body',
     'Document',

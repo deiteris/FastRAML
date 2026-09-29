@@ -28,6 +28,7 @@ from aiohttp_raml import (
     Responds,
     UploadedFile,
     UriParam,
+    build,
     exclude,
     render,
     secured,
@@ -682,3 +683,21 @@ def test_documentation_is_written_at_the_root() -> None:
 
 def test_no_documentation_writes_no_node() -> None:
     assert 'documentation' not in rendered(one_view('/x', OneLiner))[0]
+
+
+def test_a_method_raml_has_no_node_for_is_reported_and_left_out() -> None:
+    """`purge:` under a resource is an unknown key; the document would not parse."""
+
+    @validate
+    async def purge() -> web.Response: ...
+
+    @validate
+    async def fetch() -> web.Response: ...
+
+    app = web.Application()
+    app.router.add_route('PURGE', '/cache', purge)
+    app.router.add_get('/cache', fetch, allow_head=False)
+    document, dropped = rendered(app)
+    assert list(document['/cache']) == ['get']
+    assert dropped == ['PURGE /cache: RAML has no PURGE method; not described']
+    build(app, title='T')

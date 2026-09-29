@@ -72,6 +72,12 @@ method. An explicit resource list replaces the API default for its own methods;
 an explicit method list replaces either. A resource list does not propagate to
 nested resources.
 
+Templates supply a level's list on the same terms. A trait's `securedBy` is
+its method's when the method wrote none, and then replaces the resource's and
+the API's; the closest trait's wins. A resource type's is its resource's, or
+its method's, when that wrote none. A list is never merged with another
+([08](08-templates-and-endpoints.md) § 3.1, § 3.2).
+
 Only source resources and source operations carry `explicit_secured_by`. The
 API root separately decodes `global_secured_by`; stage 2 shares that list when a
 resource or method is not explicit. Explicit empty and `[null]` lists are

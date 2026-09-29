@@ -58,8 +58,9 @@ class SourceOperation:
     traits: list[DirectiveRef] = field(default_factory=list)
     rt_traits: list[DirectiveRef] = field(default_factory=list)
     secured_by: list[DirectiveRef] = field(default_factory=list)
-    #: Whether `securedBy:` was written here at all. `[]` from an explicit empty
-    #: sequence and `[]` from silence mean different things (docs/09 § A4).
+    #: Whether `securedBy:` was written here at all, or by a trait applied
+    #: here. `[]` from an explicit empty sequence and `[]` from silence mean
+    #: different things (docs/09 § A4).
     explicit_secured_by: bool = False
     #: Everything stage 1 did not consume, as a mapping node. `None` when the
     #: method was declared with no body at all (`get:`).

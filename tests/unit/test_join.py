@@ -355,6 +355,16 @@ class TestRootDefaults:
         }
         assert failures(tmp_path, files)[0][1] == {'property': 'protocols', 'template': 'plain', 'reason': 'sets'}
 
+    def test_a_trait_setting_security_is_refused(self, tmp_path):
+        # Written onto the method, the root's `basic` would replace the trait's `digest`.
+        files = {
+            'a.raml': HEAD
+            + SCHEMES
+            + 'securedBy: [basic]\ntraits:\n  secured:\n    securedBy: [digest]\n/a:\n  get:\n    is: [secured]\n',
+            'b.raml': HEAD + SCHEMES,
+        }
+        assert failures(tmp_path, files)[0][1] == {'property': 'securedBy', 'template': 'secured', 'reason': 'sets'}
+
     def test_a_parameter_named_like_the_default_is_not_setting_it(self, tmp_path):
         # docs/20 § 5.3: only a key where RAML reads the default counts.
         files = {

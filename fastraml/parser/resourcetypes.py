@@ -296,7 +296,10 @@ def merge_resource_type_into(target: SourceEndPoint, source: SourceEndPoint) -> 
     target.body = merge_structural(target.body, source.body, source.scope, target.provenance)
     # Endpoint-level traits from the resource type become RT-resource traits.
     target.rt_traits += source.traits
-    target.secured_by += source.secured_by
+    # The resource's own `securedBy:` wins whole, as a method's does over a trait's.
+    if not target.explicit_secured_by and source.explicit_secured_by:
+        target.secured_by = source.secured_by
+        target.explicit_secured_by = True
     if target.resource_type is None:
         target.resource_type = source.resource_type
 

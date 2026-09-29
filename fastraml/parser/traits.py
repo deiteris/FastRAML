@@ -29,6 +29,8 @@ from typing import TYPE_CHECKING
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
+from fastraml.facet_names import FACET_SECURED_BY
+from fastraml.parser.directives import decode_secured_by
 from fastraml.parser.source_ir import note_failure
 from fastraml.parser.structural_merge import merge_structural
 from fastraml.parser.templates import (
@@ -41,6 +43,7 @@ from fastraml.parser.templates import (
 )
 from fastraml.parser.uritemplates import resource_path_name
 from fastraml.registry import ParseCtx
+from fastraml.yamlnode import pairs, with_content
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
@@ -208,4 +211,30 @@ def merge_trait_into(  # noqa: PLR0913 - the application, and where its values a
         substitutions=substitutions,
     )
     trait_scope = ParseCtx(anchor=definition.anchor, target=DomainLocation.TRAIT)
-    operation.body = merge_structural(operation.body, compiled, trait_scope, operation.provenance)
+    body = _take_directives(operation, compiled, definition.location, trait_scope)
+    operation.body = merge_structural(operation.body, body, trait_scope, operation.provenance)
+
+
+def _take_directives(operation: SourceOperation, compiled: Node, location: str, scope: ParseCtx) -> Node | None:
+    """Decode the directives a trait body holds, as stage 1 does a method's.
+
+    The rest of the body is returned for the merge (docs/08 § 3.2).
+
+    `securedBy:` is taken only by an operation with none of its own: the
+    method's is explicit, and wins as any of its nodes wins over a trait's.
+    Traits are applied closest first, so the closest trait's is the one taken.
+    Its scheme names resolve against the API, as every one does (docs/09 § A6).
+    """
+    kept: list[Node] = []
+    for key, value in pairs(compiled):
+        if key.value == FACET_SECURED_BY:
+            refs = decode_secured_by(value, location, scope)
+            if not operation.explicit_secured_by:
+                operation.secured_by = refs
+                operation.explicit_secured_by = True
+        else:
+            kept.append(key)
+            kept.append(value)
+    if len(kept) == len(compiled.content):
+        return compiled
+    return with_content(compiled, kept) if kept else None

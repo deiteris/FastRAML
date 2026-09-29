@@ -82,11 +82,10 @@ Applying a resource type follows this order:
 
 The merge preserves the target's endpoint and method declarations. Resource
 type traits move to `rt_traits`, preserving their lower priority. A resource
-type's `securedBy` refs are appended to the target IR list, but its
-`explicit_secured_by` flag is not propagated. Consequently, when the target
-resource has no explicit `securedBy`, stage 2 selects API-global security and
-does not materialize those appended refs. This is current behavior and has no
-focused unit test.
+type's `securedBy`, at the resource or on a method, is taken only where the
+target wrote none, and then counts as explicit; the target's own list wins
+whole and is never merged with it
+([09](09-security-and-annotations.md) § A4).
 
 Code: `parser/resourcetypes.py`; the declaration decode, the lexical lookup and
 the parameter check it shares with traits are in `parser/templates.py`
@@ -105,6 +104,15 @@ The first occurrence of a trait name wins; each surviving trait is applied once.
 Each application resolves its definition lexically, injects `resourcePath`,
 `resourcePathName`, and `methodName`, checks parameters in both directions,
 substitutes, and merges the compiled body beneath the operation body.
+
+A trait holds anything a method may (spec section Declaring Resource Types and
+Traits), so the compiled body's directives are taken out before the merge, as
+stage 1 takes a method's (§ 2.1):
+
+- `securedBy` is taken only by an operation with no explicit list, and makes
+  it explicit. A method's own list therefore wins whole, and of two traits
+  the one applied first, the closer, wins. Its scheme names resolve against
+  the API ([09](09-security-and-annotations.md) § A6).
 
 Every `is:` entry is bound to its definition whether or not it is applied: an
 entry the first-occurrence rule skipped, and one on a resource with no methods,

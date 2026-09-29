@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import TYPE_CHECKING, Final, Self
+from typing import TYPE_CHECKING, ClassVar, Final, Self
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
 from fastraml.facet_names import FACET_USAGE
@@ -52,8 +52,9 @@ if TYPE_CHECKING:
 
 __all__ = [
     'KNOWN_ACTIONS',
-    'RESERVED_PARAMETERS',
+    'RESOURCE_TYPE_PARAMETERS',
     'TEMPLATE_ACTIONS',
+    'TRAIT_PARAMETERS',
     'TemplateDefinition',
     'VariableIndex',
     'VariableInfo',
@@ -69,9 +70,13 @@ __all__ = [
     'parse_template_variables',
 ]
 
-#: The three parameters the parser injects at every application site. They are
-#: always accepted and never required of the author (docs/08 § 3.1 and § 3.2).
-RESERVED_PARAMETERS: Final = frozenset({'resourcePath', 'resourcePathName', 'methodName'})
+#: The parameters the parser injects where a resource type is applied (spec
+#: section Resource Type and Trait Parameters). Never required of the author,
+#: and never accepted from one (docs/08 § 3.2).
+RESOURCE_TYPE_PARAMETERS: Final = frozenset({'resourcePath', 'resourcePathName'})
+#: Where a trait is applied: "In trait declarations, methodName is a reserved
+#: parameter" too. In a resource type it is an ordinary one.
+TRAIT_PARAMETERS: Final = RESOURCE_TYPE_PARAMETERS | {'methodName'}
 
 
 def parameter_node(value: str) -> Node:
@@ -99,6 +104,9 @@ class TemplateDefinition:
     or ResourceType fragment. The two differ in which keys the body may carry
     and in how it is applied, not in how it is stored.
     """
+
+    #: The parameters the parser supplies wherever this kind is applied.
+    reserved: ClassVar[frozenset[str]]
 
     id: int
     name: str
@@ -228,20 +236,20 @@ def check_parameters(
     Type and Trait Parameters says its value "MUST be provided by the
     processing application", and the injected value would silently win.
     """
-    declared = definition.declared_variables
+    declared, reserved = definition.declared_variables, definition.reserved
     accumulator = Accumulator()
     for name, value in application.params.items():
-        if name in RESERVED_PARAMETERS:
+        if name in reserved:
             template = Trace('declared here', definition.location, definition.key_pos)
             accumulator.add(_parameter_error('reserved parameter', application, value.full_position, name, template))
     for name, value in params.items():
-        if name not in RESERVED_PARAMETERS and name not in declared:
+        if name not in reserved and name not in declared:
             template = Trace('declared here', definition.location, definition.key_pos)
             # At its value: the parse keeps no key nodes for an application.
             error = _parameter_error('unexpected parameter', application, value.full_position, name, template)
             accumulator.add(error)
     for name in declared if required is None else required:
-        if name not in RESERVED_PARAMETERS and name not in params:
+        if name not in reserved and name not in params:
             use = Trace('used here', definition.location, _first_use(definition.variable_index, name))
             accumulator.add(
                 _parameter_error('missing required parameter', application, application.value_pos, name, use)
@@ -533,6 +541,7 @@ def compile_source_provenance(  # noqa: PLR0913 - the body, its values, and wher
     *,
     written_in: str,
     substitutions: Substitutions,
+    reserved: frozenset[str],
 ) -> Node:
     """Substitute `params` into a template body, marking what the caller supplied.
 
@@ -543,19 +552,26 @@ def compile_source_provenance(  # noqa: PLR0913 - the body, its values, and wher
 
     Each substituted scalar is also recorded in `substitutions`, with where
     in `written_in`, the file the application is written in, each value came
-    from (docs/08 § 5.1).
+    from (docs/08 § 5.1). A `reserved` parameter is the parser's, and is not.
 
     Unchanged node pointers are shared with the input, so the result is still a
     valid key set for the overlay and for the merge that follows.
     """
     if node.kind is NodeKind.SCALAR:
-        return _compile_scalar(node, params, index, caller_scope, overlay, written_in, substitutions)
+        return _compile_scalar(node, params, index, caller_scope, overlay, written_in, substitutions, reserved)
 
     modified = False
     content: list[Node] = []
     for child in node.content:
         compiled = compile_source_provenance(
-            child, params, index, caller_scope, overlay, written_in=written_in, substitutions=substitutions
+            child,
+            params,
+            index,
+            caller_scope,
+            overlay,
+            written_in=written_in,
+            substitutions=substitutions,
+            reserved=reserved,
         )
         modified = modified or compiled is not child
         content.append(compiled)
@@ -574,6 +590,7 @@ def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arg
     overlay: ProvenanceOverlay,
     written_in: str,
     substitutions: Substitutions,
+    reserved: frozenset[str],
 ) -> Node:
     variables = index.get(node)
     if not variables:
@@ -606,7 +623,7 @@ def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arg
         substituted = True
         at = template.find(variable.substring, start)
         start = at + len(variable.substring)
-        if not variable.actions and variable.name not in RESERVED_PARAMETERS:
+        if not variable.actions and variable.name not in reserved:
             # A transformed value and a parameter the parser supplies are not
             # the caller's text; a value that was itself substituted brings
             # its own placements.

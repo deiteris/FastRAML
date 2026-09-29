@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import chain
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
@@ -34,6 +34,7 @@ from fastraml.parser.directives import decode_secured_by, decode_trait_refs
 from fastraml.parser.source_ir import note_failure
 from fastraml.parser.structural_merge import merge_structural
 from fastraml.parser.templates import (
+    TRAIT_PARAMETERS,
     TemplateDefinition,
     check_parameters,
     compile_source_provenance,
@@ -68,6 +69,8 @@ class TraitDefinition(TemplateDefinition):
 
     A trait's body is not checked at all: a trait *is* a method body.
     """
+
+    reserved: ClassVar[frozenset[str]] = TRAIT_PARAMETERS
 
 
 def make_trait_definition(
@@ -221,6 +224,7 @@ def merge_trait_into(  # noqa: PLR0913 - the application, and where its values a
         operation.provenance,
         written_in=application.location,
         substitutions=substitutions,
+        reserved=definition.reserved,
     )
     trait_scope = ParseCtx(anchor=definition.anchor, target=DomainLocation.TRAIT)
     body, nested = _take_directives(operation, compiled, definition.location, trait_scope)

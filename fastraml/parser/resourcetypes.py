@@ -23,7 +23,7 @@ distinguishable once the merge has flattened everything else.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, ClassVar, Final
 
 from fastraml import facet_names as fn
 from fastraml.domains import DomainLocation
@@ -31,6 +31,7 @@ from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.source_ir import METHODS, make_source_endpoint
 from fastraml.parser.structural_merge import copy_overlay, merge_structural
 from fastraml.parser.templates import (
+    RESOURCE_TYPE_PARAMETERS,
     TemplateDefinition,
     check_parameters,
     collect_required_variables,
@@ -80,6 +81,8 @@ class ResourceTypeDefinition(TemplateDefinition):
 
     Its `source` has the `?` chomped off every optional method key.
     """
+
+    reserved: ClassVar[frozenset[str]] = RESOURCE_TYPE_PARAMETERS
 
     #: The methods written `get?`, by their plain name.
     optional_methods: set[str] = field(default_factory=set)
@@ -237,6 +240,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
         overlay,
         written_in=application.location,
         substitutions=raml.substitutions,
+        reserved=definition.reserved,
     )
 
     key = Node(NodeKind.SCALAR, TAG_STR, uri, None, compiled.line, compiled.column, compiled.line, compiled.column)

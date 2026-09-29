@@ -18,6 +18,7 @@ import pytest
 from fastraml.errors import RamlError
 from fastraml.parser.templates import (
     TEMPLATE_ACTIONS,
+    TRAIT_PARAMETERS,
     VariableInfo,
     apply_template_action,
     collect_required_variables,
@@ -312,7 +313,14 @@ class TestCompileSourceProvenance:
         overlay: dict = {}
         self.substitutions: dict = {}
         compiled = compile_source_provenance(
-            root, nodes, index, CALLER, overlay, written_in=CALLER_FILE, substitutions=self.substitutions
+            root,
+            nodes,
+            index,
+            CALLER,
+            overlay,
+            written_in=CALLER_FILE,
+            substitutions=self.substitutions,
+            reserved=TRAIT_PARAMETERS,
         )
         return root, compiled, overlay
 
@@ -367,7 +375,14 @@ class TestWhereAValueWasWritten:
         _declared, index = collect_variables_index(root, LOCATION)
         substitutions = {} if substitutions is None else substitutions
         compiled = compile_source_provenance(
-            root, params, index, CALLER, {}, written_in=CALLER_FILE, substitutions=substitutions
+            root,
+            params,
+            index,
+            CALLER,
+            {},
+            written_in=CALLER_FILE,
+            substitutions=substitutions,
+            reserved=TRAIT_PARAMETERS,
         )
         return compiled.content[1], substitutions
 

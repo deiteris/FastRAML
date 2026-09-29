@@ -105,9 +105,11 @@ Each application resolves its definition lexically, injects `resourcePath`,
 `resourcePathName`, and `methodName`, checks parameters in both directions,
 substitutes, and merges the compiled body beneath the operation body.
 A caller that supplies a reserved parameter is rejected with `reserved
-parameter`, for a trait and a resource type alike: the spec reserves its
-value to the processor, which would otherwise override it silently. go-raml
-accepts and overrides it.
+parameter`: the spec reserves its value to the processor, which would
+otherwise override it silently. go-raml accepts and overrides it. Both kinds
+reserve `resourcePath` and `resourcePathName`; only a trait reserves
+`methodName` (spec section Resource Type and Trait Parameters), so in a
+resource type it is an ordinary parameter, required where used.
 
 A trait holds anything a method may (spec section Declaring Resource Types and
 Traits), so the compiled body's directives are taken out before the merge, as
@@ -260,8 +262,8 @@ itself substituted, one template applying another, brings its own records.
 A value is recorded only when its text is the caller's text:
 
 - A transformed value, `<<item | !pluralize>>`, is not recorded.
-- The parameters the parser supplies, `resourcePath`, `resourcePathName` and
-  `methodName`, are not recorded.
+- The parameters the parser supplies, the kind's reserved ones (§ 3.2), are
+  not recorded.
 
 P7 reads the record, so a name inside a caller's value is reported and
 recorded where the caller wrote it ([06](06-type-expressions.md) § 3). In

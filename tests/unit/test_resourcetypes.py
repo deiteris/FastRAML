@@ -25,6 +25,29 @@ def parse(workspace, root, name: str = 'api.raml'):
     return workspace.parse(root / name)
 
 
+class TestParameters:
+    """Spec section Resource Type and Trait Parameters: only a trait reserves `methodName`."""
+
+    RT = 'resourceTypes:\n  r:\n    get:\n      description: <<methodName>>\n'
+
+    def test_method_name_is_supplied_by_the_caller(self, workspace):
+        root = workspace({'api.raml': API + self.RT + '/users:\n  type: {r: {methodName: listing}}\n'})
+        assert parse(workspace, root).endpoints['/users'].operations['get'].description.value == 'listing'
+
+    def test_method_name_is_required_where_used(self, workspace):
+        # Before, it counted as reserved but was never injected: `<<methodName>>`
+        # reached the model as written.
+        root = workspace({'api.raml': API + self.RT + '/users:\n  type: r\n'})
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert [
+            frame.info
+            for chain in caught.value.chains()
+            for frame in chain
+            if frame.message == 'missing required parameter'
+        ] == [{'parameter': 'methodName'}]
+
+
 class TestApplication:
     def test_a_method_the_resource_lacks_is_grafted(self, workspace):
         root = workspace(

@@ -1,16 +1,16 @@
 """The routes `add_raml_routes` adds, over HTTP."""
 
-from __future__ import annotations
-
-from typing import Any
+import re
+from typing import Annotated, Any
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from raml_document import UNSET
 
 from examples.server import app
-from fastapi_raml import add_raml_routes, render
+from fastapi_raml import BuildError, add_raml_routes, build, render
 from fastapi_raml.serve import RAML_MEDIA_TYPE
 
 
@@ -130,7 +130,7 @@ def test_add_raml_routes_returns_the_app() -> None:
 
 
 def test_a_route_added_after_wiring_still_appears() -> None:
-    """The cache keys on the router's version, so a later route invalidates it."""
+    """The cache is rebuilt when the app's routes change, so a later route shows up."""
     fresh = build_app()
     add_raml_routes(fresh)
     local = TestClient(fresh)
@@ -165,4 +165,106 @@ def test_a_custom_mount_path_carries_its_own_document(client: Any) -> None:
 def test_a_server_variable_without_a_default_renders_none() -> None:
     """An absent default stays absent; `default: null` would be a value."""
     fresh = FastAPI(servers=[{'url': 'https://{host}/v1', 'variables': {'host': {'enum': ['a', 'b']}}}])
-    assert 'default' not in render(fresh).to_raml().split('baseUriParameters:')[1]
+    assert render(fresh).document.base_uri_parameters['host'].default is UNSET
+
+
+class Broken(BaseModel):
+    """An example the model's own type refuses: RAML validates examples, pydantic does not."""
+
+    n: int = Field(examples=['ten'])
+
+
+def broken_app() -> FastAPI:
+    fresh = FastAPI(title='Broken')
+
+    @fresh.get('/broken')
+    def broken() -> Broken: ...
+
+    return fresh
+
+
+def test_a_failed_build_answers_with_the_reason() -> None:
+    """A bare 500 sent the reader to the server log for a problem in their own models."""
+    fresh = broken_app()
+    add_raml_routes(fresh, mount_viewer=None)
+    for url in ('/raml', '/raml.json'):
+        response = TestClient(fresh).get(url)
+        assert response.status_code == 500
+        assert 'does not parse' in response.text
+        # Cited at its line in the rendered text, and that line quoted: the
+        # text itself is not served while it fails.
+        assert re.search(r'api\.raml:\d+:\d+ ', response.text)
+        assert re.search(r'\n +\d+ \| ', response.text)
+
+
+def test_build_raises_the_same_error() -> None:
+    with pytest.raises(BuildError) as caught:
+        build(broken_app())
+    assert caught.value.text.startswith('#%RAML 1.0')
+    assert 'Temp' not in str(caught.value), 'no throwaway path in the message'
+
+
+def test_a_build_is_rendered_once_until_the_routes_change(monkeypatch: Any) -> None:
+    """Failures included: rendering a failing document per request only fails slower."""
+    from fastapi_raml import serve
+
+    calls = []
+    real = serve.render
+
+    def counting(app: Any) -> Any:
+        calls.append(app)
+        return real(app)
+
+    monkeypatch.setattr(serve, 'render', counting)
+    for make in (build_app, broken_app):
+        calls.clear()
+        fresh = make()
+        add_raml_routes(fresh, mount_viewer=None)
+        local = TestClient(fresh)
+        for _ in range(3):
+            local.get('/raml')
+            local.get('/raml.json')
+        assert len(calls) == 1, make.__name__
+
+
+def test_build_strict_refuses_what_it_had_to_leave_out() -> None:
+    fresh = FastAPI(title='Lossy')
+
+    @fresh.get('/x')
+    def x(n: Annotated[int, Query(gt=0)]) -> int: ...
+
+    assert build(fresh).dropped
+    with pytest.raises(BuildError, match='leaves out'):
+        build(fresh, strict=True)
+
+
+def test_what_is_left_out_is_logged(caplog: Any) -> None:
+    fresh = FastAPI(title='Lossy')
+
+    @fresh.get('/x')
+    def x(n: Annotated[int, Query(gt=0)]) -> int: ...
+
+    with caplog.at_level('WARNING', logger='fastapi_raml'):
+        build(fresh)
+    assert any('exclusive minimum' in record.getMessage() for record in caplog.records)
+
+
+def test_a_browser_is_shown_the_source_rather_than_handed_a_download(client: TestClient) -> None:
+    browser = client.get('/raml', headers={'accept': 'text/html,application/xhtml+xml,*/*;q=0.8'})
+    assert browser.headers['content-type'].startswith('text/plain')
+    assert 'Accept' in browser.headers['vary']
+    tool = client.get('/raml', headers={'accept': '*/*'})
+    assert tool.headers['content-type'].startswith(RAML_MEDIA_TYPE)
+    assert browser.text == tool.text
+
+
+def test_adding_the_routes_twice_is_refused() -> None:
+    """The second pair would be shadowed by the first, and serve nothing."""
+    fresh = build_app()
+    add_raml_routes(fresh, mount_viewer=None)
+    with pytest.raises(ValueError, match='already routed'):
+        add_raml_routes(fresh, mount_viewer=None)
+
+
+def test_the_tree_is_served_as_built(client: TestClient) -> None:
+    assert client.get('/raml.json').json() == build(app).tree

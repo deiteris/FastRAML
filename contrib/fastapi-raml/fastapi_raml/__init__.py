@@ -21,6 +21,6 @@ verdict on a payload as the pydantic model it was rendered from.
 from __future__ import annotations
 
 from fastapi_raml.render import Report, render
-from fastapi_raml.serve import Served, add_raml_routes, build
+from fastapi_raml.serve import BuildError, Served, add_raml_routes, build
 
-__all__ = ['Report', 'Served', 'add_raml_routes', 'build', 'render']
+__all__ = ['BuildError', 'Report', 'Served', 'add_raml_routes', 'build', 'render']

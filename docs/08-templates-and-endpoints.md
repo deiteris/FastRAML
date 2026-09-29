@@ -104,6 +104,10 @@ The first occurrence of a trait name wins; each surviving trait is applied once.
 Each application resolves its definition lexically, injects `resourcePath`,
 `resourcePathName`, and `methodName`, checks parameters in both directions,
 substitutes, and merges the compiled body beneath the operation body.
+A caller that supplies a reserved parameter is rejected with `reserved
+parameter`, for a trait and a resource type alike: the spec reserves its
+value to the processor, which would otherwise override it silently. go-raml
+accepts and overrides it.
 
 A trait holds anything a method may (spec section Declaring Resource Types and
 Traits), so the compiled body's directives are taken out before the merge, as

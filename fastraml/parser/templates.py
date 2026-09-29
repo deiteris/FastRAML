@@ -223,11 +223,17 @@ def check_parameters(
     that only appears inside the `post?` it does not have (docs/08 § 3.1).
     For a trait the two coincide.
 
-    Reserved parameters are always accepted and never required: the parser
-    injects them at every application site.
+    Reserved parameters are never required: the parser injects them at every
+    application site. Nor may the caller supply one: spec section Resource
+    Type and Trait Parameters says its value "MUST be provided by the
+    processing application", and the injected value would silently win.
     """
     declared = definition.declared_variables
     accumulator = Accumulator()
+    for name, value in application.params.items():
+        if name in RESERVED_PARAMETERS:
+            template = Trace('declared here', definition.location, definition.key_pos)
+            accumulator.add(_parameter_error('reserved parameter', application, value.full_position, name, template))
     for name, value in params.items():
         if name not in RESERVED_PARAMETERS and name not in declared:
             template = Trace('declared here', definition.location, definition.key_pos)

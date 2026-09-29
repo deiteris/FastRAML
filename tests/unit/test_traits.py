@@ -188,6 +188,34 @@ class TestParameters:
             parse(workspace, root)
         assert 'missing required parameter' in str(caught.value)
 
+    @pytest.mark.parametrize('name', ['methodName', 'resourcePath', 'resourcePathName'])
+    def test_a_reserved_parameter_the_caller_supplies_is_rejected(self, workspace, name):
+        # Spec section Resource Type and Trait Parameters: the processor
+        # provides it. Accepted, the injected value would silently win.
+        root = workspace(
+            {
+                'api.raml': API
+                + f'traits:\n  t:\n    description: <<{name}>>\n/users:\n  get:\n    is: [{{t: {{{name}: x}}}}]\n'
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        (chain,) = caught.value.chains()
+        assert [(frame.message, frame.info) for frame in chain] == [
+            ('apply trait', {'trait': 't'}),
+            ('reserved parameter', {'parameter': name}),
+        ]
+
+    def test_a_reserved_parameter_supplied_to_a_resource_type_is_rejected(self, workspace):
+        root = workspace(
+            {'api.raml': API + 'resourceTypes:\n  r:\n    get:\n/users:\n  type: {r: {resourcePath: x}}\n'}
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert [
+            frame.info for chain in caught.value.chains() for frame in chain if frame.message == 'reserved parameter'
+        ] == [{'parameter': 'resourcePath'}]
+
     def test_an_unresolvable_trait_names_itself(self, workspace):
         root = workspace({'api.raml': API + '/users:\n  get:\n    is: [nowhere]\n'})
         with pytest.raises(RamlError) as caught:

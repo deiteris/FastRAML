@@ -28,6 +28,7 @@ omitted in silence.
 | `security` | the `fastapi.security` schemes the dependency trees run |
 | `parameters` | path, query and header parameters, a parameter model opened up |
 | `responses` | the route's own response, and what `responses=` adds |
+| `metadata` | the app's title, servers and contact; each route's deprecation and tags |
 
 This module composes them into one `Document`.
 """
@@ -36,10 +37,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from raml_document import METHODS, UNSET, Body, Document, Method, Report, TypeDecl
+from raml_document import METHODS, Body, Method, Report
 from raml_document.from_pydantic import Walk
 from starlette.datastructures import UploadFile
 
+from fastapi_raml.render import metadata
 from fastapi_raml.render.parameters import parameters
 from fastapi_raml.render.responses import responses
 from fastapi_raml.render.routes import across_segments, api_routes, routes_of
@@ -63,6 +65,7 @@ def _method(route: Any, verb: str, security: Security, walk: Walk) -> tuple[Meth
 
     responses(route, method, at, walk)
     method.secured_by = security.secured_by(route, at)
+    metadata.operation(route, method, walk)
     if route.callbacks:
         walk.drop(at, 'callbacks have no RAML form')
     return method, uri
@@ -72,13 +75,7 @@ def render(app: Any) -> Report:
     """Render `app` as a RAML 1.0 document."""
     # `UploadFile` is Starlette's; RAML's `file` is what it carries.
     walk = Walk(scalars={UploadFile: 'file'})
-    document = Document(title=app.title, version=app.version or None, description=app.description or None)
-    if app.servers:
-        document.base_uri = app.servers[0]['url']
-        for name, spec in (app.servers[0].get('variables') or {}).items():
-            document.base_uri_parameters[name] = TypeDecl(type='string', default=spec.get('default', UNSET))
-        if len(app.servers) > 1:
-            walk.drop('servers', f'{len(app.servers) - 1} extra server(s); RAML has one baseUri')
+    document = metadata.document(app, walk)
 
     routes = api_routes(app, walk)
     security = Security(walk)
@@ -107,4 +104,5 @@ def render(app: Any) -> Report:
     # Last: the walk registers models as the routes are read, so `types` is only
     # complete once every route has been.
     document.types = walk.types
+    document.annotation_types = walk.annotation_types
     return Report(document=document, dropped=walk.dropped)

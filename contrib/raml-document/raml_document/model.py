@@ -137,6 +137,9 @@ class TypeDecl:
     maximum: float | int | None = None
     multiple_of: float | int | None = None
 
+    #: `(name): value` -- an annotation the document's `annotationTypes` declares.
+    annotations: dict[str, Yaml] = field(default_factory=dict)
+
     def render(self) -> Yaml:
         """The declaration as RAML, collapsed to a bare type expression if it can be.
 
@@ -169,12 +172,18 @@ class TypeDecl:
             out['default'] = self.default
         if self.examples is not None:
             out['examples'] = dict(self.examples)
+        out.update(_annotations(self.annotations))
         # Only a single name collapses to the bare form. `[A, B]` has to keep
         # its `type:` key -- a declaration whose whole value is a list is a
         # different node, not the shorthand.
         if len(out) == 1 and isinstance(self.type, str):
             return self.type
         return out
+
+
+def _annotations(annotations: dict[str, Yaml]) -> dict[str, Yaml]:
+    """Annotations as RAML spells them: the name in parentheses."""
+    return {f'({name})': value for name, value in annotations.items()}
 
 
 @dataclass(slots=True)
@@ -236,6 +245,7 @@ class Method:
     #: parse and both reach the model as `'200'`.
     responses: dict[int, Response] = field(default_factory=dict)
     secured_by: list[SecuredBy] = field(default_factory=list)
+    annotations: dict[str, Yaml] = field(default_factory=dict)
 
     def render(self) -> Yaml:
         out: dict[str, Yaml] = {}
@@ -243,6 +253,7 @@ class Method:
             out['displayName'] = self.display_name
         if self.description is not None:
             out['description'] = self.description
+        out.update(_annotations(self.annotations))
         if self.query_parameters:
             out['queryParameters'] = {name: decl.render() for name, decl in self.query_parameters.items()}
         if self.headers:
@@ -362,6 +373,8 @@ class Document:
     base_uri: str | None = None
     base_uri_parameters: Parameters = field(default_factory=dict)
     documentation: list[Documentation] = field(default_factory=list)
+    annotation_types: dict[str, TypeDecl] = field(default_factory=dict)
+    annotations: dict[str, Yaml] = field(default_factory=dict)
     types: dict[str, TypeDecl] = field(default_factory=dict)
     security_schemes: dict[str, SecurityScheme] = field(default_factory=dict)
     root: Resource = field(default_factory=Resource)
@@ -379,6 +392,9 @@ class Document:
             out['baseUriParameters'] = {name: decl.render() for name, decl in self.base_uri_parameters.items()}
         if self.documentation:
             out['documentation'] = [entry.render() for entry in self.documentation]
+        if self.annotation_types:
+            out['annotationTypes'] = {name: decl.render() for name, decl in self.annotation_types.items()}
+        out.update(_annotations(self.annotations))
         if self.types:
             out['types'] = {name: decl.render() for name, decl in self.types.items()}
         if self.security_schemes:

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal, get_args, get_origin
 from pydantic import AliasChoices, AliasPath, BaseModel, Tag
 from pydantic.fields import FieldInfo
 
+from raml_document.annotations import annotate
 from raml_document.from_pydantic import facets
 from raml_document.from_pydantic.introspect import (
     PydanticUndefined,
@@ -66,6 +67,9 @@ class Walk:
     #: framework's upload class as `file`, say. Read before `SCALARS`, down the
     #: MRO, so a subclass of one is the same built-in.
     scalars: dict[Any, str] = field(default_factory=dict)
+    #: The `annotationTypes` the annotations applied so far need, filled like
+    #: `types` as they are applied.
+    annotation_types: dict[str, TypeDecl] = field(default_factory=dict)
     #: (model, output shape or None for input) -> the RAML name it was
     #: registered under, which is not always `__name__`: two models may share one.
     _names: dict[tuple[type, Shape | None], str] = field(default_factory=dict)
@@ -96,6 +100,10 @@ class Walk:
             yield
         finally:
             self._output = previous
+
+    def annotate(self, annotations: dict[str, Yaml], name: str, value: Yaml = None) -> None:
+        """Apply `(name): value` from `raml_document.annotations`, declaring its type."""
+        annotate(annotations, self.annotation_types, name, value)
 
     def unique(self, name: str) -> str:
         """`name`, or `name_2`, `name_3`... -- the first `types` does not hold."""
@@ -339,13 +347,21 @@ class Walk:
         annotation = info.annotation if nullable else without_none(info.annotation)
         decl = self.annotation(annotation, at, discriminator=self._tag_name((info, *info.metadata), at))
         self._constrain(decl, info.metadata, at)
+        if info.title:
+            decl.display_name = info.title
         if info.description:
             decl.description = info.description
-        if info.examples:
-            examples = {f'e{index}': self._value(decl, value, at) for index, value in enumerate(info.examples)}
-            kept = {key: value for key, value in examples.items() if not isinstance(value, Unset)}
-            if kept:
-                decl.examples = kept
+        # Unnamed ones, and FastAPI's named `openapi_examples` on its own
+        # `FieldInfo` subclasses, whose `value` is the example.
+        examples = {f'e{index}': value for index, value in enumerate(info.examples or ())}
+        named = getattr(info, 'openapi_examples', None) or {}
+        examples.update({name: entry['value'] for name, entry in named.items() if 'value' in entry})
+        written = {key: self._value(decl, value, at) for key, value in examples.items()}
+        kept = {key: value for key, value in written.items() if not isinstance(value, Unset)}
+        if kept:
+            decl.examples = kept
+        if info.deprecated:
+            self.annotate(decl.annotations, 'deprecated', _deprecation(info.deprecated))
         return decl
 
     def parameter(self, info: FieldInfo, at: str) -> TypeDecl:
@@ -532,6 +548,13 @@ class Walk:
             facets.apply(constrained, metadata, at, self.drop)
             members.append(self._unions.spelled(constrained, at))
         decl.type = ' | '.join(members)
+
+
+def _deprecation(deprecated: Any) -> str | None:
+    """What a deprecation says to use instead: its message, or nothing for a bare `True`."""
+    if isinstance(deprecated, str):
+        return deprecated
+    return getattr(deprecated, 'message', None)
 
 
 def _parents(decl: TypeDecl) -> list[str]:

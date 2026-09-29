@@ -287,3 +287,18 @@ def test_every_method_named_is_one_a_parser_reads():
         document.to_raml(), file_name='api.raml', base_dir=pathlib.Path.cwd(), options=ParseOptions()
     )
     assert set(raml.endpoints['/x'].operations) == METHODS
+
+
+def test_an_annotation_is_written_in_parentheses_and_its_type_declared():
+    from raml_document.annotations import annotate
+
+    document = Document(title='T')
+    method = Method()
+    annotate(method.annotations, document.annotation_types, 'tags', ['books'])
+    decl = TypeDecl(type='string')
+    annotate(decl.annotations, document.annotation_types, 'deprecated', None)
+    document.root.at('/x').methods['get'] = method
+    rendered = document.render()
+    assert rendered['/x']['get'] == {'(tags)': ['books']}
+    assert decl.render() == {'type': 'string', '(deprecated)': None}
+    assert list(rendered['annotationTypes']) == ['tags', 'deprecated']

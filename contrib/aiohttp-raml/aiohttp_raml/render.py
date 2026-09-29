@@ -247,4 +247,5 @@ def render(  # noqa: PLR0913 - five keyword-only metadata nodes; the count is th
     # Last: the walk registers models as the handlers are read, so `types` is
     # only complete once every handler has been.
     document.types = walk.types
+    document.annotation_types = walk.annotation_types
     return Report(document=document, dropped=walk.dropped)

@@ -46,7 +46,7 @@ def rendered(model: type[BaseModel]) -> tuple[Walk, Any]:
     """Walk `model`, render it, and parse it back. Raises if it is not RAML."""
     walk = Walk()
     walk.model(model)
-    document = Document(title='T', types=walk.types)
+    document = Document(title='T', types=walk.types, annotation_types=walk.annotation_types)
     with tempfile.TemporaryDirectory() as directory:
         source = pathlib.Path(directory) / 'api.raml'
         source.write_text(document.to_raml(), encoding='utf-8')
@@ -397,7 +397,7 @@ class TestInheritance:
 
 def parsed_types(walk: Walk) -> Any:
     """Every type `walk` declared, through fastraml. Raises if it is not RAML."""
-    document = Document(title='T', types=walk.types)
+    document = Document(title='T', types=walk.types, annotation_types=walk.annotation_types)
     with tempfile.TemporaryDirectory() as directory:
         source = pathlib.Path(directory) / 'api.raml'
         source.write_text(document.to_raml(), encoding='utf-8')
@@ -982,4 +982,29 @@ class TestResponseShapes:
         assert narrowed == TypeDecl(type='Outer_partial')
         assert walk.dropped == ['GET /y: inner is written in part, which RAML cannot say; written as any']
         assert walk.subset(int, 'Nope', 'GET /z') is None
+        parsed_types(walk)
+
+
+class TestWhatRamlSaysOnlyByAnnotationOrName:
+    """A field's title, its deprecation and its named examples."""
+
+    def test_a_title_is_a_display_name(self):
+        class M(BaseModel):
+            q: str = Field(title='Query')
+
+        walk = Walk()
+        walk.model(M)
+        assert walk.types['M'].properties['q'].display_name == 'Query'
+
+    def test_a_deprecation_is_an_annotation_whose_type_is_declared(self):
+        class M(BaseModel):
+            old: str = Field(deprecated=True)
+            older: str = Field(deprecated='use new')
+
+        walk = Walk()
+        walk.model(M)
+        properties = walk.types['M'].render()['properties']
+        assert properties['old'] == {'type': 'string', '(deprecated)': None}
+        assert properties['older'] == {'type': 'string', '(deprecated)': 'use new'}
+        assert list(walk.annotation_types) == ['deprecated']
         parsed_types(walk)

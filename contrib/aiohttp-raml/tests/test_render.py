@@ -701,3 +701,22 @@ def test_a_method_raml_has_no_node_for_is_reported_and_left_out() -> None:
     assert list(document['/cache']) == ['get']
     assert dropped == ['PURGE /cache: RAML has no PURGE method; not described']
     build(app, title='T')
+
+
+class Shelved(BaseModel):
+    isbn: str
+    shelf: str = Field(default='a', deprecated='use isbn')
+
+
+class ShelvedView(RamlView):
+    async def get(self) -> Annotated[web.Response, Responds(200, Shelved)]: ...
+
+
+def test_a_deprecated_field_is_annotated_and_its_type_declared() -> None:
+    """An annotation applied without its type declared does not parse."""
+    app = one_view('/legacy', ShelvedView)
+    document, dropped = rendered(app)
+    assert document['types']['Shelved']['properties']['shelf']['(deprecated)'] == 'use isbn'
+    assert 'deprecated' in document['annotationTypes']
+    assert dropped == []
+    build(app, title='T')

@@ -204,12 +204,16 @@ class SecuredBy:
 
     Renders as a bare name where there are no scopes, and as
     `{name: {scopes: [...]}}` where there are -- the two spellings RAML uses.
+    `scheme=None` is RAML's `null` entry: the method may also be called
+    without any of the schemes.
     """
 
-    scheme: str
+    scheme: str | None
     scopes: list[str] = field(default_factory=list)
 
     def render(self) -> Yaml:
+        if self.scheme is None:
+            return None
         return {self.scheme: {'scopes': list(self.scopes)}} if self.scopes else self.scheme
 
 

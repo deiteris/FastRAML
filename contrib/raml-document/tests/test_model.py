@@ -103,6 +103,11 @@ class TestFacetSpelling:
         assert SecuredBy(scheme='oauth').render() == 'oauth'
         assert SecuredBy(scheme='oauth', scopes=['read']).render() == {'oauth': {'scopes': ['read']}}
 
+    def test_an_anonymous_entry_is_null(self):
+        """RAML's `securedBy: [oauth, null]`: the scheme, or none at all."""
+        method = Method(secured_by=[SecuredBy(scheme='oauth'), SecuredBy(scheme=None)])
+        assert method.render()['securedBy'] == ['oauth', None]
+
 
 class TestResourceNesting:
     def test_at_creates_each_segment(self):

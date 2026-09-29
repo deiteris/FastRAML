@@ -247,6 +247,16 @@ Parameters are not substituted into `uses`, `extends`, or `!include` locations:
 `uses` is removed before a template body is captured and includes resolve before
 substitution.
 
+A value that is a map or a sequence replaces the scalar it is substituted
+into. A scalar that is exactly one variable, with no action, keeps the
+caller's tag: `maxLength: <<n>>` with `n: 5` is the integer 5 and
+`required: <<r>>` with `r: false` the boolean, as if written in place. So
+`example: <<n>>` on a string type fails as `example: 5` does, and `n: "5"`
+stays text. Text around the variable, an action, a reserved parameter, and a
+tag other than YAML's core scalar tags all give text. The spec only describes
+substitution into text; AMF reads it this way, go-raml makes every value
+text.
+
 Code: `parser/templates.py`. Tests: `tests/unit/test_templates.py`.
 
 ### 5.1 Where a substituted value was written

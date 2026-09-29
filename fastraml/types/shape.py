@@ -452,6 +452,11 @@ def _decode_type_node(
         # schema".
         return default_type, None
     if type_node.tag != TAG_STR:
+        # A caller's `max: 1` substituted whole keeps its type (docs/08 § 5),
+        # and is reported where the caller wrote it.
+        site = substituted_site(raml.substitutions, type_node, 0, len(type_node.value))
+        if site is not None:
+            raise RamlError.new('type must be a string', *site)
         raise node_error('type must be a string', location, type_node)
 
     text = type_node.value

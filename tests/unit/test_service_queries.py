@@ -160,7 +160,7 @@ class TestHover:
         )
         files = {
             'api.raml': document,
-            'paged.raml': '#%RAML 1.0 Trait\nqueryParameters:\n  limit: <<max>>\n',
+            'paged.raml': '#%RAML 1.0 Trait\nqueryParameters:\n  limit:\n    type: integer\n    maximum: <<max>>\n',
             'basic.raml': '#%RAML 1.0 SecurityScheme\ntype: Basic Authentication\n',
         }
         workspace, folder = _buffered(memory_workspace, files)

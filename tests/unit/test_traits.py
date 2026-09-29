@@ -206,6 +206,44 @@ class TestParameters:
             ('reserved parameter', {'parameter': name}),
         ]
 
+    def test_a_whole_value_is_typed_as_the_caller_wrote_it(self, workspace):
+        # docs/08 § 5: as if `maxLength: 5` and `required: false` were written in place.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  t:\n    queryParameters:\n      q:\n        maxLength: <<n>>\n        required: <<r>>\n'
+                + '/users:\n  get:\n    is: [{t: {n: 5, r: false}}]\n'
+            }
+        )
+        q = operation(parse(workspace, root), '/users', 'get').request.query_parameters['q']
+        assert (q.base.shape.max_length.value, q.required) == (5, False)
+
+    def test_a_quoted_value_stays_text(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  t:\n    queryParameters:\n      q:\n        maxLength: <<n>>\n'
+                + '/users:\n  get:\n    is: [{t: {n: "5"}}]\n'
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert [frame.message for chain in caught.value.chains() for frame in chain][-1] == 'expected an integer value'
+
+    def test_a_typed_value_where_a_type_name_goes_is_reported_where_the_caller_wrote_it(self, workspace):
+        # The template's line is in paged.raml; the value, the thing to fix, is in api.raml.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  paged: !include paged.raml\n/users:\n  get:\n    is: [{paged: {max: 1}}]\n',
+                'paged.raml': '#%RAML 1.0 Trait\nqueryParameters:\n  limit: <<max>>\n',
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        line = len(API.splitlines()) + 5
+        assert _where(caught.value, 'type must be a string') == [('api.raml', line, len('    is: [{paged: {max: ') + 1)]
+
     def test_a_reserved_parameter_supplied_to_a_resource_type_is_rejected(self, workspace):
         root = workspace(
             {'api.raml': API + 'resourceTypes:\n  r:\n    get:\n/users:\n  type: {r: {resourcePath: x}}\n'}

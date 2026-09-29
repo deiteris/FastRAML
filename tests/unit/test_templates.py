@@ -28,7 +28,7 @@ from fastraml.parser.templates import (
     parse_template_variables,
 )
 from fastraml.registry import ParseCtx
-from fastraml.yamlnode import TAG_STR, Node, NodeKind, compose, pairs
+from fastraml.yamlnode import TAG_INT, TAG_STR, Node, NodeKind, compose, pairs
 
 LOCATION = 'file:///t/api.raml'
 CALLER = ParseCtx()
@@ -365,6 +365,30 @@ class TestCompileSourceProvenance:
         _root, compiled, overlay = self.compile('a: <<x>>\n', complex_params={'x': value})
         assert compiled.content[1] is value
         assert overlay[value] is CALLER
+
+    def test_a_whole_value_keeps_the_callers_type_and_the_templates_place(self):
+        # docs/08 § 5: `n: 5` is an integer, as a map or a sequence stays one.
+        root, compiled, overlay = self.compile('a: <<n>>\n', complex_params={'n': parse('5\n')})
+        value = compiled.content[1]
+        assert (value.tag, value.value, value.position) == (TAG_INT, '5', root.content[1].position)
+        assert overlay[value] is CALLER
+
+    @pytest.mark.parametrize('template', ['a: 1<<n>>\n', 'a: <<n | !uppercase>>\n'])
+    def test_text_around_the_value_or_an_action_makes_it_text(self, template):
+        _root, compiled, _overlay = self.compile(template, complex_params={'n': parse('5\n')})
+        assert compiled.content[1].tag == TAG_STR
+
+    def test_a_reserved_parameter_stays_text(self):
+        # The parser's value, not the caller's: `resourcePathName` is `/5`'s `5`, a name.
+        _root, compiled, _overlay = self.compile(
+            'a: <<resourcePathName>>\n', complex_params={'resourcePathName': parse('5\n')}
+        )
+        assert compiled.content[1].tag == TAG_STR
+
+    def test_an_included_value_stays_text(self):
+        # Its path means something only where it was written.
+        _root, compiled, _overlay = self.compile('a: <<n>>\n', complex_params={'n': parse('!include x.md\n')})
+        assert compiled.content[1].tag == TAG_STR
 
 
 class TestWhereAValueWasWritten:

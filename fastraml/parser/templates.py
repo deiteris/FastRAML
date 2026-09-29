@@ -26,8 +26,13 @@ from fastraml.parser.includes import note_include_ref
 from fastraml.parser.substitutions import Substitution
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import (
+    TAG_BOOL,
+    TAG_FLOAT,
     TAG_INCLUDE,
+    TAG_INT,
+    TAG_NULL,
     TAG_STR,
+    TAG_TIMESTAMP,
     Node,
     NodeKind,
     is_null,
@@ -35,7 +40,6 @@ from fastraml.yamlnode import (
     pairs,
     with_content,
     with_grafts,
-    with_value,
 )
 
 if TYPE_CHECKING:
@@ -77,6 +81,11 @@ RESOURCE_TYPE_PARAMETERS: Final = frozenset({'resourcePath', 'resourcePathName'}
 #: Where a trait is applied: "In trait declarations, methodName is a reserved
 #: parameter" too. In a resource type it is an ordinary one.
 TRAIT_PARAMETERS: Final = RESOURCE_TYPE_PARAMETERS | {'methodName'}
+
+#: The tags a caller's scalar keeps when it is the whole of a template value
+#: (docs/08 § 5). An `!include` or an application tag stays text: its meaning
+#: belongs to where it was written.
+_VALUE_TAGS: Final = frozenset({TAG_STR, TAG_INT, TAG_FLOAT, TAG_BOOL, TAG_NULL, TAG_TIMESTAMP})
 
 
 def parameter_node(value: str) -> Node:
@@ -641,7 +650,17 @@ def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arg
         # An unsubstituted scalar is static: it keeps the declaration scope.
         return node
 
-    compiled = with_value(node, text)
+    tag = node.tag
+    only = variables[0] if len(variables) == 1 else None
+    if only is not None and only.substring == template and not only.actions and only.name not in reserved:
+        # The whole value is the caller's, so it is typed as the caller wrote
+        # it: `maxLength: <<n>>` with `n: 5` is the integer 5, as a map or a
+        # sequence replaces the node above. Text around it, or an action,
+        # makes the result text. The template keeps the position (§ 5.1).
+        written = params[only.name].tag
+        if written in _VALUE_TAGS:
+            tag = written
+    compiled = Node(NodeKind.SCALAR, tag, text, None, node.line, node.column, node.end_line, node.end_column)
     overlay[compiled] = caller_scope
     substitutions[compiled] = tuple(placed) if exact and placed else ()
     return compiled

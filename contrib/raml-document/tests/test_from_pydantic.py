@@ -17,6 +17,8 @@ from typing import Annotated, Any, Generic, Literal, TypeVar
 import pytest
 from fastraml import ParseOptions, parse_from_path
 from pydantic import (
+    AliasChoices,
+    AliasPath,
     BaseModel,
     ConfigDict,
     Discriminator,
@@ -791,3 +793,41 @@ class TestConstraintHelpers:
         walk.model(M)
         price = walk.types['M'].properties['price']
         assert (price.minimum, price.maximum, price.multiple_of) == (-999.99, 10, 0.01)
+
+
+class TestKeysAFieldIsReadFrom:
+    """A property names one key; pydantic may read a field from several."""
+
+    def test_alias_choices_name_the_first_key_and_report_the_rest(self):
+        class M(BaseModel):
+            v: int = Field(validation_alias=AliasChoices('a', 'b'))
+
+        walk = Walk()
+        walk.model(M)
+        assert list(walk.types['M'].properties) == ['a']
+        assert walk.dropped == ["M.v: read from 'a' and also from b; RAML names one key"]
+        assert parsed_types(walk)['M'].validate({'a': 1}) is None
+        assert M.model_validate({'a': 1}).v == 1
+
+    def test_an_alias_path_is_not_described(self):
+        class M(BaseModel):
+            v: int = Field(validation_alias=AliasPath('outer', 0))
+            w: int
+
+        walk = Walk()
+        walk.model(M)
+        assert list(walk.types['M'].properties) == ['w']
+        assert walk.dropped == ['M.v: read from a nested path, which no RAML property names; not described']
+        parsed_types(walk)
+
+    def test_building_by_name_is_not_a_second_key(self):
+        """`populate_by_name` is how Python code builds the model; the alias is its wire key."""
+
+        class M(BaseModel):
+            model_config = ConfigDict(populate_by_name=True)
+            user_name: str = Field(alias='userName')
+
+        walk = Walk()
+        walk.model(M)
+        assert list(walk.types['M'].properties) == ['userName']
+        assert not walk.dropped

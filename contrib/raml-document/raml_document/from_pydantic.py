@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal, get_args, get_origin
 
 import annotated_types
-from pydantic import BaseModel, Tag
+from pydantic import AliasChoices, AliasPath, BaseModel, Tag
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticSerializationError, to_jsonable_python
 
@@ -223,6 +223,10 @@ class Walk:
             if name not in names or (output and info.exclude is True):
                 continue
             wire = _wire_name(name, info, output=output)
+            if not output:
+                self._report_alias(name, info, wire, at)
+            if wire is None:
+                continue
             out[wire] = known.get(wire) or self.optional(self.field(info, f'{at}.{name}'), info, f'{at}.{name}')
         if output:
             for name, computed in model.model_computed_fields.items():
@@ -238,6 +242,24 @@ class Walk:
                     prop.description = computed.description
                 out[wire] = prop
         return out
+
+    def _report_alias(self, name: str, info: FieldInfo, wire: str | None, at: str) -> None:
+        """Say which keys a field is read from that its one RAML property does not name.
+
+        The other `AliasChoices`, and an `AliasPath` into a nested value. Not
+        the field's own name under `populate_by_name`: that setting is how a
+        model is built by name in Python, and the alias is its wire key.
+        """
+        alias = info.validation_alias
+        choices = alias.choices if isinstance(alias, AliasChoices) else [alias] if alias is not None else []
+        keys = [choice for choice in choices if isinstance(choice, str)]
+        others = [key for key in dict.fromkeys(keys) if key != wire]
+        paths = [f'the path {choice.path}' for choice in choices if isinstance(choice, AliasPath)]
+        where = f'{at}.{name}'
+        if wire is None:
+            self.drop(where, 'read from a nested path, which no RAML property names; not described')
+        elif others or paths:
+            self.drop(where, f'read from {wire!r} and also from {", ".join([*others, *paths])}; RAML names one key')
 
     # -- redeclared properties --------------------------------------------------
 
@@ -749,9 +771,17 @@ def _as_number(value: Any, decl: TypeDecl, at: str, walk: Walk) -> Any:
     return None
 
 
-def _wire_name(name: str, info: FieldInfo, *, output: bool) -> str:
-    """The key a field travels under: read by its validation alias, written by its serialization one."""
+def _wire_name(name: str, info: FieldInfo, *, output: bool) -> str | None:
+    """The key a field travels under: read by its validation alias, written by its serialization one.
+
+    `AliasChoices` reads the first choice that is a key; `None` where there is
+    none, since an `AliasPath` reaches into a nested value no property names.
+    """
     chosen = info.serialization_alias if output else info.validation_alias
+    if isinstance(chosen, AliasChoices):
+        return next((choice for choice in chosen.choices if isinstance(choice, str)), None)
+    if isinstance(chosen, AliasPath):
+        return None
     if isinstance(chosen, str):
         return chosen
     return info.alias or name

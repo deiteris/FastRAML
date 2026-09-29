@@ -14,7 +14,7 @@ silence.
 | Module | Decides |
 |---|---|
 | `routes` | which routes are described, a sub-application's among them, and the verbs each stands for |
-| `parameters` | a handler's URI parameters, query parameters, headers and body |
+| `parameters` | a handler's URI parameters -- with the route's own regexes -- query parameters, headers and body |
 | `responses` | the responses a handler declares |
 | `security` | `securitySchemes:` and each handler's `securedBy` |
 """
@@ -27,9 +27,9 @@ from raml_document import METHODS, Document, Documentation, Method, Parameters, 
 from raml_document.from_pydantic import Walk
 
 from aiohttp_raml.decorator import Described, described
-from aiohttp_raml.render.parameters import body, parameters
+from aiohttp_raml.render.parameters import body, parameters, segment_constraints
 from aiohttp_raml.render.responses import responses
-from aiohttp_raml.render.routes import apps, operations, resources
+from aiohttp_raml.render.routes import apps, operations, resources, segment_patterns
 from aiohttp_raml.render.security import Security
 
 if TYPE_CHECKING:
@@ -111,6 +111,7 @@ def render(  # noqa: PLR0913 - five keyword-only metadata nodes; the count is th
         if not built:
             continue
         document.root.at(path).methods.update(built)
+        segment_constraints(uri, segment_patterns(entry), path, walk)
         _place_uri(document.root, path, uri, path, walk)
 
     # Last: the walk registers models as the handlers are read, so `types` is

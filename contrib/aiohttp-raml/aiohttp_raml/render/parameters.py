@@ -8,6 +8,7 @@ from raml_document import Body, Parameters, TypeDecl
 
 from aiohttp_raml.multipart import File
 from aiohttp_raml.params import BODY, HEADER, QUERY, URI
+from aiohttp_raml.render.routes import crosses_segments
 
 if TYPE_CHECKING:
     from raml_document import Method
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from aiohttp_raml.decorator import Described
     from aiohttp_raml.params import Declared
 
-__all__ = ['body', 'parameters']
+__all__ = ['body', 'parameters', 'segment_constraints']
 
 #: The `Method` field each RAML node is rendered into.
 NODES: Final = {QUERY: 'query_parameters', HEADER: 'headers'}
@@ -37,6 +38,29 @@ def parameters(entry: Described, method: Method, at: str, walk: Walk) -> Paramet
         else:
             getattr(method, NODES[item.place])[item.wire] = decl
     return uri
+
+
+def segment_constraints(uri: Parameters, patterns: dict[str, str], at: str, walk: Walk) -> None:
+    """Write each regex the route states for a segment as its URI parameter's `pattern`.
+
+    `{isbn:[0-9]{13}}` refuses a request whose segment does not match, so the
+    parameter is declared with that pattern -- a string one, if the handler
+    does not declare it. A regex that can match `/` spans segments, which a RAML
+    URI parameter cannot, and is reported like any other loss.
+    """
+    for name, regex in patterns.items():
+        if crosses_segments(regex):
+            walk.drop(at, f'{{{name}}} matches {regex}, which crosses "/", and a RAML URI parameter is one segment')
+            continue
+        decl = uri.setdefault(name, TypeDecl(type='string'))
+        if decl.type != 'string':
+            walk.drop(at, f'{name}: the route matches {regex}, and RAML has no pattern facet for type {decl.type}')
+        elif decl.pattern is not None:
+            walk.drop(at, f'{name}: the route matches {regex} beside the pattern declared, and RAML states one')
+        else:
+            # Anchored: RAML's `pattern` is a search, and the route's regex
+            # matches the whole segment.
+            decl.pattern = f'^(?:{regex})$'
 
 
 def body(entry: Described, method: Method, at: str, walk: Walk) -> None:

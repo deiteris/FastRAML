@@ -36,6 +36,7 @@ from aiohttp_raml import (
     validate,
 )
 from aiohttp_raml.params import wire_name
+from aiohttp_raml.render.routes import crosses_segments
 from aiohttp_raml.security import setup as setup_security
 
 
@@ -925,3 +926,52 @@ def test_schemes_two_sub_applications_register_under_one_name_are_declared_apart
     assert document['/b']['/books']['get']['securedBy'] == ['key_2']
     assert dropped == ["securitySchemes: two schemes are registered as 'key'; the second is declared as key_2"]
     build(app, title='T')
+
+
+# -- a segment's own regex ----------------------------------------------------------
+
+
+def test_a_segments_regex_is_its_parameters_pattern() -> None:
+    @validate
+    async def one(isbn: str, /) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    app.router.add_get(r'/books/{isbn:\d{13}}/{shelf:[a-z]+}', one)
+    document, dropped = rendered(app)
+    books = document['/books']['/{isbn}']
+    assert books['uriParameters'] == {'isbn': {'type': 'string', 'pattern': r'^(?:\d{13})$'}}
+    assert books['/{shelf}']['uriParameters'] == {'shelf': {'type': 'string', 'pattern': '^(?:[a-z]+)$'}}
+    assert dropped == []
+    build(app, title='T')
+
+
+def test_a_regex_matching_across_segments_is_reported() -> None:
+    @validate
+    async def tail(rest: str, /) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    app.router.add_get('/files/{rest:.*}', tail)
+    document, dropped = rendered(app)
+    assert document['/files']['/{rest}']['uriParameters'] == {'rest': 'string'}
+    assert dropped == ['/files/{rest}: {rest} matches .*, which crosses "/", and a RAML URI parameter is one segment']
+
+
+def test_a_regex_on_a_parameter_that_is_no_string_is_reported() -> None:
+    @validate
+    async def one(n: int, /) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    app.router.add_get(r'/n/{n:\d+}', one)
+    document, dropped = rendered(app)
+    assert document['/n']['/{n}']['uriParameters'] == {'n': 'integer'}
+    assert dropped == [r'/n/{n}: n: the route matches \d+, and RAML has no pattern facet for type integer']
+
+
+@pytest.mark.parametrize('regex', ['.*', r'[\w/]+', '[^a]+', r'\S+', '[!-0]'])
+def test_a_regex_that_can_match_a_slash_crosses_segments(regex: str) -> None:
+    assert crosses_segments(regex)
+
+
+@pytest.mark.parametrize('regex', [r'[^/]+', r'\d+', r'[\d.]+', '(?:ab|cd)', '(?=/)x'])
+def test_a_regex_that_cannot_match_a_slash_stays_in_its_segment(regex: str) -> None:
+    assert not crosses_segments(regex)

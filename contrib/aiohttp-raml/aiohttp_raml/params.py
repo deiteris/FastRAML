@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any, ClassVar, Final, get_args
 
 from pydantic.fields import FieldInfo
-from raml_document.from_pydantic.introspect import models_in
+from raml_document.from_pydantic.introspect import models_in, unwrap_annotated
 
 from aiohttp_raml.multipart import File, is_upload
 
@@ -199,7 +199,34 @@ def read_signature(handler: Any, hints: dict[str, Any], ignore: tuple[str, ...])
         )
         out.append(item)
     _check_one_body(handler, out)
+    _check_body_media(handler, out)
     return out
+
+
+def is_json(media: str) -> bool:
+    """Is `media` JSON -- `application/json`, or a `+json` type such as `application/problem+json`?"""
+    kind = media.split(';', 1)[0].strip().lower()
+    return kind == 'application/json' or kind.endswith('+json')
+
+
+#: What a body of any other media type is read as: its text, or its bytes.
+RAW_BODIES: Final = (str, bytes)
+
+
+def _check_body_media(handler: Any, declared: list[Declared]) -> None:
+    """A body that is not JSON is taken as `str` or `bytes`, which is all a handler can be given.
+
+    Only JSON is parsed. An XML or CSV body annotated as a model would be
+    documented as that model and refused as invalid JSON on every request.
+    """
+    for item in declared:
+        if item.place == BODY and not item.is_file and not is_json(item.media):
+            bare, _ = unwrap_annotated(item.annotation)
+            if bare not in RAW_BODIES:
+                raise TypeError(
+                    f'{_named(handler)}: {item.name!r} is a {item.media} body, which is read as str or bytes '
+                    f'and not parsed; annotate it as one of those'
+                )
 
 
 def _alias(info: FieldInfo, handler: Any, name: str) -> str | None:

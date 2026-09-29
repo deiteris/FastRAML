@@ -18,10 +18,11 @@ from typing import TYPE_CHECKING, Any, get_args, get_origin
 
 from aiohttp import web
 from pydantic import BaseModel, TypeAdapter, ValidationError, create_model
+from raml_document.from_pydantic.introspect import unwrap_annotated
 
 from aiohttp_raml.errors import STATUS, RequestError, describe
 from aiohttp_raml.multipart import File, PartRejected, Parts, UploadedFile
-from aiohttp_raml.params import BODY, HEADER, MISSING, QUERY, URI, Declared
+from aiohttp_raml.params import BODY, HEADER, MISSING, QUERY, URI, Declared, is_json
 from aiohttp_raml.responses import Responds
 
 if TYPE_CHECKING:
@@ -119,7 +120,7 @@ class Bound:
         return True, await handler(*args, **kwargs)
 
     async def _body(self, request: web.Request, body: Declared, kwargs: dict[str, Any]) -> web.Response | None:
-        """Read and validate a JSON body into `kwargs`, or return the 400 refusing it.
+        """Read and validate the body into `kwargs`, or return the 400 refusing it.
 
         A body with a default may be left out, and is then its default -- built
         per request, so a `default_factory` hands no two requests one object.
@@ -127,10 +128,15 @@ class Bound:
         if not request.body_exists and not body.required:
             kwargs[body.name] = body.info.get_default(call_default_factory=True)
             return None
-        try:
-            payload = await request.json()
-        except JSONDecodeError:
-            return _failures([describe('body', 'the body is not valid JSON', kind='json_invalid')])
+        payload: Any
+        if not is_json(body.media):
+            # Not parsed: `read_signature` holds such a body to `str` or `bytes`.
+            payload = await request.read() if unwrap_annotated(body.annotation)[0] is bytes else await request.text()
+        else:
+            try:
+                payload = await request.json()
+            except JSONDecodeError:
+                return _failures([describe('body', 'the body is not valid JSON', kind='json_invalid')])
         assert self.body_adapter is not None  # noqa: S101 - `bind` builds one beside every body
         try:
             kwargs[body.name] = self.body_adapter.validate_python(payload)

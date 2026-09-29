@@ -549,3 +549,49 @@ async def test_an_optional_body_may_be_left_out(aiohttp_client: Any) -> None:
     assert await (await client.post('/x')).json() is None
     assert await (await client.post('/x', json={'isbn': 'i'})).json() == {'isbn': 'i', 'pages': 100}
     assert (await client.post('/x', json={'pages': 'many'})).status == 400
+
+
+# -- a body that is not JSON ------------------------------------------------------
+
+
+async def test_a_body_that_is_not_json_is_taken_as_text(aiohttp_client: Any) -> None:
+    @validate
+    async def post(
+        doc: Annotated[str, Body(media='application/xml'), Field(max_length=16)],
+    ) -> Annotated[web.Response, Responds(200, None)]:
+        return web.json_response({'doc': doc})
+
+    app = web.Application()
+    app.router.add_post('/x', post)
+    client = await aiohttp_client(app)
+    sent = await client.post('/x', data='<book/>', headers={'Content-Type': 'application/xml'})
+    assert await sent.json() == {'doc': '<book/>'}
+    assert (await client.post('/x', data='<book>' + 'x' * 16 + '</book>')).status == 400
+
+
+async def test_a_body_that_is_not_json_can_be_taken_as_bytes(aiohttp_client: Any) -> None:
+    @validate
+    async def post(image: Annotated[bytes, Body(media='image/png')]) -> Annotated[web.Response, Responds(200, None)]:
+        return web.json_response({'size': len(image)})
+
+    app = web.Application()
+    app.router.add_post('/x', post)
+    client = await aiohttp_client(app)
+    assert await (await client.post('/x', data=b'\x89PNG')).json() == {'size': 4}
+
+
+def test_a_model_body_that_is_not_json_is_refused() -> None:
+    """Only JSON is parsed; an XML body described as a model would refuse every request."""
+    with pytest.raises(TypeError, match='read as str or bytes'):
+
+        @validate
+        async def post(
+            book: Annotated[Book, Body(media='application/xml')],
+        ) -> Annotated[web.Response, Responds(200)]: ...
+
+
+def test_a_json_flavoured_media_type_is_parsed() -> None:
+    @validate
+    async def post(
+        problem: Annotated[Book, Body(media='application/merge-patch+json')],
+    ) -> Annotated[web.Response, Responds(200)]: ...

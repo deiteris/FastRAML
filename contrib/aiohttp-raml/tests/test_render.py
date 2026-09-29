@@ -798,3 +798,19 @@ def test_an_optional_body_is_the_body_and_its_optionality_is_reported() -> None:
     document, dropped = rendered(app)
     assert document['/x']['post']['body'] == {'application/json': 'Book | nil'}
     assert dropped == ['POST /x.body: the body may be left out, and RAML has no optional body; written as required']
+
+
+def test_a_body_that_is_not_json_is_written_as_text_or_a_file() -> None:
+    @validate
+    async def text(doc: Annotated[str, Body(media='application/xml')]) -> Annotated[web.Response, Responds(200)]: ...
+
+    @validate
+    async def image(png: Annotated[bytes, Body(media='image/png')]) -> Annotated[web.Response, Responds(200)]: ...
+
+    app = web.Application()
+    app.router.add_post('/text', text)
+    app.router.add_post('/image', image)
+    document, dropped = rendered(app)
+    assert document['/text']['post']['body'] == {'application/xml': 'string'}
+    assert document['/image']['post']['body'] == {'image/png': 'file'}
+    assert dropped == []

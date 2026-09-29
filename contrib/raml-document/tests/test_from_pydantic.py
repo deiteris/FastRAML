@@ -16,7 +16,18 @@ from typing import Annotated, Any, Generic, Literal, TypeVar
 
 import pytest
 from fastraml import ParseOptions, parse_from_path
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, RootModel, Tag, computed_field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    RootModel,
+    Tag,
+    computed_field,
+    condecimal,
+    conint,
+    constr,
+)
 
 from raml_document import UNSET, Document, TypeDecl
 from raml_document.from_pydantic import Walk
@@ -737,3 +748,46 @@ class TestRedeclaredProperties:
         assert list(walk.types['Sub'].properties) == ['x']
         assert not walk.dropped
         parsed_types(walk)
+
+
+class TestConstraintHelpers:
+    """`constr`, `conint` and `condecimal` group their constraints; each is read."""
+
+    def test_constr_keeps_its_lengths_and_reports_its_transformation(self):
+        class M(BaseModel):
+            code: constr(min_length=2, max_length=4, to_upper=True)  # type: ignore[valid-type]
+            names: list[constr(min_length=3)]  # type: ignore[valid-type]
+
+        walk = Walk()
+        walk.model(M)
+        properties = walk.types['M'].render()['properties']
+        assert properties['code'] == {'type': 'string', 'minLength': 2, 'maxLength': 4}
+        assert properties['names'] == {'type': 'array', 'items': {'type': 'string', 'minLength': 3}}
+        assert walk.dropped == ['M.code: to_upper=True has no RAML facet; not written']
+        parsed_types(walk)
+
+    def test_conint_keeps_its_inclusive_bound(self):
+        class M(BaseModel):
+            n: conint(gt=0, le=5)  # type: ignore[valid-type]
+
+        walk = Walk()
+        walk.model(M)
+        assert walk.types['M'].properties['n'].maximum == 5
+        assert walk.dropped == ['M.n: exclusive minimum 0 has no RAML facet; not written']
+
+    def test_condecimal_reports_only_what_it_was_given(self):
+        class M(BaseModel):
+            amount: condecimal(max_digits=5)  # type: ignore[valid-type]
+
+        walk = Walk()
+        walk.model(M)
+        assert walk.dropped == ['M.amount: max_digits=5 without decimal_places has no RAML facet; not written']
+
+    def test_digits_bound_both_ways_and_never_loosen_a_stated_bound(self):
+        class M(BaseModel):
+            price: condecimal(max_digits=5, decimal_places=2, le=10)  # type: ignore[valid-type]
+
+        walk = Walk()
+        walk.model(M)
+        price = walk.types['M'].properties['price']
+        assert (price.minimum, price.maximum, price.multiple_of) == (-999.99, 10, 0.01)

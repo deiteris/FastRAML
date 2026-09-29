@@ -607,6 +607,7 @@ class Walk:
         string, `minItems` on an array -- so the declaration decides, which it
         can because it was built first.
         """
+        metadata = list(_expanded(metadata))
         spelling = decl.type if isinstance(decl.type, str) else ''
         if '|' in spelling and metadata:
             # A union holds no facets of its own -- `{type: string | nil,
@@ -620,7 +621,7 @@ class Walk:
             decl.type = ' | '.join(members)
             return
         sequence = spelling == 'array' or spelling.endswith('[]')
-        for item in metadata or ():
+        for item in metadata:
             match item:
                 case annotated_types.Ge(ge=bound):
                     decl.minimum = _as_number(bound, decl, at, self)
@@ -649,7 +650,12 @@ class Walk:
         return decl
 
     def _general(self, decl: TypeDecl, item: Any, at: str) -> None:
-        """Pydantic's own metadata objects, which carry several fields at once."""
+        """Pydantic's own metadata objects, which carry several fields at once.
+
+        Each setting is read or reported by name: `constr(to_upper=True)`
+        carries a `maxLength` RAML has and a transformation it has not, and
+        naming the whole object would hide the first.
+        """
         if getattr(item, 'discriminator', None) is not None:
             return  # read by `_tag_name`, which reports what it cannot use
         pattern = getattr(item, 'pattern', None)
@@ -662,8 +668,18 @@ class Walk:
             decl.multiple_of = float(decimal.Decimal(1).scaleb(-places))
         digits = getattr(item, 'max_digits', None)
         if digits is not None and places is not None:
-            decl.maximum = float(decimal.Decimal(10) ** (digits - places) - decimal.Decimal(1).scaleb(-places))
-        if pattern is None and places is None and digits is None:
+            # A bound either way, and never looser than one already stated.
+            bound = float(decimal.Decimal(10) ** (digits - places) - decimal.Decimal(1).scaleb(-places))
+            decl.maximum = bound if decl.maximum is None else min(decl.maximum, bound)
+            decl.minimum = -bound if decl.minimum is None else max(decl.minimum, -bound)
+        elif digits is not None:
+            self.drop(at, f'max_digits={digits} without decimal_places has no RAML facet; not written')
+        read = {'pattern', 'decimal_places', 'max_digits'}
+        rest = {key: value for key, value in getattr(item, '__dict__', {}).items() if value is not None}
+        for key, value in rest.items():
+            if key not in read:
+                self.drop(at, f'{key}={value!r} has no RAML facet; not written')
+        if not rest and pattern is None and places is None and digits is None:
             self.drop(at, f'no RAML facet for {item!r}')
 
 
@@ -698,6 +714,20 @@ def _parents(decl: TypeDecl) -> list[str]:
     if isinstance(decl.type, str) and '|' not in decl.type:
         return [decl.type]
     return []
+
+
+def _expanded(metadata: Any) -> Iterator[Any]:
+    """`metadata` with each group opened up and each placeholder left out.
+
+    `constr(...)` arrives as one `StringConstraints` and `conint(...)` as one
+    `Interval`, each a group of the `MinLen`, `Ge`... it stands for; the `con*`
+    helpers also leave a `None` for every constraint not given.
+    """
+    for item in metadata or ():
+        if isinstance(item, annotated_types.GroupedMetadata):
+            yield from _expanded(item)
+        elif item is not None:
+            yield item
 
 
 def _set_length(decl: TypeDecl, end: str, length: int | None, *, sequence: bool) -> None:

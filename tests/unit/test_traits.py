@@ -333,6 +333,129 @@ class TestProvenance:
         assert 'example' in str(caught.value)
 
 
+class TestNested:
+    """A trait's own `is:` (docs/08 § 3.2): spec section Algorithm of Merging
+    Traits and Methods, one distance at a time, each trait applied once.
+    """
+
+    def test_a_trait_applies_the_traits_it_names(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  paged:\n    queryParameters:\n      page: integer\n'
+                + '  listing:\n    is: [paged]\n    description: a list\n'
+                + '/users:\n  get:\n    is: [listing]\n'
+            }
+        )
+        get = operation(parse(workspace, root), '/users', 'get')
+        assert (get.description.value, list(get.request.query_parameters)) == ('a list', ['page'])
+
+    def test_the_nested_reference_is_kept_and_bound(self, workspace):
+        # Retained as a `type:` or `is:` reference is, so a consumer can follow it.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  paged:\n    description: d\n  listing:\n    is: [paged]\n'
+                + '/users:\n  get:\n    is: [listing]\n'
+            }
+        )
+        raml = parse(workspace, root)
+        traits = operation(raml, '/users', 'get').traits
+        assert [(ref.name, ref.resolved) for ref in traits] == [
+            ('listing', raml.entry_point.traits['listing']),
+            ('paged', raml.entry_point.traits['paged']),
+        ]
+
+    def test_a_parameter_reaches_the_nested_trait(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  named:\n    description: <<what>>\n'
+                + '  listing:\n    is: [{named: {what: <<noun>>}}]\n'
+                + '/users:\n  get:\n    is: [{listing: {noun: users}}]\n'
+            }
+        )
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'users'
+
+    def test_a_trait_named_directly_beats_the_same_trait_nested(self, workspace):
+        # The direct application is closer; the nested one is not applied at all.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  named:\n    description: <<what>>\n'
+                + '  listing:\n    is: [{named: {what: nested}}]\n'
+                + '/users:\n  get:\n    is: [listing, {named: {what: direct}}]\n'
+            }
+        )
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'direct'
+
+    def test_a_resources_trait_beats_a_methods_nested_trait(self, workspace):
+        # Every trait the method, resource or resource type names is at distance
+        # one; what they name is at distance two.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  deep:\n    description: deep\n  listing:\n    is: [deep]\n'
+                + '  owned:\n    description: resource\n'
+                + '/users:\n  is: [owned]\n  get:\n    is: [listing]\n'
+            }
+        )
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'resource'
+
+    def test_a_nested_trait_several_levels_down_is_applied(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  a:\n    is: [b]\n  b:\n    is: [c]\n  c:\n    description: c\n'
+                + '/users:\n  get:\n    is: [a]\n'
+            }
+        )
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'c'
+
+    def test_a_cycle_applies_each_trait_once(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  a:\n    is: [b]\n    description: a\n'
+                + '  b:\n    is: [a]\n    queryParameters:\n      page: integer\n'
+                + '/users:\n  get:\n    is: [a]\n'
+            }
+        )
+        get = operation(parse(workspace, root), '/users', 'get')
+        assert (get.description.value, list(get.request.query_parameters)) == ('a', ['page'])
+
+    def test_a_nested_name_resolves_where_the_trait_is_declared(self, workspace):
+        # `paged` is the library's: api.raml would have to write `lib.paged`.
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  lib: lib.raml\n/users:\n  get:\n    is: [lib.listing]\n',
+                'lib.raml': '#%RAML 1.0 Library\ntraits:\n  paged:\n    description: paged\n'
+                '  listing:\n    is: [paged]\n',
+            }
+        )
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'paged'
+
+    def test_an_unresolvable_nested_name_is_reported_where_it_is_written(self, workspace):
+        root = workspace(
+            {'api.raml': API + 'traits:\n  listing:\n    is: [nowhere]\n/users:\n  get:\n    is: [listing]\n'}
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert caught.value.head.info == {'trait': 'nowhere'}
+        assert _where(caught.value, 'apply trait') == [('api.raml', 6, 10)]
+
+    def test_a_nested_traits_securedby_applies(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'securitySchemes:\n  basic:\n    type: Basic Authentication\n'
+                + 'traits:\n  secured:\n    securedBy: [basic]\n  listing:\n    is: [secured]\n'
+                + '/users:\n  get:\n    is: [listing]\n'
+            }
+        )
+        assert [s.name for s in operation(parse(workspace, root), '/users', 'get').secured_by] == ['basic']
+
+
 def _where(error: RamlError, message: str) -> list[tuple[str, int, int]]:
     """File, line and column of every frame carrying `message`."""
     return [

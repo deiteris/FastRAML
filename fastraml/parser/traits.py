@@ -29,8 +29,8 @@ from typing import TYPE_CHECKING
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
-from fastraml.facet_names import FACET_SECURED_BY
-from fastraml.parser.directives import decode_secured_by
+from fastraml.facet_names import FACET_IS, FACET_SECURED_BY
+from fastraml.parser.directives import decode_secured_by, decode_trait_refs
 from fastraml.parser.source_ir import note_failure
 from fastraml.parser.structural_merge import merge_structural
 from fastraml.parser.templates import (
@@ -100,42 +100,52 @@ def apply_traits(raml: Raml, endpoint: SourceEndPoint) -> None:
     for method, operation in endpoint.operations.items():
         method_name = parameter_node(method)
         seen: set[str] = set()
-        for ref in _in_priority_order(endpoint, operation):
-            if ref.name in seen:
-                # Spec section Effect on Collections: "priority is given to the
-                # trait in closest proximity to the target method or resource",
-                # and the trait is applied exactly once.
-                continue
-            seen.add(ref.name)
-            looked_up.add(ref)
-            params = {
-                **ref.params,
-                'resourcePath': path,
-                'resourcePathName': path_name,
-                'methodName': method_name,
-            }
-            try:
-                definition = _definition_for(ref)
-                merge_trait_into(
-                    operation,
-                    definition,
-                    params,
-                    caller_scope=endpoint.scope,
-                    application=ref,
-                    substitutions=raml.substitutions,
-                )
-            except RamlError as err:
-                wrapped = _wrap(ref, err)
-                # The operation it was merging into lacks its contribution.
-                note_failure(operation, wrapped)
-                accumulator.add(wrapped)
+        # Spec section Algorithm of Merging Traits and Methods: one distance at
+        # a time, the traits the previous distance's traits apply coming next.
+        queue = list(_in_priority_order(endpoint, operation))
+        while queue:
+            nested: list[DirectiveRef] = []
+            for ref in queue:
+                if ref.name in seen:
+                    # Spec section Effect on Collections: "priority is given to the
+                    # trait in closest proximity to the target method or resource",
+                    # and the trait is applied exactly once. This also ends a cycle.
+                    continue
+                seen.add(ref.name)
+                looked_up.add(ref)
+                params = {
+                    **ref.params,
+                    'resourcePath': path,
+                    'resourcePathName': path_name,
+                    'methodName': method_name,
+                }
+                try:
+                    definition = _definition_for(ref)
+                    nested += merge_trait_into(
+                        operation,
+                        definition,
+                        params,
+                        caller_scope=endpoint.scope,
+                        application=ref,
+                        substitutions=raml.substitutions,
+                    )
+                except RamlError as err:
+                    wrapped = _wrap(ref, err)
+                    # The operation it was merging into lacks its contribution.
+                    note_failure(operation, wrapped)
+                    accumulator.add(wrapped)
+            operation.nested_traits += nested
+            queue = nested
 
     # A reference the name rule skipped, or one on a resource with no methods,
     # is applied nowhere but still names a trait: bind it, so a consumer can
     # follow it, and report a name that matches nothing (docs/08 § 3.2). One
-    # written on an operation is noted there; the caller notes the resource.
+    # written on an operation, or on a trait applied to it, is noted there; the
+    # caller notes the resource.
     for operation in endpoint.operations.values():
-        _bind_unapplied(chain(operation.traits, operation.rt_traits), looked_up, accumulator, operation)
+        _bind_unapplied(
+            chain(operation.traits, operation.rt_traits, operation.nested_traits), looked_up, accumulator, operation
+        )
     _bind_unapplied(chain(endpoint.traits, endpoint.rt_traits), looked_up, accumulator, None)
     accumulator.raise_if_any()
 
@@ -192,13 +202,15 @@ def merge_trait_into(  # noqa: PLR0913 - the application, and where its values a
     caller_scope: ParseCtx | None,
     application: DirectiveRef,
     substitutions: Substitutions,
-) -> None:
+) -> list[DirectiveRef]:
     """Substitute `params`, written at `application`, into the trait body and
     merge it under the operation.
+
+    Returns the traits the body's own `is:` applies, for the next distance.
     """
     definition = definition.resolved()
     if definition.source is None:
-        return
+        return []
     check_parameters(definition, params, application)
 
     compiled = compile_source_provenance(
@@ -211,14 +223,18 @@ def merge_trait_into(  # noqa: PLR0913 - the application, and where its values a
         substitutions=substitutions,
     )
     trait_scope = ParseCtx(anchor=definition.anchor, target=DomainLocation.TRAIT)
-    body = _take_directives(operation, compiled, definition.location, trait_scope)
+    body, nested = _take_directives(operation, compiled, definition.location, trait_scope)
     operation.body = merge_structural(operation.body, body, trait_scope, operation.provenance)
+    return nested
 
 
-def _take_directives(operation: SourceOperation, compiled: Node, location: str, scope: ParseCtx) -> Node | None:
+def _take_directives(
+    operation: SourceOperation, compiled: Node, location: str, scope: ParseCtx
+) -> tuple[Node | None, list[DirectiveRef]]:
     """Decode the directives a trait body holds, as stage 1 does a method's.
 
-    The rest of the body is returned for the merge (docs/08 § 3.2).
+    The rest of the body is returned for the merge, with the traits its `is:`
+    names, which resolve in the trait's namespace (docs/08 § 3.2).
 
     `securedBy:` is taken only by an operation with none of its own: the
     method's is explicit, and wins as any of its nodes wins over a trait's.
@@ -226,8 +242,11 @@ def _take_directives(operation: SourceOperation, compiled: Node, location: str, 
     Its scheme names resolve against the API, as every one does (docs/09 § A6).
     """
     kept: list[Node] = []
+    nested: list[DirectiveRef] = []
     for key, value in pairs(compiled):
-        if key.value == FACET_SECURED_BY:
+        if key.value == FACET_IS:
+            nested = decode_trait_refs(value, location, scope)
+        elif key.value == FACET_SECURED_BY:
             refs = decode_secured_by(value, location, scope)
             if not operation.explicit_secured_by:
                 operation.secured_by = refs
@@ -236,5 +255,5 @@ def _take_directives(operation: SourceOperation, compiled: Node, location: str, 
             kept.append(key)
             kept.append(value)
     if len(kept) == len(compiled.content):
-        return compiled
-    return with_content(compiled, kept) if kept else None
+        return compiled, nested
+    return (with_content(compiled, kept) if kept else None), nested

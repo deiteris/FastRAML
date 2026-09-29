@@ -113,6 +113,14 @@ stage 1 takes a method's (§ 2.1):
   it explicit. A method's own list therefore wins whole, and of two traits
   the one applied first, the closer, wins. Its scheme names resolve against
   the API ([09](09-security-and-annotations.md) § A6).
+- `is` names nested traits, which resolve in the trait's namespace. The four
+  classes above are distance one; the traits a distance's traits name, in
+  application order, are the next distance (spec section Algorithm of
+  Merging Traits and Methods). A name already applied at any distance is
+  skipped, which also ends a cycle. So a trait the resource names beats one a
+  method's trait names, and a trait named directly beats the same trait
+  nested, parameters included. Nested references are appended to
+  `Operation.traits` and bound like any other.
 
 Every `is:` entry is bound to its definition whether or not it is applied: an
 entry the first-occurrence rule skipped, and one on a resource with no methods,

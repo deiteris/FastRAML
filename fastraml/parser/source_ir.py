@@ -57,6 +57,9 @@ class SourceOperation:
     #: classes of docs/08 § 3.2 distinguishable after the merge.
     traits: list[DirectiveRef] = field(default_factory=list)
     rt_traits: list[DirectiveRef] = field(default_factory=list)
+    #: Filled by P4: `is:` written in the traits applied here, each entry
+    #: resolved in the namespace of the trait that wrote it (docs/08 § 3.2).
+    nested_traits: list[DirectiveRef] = field(default_factory=list)
     secured_by: list[DirectiveRef] = field(default_factory=list)
     #: Whether `securedBy:` was written here at all, or by a trait applied
     #: here. `[]` from an explicit empty sequence and `[]` from silence mean

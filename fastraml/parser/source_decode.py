@@ -325,7 +325,7 @@ def decode_source_operation(raml: Raml, source: SourceOperation, attach: Callabl
         id=raml.next_id(),
         method=source.method,
         location=source.location,
-        traits=[*source.rt_traits, *source.traits],
+        traits=[*source.rt_traits, *source.traits, *source.nested_traits],
         secured_by=_secured_by(raml, source),
         explicit_secured_by=source.explicit_secured_by,
         key_pos=source.key_pos,

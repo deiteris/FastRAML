@@ -119,8 +119,10 @@ class Operation:
     #: Keyed by the status code normalised to text, in declaration order.
     responses: dict[str, Response] = field(default_factory=dict)
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
-    #: The trait references as written. They have already been applied; they are
-    #: retained because a consumer wants to know a method carried a trait.
+    #: The trait references as written: the resource type's, the method's, then
+    #: those the applied traits' own `is:` wrote. They have already been
+    #: applied; they are retained because a consumer wants to know a method
+    #: carried a trait.
     traits: list[DirectiveRef] = field(default_factory=list)
     #: The schemes in force, once P5 has resolved inheritance: this method's own
     #: if it declared any, otherwise a trait's, otherwise the resource's,

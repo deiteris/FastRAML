@@ -660,13 +660,16 @@ def _example_json(index: int) -> str:
 
 
 def write_includes(root: Path, *, resource_count: int = 500) -> Path:
-    """Examples supplied by `!include`, a `.json` and a `.yaml` file per resource.
+    """Examples supplied by `!include`, a `.json` and a `.yaml` file per resource,
+    and a Trait fragment per resource.
 
-    The general corpora include nothing but typed fragments and libraries, so
+    The general corpora include nothing but libraries and `.json` schemas, so
     none of them reads a data include (docs/03 § 4.2): the compose cache, the
-    header check, and the `.json` whitespace rule. Every example here is its
-    own file, so each is read and composed once; `tests/bench/test_corpus.py`
-    pins that every one is, and that tabbed ones take the whitespace path.
+    header check, and the `.json` whitespace rule; nor has a typed-fragment
+    include read once to see its header. Every file here is its own, so each is
+    read and composed once; `tests/bench/test_corpus.py` pins that every one
+    is, that tabbed ones take the whitespace path, and that each trait's
+    header is read.
     """
     files: dict[str, str] = {}
     lines = [
@@ -678,13 +681,17 @@ def write_includes(root: Path, *, resource_count: int = 500) -> Path:
         '      id: string',
         '      count: integer',
         '      tags: string[]',
+        'traits:',
+        *(f'  t{index}: !include traits/t{index}.raml' for index in range(resource_count)),
     ]
     for index in range(resource_count):
         files[f'examples/e{index}.json'] = _example_json(index)
         files[f'examples/e{index}.yaml'] = f'id: y{index}\ncount: {index}\ntags: [c]\n'
+        files[f'traits/t{index}.raml'] = f'#%RAML 1.0 Trait\ndescription: trait {index}\n'
         lines += [
             f'/r{index}:',
             '  get:',
+            f'    is: [t{index}]',
             '    responses:',
             '      200:',
             '        body:',
@@ -700,10 +707,12 @@ def write_includes(root: Path, *, resource_count: int = 500) -> Path:
 
 
 def write_include_content(root: Path, *, resource_count: int = 250) -> Path:
-    """Resources and a `types:` map written in files of their own, as content.
+    """Resources, traits and a `types:` map written in files of their own, as content.
 
-    `/rN: !include resources/rN.yaml` and `types: !include types.yaml`, with no
-    RAML header, read as if written in place (docs/03 § 4.2). Each resource
+    `/rN: !include resources/rN.yaml`, `tN: !include traits/tN.yaml` and
+    `types: !include types.yaml`, with no RAML header, read as if written in
+    place (docs/03 § 4.2); each trait is a typed position reading content, and
+    its body is grafted from its own file. Each resource
     file holds a method, its parameters and responses, and a child resource,
     so the body is decoded in the included file at every level.
     """
@@ -711,11 +720,14 @@ def write_include_content(root: Path, *, resource_count: int = 250) -> Path:
     files['types.yaml'] = ''.join(
         f'T{index}:\n  properties:\n    id: string\n    n{index}: integer\n' for index in range(resource_count)
     )
-    lines = ['#%RAML 1.0', 'title: Generated include-content benchmark', 'types: !include types.yaml']
+    lines = ['#%RAML 1.0', 'title: Generated include-content benchmark', 'types: !include types.yaml', 'traits:']
+    lines += [f'  t{index}: !include traits/t{index}.yaml' for index in range(resource_count)]
     for index in range(resource_count):
+        files[f'traits/t{index}.yaml'] = f'description: trait {index}\n'
         files[f'resources/r{index}.yaml'] = (
             f'displayName: R{index}\n'
             'get:\n'
+            f'  is: [t{index}]\n'
             '  queryParameters:\n'
             '    page: integer\n'
             '  responses:\n'

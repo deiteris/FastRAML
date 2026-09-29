@@ -106,6 +106,23 @@ class TestFeatureCorporaReachTheirCode:
         assert len(rewritten) == count
         assert set(rewritten) == {True, False}
 
+    def test_includes_peeks_at_every_trait_fragment_once(self, tmp_path, monkeypatch):
+        import fastraml.parser.includes as includes_module
+
+        headers: list[bool | None] = []
+        original = includes_module._has_raml_header
+
+        def counting(raml, target):
+            result = original(raml, target)
+            headers.append(result)
+            return result
+
+        monkeypatch.setattr(includes_module, '_has_raml_header', counting)
+        count = 3
+        raml = parse_from_path(corpus.write_includes(tmp_path, resource_count=count))
+        assert headers == [True] * count
+        assert raml.endpoints['/r2'].operations['get'].description.value == 'trait 2'
+
     def test_include_content_reads_every_resource_and_the_types_as_content(self, tmp_path, monkeypatch):
         import fastraml.parser.includes as includes_module
 
@@ -123,6 +140,9 @@ class TestFeatureCorporaReachTheirCode:
         monkeypatch.setattr('fastraml.types.shape.inline_include', counting)
         raml = parse_from_path(corpus.write_include_content(tmp_path, resource_count=3))
         assert sorted(inlined) == ['r0.yaml', 'r1.yaml', 'r2.yaml', 'types.yaml']
+        # Each trait file is content at a typed position, applied where it is named.
+        descriptions = [raml.endpoints[f'/r{index}'].operations['get'].description.value for index in range(3)]
+        assert descriptions == [f'trait {index}' for index in range(3)]
         assert sorted(raml.endpoints) == ['/r0', '/r0/{id}', '/r1', '/r1/{id}', '/r2', '/r2/{id}']
 
     def test_templates_applies_resource_types_and_every_transform_it_names(self, tmp_path, monkeypatch):

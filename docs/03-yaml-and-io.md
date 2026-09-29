@@ -124,6 +124,15 @@ space for one tab keeps every position.
 Other targets become UTF-8 string scalar nodes. URI query and fragment suffixes
 are ignored when determining the extension.
 
+An included file either is content or declares a kind. A file whose first line
+is a RAML header (`#%RAML ...`) is a typed fragment: it must be valid as its
+kind, and its kind must be the one the position takes (spec section Typed
+Fragments). A file without one is content, read as if written where it is
+included. So where a value is data — an example, an annotation value, a scalar
+facet — a file with a RAML header, known kind or not, is `fragment is not
+allowed here`, with the header in `info`. The spec is silent on this; the rule
+keeps a NamedExample, a map of named examples, out of the place of one.
+
 ### 4.3 Caching, limits, and cycles
 
 - A composed include target is read and composed once per parse through

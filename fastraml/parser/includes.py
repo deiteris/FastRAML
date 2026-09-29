@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Final
 
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.uris import path_to_file_uri, resolve_uri_ref
-from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, compose, decode_source, node_error
+from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, compose, decode_source, node_error, read_head
 
 if TYPE_CHECKING:
     from fastraml.positions import Position
@@ -37,6 +37,9 @@ __all__ = [
     'resolve_ref_uri',
     'strip_uri_suffix',
 ]
+
+#: How every RAML document's first line begins: `#%RAML 1.0 Trait`, `#%RAML 0.8`.
+RAML_HEADER_PREFIX: Final = '#%RAML'
 
 #: Include arguments composed as YAML. Everything else becomes a string scalar,
 #: which is how `content: !include legal.md` works (spec section Includes).
@@ -159,13 +162,16 @@ def resolve_include(raml: Raml, node: Node, location: str) -> tuple[str, Node]:
         raise RamlError.wrap('include: resolve URI', err, location, node.full_position) from err
 
     cached = raml.include_nodes.get(target)
-    if cached is not None:
-        return target, cached
-
-    data = _load(raml, node, target, location)
-    content = _compose_include(raml, node, data, target)
-    raml.include_nodes[target] = content
-    return target, content
+    if cached is None:
+        data = _load(raml, node, target, location)
+        cached = raml.include_nodes[target] = _compose_include(raml, node, data, target)
+    head = raml.include_heads.get(target)
+    if head is not None:
+        # A typed fragment is a declaration of its kind, which has a place of
+        # its own; where data or content goes, only a file without one reads as
+        # written (docs/03 § 4.2).
+        raise node_error('fragment is not allowed here', location, node, info={'path': target, 'header': head})
+    return target, cached
 
 
 def _load(raml: Raml, node: Node, target: str, location: str) -> bytes:
@@ -187,6 +193,9 @@ def _compose_include(raml: Raml, node: Node, data: bytes, target: str) -> Node:
     text = decode_source(data)
     extension = posixpath.splitext(strip_uri_suffix(node.value))[1].lower()
     if extension in _YAML_EXTENSIONS:
+        head = read_head(text)
+        if head.startswith(RAML_HEADER_PREFIX):
+            raml.include_heads[target] = head
         if extension == '.json':
             text = _outer_tabs_as_spaces(text)
         return compose(text, uri=target, max_depth=raml.max_depth)

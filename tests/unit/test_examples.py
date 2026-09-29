@@ -114,6 +114,15 @@ class TestIncludedExample:
         (chain,) = caught.value.chains()
         assert (chain[-1].info['path'], chain[-1].where().rsplit('/', 1)[-1]) == ('$.a', 'e.yaml:2:6')
 
+    def test_a_named_example_fragment_is_not_one_example(self, workspace):
+        # A NamedExample is a map of named examples, whose place is `examples:`.
+        with pytest.raises(RamlError) as caught:
+            self.parse(workspace, 'example', '#%RAML 1.0 NamedExample\nvalue:\n  a: 1\n')
+        assert (caught.value.head.message, caught.value.head.info['header']) == (
+            'fragment is not allowed here',
+            '#%RAML 1.0 NamedExample',
+        )
+
 
 class TestIncludedNamedExamples:
     """`examples: !include e.raml` — the examples are on the fragment.

@@ -79,6 +79,22 @@ class TestIncludeContent:
         # The escaped tab in the string is kept, and columns are where they were.
         assert (key.value, value.value, key.column) == ('a', 'x\ty', 3)
 
+    @pytest.mark.parametrize('head', ['#%RAML 1.0 NamedExample', '#%RAML 1.0 Type', '#%RAML 0.8'])
+    def test_a_file_with_a_raml_header_is_not_data(self, memory_workspace, head):
+        # A typed fragment belongs where its kind goes; an unknown header is no
+        # better. Only a file without one reads as the value written here.
+        root = memory_workspace({'e.raml': f'{head}\nvalue: 1\n'})
+        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+        with pytest.raises(RamlError) as caught:
+            resolve_include(raml, include_node('e.raml'), path_to_file_uri(root / 'a.raml'))
+        assert (caught.value.head.message, caught.value.head.info['header']) == ('fragment is not allowed here', head)
+
+    def test_a_raml_header_in_a_text_file_is_text(self, memory_workspace):
+        root = memory_workspace({'notes.md': '#%RAML 1.0 Trait\n'})
+        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+        _target, content = resolve_include(raml, include_node('notes.md'), path_to_file_uri(root / 'a.raml'))
+        assert content.value == '#%RAML 1.0 Trait\n'
+
     def test_a_non_include_node_is_returned_unchanged(self):
         node = Node(NodeKind.SCALAR, TAG_STR, 'plain')
         target, content = resolve_include(Raml(), node, 'file:///a.raml')

@@ -94,7 +94,7 @@ def test_without_the_package_nothing_is_mounted_and_nothing_fails(monkeypatch: A
     assert local.get('/raml').status_code == 200
 
 
-def test_mount_viewer_none_leaves_it_off(client: Any) -> None:  # noqa: ARG001 - module fixture ordering
+def test_mount_viewer_none_leaves_it_off(client: Any) -> None:
     fresh = build_app()
     add_raml_routes(fresh, mount_viewer=None)
     assert TestClient(fresh).get('/raml-viewer/').status_code == 404
@@ -154,7 +154,7 @@ def test_the_mounted_viewer_reads_this_app_and_not_its_own_sample(client: TestCl
     assert sorted(served['endpoints']) == ['/books', '/books/{isbn}']
 
 
-def test_a_custom_mount_path_carries_its_own_document(client: Any) -> None:  # noqa: ARG001 - module fixture ordering
+def test_a_custom_mount_path_carries_its_own_document(client: Any) -> None:
     fresh = build_app()
     add_raml_routes(fresh, mount_viewer='/ui')
     local = TestClient(fresh)

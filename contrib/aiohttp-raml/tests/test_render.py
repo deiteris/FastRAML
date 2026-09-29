@@ -697,7 +697,7 @@ def test_a_method_raml_has_no_node_for_is_reported_and_left_out() -> None:
 
     app = web.Application()
     app.router.add_route('PURGE', '/cache', purge)
-    app.router.add_get('/cache', fetch, allow_head=False)
+    app.router.add_get('/cache', fetch)
     document, dropped = rendered(app)
     assert list(document['/cache']) == ['get']
     assert dropped == ['PURGE /cache: RAML has no PURGE method; not described']
@@ -814,3 +814,34 @@ def test_a_body_that_is_not_json_is_written_as_text_or_a_file() -> None:
     assert document['/text']['post']['body'] == {'application/xml': 'string'}
     assert document['/image']['post']['body'] == {'image/png': 'file'}
     assert dropped == []
+
+
+# -- which routes -----------------------------------------------------------------
+
+
+def test_the_head_add_get_adds_is_not_described() -> None:
+    """A HEAD is a GET without its body; described, it would claim the GET's bodies."""
+
+    @validate
+    async def fetch() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    app.router.add_get('/x', fetch)
+    document, dropped = rendered(app)
+    assert list(document['/x']) == ['get']
+    assert dropped == []
+
+
+def test_a_head_with_a_handler_of_its_own_is_described() -> None:
+    @validate
+    async def fetch() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    @validate
+    async def probe() -> Annotated[web.Response, Responds(204)]: ...
+
+    app = web.Application()
+    app.router.add_get('/x', fetch, allow_head=False)
+    app.router.add_head('/x', probe)
+    document, _ = rendered(app)
+    assert list(document['/x']) == ['get', 'head']
+    assert document['/x']['head']['responses'] == {'204': {}}

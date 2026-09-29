@@ -92,26 +92,21 @@ def render(  # noqa: PLR0913 - five keyword-only metadata nodes; the count is th
             continue
         built: dict[str, Method] = {}
         uri: Parameters = {}
-        for route in entry:
-            if excluded(route.handler):
+        for verb, handler in operations(entry, walk, path):
+            if verb.lower() not in METHODS:
+                walk.drop(f'{verb} {path}', f'RAML has no {verb} method; not described')
                 continue
-            for verb, handler in operations(route, walk, path):
-                if excluded(handler):
-                    continue
-                if verb.lower() not in METHODS:
-                    walk.drop(f'{verb} {path}', f'RAML has no {verb} method; not described')
-                    continue
-                found = described(handler)
-                if found is None:
-                    walk.drop(f'{verb} {path}', 'handler is not decorated with @validate; described by its path alone')
-                    built[verb.lower()] = Method()
-                    continue
-                method, declared = _method(found, verb, path, document.security_schemes, walk)
-                built[verb.lower()] = method
-                # Merged across the verbs: they share the path, so they share
-                # its parameters, and writing them once per verb would write the
-                # same declaration onto the same resource several times.
-                uri.update(declared)
+            found = described(handler)
+            if found is None:
+                walk.drop(f'{verb} {path}', 'handler is not decorated with @validate; described by its path alone')
+                built[verb.lower()] = Method()
+                continue
+            method, declared = _method(found, verb, path, document.security_schemes, walk)
+            built[verb.lower()] = method
+            # Merged across the verbs: they share the path, so they share its
+            # parameters, and writing them once per verb would write the same
+            # declaration onto the same resource several times.
+            uri.update(declared)
         # Only now: `at` creates every segment on the way, so asking for the
         # path of a resource whose every handler is excluded would leave an
         # empty node behind.

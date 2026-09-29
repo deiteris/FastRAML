@@ -1,0 +1,127 @@
+"""Read an application and build a `Document`.
+
+Everything comes off what the handlers declared. `validate` left a `Described`
+on each wrapper -- the same record the injector validates against -- so a
+parameter cannot be documented in one place and read from another.
+
+Routes come from `app.router.resources()`; a resource's `get_info()` gives a
+`path` or a `formatter`, and the formatter already spells `{name}` as RAML does.
+
+Anything the renderer cannot express lands in `Report.dropped`, never omitted in
+silence.
+
+| Module | Decides |
+|---|---|
+| `routes` | which routes are described, and the verbs each stands for |
+| `parameters` | a handler's URI parameters, query parameters, headers and body |
+| `responses` | the responses a handler declares |
+| `security` | `securitySchemes:` and each handler's `securedBy` |
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from raml_document import METHODS, Document, Documentation, Method, Parameters, Report, Resource, SecurityScheme
+from raml_document.from_pydantic import Walk
+
+from aiohttp_raml.decorator import Described, described, excluded
+from aiohttp_raml.render.parameters import body, parameters
+from aiohttp_raml.render.responses import responses
+from aiohttp_raml.render.routes import operations
+from aiohttp_raml.render.security import schemes, secured_by
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+__all__ = ['Report', 'render']
+
+
+def _place_uri(root: Resource, path: str, uri: Parameters, at: str, walk: Walk) -> None:
+    """Put each URI parameter on the resource whose segment names it (`Resource.declare_uri_parameter`)."""
+    for name, declaration in uri.items():
+        if not root.declare_uri_parameter(path, name, declaration):
+            walk.drop(at, f'uri parameter {name!r} names no segment of {path}; not written')
+
+
+def _method(
+    entry: Described, verb: str, path: str, declared: dict[str, SecurityScheme], walk: Walk
+) -> tuple[Method, Parameters]:
+    at = f'{verb} {path}'
+    method = Method(display_name=entry.display_name, description=entry.description)
+    uri = parameters(entry, method, at, walk)
+    body(entry, method, at, walk)
+    responses(entry, method, at, walk)
+    method.secured_by.extend(secured_by(entry, declared, at, walk))
+    return method, uri
+
+
+def render(  # noqa: PLR0913 - five keyword-only metadata nodes; the count is the API
+    app: Any,
+    *,
+    title: str = 'API',
+    version: str | None = None,
+    description: str | None = None,
+    base_uri: str | None = None,
+    documentation: Sequence[Documentation] = (),
+) -> Report:
+    """Render `app` as a RAML 1.0 document.
+
+    The four keyword arguments are here because a `web.Application` is a mapping
+    with routes attached and carries no metadata of its own. RAML requires a
+    `title`, so one is supplied rather than the document being unparseable by
+    default.
+    """
+    walk = Walk()
+    document = Document(
+        title=title,
+        version=version,
+        description=description,
+        base_uri=base_uri,
+        documentation=list(documentation),
+    )
+    document.security_schemes = schemes(app)
+
+    for entry in app.router.resources():
+        if excluded(entry):
+            continue
+        info = entry.get_info()
+        path = info.get('path') or info.get('formatter')
+        if path is None:
+            walk.drop(str(entry), 'a resource with no path is not an API operation; not described')
+            continue
+        built: dict[str, Method] = {}
+        uri: Parameters = {}
+        for route in entry:
+            if excluded(route.handler):
+                continue
+            for verb, handler in operations(route, walk, path):
+                if excluded(handler):
+                    continue
+                if verb.lower() not in METHODS:
+                    walk.drop(f'{verb} {path}', f'RAML has no {verb} method; not described')
+                    continue
+                found = described(handler)
+                if found is None:
+                    walk.drop(f'{verb} {path}', 'handler is not decorated with @validate; described by its path alone')
+                    built[verb.lower()] = Method()
+                    continue
+                method, declared = _method(found, verb, path, document.security_schemes, walk)
+                built[verb.lower()] = method
+                # Merged across the verbs: they share the path, so they share
+                # its parameters, and writing them once per verb would write the
+                # same declaration onto the same resource several times.
+                uri.update(declared)
+        # Only now: `at` creates every segment on the way, so asking for the
+        # path of a resource whose every handler is excluded would leave an
+        # empty node behind.
+        if not built:
+            continue
+        document.root.at(path).methods.update(built)
+        _place_uri(document.root, path, uri, path, walk)
+
+    # Last: the walk registers models as the handlers are read, so `types` is
+    # only complete once every handler has been.
+    document.types = walk.types
+    document.annotation_types = walk.annotation_types
+    return Report(document=document, dropped=walk.dropped)

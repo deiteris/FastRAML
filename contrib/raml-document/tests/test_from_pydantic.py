@@ -473,7 +473,9 @@ class TestTaggedUnionsShareTheirBase:
         assert walk.types['_Cat'].type == 'PetBase'
         assert 'AnimalBase' not in walk.types
         shape = parsed_types(walk)['M']
-        assert shape.validate({'pet': {'kind': 'cat', 'species': 'c'}, 'animal': {'kind': 'dog', 'species': 'd'}}) is None
+        assert (
+            shape.validate({'pet': {'kind': 'cat', 'species': 'c'}, 'animal': {'kind': 'dog', 'species': 'd'}}) is None
+        )
 
     def test_a_member_already_selected_by_another_property_leaves_the_union_plain(self):
         """RAML gives a type one `discriminatorValue`; overwriting it breaks the first union."""

@@ -26,6 +26,8 @@ __all__ = [
     'write_endpoints',
     'write_enums',
     'write_facets',
+    'write_include_content',
+    'write_includes',
     'write_inheritance',
     'write_jsonschema',
     'write_large',
@@ -637,3 +639,95 @@ def write_jsonschema(root: Path, *, schema_count: int = 200, shared_count: int =
     files['lib.raml'] = '\n'.join(lines) + '\n'
     _write(root, files)
     return root / 'lib.raml'
+
+
+# -- includes -----------------------------------------------------------------
+
+#: One in this many `includes` examples is tab-indented, as an editor that
+#: indents with tabs writes it, and one in `_LEADING_TAB_EVERY` begins with a
+#: tab before its `{`, the case YAML refuses (docs/03 § 4.2).
+_TABBED_EVERY: int = 4
+_LEADING_TAB_EVERY: int = 16
+
+
+def _example_json(index: int) -> str:
+    body = f'{{\n  "id": "i{index}",\n  "count": {index},\n  "tags": ["a", "b"]\n}}\n'
+    if (index + 1) % _LEADING_TAB_EVERY == 0:
+        return '\t' + body.replace('  ', '\t')
+    if (index + 1) % _TABBED_EVERY == 0:
+        return body.replace('  ', '\t')
+    return body
+
+
+def write_includes(root: Path, *, resource_count: int = 500) -> Path:
+    """Examples supplied by `!include`, a `.json` and a `.yaml` file per resource.
+
+    The general corpora include nothing but typed fragments and libraries, so
+    none of them reads a data include (docs/03 § 4.2): the compose cache, the
+    header check, and the `.json` whitespace rule. Every example here is its
+    own file, so each is read and composed once; `tests/bench/test_corpus.py`
+    pins that every one is, and that tabbed ones take the whitespace path.
+    """
+    files: dict[str, str] = {}
+    lines = [
+        '#%RAML 1.0',
+        'title: Generated include benchmark',
+        'types:',
+        '  Item:',
+        '    properties:',
+        '      id: string',
+        '      count: integer',
+        '      tags: string[]',
+    ]
+    for index in range(resource_count):
+        files[f'examples/e{index}.json'] = _example_json(index)
+        files[f'examples/e{index}.yaml'] = f'id: y{index}\ncount: {index}\ntags: [c]\n'
+        lines += [
+            f'/r{index}:',
+            '  get:',
+            '    responses:',
+            '      200:',
+            '        body:',
+            '          application/json:',
+            '            type: Item',
+            '            examples:',
+            f'              json: !include examples/e{index}.json',
+            f'              yaml: !include examples/e{index}.yaml',
+        ]
+    files['api.raml'] = '\n'.join(lines) + '\n'
+    _write(root, files)
+    return root / 'api.raml'
+
+
+def write_include_content(root: Path, *, resource_count: int = 250) -> Path:
+    """Resources and a `types:` map written in files of their own, as content.
+
+    `/rN: !include resources/rN.yaml` and `types: !include types.yaml`, with no
+    RAML header, read as if written in place (docs/03 § 4.2). Each resource
+    file holds a method, its parameters and responses, and a child resource,
+    so the body is decoded in the included file at every level.
+    """
+    files: dict[str, str] = {}
+    files['types.yaml'] = ''.join(
+        f'T{index}:\n  properties:\n    id: string\n    n{index}: integer\n' for index in range(resource_count)
+    )
+    lines = ['#%RAML 1.0', 'title: Generated include-content benchmark', 'types: !include types.yaml']
+    for index in range(resource_count):
+        files[f'resources/r{index}.yaml'] = (
+            f'displayName: R{index}\n'
+            'get:\n'
+            '  queryParameters:\n'
+            '    page: integer\n'
+            '  responses:\n'
+            '    200:\n'
+            '      body:\n'
+            f'        application/json: T{index}\n'
+            '/{id}:\n'
+            '  delete:\n'
+            '    responses:\n'
+            '      204:\n'
+        )
+        lines.append(f'/r{index}: !include resources/r{index}.yaml')
+    files['api.raml'] = '\n'.join(lines) + '\n'
+    _write(root, files)
+    return root / 'api.raml'

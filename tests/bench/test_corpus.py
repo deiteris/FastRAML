@@ -35,6 +35,8 @@ WRITERS = {
     'unions': lambda root: corpus.write_unions(root, family_count=1),
     'facets': lambda root: corpus.write_facets(root, family_count=1),
     'inheritance': lambda root: corpus.write_inheritance(root, family_count=1),
+    'includes': lambda root: corpus.write_includes(root, resource_count=corpus._LEADING_TAB_EVERY + 1),
+    'include-content': lambda root: corpus.write_include_content(root, resource_count=3),
 }
 
 
@@ -77,6 +79,51 @@ class TestFeatureCorporaReachTheirCode:
         monkeypatch.setattr(complex_module, 'unique_items', counting)
         parse_from_path(corpus.write_enums(tmp_path, family_count=1), ParseOptions(unwrap=True, validate=True))
         assert set(lengths) >= set(corpus.UNIQUE_LENGTHS)
+
+    def test_includes_composes_every_example_and_takes_both_whitespace_paths(self, tmp_path, monkeypatch):
+        import fastraml.parser.includes as includes_module
+
+        composed: list[str] = []
+        rewritten: list[bool] = []
+        original_compose = includes_module._compose_include
+        original_tabs = includes_module._outer_tabs_as_spaces
+
+        def counting_compose(raml, node, data, target):
+            composed.append(target.rsplit('/', 1)[-1])
+            return original_compose(raml, node, data, target)
+
+        def counting_tabs(text):
+            result = original_tabs(text)
+            rewritten.append(result is not text)
+            return result
+
+        monkeypatch.setattr(includes_module, '_compose_include', counting_compose)
+        monkeypatch.setattr(includes_module, '_outer_tabs_as_spaces', counting_tabs)
+        count = corpus._LEADING_TAB_EVERY + 1
+        parse_from_path(corpus.write_includes(tmp_path, resource_count=count))
+        assert sorted(composed) == sorted(f'e{index}.{kind}' for index in range(count) for kind in ('json', 'yaml'))
+        # Every `.json` is checked; a leading tab is rewritten, inner ones are not.
+        assert len(rewritten) == count
+        assert set(rewritten) == {True, False}
+
+    def test_include_content_reads_every_resource_and_the_types_as_content(self, tmp_path, monkeypatch):
+        import fastraml.parser.includes as includes_module
+
+        inlined: list[str] = []
+        original = includes_module.inline_include
+
+        def counting(raml, node, location):
+            content, written = original(raml, node, location)
+            if written != location:
+                inlined.append(written.rsplit('/', 1)[-1])
+            return content, written
+
+        for module in ('source_ir', 'fragments'):
+            monkeypatch.setattr(f'fastraml.parser.{module}.inline_include', counting)
+        monkeypatch.setattr('fastraml.types.shape.inline_include', counting)
+        raml = parse_from_path(corpus.write_include_content(tmp_path, resource_count=3))
+        assert sorted(inlined) == ['r0.yaml', 'r1.yaml', 'r2.yaml', 'types.yaml']
+        assert sorted(raml.endpoints) == ['/r0', '/r0/{id}', '/r1', '/r1/{id}', '/r2', '/r2/{id}']
 
     def test_templates_applies_resource_types_and_every_transform_it_names(self, tmp_path, monkeypatch):
         import fastraml.parser.endpoint_build as build_module

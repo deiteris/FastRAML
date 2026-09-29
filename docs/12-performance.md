@@ -61,7 +61,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures thirteen workloads:
+`bench/` generates deterministic corpora and measures fifteen workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -78,8 +78,10 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `facets` | custom facets declared up every parent of types that inherit from 2, 4, and 8 parents, and a diamond ([10](10-validation.md) § 4) |
 | `inheritance` | a union of 2 and 4 members among a type's parents: after an object, first, and paired with a second union; and a property, pattern property and items property that every parent declares, folded on each merge ([07](07-resolution-and-inheritance.md) § 4 and § 5) |
 | `templates` | resource types and a trait with parameters and transforms: a collection per resource and an item child, applied as real APIs apply them ([08](08-templates-and-endpoints.md) § 5) |
+| `includes` | an example per resource from a `.json` and a `.yaml` file each: data includes, the header check, and the `.json` whitespace rule, one in four tab-indented and one in sixteen with a tab before `{` ([03](03-yaml-and-io.md) § 4.2) |
+| `include-content` | each resource, and the `types:` map, written in a file of its own and included as content ([03](03-yaml-and-io.md) § 4.2) |
 
-The first six are general workloads. The last seven are feature workloads:
+The first six are general workloads. The last nine are feature workloads:
 each exists because no general workload runs the code it covers. Their tests
 (`tests/bench/test_corpus.py`) count calls and fail if a corpus stops reaching
 that code at every size it covers.

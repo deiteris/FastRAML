@@ -127,7 +127,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "fastraml" },
     { name = "pydantic" },
-    { name = "raml-document" },
+    { name = "raml-document", extra = ["pydantic", "serve"] },
 ]
 
 [package.optional-dependencies]
@@ -150,7 +150,7 @@ requires-dist = [
     { name = "fastraml", editable = "../../" },
     { name = "fastraml-viewer", marker = "extra == 'viewer'", editable = "../fastraml-viewer" },
     { name = "pydantic", specifier = ">=2.7" },
-    { name = "raml-document", editable = "../raml-document" },
+    { name = "raml-document", extras = ["pydantic", "serve"], editable = "../raml-document" },
 ]
 provides-extras = ["viewer"]
 
@@ -1079,13 +1079,23 @@ dependencies = [
     { name = "pyyaml" },
 ]
 
+[package.optional-dependencies]
+pydantic = [
+    { name = "annotated-types" },
+    { name = "pydantic" },
+]
+serve = [
+    { name = "fastraml" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "annotated-types", marker = "extra == 'pydantic'", specifier = ">=0.6" },
+    { name = "fastraml", marker = "extra == 'serve'", editable = "../../" },
     { name = "pydantic", marker = "extra == 'pydantic'", specifier = ">=2.7" },
     { name = "pyyaml", specifier = ">=6" },
 ]
-provides-extras = ["pydantic"]
+provides-extras = ["pydantic", "serve"]
 
 [package.metadata.requires-dev]
 dev = [

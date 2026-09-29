@@ -472,8 +472,22 @@ request, and then reused; no route can appear later to invalidate it.
 
 Before serving anything, `aiohttp-raml` parses the document it generated and
 validates it. If the result would not parse, or an example in it does not
-validate, the request fails loudly instead of sending a broken document to a
-client.
+validate, `/raml` and `/raml.json` answer 500 with the reason: each problem is
+cited at its line in the rendered RAML, with that line quoted. Everything the
+renderer had to leave out is logged as a warning on the `aiohttp_raml` logger.
+A browser asking for `/raml` gets `text/plain`, which it shows, rather than
+`application/raml+yaml`, which it downloads.
+
+Check it in a test, so a document that will not parse fails there:
+
+```python
+from aiohttp_raml import build
+
+build(app, title='Library')  # raises BuildError if the RAML does not parse
+build(app, title='Library', strict=True)  # ...or if anything was left out
+```
+
+The pipeline is `raml_document.serve`, which `fastapi-raml` serves through too.
 
 ### Keep a route out of the document
 

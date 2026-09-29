@@ -13,7 +13,6 @@ silence.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import hdrs
@@ -24,6 +23,7 @@ from raml_document import (
     Documentation,
     Method,
     Parameters,
+    Report,
     Resource,
     Response,
     SecuredBy,
@@ -44,17 +44,6 @@ __all__ = ['Report', 'render']
 
 #: The `Method` field each RAML node is rendered into.
 _NODES = {QUERY: 'query_parameters', HEADER: 'headers'}
-
-
-@dataclass(slots=True)
-class Report:
-    """A rendered document, and everything the renderer could not express."""
-
-    document: Document
-    dropped: list[str] = field(default_factory=list)
-
-    def to_raml(self) -> str:
-        return self.document.to_raml()
 
 
 def _field_info(item: Declared) -> FieldInfo:

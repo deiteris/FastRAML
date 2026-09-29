@@ -44,7 +44,7 @@ from aiohttp_raml.security import (
     PassThrough,
     SecurityScheme,
 )
-from aiohttp_raml.serve import Served, add_raml_routes, build
+from aiohttp_raml.serve import BuildError, Served, add_raml_routes, build
 from aiohttp_raml.view import RamlView
 
 __all__ = [
@@ -52,6 +52,7 @@ __all__ = [
     'AuthorizationError',
     'BasicAuth',
     'Body',
+    'BuildError',
     'CustomScheme',
     'Described',
     'DigestAuth',

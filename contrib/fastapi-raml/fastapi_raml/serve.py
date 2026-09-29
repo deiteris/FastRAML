@@ -12,15 +12,9 @@ Two routes, neither in the app's own schema, plus an optional viewer:
 itself, so the mount serves this app's tree at that name and the bundle is
 pointed at the right document by where it is mounted.
 
-The pipeline behind the first two:
-
-    app --render()--> RAML text --parse_from_string()--> Raml --build_tree()--> tree
-
-**The parse is not a formality.** It runs with `validate=True`, so a document
-that will not parse, or whose examples do not validate, raises `BuildError`
-here rather than reaching a client. It is also the only route to the third
-stage: `build_tree` projects a parsed `Raml`, so nothing reaches the viewer
-without going through RAML text first.
+Behind the first two is `raml_document.serve.build`: the rendered document is
+parsed back with `validate=True` before anything is served, and one that does
+not parse raises `BuildError` rather than reaching a client.
 
 Nothing runs at import time. The first request builds, in a worker thread so the
 event loop keeps serving; the result is held and reused until the app's routes
@@ -30,14 +24,13 @@ request. `build(app)` is the same check, callable from a test or at startup.
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastraml import ParseOptions, RamlError, build_tree, parse_from_string
+from raml_document import serve
+from raml_document.serve import RAML_MEDIA_TYPE, BuildError, Served, media_type
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import PlainTextResponse, Response
 
@@ -50,46 +43,7 @@ if TYPE_CHECKING:
 
 __all__ = ['RAML_MEDIA_TYPE', 'BuildError', 'Served', 'add_raml_routes', 'build']
 
-#: RAML's registered media type (spec § Introduction).
-RAML_MEDIA_TYPE = 'application/raml+yaml'
-
 logger = logging.getLogger('fastapi_raml')
-
-#: The name the rendered document is parsed under, and the one an error cites.
-_FILE_NAME = 'api.raml'
-#: Where a relative `!include` would resolve. Nothing rendered here writes one,
-#: so nothing is read from it; it only has to be an absolute path.
-_BASE_DIR = Path(__file__).resolve().parent
-
-
-class BuildError(Exception):
-    """The app rendered RAML that does not parse, or, under `strict`, left something out.
-
-    `str()` cites each problem at its line in the rendered text and quotes that
-    line: the text is not served while it fails, so the error is the only place
-    a reader sees it. `text` holds all of it.
-    """
-
-    def __init__(self, message: str, text: str, dropped: list[str]) -> None:
-        super().__init__(message)
-        #: The RAML that was rendered.
-        self.text = text
-        #: `Report.dropped` for the render.
-        self.dropped = dropped
-
-
-@dataclass(slots=True)
-class Served:
-    """One app, rendered and parsed back."""
-
-    #: The RAML source.
-    text: str
-    #: `fastraml tree` output for it, ready for `json.dumps`.
-    tree: Any
-    #: Everything the renderer could not express (`Report.dropped`).
-    dropped: list[str]
-    #: `tree` as the bytes `/raml.json` answers with, encoded once per build.
-    tree_json: bytes = field(repr=False, default=b'')
 
 
 def build(app: Any, *, strict: bool = False) -> Served:
@@ -97,43 +51,10 @@ def build(app: Any, *, strict: bool = False) -> Served:
 
     Raises `BuildError` if the rendered document does not parse -- or, with
     `strict=True`, if the renderer had to leave anything out. A test that calls
-    `build(app, strict=True)` fails on either, before a client ever asks.
-
-    The parse is what makes this more than string formatting: `validate=True`
-    also checks every example, and `unwrap=True` is required by the tree view,
-    which is the effective document rather than the declared one.
+    `build(app, strict=True)` fails on either, before a client ever asks. What
+    was left out is logged as warnings on the `fastapi_raml` logger.
     """
-    report = render(app)
-    text = report.to_raml()
-    for entry in report.dropped:
-        logger.warning('RAML for %r leaves out %s', app.title, entry)
-    if strict and report.dropped:
-        listed = '\n'.join(f'  {entry}' for entry in report.dropped)
-        raise BuildError(f'the RAML rendered for {app.title!r} leaves out:\n{listed}', text, report.dropped)
-    try:
-        raml = parse_from_string(
-            text,
-            file_name=_FILE_NAME,
-            base_dir=_BASE_DIR,
-            options=ParseOptions(unwrap=True, validate=True),
-        )
-    except RamlError as error:
-        raise BuildError(_explain(app.title, error, text), text, report.dropped) from error
-    tree = build_tree(raml)
-    return Served(text=text, tree=tree, dropped=report.dropped, tree_json=json.dumps(tree).encode())
-
-
-def _explain(title: str, error: RamlError, text: str) -> str:
-    """Each problem's innermost frame, at its line in `text`, with that line quoted."""
-    lines = text.splitlines()
-    out = [f'the RAML rendered for {title!r} does not parse:']
-    for chain in error.chains():
-        frame = chain[-1]
-        where = f'{_FILE_NAME}:{frame.position}' if frame.position is not None else _FILE_NAME
-        out.append(f'  {where} {frame.rendered_message()}')
-        if frame.position is not None and 0 < frame.position.line <= len(lines):
-            out.append(f'      {frame.position.line} | {lines[frame.position.line - 1]}')
-    return '\n'.join(out)
+    return serve.build(render(app), strict=strict, log=logger)
 
 
 @dataclass(slots=True)
@@ -199,19 +120,6 @@ def _mount_viewer(app: Any, path: str | None, tree: Callable[[Request], Awaitabl
     return path
 
 
-def _media_type(request: Request) -> str:
-    """`application/raml+yaml`, unless a browser is asking.
-
-    A browser sends `text/html` and names no RAML type, and given a type it
-    cannot show it downloads the document instead of showing it. Plain text is
-    the same bytes, displayed.
-    """
-    accept = request.headers.get('accept', '')
-    if 'text/html' in accept and RAML_MEDIA_TYPE not in accept:
-        return 'text/plain'
-    return RAML_MEDIA_TYPE
-
-
 def _failure(error: BuildError) -> PlainTextResponse:
     """A 500 that says why, rather than one that says nothing.
 
@@ -260,7 +168,8 @@ def add_raml_routes(
             served = await run_in_threadpool(cache.get, app)
         except BuildError as error:
             return _failure(error)
-        return Response(served.text, media_type=_media_type(request), headers={'Vary': 'Accept'})
+        accept = request.headers.get('accept', '')
+        return Response(served.text, media_type=media_type(accept), headers={'Vary': 'Accept'})
 
     async def raml_tree(request: Request) -> Response:  # noqa: ARG001 - the signature Starlette calls
         try:

@@ -547,6 +547,9 @@ pydantic = [
     { name = "annotated-types" },
     { name = "pydantic" },
 ]
+serve = [
+    { name = "fastraml" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -561,10 +564,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "annotated-types", marker = "extra == 'pydantic'", specifier = ">=0.6" },
+    { name = "fastraml", marker = "extra == 'serve'", editable = "../../" },
     { name = "pydantic", marker = "extra == 'pydantic'", specifier = ">=2.7" },
     { name = "pyyaml", specifier = ">=6" },
 ]
-provides-extras = ["pydantic"]
+provides-extras = ["pydantic", "serve"]
 
 [package.metadata.requires-dev]
 dev = [

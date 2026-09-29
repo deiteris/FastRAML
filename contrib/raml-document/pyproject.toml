@@ -15,6 +15,9 @@ dependencies = ["pyyaml>=6"]
 # `raml_document.from_pydantic` reads pydantic models directly. The document
 # model itself needs none of it, so importing `raml_document` does not.
 pydantic = ["pydantic>=2.7", "annotated-types>=0.6"]
+# `raml_document.serve` parses a rendered document back before it is served,
+# which is what every integration does and what the model itself never needs.
+serve = ["fastraml>=0.1,<0.2"]
 
 [dependency-groups]
 dev = [
@@ -23,7 +26,8 @@ dev = [
     "annotated-types>=0.6",
     "mypy>=1.10",
     "ruff>=0.6",
-    # The round-trip test: what this emits, fastraml must parse.
+    # The round-trip test, and `raml_document.serve`: what this emits, fastraml
+    # must parse.
     "fastraml",
 ]
 

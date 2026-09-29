@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import builtins
+import re
 from typing import Annotated, Any
 
 import pytest
 from aiohttp import web
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from aiohttp_raml import RamlView, Responds, add_raml_routes, build
-from aiohttp_raml.serve import RAML_MEDIA_TYPE
+from aiohttp_raml.serve import RAML_MEDIA_TYPE, BuildError
 from examples import server
 
 
@@ -174,3 +175,45 @@ async def test_a_route_added_after_the_app_starts_is_refused_by_aiohttp(aiohttp_
     local = await aiohttp_client(add_raml_routes(build_app(), title='Fresh'))
     with pytest.raises(RuntimeError, match='frozen'):
         local.app.router.add_view('/later', ThingView)
+
+
+class Broken(BaseModel):
+    """An example the model's own type refuses: RAML validates examples, pydantic does not."""
+
+    n: int = Field(examples=['ten'])
+
+
+class BrokenView(RamlView):
+    async def get(self) -> Annotated[web.Response, Responds(200, Broken)]:
+        return web.json_response({'n': 1})
+
+
+def broken_app() -> web.Application:
+    app = web.Application()
+    app.router.add_view('/broken', BrokenView)
+    return app
+
+
+async def test_a_failed_build_answers_with_the_reason(aiohttp_client: Any) -> None:
+    """The same pipeline and error `fastapi-raml` serves: `raml_document.serve`."""
+    client = await aiohttp_client(add_raml_routes(broken_app(), mount_viewer=None))
+    for url in ('/raml', '/raml.json'):
+        response = await client.get(url)
+        assert response.status == 500
+        text = await response.text()
+        assert 'does not parse' in text
+        assert re.search(r'api\.raml:\d+:\d+ ', text)
+
+
+def test_build_raises_it() -> None:
+    with pytest.raises(BuildError) as caught:
+        build(broken_app())
+    assert caught.value.text.startswith('#%RAML 1.0')
+
+
+async def test_a_browser_is_shown_the_source_rather_than_handed_a_download(client: Any) -> None:
+    browser = await client.get('/raml', headers={'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8'})
+    assert browser.headers['content-type'].startswith('text/plain')
+    tool = await client.get('/raml', headers={'Accept': '*/*'})
+    assert tool.headers['content-type'].startswith(RAML_MEDIA_TYPE)
+    assert await browser.text() == await tool.text()

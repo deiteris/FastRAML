@@ -184,9 +184,8 @@ It is also the only way to reach the third stage: `build_tree` projects a parsed
 `Raml`, so there is no route from the renderer to the tree that does not go
 through RAML text.
 
-`parse_from_string` needs a `base_dir` for relative `!include` to resolve
-against. Nothing rendered here writes an include, so nothing is read from it;
-`build()` passes the package's own directory.
+The pipeline is `raml_document.serve`, shared with `aiohttp-raml`: one parse,
+one `BuildError`, one explanation of what failed and where.
 
 ## Serving
 

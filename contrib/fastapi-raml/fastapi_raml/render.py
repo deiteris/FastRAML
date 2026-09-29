@@ -26,7 +26,6 @@ omitted in silence.
 from __future__ import annotations
 
 import functools
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
 from fastapi import routing as fastapi_routing
@@ -42,6 +41,7 @@ from raml_document import (
     Document,
     Method,
     Parameters,
+    Report,
     Response,
     SecuredBy,
     SecurityScheme,
@@ -69,17 +69,6 @@ GRANTS: Final[dict[str, str]] = {
 KEY_PLACES: Final[dict[str, str]] = {'header': 'headers', 'query': 'queryParameters', 'cookie': 'headers'}
 #: What FastAPI's default response class says when a route says nothing.
 DEFAULT_RESPONSE_DESCRIPTION: Final = 'Successful Response'
-
-
-@dataclass(slots=True)
-class Report:
-    """A rendered document, and everything the renderer could not express."""
-
-    document: Document
-    dropped: list[str] = field(default_factory=list)
-
-    def to_raml(self) -> str:
-        return self.document.to_raml()
 
 
 # -- routes -------------------------------------------------------------------

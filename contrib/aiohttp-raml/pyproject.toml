@@ -9,7 +9,7 @@ license = "MIT"
 # A consumer of fastraml, so fastraml is a dependency here and this is not one
 # there. The parser must not depend on a web framework.
 dependencies = [
-    "raml-document>=0.1,<0.2",
+    "raml-document[pydantic,serve]>=0.1,<0.2",
     "fastraml>=0.1,<0.2",
     "aiohttp>=3.10",
     "pydantic>=2.7",

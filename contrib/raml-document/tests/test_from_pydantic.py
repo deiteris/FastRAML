@@ -714,7 +714,11 @@ class _Pet(_Animal):
 
 
 class TestRedeclaredProperties:
-    """RAML reads a redeclared property as a narrowing; Python lets a subclass retype freely."""
+    """RAML reads a redeclared property as a narrowing; Python lets a subclass retype freely.
+
+    Which retypings RAML accepts is the parser's rule, not the renderer's, so
+    any change declares the subclass whole -- the same values, no supertype.
+    """
 
     @pytest.mark.parametrize(
         ('parent', 'child'),
@@ -725,37 +729,27 @@ class TestRedeclaredProperties:
             pytest.param(Literal['a'], Literal['a', 'b'], id='enum widened'),
             pytest.param(Annotated[int, Field(ge=0)], int, id='bound dropped'),
             pytest.param(list[str], list[int], id='item kind'),
+            pytest.param(str, Literal['cat'], id='a tag narrowed'),
+            pytest.param(_Animal, _Pet, id='a submodel'),
         ],
     )
-    def test_a_widening_override_is_declared_without_its_supertype(self, parent: Any, child: Any):
+    def test_a_retyped_field_declares_the_subclass_whole(self, parent: Any, child: Any):
         base = type('Base', (BaseModel,), {'__annotations__': {'x': parent, 'y': int}, '__module__': __name__})
         sub = type('Sub', (base,), {'__annotations__': {'x': child}, '__module__': __name__})
         walk = Walk()
         walk.model(sub)
         assert walk.types['Sub'].type == 'object'
         assert list(walk.types['Sub'].properties) == ['x', 'y']
-        assert any('does not narrow' in message for message in walk.dropped)
+        assert not walk.dropped
         parsed_types(walk)
 
-    @pytest.mark.parametrize(
-        ('parent', 'child'),
-        [
-            pytest.param(str, Literal['cat'], id='a tag'),
-            pytest.param(_Animal, _Pet, id='a submodel'),
-            pytest.param(Annotated[int | None, Field(default=None)], int, id='optional made required'),
-            pytest.param(str | None, str, id='null refused'),
-            pytest.param(Literal['a', 'b'], Literal['a'], id='enum narrowed'),
-            pytest.param(Annotated[int, Field(ge=0)], Annotated[int, Field(ge=0, le=9)], id='bound added'),
-        ],
-    )
-    def test_a_narrowing_override_keeps_its_supertype(self, parent: Any, child: Any):
-        base = type('Base', (BaseModel,), {'__annotations__': {'x': parent, 'y': int}, '__module__': __name__})
-        sub = type('Sub', (base,), {'__annotations__': {'x': child}, '__module__': __name__})
+    def test_a_field_redeclared_unchanged_keeps_the_supertype(self):
+        base = type('Base', (BaseModel,), {'__annotations__': {'x': int, 'y': int}, '__module__': __name__})
+        sub = type('Sub', (base,), {'__annotations__': {'x': int, 'z': str}, '__module__': __name__})
         walk = Walk()
         walk.model(sub)
         assert walk.types['Sub'].type == 'Base'
-        assert list(walk.types['Sub'].properties) == ['x']
-        assert not walk.dropped
+        assert list(walk.types['Sub'].properties) == ['z']
         parsed_types(walk)
 
 

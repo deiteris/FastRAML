@@ -263,16 +263,18 @@ class Walk:
         # inherited property would state twice what the supertype already says.
         own = {*_own_fields(model), *(set(computed) & set(vars(model)))} if parents else everything
         properties = self._properties(model, at, own, output=output)
-        clash = next((wire for wire, prop in properties.items() if not self._keeps(parents, wire, prop)), None)
-        if clash is not None:
-            # Python lets a subclass retype a field however it likes; RAML reads
-            # a redeclared property as a narrowing of the inherited one and
-            # refuses the document where it is not. Declared whole instead.
-            self.drop(
-                at,
-                f'{clash!r} is redeclared as a type that does not narrow the inherited one; '
-                'declared without its supertypes',
-            )
+        # A field redeclared as its supertype already declares it says nothing
+        # new. One redeclared any other way is a change RAML may refuse -- it
+        # reads a redeclared property as a narrowing, and Python lets a
+        # subclass retype a field however it likes -- so the class is declared
+        # whole and without supertypes, which accepts exactly the same values.
+        # Deciding which changes RAML reads as narrowing is the parser's rule.
+        inherited = {wire: self._inherited(parents, wire) for wire in properties}
+        for wire, prop in list(properties.items()):
+            before = inherited[wire]
+            if before is not None and before.render() == prop.render():
+                del properties[wire]
+        if any(inherited[wire] is not None for wire in properties):
             parents = []
             properties = self._properties(model, at, everything, output=output, known=properties)
 
@@ -387,13 +389,6 @@ class Walk:
         elif others or paths:
             self.drop(where, f'read from {wire!r} and also from {", ".join([*others, *paths])}; RAML names one key')
 
-    # -- redeclared properties --------------------------------------------------
-
-    def _keeps(self, parents: list[str], wire: str, prop: TypeDecl) -> bool:
-        """Does `prop` narrow what `parents` already declare under `wire`, if they declare it?"""
-        inherited = self._inherited(parents, wire)
-        return inherited is None or self._narrows(prop, inherited)
-
     def _inherited(self, names: list[str], wire: str, seen: frozenset[str] = frozenset()) -> TypeDecl | None:
         """The property `wire` as the nearest of the types `names` declares it."""
         for name in names:
@@ -406,50 +401,6 @@ class Walk:
             if found is not None:
                 return found
         return None
-
-    def _narrows(self, child: TypeDecl, parent: TypeDecl) -> bool:
-        """Will RAML read `child` as a restriction of `parent`, and not a stricter document than the model?
-
-        Deliberately conservative: a case this answers wrongly `False` only
-        costs the subtype its supertype. RAML refuses a required property
-        made optional and a change of kind, and a facet the child does not
-        restate is inherited -- which would hold the subclass to a bound its
-        own field does not have.
-        """
-        if parent.required is None and child.required is False:
-            return False
-        facets, child_facets = _facets(parent), _facets(child)
-        parent_enum, child_enum = facets.pop('enum', None), child_facets.pop('enum', None)
-        if any(child_facets.get(key) != value for key, value in facets.items()):
-            return False
-        if parent_enum is not None and not (
-            isinstance(parent_enum, list)
-            and isinstance(child_enum, list)
-            and all(value in parent_enum for value in child_enum)
-        ):
-            return False
-        if not (isinstance(child.type, str) and isinstance(parent.type, str)):
-            return child.type == parent.type
-        if child.items is not None or parent.items is not None:
-            return (
-                child.type == parent.type == 'array'
-                and child.items is not None
-                and parent.items is not None
-                and self._narrows(child.items, parent.items)
-            )
-        wider = [part.strip() for part in parent.type.split('|')]
-        return all(any(self._extends(part.strip(), target) for target in wider) for part in child.type.split('|'))
-
-    def _extends(self, name: str, target: str) -> bool:
-        """Is the type `name` the type `target`, or declared -- through `types` -- as one of its kind?"""
-        if target in (name, 'any'):
-            return True
-        if name.endswith('[]') and target.endswith('[]'):
-            return self._extends(name[:-2], target[:-2])
-        decl = self.types.get(name)
-        if decl is None:
-            return False
-        return any(self._extends(parent, target) for parent in _parents(decl) if parent != name)
 
     def _diverges(self, model: type, shape: _Shape) -> bool:
         """Does `model` -- or any model it reaches -- write, in `shape`, what it does not read?
@@ -850,18 +801,6 @@ def _inherit(existing: str | list[str] | None, added: str) -> str | list[str]:
     return current if added in current else [*current, added]
 
 
-#: What a rendered declaration says that is not a restriction of its values.
-_NOT_FACETS: Final = frozenset({'type', 'displayName', 'description', 'required', 'default', 'examples', 'items'})
-
-
-def _facets(decl: TypeDecl) -> dict[str, Yaml]:
-    """What `decl` restricts its values by -- `enum`, `maxLength`, inline `properties` -- by RAML key."""
-    rendered = decl.render()
-    if not isinstance(rendered, dict):
-        return {}
-    return {key: value for key, value in rendered.items() if key not in _NOT_FACETS}
-
-
 def _parents(decl: TypeDecl) -> list[str]:
     """The names `decl` inherits from: one, several, or none for a union or no type."""
     if isinstance(decl.type, list):
@@ -1040,11 +979,7 @@ def _is_supertype(base: Any) -> bool:
 
 
 def _own_fields(model: type) -> set[str]:
-    """The fields declared on this class, not the ones it inherits.
-
-    An override re-annotates, so a narrowed property is its own and is written
-    again -- which is what RAML expects of a subtype that restricts one.
-    """
+    """The fields declared on this class, not the ones it inherits -- a redeclared one among them."""
     return set(getattr(model, '__annotations__', {})) & set(_fields_of(model))
 
 

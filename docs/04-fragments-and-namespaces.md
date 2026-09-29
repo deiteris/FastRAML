@@ -102,6 +102,28 @@ Consequences:
   is written by the caller. Provenance overlay rules for merged endpoint nodes
   are defined in [08](08-templates-and-endpoints.md).
 
+### 4.1 Literal include and fragment include
+
+The spec does not say which namespace an included file's names resolve in.
+fastRAML keeps two kinds of include apart ([03](03-yaml-and-io.md) § 4.2):
+
+- A file without a RAML header is included literally. It has no namespace of
+  its own: its names resolve where it is included, as the same text written
+  there would, and it cannot import (`uses:` in it is no import). Its nodes are
+  still located in its own file.
+- A typed fragment is included as a fragment. Its names resolve in its own
+  namespace, through its own declarations and `uses:`, never the includer's;
+  nothing in it leaks out and nothing of the includer leaks in.
+
+AMF resolves a typed fragment's names in the includer's namespace as well: a
+Trait or DataType fragment that names the API's type without `uses:` conforms
+there. fastRAML reports the name as unresolved, deliberately.
+
+A literal trait or resource type needs both halves of that rule after it is
+grafted: its body is located by its anchor (docs/08 § 4.2), and the includer's
+anchor would name the wrong file. Its anchor is an `IncludedContent`, which
+resolves every name through the includer and is located in the included file.
+
 ## 5. Fragment decoding
 
 API decoding first collects global `mediaType`, `protocols`, and `securedBy`,

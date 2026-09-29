@@ -119,14 +119,18 @@ class Operation:
     #: Keyed by the status code normalised to text, in declaration order.
     responses: dict[str, Response] = field(default_factory=dict)
     annotations: dict[str, DomainExtension] = field(default_factory=dict)
-    #: The trait references as written. They have already been applied; they are
-    #: retained because a consumer wants to know a method carried a trait.
+    #: The trait references as written: the resource type's, the method's, then
+    #: those the applied traits' own `is:` wrote. They have already been
+    #: applied; they are retained because a consumer wants to know a method
+    #: carried a trait.
     traits: list[DirectiveRef] = field(default_factory=list)
     #: The schemes in force, once P5 has resolved inheritance: this method's own
-    #: if it declared any, otherwise the resource's, otherwise the API's.
+    #: if it declared any, otherwise a trait's, otherwise the resource's,
+    #: otherwise the API's.
     secured_by: list[SecurityScheme] = field(default_factory=list)
-    #: Whether `securedBy:` was written on this method at all, so an explicit
-    #: `[]` or `[null]` is distinguishable from omission (docs/09 § A4).
+    #: Whether `securedBy:` was written on this method, or on a trait applied
+    #: to it, so an explicit `[]` or `[null]` is distinguishable from omission
+    #: (docs/09 § A4).
     explicit_secured_by: bool = False
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN

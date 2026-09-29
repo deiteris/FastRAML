@@ -292,6 +292,115 @@ class TestInheritance:
         assert raml.endpoints['/users/{id}'].operations['get'].secured_by == []
 
 
+TWO = 'securitySchemes:\n  basic:\n    type: Basic Authentication\n  digest:\n    type: Digest Authentication\n'
+
+
+def schemes(raml, uri: str = '/users', method: str = 'get') -> list[str]:
+    return [scheme.name for scheme in raml.endpoints[uri].operations[method].secured_by]
+
+
+class TestTemplates:
+    """docs/09 § A4: a trait's `securedBy:` is the method's unless the method
+    wrote its own, and a resource type's is the resource's on the same terms.
+    """
+
+    def test_a_trait_secures_the_method_it_is_applied_to(self, workspace):
+        raml = parse(
+            workspace, BASIC + 'traits:\n  secured:\n    securedBy: [basic]\n/users:\n  get:\n    is: [secured]\n'
+        )
+        get = raml.endpoints['/users'].operations['get']
+        assert get.explicit_secured_by
+        assert [scheme.definition for scheme in get.secured_by] == [raml.entry_point.security_schemes['basic']]
+
+    def test_the_methods_own_securedby_wins_whole(self, workspace):
+        # Replaced, not merged: a method listing `digest` does not also accept `basic`.
+        raml = parse(
+            workspace,
+            TWO + 'traits:\n  secured:\n    securedBy: [basic]\n'
+            '/users:\n  get:\n    is: [secured]\n    securedBy: [digest]\n',
+        )
+        assert schemes(raml) == ['digest']
+
+    def test_the_methods_empty_securedby_still_wins(self, workspace):
+        raml = parse(
+            workspace,
+            BASIC
+            + 'traits:\n  secured:\n    securedBy: [basic]\n/users:\n  get:\n    is: [secured]\n    securedBy: []\n',
+        )
+        assert schemes(raml) == []
+
+    def test_the_closest_trait_wins(self, workspace):
+        # The method's `is:` is closer than the resource's (docs/08 § 3.2).
+        raml = parse(
+            workspace,
+            TWO + 'traits:\n  near:\n    securedBy: [basic]\n  far:\n    securedBy: [digest]\n'
+            '/users:\n  is: [far]\n  get:\n    is: [near]\n',
+        )
+        assert schemes(raml) == ['basic']
+
+    def test_a_trait_replaces_the_resources_and_the_apis(self, workspace):
+        raml = parse(
+            workspace,
+            TWO + 'securedBy: [digest]\ntraits:\n  secured:\n    securedBy: [basic]\n'
+            '/users:\n  securedBy: [digest]\n  get:\n    is: [secured]\n  post:\n',
+        )
+        assert (schemes(raml), schemes(raml, method='post')) == (['basic'], ['digest'])
+
+    def test_a_null_entry_from_a_trait_allows_no_scheme(self, workspace):
+        raml = parse(
+            workspace, BASIC + 'traits:\n  optional:\n    securedBy: [~, basic]\n/users:\n  get:\n    is: [optional]\n'
+        )
+        assert [scheme.is_null for scheme in raml.endpoints['/users'].operations['get'].secured_by] == [True, False]
+
+    def test_a_parameter_names_the_scheme(self, workspace):
+        raml = parse(
+            workspace,
+            TWO + 'traits:\n  secured:\n    securedBy: [<<scheme>>]\n'
+            '/users:\n  get:\n    is: [{secured: {scheme: digest}}]\n',
+        )
+        assert schemes(raml) == ['digest']
+
+    def test_a_trait_a_resource_type_applies_secures_the_method(self, workspace):
+        raml = parse(
+            workspace,
+            BASIC + 'traits:\n  secured:\n    securedBy: [basic]\n'
+            'resourceTypes:\n  collection:\n    get:\n      is: [secured]\n/users:\n  type: collection\n',
+        )
+        assert schemes(raml) == ['basic']
+
+    def test_a_scheme_in_a_trait_resolves_against_the_api(self, workspace):
+        # docs/09 § A6: a library trait names a library scheme by its qualified name.
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  lib: lib.raml\n/users:\n  get:\n    is: [lib.secured]\n',
+                'lib.raml': '#%RAML 1.0 Library\n' + BASIC + 'traits:\n  secured:\n    securedBy: [lib.basic]\n',
+            }
+        )
+        raml = workspace.parse(root / 'api.raml')
+        assert raml.endpoints['/users'].operations['get'].secured_by[0].definition.name == 'basic'
+
+    def test_an_unknown_scheme_in_a_trait_is_rejected(self, workspace):
+        error = rejected(
+            workspace, 'traits:\n  secured:\n    securedBy: [nowhere]\n/users:\n  get:\n    is: [secured]\n'
+        )
+        assert {'scheme': 'nowhere'} in infos(error)
+
+    def test_a_resource_type_secures_a_resource_with_none_of_its_own(self, workspace):
+        raml = parse(
+            workspace,
+            BASIC + 'resourceTypes:\n  collection:\n    securedBy: [basic]\n    get:\n/users:\n  type: collection\n',
+        )
+        assert schemes(raml) == ['basic']
+
+    def test_the_resources_own_securedby_replaces_its_resource_types(self, workspace):
+        raml = parse(
+            workspace,
+            TWO + 'resourceTypes:\n  collection:\n    securedBy: [digest]\n    get:\n'
+            '/users:\n  type: collection\n  securedBy: [basic]\n',
+        )
+        assert schemes(raml) == ['basic']
+
+
 class TestScopeNarrowing:
     """docs/09 § A5 — the only per-application parameter any scheme takes."""
 

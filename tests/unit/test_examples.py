@@ -81,6 +81,49 @@ class TestTheAmbiguity:
         assert (ex.data.raw, ex.strict.value) == (1, True)
 
 
+class TestIncludedExample:
+    """`example: !include e.yaml` reads as if the file's content were written
+    there, so a `value:` in it is the wrapper, as it is inline.
+    """
+
+    API = '#%RAML 1.0\ntitle: T\ntypes:\n  T:\n    properties:\n      a: integer\n'
+
+    def parse(self, workspace, example: str, content: str):
+        from fastraml import ParseOptions
+
+        root = workspace({'api.raml': self.API + f'    {example}: !include e.yaml\n', 'e.yaml': content})
+        return workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+
+    def test_an_included_wrapper_is_unwrapped(self, workspace):
+        raml = self.parse(workspace, 'example', 'displayName: One\nvalue:\n  a: 1\n')
+        (ex,) = examples_of(raml.types_in(raml.location)['T'])
+        assert (ex.data.raw, ex.display_name.value, ex.data.location.rsplit('/', 1)[-1]) == ({'a': 1}, 'One', 'e.yaml')
+
+    def test_an_included_wrapper_under_a_name_is_unwrapped(self, workspace):
+        raml = self.parse(workspace, 'examples:\n      one', 'value:\n  a: 1\n')
+        assert [ex.data.raw for ex in examples_of(raml.types_in(raml.location)['T'])] == [{'a': 1}]
+
+    def test_an_included_wrappers_strict_is_kept(self, workspace):
+        raml = self.parse(workspace, 'example', 'strict: false\nvalue:\n  a: x\n')
+        assert [ex.strict.value for ex in examples_of(raml.types_in(raml.location)['T'])] == [False]
+
+    def test_a_nonconforming_included_value_is_reported_in_its_file(self, workspace):
+        # At `a`, which only an unwrapped `value:` has.
+        with pytest.raises(RamlError) as caught:
+            self.parse(workspace, 'example', 'value:\n  a: x\n')
+        (chain,) = caught.value.chains()
+        assert (chain[-1].info['path'], chain[-1].where().rsplit('/', 1)[-1]) == ('$.a', 'e.yaml:2:6')
+
+    def test_a_named_example_fragment_is_not_one_example(self, workspace):
+        # A NamedExample is a map of named examples, whose place is `examples:`.
+        with pytest.raises(RamlError) as caught:
+            self.parse(workspace, 'example', '#%RAML 1.0 NamedExample\nvalue:\n  a: 1\n')
+        assert (caught.value.head.message, caught.value.head.info['header']) == (
+            'fragment is not allowed here',
+            '#%RAML 1.0 NamedExample',
+        )
+
+
 class TestIncludedNamedExamples:
     """`examples: !include e.raml` — the examples are on the fragment.
 

@@ -26,7 +26,8 @@ P10 checks:
   belongs to the kind's format set;
 - arrays, objects, and unions recursively check their child declarations;
 - pattern properties cannot coexist with `additionalProperties: false`;
-- file media-type strings are well formed or `*/*`;
+- file media-type strings are well formed `type/subtype`, or a media range,
+  `type/*` or `*/*`. The spec names only `*/*`; `text/*` is as meaningful;
 - every enum member validates against the shape's non-enum constraints;
 - discriminator declarations satisfy the contracts in
   [05](05-type-model.md#6-discriminators).

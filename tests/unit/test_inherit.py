@@ -359,6 +359,29 @@ class TestFileRules:
             "    type: file\n    fileTypes: ['image/png']\n",
         )
 
+    @pytest.mark.parametrize(
+        ('narrowed', 'allowed'),
+        [('image/png', '*/*'), ('image/png', 'image/*'), ('image/*', '*/*'), ('Image/PNG', 'image/png')],
+    )
+    def test_a_range_covers_what_it_admits(self, workspace, narrowed, allowed):
+        # Before, `*/*` admitted nothing but the string `*/*`.
+        child = merge(
+            workspace,
+            f"    type: file\n    fileTypes: ['{narrowed}']\n",
+            f"    type: file\n    fileTypes: ['{allowed}']\n",
+        )
+        assert [facet.value for facet in child.shape.file_types] == [narrowed]
+
+    @pytest.mark.parametrize(
+        ('widened', 'allowed'), [('image/*', 'image/png'), ('*/*', 'image/*'), ('text/*', 'image/*')]
+    )
+    def test_a_range_is_covered_only_by_one_as_wide(self, workspace, widened, allowed):
+        assert 'fileTypes constraint violation' in failure(
+            workspace,
+            f"    type: file\n    fileTypes: ['{widened}']\n",
+            f"    type: file\n    fileTypes: ['{allowed}']\n",
+        )
+
 
 class TestAnyAbsorbs:
     def test_a_parent_of_type_any_constrains_nothing(self, workspace):

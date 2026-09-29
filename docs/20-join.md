@@ -180,9 +180,10 @@ would then be secured by another input's schemes.
 A default also reaches content that templates contribute. The join does not
 write into a template. Writing onto a method that a template also sets changes
 the method's effective value, because the template merge combines the two
-([08](08-templates-and-endpoints.md) § 1). A `securedBy` list becomes the union
-of both lists, and a body written with media-type keys no longer matches a
-template body written without them. The join reports
+([08](08-templates-and-endpoints.md) § 1). A `securedBy` list written on the
+method replaces the one the template sets
+([09](09-security-and-annotations.md) § A4), and a body written with
+media-type keys no longer matches a template body written without them. The join reports
 `join default reaches template` instead, with `property`, `template` and
 `reason` in `info`, when an input that needs § 5.2 applies a trait or resource
 type (directly, or through another template) that:
@@ -202,8 +203,7 @@ resource type, cannot be followed without applying the template. The join
 reports it with `reason: parameter` and the name as written.
 
 The check reads template definitions from the input's parsed model, including
-those declared in libraries. The parser rejects `securedBy` in a trait, so a
-`securedBy` default reaches a template only through a resource type.
+those declared in libraries.
 
 ## 6. Base URI
 

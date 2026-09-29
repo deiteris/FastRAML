@@ -41,6 +41,9 @@ method bodies as YAML mappings. It consumes the three directive keys:
 
 HTTP-method and subresource keys recurse into source IR. Every other pair,
 including all type-bearing declarations and annotations, remains in `body`.
+A resource or method whose value is an `!include` of content
+([03](03-yaml-and-io.md) § 4.2) keeps `location` at its key and records the
+included file as `body_location`, which stage 2 decodes the body under.
 The retained mapping is fresh, carries the original position, and is `None`
 when no pairs remain. `scope` may be absent for programmatic IR construction;
 normal P4 construction establishes the API scope.
@@ -82,11 +85,10 @@ Applying a resource type follows this order:
 
 The merge preserves the target's endpoint and method declarations. Resource
 type traits move to `rt_traits`, preserving their lower priority. A resource
-type's `securedBy` refs are appended to the target IR list, but its
-`explicit_secured_by` flag is not propagated. Consequently, when the target
-resource has no explicit `securedBy`, stage 2 selects API-global security and
-does not materialize those appended refs. This is current behavior and has no
-focused unit test.
+type's `securedBy`, at the resource or on a method, is taken only where the
+target wrote none, and then counts as explicit; the target's own list wins
+whole and is never merged with it
+([09](09-security-and-annotations.md) § A4).
 
 Code: `parser/resourcetypes.py`; the declaration decode, the lexical lookup and
 the parameter check it shares with traits are in `parser/templates.py`
@@ -105,6 +107,29 @@ The first occurrence of a trait name wins; each surviving trait is applied once.
 Each application resolves its definition lexically, injects `resourcePath`,
 `resourcePathName`, and `methodName`, checks parameters in both directions,
 substitutes, and merges the compiled body beneath the operation body.
+A caller that supplies a reserved parameter is rejected with `reserved
+parameter`: the spec reserves its value to the processor, which would
+otherwise override it silently. go-raml accepts and overrides it. Both kinds
+reserve `resourcePath` and `resourcePathName`; only a trait reserves
+`methodName` (spec section Resource Type and Trait Parameters), so in a
+resource type it is an ordinary parameter, required where used.
+
+A trait holds anything a method may (spec section Declaring Resource Types and
+Traits), so the compiled body's directives are taken out before the merge, as
+stage 1 takes a method's (§ 2.1):
+
+- `securedBy` is taken only by an operation with no explicit list, and makes
+  it explicit. A method's own list therefore wins whole, and of two traits
+  the one applied first, the closer, wins. Its scheme names resolve against
+  the API ([09](09-security-and-annotations.md) § A6).
+- `is` names nested traits, which resolve in the trait's namespace. The four
+  classes above are distance one; the traits a distance's traits name, in
+  application order, are the next distance (spec section Algorithm of
+  Merging Traits and Methods). A name already applied at any distance is
+  skipped, which also ends a cycle. So a trait the resource names beats one a
+  method's trait names, and a trait named directly beats the same trait
+  nested, parameters included. Nested references are appended to
+  `Operation.traits` and bound like any other.
 
 Every `is:` entry is bound to its definition whether or not it is applied: an
 entry the first-occurrence rule skipped, and one on a resource with no methods,
@@ -152,8 +177,10 @@ caller-supplied complex value at its replacement root, and marks a copied scalar
 that received substitution, with the caller scope.
 
 `mark_graft` marks every node in a grafted source subtree with the source scope.
-Both writers are set-if-absent: an existing mark is a more-specific scope
-boundary, so graft marking neither overwrites it nor descends below it.
+A source-only pair merged into an existing mapping has its key marked as well
+as its value. Both writers are set-if-absent: an existing mark is a
+more-specific scope boundary, so graft marking neither overwrites it nor
+descends below it.
 
 ### 4.2 Readers
 
@@ -163,6 +190,14 @@ the most-specific scope: a marked `type` or `schema` value wins over its
 containing mapping. `Raml.location_of` uses the marked scope's anchor location
 for diagnostics. That namespace location is not necessarily the node's authored
 location.
+
+Stage 2 locates each top-level pair of a resource or method body by its key:
+a pair a trait or resource type grafted from a fragment or a library is
+decoded, and its facets located, in that file. The value is not consulted,
+because a substituted scalar keeps the template's position (§ 5.1) and its
+caller mark would name the caller's file at the template's line. A key that
+received a substitution, `(<<tag>>)`, has that problem itself: it is located
+in the caller's file.
 
 A node an Overlay or Extension wrote also carries a document mark. Every
 reader consults the document mark before the unit overlay
@@ -215,6 +250,16 @@ Parameters are not substituted into `uses`, `extends`, or `!include` locations:
 `uses` is removed before a template body is captured and includes resolve before
 substitution.
 
+A value that is a map or a sequence replaces the scalar it is substituted
+into. A scalar that is exactly one variable, with no action, keeps the
+caller's tag: `maxLength: <<n>>` with `n: 5` is the integer 5 and
+`required: <<r>>` with `r: false` the boolean, as if written in place. So
+`example: <<n>>` on a string type fails as `example: 5` does, and `n: "5"`
+stays text. Text around the variable, an action, a reserved parameter, and a
+tag other than YAML's core scalar tags all give text. The spec only describes
+substitution into text; AMF reads it this way, go-raml makes every value
+text.
+
 Code: `parser/templates.py`. Tests: `tests/unit/test_templates.py`.
 
 ### 5.1 Where a substituted value was written
@@ -230,8 +275,8 @@ itself substituted, one template applying another, brings its own records.
 A value is recorded only when its text is the caller's text:
 
 - A transformed value, `<<item | !pluralize>>`, is not recorded.
-- The parameters the parser supplies, `resourcePath`, `resourcePathName` and
-  `methodName`, are not recorded.
+- The parameters the parser supplies, the kind's reserved ones (§ 3.2), are
+  not recorded.
 
 P7 reads the record, so a name inside a caller's value is reported and
 recorded where the caller wrote it ([06](06-type-expressions.md) § 3). In

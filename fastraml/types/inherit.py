@@ -462,7 +462,7 @@ def _narrow_file(target: BaseShape, mine: FileShape, theirs: FileShape) -> None:
         mine.file_types = theirs.file_types
     elif theirs.file_types is not None:
         allowed = {facet.value for facet in theirs.file_types}
-        if not {facet.value for facet in mine.file_types} <= allowed:
+        if not all(_covered(facet.value, allowed) for facet in mine.file_types):
             raise RamlError.new(
                 'fileTypes constraint violation',
                 target.location,
@@ -473,6 +473,16 @@ def _narrow_file(target: BaseShape, mine: FileShape, theirs: FileShape) -> None:
                     'target': sorted(facet.value for facet in mine.file_types),
                 },
             )
+
+
+def _covered(media_type: str, allowed: set[str]) -> bool:
+    """Whether one of `allowed` admits `media_type`: itself, its `type/*`, or
+    `*/*`. Case-insensitive, as media types are (RFC 6838 § 4.2). A range is
+    covered only by a range as wide, so `image/*` does not narrow `image/png`.
+    """
+    kind, _, subtype = media_type.lower().partition('/')
+    wanted = {'*/*', f'{kind}/*', f'{kind}/{subtype}'}
+    return any(entry.lower() in wanted for entry in allowed)
 
 
 def _narrow_number(target: BaseShape, mine: NumberShape, theirs: NumberShape) -> None:

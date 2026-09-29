@@ -63,8 +63,8 @@ The input form determines the initial kind:
 - A mapping may contain `type:` or `schema:` (never both), common facets, and
   kind-specific facets.
 - A scalar is a type expression, except an empty string which infers from
-  facets, an inline JSON Schema beginning with `{`, an `!include` data-type
-  link, or YAML null which uses the caller default.
+  facets, an inline JSON Schema beginning with `{` after any whitespace, an
+  `!include` data-type link, or YAML null which uses the caller default.
 - A sequence under `type:` is multiple inheritance.
 
 When no explicit type is present, facet hints infer `string`, `number`, `array`,
@@ -101,7 +101,10 @@ pattern properties.
 ## 5. Examples, custom facets, and XML
 
 `example:` accepts raw data or a wrapper mapping containing `value`; the wrapper
-may also carry `displayName`, `description`, `strict`, and annotations.
+may also carry `displayName`, `description`, `strict`, and annotations. An
+example written as `!include`, alone or under a name, reads as its content
+would inline: a `value` key in the file is the wrapper, and the value is
+located in that file.
 `examples:` is a named mapping or a `NamedExample` include. `example` and
 `examples` are mutually exclusive. Consumers must use `Examples.entries()` so
 included named examples are included. `examples_of(base)` yields `example`,

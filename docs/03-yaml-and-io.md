@@ -118,8 +118,46 @@ defaults to the entry file directory and can be changed with
 ### 4.2 Include result
 
 Targets ending in `.raml`, `.yaml`, `.yml`, or `.json` are composed as nodes.
+A `.json` target's tabs before and after its root value are read as spaces
+first: there YAML does not let a tab start a token, while JSON allows it. One
+space for one tab keeps every position.
 Other targets become UTF-8 string scalar nodes. URI query and fragment suffixes
 are ignored when determining the extension.
+
+An included file either is content or declares a kind. A file whose first line
+is a RAML header (`#%RAML ...`) is a typed fragment: it must be valid as its
+kind, and its kind must be the one the position takes (spec section Typed
+Fragments). A file without one is content, read as if written where it is
+included. So where a value is data — an example, an annotation value, a scalar
+facet — a file with a RAML header, known kind or not, is `fragment is not
+allowed here`, with the header in `info`. The spec is silent on this; the rule
+keeps a NamedExample, a map of named examples, out of the place of one.
+
+Where a position takes a mapping or a sequence — a resource or method value,
+the `types:`, `annotationTypes:`, `traits:`, `resourceTypes:` and
+`securitySchemes:` maps, `documentation:`, `responses:` and a response,
+parameter and property maps, `facets:`, `enum`, `allowedTargets`, `xml`,
+`fileTypes`, `protocols`, `mediaType`, `describedBy:`, `settings:` and a
+setting's list, `is:` and `securedBy:` — `inline_include` reads an `!include`
+of a file without a header as its content, located in that file, and one with
+a header as `fragment is not allowed here`. A file that is not YAML is left for
+the position to reject at the `!include`. A resource or a response stays keyed
+where its key is written; its content is decoded, and located, in the
+included file. A declaration in an included `types:` map is named in the
+declaring document's namespace and indexed for unwrap and validation by the
+file it is written in. Content is not a fragment, so invariant I3 does not
+cover it: a file included twice is decoded twice, as the same text written
+twice would be.
+
+A position that takes a typed fragment — a `traits:`, `resourceTypes:`,
+`securitySchemes:`, `types:` or `annotationTypes:` entry, `type:`, a `body:`,
+`examples:`, a documentation item — reads a file without a header as the
+declaration, written in that file (`content_include`). The declaration at the
+key links to it, as it would to a fragment's, so it keeps its key's place; a
+`.json` file where a type goes is a JSON Schema, as before. Which namespace
+each kind of include resolves in is [04](04-fragments-and-namespaces.md) § 4.1.
+Telling the two apart reads the file's first line, and the read is handed to
+whichever reader follows, so a typed fragment is still read once.
 
 ### 4.3 Caching, limits, and cycles
 

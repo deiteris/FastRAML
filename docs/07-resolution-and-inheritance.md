@@ -69,7 +69,7 @@ A subtype may only narrow:
 | string | increase `minLength`, decrease `maxLength`; child pattern replaces parent pattern |
 | number/integer | increase minimum, decrease maximum, use a compatible `multipleOf` and format |
 | datetime | format must agree |
-| file | increase/decrease length bounds; `fileTypes` becomes a subset |
+| file | increase/decrease length bounds; each `fileTypes` entry is admitted by a parent's: itself, its `type/*`, or `*/*`, case-insensitively |
 | array | recursively narrow `items`; tighten counts; a unique parent requires a unique child |
 | object | recursively narrow shared properties and patterns; required cannot become optional; tighten counts; inherit absent `additionalProperties` and discriminator |
 | union | merge compatible members as described below |

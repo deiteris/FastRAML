@@ -108,12 +108,14 @@ def resolve_shape(raml: Raml, base: BaseShape) -> None:
         )
     base._visiting = True  # noqa: SLF001 - see above
     try:
-        if base.link is not None:
-            _resolve_link(raml, base, shape)
-        elif base.type == TYPE_COMPOSITE:
-            _resolve_multiple_inheritance(raml, base, shape)
-        else:
-            _build(raml, shape, _parse(raml, base))
+        # The pending facets decode now, at the target they were written at.
+        with raml.target_scope(shape.pending_target):
+            if base.link is not None:
+                _resolve_link(raml, base, shape)
+            elif base.type == TYPE_COMPOSITE:
+                _resolve_multiple_inheritance(raml, base, shape)
+            else:
+                _build(raml, shape, _parse(raml, base))
     except RamlError as err:
         # Left an `UnknownShape`, or its kind if one of its declaration facets
         # failed. It is marked, as is every shape the failure passes through on

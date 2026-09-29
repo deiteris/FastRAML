@@ -188,6 +188,72 @@ class TestParameters:
             parse(workspace, root)
         assert 'missing required parameter' in str(caught.value)
 
+    @pytest.mark.parametrize('name', ['methodName', 'resourcePath', 'resourcePathName'])
+    def test_a_reserved_parameter_the_caller_supplies_is_rejected(self, workspace, name):
+        # Spec section Resource Type and Trait Parameters: the processor
+        # provides it. Accepted, the injected value would silently win.
+        root = workspace(
+            {
+                'api.raml': API
+                + f'traits:\n  t:\n    description: <<{name}>>\n/users:\n  get:\n    is: [{{t: {{{name}: x}}}}]\n'
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        (chain,) = caught.value.chains()
+        assert [(frame.message, frame.info) for frame in chain] == [
+            ('apply trait', {'trait': 't'}),
+            ('reserved parameter', {'parameter': name}),
+        ]
+
+    def test_a_whole_value_is_typed_as_the_caller_wrote_it(self, workspace):
+        # docs/08 § 5: as if `maxLength: 5` and `required: false` were written in place.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  t:\n    queryParameters:\n      q:\n        maxLength: <<n>>\n        required: <<r>>\n'
+                + '/users:\n  get:\n    is: [{t: {n: 5, r: false}}]\n'
+            }
+        )
+        q = operation(parse(workspace, root), '/users', 'get').request.query_parameters['q']
+        assert (q.base.shape.max_length.value, q.required) == (5, False)
+
+    def test_a_quoted_value_stays_text(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  t:\n    queryParameters:\n      q:\n        maxLength: <<n>>\n'
+                + '/users:\n  get:\n    is: [{t: {n: "5"}}]\n'
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert [frame.message for chain in caught.value.chains() for frame in chain][-1] == 'expected an integer value'
+
+    def test_a_typed_value_where_a_type_name_goes_is_reported_where_the_caller_wrote_it(self, workspace):
+        # The template's line is in paged.raml; the value, the thing to fix, is in api.raml.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  paged: !include paged.raml\n/users:\n  get:\n    is: [{paged: {max: 1}}]\n',
+                'paged.raml': '#%RAML 1.0 Trait\nqueryParameters:\n  limit: <<max>>\n',
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        line = len(API.splitlines()) + 5
+        assert _where(caught.value, 'type must be a string') == [('api.raml', line, len('    is: [{paged: {max: ') + 1)]
+
+    def test_a_reserved_parameter_supplied_to_a_resource_type_is_rejected(self, workspace):
+        root = workspace(
+            {'api.raml': API + 'resourceTypes:\n  r:\n    get:\n/users:\n  type: {r: {resourcePath: x}}\n'}
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert [
+            frame.info for chain in caught.value.chains() for frame in chain if frame.message == 'reserved parameter'
+        ] == [{'parameter': 'resourcePath'}]
+
     def test_an_unresolvable_trait_names_itself(self, workspace):
         root = workspace({'api.raml': API + '/users:\n  get:\n    is: [nowhere]\n'})
         with pytest.raises(RamlError) as caught:
@@ -331,3 +397,197 @@ class TestProvenance:
         with pytest.raises(RamlError) as caught:
             workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
         assert 'example' in str(caught.value)
+
+
+class TestNested:
+    """A trait's own `is:` (docs/08 § 3.2): spec section Algorithm of Merging
+    Traits and Methods, one distance at a time, each trait applied once.
+    """
+
+    def test_a_trait_applies_the_traits_it_names(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  paged:\n    queryParameters:\n      page: integer\n'
+                + '  listing:\n    is: [paged]\n    description: a list\n'
+                + '/users:\n  get:\n    is: [listing]\n'
+            }
+        )
+        get = operation(parse(workspace, root), '/users', 'get')
+        assert (get.description.value, list(get.request.query_parameters)) == ('a list', ['page'])
+
+    def test_the_nested_reference_is_kept_and_bound(self, workspace):
+        # Retained as a `type:` or `is:` reference is, so a consumer can follow it.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  paged:\n    description: d\n  listing:\n    is: [paged]\n'
+                + '/users:\n  get:\n    is: [listing]\n'
+            }
+        )
+        raml = parse(workspace, root)
+        traits = operation(raml, '/users', 'get').traits
+        assert [(ref.name, ref.resolved) for ref in traits] == [
+            ('listing', raml.entry_point.traits['listing']),
+            ('paged', raml.entry_point.traits['paged']),
+        ]
+
+    def test_a_parameter_reaches_the_nested_trait(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  named:\n    description: <<what>>\n'
+                + '  listing:\n    is: [{named: {what: <<noun>>}}]\n'
+                + '/users:\n  get:\n    is: [{listing: {noun: users}}]\n'
+            }
+        )
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'users'
+
+    def test_a_trait_named_directly_beats_the_same_trait_nested(self, workspace):
+        # The direct application is closer; the nested one is not applied at all.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  named:\n    description: <<what>>\n'
+                + '  listing:\n    is: [{named: {what: nested}}]\n'
+                + '/users:\n  get:\n    is: [listing, {named: {what: direct}}]\n'
+            }
+        )
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'direct'
+
+    def test_a_resources_trait_beats_a_methods_nested_trait(self, workspace):
+        # Every trait the method, resource or resource type names is at distance
+        # one; what they name is at distance two.
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  deep:\n    description: deep\n  listing:\n    is: [deep]\n'
+                + '  owned:\n    description: resource\n'
+                + '/users:\n  is: [owned]\n  get:\n    is: [listing]\n'
+            }
+        )
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'resource'
+
+    def test_a_nested_trait_several_levels_down_is_applied(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  a:\n    is: [b]\n  b:\n    is: [c]\n  c:\n    description: c\n'
+                + '/users:\n  get:\n    is: [a]\n'
+            }
+        )
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'c'
+
+    def test_a_cycle_applies_each_trait_once(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  a:\n    is: [b]\n    description: a\n'
+                + '  b:\n    is: [a]\n    queryParameters:\n      page: integer\n'
+                + '/users:\n  get:\n    is: [a]\n'
+            }
+        )
+        get = operation(parse(workspace, root), '/users', 'get')
+        assert (get.description.value, list(get.request.query_parameters)) == ('a', ['page'])
+
+    def test_a_nested_name_resolves_where_the_trait_is_declared(self, workspace):
+        # `paged` is the library's: api.raml would have to write `lib.paged`.
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  lib: lib.raml\n/users:\n  get:\n    is: [lib.listing]\n',
+                'lib.raml': '#%RAML 1.0 Library\ntraits:\n  paged:\n    description: paged\n'
+                '  listing:\n    is: [paged]\n',
+            }
+        )
+        assert operation(parse(workspace, root), '/users', 'get').description.value == 'paged'
+
+    def test_an_unresolvable_nested_name_is_reported_where_it_is_written(self, workspace):
+        root = workspace(
+            {'api.raml': API + 'traits:\n  listing:\n    is: [nowhere]\n/users:\n  get:\n    is: [listing]\n'}
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert caught.value.head.info == {'trait': 'nowhere'}
+        assert _where(caught.value, 'apply trait') == [('api.raml', 6, 10)]
+
+    def test_a_nested_traits_securedby_applies(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + 'securitySchemes:\n  basic:\n    type: Basic Authentication\n'
+                + 'traits:\n  secured:\n    securedBy: [basic]\n  listing:\n    is: [secured]\n'
+                + '/users:\n  get:\n    is: [listing]\n'
+            }
+        )
+        assert [s.name for s in operation(parse(workspace, root), '/users', 'get').secured_by] == ['basic']
+
+
+def _where(error: RamlError, message: str) -> list[tuple[str, int, int]]:
+    """File, line and column of every frame carrying `message`."""
+    return [
+        (frame.location.rsplit('/', 1)[-1], frame.position.line, frame.position.column)
+        for chain in error.chains()
+        for frame in chain
+        if frame.message == message and frame.position is not None
+    ]
+
+
+class TestLocation:
+    """A pair a template grafted is located in the file the template was written in.
+
+    Its position is always the template's, so naming the operation's file
+    instead points at a line of a file that does not hold it.
+    """
+
+    INCLUDED = 'traits:\n  t: !include t.raml\n/items:\n  get:\n    is: [t]\n'
+
+    def test_a_top_level_key_of_a_trait_fragment_is_located_in_the_fragment(self, workspace):
+        root = workspace({'api.raml': API + self.INCLUDED, 't.raml': '#%RAML 1.0 Trait\nbogus: 1\n'})
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert _where(caught.value, 'unknown field') == [('t.raml', 2, 1)]
+
+    def test_a_key_merged_beside_the_methods_own_is_located_in_the_fragment(self, workspace):
+        # The method has a body, so the trait's `queryString` is merged in
+        # beside its `queryParameters`, and the error is at the one written second.
+        root = workspace(
+            {
+                'api.raml': API + self.INCLUDED + '    queryParameters:\n      page: integer\n',
+                't.raml': '#%RAML 1.0 Trait\nqueryString:\n  properties:\n    q: string\n',
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert _where(caught.value, 'queryString and queryParameters are mutually exclusive') == [('t.raml', 2, 1)]
+
+    def test_the_methods_own_key_stays_in_the_api(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API + self.INCLUDED + '    bogus: 1\n',
+                't.raml': '#%RAML 1.0 Trait\ndescription: d\n',
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert _where(caught.value, 'unknown field') == [('api.raml', 9, 5)]
+
+    def test_a_library_traits_facet_is_located_in_the_library(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  l: lib.raml\n/items:\n  get:\n    is: [l.t]\n',
+                'lib.raml': '#%RAML 1.0 Library\ntraits:\n  t:\n    description: <<methodName>> items\n',
+            }
+        )
+        description = operation(parse(workspace, root), '/items', 'get').description
+        assert (description.value, description.location.rsplit('/', 1)[-1]) == ('get items', 'lib.raml')
+
+    def test_a_library_resource_types_facet_is_located_in_the_library(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  l: lib.raml\n/items:\n  type: l.r\n',
+                'lib.raml': '#%RAML 1.0 Library\nresourceTypes:\n  r:\n    description: [1]\n',
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert [where[0] for where in _where(caught.value, 'expected scalar or mapping node')] == ['lib.raml']

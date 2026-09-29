@@ -170,6 +170,19 @@ _SCALAR_TYPES = (
 )
 
 
+def _called_with(argument: Any) -> Callable[[Callable[..., Any]], Callable[[], Any]]:
+    return lambda function: lambda: function(argument)
+
+
+def _json_text(size: int, shape: str) -> str:
+    """A `.json` include of `size` properties: indented with spaces, with tabs
+    inside the value, or with a tab before `{` too (docs/03 § 4.2).
+    """
+    indent = '  ' if shape == 'spaces' else '\t'
+    body = '{\n' + ',\n'.join(f'{indent}"k{index}": {index}' for index in range(size)) + '\n}\n'
+    return '\t' + body if shape == 'leading' else body
+
+
 CASES: tuple[Case, ...] = (
     Case('same_value str', 'fastraml.types.values:same_value', lambda f: lambda: f('code1', 'code2')),
     Case('same_value int/float', 'fastraml.types.values:same_value', lambda f: lambda: f(1, 1.0)),
@@ -186,6 +199,15 @@ CASES: tuple[Case, ...] = (
     *(
         Case(f'enum membership {kind} n={size}', 'fastraml.types.base:BaseShape.validate_at', _membership(kind, size))
         for kind in ('str', 'num')
+        for size in SIZES
+    ),
+    *(
+        Case(
+            f'json outer tabs {shape} n={size}',
+            'fastraml.parser.includes:_outer_tabs_as_spaces',
+            _called_with(_json_text(size, shape)),
+        )
+        for shape in ('spaces', 'tabbed', 'leading')
         for size in SIZES
     ),
     Case('validate string pattern', _VALIDATE, _validating(_SCALAR_TYPES, 'S', 'abc-123')),

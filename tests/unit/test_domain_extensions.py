@@ -135,6 +135,23 @@ class TestTargets:
         raml = parse(workspace, files, entry)
         assert extensions(raml)['ann'].target is expected
 
+    @pytest.mark.parametrize(
+        'declared',
+        [
+            '    properties:\n      p:\n        type: string\n        (ann): 1\n',
+            '    properties:\n      p:\n        type: array\n        items:\n          type: string\n          (ann): 1\n',
+        ],
+        ids=['property', 'items'],
+    )
+    def test_a_site_under_a_subtype_records_itself(self, workspace, declared):
+        # `type: Base` defers the properties to P7, where the stack holds only
+        # the root: the site is the one they were written at.
+        raml = parse(
+            workspace,
+            {'api.raml': API + DECLARE + 'types:\n  Base: object\n  T:\n    type: Base\n' + declared},
+        )
+        assert extensions(raml)['ann'].target is DomainLocation.TYPE_DECLARATION
+
     def test_a_data_type_fragment_root_is_a_type_declaration(self, workspace):
         # The fragment imports the declaration itself: an annotation resolves in
         # the scope of the file it is written in, never the includer's.

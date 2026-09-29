@@ -110,6 +110,8 @@ def _merge_mappings(
     for key, value in pairs(source):
         if key.value not in source_values:
             continue
+        # The key too: a diagnostic about the pair is located by its key.
+        mark_graft(overlay, key, source_scope)
         mark_graft(overlay, value, source_scope)
         merged.append(key)
         merged.append(value)

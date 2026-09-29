@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from raml_document import Body, Response
+from raml_document.from_pydantic import Shape
 
 from aiohttp_raml.errors import Refused
 from aiohttp_raml.security import FORBIDDEN, UNAUTHENTICATED
@@ -19,10 +20,12 @@ __all__ = ['refusals', 'responses']
 
 
 def responses(entry: Described, method: Method, at: str, walk: Walk) -> None:
+    """Each declared response, its body as the handler writes it (`Responds.shape`)."""
     for declared in entry.bound.declared_responses:
         response = Response(description=declared.description)
         if declared.body is not None:
-            response.body = Body({declared.media: walk.annotation(declared.body, f'{at}.{declared.code}')})
+            with walk.output(declared.shape):
+                response.body = Body({declared.media: walk.annotation(declared.body, f'{at}.{declared.code}')})
         method.responses[declared.code] = response
 
 
@@ -41,5 +44,6 @@ def refusals(method: Method, at: str, walk: Walk) -> None:
         (FORBIDDEN, 'the scheme that authenticated the request does not permit it'),
     ):
         if code not in method.responses:
-            body = Body({'application/json': walk.annotation(Refused, f'{at}.{code}')})
+            with walk.output(Shape(by_alias=False)):  # `middleware` writes `model_dump()`
+                body = Body({'application/json': walk.annotation(Refused, f'{at}.{code}')})
             method.responses[code] = Response(description=description, body=body)

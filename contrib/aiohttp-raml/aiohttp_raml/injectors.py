@@ -11,10 +11,11 @@ parameter the injector takes from somewhere else.
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import dataclass
 from json import JSONDecodeError
-from typing import TYPE_CHECKING, Any, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Final, get_args, get_origin
 
 from aiohttp import web
 from pydantic import BaseModel, TypeAdapter, ValidationError, create_model
@@ -27,6 +28,8 @@ from aiohttp_raml.responses import Responds
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from raml_document.from_pydantic import Shape
 
 __all__ = ['Bound', 'bind', 'error_response']
 
@@ -87,6 +90,8 @@ class Bound:
     declared_responses: list[Responds]
     #: The same, compiled, for `check`.
     responses: dict[int, TypeAdapter[Any] | None]
+    #: How each declared response writes its body, for `check` to read it back.
+    shapes: dict[int, Shape]
 
     async def call(self, handler: Any, request: web.Request, first: Any = None) -> tuple[bool, Any]:
         """Validate, then call.
@@ -162,9 +167,26 @@ class Bound:
         if adapter is None:
             return
         try:
-            adapter.validate_python(json.loads(body))
+            adapter.validate_python(json.loads(body), **_written_keys(self.shapes[response.status]))
         except (ValidationError, JSONDecodeError) as error:
             raise ResponseMismatch(f'{name} returned a {response.status} body it does not declare: {error}') from error
+
+
+#: Can a validation read a model by its fields' names alone? pydantic 2.11 and later.
+_BY_NAME: Final = 'by_name' in inspect.signature(TypeAdapter.validate_python).parameters
+
+
+def _written_keys(shape: Shape) -> dict[str, Any]:
+    """The keys `validate_python` should read a body by: the ones `shape` writes it under.
+
+    A body written by name is read back by name. Before pydantic 2.11 a
+    validation reads aliases only, so there a model with aliases, written by
+    name, is not checked by name. Under `exclude_none` a field left out reads
+    as missing wherever the model gives it no default, which the check reports.
+    """
+    if not _BY_NAME:
+        return {}
+    return {'by_alias': shape.by_alias, 'by_name': not shape.by_alias}
 
 
 class ResponseMismatch(AssertionError):  # noqa: N818 - not an Error; it is an assertion
@@ -290,6 +312,7 @@ def bind(declared: list[Declared], responses: Sequence[Responds]) -> Bound:
         parts=parts,
         declared_responses=described,
         responses={item.code: (TypeAdapter(item.body) if item.body is not None else None) for item in described},
+        shapes={item.code: item.shape for item in described},
     )
 
 
@@ -303,5 +326,6 @@ def _with_request_error(declared: list[Declared], responses: Sequence[Responds])
     out = list(responses)
     if not declared or any(item.code == STATUS for item in out):
         return out
-    out.append(Responds(STATUS, list[RequestError], 'the request did not validate'))
+    # `describe` writes each error under its alias: `in`, not `in_`.
+    out.append(Responds(STATUS, list[RequestError], 'the request did not validate', by_alias=True))
     return out

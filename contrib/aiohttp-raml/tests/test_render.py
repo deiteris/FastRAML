@@ -12,7 +12,7 @@ from typing import Annotated, Any, TypedDict
 
 import pytest
 from aiohttp import web
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from aiohttp_raml import (
     AuthenticationError,
@@ -1065,5 +1065,42 @@ def test_a_deprecated_handler_is_annotated_whichever_side_of_validate_it_is_mark
     assert document['/outer']['get']['(deprecated)'] == 'use /v2'
     assert document['/inner']['get']['(deprecated)'] is None
     assert 'deprecated' in document['annotationTypes']
+    assert dropped == []
+    build(app, title='T')
+
+
+# -- a response body is what the handler writes --------------------------------------
+
+
+class Shelf(BaseModel):
+    label: str = Field(alias='shelfLabel')
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def upper(self) -> str:
+        return self.label.upper()
+
+
+class ShelfView(RamlView):
+    async def get(
+        self,
+    ) -> Annotated[web.Response, Responds(200, Shelf), Responds(201, Shelf, by_alias=True), Responds(202, Book)]: ...
+
+    async def post(self, shelf: Shelf) -> Annotated[web.Response, Responds(204)]: ...
+
+
+def test_a_response_body_is_described_as_model_dump_writes_it() -> None:
+    """By name, with its computed fields: what `web.json_response(shelf.model_dump())` sends."""
+    app = one_view('/x', ShelfView)
+    document, dropped = rendered(app)
+    responses = document['/x']['get']['responses']
+    assert responses['200']['body'] == {'application/json': 'ShelfOutputByName'}
+    assert document['types']['ShelfOutputByName']['properties'] == {'label': 'string', 'upper': 'string'}
+    assert responses['201']['body'] == {'application/json': 'ShelfOutput'}
+    assert document['types']['ShelfOutput']['properties'] == {'shelfLabel': 'string', 'upper': 'string'}
+    # A model that writes what it reads keeps its one declaration, and the
+    # request body reads by alias as it always did.
+    assert responses['202']['body'] == {'application/json': 'Book'}
+    assert document['types']['Shelf']['properties'] == {'shelfLabel': 'string'}
     assert dropped == []
     build(app, title='T')

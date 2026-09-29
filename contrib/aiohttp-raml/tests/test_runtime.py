@@ -695,3 +695,32 @@ async def test_the_anonymous_alternative_lets_an_unauthenticated_caller_through(
     client = await aiohttp_client(app)
     assert await (await client.get('/x')).json() is None
     assert await (await client.get('/x', headers={'X-Key': 'k'})).json() == 'k'
+
+
+# -- the response check reads a body as the handler writes it --------------------
+
+
+class Labelled(BaseModel):
+    label: str = Field(alias='shelfLabel')
+
+
+class Written(RamlView):
+    check_responses = True
+
+    async def get(self) -> Annotated[web.Response, Responds(200, Labelled), Responds(201, Labelled, by_alias=True)]:
+        return web.json_response(Labelled(shelfLabel='a').model_dump())
+
+
+def test_a_body_declared_by_name_is_checked_by_name() -> None:
+    """`model_dump()` writes `label`, which is what `Responds` declares by default."""
+    bound = Written.get.aiohttp_raml_described.bound
+    bound.check(web.json_response({'label': 'a'}), Written.get)
+    with pytest.raises(ResponseMismatch):
+        bound.check(web.json_response({'shelfLabel': 'a'}), Written.get)
+
+
+def test_a_body_declared_by_alias_is_checked_by_alias() -> None:
+    bound = Written.get.aiohttp_raml_described.bound
+    bound.check(web.json_response({'shelfLabel': 'a'}, status=201), Written.get)
+    with pytest.raises(ResponseMismatch):
+        bound.check(web.json_response({'label': 'a'}, status=201), Written.get)

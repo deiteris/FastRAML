@@ -67,6 +67,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from fastraml.datanode import DataNode
+    from fastraml.domains import DomainLocation
     from fastraml.types.base import (
         BaseShape,
         DeclarationFacet,
@@ -835,11 +836,16 @@ class UnknownShape(ComplexKind):
     (docs/07 § 2).
     """
 
-    __slots__ = ('from_mapping', 'pending_facets')
+    __slots__ = ('from_mapping', 'pending_facets', 'pending_target')
 
     def __init__(self, base: BaseShape, facets: list[Node] | None = None, *, from_mapping: bool = True) -> None:
         super().__init__(base)
         self.pending_facets: list[Node] = facets if facets is not None else []
+        #: Where an annotation among `pending_facets` is applied, as it stood
+        #: when they were written. P7 decodes them long after, when the stack
+        #: says the root (docs/09 § B4). Only the target: their names resolve as
+        #: before, by the declaration's anchor or its file.
+        self.pending_target: DomainLocation = base._raml.current_ctx().target  # noqa: SLF001
         #: Was the declaration a mapping (`Foo: {type: Bar}`) rather than a bare
         #: scalar (`Foo: Bar`)? It is the only thing that tells P7 whether a
         #: reference is inheritance or an alias, so it is recorded rather than
@@ -849,6 +855,7 @@ class UnknownShape(ComplexKind):
 
     def decode_facets(self, pairs: list[Node]) -> None:
         self.pending_facets = pairs
+        self.pending_target = self.base._raml.current_ctx().target  # noqa: SLF001
 
     def check(self) -> None:
         # Always fails. Reaching it means P7 was skipped, and a silent pass here

@@ -179,6 +179,10 @@ The target is carried by `ParseCtx`. A decoder that establishes a narrower
 annotation site uses `Raml.target_scope`, which preserves the anchor and restores
 the previous target afterward. An annotated scalar does not establish an
 independent target and therefore inherits its enclosing declaration site.
+The facets of a declaration whose kind waits on P7, such as a subtype's
+properties, are decoded after the stack has unwound; the target they were
+written at is kept with them and restored, while their names resolve as
+before, through the declaration's anchor or its file.
 
 The parser currently establishes these sites: API, Library, Overlay, Extension,
 documentation item, type declaration, annotation type, example, resource,

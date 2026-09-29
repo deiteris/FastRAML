@@ -42,7 +42,7 @@ from starlette.datastructures import UploadFile
 
 from fastapi_raml.render.parameters import parameters
 from fastapi_raml.render.responses import responses
-from fastapi_raml.render.routes import api_routes, routes_of
+from fastapi_raml.render.routes import across_segments, api_routes, routes_of
 from fastapi_raml.render.security import Security
 
 if TYPE_CHECKING:
@@ -87,6 +87,8 @@ def render(app: Any) -> Report:
 
     for route in routes:
         path = route.path_format
+        for name in across_segments(route):
+            walk.drop(path, f'{{{name}:path}} matches across segments, and a RAML URI parameter matches one')
         verbs = sorted(route.methods or ())
         for verb in verbs:
             if verb.lower() not in METHODS:

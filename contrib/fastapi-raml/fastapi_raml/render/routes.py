@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import re
+from typing import TYPE_CHECKING, Any, Final
 
 from fastapi import routing as fastapi_routing
 from fastapi.routing import APIRoute
@@ -11,7 +12,10 @@ from starlette.routing import Mount
 if TYPE_CHECKING:
     from raml_document.from_pydantic import Walk
 
-__all__ = ['api_routes', 'routes_of']
+__all__ = ['across_segments', 'api_routes', 'routes_of']
+
+#: A path parameter with Starlette's `path` convertor: `{name:path}`.
+_PATH_CONVERTOR: Final = re.compile(r'\{(\w+):path\}')
 
 
 def routes_of(app: Any) -> list[Any]:
@@ -45,3 +49,12 @@ def api_routes(app: Any, walk: Walk) -> list[Any]:
             # static files, the viewer among them, and says nothing.
             walk.drop(original.path, 'a mounted application is not described; give it add_raml_routes of its own')
     return routes
+
+
+def across_segments(route: Any) -> list[str]:
+    """The path parameters that match across `/` -- `{name:path}` -- by name.
+
+    `path_format` spells one as a plain `{name}`, which in RAML matches a single
+    segment: the values a URI parameter matches cannot contain a slash.
+    """
+    return _PATH_CONVERTOR.findall(route.path)

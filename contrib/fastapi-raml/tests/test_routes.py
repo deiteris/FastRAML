@@ -110,3 +110,14 @@ def test_a_route_with_only_such_methods_leaves_no_empty_resource() -> None:
     def cache() -> int: ...
 
     assert '/cache' not in parsed(app).endpoints
+
+
+def test_a_path_parameter_matching_across_segments_is_reported() -> None:
+    """`{name:path}` matches `a/b`; a RAML URI parameter matches one segment."""
+    app = FastAPI(title='R')
+
+    @app.get('/files/{name:path}')
+    def files(name: str) -> int: ...
+
+    assert '/files/{name}' in parsed(app).endpoints
+    assert dropped(app) == ['/files/{name}: {name:path} matches across segments, and a RAML URI parameter matches one']

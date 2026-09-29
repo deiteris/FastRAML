@@ -58,6 +58,8 @@ def parameters(route: Any, method: Method, at: str, walk: Walk) -> Parameters:
         if not params:
             continue
         for wire, info in _flattened(place, params, at, walk):
+            if getattr(info, 'include_in_schema', True) is False:
+                continue  # hidden from the app's own schema, as `Query(include_in_schema=False)` asks
             if place == 'cookie':
                 walk.drop(at, f'cookie parameter {wire!r} has no RAML form')
                 continue

@@ -163,3 +163,12 @@ def test_a_closed_parameter_model_is_reported() -> None:
     def m(closed: Annotated[Closed, Query()]) -> int: ...
 
     assert any('refuses query parameters' in entry for entry in dropped(local))
+
+
+def test_a_parameter_hidden_from_the_schema_is_hidden_here() -> None:
+    app = FastAPI(title='P')
+
+    @app.get('/x')
+    def x(shown: str = 'a', hidden: Annotated[str, Query(include_in_schema=False)] = 'b') -> int: ...
+
+    assert list(operation(app, '/x', 'get').request.query_parameters) == ['shown']

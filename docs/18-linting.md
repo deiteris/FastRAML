@@ -12,7 +12,8 @@ A lint rule must be one of:
 - A judgement derived from RAML semantics.
 - A judgement derived from a published external standard, with that source
   recorded in the rule metadata.
-- An opt-in style or organisation policy.
+- An authoring policy, normally opt-in; the remote-fragment portability warning
+  is recommended by default (§ 2).
 
 A rule that rejects a document the parser already rejects is not a lint rule.
 Put it in the appropriate parser pass. A rule that is specific to one
@@ -37,7 +38,7 @@ Built-in rulesets are:
 
 | Ruleset | Contents | Default |
 |---|---|---|
-| `recommended` | the built-in `spec` rules | enabled |
+| `recommended` | the built-in `spec` rules and the remote-fragment portability warning | enabled |
 | `spec` | rules derived from RAML semantics | enabled through `recommended` |
 | `security` | rules derived from published security guidance | disabled |
 | `http` | HTTP semantics from RFC 9110 and related media/URI standards | disabled |
@@ -53,6 +54,11 @@ the rule inventory here; use the CLI instead:
 fastraml lint --list-rules
 fastraml lint --explain unbounded-string
 ```
+
+`remote-fragment` warns by default at each HTTP(S) `!include` or `uses:`
+reference, including references in imported fragments. Remote loading remains
+valid when enabled; the warning concerns reproducibility and availability, and
+is independently configurable through `lint.rules`.
 
 ### 2.1 Rule shapes
 

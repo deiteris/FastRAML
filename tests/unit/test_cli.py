@@ -338,6 +338,20 @@ class TestOptions:
         # reader to work out that the package declares one.
         assert 'fastraml[http]' in str(caught.value)
 
+    def test_remote_include_follows_redirect_with_the_cli_client(self, workspace, monkeypatch):
+        httpx = pytest.importorskip('httpx')
+        client_type = httpx.Client
+
+        def response(request):
+            if str(request.url) == 'https://example.test/old.raml':
+                return httpx.Response(301, headers={'location': 'https://example.test/new.raml'})
+            return httpx.Response(200, text='#%RAML 1.0 DataType\ntype: string\n')
+
+        transport = httpx.MockTransport(response)
+        monkeypatch.setattr(httpx, 'Client', lambda **options: client_type(transport=transport, **options))
+        root = workspace({'api.raml': API + 'types:\n  Remote: !include https://example.test/old.raml\n'})
+        assert main(['validate', '-r', str(root / 'api.raml')]) == EXIT_OK
+
 
 class TestUsage:
     def test_import_does_not_load_a_parser_or_graph(self):

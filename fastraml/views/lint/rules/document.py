@@ -14,7 +14,45 @@ if TYPE_CHECKING:
 
     from fastraml.views.lint.engine import Context
 
-__all__ = ['UnusedTrait', 'UnusedType']
+__all__ = ['RemoteFragment', 'UnusedTrait', 'UnusedType']
+
+
+class RemoteFragment:
+    meta: ClassVar = RuleMeta(
+        id='remote-fragment',
+        category=Category.STYLE,
+        summary='avoid depending on an externally hosted RAML fragment',
+        rationale=(
+            'A document that imports a hosted fragment depends on its availability and on the content '
+            'that server returns later. Keep a local copy for reproducible parses.'
+        ),
+        severity=Severity.WARNING,
+        good='#%RAML 1.0\ntitle: t\ntypes:\n  Local: string\n',
+        bad='#%RAML 1.0\ntitle: t\ntypes:\n  Remote: !include https://example.test/type.raml\n',
+    )
+
+    def run(self, ctx: Context) -> Iterable[Finding]:
+        for refs in ctx.raml.include_refs.values():
+            for ref in refs:
+                if ref.abs_uri.startswith(('http://', 'https://')):
+                    yield ctx.at(
+                        self.meta,
+                        'fragment depends on a remote URL',
+                        location=ref.source_uri,
+                        position=ref.position,
+                        path=ref.abs_uri,
+                    )
+        for fragment in ctx.raml.fragments.values():
+            for link in fragment.uses.values():
+                target = link.link.location if link.link is not None else ''
+                if target.startswith(('http://', 'https://')):
+                    yield ctx.at(
+                        self.meta,
+                        'fragment depends on a remote URL',
+                        location=link.location,
+                        position=link.value_pos,
+                        path=target,
+                    )
 
 
 class UnusedType:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -29,12 +30,18 @@ from fastraml.views.lint import (
 from fastraml.views.lint.config import SCHEMA
 
 
-def parsed(source: str, tmp_path):
+class _RemoteClient:
+    def get(self, url):
+        kind = 'Library' if url.endswith('/lib.raml') else 'DataType'
+        return SimpleNamespace(status_code=200, content=f'#%RAML 1.0 {kind}\n'.encode())
+
+
+def parsed(source: str, tmp_path, *, http_client=None):
     return parse_from_string(
         source,
         file_name='api.raml',
         base_dir=tmp_path,
-        options=ParseOptions(unwrap=True, validate=False, retain_source=True),
+        options=ParseOptions(unwrap=True, validate=False, retain_source=True, http_client=http_client),
     )
 
 
@@ -46,9 +53,28 @@ class TestRuleExamples:
         for name, source in rule.meta.files:
             (tmp_path / name).write_text(source, encoding='utf-8')
         assert not linter.run(parsed(rule.meta.good, tmp_path))
-        findings = linter.run(parsed(rule.meta.bad, tmp_path))
+        client = _RemoteClient() if rule.meta.id == 'remote-fragment' else None
+        findings = linter.run(parsed(rule.meta.bad, tmp_path, http_client=client))
         assert [finding.rule for finding in findings] == [rule.meta.id]
         assert findings[0].info
+
+    def test_remote_fragment_warns_for_includes_and_uses_but_not_local_references(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\nuses:\n  remote: https://example.test/lib.raml\n'
+            'types:\n  Hosted: !include https://example.test/type.raml\n'
+            '  Local: !include local.raml\n'
+        )
+        (tmp_path / 'local.raml').write_text('#%RAML 1.0 DataType\ntype: string\n', encoding='utf-8')
+        config = Config(extends=('recommended',))
+        findings = [
+            finding
+            for finding in Linter(builtin_registry(), config).run(parsed(source, tmp_path, http_client=_RemoteClient()))
+            if finding.rule == 'remote-fragment'
+        ]
+        assert [(finding.position.line, finding.info) for finding in findings] == [
+            (4, {'path': 'https://example.test/lib.raml'}),
+            (6, {'path': 'https://example.test/type.raml'}),
+        ]
 
     @pytest.mark.parametrize(
         'source',

@@ -1557,12 +1557,14 @@ def _http_client() -> Any:
 
     fastRAML depends on neither; `HTTPLoader` duck-types `get(url)`.
     """
-    for module_name, factory in (('httpx', 'Client'), ('requests', 'Session')):
+    for module_name in ('httpx', 'requests'):
         try:
             module = __import__(module_name)
         except ImportError:
             continue
-        return getattr(module, factory)()
+        if module_name == 'httpx':
+            return module.Client(follow_redirects=True)
+        return module.Session()
     message = '--remote needs an HTTP client: pip install "fastraml[http]" (or any httpx / requests already present)'
     raise SystemExit(message)
 

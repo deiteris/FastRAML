@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -445,6 +446,22 @@ class TestTypeHierarchy:
 
 
 class TestDiagnostics:
+    def test_a_remote_fragment_is_a_lint_warning_after_remote_loading(self, memory_workspace):
+        class RemoteClient:
+            def get(self, _url):
+                return SimpleNamespace(status_code=200, content=b'#%RAML 1.0 DataType\ntype: string\n')
+
+        folder = path_to_file_uri(memory_workspace.root)
+        workspace = Workspace([folder], http_client=RemoteClient())
+        uri = f'{folder}/api.raml'
+        workspace.open(uri, '#%RAML 1.0\ntitle: t\ntypes:\n  T: !include https://example.test/t.raml\n', 1)
+        snapshot = workspace.snapshot(uri)
+        assert queries.diagnostics(snapshot, lint=False) == {}
+        warnings = [d for d in queries.diagnostics(snapshot)[uri] if d.code == 'remote-fragment']
+        assert [(d.severity, d.info, d.site.span.line) for d in warnings] == [
+            ('warning', {'path': 'https://example.test/t.raml'}, 4)
+        ]
+
     def test_a_chain_is_reported_at_its_innermost_frame_with_a_position(self, memory_workspace):
         workspace, folder = _buffered(
             memory_workspace,

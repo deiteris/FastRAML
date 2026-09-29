@@ -191,6 +191,8 @@ or `-o FILE` with UTF-8 and LF newlines. `query` needs `fastraml[graph]`;
 `serve` needs `fastraml[serve]`; `lsp` needs `fastraml[lsp]`; `-r` needs an
 HTTP client such as `fastraml[http]`. Lint defaults to failing on `error`;
 `--fail-on warning` also fails on warnings.
+The CLI's `-r` client follows HTTP redirects; a library caller supplying its own
+`http_client` controls that client's redirect policy.
 
 For library callers, `to_raml(json_shape, name=None)` accepts a compiled
 `JsonShape` and returns the same complete RAML document (docs/16 § 8).

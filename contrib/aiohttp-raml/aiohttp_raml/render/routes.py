@@ -9,9 +9,52 @@ from aiohttp import hdrs
 from aiohttp_raml.decorator import excluded
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from raml_document.from_pydantic import Walk
 
-__all__ = ['operations']
+__all__ = ['apps', 'operations', 'resources']
+
+#: The applications a resource is mounted under, outermost first: the app
+#: itself, then each sub-application down to the one that routes it.
+Chain = tuple[Any, ...]
+
+
+def apps(app: Any, chain: Chain = ()) -> Iterator[Chain]:
+    """`app` and every sub-application mounted under it, each as the chain that reaches it."""
+    chain = (*chain, app)
+    yield chain
+    for entry in app.router.resources():
+        info = entry.get_info()
+        if not excluded(entry) and 'prefix' in info and 'app' in info:
+            yield from apps(info['app'], chain)
+
+
+def resources(app: Any, walk: Walk, chain: Chain = ()) -> Iterator[tuple[Chain, str, Any]]:
+    """Every resource the app routes to -- a sub-application's among them -- with its path.
+
+    `add_subapp` prefixes each of the sub-application's resources as it mounts
+    them, so their paths are already whole. A sub-application matched by the
+    request's host (`add_domain`) is not under the document's one `baseUri`,
+    and a resource with no path -- a static directory -- is no API operation;
+    both are reported.
+    """
+    chain = (*chain, app)
+    for entry in app.router.resources():
+        if excluded(entry):
+            continue
+        info = entry.get_info()
+        if 'app' in info:
+            if 'prefix' in info:
+                yield from resources(info['app'], walk, chain)
+            else:
+                walk.drop(str(entry), 'a sub-application matched by host, and RAML has one baseUri; not described')
+            continue
+        path = info.get('path') or info.get('formatter')
+        if path is None:
+            walk.drop(str(entry), 'a resource with no path is not an API operation; not described')
+            continue
+        yield chain, path, entry
 
 
 def operations(resource: Any, walk: Walk, path: str) -> list[tuple[str, Any]]:

@@ -845,3 +845,83 @@ def test_a_head_with_a_handler_of_its_own_is_described() -> None:
     document, _ = rendered(app)
     assert list(document['/x']) == ['get', 'head']
     assert document['/x']['head']['responses'] == {'204': {}}
+
+
+@validate
+async def inner() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+
+def test_a_sub_applications_routes_are_described_under_its_prefix() -> None:
+    deep = web.Application()
+    deep.router.add_get('/deep', inner)
+    sub = web.Application()
+    sub.router.add_get('/books', inner)
+    sub.add_subapp('/more', deep)
+    app = web.Application()
+    app.add_subapp('/v1', sub)
+    document, dropped = rendered(app)
+    assert list(document['/v1']) == ['/books', '/more']
+    assert list(document['/v1']['/more']['/deep']) == ['get']
+    assert dropped == []
+
+
+def test_an_excluded_sub_application_is_silent() -> None:
+    sub = web.Application()
+    sub.router.add_get('/books', inner)
+    app = web.Application()
+    exclude(app.add_subapp('/v1', sub))
+    document, dropped = rendered(app)
+    assert '/v1' not in document
+    assert dropped == []
+
+
+def test_a_sub_application_matched_by_host_is_reported() -> None:
+    """Its routes are not under the document's one baseUri."""
+    sub = web.Application()
+    sub.router.add_get('/books', inner)
+    app = web.Application()
+    app.add_domain('api.example.com', sub)
+    document, dropped = rendered(app)
+    assert '/books' not in document
+    assert len(dropped) == 1
+    assert 'matched by host' in dropped[0]
+
+
+class Keyed(PassThrough):
+    async def authenticate(self, request: web.Request) -> Any:
+        raise AuthenticationError
+
+
+def test_a_sub_application_uses_the_schemes_its_parents_register() -> None:
+    @secured('key')
+    @validate
+    async def guarded() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    sub = web.Application()
+    sub.router.add_get('/books', guarded)
+    app = web.Application()
+    setup_security(app, {'key': Keyed(headers={'X-Key': 'string'})})
+    app.add_subapp('/v1', sub)
+    document, dropped = rendered(app)
+    assert document['/v1']['/books']['get']['securedBy'] == ['key']
+    assert dropped == []
+
+
+def test_schemes_two_sub_applications_register_under_one_name_are_declared_apart() -> None:
+    @secured('key')
+    @validate
+    async def guarded() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    for prefix, header in (('/a', 'X-A'), ('/b', 'X-B')):
+        sub = web.Application()
+        setup_security(sub, {'key': Keyed(headers={header: 'string'})})
+        sub.router.add_get('/books', guarded)
+        app.add_subapp(prefix, sub)
+    document, dropped = rendered(app)
+    assert document['securitySchemes']['key']['describedBy'] == {'headers': {'X-A': 'string'}}
+    assert document['securitySchemes']['key_2']['describedBy'] == {'headers': {'X-B': 'string'}}
+    assert document['/a']['/books']['get']['securedBy'] == ['key']
+    assert document['/b']['/books']['get']['securedBy'] == ['key_2']
+    assert dropped == ["securitySchemes: two schemes are registered as 'key'; the second is declared as key_2"]
+    build(app, title='T')

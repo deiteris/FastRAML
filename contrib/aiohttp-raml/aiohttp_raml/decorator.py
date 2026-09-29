@@ -179,7 +179,9 @@ async def _authorise(request: web.Request, entry: Described) -> None:
     """
     if not entry.secured_by:
         return
-    registry = request.app.get(AUTH_SCHEMES) or {}
+    # Through `config_dict`: a handler in a sub-application sees the schemes
+    # its parents registered.
+    registry = request.config_dict.get(AUTH_SCHEMES) or {}
     failure: Exception | None = None
     for name, scopes in entry.secured_by:
         scheme = registry.get(name)

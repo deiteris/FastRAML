@@ -617,3 +617,28 @@ def test_a_body_on_a_status_that_has_none_is_refused(code: int) -> None:
     with pytest.raises(ValueError, match='has no body'):
         Responds(code, Book)
     Responds(code)
+
+
+async def test_a_sub_applications_handler_is_secured_by_its_parents_scheme(aiohttp_client: Any) -> None:
+    from aiohttp_raml import AuthenticationError, PassThrough, secured
+    from aiohttp_raml.security import setup
+
+    class Keyed(PassThrough):
+        async def authenticate(self, request: web.Request) -> Any:
+            if request.headers.get('X-Key') != 'k':
+                raise AuthenticationError
+            return 'someone'
+
+    @secured('key')
+    @validate.and_request
+    async def guarded(request: web.Request) -> Annotated[web.Response, Responds(200, None)]:
+        return web.json_response(request['identity'])
+
+    sub = web.Application()
+    sub.router.add_get('/me', guarded)
+    app = web.Application()
+    setup(app, {'key': Keyed()})
+    app.add_subapp('/v1', sub)
+    client = await aiohttp_client(app)
+    assert (await client.get('/v1/me')).status == 401
+    assert await (await client.get('/v1/me', headers={'X-Key': 'k'})).json() == 'someone'

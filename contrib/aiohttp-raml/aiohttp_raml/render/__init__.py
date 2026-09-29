@@ -4,15 +4,16 @@ Everything comes off what the handlers declared. `validate` left a `Described`
 on each wrapper -- the same record the injector validates against -- so a
 parameter cannot be documented in one place and read from another.
 
-Routes come from `app.router.resources()`; a resource's `get_info()` gives a
-`path` or a `formatter`, and the formatter already spells `{name}` as RAML does.
+Routes come from `app.router.resources()`, and from each sub-application's in
+turn; a resource's `get_info()` gives a `path` or a `formatter`, and the
+formatter already spells `{name}` as RAML does.
 
 Anything the renderer cannot express lands in `Report.dropped`, never omitted in
 silence.
 
 | Module | Decides |
 |---|---|
-| `routes` | which routes are described, and the verbs each stands for |
+| `routes` | which routes are described, a sub-application's among them, and the verbs each stands for |
 | `parameters` | a handler's URI parameters, query parameters, headers and body |
 | `responses` | the responses a handler declares |
 | `security` | `securitySchemes:` and each handler's `securedBy` |
@@ -22,14 +23,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from raml_document import METHODS, Document, Documentation, Method, Parameters, Report, Resource, SecurityScheme
+from raml_document import METHODS, Document, Documentation, Method, Parameters, Report, Resource
 from raml_document.from_pydantic import Walk
 
-from aiohttp_raml.decorator import Described, described, excluded
+from aiohttp_raml.decorator import Described, described
 from aiohttp_raml.render.parameters import body, parameters
 from aiohttp_raml.render.responses import responses
-from aiohttp_raml.render.routes import operations
-from aiohttp_raml.render.security import schemes, secured_by
+from aiohttp_raml.render.routes import apps, operations, resources
+from aiohttp_raml.render.security import Security
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -45,14 +46,14 @@ def _place_uri(root: Resource, path: str, uri: Parameters, at: str, walk: Walk) 
 
 
 def _method(
-    entry: Described, verb: str, path: str, declared: dict[str, SecurityScheme], walk: Walk
+    entry: Described, at: str, security: Security, names: dict[str, str], walk: Walk
 ) -> tuple[Method, Parameters]:
-    at = f'{verb} {path}'
+    """One handler's method, and the URI parameters it declares for its resource to carry."""
     method = Method(display_name=entry.display_name, description=entry.description)
     uri = parameters(entry, method, at, walk)
     body(entry, method, at, walk)
     responses(entry, method, at, walk)
-    method.secured_by.extend(secured_by(entry, declared, at, walk))
+    method.secured_by.extend(security.secured_by(entry, names, at))
     return method, uri
 
 
@@ -80,16 +81,13 @@ def render(  # noqa: PLR0913 - five keyword-only metadata nodes; the count is th
         base_uri=base_uri,
         documentation=list(documentation),
     )
-    document.security_schemes = schemes(app)
+    security = Security(walk)
+    for chain in apps(app):
+        security.names(chain)
+    document.security_schemes = security.declared
 
-    for entry in app.router.resources():
-        if excluded(entry):
-            continue
-        info = entry.get_info()
-        path = info.get('path') or info.get('formatter')
-        if path is None:
-            walk.drop(str(entry), 'a resource with no path is not an API operation; not described')
-            continue
+    for chain, path, entry in resources(app, walk):
+        names = security.names(chain)
         built: dict[str, Method] = {}
         uri: Parameters = {}
         for verb, handler in operations(entry, walk, path):
@@ -101,7 +99,7 @@ def render(  # noqa: PLR0913 - five keyword-only metadata nodes; the count is th
                 walk.drop(f'{verb} {path}', 'handler is not decorated with @validate; described by its path alone')
                 built[verb.lower()] = Method()
                 continue
-            method, declared = _method(found, verb, path, document.security_schemes, walk)
+            method, declared = _method(found, f'{verb} {path}', security, names, walk)
             built[verb.lower()] = method
             # Merged across the verbs: they share the path, so they share its
             # parameters, and writing them once per verb would write the same

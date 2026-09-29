@@ -133,6 +133,23 @@ _KEY_PATTERNS: Final[dict[Any, str]] = {
 _NOT_NAME: Final = re.compile(r'[^A-Za-z0-9_]')
 
 
+@dataclass(frozen=True, slots=True)
+class _Shape:
+    """How a response writes its models, where that is not how they are read.
+
+    FastAPI's `response_model_by_alias` and `response_model_exclude_none`: the
+    keys a model writes under, and whether a `None` is written at all.
+    """
+
+    by_alias: bool = True
+    exclude_none: bool = False
+
+    @property
+    def suffix(self) -> str:
+        """What a model declared in this shape is named after: `UserOutput`, `UserOutputByName`..."""
+        return f'Output{"" if self.by_alias else "ByName"}{"NoNulls" if self.exclude_none else ""}'
+
+
 @dataclass(slots=True)
 class Walk:
     """One traversal: the models it reached, and what it could not carry.
@@ -149,16 +166,16 @@ class Walk:
     #: framework's upload class as `file`, say. Read before `SCALARS`, down the
     #: MRO, so a subclass of one is the same built-in.
     scalars: dict[Any, str] = field(default_factory=dict)
-    #: (model, output?) -> the RAML name it was registered under, which is not
-    #: always `__name__`: two models may share one.
-    _names: dict[tuple[type, bool], str] = field(default_factory=dict)
+    #: (model, output shape or None for input) -> the RAML name it was
+    #: registered under, which is not always `__name__`: two models may share one.
+    _names: dict[tuple[type, _Shape | None], str] = field(default_factory=dict)
     #: (discriminator, tag type) -> the synthesised base every union tagged
     #: that way shares.
     _bases: dict[tuple[str, str], str] = field(default_factory=dict)
     #: member name -> the discriminator it has been tagged by.
     _tagged: dict[str, str] = field(default_factory=dict)
-    _diverging: dict[type, bool] = field(default_factory=dict)
-    _output: bool = False
+    _diverging: dict[tuple[type, _Shape], bool] = field(default_factory=dict)
+    _output: _Shape | None = None
 
     def drop(self, at: str, what: str) -> None:
         message = f'{at}: {what}'
@@ -166,13 +183,17 @@ class Walk:
             self.dropped.append(message)
 
     @contextmanager
-    def output(self) -> Iterator[None]:
+    def output(self, *, by_alias: bool = True, exclude_none: bool = False) -> Iterator[None]:
         """Walk what models *serialise to* inside this block, not what they accept.
 
         For a response body. A model whose two shapes differ is declared again
         as `{Name}Output`; one whose shapes agree keeps its single declaration.
+        `by_alias=False` writes each field under its own name, and
+        `exclude_none=True` leaves a `None` out rather than writing null --
+        FastAPI's `response_model_by_alias` and `response_model_exclude_none`,
+        each a shape of its own (`UserOutputByName`, `UserOutputNoNulls`).
         """
-        previous, self._output = self._output, True
+        previous, self._output = self._output, _Shape(by_alias=by_alias, exclude_none=exclude_none)
         try:
             yield
         finally:
@@ -186,7 +207,7 @@ class Walk:
         A model is a pydantic model, a dataclass or a `TypedDict`: each is an
         object with named fields, and pydantic validates each the same way.
         """
-        output = self._output and self._diverges(model)
+        output = self._output if self._output is not None and self._diverges(model, self._output) else None
         known = self._names.get((model, output))
         if known is not None:
             return known
@@ -197,7 +218,7 @@ class Walk:
         self.types[name] = self._body(model, name, output=output)
         return name
 
-    def _name_for(self, model: type, *, output: bool) -> str:
+    def _name_for(self, model: type, *, output: _Shape | None) -> str:
         """`__name__`, qualified by module where two models would collide.
 
         Qualified by the last module segment first and the whole module path
@@ -206,7 +227,7 @@ class Walk:
         one factory share even their module -- and every step past the plain
         name is reported, since a reader looks for the class by its name.
         """
-        suffix = 'Output' if output else ''
+        suffix = output.suffix if output is not None else ''
         name = f'{_NOT_NAME.sub("_", model.__name__)}{suffix}'
         if name not in self.types:
             return name
@@ -228,7 +249,7 @@ class Walk:
             candidate = f'{name}_{number}'
         return candidate
 
-    def _body(self, model: type, at: str, *, output: bool) -> TypeDecl:
+    def _body(self, model: type, at: str, *, output: _Shape | None) -> TypeDecl:
         fields = _fields_of(model)
         root = fields.get('root')
         if root is not None and len(fields) == 1 and issubclass(model, BaseModel):
@@ -263,7 +284,7 @@ class Walk:
         return decl
 
     def _properties(
-        self, model: type, at: str, names: set[str], *, output: bool, known: Parameters | None = None
+        self, model: type, at: str, names: set[str], *, output: _Shape | None, known: Parameters | None = None
     ) -> Parameters:
         """The properties for the fields -- and, in output, computed fields -- named in `names`.
 
@@ -272,29 +293,81 @@ class Walk:
         """
         known = known or {}
         out: Parameters = {}
+        # Under `exclude_none` a `None` is left out: never null, and so optional.
+        strip = output is not None and output.exclude_none
         for name, info in _fields_of(model).items():
-            if name not in names or (output and info.exclude is True):
+            if name not in names or (output is not None and info.exclude is True):
                 continue
             wire = _wire_name(name, info, output=output)
-            if not output:
+            if output is None:
                 self._report_alias(name, info, wire, at)
             if wire is None:
                 continue
-            out[wire] = known.get(wire) or self.optional(self.field(info, f'{at}.{name}'), info, f'{at}.{name}')
-        if output:
+            prop = known.get(wire)
+            if prop is None:
+                prop = self.optional(self.field(info, f'{at}.{name}', nullable=not strip), info, f'{at}.{name}')
+                if strip and _admits_none(info.annotation):
+                    prop.required = False
+            out[wire] = prop
+        if output is not None:
             for name, computed in _computed_of(model).items():
-                wire = computed.alias or name
+                wire = (computed.alias or name) if output.by_alias else name
                 if name not in names:
                     continue
                 if wire in known:
                     out[wire] = known[wire]
                     continue
-                # Always present in what the model writes, so required.
-                prop = self.annotation(computed.return_type, f'{at}.{name}')
+                returned = _without_none(computed.return_type) if strip else computed.return_type
+                prop = self.annotation(returned, f'{at}.{name}')
                 if computed.description:
                     prop.description = computed.description
+                # Always present in what the model writes, so required -- unless
+                # it is a `None` left out.
+                if strip and _admits_none(computed.return_type):
+                    prop.required = False
                 out[wire] = prop
         return out
+
+    def subset(self, model: type, name: str, at: str, *, include: Any = None, exclude: Any = None) -> TypeDecl | None:
+        """`model` as written with `include` and `exclude` applied, declared as `name`.
+
+        FastAPI's `response_model_include` and `response_model_exclude`: a set
+        of field names, or a dict whose values are `True` or narrow a field in
+        turn. A narrowed field is written as `any` and reported, since what is
+        left of it is a shape of its own. Every field is declared on the one
+        type, inherited ones too: a RAML subtype cannot drop a property.
+        Returns a reference to the declared type, or `None` if `model` is not a
+        model.
+        """
+        if not _is_model(model):
+            return None
+        fields, computed = _fields_of(model), _computed_of(model)
+        whole: dict[str, bool] = {}
+        for key in [*fields, *computed]:
+            kept = include is None or key in include
+            narrowed = kept and isinstance(include, dict) and not _whole(include[key])
+            if exclude is not None and key in exclude:
+                if not isinstance(exclude, dict) or _whole(exclude[key]):
+                    kept = False
+                else:
+                    narrowed = True
+            if kept:
+                whole[key] = not narrowed
+        shape = self._output or _Shape()
+        properties = self._properties(model, name, set(whole), output=shape)
+        for key, taken_whole in whole.items():
+            if taken_whole:
+                continue
+            if key in fields:
+                wire = _wire_name(key, fields[key], output=shape)
+            else:
+                wire = (computed[key].alias or key) if shape.by_alias else key
+            if wire in properties:
+                self.drop(at, f'{key} is written in part, which RAML cannot say; written as any')
+                properties[wire] = TypeDecl(type='any', required=properties[wire].required)
+        declared = self.unique(_NOT_NAME.sub('_', name))
+        self.types[declared] = TypeDecl(type='object', properties=properties)
+        return TypeDecl(type=declared)
 
     def _report_alias(self, name: str, info: FieldInfo, wire: str | None, at: str) -> None:
         """Say which keys a field is read from that its one RAML property does not name.
@@ -378,24 +451,25 @@ class Walk:
             return False
         return any(self._extends(parent, target) for parent in _parents(decl) if parent != name)
 
-    def _diverges(self, model: type) -> bool:
-        """Does `model` -- or any model it reaches -- write a shape it does not read?
+    def _diverges(self, model: type, shape: _Shape) -> bool:
+        """Does `model` -- or any model it reaches -- write, in `shape`, what it does not read?
 
         Assumed not while being decided, so a recursive model settles on what
         the rest of it says rather than looping.
         """
-        known = self._diverging.get(model)
+        known = self._diverging.get((model, shape))
         if known is not None:
             return known
-        self._diverging[model] = False
+        self._diverging[model, shape] = False
         verdict = bool(_computed_of(model)) or any(
             info.exclude is True
-            or _wire_name(name, info, output=True) != _wire_name(name, info, output=False)
-            or any(self._diverges(reached) for reached in _models_in(info.annotation))
+            or _wire_name(name, info, output=shape) != _wire_name(name, info, output=None)
+            or (shape.exclude_none and _admits_none(info.annotation))
+            or any(self._diverges(reached, shape) for reached in _models_in(info.annotation))
             for name, info in _fields_of(model).items()
         )
-        verdict = verdict or any(self._diverges(base) for base in _supertypes(model))
-        self._diverging[model] = verdict
+        verdict = verdict or any(self._diverges(base, shape) for base in _supertypes(model))
+        self._diverging[model, shape] = verdict
         return verdict
 
     # -- fields ---------------------------------------------------------------
@@ -830,13 +904,16 @@ def _as_number(value: Any, decl: TypeDecl, at: str, walk: Walk) -> Any:
     return None
 
 
-def _wire_name(name: str, info: FieldInfo, *, output: bool) -> str | None:
+def _wire_name(name: str, info: FieldInfo, *, output: _Shape | None) -> str | None:
     """The key a field travels under: read by its validation alias, written by its serialization one.
 
     `AliasChoices` reads the first choice that is a key; `None` where there is
     none, since an `AliasPath` reaches into a nested value no property names.
+    A shape that does not write by alias writes the field's own name.
     """
-    chosen = info.serialization_alias if output else info.validation_alias
+    if output is not None and not output.by_alias:
+        return name
+    chosen = info.serialization_alias if output is not None else info.validation_alias
     if isinstance(chosen, AliasChoices):
         return next((choice for choice in chosen.choices if isinstance(choice, str)), None)
     if isinstance(chosen, AliasPath):
@@ -844,6 +921,21 @@ def _wire_name(name: str, info: FieldInfo, *, output: bool) -> str | None:
     if isinstance(chosen, str):
         return chosen
     return info.alias or name
+
+
+def _whole(spec: Any) -> bool:
+    """Does an include or exclude entry take the whole field, rather than narrow it?"""
+    return spec is True or spec is Ellipsis
+
+
+def _admits_none(annotation: Any) -> bool:
+    """Is `None` one of the values `annotation` allows?"""
+    annotation, _ = _unwrap_annotated(annotation)
+    if annotation in (None, type(None), Any):
+        return True
+    if get_origin(annotation) in (typing.Union, types.UnionType):
+        return any(_admits_none(arg) for arg in get_args(annotation))
+    return False
 
 
 def _without_none(annotation: Any) -> Any:

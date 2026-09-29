@@ -927,3 +927,65 @@ class TestMoreTypes:
         assert set(walk.types['M'].render()['properties'].values()) == {'string'}
         value = M(url='https://x.org', ip='1.2.3.4', path='a/b', secret='s', wait=5).model_dump(mode='json')  # noqa: S106
         assert parsed_types(walk)['M'].validate(value) is None
+
+
+class _Account(BaseModel):
+    user_name: str = Field(alias='userName')
+    nickname: str | None
+    age: int = 0
+
+
+class TestResponseShapes:
+    """FastAPI's `response_model_*` settings change what a model writes."""
+
+    def test_written_by_field_name(self):
+        walk = Walk()
+        with walk.output(by_alias=False):
+            name = walk.model(_Account)
+        assert name == '_AccountOutputByName'
+        assert list(walk.types[name].properties) == ['user_name', 'nickname', 'age']
+        value = _Account(userName='a', nickname=None).model_dump(mode='json', by_alias=False)
+        assert parsed_types(walk)[name].validate(value) is None
+
+    def test_written_without_nulls(self):
+        walk = Walk()
+        with walk.output(exclude_none=True):
+            name = walk.model(_Account)
+        assert walk.types[name].properties['nickname'].render() == {'type': 'string', 'required': False}
+        shape = parsed_types(walk)[name]
+        value = _Account(userName='a', nickname=None).model_dump(mode='json', by_alias=True, exclude_none=True)
+        assert shape.validate(value) is None
+        assert shape.validate({'userName': 'a', 'nickname': None}) is not None
+
+    def test_a_model_with_nothing_to_leave_out_is_shared(self):
+        class Plain(BaseModel):
+            a: int
+
+        walk = Walk()
+        walk.model(Plain)
+        with walk.output(exclude_none=True, by_alias=False):
+            assert walk.model(Plain) == 'Plain'
+
+    def test_a_subset_declares_only_the_fields_kept(self):
+        class Inner(BaseModel):
+            a: int
+            b: int
+
+        class Base(BaseModel):
+            secret: str
+
+        class Outer(Base):
+            inner: Inner
+            name: str
+
+        walk = Walk()
+        with walk.output():
+            kept = walk.subset(Outer, 'Outer_public', 'GET /x', exclude={'secret'})
+            narrowed = walk.subset(Outer, 'Outer_partial', 'GET /y', include={'inner': {'a'}, 'name': True})
+        assert kept == TypeDecl(type='Outer_public')
+        assert list(walk.types['Outer_public'].properties) == ['inner', 'name']
+        assert walk.types['Outer_partial'].render()['properties'] == {'inner': 'any', 'name': 'string'}
+        assert narrowed == TypeDecl(type='Outer_partial')
+        assert walk.dropped == ['GET /y: inner is written in part, which RAML cannot say; written as any']
+        assert walk.subset(int, 'Nope', 'GET /z') is None
+        parsed_types(walk)

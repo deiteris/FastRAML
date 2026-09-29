@@ -23,6 +23,8 @@ from aiohttp import web
 from raml_document import SecurityScheme as Declaration
 from raml_document import Yaml
 
+from aiohttp_raml.errors import Refused
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -44,6 +46,10 @@ __all__ = [
 #: Where `setup` puts the registry. A RAML document declares a scheme by name,
 #: so the registry is keyed by the name the document will carry.
 AUTH_SCHEMES: Final = web.AppKey('AUTH_SCHEMES', dict[str, 'SecurityScheme'])
+#: What `middleware` answers when no scheme authenticates a request.
+UNAUTHENTICATED: Final = 401
+#: What it answers when the scheme that does will not permit it.
+FORBIDDEN: Final = 403
 
 
 class AuthenticationError(Exception):
@@ -222,10 +228,12 @@ def _lifecycle(scheme: SecurityScheme) -> Any:
 
 @web.middleware
 async def middleware(request: web.Request, handler: Any) -> web.StreamResponse:
-    """Turn an authentication or authorisation failure into 401 or 403."""
+    """Turn an authentication or authorisation failure into 401 or 403, each a `Refused`."""
     try:
         return await handler(request)  # type: ignore[no-any-return]
     except AuthenticationError as error:
-        return web.json_response({'error': 'Authentication required', 'detail': str(error)}, status=401)
+        refused = Refused(error='Authentication required', detail=str(error))
+        return web.json_response(refused.model_dump(), status=UNAUTHENTICATED)
     except AuthorizationError as error:
-        return web.json_response({'error': 'Permission denied', 'detail': str(error)}, status=403)
+        refused = Refused(error='Permission denied', detail=str(error))
+        return web.json_response(refused.model_dump(), status=FORBIDDEN)

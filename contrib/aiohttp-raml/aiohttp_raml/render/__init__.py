@@ -28,7 +28,7 @@ from raml_document.from_pydantic import Walk
 
 from aiohttp_raml.decorator import Described, described
 from aiohttp_raml.render.parameters import body, parameters, segment_constraints
-from aiohttp_raml.render.responses import responses
+from aiohttp_raml.render.responses import refusals, responses
 from aiohttp_raml.render.routes import apps, operations, resources, segment_patterns
 from aiohttp_raml.render.security import Security
 
@@ -54,6 +54,7 @@ def _method(
     body(entry, method, at, walk)
     responses(entry, method, at, walk)
     method.secured_by.extend(security.secured_by(entry, names, at))
+    refusals(method, at, walk)
     return method, uri
 
 

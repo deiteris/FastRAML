@@ -642,3 +642,32 @@ async def test_a_sub_applications_handler_is_secured_by_its_parents_scheme(aioht
     client = await aiohttp_client(app)
     assert (await client.get('/v1/me')).status == 401
     assert await (await client.get('/v1/me', headers={'X-Key': 'k'})).json() == 'someone'
+
+
+async def test_the_401_and_403_are_what_the_document_declares(aiohttp_client: Any) -> None:
+    from aiohttp_raml import AuthenticationError, PassThrough, Refused, secured
+    from aiohttp_raml.security import setup
+
+    class Keyed(PassThrough):
+        async def authenticate(self, request: web.Request) -> Any:
+            if 'X-Key' not in request.headers:
+                raise AuthenticationError('no key')
+            return request.headers['X-Key']
+
+        async def permits(self, request: web.Request, identity: Any, scopes: Any) -> bool:
+            return bool(identity == 'admin')
+
+    @secured('key')
+    @validate
+    async def guarded() -> Annotated[web.Response, Responds(200, None)]:
+        return web.json_response({})
+
+    app = web.Application()
+    setup(app, {'key': Keyed()})
+    app.router.add_get('/x', guarded)
+    client = await aiohttp_client(app)
+    for headers, status in (({}, 401), ({'X-Key': 'guest'}, 403), ({'X-Key': 'admin'}, 200)):
+        response = await client.get('/x', headers=headers)
+        assert response.status == status
+        if status != 200:
+            Refused.model_validate(await response.json())

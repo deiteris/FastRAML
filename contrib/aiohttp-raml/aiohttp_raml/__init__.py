@@ -27,7 +27,7 @@ from __future__ import annotations
 from raml_document import Documentation
 
 from aiohttp_raml.decorator import Described, exclude, secured, validate
-from aiohttp_raml.errors import RequestError
+from aiohttp_raml.errors import Refused, RequestError
 from aiohttp_raml.injectors import ResponseMismatch
 from aiohttp_raml.multipart import File, PartRejected, UploadedFile
 from aiohttp_raml.params import Body, Header, QueryParam, UriParam
@@ -65,6 +65,7 @@ __all__ = [
     'PassThrough',
     'QueryParam',
     'RamlView',
+    'Refused',
     'Report',
     'RequestError',
     'Responds',

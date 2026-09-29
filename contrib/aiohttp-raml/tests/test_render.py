@@ -998,3 +998,29 @@ def test_a_scope_the_scheme_does_not_declare_is_reported_not_written(declared: l
     assert document['/x']['get']['securedBy'] == ([{'books': {'scopes': declared}}] if declared else ['books'])
     assert dropped == [f"GET /x: 'books' is asked for scopes {unlisted} it does not declare; not written"]
     build(app, title='T')
+
+
+def test_a_secured_handler_declares_the_401_and_403_the_middleware_answers() -> None:
+    document, dropped = rendered(secured_app({'oauth': Books(access_token_uri='t', scopes=['read'])}, Guarded))
+    responses = document['/x']['get']['responses']
+    assert responses['401']['body'] == {'application/json': 'Refused'}
+    assert responses['403']['body'] == {'application/json': 'Refused'}
+    assert document['types']['Refused']['properties'] == {'error': 'string', 'detail': 'string'}
+    assert dropped == []
+
+
+def test_an_open_handler_declares_neither() -> None:
+    responses = rendered(one_view('/x', Open))[0]['/x']['get'].get('responses', {})
+    assert '401' not in responses
+    assert '403' not in responses
+
+
+class OwnRefusal(RamlView):
+    @secured('books')
+    async def get(self) -> Annotated[web.Response, Responds(401, Error, 'log in')]: ...
+
+
+def test_a_handler_declaring_its_own_401_keeps_it() -> None:
+    responses = rendered(secured_app({'books': Books(access_token_uri='t')}, OwnRefusal))[0]['/x']['get']['responses']
+    assert responses['401'] == {'description': 'log in', 'body': {'application/json': 'Error'}}
+    assert responses['403']['body'] == {'application/json': 'Refused'}

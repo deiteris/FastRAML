@@ -46,10 +46,19 @@ def _place_uri(root: Resource, path: str, uri: Parameters, at: str, walk: Walk) 
 
 
 def _method(
-    entry: Described, at: str, security: Security, names: dict[str, str], walk: Walk
+    handler: Any, entry: Described, at: str, security: Security, names: dict[str, str]
 ) -> tuple[Method, Parameters]:
-    """One handler's method, and the URI parameters it declares for its resource to carry."""
+    """One handler's method, and the URI parameters it declares for its resource to carry.
+
+    A handler marked `@deprecated` (`warnings` or `typing_extensions`) carries
+    `__deprecated__`, its message, whichever side of `@validate` it sits;
+    RAML says it with the `deprecated` annotation.
+    """
+    walk = security.walk  # the one walk of this render, which `security` reports into as well
     method = Method(display_name=entry.display_name, description=entry.description)
+    deprecated = getattr(handler, '__deprecated__', None)
+    if deprecated is not None:
+        walk.annotate(method.annotations, 'deprecated', str(deprecated) or None)
     uri = parameters(entry, method, at, walk)
     body(entry, method, at, walk)
     responses(entry, method, at, walk)
@@ -100,7 +109,7 @@ def render(  # noqa: PLR0913 - five keyword-only metadata nodes; the count is th
                 walk.drop(f'{verb} {path}', 'handler is not decorated with @validate; described by its path alone')
                 built[verb.lower()] = Method()
                 continue
-            method, declared = _method(found, f'{verb} {path}', security, names, walk)
+            method, declared = _method(handler, found, f'{verb} {path}', security, names)
             built[verb.lower()] = method
             # Merged across the verbs: they share the path, so they share its
             # parameters, and writing them once per verb would write the same

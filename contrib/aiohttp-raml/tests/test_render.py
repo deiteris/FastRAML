@@ -1045,3 +1045,25 @@ def test_secured_none_is_the_anonymous_alternative() -> None:
 def test_the_anonymous_alternative_asks_for_no_scopes() -> None:
     with pytest.raises(ValueError, match='no scopes'):
         secured(None, scopes=['read'])
+
+
+def test_a_deprecated_handler_is_annotated_whichever_side_of_validate_it_is_marked() -> None:
+    from typing_extensions import deprecated
+
+    @deprecated('use /v2')
+    @validate
+    async def outer() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    class Inner(RamlView):
+        @deprecated('')
+        async def get(self) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    app.router.add_get('/outer', outer)
+    app.router.add_view('/inner', Inner)
+    document, dropped = rendered(app)
+    assert document['/outer']['get']['(deprecated)'] == 'use /v2'
+    assert document['/inner']['get']['(deprecated)'] is None
+    assert 'deprecated' in document['annotationTypes']
+    assert dropped == []
+    build(app, title='T')

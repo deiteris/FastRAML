@@ -152,8 +152,10 @@ caller-supplied complex value at its replacement root, and marks a copied scalar
 that received substitution, with the caller scope.
 
 `mark_graft` marks every node in a grafted source subtree with the source scope.
-Both writers are set-if-absent: an existing mark is a more-specific scope
-boundary, so graft marking neither overwrites it nor descends below it.
+A source-only pair merged into an existing mapping has its key marked as well
+as its value. Both writers are set-if-absent: an existing mark is a
+more-specific scope boundary, so graft marking neither overwrites it nor
+descends below it.
 
 ### 4.2 Readers
 
@@ -163,6 +165,14 @@ the most-specific scope: a marked `type` or `schema` value wins over its
 containing mapping. `Raml.location_of` uses the marked scope's anchor location
 for diagnostics. That namespace location is not necessarily the node's authored
 location.
+
+Stage 2 locates each top-level pair of a resource or method body by its key:
+a pair a trait or resource type grafted from a fragment or a library is
+decoded, and its facets located, in that file. The value is not consulted,
+because a substituted scalar keeps the template's position (§ 5.1) and its
+caller mark would name the caller's file at the template's line. A key that
+received a substitution, `(<<tag>>)`, has that problem itself: it is located
+in the caller's file.
 
 A node an Overlay or Extension wrote also carries a document mark. Every
 reader consults the document mark before the unit overlay

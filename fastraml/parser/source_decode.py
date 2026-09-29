@@ -281,13 +281,13 @@ def decode_request_facet(raml: Raml, into: RequestFacets, key: Node, value: Node
     return True
 
 
-def query_exclusion_error(facets: RequestFacets, location: str, node: Node) -> RamlError | None:
+def query_exclusion_error(raml: Raml, facets: RequestFacets, location: str, node: Node) -> RamlError | None:
     """Spec section Methods: `queryString` is "mutually exclusive with queryParameters"."""
     if facets.query_string is not None and facets.query_parameters:
         # At the one written second: the first stood until it came.
         written = [key for key, _ in pairs(node) if key.value in (FACET_QUERY_STRING, FACET_QUERY_PARAMETERS)]
         at = written[-1] if written else node
-        return node_error('queryString and queryParameters are mutually exclusive', location, at)
+        return node_error('queryString and queryParameters are mutually exclusive', raml.location_of(at, location), at)
     return None
 
 
@@ -351,13 +351,14 @@ def decode_source_operation(raml: Raml, source: SourceOperation, attach: Callabl
                     # A facet value that is a provenance boundary root decodes under
                     # the scope recorded for it; anything below it is reached
                     # through `Raml.scope_for` and `Raml.location_of` instead, which
-                    # survive the containers the merge synthesised.
+                    # survive the containers the merge synthesised. A pair a
+                    # template grafted is located where the template was written.
                     with raml.provenance_scope(value):
-                        _decode_operation_field(raml, operation, request, key, value, location)
+                        _decode_operation_field(raml, operation, request, key, value, raml.location_of(key, location))
                 except RamlError as err:
                     accumulator.add(err)
+            accumulator.add(query_exclusion_error(raml, request, location, source.body))
 
-        accumulator.add(query_exclusion_error(request, location, source.body))
         operation.request = request
         accumulator.raise_if_any()
 
@@ -418,7 +419,7 @@ def decode_source_endpoint(raml: Raml, source: SourceEndPoint, attach: Callable[
                 for key, value in pairs(source.body):
                     try:
                         with raml.provenance_scope(value):
-                            _decode_endpoint_field(raml, endpoint, key, value, location)
+                            _decode_endpoint_field(raml, endpoint, key, value, raml.location_of(key, location))
                     except RamlError as err:
                         accumulator.add(err)
 

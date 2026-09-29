@@ -266,7 +266,7 @@ def _decode_described_by(
             except RamlError as err:
                 accumulator.add(err)
 
-        accumulator.add(query_exclusion_error(description, location, node))
+        accumulator.add(query_exclusion_error(raml, description, location, node))
         accumulator.raise_if_any()
 
 

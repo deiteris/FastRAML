@@ -331,3 +331,74 @@ class TestProvenance:
         with pytest.raises(RamlError) as caught:
             workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
         assert 'example' in str(caught.value)
+
+
+def _where(error: RamlError, message: str) -> list[tuple[str, int, int]]:
+    """File, line and column of every frame carrying `message`."""
+    return [
+        (frame.location.rsplit('/', 1)[-1], frame.position.line, frame.position.column)
+        for chain in error.chains()
+        for frame in chain
+        if frame.message == message and frame.position is not None
+    ]
+
+
+class TestLocation:
+    """A pair a template grafted is located in the file the template was written in.
+
+    Its position is always the template's, so naming the operation's file
+    instead points at a line of a file that does not hold it.
+    """
+
+    INCLUDED = 'traits:\n  t: !include t.raml\n/items:\n  get:\n    is: [t]\n'
+
+    def test_a_top_level_key_of_a_trait_fragment_is_located_in_the_fragment(self, workspace):
+        root = workspace({'api.raml': API + self.INCLUDED, 't.raml': '#%RAML 1.0 Trait\nbogus: 1\n'})
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert _where(caught.value, 'unknown field') == [('t.raml', 2, 1)]
+
+    def test_a_key_merged_beside_the_methods_own_is_located_in_the_fragment(self, workspace):
+        # The method has a body, so the trait's `queryString` is merged in
+        # beside its `queryParameters`, and the error is at the one written second.
+        root = workspace(
+            {
+                'api.raml': API + self.INCLUDED + '    queryParameters:\n      page: integer\n',
+                't.raml': '#%RAML 1.0 Trait\nqueryString:\n  properties:\n    q: string\n',
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert _where(caught.value, 'queryString and queryParameters are mutually exclusive') == [('t.raml', 2, 1)]
+
+    def test_the_methods_own_key_stays_in_the_api(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API + self.INCLUDED + '    bogus: 1\n',
+                't.raml': '#%RAML 1.0 Trait\ndescription: d\n',
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert _where(caught.value, 'unknown field') == [('api.raml', 9, 5)]
+
+    def test_a_library_traits_facet_is_located_in_the_library(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  l: lib.raml\n/items:\n  get:\n    is: [l.t]\n',
+                'lib.raml': '#%RAML 1.0 Library\ntraits:\n  t:\n    description: <<methodName>> items\n',
+            }
+        )
+        description = operation(parse(workspace, root), '/items', 'get').description
+        assert (description.value, description.location.rsplit('/', 1)[-1]) == ('get items', 'lib.raml')
+
+    def test_a_library_resource_types_facet_is_located_in_the_library(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  l: lib.raml\n/items:\n  type: l.r\n',
+                'lib.raml': '#%RAML 1.0 Library\nresourceTypes:\n  r:\n    description: [1]\n',
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert [where[0] for where in _where(caught.value, 'expected scalar or mapping node')] == ['lib.raml']

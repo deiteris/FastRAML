@@ -16,7 +16,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import hdrs
-from pydantic.fields import FieldInfo
 from raml_document import (
     METHODS,
     Body,
@@ -35,7 +34,7 @@ from raml_document.from_pydantic import Walk
 
 from aiohttp_raml.decorator import Described, described, excluded
 from aiohttp_raml.multipart import File
-from aiohttp_raml.params import BODY, HEADER, MISSING, QUERY, URI, Declared
+from aiohttp_raml.params import BODY, HEADER, QUERY, URI, Declared
 from aiohttp_raml.security import AUTH_SCHEMES
 
 if TYPE_CHECKING:
@@ -47,20 +46,13 @@ __all__ = ['Report', 'render']
 _NODES = {QUERY: 'query_parameters', HEADER: 'headers'}
 
 
-def _field_info(item: Declared) -> FieldInfo:
-    """One declaration -> the `FieldInfo` a model property would be."""
-    if item.default is MISSING:
-        return FieldInfo.from_annotation(item.annotation)
-    return FieldInfo.from_annotated_attribute(item.annotation, item.default)
-
-
 def _parameters(entry: Described, method: Method, at: str, walk: Walk) -> Parameters:
     """Split the declarations into RAML's nodes; return the URI ones."""
     uri: Parameters = {}
     for item in entry.bound.declared:
         if item.place == BODY:
             continue
-        decl = walk.parameter(_field_info(item), f'{at}.{item.name}')
+        decl = walk.parameter(item.info, f'{at}.{item.name}')
         if item.place == URI:
             # A URI parameter is part of the path: the route matched, so it is
             # there. `required: false` on one contradicts the path it sits in.
@@ -81,12 +73,19 @@ def _body(entry: Described, method: Method, at: str, walk: Walk) -> None:
 
 
 def _form(parts: list[Declared], at: str, walk: Walk) -> TypeDecl:
-    """A multipart body: one object whose properties are the form's fields."""
+    """A multipart body: one object whose properties are the form's fields.
+
+    A field is read like a parameter -- a part is text or absent, never null --
+    so its constraints and default are wherever pydantic reads them from.
+    """
     properties: Parameters = {}
     for item in parts:
-        decl = _file(item.file or File()) if item.is_file else walk.annotation(item.annotation, f'{at}.{item.wire}')
-        if not item.required:
-            decl.required = False
+        if item.is_file:
+            decl = _file(item.file or File())
+            if not item.required:
+                decl.required = False
+        else:
+            decl = walk.parameter(item.info, f'{at}.{item.wire}')
         properties[item.wire] = decl
     return TypeDecl(type='object', properties=properties)
 

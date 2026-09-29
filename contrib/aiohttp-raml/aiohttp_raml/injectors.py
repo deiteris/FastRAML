@@ -21,7 +21,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError, create_model
 
 from aiohttp_raml.errors import STATUS, RequestError, describe
 from aiohttp_raml.multipart import File, PartRejected, Parts, UploadedFile
-from aiohttp_raml.params import BODY, HEADER, QUERY, URI, Declared
+from aiohttp_raml.params import BODY, HEADER, MISSING, QUERY, URI, Declared
 from aiohttp_raml.responses import Responds
 
 if TYPE_CHECKING:
@@ -60,12 +60,15 @@ def _dumps(value: Any) -> str:
 def _model(name: str, fields: Sequence[Declared]) -> type[BaseModel]:
     """One pydantic model over the parameters of a single node.
 
-    Keyed by the *handler's* parameter name, not the wire name: `X-Request-Id`
-    is not an identifier, and a model whose fields are not identifiers only
-    works by way of pydantic storing them in `__dict__`. `_collect` does the
-    wire-to-name mapping before anything reaches here.
+    Fields are the *handler's* parameter names, not the wire names:
+    `X-Request-Id` is not an identifier, and a model whose fields are not
+    identifiers only works by way of pydantic storing them in `__dict__`.
+    `_collect` maps each wire name to the key the field validates under --
+    its name, or the alias its `Field` gives it.
     """
-    spec: dict[str, Any] = {item.name: (item.annotation, ... if item.required else item.default) for item in fields}
+    spec: dict[str, Any] = {
+        item.name: (item.annotation, ... if item.default is MISSING else item.default) for item in fields
+    }
     return create_model(name, **spec)
 
 
@@ -160,18 +163,18 @@ def _place(declared: list[Declared], node: str, validated: BaseModel, args: list
 
 
 def _collect(node: str, request: web.Request, declared: list[Declared]) -> dict[str, Any]:
-    """The raw values for one node, keyed by the handler's parameter names.
+    """The raw values for one node, keyed as `_model` validates them.
 
     Only declared parameters are looked up, so an undeclared query parameter or
     header is ignored rather than offered to the model.
     """
     fields = [item for item in declared if item.place == node]
     if node == URI:
-        return {item.name: request.match_info[item.wire] for item in fields if item.wire in request.match_info}
+        return {item.key: request.match_info[item.wire] for item in fields if item.wire in request.match_info}
     if node == HEADER:
         # Case-insensitively: `X-Request-Id` and `x-request-id` are one header.
         available = {key.lower(): value for key, value in request.headers.items()}
-        return {item.name: available[item.wire.lower()] for item in fields if item.wire.lower() in available}
+        return {item.key: available[item.wire.lower()] for item in fields if item.wire.lower() in available}
     return _query(request, fields)
 
 
@@ -187,7 +190,7 @@ def _query(request: web.Request, fields: list[Declared]) -> dict[str, Any]:
         values = request.query.getall(item.wire, [])
         if not values:
             continue
-        out[item.name] = values if len(values) > 1 or _is_sequence(item.annotation) else values[0]
+        out[item.key] = values if len(values) > 1 or _is_sequence(item.annotation) else values[0]
     return out
 
 
@@ -233,7 +236,7 @@ async def _read_field(part: Any, item: Declared, kwargs: dict[str, Any]) -> web.
         if (part.headers.get('Content-Type') or '').startswith('application/json'):
             return _failures([describe('body', 'the part is not valid JSON', kind='json_invalid', loc=[item.wire])])
     try:
-        kwargs[item.name] = TypeAdapter(item.annotation).validate_python(raw)
+        kwargs[item.name] = TypeAdapter(item.validated).validate_python(raw)
     except ValidationError as error:
         return error_response(error, BODY)
     return None
@@ -258,7 +261,7 @@ def bind(declared: list[Declared], responses: Sequence[Responds]) -> Bound:
     bodies = [item for item in declared if item.place == BODY]
     parts = bodies if any(item.is_file for item in bodies) else []
     body = None if parts else next(iter(bodies), None)
-    body_adapter = TypeAdapter(body.annotation) if body is not None else None
+    body_adapter = TypeAdapter(body.validated) if body is not None else None
     described = _with_request_error(declared, responses)
 
     return Bound(

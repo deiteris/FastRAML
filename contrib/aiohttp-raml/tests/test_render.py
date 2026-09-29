@@ -490,7 +490,7 @@ def test_an_upload_is_a_multipart_body_with_ramls_file_type() -> None:
     assert list(body) == ['multipart/form-data']
     assert body['multipart/form-data']['properties'] == {
         'meta': 'Meta',
-        'note': {'type': 'string', 'required': False},
+        'note': {'type': 'string', 'required': False, 'default': ''},
         'cover': {
             'type': 'file',
             'minLength': 1,
@@ -720,3 +720,31 @@ def test_a_deprecated_field_is_annotated_and_its_type_declared() -> None:
     assert 'deprecated' in document['annotationTypes']
     assert dropped == []
     build(app, title='T')
+
+
+class AliasedView(RamlView):
+    async def get(
+        self,
+        search: Annotated[str, Field(alias='q')] = '',
+        *,
+        token: Annotated[str | None, Field(alias='X-Token')] = None,
+    ) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    async def post(
+        self,
+        note: Annotated[str, Body()] = Field(min_length=1),
+        *,
+        cover: Annotated[UploadedFile, Body()],
+    ) -> Annotated[web.Response, Responds(201, Book)]: ...
+
+
+def test_a_parameter_is_named_by_its_alias() -> None:
+    document, _ = rendered(one_view('/x', AliasedView))
+    assert list(document['/x']['get']['queryParameters']) == ['q']
+    assert list(document['/x']['get']['headers']) == ['X-Token']
+
+
+def test_a_form_field_whose_field_has_no_default_is_required() -> None:
+    document, _ = rendered(one_view('/x', AliasedView))
+    properties = document['/x']['post']['body']['multipart/form-data']['properties']
+    assert properties['note'] == {'type': 'string', 'minLength': 1}

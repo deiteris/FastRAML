@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any, ClassVar, Final, get_args
 
 from pydantic import BaseModel
+from pydantic.fields import FieldInfo
 
 from aiohttp_raml.multipart import File, is_upload
 
@@ -78,7 +79,7 @@ class Body(Place):
 class Declared:
     """One parameter, as both halves of this package read it.
 
-    The injector needs `place`, `wire` and `positional`; the renderer needs
+    The injector needs `place`, `wire`, `key` and `positional`; the renderer needs
     `place`, `wire`, `annotation` and `default`. One record, read twice, so the
     document cannot describe a parameter the injector takes from somewhere else.
     """
@@ -92,14 +93,30 @@ class Declared:
     media: str = 'application/json'
     #: The RAML `file` facets, when this parameter is an upload.
     file: File | None = None
+    #: The key the injector's model validates it under: its `Field` alias, or
+    #: its name.
+    key: str = ''
 
     @property
     def is_file(self) -> bool:
         return is_upload(self.annotation)
 
     @property
+    def info(self) -> FieldInfo:
+        """The `FieldInfo` pydantic builds for this parameter, as for a model's field."""
+        if self.default is MISSING:
+            return FieldInfo.from_annotation(self.annotation)
+        return FieldInfo.from_annotated_attribute(self.annotation, self.default)
+
+    @property
+    def validated(self) -> Any:
+        """The annotation a `TypeAdapter` validates, with the constraints a `Field(...)` default adds."""
+        return Annotated[self.annotation, self.default] if isinstance(self.default, FieldInfo) else self.annotation
+
+    @property
     def required(self) -> bool:
-        return self.default is MISSING
+        """`x: int = Field(ge=1)` has a default in Python and is required all the same."""
+        return self.info.is_required()
 
 
 def wire_name(identifier: str) -> str:
@@ -165,23 +182,41 @@ def read_signature(handler: Any, hints: dict[str, Any], ignore: tuple[str, ...])
             raise TypeError(f'{_named(handler)}: parameter {name!r} has no annotation')
         annotation, marker, facets = _marker(hints[name])
         place = marker.node if marker is not None else _inferred(annotation, parameter.kind)
-        wire = (marker.name if marker is not None and marker.name else None) or (
-            wire_name(name) if place == HEADER else name
+        item = Declared(
+            name=name,
+            wire=name,
+            place=place,
+            annotation=annotation,
+            default=MISSING if parameter.default is parameter.empty else parameter.default,
+            positional=parameter.kind is parameter.POSITIONAL_ONLY,
+            media=marker.media if isinstance(marker, Body) else 'application/json',
+            file=facets,
         )
-        out.append(
-            Declared(
-                name=name,
-                wire=wire,
-                place=place,
-                annotation=annotation,
-                default=MISSING if parameter.default is parameter.empty else parameter.default,
-                positional=parameter.kind is parameter.POSITIONAL_ONLY,
-                media=marker.media if isinstance(marker, Body) else 'application/json',
-                file=facets,
-            )
+        alias = _alias(item.info, handler, name)
+        item.key = alias or name
+        # A marker's name, else the field's alias -- the key a request carries
+        # it under either way -- else a guess from the identifier.
+        item.wire = (
+            (marker.name if marker is not None else None) or alias or (wire_name(name) if place == HEADER else name)
         )
+        out.append(item)
     _check_one_body(handler, out)
     return out
+
+
+def _alias(info: FieldInfo, handler: Any, name: str) -> str | None:
+    """The one key a parameter's `Field` names it by, or `None` where it names none.
+
+    A parameter is read from one key. `AliasChoices` offers several and
+    `AliasPath` reaches into a nested value, so either is refused.
+    """
+    alias = info.validation_alias if info.validation_alias is not None else info.alias
+    if alias is None or isinstance(alias, str):
+        return alias
+    raise TypeError(
+        f'{_named(handler)}: parameter {name!r} is read from {alias!r}; a parameter has one key, '
+        f'so give Field a string alias or name it with a marker'
+    )
 
 
 def _check_one_body(handler: Any, declared: list[Declared]) -> None:

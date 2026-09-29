@@ -12,9 +12,10 @@ from typing import Annotated, Any
 import aiohttp
 import pytest
 from aiohttp import web
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from aiohttp_raml import (
+    Body,
     File,
     Header,
     RamlView,
@@ -440,3 +441,78 @@ async def test_a_part_can_be_inspected_before_it_is_read(aiohttp_client: Any) ->
     assert (await client.post('/peek', data=writer)).status == 201
     assert seen['before'] == (False, None)
     assert seen['after'] == (True, 'c.png', 'image/png', 0)
+
+
+# -- a parameter's `Field` alias is its key on the wire -----------------------
+
+
+class Aliased(RamlView):
+    async def get(
+        self,
+        search: Annotated[str, Field(alias='q')] = '',
+        limit: int = Field(ge=1),
+        *,
+        token: Annotated[str | None, Field(alias='X-Token')] = None,
+    ) -> Annotated[web.Response, Responds(200, Book)]:
+        return web.json_response({'search': search, 'limit': limit, 'token': token})
+
+
+@pytest.fixture
+async def aliased(aiohttp_client: Any) -> Any:
+    app = web.Application()
+    app.router.add_view('/x', Aliased)
+    return await aiohttp_client(app)
+
+
+async def test_an_aliased_parameter_is_read_from_its_alias(aliased: Any) -> None:
+    response = await aliased.get('/x?q=hobbit&limit=2', headers={'X-Token': 't'})
+    assert await response.json() == {'search': 'hobbit', 'limit': 2, 'token': 't'}
+
+
+async def test_an_aliased_parameter_is_not_read_from_its_identifier(aliased: Any) -> None:
+    assert (await (await aliased.get('/x?search=hobbit&limit=2')).json())['search'] == ''
+
+
+async def test_a_field_with_no_default_is_required_and_keeps_its_constraint(aliased: Any) -> None:
+    """`limit: int = Field(ge=1)` has a Python default and no value default."""
+    missing = await aliased.get('/x')
+    assert missing.status == 400
+    assert (await missing.json())[0]['type'] == 'missing'
+    assert (await (await aliased.get('/x?limit=0')).json())[0]['type'] == 'greater_than_equal'
+
+
+def test_a_parameter_read_from_several_keys_is_refused() -> None:
+    """A parameter has one key; `AliasChoices` offers several."""
+    with pytest.raises(TypeError, match='a parameter has one key'):
+
+        @validate
+        async def either(
+            q: Annotated[str, Field(validation_alias=AliasChoices('q', 'query'))],
+        ) -> Annotated[web.Response, Responds(200, Book)]: ...
+
+
+async def test_a_form_field_keeps_the_constraint_its_field_default_states(aiohttp_client: Any) -> None:
+    class Noted(RamlView):
+        async def post(
+            self,
+            note: Annotated[str, Body()] = Field(min_length=2),
+            *,
+            cover: Annotated[UploadedFile, Body()],
+        ) -> Annotated[web.Response, Responds(201, Book)]:
+            await cover.read()
+            return web.json_response({}, status=201)
+
+    app = web.Application()
+    app.router.add_view('/x', Noted)
+    client = await aiohttp_client(app)
+
+    def with_note(note: str) -> Any:
+        writer = aiohttp.MultipartWriter('form-data')
+        writer.append(note).set_content_disposition('form-data', name='note')
+        writer.append(b'png', {'Content-Type': 'image/png'}).set_content_disposition(
+            'form-data', name='cover', filename='c.png'
+        )
+        return writer
+
+    assert (await client.post('/x', data=with_note('x'))).status == 400
+    assert (await client.post('/x', data=with_note('xy'))).status == 201

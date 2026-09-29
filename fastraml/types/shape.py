@@ -462,9 +462,10 @@ def _decode_type_node(
     text = type_node.value
     if not text:
         return identify_shape_type(facets, default_type, location), None
-    if text[0] == '{':
+    if text.lstrip()[:1] == '{':
         # An inline JSON Schema. `decode_json_schema` has already wrapped an
-        # external .json file into this same form (docs/04 § 5).
+        # external .json file into this same form (docs/04 § 5). JSON allows
+        # whitespace before the value, and a file indented as a whole has it.
         return TYPE_JSON, JsonShape(base, raw=text)
     if text in BUILTIN_TYPES:
         site = substituted_site(raml.substitutions, type_node, 0, len(text))

@@ -187,10 +187,25 @@ def _compose_include(raml: Raml, node: Node, data: bytes, target: str) -> Node:
     text = decode_source(data)
     extension = posixpath.splitext(strip_uri_suffix(node.value))[1].lower()
     if extension in _YAML_EXTENSIONS:
-        # YAML 1.2 is a superset of JSON, so .json composes correctly too.
+        if extension == '.json':
+            text = _outer_tabs_as_spaces(text)
         return compose(text, uri=target, max_depth=raml.max_depth)
     # Spec section Resolving Includes: any other file is included as a scalar.
     return Node(NodeKind.SCALAR, TAG_STR, text)
+
+
+def _outer_tabs_as_spaces(text: str) -> str:
+    """JSON text as YAML reads it: tabs before and after the root value as spaces.
+
+    YAML 1.2 reads JSON, but outside a flow collection a tab may not start a
+    token, so a tab before `{` fails while tabs inside the value are accepted. One
+    space for one tab keeps every line and column, which stripping would not.
+    """
+    start = len(text) - len(text.lstrip())
+    end = len(text.rstrip())
+    if '\t' not in text[:start] and '\t' not in text[end:]:
+        return text
+    return text[:start].replace('\t', ' ') + text[start:end] + text[end:].replace('\t', ' ')
 
 
 def strip_uri_suffix(ref: str) -> str:

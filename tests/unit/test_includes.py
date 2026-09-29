@@ -69,6 +69,16 @@ class TestIncludeContent:
         )
         assert content.kind is NodeKind.MAPPING
 
+    def test_a_tab_indented_json_file_is_composed(self, memory_workspace):
+        # Outside the root value a tab may not start a YAML token; in JSON it is
+        # whitespace. Inside the value, YAML accepts it as it is.
+        root = memory_workspace({'e.json': '\r\n\t{\r\n\t\t"a": "x\\ty"\r\n\t}\r\n\t'})
+        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+        _target, content = resolve_include(raml, include_node('e.json'), path_to_file_uri(root / 'a.raml'))
+        key, value = content.content
+        # The escaped tab in the string is kept, and columns are where they were.
+        assert (key.value, value.value, key.column) == ('a', 'x\ty', 3)
+
     def test_a_non_include_node_is_returned_unchanged(self):
         node = Node(NodeKind.SCALAR, TAG_STR, 'plain')
         target, content = resolve_include(Raml(), node, 'file:///a.raml')

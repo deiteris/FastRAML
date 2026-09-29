@@ -108,6 +108,13 @@ class TestCompilation:
         shape = raml.types_in(raml.location)['Person']
         assert shape.type == 'json'
 
+    def test_an_external_json_file_may_begin_with_whitespace(self, workspace):
+        # JSON allows it; read as a type expression, `    {` was a syntax error.
+        raml = parsed(
+            workspace, {'api.raml': API + 'types:\n  Person: !include person.json\n', 'person.json': '\n    ' + PERSON}
+        )
+        assert raml.types_in(raml.location)['Person'].type == 'json'
+
     def test_a_draft_is_taken_from_schema_and_defaults_to_7(self, workspace):
         # `exclusiveMinimum: true` is draft-04's spelling and draft-07 forbids
         # it, so the declared draft is what decides whether this compiles.

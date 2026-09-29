@@ -63,8 +63,8 @@ The input form determines the initial kind:
 - A mapping may contain `type:` or `schema:` (never both), common facets, and
   kind-specific facets.
 - A scalar is a type expression, except an empty string which infers from
-  facets, an inline JSON Schema beginning with `{`, an `!include` data-type
-  link, or YAML null which uses the caller default.
+  facets, an inline JSON Schema beginning with `{` after any whitespace, an
+  `!include` data-type link, or YAML null which uses the caller default.
 - A sequence under `type:` is multiple inheritance.
 
 When no explicit type is present, facet hints infer `string`, `number`, `array`,

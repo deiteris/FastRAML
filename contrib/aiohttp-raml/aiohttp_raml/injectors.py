@@ -192,23 +192,20 @@ def _collect(node: str, request: web.Request, declared: list[Declared]) -> dict[
     fields = [item for item in declared if item.place == node]
     if node == URI:
         return {item.key: request.match_info[item.wire] for item in fields if item.wire in request.match_info}
-    if node == HEADER:
-        # Case-insensitively: `X-Request-Id` and `x-request-id` are one header.
-        available = {key.lower(): value for key, value in request.headers.items()}
-        return {item.key: available[item.wire.lower()] for item in fields if item.wire.lower() in available}
-    return _query(request, fields)
+    # Headers case-insensitively: `X-Request-Id` and `x-request-id` are one.
+    return _values(request.headers if node == HEADER else request.query, fields)
 
 
-def _query(request: web.Request, fields: list[Declared]) -> dict[str, Any]:
-    """The query string, with repeated keys collected for a sequence parameter.
+def _values(source: Any, fields: list[Declared]) -> dict[str, Any]:
+    """A query string's or the headers' values, a repeated key collected for a sequence parameter.
 
-    `?tags=a&tags=b` is one parameter with two values. A parameter whose
-    annotation accepts a sequence gets a list even when one value arrived, so
-    `?tags=a` is `['a']` rather than `'a'`.
+    `?tags=a&tags=b` is one parameter with two values, and so are two `X-Tag`
+    lines. A parameter whose annotation accepts a sequence gets a list even
+    when one value arrived, so `?tags=a` is `['a']` rather than `'a'`.
     """
     out: dict[str, Any] = {}
     for item in fields:
-        values = request.query.getall(item.wire, [])
+        values = source.getall(item.wire, [])
         if not values:
             continue
         out[item.key] = values if len(values) > 1 or _is_sequence(item.annotation) else values[0]

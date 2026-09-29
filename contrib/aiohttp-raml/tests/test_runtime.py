@@ -13,6 +13,7 @@ from typing import Annotated, Any
 import aiohttp
 import pytest
 from aiohttp import web
+from multidict import CIMultiDict
 from pydantic import AliasChoices, BaseModel, Field
 
 from aiohttp_raml import (
@@ -595,3 +596,17 @@ def test_a_json_flavoured_media_type_is_parsed() -> None:
     async def post(
         problem: Annotated[Book, Body(media='application/merge-patch+json')],
     ) -> Annotated[web.Response, Responds(200)]: ...
+
+
+async def test_a_repeated_header_becomes_a_list(aiohttp_client: Any) -> None:
+    """The document says `string[]`; one line or several, the handler gets a list."""
+
+    @validate
+    async def get(*, x_tag: list[str]) -> Annotated[web.Response, Responds(200, None)]:
+        return web.json_response(x_tag)
+
+    app = web.Application()
+    app.router.add_get('/x', get)
+    client = await aiohttp_client(app)
+    assert await (await client.get('/x', headers=CIMultiDict([('X-Tag', 'a'), ('X-Tag', 'b')]))).json() == ['a', 'b']
+    assert await (await client.get('/x', headers={'X-Tag': 'a'})).json() == ['a']

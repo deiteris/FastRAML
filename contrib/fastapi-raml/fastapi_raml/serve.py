@@ -135,7 +135,6 @@ def add_raml_routes(
     raml_url: str = '/raml',
     tree_url: str = '/raml.json',
     mount_viewer: str | None = '/raml-viewer',
-    include_in_schema: bool = False,
 ) -> Any:
     """Add the RAML routes to `app`, cached the way `app.openapi()` is cached.
 
@@ -179,7 +178,8 @@ def add_raml_routes(
         return Response(served.tree_json, media_type='application/json')
 
     _mount_viewer(app, mount_viewer, raml_tree)
-    app.add_route(raml_url, raml_source, include_in_schema=include_in_schema)
-    app.add_route(tree_url, raml_tree, include_in_schema=include_in_schema)
+    # Plain Starlette routes, which FastAPI's schema never lists.
+    app.add_route(raml_url, raml_source, include_in_schema=False)
+    app.add_route(tree_url, raml_tree, include_in_schema=False)
 
     return app

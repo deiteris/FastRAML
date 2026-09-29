@@ -67,16 +67,28 @@ class Security:
         return declared
 
     def secured_by(self, entry: Described, names: dict[str, str], at: str) -> list[SecuredBy]:
-        """`securedBy:` for one handler, naming each scheme as `names` says it was declared."""
+        """`securedBy:` for one handler, naming each scheme as `names` says it was declared.
+
+        A scope is written only where RAML accepts it: on an OAuth 2.0 scheme
+        whose `scopes` lists it. The app declares its schemes itself, so a scope
+        they do not list is its own inconsistency -- reported, and left out
+        rather than failing the whole document.
+        """
         out: list[SecuredBy] = []
         for name, scopes in entry.secured_by:
             declared = names.get(name)
             if declared is None:
                 self.walk.drop(at, f'securedBy {name!r} is not written: no scheme of that name is registered')
                 continue
-            if scopes and self.declared[declared].type != 'OAuth 2.0':
+            scheme = self.declared[declared]
+            if scopes and scheme.type != 'OAuth 2.0':
                 self.walk.drop(at, f'{name!r} carries scopes {sorted(scopes)}, and RAML scopes belong to OAuth 2.0')
                 out.append(SecuredBy(scheme=declared))
                 continue
-            out.append(SecuredBy(scheme=declared, scopes=list(scopes)))
+            listed = scheme.settings.get('scopes')
+            listed = listed if isinstance(listed, list) else []
+            unlisted = [scope for scope in scopes if scope not in listed]
+            if unlisted:
+                self.walk.drop(at, f'{name!r} is asked for scopes {unlisted} it does not declare; not written')
+            out.append(SecuredBy(scheme=declared, scopes=[scope for scope in scopes if scope not in unlisted]))
         return out

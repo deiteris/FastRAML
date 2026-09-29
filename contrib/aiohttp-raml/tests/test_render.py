@@ -376,7 +376,7 @@ class Either(RamlView):
 
 
 def test_stacked_secured_is_the_list_of_alternatives_raml_means() -> None:
-    schemes = {'oauth': Books(access_token_uri='t', grants=['authorization_code']), 'basic': Basic()}
+    schemes = {'oauth': Books(access_token_uri='t', grants=['authorization_code'], scopes=['read']), 'basic': Basic()}
     document, dropped = rendered(secured_app(schemes, Either))
     assert document['/x']['get']['securedBy'] == [{'oauth': {'scopes': ['read']}}, 'basic']
     assert dropped == []
@@ -975,3 +975,26 @@ def test_a_regex_that_can_match_a_slash_crosses_segments(regex: str) -> None:
 @pytest.mark.parametrize('regex', [r'[^/]+', r'\d+', r'[\d.]+', '(?:ab|cd)', '(?=/)x'])
 def test_a_regex_that_cannot_match_a_slash_stays_in_its_segment(regex: str) -> None:
     assert not crosses_segments(regex)
+
+
+class Narrow(OAuth2):
+    async def authenticate(self, request: web.Request) -> Any:
+        raise AuthenticationError
+
+
+@pytest.mark.parametrize('declared', [['read'], []])
+def test_a_scope_the_scheme_does_not_declare_is_reported_not_written(declared: list[str]) -> None:
+    """RAML refuses a securedBy scope its scheme does not list; the document would not parse."""
+
+    @secured('books', scopes=['read', 'admin'])
+    @validate
+    async def guarded() -> Annotated[web.Response, Responds(200, Book)]: ...
+
+    app = web.Application()
+    setup_security(app, {'books': Narrow(access_token_uri='https://a/t', grants=['password'], scopes=declared)})
+    app.router.add_get('/x', guarded)
+    document, dropped = rendered(app)
+    unlisted = [scope for scope in ('read', 'admin') if scope not in declared]
+    assert document['/x']['get']['securedBy'] == ([{'books': {'scopes': declared}}] if declared else ['books'])
+    assert dropped == [f"GET /x: 'books' is asked for scopes {unlisted} it does not declare; not written"]
+    build(app, title='T')

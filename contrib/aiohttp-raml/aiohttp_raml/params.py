@@ -8,7 +8,7 @@ already knows:
 | Position | RAML node |
 |---|---|
 | positional-only | `uriParameters` |
-| a `BaseModel` | `body` |
+| a model, or anything holding one | `body` |
 | positional-or-keyword | `queryParameters` |
 | keyword-only | `headers` |
 
@@ -26,8 +26,8 @@ import inspect
 from dataclasses import dataclass
 from typing import Annotated, Any, ClassVar, Final, get_args
 
-from pydantic import BaseModel
 from pydantic.fields import FieldInfo
+from raml_document.from_pydantic.introspect import models_in
 
 from aiohttp_raml.multipart import File, is_upload
 
@@ -149,21 +149,19 @@ def _marker(annotation: Any) -> tuple[Any, Place | None, File | None]:
 
 
 def _inferred(annotation: Any, kind: inspect._ParameterKind) -> str:
-    """The node a parameter belongs to when nothing marks it."""
+    """The node a parameter belongs to when nothing marks it.
+
+    Anything that reaches a model -- a pydantic model, a dataclass, a
+    `TypedDict`, `Book | None`, `list[Book]` -- is the body: an object has no
+    spelling in a query string.
+    """
     if kind is inspect.Parameter.POSITIONAL_ONLY:
         return URI
     if kind is inspect.Parameter.KEYWORD_ONLY:
         return HEADER
-    if _is_model(annotation) or is_upload(annotation):
+    if next(models_in(annotation), None) is not None or is_upload(annotation):
         return BODY
     return QUERY
-
-
-def _is_model(annotation: Any) -> bool:
-    inner = annotation
-    if hasattr(annotation, '__metadata__'):
-        inner = get_args(annotation)[0]
-    return isinstance(inner, type) and issubclass(inner, BaseModel)
 
 
 def read_signature(handler: Any, hints: dict[str, Any], ignore: tuple[str, ...]) -> list[Declared]:

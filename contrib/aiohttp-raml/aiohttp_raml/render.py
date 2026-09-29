@@ -70,6 +70,8 @@ def _body(entry: Described, method: Method, at: str, walk: Walk) -> None:
     item = next((one for one in entry.bound.declared if one.place == BODY), None)
     if item is not None:
         method.body = Body({item.media: walk.annotation(item.annotation, f'{at}.body')})
+        if not item.required:
+            walk.drop(f'{at}.body', 'the body may be left out, and RAML has no optional body; written as required')
 
 
 def _form(parts: list[Declared], at: str, walk: Walk) -> TypeDecl:

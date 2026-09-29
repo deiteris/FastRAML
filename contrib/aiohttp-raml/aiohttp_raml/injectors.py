@@ -111,17 +111,32 @@ class Bound:
             refused = await _multipart(request, self.parts, kwargs)
             if refused is not None:
                 return False, refused
-        elif self.body is not None and self.body_adapter is not None:
-            try:
-                payload = await request.json()
-            except JSONDecodeError:
-                return False, _failures([describe('body', 'the body is not valid JSON', kind='json_invalid')])
-            try:
-                kwargs[self.body.name] = self.body_adapter.validate_python(payload)
-            except ValidationError as error:
-                return False, error_response(error, BODY)
+        elif self.body is not None:
+            refused = await self._body(request, self.body, kwargs)
+            if refused is not None:
+                return False, refused
 
         return True, await handler(*args, **kwargs)
+
+    async def _body(self, request: web.Request, body: Declared, kwargs: dict[str, Any]) -> web.Response | None:
+        """Read and validate a JSON body into `kwargs`, or return the 400 refusing it.
+
+        A body with a default may be left out, and is then its default -- built
+        per request, so a `default_factory` hands no two requests one object.
+        """
+        if not request.body_exists and not body.required:
+            kwargs[body.name] = body.info.get_default(call_default_factory=True)
+            return None
+        try:
+            payload = await request.json()
+        except JSONDecodeError:
+            return _failures([describe('body', 'the body is not valid JSON', kind='json_invalid')])
+        assert self.body_adapter is not None  # noqa: S101 - `bind` builds one beside every body
+        try:
+            kwargs[body.name] = self.body_adapter.validate_python(payload)
+        except ValidationError as error:
+            return error_response(error, BODY)
+        return None
 
     def check(self, response: Any, handler: Any) -> None:
         """Assert a response matches what the handler declared.

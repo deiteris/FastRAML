@@ -7,7 +7,8 @@ second implementation to disagree with, so each rule here names itself.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from dataclasses import dataclass
+from typing import Annotated, Any, TypedDict
 
 import pytest
 from aiohttp import web
@@ -748,3 +749,52 @@ def test_a_form_field_whose_field_has_no_default_is_required() -> None:
     document, _ = rendered(one_view('/x', AliasedView))
     properties = document['/x']['post']['body']['multipart/form-data']['properties']
     assert properties['note'] == {'type': 'string', 'minLength': 1}
+
+
+# -- what is a body -------------------------------------------------------------
+
+
+@dataclass
+class Point:
+    x: int
+
+
+class Tagged(TypedDict):
+    name: str
+
+
+@pytest.mark.parametrize(
+    ('annotation', 'expected'),
+    [
+        (Point, 'Point'),
+        (Tagged, 'Tagged'),
+        (list[Book], 'Book[]'),
+        (Annotated[Book, Field(description='the book')], {'type': 'Book', 'description': 'the book'}),
+    ],
+)
+def test_anything_reaching_a_model_is_the_body(annotation: Any, expected: Any) -> None:
+    """An object has no spelling in a query string."""
+
+    async def post(body):  # type: ignore[no-untyped-def]
+        ...
+
+    # Set rather than written: a local annotation is a string under
+    # `from __future__ import annotations`, and nothing resolves it.
+    post.__annotations__ = {'body': annotation, 'return': Annotated[web.Response, Responds(201, None)]}
+    app = web.Application()
+    app.router.add_post('/x', validate(post))
+    document, dropped = rendered(app)
+    assert 'queryParameters' not in document['/x']['post']
+    assert document['/x']['post']['body'] == {'application/json': expected}
+    assert dropped == []
+
+
+def test_an_optional_body_is_the_body_and_its_optionality_is_reported() -> None:
+    @validate
+    async def post(body: Book | None = None) -> Annotated[web.Response, Responds(201, None)]: ...
+
+    app = web.Application()
+    app.router.add_post('/x', post)
+    document, dropped = rendered(app)
+    assert document['/x']['post']['body'] == {'application/json': 'Book | nil'}
+    assert dropped == ['POST /x.body: the body may be left out, and RAML has no optional body; written as required']

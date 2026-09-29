@@ -7,6 +7,7 @@ app rejects, and at the same node.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated, Any
 
 import aiohttp
@@ -516,3 +517,35 @@ async def test_a_form_field_keeps_the_constraint_its_field_default_states(aiohtt
 
     assert (await client.post('/x', data=with_note('x'))).status == 400
     assert (await client.post('/x', data=with_note('xy'))).status == 201
+
+
+# -- what is a body -------------------------------------------------------------
+
+
+@dataclass
+class Point:
+    x: int
+
+
+async def test_a_dataclass_is_read_from_the_body(aiohttp_client: Any) -> None:
+    @validate
+    async def post(point: Point) -> Annotated[web.Response, Responds(201, None)]:
+        return web.json_response({'x': point.x}, status=201)
+
+    app = web.Application()
+    app.router.add_post('/x', post)
+    client = await aiohttp_client(app)
+    assert await (await client.post('/x', json={'x': 1})).json() == {'x': 1}
+
+
+async def test_an_optional_body_may_be_left_out(aiohttp_client: Any) -> None:
+    @validate
+    async def post(book: Book | None = None) -> Annotated[web.Response, Responds(200, None)]:
+        return web.json_response(book.model_dump() if book else None)
+
+    app = web.Application()
+    app.router.add_post('/x', post)
+    client = await aiohttp_client(app)
+    assert await (await client.post('/x')).json() is None
+    assert await (await client.post('/x', json={'isbn': 'i'})).json() == {'isbn': 'i', 'pages': 100}
+    assert (await client.post('/x', json={'pages': 'many'})).status == 400

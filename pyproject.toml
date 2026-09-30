@@ -28,7 +28,7 @@ dependencies = [
     # wheel provides it; the pure-Python composer is the fallback.
     "pyyaml>=6.0",
     # External JSON Schema types (RAML spec "Using XML and JSON Schemas").
-    "jsonschema>=4.21",
+    "jsonschema[format-nongpl]>=4.21",
     "referencing>=0.35",
     # The !singularize / !pluralize template actions. A port of the same
     # JavaScript library the reference implementation's Go port wraps, so the

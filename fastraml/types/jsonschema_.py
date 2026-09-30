@@ -158,6 +158,7 @@ class SchemaRegistry:
         """
         # JSON Schema is uncommon in ordinary RAML documents. Keep its sizeable
         # dependency tree off the startup path until a schema is actually used.
+        from jsonschema import FormatChecker  # noqa: PLC0415 - deferred for startup cost
         from jsonschema.exceptions import SchemaError  # noqa: PLC0415 - deferred for startup cost
         from jsonschema.validators import Draft7Validator, validator_for  # noqa: PLC0415
         from referencing import Registry, Resource  # noqa: PLC0415
@@ -202,7 +203,7 @@ class SchemaRegistry:
         registry = registry.with_resources((uri, self._resources[uri]) for uri in self._reached).crawl()
         contents, resolver = self._select(registry, document_uri, pointer, contents, location, position)
         return CompiledSchema(
-            validator=validator_class(contents, registry=registry, _resolver=resolver),
+            validator=validator_class(contents, registry=registry, _resolver=resolver, format_checker=FormatChecker()),
             contents=contents,
             resolver=resolver,
             uri=f'{_document_of(resolver) or document_uri}#{pointer}',

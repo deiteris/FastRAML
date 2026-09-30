@@ -136,7 +136,12 @@ compiled during decoding, not lazily under P10. Compilation validates the
 schema's declared draft (draft 7 if absent), applies the parser depth limit,
 eagerly resolves `$ref` through the parse's `ResourceLoader`, and caches fetched
 resources in one `SchemaRegistry` per parse. Schema instance validation delegates
-to the compiled validator.
+to the compiled validator with `jsonschema.FormatChecker()` enabled. Recognized
+`format` values are validated regardless of the schema's draft, including `uuid`
+in a schema without a declared draft, through `$ref`, and inside `oneOf`.
+Unknown formats remain annotations and do not reject values. The
+`jsonschema[format-nongpl]` dependency supplies the optional format-checking
+libraries without GPL-licensed dependencies.
 
 A schema file is one document per parse: the one it compiles from and the one
 a `$ref` into it retrieves are the same resource, so every walk recognises a

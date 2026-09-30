@@ -213,6 +213,68 @@ class TestReferences:
 class TestInstanceValidation:
     """Section 5's `json` row: the compiled validator decides."""
 
+    @pytest.mark.parametrize(
+        ('value', 'valid'),
+        [('00000000-0000-0000-0000-000000000000', True), ('65', True), ('abc', False)],
+        ids=['uuid', 'numeric', 'neither'],
+    )
+    def test_one_of_uses_formats_in_referenced_schemas(self, workspace, value, valid):
+        # docs/10 § 7: ignoring uuid format makes every string match that
+        # branch, rejecting numeric strings as ambiguous and accepting junk.
+        error = parse(
+            workspace,
+            {
+                'api.raml': API + 'types:\n  Id:\n    type: !include id.json\n    example: !include example.json\n',
+                'id.json': json.dumps({'oneOf': [{'$ref': 'uuid.json'}, {'$ref': 'numeric.json'}]}),
+                'uuid.json': json.dumps({'type': 'string', 'format': 'uuid'}),
+                'numeric.json': json.dumps({'type': 'string', 'pattern': '^[0-9]+$'}),
+                'example.json': json.dumps(value),
+            },
+        )
+        if valid:
+            assert error is None
+        else:
+            assert error is not None
+            assert any(
+                trace.message == 'value does not match the JSON schema'
+                and trace.info == {'path': '$', 'schema_path': 'oneOf'}
+                for chain in error.chains()
+                for trace in chain
+            )
+
+    @pytest.mark.parametrize(
+        ('draft', 'format_name', 'valid', 'invalid'),
+        [
+            ('http://json-schema.org/draft-04/schema#', 'date-time', '2026-09-30T12:00:00Z', 'not-a-date'),
+            ('http://json-schema.org/draft-07/schema#', 'uuid', '00000000-0000-0000-0000-000000000000', 'abc'),
+            ('http://json-schema.org/draft-07/schema#', 'uri', 'https://example.com/path', 'not a uri'),
+            ('https://json-schema.org/draft/2020-12/schema', 'duration', 'P1D', 'not-a-duration'),
+        ],
+        ids=['draft4-date-time', 'draft7-uuid', 'draft7-uri', 'draft2020-duration'],
+    )
+    def test_known_formats_validate_across_drafts(self, workspace, draft, format_name, valid, invalid):
+        # docs/10 § 7: URI/date-time/duration exercise format-nongpl's
+        # optional libraries as well as enabling the checker itself.
+        schema = json.dumps({'$schema': draft, 'type': 'string', 'format': format_name})
+        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', schema)})
+        shape = raml.types_in(raml.location)['T'].shape.base
+        assert shape.validate(valid) is None
+        error = shape.validate(invalid)
+        assert error is not None
+        assert any(
+            trace.message == 'value does not match the JSON schema'
+            and trace.info == {'path': '$', 'schema_path': 'format'}
+            for chain in error.chains()
+            for trace in chain
+        )
+
+    def test_unknown_formats_remain_annotations(self, workspace):
+        # docs/10 § 7: enabling known formats does not invent constraints
+        # for application-defined format names.
+        schema = json.dumps({'type': 'string', 'format': 'application-specific-format'})
+        body = 'types:\n' + declaration('T', schema, 'example: anything')
+        assert parse(workspace, {'api.raml': API + body}) is None
+
     def test_validating_through_a_ref_to_another_file_neither_crawls_nor_retrieves(self, workspace, monkeypatch):
         # docs/10 § 7: the validator's registry already holds every document
         # the schema reaches, so each validation does not rebuild one.

@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, ClassVar
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
 from fastraml.facet_names import FACET_IS, FACET_SECURED_BY
+from fastraml.parser.annotations import retain_annotation_sites
 from fastraml.parser.directives import decode_secured_by, decode_trait_refs
 from fastraml.parser.source_ir import note_failure
 from fastraml.parser.structural_merge import merge_structural
@@ -66,7 +67,8 @@ __all__ = [
 class TraitDefinition(TemplateDefinition):
     """One entry of a `traits:` map, or the whole of a Trait fragment.
 
-    A trait's body is not checked at all: a trait *is* a method body.
+    Root annotations are decoded at declaration time. Endpoint facets remain
+    YAML until the trait is materialized as a method body.
     """
 
     reserved: ClassVar[frozenset[str]] = TRAIT_PARAMETERS
@@ -76,7 +78,10 @@ def make_trait_definition(
     raml: Raml, key_node: Node | None, value_node: Node, location: str, *, attach: Callable[[TraitDefinition], None]
 ) -> TraitDefinition:
     """Decode one trait declaration. Everything but `usage:` is kept as YAML."""
-    return make_template_definition(TraitDefinition, raml, key_node, value_node, location, what='trait', attach=attach)
+    with raml.target_scope(DomainLocation.TRAIT):
+        return make_template_definition(
+            TraitDefinition, raml, key_node, value_node, location, what='trait', attach=attach
+        )
 
 
 # -- applying traits (docs/08 § 3.2) ------------------------------------------
@@ -227,6 +232,8 @@ def merge_trait_into(  # noqa: PLR0913 - the application, and where its values a
         param_scopes=application.param_scopes,
     )
     trait_scope = ParseCtx(anchor=definition.anchor, target=DomainLocation.TRAIT)
+    if definition.may_have_root_annotations and compiled is not definition.source:
+        retain_annotation_sites(raml, compiled, trait_scope)
     with raml.active_overlay(operation.provenance):
         body, nested = _take_directives(raml, operation, compiled, definition.location, trait_scope)
     operation.body = merge_structural(operation.body, body, trait_scope, operation.provenance)

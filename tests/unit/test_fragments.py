@@ -93,6 +93,31 @@ class TestIdentification:
 
         fragment = parse_fragment(raml, path_to_file_uri(root / 'at.raml'), FragmentKind.DATA_TYPE)
         assert isinstance(fragment, DataTypeFragment)
+        assert fragment.kind is FragmentKind.ANNOTATION_TYPE
+
+    def test_a_cached_fragment_is_checked_without_identifying_its_header_again(self, workspace, monkeypatch):
+        from fastraml.parser import fragments
+
+        content = '#%RAML 1.0 AnnotationTypeDeclaration\ntype: string\n'
+        root = workspace({'api.raml': API, 'at.raml': content})
+        raml = workspace.parse(root / 'api.raml')
+        headers = []
+        read_head = fragments.read_head
+
+        def counting(text):
+            headers.append(text)
+            return read_head(text)
+
+        monkeypatch.setattr(fragments, 'read_head', counting)
+        uri = path_to_file_uri(root / 'at.raml')
+        fragment = fragments.parse_fragment(raml, uri, FragmentKind.DATA_TYPE)
+        assert fragments.parse_fragment(raml, uri, FragmentKind.DATA_TYPE) is fragment
+        with pytest.raises(RamlError) as caught:
+            fragments.parse_fragment(raml, uri, FragmentKind.TRAIT)
+        trace = traces(caught.value)[0]
+        assert trace.message == 'unexpected fragment kind'
+        assert trace.info == {'expected': 'Trait', 'found': 'AnnotationTypeDeclaration'}
+        assert headers == [content]
 
 
 class TestEntryPoints:

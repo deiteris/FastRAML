@@ -158,8 +158,8 @@ settles its kind.
 Ordinary data-type expressions resolve only ordinary `types`, so an annotation
 type cannot be used as a data type. Within an annotation-type declaration,
 references resolve annotation types first and then fall back to ordinary data
-types. The latter behavior is tested; a direct annotation-type-to-annotation-type
-reference test is still absent.
+types. Annotation aliases and subtypes retain the target restrictions described
+in § B4.
 
 ### B3. Binding and value validation
 
@@ -178,9 +178,19 @@ Tests: `tests/unit/test_domain_extensions.py`.
 ### B4. `allowedTargets`
 
 `allowedTargets` accepts one `DomainLocation` string or a sequence. An unknown
-entry is reported at that entry. `None` means the facet was absent and permits
-every target; an empty list permits none. P10 reports `annotation not allowed at
-this target` when an application site is excluded.
+or non-scalar entry is reported at that entry without hiding later errors.
+Only an annotation-type declaration may supply the facet. `None` means it was
+absent and permits every target; an empty list permits none. P10 reports
+`annotation not allowed at this target` when an application site is excluded.
+
+An included annotation declaration retains its restrictions through public or
+private unwrap, including nested includes. The included file's authored header
+selects its root target: an `AnnotationTypeDeclaration` remains `AnnotationType`
+even when included at a position that also accepts a `DataType`. An alias takes
+the referent's restrictions; a subtype inherits absent restrictions and may only
+narrow an explicit list, preserving declaration order. Multiple parents combine
+restrictions by intersection, in the first restricted parent's order; an empty
+intersection permits no target.
 
 The target is carried by `ParseCtx`. A decoder that establishes a narrower
 annotation site uses `Raml.target_scope`, which preserves the anchor and restores
@@ -196,20 +206,47 @@ before, through the declaration's anchor or its file.
 
 The parser currently establishes these sites: API, Library, Overlay, Extension,
 documentation item, type declaration, annotation type, example, resource,
-method, response, request body, response body, security scheme, and security
-scheme settings. An application at the root of an Overlay or Extension targets
+method, response, request body, response body, security scheme, security
+scheme settings, trait, and resource type. Query strings, properties, pattern
+properties, array items, union-member declarations, and custom-facet declarations
+establish `TypeDeclaration`, even inside a body or annotation type.
+An application at the root of an Overlay or Extension targets
 that document kind, not API ([19](19-overlays-and-extensions.md) § 5.4).
 
-Template body annotations are decoded only when the template is materialized,
-so they receive `Method` or `Resource`. The parser does not establish `Trait` or
-`ResourceType` while decoding template definitions. Declaration-time scalar
-facets such as `usage` therefore inherit the enclosing fragment target. There are
-focused tests for template parameter targets; declaration-time scalar targets
-still have no focused test.
+Annotations at a template's root, and on its `usage`, target `Trait` or
+`ResourceType`. Literal root applications are registered at declaration time,
+including in unused templates. Their source keys retain that target through
+materialization, and an unchanged application is shared rather than registered
+again for each endpoint. Root applications with a template variable in the name
+or value wait for substitution; their names retain caller provenance while their
+target stays the template kind. The annotation decoder's temporary `AnnotationSites`
+index records each source key's target and applications by node identity. A
+declaration key holds its first application directly and allocates a map only for
+additional distinct values. A newly substituted key belongs to one compiled root,
+which P4 materializes once, so the index retains only its target.
+Repeated literal includes create distinct declaration keys,
+so each template's applications resolve in its own includer's namespace.
+The index is created only when needed and released after P4 materialization,
+including when there are no endpoints or P4 reports errors. A template records
+whether its root has annotations or parameterized keys at declaration time,
+so applications without either skip site retention. An unchanged compiled root
+already has its sites recorded and also skips retention. An annotation a method
+or resource writes explicitly retains that endpoint's target when it overrides
+a template key.
+Annotations nested inside a template body receive the nested declaration's
+target when materialized.
 
 For a media-type body spelling, annotations inside each media-type declaration
 target `RequestBody` or `ResponseBody`. For a body without media-type keys, its
 contents are a type declaration and annotations target `TypeDeclaration`.
+
+Annotated `type` and `schema` scalars retain the inner value node for type
+resolution and source positions. `default` and `discriminatorValue` recognize
+a scalar `value` plus annotation keys as an annotated scalar, register those
+applications, and validate the scalar rather than the wrapper. Other data maps,
+including a map with only a `value` property or with a structured `value`, remain
+ordinary data. Data includes use the same distinction and retain their included
+file's location.
 
 Code: `domains.py`, `registry.py`, `parser/source_decode.py`,
 `parser/security.py`, and `types/shape.py`. Tests:

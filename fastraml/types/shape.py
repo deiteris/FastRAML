@@ -25,7 +25,15 @@ from fastraml.datanode import make_data_node
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
-from fastraml.parser.facets import compile_pattern, make_bool_facet, make_string_facet, scalar_str
+from fastraml.parser.facets import (
+    annotated_scalar_value,
+    compile_pattern,
+    make_annotated_data_facet,
+    make_bool_facet,
+    make_string_facet,
+    resolve_annotated_scalar,
+    scalar_str,
+)
 from fastraml.parser.includes import content_include, inline_include, note_include_ref
 from fastraml.parser.substitutions import substituted_site
 from fastraml.types.base import (
@@ -76,7 +84,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from fastraml.parser.fragments import DataTypeFragment, NamedExample
-    from fastraml.registry import Raml
+    from fastraml.registry import ParseCtx, Raml
     from fastraml.yamlnode import Node
 
 __all__ = [
@@ -169,7 +177,7 @@ def make_shape(  # noqa: PLR0913 - the declaration, plus where to attach it
     content is decoded. A shape that then fails stays there, marked in
     `Raml.broken` (docs/13 § 1); without `attach`, a failure leaves nothing.
     """
-    scope = raml.scope_for(value_node)
+    scope = _declaration_scope(raml, value_node)
     if scope is None:
         return _make_shape(raml, key_node, value_node, raml.location_of(value_node, location), default_type, attach)
     # A node produced by parameter substitution, or grafted from a trait or a
@@ -181,6 +189,31 @@ def make_shape(  # noqa: PLR0913 - the declaration, plus where to attach it
         return _make_shape(raml, key_node, value_node, raml.location_of(value_node, location), default_type, attach)
     finally:
         raml.pop_ctx()
+
+
+def _declaration_scope(raml: Raml, node: Node) -> ParseCtx | None:
+    """The type name's own namespace wins over its containing declaration.
+
+    Syntax selection belongs to this decoder; the registry only looks up each
+    candidate node's provenance (docs/08 § 4.2).
+    """
+    if not raml.has_provenance:
+        return None
+    if node.kind is NodeKind.MAPPING:
+        content = node.content
+        for index in range(0, len(content), 2):
+            if content[index].value not in (fn.FACET_TYPE, fn.FACET_SCHEMA):
+                continue
+            type_node = content[index + 1]
+            value = annotated_scalar_value(type_node)
+            if value is not None and value is not type_node:
+                scope = raml.scope_for(value)
+                if scope is not None:
+                    return scope
+            scope = raml.scope_for(type_node)
+            if scope is not None:
+                return scope
+    return raml.scope_for(node)
 
 
 def _make_shape(  # noqa: PLR0913, PLR0917 - make_shape's arguments, resolved
@@ -200,6 +233,7 @@ def _make_shape(  # noqa: PLR0913, PLR0917 - make_shape's arguments, resolved
         key_pos=position_node.position,
         value_pos=value_node.full_position,
         anchor=raml.current_ctx().anchor,
+        is_annotation_type=raml.current_ctx().target is DomainLocation.ANNOTATION_TYPE,
     )
     raml.put_source_info(base.id, key_node, value_node)
     if attach is None:
@@ -344,12 +378,14 @@ def _decode(  # noqa: PLR0912 - one pass over the common-facet vocabulary (docs/
             case fn.FACET_EXAMPLES:
                 _decode_examples(raml, base, value)
             case fn.FACET_DEFAULT:
-                base.default = make_data_node(raml, key, value, location)
+                base.default = make_annotated_data_facet(raml, key, value, location)
             case fn.FACET_ENUM:
                 base.enum = _decode_enum(raml, value, location)
             case fn.FACET_XML:
                 base.xml = decode_xml_serialization(raml, value, location)
             case fn.FACET_ALLOWED_TARGETS:
+                if not base.is_annotation_type:
+                    raise node_error('allowedTargets is only valid on annotation types', location, key)
                 base.allowed_targets = _decode_allowed_targets(raml, value, location)
             case name if is_annotation_key(name):
                 add_domain_extension(raml, base.annotations, location, key, value)
@@ -377,6 +413,8 @@ def _decode_allowed_targets(raml: Raml, value_node: Node, location: str) -> list
             targets.append(DomainLocation(scalar_str(item, location)))
         except ValueError:
             accumulator.add(node_error('unknown annotation target', location, item, info={'target': item.value}))
+        except RamlError as err:
+            accumulator.add(err)
     accumulator.raise_if_any()
     return targets
 
@@ -444,6 +482,8 @@ def _decode_type_node(
 ) -> tuple[str, Shape | None]:
     """Read the `type:` node. Returns the kind, and a shape when it built one."""
     location = base.location
+    if type_node.kind is NodeKind.MAPPING:
+        type_node, _annotations = resolve_annotated_scalar(raml, type_node, location)
     if type_node.kind is NodeKind.SEQUENCE:
         base.inherits = [_inherited(raml, item, location) for item in type_node.content]
         return TYPE_COMPOSITE, None
@@ -612,7 +652,8 @@ def _decode_declarations(raml: Raml, shape: Shape, facets: list[Node], location:
                             value,
                             info={'facet': key.value},
                         )
-                    setattr(shape, spec.fields[0], make_shape(raml, key, value, location))
+                    with raml.target_scope(DomainLocation.TYPE_DECLARATION):
+                        setattr(shape, spec.fields[0], make_shape(raml, key, value, location))
                 case 'shape_list':
                     value, written = inline_include(raml, value, location)
                     if value.kind is not NodeKind.SEQUENCE:
@@ -621,7 +662,8 @@ def _decode_declarations(raml: Raml, shape: Shape, facets: list[Node], location:
                     setattr(shape, spec.fields[0], members)
                     for item in value.content:
                         try:
-                            members.append(make_shape(raml, None, item, written))
+                            with raml.target_scope(DomainLocation.TYPE_DECLARATION):
+                                members.append(make_shape(raml, None, item, written))
                         except RamlError as err:
                             accumulator.add(err)
                 case 'properties':
@@ -724,20 +766,19 @@ def make_parameter_map(raml: Raml, value_node: Node, location: str, binding: Bin
         raise node_error('parameter declarations must be a mapping', location, value_node)
     location = raml.location_of(value_node, location)
     declared: dict[str, Parameter] = {}
-    # Each parameter is a type declaration, whatever holds the map.
-    with raml.target_scope(DomainLocation.TYPE_DECLARATION):
-        for key, value in pairs(value_node):
-            prop = make_property(raml, key, value, location)
-            declared[prop.name] = Parameter(
-                id=raml.next_id(),
-                binding=binding,
-                declaration=prop,
-                key_pos=key.position,
-                value_pos=value.position,
-            )
-            # Indexed under the shape's own file, which provenance may have made
-            # a different one from the map's.
-            raml.put_typedef(prop.base.location, prop.base)
+    # make_property establishes TypeDeclaration for each parameter.
+    for key, value in pairs(value_node):
+        prop = make_property(raml, key, value, location)
+        declared[prop.name] = Parameter(
+            id=raml.next_id(),
+            binding=binding,
+            declaration=prop,
+            key_pos=key.position,
+            value_pos=value.position,
+        )
+        # Indexed under the shape's own file, which provenance may have made
+        # a different one from the map's.
+        raml.put_typedef(prop.base.location, prop.base)
     return declared
 
 
@@ -749,7 +790,8 @@ def make_property(raml: Raml, key_node: Node, value_node: Node, location: str) -
     name, and only one `?` is ever chomped.
     """
     chomped, had_optional = chomp_optional(key_node.value)
-    base = make_shape(raml, key_node, value_node, location)
+    with raml.target_scope(DomainLocation.TYPE_DECLARATION):
+        base = make_shape(raml, key_node, value_node, location)
     if base.required is None:
         return Property(name=chomped, base=base, required=not had_optional)
     # An explicit `required:` wins, and the `?` reverts to being part of the name.
@@ -760,7 +802,8 @@ def make_property(raml: Raml, key_node: Node, value_node: Node, location: str) -
 def make_pattern_property(raml: Raml, key_node: Node, value_node: Node, location: str) -> PatternProperty:
     """A `/regex/` property. These are optional by definition, so saying so is an error."""
     chomped, had_optional = chomp_optional(key_node.value)
-    base = make_shape(raml, key_node, value_node, location)
+    with raml.target_scope(DomainLocation.TYPE_DECLARATION):
+        base = make_shape(raml, key_node, value_node, location)
     if had_optional or base.required is not None:
         raise node_error(
             "'required' is not supported on a pattern property",
@@ -784,6 +827,10 @@ def _parse_data_type(raml: Raml, type_node: Node, location: str) -> DataTypeFrag
         # A file without a header is the declaration, written there
         # (docs/03 § 4.2); not a fragment, so decoded wherever it is included.
         body, written = content
+        if body.kind is NodeKind.MAPPING and annotated_scalar_value(body) is not None:
+            # A literal include can supply an annotated type/schema scalar,
+            # just as it can supply the declaration itself (docs/09 § B4).
+            body, _annotations = resolve_annotated_scalar(raml, body, written)
         included = DataTypeFragment(raml, written)
         included.kind = FragmentKind.DATA_TYPE
         included.decode_content(body)

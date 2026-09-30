@@ -36,9 +36,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, NamedTuple, cast
 
 from fastraml import facet_names as fn
-from fastraml.datanode import make_data_node
 from fastraml.errors import Accumulator, ErrorKind, RamlError
-from fastraml.parser.facets import make_bool_facet, make_int_facet, make_string_facet
+from fastraml.parser.facets import make_annotated_data_facet, make_bool_facet, make_int_facet, make_string_facet
 from fastraml.types.base import (
     ONE_SHAPE,
     PROPERTIES,
@@ -197,7 +196,7 @@ class ObjectShape(ComplexKind):
                     self.discriminator = make_string_facet(raml, key, value, location)
                     declares_discriminator = True
                 case fn.FACET_DISCRIMINATOR_VALUE:
-                    self.discriminator_value = make_data_node(raml, key, value, location)
+                    self.discriminator_value = make_annotated_data_facet(raml, key, value, location)
                     declares_discriminator = True
                 case _:
                     rest.append(key)

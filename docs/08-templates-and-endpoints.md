@@ -185,9 +185,10 @@ descends below it.
 ### 4.2 Readers
 
 Stage 2 activates one source unit's overlay, selects a base body scope, and
-pushes a marked facet-value scope when present. `Raml.scope_for` gives a shape
-the most-specific scope: a marked `type` or `schema` value wins over its
-containing mapping. `Raml.location_of` uses the marked scope's anchor location
+pushes a marked facet-value scope when present. The shape decoder selects the
+most-specific name-bearing node: an annotated scalar's inner `value`, then the
+`type` or `schema` facet value, then the containing declaration. `Raml.scope_for`
+looks up each candidate's provenance. `Raml.location_of` uses the marked scope's anchor location
 for diagnostics. That namespace location is not necessarily the node's authored
 location.
 
@@ -205,7 +206,8 @@ Processor-supplied reserved parameters retain the applying endpoint's scope;
 they are not static arguments authored in a nested template application.
 
 Annotation names use their key's provenance independently of the value's
-provenance. An annotation still receives the materialized declaration's target
+provenance. A nested annotation receives the materialized declaration's target;
+a template-root annotation retains `Trait` or `ResourceType`
 ([09](09-security-and-annotations.md) § B4).
 
 Stage 2 locates each top-level pair of a resource or method body by its key:

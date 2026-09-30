@@ -41,6 +41,15 @@ __all__ = ['build_endpoints']
 
 def build_endpoints(raml: Raml) -> None:
     """P4 — decode the API's resources, then P6 — propagate URI parameters."""
+    try:
+        _build_endpoints(raml)
+    finally:
+        # Retained annotation sites are needed only through materialization,
+        # including when there are no endpoints or the pass reports errors.
+        raml.annotation_sites = None
+
+
+def _build_endpoints(raml: Raml) -> None:
     api = raml.entry_point
     if api is None:
         return

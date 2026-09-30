@@ -279,7 +279,8 @@ def decode_request_facet(raml: Raml, into: RequestFacets, key: Node, value: Node
     elif name == FACET_QUERY_PARAMETERS:
         into.query_parameters = make_parameter_map(raml, value, location, 'query')
     elif name == FACET_QUERY_STRING:
-        into.query_string = make_shape(raml, key, value, location)
+        with raml.target_scope(DomainLocation.TYPE_DECLARATION):
+            into.query_string = make_shape(raml, key, value, location)
         raml.put_typedef(into.query_string.location, into.query_string)
     else:
         return False

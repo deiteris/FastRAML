@@ -145,6 +145,10 @@ DocumentationItem fragments decode their respective values. Trait, ResourceType,
 and SecurityScheme fragments use the same definition builders as inline
 declarations.
 
+A position that accepts both DataType and AnnotationTypeDeclaration fragments
+still decodes the authored kind. An annotation-type header establishes
+`AnnotationType` and permits `allowedTargets` ([09](09-security-and-annotations.md) § B4).
+
 Every created shape is indexed in `Raml.fragment_typedefs` by authored location.
 Unwrap and validation use this index rather than discovering declarations by
 walking the model graph.
@@ -156,6 +160,11 @@ is decoded, allowing mutually importing libraries to terminate as a cyclic model
 graph. Its `uses:` entries are resolved after body decoding. Reference binding
 waits until P7, so unresolved links during body decoding do not prevent mutual
 imports.
+
+Header validation returns the authored kind used for decoding. Each include
+request checks that kind against the required kind, including cache hits; a
+cached fragment cannot bypass a kind mismatch. A cache hit needs no header read
+or second decode.
 
 `uses:` resolution accumulates failures across entries. It uses the same URI
 rules as `!include`; see [03](03-yaml-and-io.md).

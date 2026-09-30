@@ -260,6 +260,137 @@ class TestTargets:
 
 
 class TestAllowedTargets:
+    @pytest.mark.parametrize('unwrap', [False, True])
+    @pytest.mark.parametrize('header', ['', '#%RAML 1.0 AnnotationTypeDeclaration\n'])
+    @pytest.mark.parametrize('spelling', ['!include ann.raml', '\n    type: !include ann.raml'])
+    @pytest.mark.parametrize('allowed', ['Method', '[]'])
+    def test_an_included_declaration_keeps_its_target_restriction(self, workspace, unwrap, header, spelling, allowed):
+        with pytest.raises(RamlError) as caught:
+            parse(
+                workspace,
+                {
+                    'api.raml': API + f'annotationTypes:\n  ann: {spelling}\n(ann): x\n',
+                    'ann.raml': header + f'type: string\nallowedTargets: {allowed}\n',
+                },
+                unwrap=unwrap,
+                validate=True,
+            )
+        trace = next(
+            chain[-1] for chain in caught.value.chains() if chain[-1].message == 'annotation not allowed at this target'
+        )
+        assert trace.info == {
+            'annotation': 'ann',
+            'target': 'API',
+            'allowed': ['Method'] if allowed == 'Method' else [],
+        }
+
+    @pytest.mark.parametrize('unwrap', [False, True])
+    def test_an_include_chain_preserves_an_allowed_site(self, workspace, unwrap):
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API + 'annotationTypes:\n  ann: !include outer.raml\n(ann): x\n',
+                'outer.raml': '#%RAML 1.0 AnnotationTypeDeclaration\ntype: !include inner.raml\n',
+                'inner.raml': '#%RAML 1.0 AnnotationTypeDeclaration\ntype: string\nallowedTargets: API\n',
+            },
+            unwrap=unwrap,
+            validate=True,
+        )
+        assert extensions(raml)['ann'].target is DomainLocation.API
+        if unwrap:
+            assert extensions(raml)['ann'].defined_by.allowed_targets == [DomainLocation.API]
+
+    def test_an_included_annotation_type_keeps_its_root_target(self, workspace):
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API + 'annotationTypes:\n  ann: !include ann.raml\n',
+                'ann.raml': '#%RAML 1.0 AnnotationTypeDeclaration\nuses:\n  l: lib.raml\ntype: string\n(l.meta): x\n',
+                'lib.raml': LIB + 'annotationTypes:\n  meta:\n    allowedTargets: AnnotationType\n',
+            },
+            unwrap=True,
+            validate=True,
+        )
+        assert extensions(raml)['l.meta'].target is DomainLocation.ANNOTATION_TYPE
+
+    def test_an_ordinary_type_cannot_declare_allowed_targets(self, workspace):
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, {'api.raml': API + 'types:\n  T:\n    type: string\n    allowedTargets: Method\n'})
+        trace = next(iter(caught.value.chains()))[-1]
+        assert trace.message == 'allowedTargets is only valid on annotation types'
+        assert trace.info == {}
+
+    @pytest.mark.parametrize('unwrap', [False, True])
+    def test_an_annotation_alias_keeps_its_restrictions(self, workspace, unwrap):
+        with pytest.raises(RamlError) as caught:
+            parse(
+                workspace,
+                {
+                    'api.raml': API
+                    + 'annotationTypes:\n  Parent:\n    allowedTargets: Method\n  ann: Parent\n(ann): x\n'
+                },
+                unwrap=unwrap,
+                validate=True,
+            )
+        trace = next(iter(caught.value.chains()))[-1]
+        assert trace.message == 'annotation not allowed at this target'
+        assert trace.info == {'annotation': 'ann', 'target': 'API', 'allowed': ['Method']}
+
+    def test_a_subtype_cannot_widen_allowed_targets(self, workspace):
+        with pytest.raises(RamlError) as caught:
+            parse(
+                workspace,
+                {
+                    'api.raml': API
+                    + 'annotationTypes:\n  Parent:\n    allowedTargets: Method\n  ann:\n    type: Parent\n    allowedTargets: [Method, API]\n'
+                },
+                unwrap=True,
+            )
+        trace = next(iter(caught.value.chains()))[-1]
+        assert trace.message == 'allowedTargets constraint violation'
+        assert trace.info == {'source': ['Method'], 'target': ['Method', 'API']}
+
+    def test_a_narrowed_target_list_is_independent_and_ordered(self, workspace):
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API
+                + 'annotationTypes:\n  Parent:\n    allowedTargets: [Resource, Method, API]\n  inherited:\n    type: Parent\n  narrowed:\n    type: Parent\n    allowedTargets: [API, Method]\n'
+            },
+            unwrap=True,
+            validate=True,
+        )
+        declared = raml.entry_point.annotation_types
+        assert declared['narrowed'].allowed_targets == [DomainLocation.API, DomainLocation.METHOD]
+        assert declared['inherited'].allowed_targets == declared['Parent'].allowed_targets
+        assert declared['inherited'].allowed_targets is not declared['Parent'].allowed_targets
+
+    @pytest.mark.parametrize('unwrap', [False, True])
+    def test_multiple_annotation_parents_intersect_their_targets(self, workspace, unwrap):
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API
+                + 'annotationTypes:\n  Left:\n    allowedTargets: [Method, API]\n  Right:\n    allowedTargets: [API, Resource]\n  ann:\n    type: [Left, Right]\n    allowedTargets: API\n(ann): x\n'
+            },
+            unwrap=unwrap,
+            validate=True,
+        )
+        assert extensions(raml)['ann'].target is DomainLocation.API
+
+    def test_a_nonscalar_target_does_not_hide_later_bad_entries(self, workspace):
+        with pytest.raises(RamlError) as caught:
+            parse(
+                workspace,
+                {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: [{bad: value}, Bogus, Nonsense]\n'},
+            )
+        traces = [chain[-1] for chain in caught.value.chains()]
+        assert [(trace.message, trace.info) for trace in traces] == [
+            ('expected a scalar value', {}),
+            ('unknown annotation target', {'target': 'Bogus'}),
+            ('unknown annotation target', {'target': 'Nonsense'}),
+        ]
+
     def test_a_single_target_is_accepted(self, workspace):
         raml = parse(workspace, {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: Method\n'})
         declared = raml.annotation_types_in(raml.location)['ann']
@@ -346,3 +477,302 @@ class TestUnwrapRebinding:
     def test_binding_happens_without_unwrap_too(self, workspace):
         raml = parse(workspace, {'api.raml': API + self.UNION})
         assert extensions(raml)['ann'].defined_by is not None
+
+
+class TestNestedDeclarationTargets:
+    QUERY = 'queryString:\n  type: object\n  (ann): x\n'
+    PROPERTY = 'properties:\n  p:\n    type: string\n    (ann): x\n'
+
+    @pytest.mark.parametrize('site', ['method', 'trait', 'resource-type', 'security'])
+    @pytest.mark.parametrize('allowed', ['TypeDeclaration', 'Method'])
+    def test_query_string_establishes_a_type_declaration_site(self, workspace, site, allowed):
+        query = ''.join('      ' + line + '\n' for line in self.QUERY.splitlines())
+        if site == 'method':
+            body = '/items:\n  get:\n' + ''.join('    ' + line + '\n' for line in self.QUERY.splitlines())
+        elif site == 'trait':
+            body = 'traits:\n  t:\n' + ''.join('    ' + line + '\n' for line in self.QUERY.splitlines())
+            body += '/items:\n  get:\n    is: [t]\n'
+        elif site == 'resource-type':
+            body = 'resourceTypes:\n  t:\n    get:\n' + query + '/items:\n  type: t\n'
+        else:
+            body = 'securitySchemes:\n  s:\n    type: Pass Through\n    describedBy:\n' + query
+        files = {'api.raml': API + f'annotationTypes:\n  ann:\n    allowedTargets: {allowed}\n' + body}
+        if allowed == 'TypeDeclaration':
+            raml = parse(workspace, files, unwrap=True, validate=True)
+            assert extensions(raml)['ann'].target is DomainLocation.TYPE_DECLARATION
+        else:
+            with pytest.raises(RamlError) as caught:
+                parse(workspace, files, unwrap=True, validate=True)
+            assert next(iter(caught.value.chains()))[-1].info == {
+                'annotation': 'ann',
+                'target': 'TypeDeclaration',
+                'allowed': ['Method'],
+            }
+
+    @pytest.mark.parametrize('kind', ['object', 'Base'])
+    @pytest.mark.parametrize('response', [False, True])
+    @pytest.mark.parametrize('child', ['property', 'pattern-property', 'items', 'facet', 'union-member'])
+    def test_a_body_child_is_a_type_declaration(self, workspace, kind, response, child):
+        if child == 'items':
+            declaration = f'type: {"array" if kind == "object" else "ArrayBase"}\nitems:\n  type: string\n  (ann): x\n'
+        elif child == 'union-member':
+            declaration = f'type: {"union" if kind == "object" else "UnionBase"}\nanyOf:\n  - type: string\n    (ann): x\n  - integer\n'
+        elif child == 'facet':
+            declaration = f'type: {kind}\nfacets:\n  custom?:\n    type: string\n    (ann): x\n'
+        else:
+            declaration = (
+                f'type: {kind}\n' + self.PROPERTY.replace('p:', '/p/:')
+                if child == 'pattern-property'
+                else f'type: {kind}\n' + self.PROPERTY
+            )
+        prefix = (
+            '/items:\n  get:\n    responses:\n      200:\n        body:\n          application/json:\n'
+            if response
+            else '/items:\n  post:\n    body:\n      application/json:\n'
+        )
+        indent = '            ' if response else '        '
+        body = prefix + ''.join(indent + line + '\n' for line in declaration.splitlines())
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API
+                + 'annotationTypes:\n  ann:\n    allowedTargets: TypeDeclaration\ntypes:\n  Base: object\n  ArrayBase: array\n  UnionBase:\n    type: union\n    anyOf: [string, integer]\n'
+                + body
+            },
+            unwrap=True,
+            validate=True,
+        )
+        assert extensions(raml)['ann'].target is DomainLocation.TYPE_DECLARATION
+
+    def test_an_annotation_types_property_is_an_ordinary_type_declaration(self, workspace):
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API
+                + 'annotationTypes:\n  ann:\n    allowedTargets: TypeDeclaration\n  other:\n    type: object\n'
+                + ''.join('    ' + line + '\n' for line in self.PROPERTY.splitlines())
+            },
+            unwrap=True,
+            validate=True,
+        )
+        assert extensions(raml)['ann'].target is DomainLocation.TYPE_DECLARATION
+
+
+class TestTemplateDefinitionTargets:
+    @pytest.mark.parametrize('collection', ['traits', 'resourceTypes'])
+    def test_literal_template_roots_reused_by_libraries_keep_each_namespace(self, workspace, collection):
+        application = '  get:\n    is: [PREFIXt]\n' if collection == 'traits' else '  type: PREFIXt\n  get:\n'
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API
+                + 'uses:\n  a: a.raml\n  b: b.raml\n/a:\n'
+                + application.replace('PREFIX', 'a.')
+                + '/b:\n'
+                + application.replace('PREFIX', 'b.'),
+                'a.raml': LIB + f'annotationTypes:\n  ann: string\n{collection}:\n  t: !include shared.yaml\n',
+                'b.raml': LIB + f'annotationTypes:\n  ann: string\n{collection}:\n  t: !include shared.yaml\n',
+                'shared.yaml': '(ann): value\n',
+            },
+            unwrap=True,
+            validate=True,
+        )
+        assert len(raml.domain_extensions) == 2
+        for name in ('a', 'b'):
+            endpoint = raml.endpoints['/' + name]
+            annotations = endpoint.operations['get'].annotations if collection == 'traits' else endpoint.annotations
+            extension = annotations['ann']
+            target = DomainLocation.TRAIT if collection == 'traits' else DomainLocation.RESOURCE_TYPE
+            assert extension.target is target
+            assert extension.defined_by is raml.entry_point.uses[name].link.annotation_types['ann']
+
+    @pytest.mark.parametrize('collection', ['traits', 'resourceTypes'])
+    @pytest.mark.parametrize('used', [False, True])
+    @pytest.mark.parametrize('facet', ['root', 'usage'])
+    def test_template_annotations_target_the_definition(self, workspace, collection, used, facet):
+        target = 'Trait' if collection == 'traits' else 'ResourceType'
+        application = '  get:\n    is: [t]\n' if collection == 'traits' else '  type: t\n  get:\n'
+        annotation = '    (ann): x\n' if facet == 'root' else '    usage:\n      value: reusable\n      (ann): x\n'
+        body = f'annotationTypes:\n  ann:\n    allowedTargets: {target}\n{collection}:\n  t:\n' + annotation
+        if used:
+            body += '/one:\n' + application + '/two:\n' + application
+        raml = parse(workspace, {'api.raml': API + body}, unwrap=True, validate=True)
+        assert raml.annotation_sites is None
+        assert len(raml.domain_extensions) == 1
+        extension = raml.domain_extensions[0]
+        assert str(extension.target) == target
+        if used and facet == 'root':
+            for endpoint in raml.endpoints.values():
+                annotations = endpoint.operations['get'].annotations if collection == 'traits' else endpoint.annotations
+                assert annotations['ann'] is extension
+
+    def test_an_unused_templates_illegal_target_is_checked(self, workspace):
+        with pytest.raises(RamlError) as caught:
+            parse(
+                workspace,
+                {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: API\ntraits:\n  t:\n    (ann): x\n'},
+                validate=True,
+            )
+        trace = next(iter(caught.value.chains()))[-1]
+        assert trace.message == 'annotation not allowed at this target'
+        assert trace.info == {'annotation': 'ann', 'target': 'Trait', 'allowed': ['API']}
+
+    def test_a_library_releases_retained_sites_without_materializing_endpoints(self, workspace):
+        raml = parse(
+            workspace, {'lib.raml': LIB + DECLARE + 'traits:\n  t:\n    (ann): x\n'}, 'lib.raml', validate=True
+        )
+        assert raml.annotation_sites is None
+        assert extensions(raml)['ann'].target is DomainLocation.TRAIT
+
+    def test_a_failed_materialization_releases_retained_sites(self, workspace):
+        root = workspace(
+            {
+                'api.raml': API
+                + DECLARE
+                + 'traits:\n  t:\n    (ann): x\n/items:\n  get:\n    responses:\n      bad: {}\n'
+            }
+        )
+        raml, error = workspace.lenient(root / 'api.raml')
+        assert error is not None
+        assert raml.annotation_sites is None
+        assert extensions(raml)['ann'].target is DomainLocation.TRAIT
+
+    @pytest.mark.parametrize(
+        ('header', 'collection', 'target', 'application'),
+        [
+            ('Trait', 'traits', DomainLocation.TRAIT, '  get:\n    is: [t]\n'),
+            ('ResourceType', 'resourceTypes', DomainLocation.RESOURCE_TYPE, '  type: t\n  get:\n'),
+        ],
+    )
+    def test_an_included_template_root_keeps_its_authored_target(
+        self, workspace, header, collection, target, application
+    ):
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API + f'{collection}:\n  t: !include template.raml\n/one:\n' + application,
+                'template.raml': f'#%RAML 1.0 {header}\nuses:\n  l: lib.raml\n(l.ann): x\n',
+                'lib.raml': LIB + f'annotationTypes:\n  ann:\n    allowedTargets: {target}\n',
+            },
+            unwrap=True,
+            validate=True,
+        )
+        extension = raml.domain_extensions[0]
+        assert len(raml.domain_extensions) == 1
+        assert extension.target is target
+        assert extension.location == (workspace.root / 'template.raml').as_uri()
+
+    def test_an_explicit_override_keeps_the_methods_target(self, workspace):
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API
+                + 'annotationTypes:\n  ann:\n    allowedTargets: [Trait, Method]\ntraits:\n  t:\n    (ann): template\n/one:\n  get:\n    is: [t]\n    (ann): explicit\n'
+            },
+            unwrap=True,
+            validate=True,
+        )
+        assert [(str(extension.target), extension.value.raw) for extension in raml.domain_extensions] == [
+            ('Trait', 'template'),
+            ('Method', 'explicit'),
+        ]
+
+    @pytest.mark.parametrize(('key', 'tag'), [('(<<tag>>)', 'ann'), ('<<tag>>', '(ann)')])
+    def test_a_substituted_template_annotation_keeps_its_site_and_callers_namespace(self, workspace, key, tag):
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API
+                + f'uses:\n  l: lib.raml\nannotationTypes:\n  ann:\n    allowedTargets: Trait\n/one:\n  get:\n    is: [{{l.t: {{tag: {tag}, text: one}}}}]\n/two:\n  get:\n    is: [{{l.t: {{tag: {tag}, text: two}}}}]\n',
+                'lib.raml': LIB + f'annotationTypes:\n  ann: integer\ntraits:\n  t:\n    {key}: <<text>>\n',
+            },
+            unwrap=True,
+            validate=True,
+        )
+        assert len(raml.domain_extensions) == 2
+        for endpoint in raml.endpoints.values():
+            extension = endpoint.operations['get'].annotations['ann']
+            assert extension.target is DomainLocation.TRAIT
+            assert extension.defined_by is raml.entry_point.annotation_types['ann']
+            assert extension.value.raw == endpoint.uri[1:]
+
+
+class TestAnnotatedScalarTargets:
+    def test_an_annotated_type_preserves_a_substituted_names_namespace(self, workspace):
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API
+                + 'uses:\n  l: lib.raml\ntypes:\n  Model: string\n/one:\n  get:\n    is: [{l.t: {item: Model}}]\n',
+                'lib.raml': LIB
+                + 'annotationTypes:\n  ann:\n    allowedTargets: TypeDeclaration\ntypes:\n  Model: integer\ntraits:\n  t:\n    queryString:\n      type:\n        value: <<item>>\n        (ann): x\n',
+            },
+            unwrap=True,
+            validate=True,
+        )
+        query = raml.endpoints['/one'].operations['get'].request.query_string
+        assert query.type == 'string'
+        assert query.inherits[0] is raml.entry_point.types['Model']
+        assert extensions(raml)['ann'].defined_by is raml.entry_point.uses['l'].link.annotation_types['ann']
+
+    @pytest.mark.parametrize('facet', ['type', 'schema', 'default', 'discriminatorValue'])
+    @pytest.mark.parametrize('included', [False, True])
+    def test_each_scalar_path_captures_and_checks_annotations(self, workspace, facet, included):
+        prefix = '    type: string\n' if facet == 'default' else ''
+        value = 'string' if facet in {'type', 'schema'} else 'x'
+        if facet == 'discriminatorValue':
+            prefix = '    type: object\n    discriminator: kind\n    properties:\n      kind: string\n'
+        wrapper = f'value: {value}\n(ann): x\n'
+        if included:
+            declaration = f'    {facet}: !include wrapper.yaml\n'
+        else:
+            declaration = f'    {facet}:\n' + ''.join('      ' + line + '\n' for line in wrapper.splitlines())
+        raml = parse(
+            workspace,
+            {
+                'api.raml': API
+                + 'annotationTypes:\n  ann:\n    allowedTargets: TypeDeclaration\ntypes:\n  T:\n'
+                + prefix
+                + declaration,
+                'wrapper.yaml': wrapper,
+            },
+            unwrap=True,
+            validate=True,
+        )
+        assert len(raml.domain_extensions) == 1
+        assert extensions(raml)['ann'].target is DomainLocation.TYPE_DECLARATION
+        expected_location = (workspace.root / 'wrapper.yaml').as_uri() if included else raml.location
+        assert extensions(raml)['ann'].location == expected_location
+        base = raml.entry_point.types['T']
+        if facet == 'default':
+            assert base.default.raw == 'x'
+            assert base.default.location == expected_location
+        elif facet == 'discriminatorValue':
+            assert base.shape.discriminator_value.raw == 'x'
+        else:
+            assert base.type == 'string'
+
+    def test_an_any_default_does_not_bypass_target_validation(self, workspace):
+        with pytest.raises(RamlError) as caught:
+            parse(
+                workspace,
+                {
+                    'api.raml': API
+                    + 'annotationTypes:\n  ann:\n    allowedTargets: Method\ntypes:\n  T:\n    type: any\n    default:\n      value: x\n      (ann): x\n'
+                },
+                validate=True,
+            )
+        trace = next(iter(caught.value.chains()))[-1]
+        assert trace.message == 'annotation not allowed at this target'
+        assert trace.info == {'annotation': 'ann', 'target': 'TypeDeclaration', 'allowed': ['Method']}
+
+    @pytest.mark.parametrize('data', ['{value: x}', '{value: x, extra: y}', '{value: {nested: x}, (ann): x}'])
+    def test_ordinary_default_maps_are_not_annotation_wrappers(self, workspace, data):
+        raml = parse(
+            workspace,
+            {'api.raml': API + f'types:\n  T:\n    type: object\n    default: {data}\n'},
+            unwrap=True,
+            validate=True,
+        )
+        assert raml.domain_extensions == []
+        assert isinstance(raml.entry_point.types['T'].default.raw, dict)

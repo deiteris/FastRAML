@@ -21,6 +21,12 @@ from typing import TYPE_CHECKING, ClassVar, Final, Self
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
 from fastraml.facet_names import FACET_USAGE
+from fastraml.parser.annotations import (
+    annotation_declaration_key,
+    is_annotation_key,
+    retain_annotation_sites,
+    unmarshal_domain_extension,
+)
 from fastraml.parser.facets import make_string_facet
 from fastraml.parser.includes import content_anchor, content_include, note_include_ref
 from fastraml.parser.substitutions import Substitution
@@ -123,6 +129,8 @@ class TemplateDefinition:
     usage: ScalarFacet[str] | None = None
     #: The body as written, minus `usage:`. `None` for an empty or linked one.
     source: Node | None = None
+    #: Root annotations or parameterized keys that may become annotations.
+    may_have_root_annotations: bool = False
     declared_variables: set[str] = field(default_factory=set)
     variable_index: VariableIndex = field(default_factory=dict)
     #: `traits: {paged: !include ...}`: the target's own definition, filled in
@@ -205,13 +213,34 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
             if key.value == FACET_USAGE:
                 definition.usage = make_string_facet(raml, key, value, location)
             else:
-                kept.append(key if retain is None else retain(definition, key))
+                retained_key = annotation_declaration_key(raml, key)
+                kept.append(retained_key if retain is None else retain(definition, retained_key))
                 kept.append(value)
         if kept:
             definition.source = with_content(value_node, kept)
             definition.declared_variables, definition.variable_index = collect_variables_index(
                 definition.source, location
             )
+            definition.may_have_root_annotations = retain_annotation_sites(
+                raml, definition.source, raml.current_ctx(), declaration=True
+            )
+            accumulator = Accumulator()
+            for key, value in pairs(definition.source):
+                definition.may_have_root_annotations |= key in definition.variable_index
+                if not is_annotation_key(key.value):
+                    continue
+                # A name or value containing parameters is meaningful only at
+                # an application. Literal root annotations are meaningful even
+                # on an unused template (docs/09 § B4).
+                if key in definition.variable_index or any(
+                    node in definition.variable_index for node in iter_nodes(value)
+                ):
+                    continue
+                try:
+                    unmarshal_domain_extension(raml, location, key, value)
+                except RamlError as err:
+                    accumulator.add(err)
+            accumulator.raise_if_any()
     return definition
 
 

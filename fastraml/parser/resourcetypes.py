@@ -5,8 +5,8 @@ up, and with three differences that all come from methods being involved.
 
 * **Its keys are checked.** A resource type may declare `displayName`,
   `description`, `uriParameters`, `type`, `is`, `securedBy`, annotations, and
-  HTTP methods — nothing else. A trait's body is not checked at all, because a
-  trait *is* a method body.
+  HTTP methods — nothing else. A trait retains its endpoint facets until it is
+  materialized as a method body; both kinds decode literal root annotations.
 * **Optional methods.** `post?` applies only if the target resource already
   declares `post`. Filtering runs **before** substitution, and the required
   variables are recollected from the filtered tree afterwards — the spec's own
@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, ClassVar, Final
 
 from fastraml import facet_names as fn
 from fastraml.domains import DomainLocation
-from fastraml.parser.annotations import is_annotation_key
+from fastraml.parser.annotations import is_annotation_key, retain_annotation_sites
 from fastraml.parser.source_ir import METHODS, make_source_endpoint
 from fastraml.parser.structural_merge import copy_overlay, merge_structural
 from fastraml.parser.templates import (
@@ -97,16 +97,17 @@ def make_resource_type_definition(
     attach: Callable[[ResourceTypeDefinition], None],
 ) -> ResourceTypeDefinition:
     """Decode one resource-type declaration, checking the keys it may carry."""
-    return make_template_definition(
-        ResourceTypeDefinition,
-        raml,
-        key_node,
-        value_node,
-        location,
-        what='resource type',
-        attach=attach,
-        retain=_retained_key,
-    )
+    with raml.target_scope(DomainLocation.RESOURCE_TYPE):
+        return make_template_definition(
+            ResourceTypeDefinition,
+            raml,
+            key_node,
+            value_node,
+            location,
+            what='resource type',
+            attach=attach,
+            retain=_retained_key,
+        )
 
 
 def _retained_key(definition: ResourceTypeDefinition, key: Node) -> Node:
@@ -247,6 +248,8 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
     key = Node(NodeKind.SCALAR, TAG_STR, uri, None, compiled.line, compiled.column, compiled.line, compiled.column)
     raml.push_ctx(ParseCtx(anchor=definition.anchor, target=DomainLocation.RESOURCE_TYPE))
     try:
+        if definition.may_have_root_annotations and compiled is not definition.source:
+            retain_annotation_sites(raml, compiled, raml.current_ctx())
         with raml.active_overlay(overlay):
             endpoint = make_source_endpoint(raml, key, compiled, location, parent_uri=parent_uri)
     finally:

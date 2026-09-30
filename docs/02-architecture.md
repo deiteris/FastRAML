@@ -83,6 +83,9 @@ One `Raml` instance owns one parse. It holds:
 - the stages that finished and the one that raised (§ 1); and
 - optional retained source nodes, text, and entity-to-source information.
 
+Decoders select the nodes that carry names. The registry looks up those nodes'
+provenance without interpreting RAML facet or annotated-scalar syntax.
+
 Every model entity receives a parse-local monotonically increasing integer ID.
 IDs identify entities for clone memoization, source indexing, diagnostics, and
 serialized views; they are not content hashes.

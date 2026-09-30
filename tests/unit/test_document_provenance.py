@@ -23,6 +23,7 @@ from fastraml.parser.templates import make_template_definition
 from fastraml.parser.traits import TraitDefinition
 from fastraml.registry import ParseCtx, Raml
 from fastraml.types.examples import make_example
+from fastraml.types.shape import make_shape
 from fastraml.uris import path_to_file_uri
 from fastraml.yamlnode import compose, node_error, pairs
 
@@ -107,18 +108,20 @@ class TestReaderPrecedence:
         with raml.active_overlay({node: template_scope}):
             assert raml.document_location(node, MASTER) == MASTER
 
-    def test_a_substituted_type_value_beats_the_authored_mapping(self):
-        # The caller-supplied `type:` value is the more specific scope.
+    @pytest.mark.parametrize('annotated', [False, True])
+    def test_the_shape_decoder_selects_the_type_values_own_scope(self, annotated):
+        # The registry looks up marks; the shape decoder selects which node
+        # carries the type name, including the annotated-scalar spelling.
         raml = Raml()
-        mapping = tree('type: <<item>>\n')
-        raml.mark_authored(mapping, Document(EXTENSION))
-        substituted = tree('User\n')
+        mapping = tree('type:\n  value: User\n' if annotated else 'type: User\n')
+        substituted = value_of(value_of(mapping, 'type'), 'value') if annotated else value_of(mapping, 'type')
         caller = ParseCtx(anchor=Document('file:///api/caller.raml'))  # type: ignore[arg-type]
-        spliced = mapping.content[:]
-        spliced[1] = substituted
-        mapping.content = spliced
+        raml.mark_authored(substituted, caller.anchor)
+        raml.mark_authored(mapping, Document(EXTENSION))
         with raml.active_overlay({substituted: caller}):
-            assert raml.scope_for(mapping) is caller
+            assert raml.scope_for(mapping).anchor.location == EXTENSION
+            shape = make_shape(raml, None, mapping, MASTER)
+        assert shape.anchor is caller.anchor
 
     def test_a_document_scope_keeps_the_annotation_target(self):
         raml = Raml()

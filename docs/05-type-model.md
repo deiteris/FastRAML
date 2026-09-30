@@ -100,6 +100,12 @@ pattern properties.
 
 ## 5. Examples, custom facets, and XML
 
+`type` and `schema` accept the annotated-scalar spelling with `value` and
+annotation keys. The inner scalar remains the type expression. `default` and
+`discriminatorValue` also register scalar-wrapper annotations and keep the inner
+value as data; ordinary data maps retain their structure. The distinction and
+annotation targets are defined in [09](09-security-and-annotations.md) § B4.
+
 `example:` accepts raw data or a wrapper mapping containing `value`; the wrapper
 may also carry `displayName`, `description`, `strict`, and annotations. An
 example written as `!include`, alone or under a name, reads as its content

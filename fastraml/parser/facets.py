@@ -25,22 +25,25 @@ import re
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
 
-from fastraml.datanode import parse_int
+from fastraml.datanode import included_data_node, make_data_node, parse_int
 from fastraml.facet_names import FACET_VALUE
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.includes import IncludeInfo, resolve_include
 from fastraml.positions import UNKNOWN
 from fastraml.types.base import ScalarFacet
-from fastraml.yamlnode import TAG_BOOL, TAG_FLOAT, TAG_INT, TAG_NULL, Node, NodeKind, node_error, pairs
+from fastraml.yamlnode import TAG_BOOL, TAG_FLOAT, TAG_INCLUDE, TAG_INT, TAG_NULL, Node, NodeKind, node_error, pairs
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from fastraml.datanode import DataNode
     from fastraml.parser.annotations import DomainExtension
     from fastraml.registry import Raml
 
 __all__ = [
+    'annotated_scalar_value',
     'compile_pattern',
+    'make_annotated_data_facet',
     'make_bool_facet',
     'make_fraction_facet',
     'make_int_facet',
@@ -154,6 +157,21 @@ def scalar_str(node: Node, location: str) -> str:
     return node.value
 
 
+def annotated_scalar_value(node: Node) -> Node | None:
+    """Find a scalar wrapper's value without decoding or registering annotations.
+
+    A non-mapping is its own value. A mapping without `value` returns `None`;
+    `resolve_annotated_scalar` owns validation of the wrapper's other fields.
+    """
+    if node.kind is not NodeKind.MAPPING:
+        return node
+    content = node.content
+    for index in range(0, len(content), 2):
+        if content[index].value == FACET_VALUE:
+            return content[index + 1]
+    return None
+
+
 def resolve_annotated_scalar(raml: Raml, node: Node, location: str) -> tuple[Node, dict[str, DomainExtension]]:
     """Unwrap the annotated-scalar form, returning the value node and any annotations.
 
@@ -178,6 +196,47 @@ def resolve_annotated_scalar(raml: Raml, node: Node, location: str) -> tuple[Nod
     if value_node is None:
         raise node_error('missing value key in annotated scalar', location, node)
     return value_node, extensions
+
+
+def make_annotated_data_facet(raml: Raml, key: Node, node: Node, location: str) -> DataNode:
+    """Read a data-valued facet's annotated scalar without interpreting object data.
+
+    Only a scalar `value` plus annotation keys identifies this wrapper. Ordinary
+    data maps, including ones with a `value` property, remain data (docs/09 § B4).
+    """
+    location = raml.document_location(node, location)
+    if node.kind is NodeKind.SCALAR and node.tag != TAG_INCLUDE:
+        return make_data_node(raml, key, node, location)
+    target, resolved = resolve_include(raml, node, location)
+    target = target or location
+    if _is_annotated_data_scalar(resolved):
+        value, _annotations = resolve_annotated_scalar(raml, resolved, target)
+        data = make_data_node(raml, key, value, target)
+        if node.tag == TAG_INCLUDE:
+            data.include = IncludeInfo(path=node.value, abs_uri=target)
+            data.value_pos = node.position
+        return data
+    if node.tag == TAG_INCLUDE:
+        return included_data_node(raml, key, node, target, resolved)
+    return make_data_node(raml, key, node, location)
+
+
+def _is_annotated_data_scalar(node: Node) -> bool:
+    """Distinguish an annotated scalar from an ordinary object-valued facet."""
+    if node.kind is not NodeKind.MAPPING:
+        return False
+    value = annotated_scalar_value(node)
+    if value is None or value.kind is not NodeKind.SCALAR:
+        return False
+    annotated = False
+    for index in range(0, len(node.content), 2):
+        name = node.content[index].value
+        if name == FACET_VALUE:
+            continue
+        if not is_annotation_key(name):
+            return False
+        annotated = True
+    return annotated
 
 
 def make_scalar_facet[T](

@@ -24,6 +24,7 @@ __all__ = [
     'INHERITED_UNION_WIDTHS',
     'UNION_WIDTHS',
     'UNIQUE_LENGTHS',
+    'write_annotation_targets',
     'write_endpoints',
     'write_enums',
     'write_facets',
@@ -789,6 +790,125 @@ def write_includes(root: Path, *, resource_count: int = 500) -> Path:
             f'              yaml: !include examples/e{index}.yaml',
         ]
     files['api.raml'] = '\n'.join(lines) + '\n'
+    _write(root, files)
+    return root / 'api.raml'
+
+
+def write_annotation_targets(root: Path, *, family_count: int = 250) -> Path:
+    """Included restrictions, nested declaration sites, template roots and scalars.
+
+    Each family reaches the paths whose restrictions the general workloads do
+    not exercise (docs/09 § B4). Counts grow together for the linearity gate.
+    """
+    files: dict[str, str] = {}
+    declarations = [
+        'annotationTypes:',
+        '  traitMeta: {allowedTargets: Trait}',
+        '  dynamic: {allowedTargets: Trait}',
+        '  resourceMeta: {allowedTargets: ResourceType}',
+        '  requestMeta: {allowedTargets: RequestBody}',
+        '  responseMeta: {allowedTargets: ResponseBody}',
+        '  left: {allowedTargets: [TypeDeclaration, API]}',
+        '  right: {allowedTargets: [TypeDeclaration, Trait]}',
+    ]
+    types = ['types:', '  Base: object']
+    traits = ['traits:']
+    resource_types = ['resourceTypes:']
+    endpoints: list[str] = []
+    for index in range(family_count):
+        name = f'data{index}'
+        declarations.append(f'  {name}: !include annotations/a{index}.raml')
+        declarations.extend(
+            [
+                f'  combined{index}:',
+                '    type: [left, right]',
+                '    allowedTargets: TypeDeclaration',
+            ]
+        )
+        files[f'annotations/a{index}.raml'] = (
+            '#%RAML 1.0 AnnotationTypeDeclaration\ntype: string\nallowedTargets: TypeDeclaration\n'
+        )
+        types.extend(
+            [
+                f'  T{index}:',
+                '    type:',
+                '      value: string',
+                f'      (combined{index}): type',
+                '    default:',
+                f'      value: v{index}',
+                f'      ({name}): default',
+                f'  O{index}:',
+                '    type: object',
+                '    discriminator: kind',
+                '    properties:',
+                '      kind: string',
+                '    discriminatorValue:',
+                f'      value: v{index}',
+                f'      ({name}): discriminator',
+            ]
+        )
+        traits.extend(
+            [
+                f'  t{index}:',
+                '    (traitMeta): definition',
+                '    (<<tag>>): <<text>>',
+                '    queryString:',
+                '      type:',
+                '        value: <<item>>',
+                f'        ({name}): queryType',
+                f'      ({name}): query',
+                '      properties:',
+                '        q:',
+                '          type: string',
+                f'          ({name}): property',
+            ]
+        )
+        resource_types.extend(
+            [
+                f'  r{index}:',
+                '    (resourceMeta): definition',
+                '    post:',
+                '      body:',
+                '        application/json:',
+                '          type: Base',
+                '          (requestMeta): body',
+                '          properties:',
+                '            p:',
+                '              type: string',
+                f'              ({name}): property',
+            ]
+        )
+        endpoints.extend(
+            [
+                f'/r{index}:',
+                f'  type: r{index}',
+                '  get:',
+                f'    is: [{{t{index}: {{tag: dynamic, text: v{index}, item: Base}}}}]',
+                '    responses:',
+                '      200:',
+                '        body:',
+                '          application/json:',
+                '            type: array',
+                '            (responseMeta): body',
+                '            items:',
+                '              type: string',
+                f'              ({name}): items',
+            ]
+        )
+    files['api.raml'] = (
+        '\n'.join(
+            [
+                '#%RAML 1.0',
+                'title: Generated annotation-target benchmark',
+                *declarations,
+                *types,
+                *traits,
+                *resource_types,
+                *endpoints,
+            ]
+        )
+        + '\n'
+    )
     _write(root, files)
     return root / 'api.raml'
 

@@ -23,13 +23,13 @@ from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, cast
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
 from fastraml.loaders import SchemeLoader
-from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, NodeKind, mark_subtree
+from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, mark_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
     from fastraml.loaders import ResourceLoader
-    from fastraml.parser.annotations import DomainExtension
+    from fastraml.parser.annotations import AnnotationSites, DomainExtension
     from fastraml.parser.fragments import ExtensionFragment, Fragment, ReferenceResolver
     from fastraml.parser.includes import IncludeRef
     from fastraml.parser.structural_merge import ProvenanceOverlay
@@ -45,11 +45,6 @@ if TYPE_CHECKING:
     EndPoint = Any
     SecurityScheme = Any
     SourceInfo = dict[int, tuple[Node | None, Node]]
-
-#: The two facets whose *value* names a type. `scope_for` consults them before
-#: the mapping that holds them, because a caller-substituted `type:` must beat
-#: the scope of the grafted body it now sits inside.
-_TYPE_FACETS: Final = frozenset({'type', 'schema'})
 
 __all__ = [
     'DEFAULT_MAX_INCLUDE_SIZE',
@@ -100,8 +95,9 @@ class ParseCtx:
     anchor: ReferenceResolver | None = None
     #: Where an `(annotation)` written here is being applied. On the stack
     #: rather than passed to `unmarshal_domain_extension`, because the answer is
-    #: not always known at the decode site: an annotation inside a trait body
-    #: records the site it is *materialised* at, not `Trait`
+    #: not always known at the decode site: a nested annotation inside a trait
+    #: body records its materialized declaration's site, while a root annotation
+    #: keeps `Trait`
     #: (docs/09-security-and-annotations.md § B4).
     target: DomainLocation = DomainLocation.API
 
@@ -220,6 +216,7 @@ class Raml:
         '_scopes',
         '_id_counter',
         '_parse_ctx_stack',
+        'annotation_sites',
         'annotation_type_changes',
         'broken',
         'completed',
@@ -294,6 +291,9 @@ class Raml:
         self.global_secured_by: list[SecurityScheme] = []
 
         self._parse_ctx_stack: list[ParseCtx] = []
+        # Created by the annotation decoder only for retained application sites;
+        # P4 releases it after materialization (docs/09 § B4).
+        self.annotation_sites: AnnotationSites | None = None
         # The overlay of the source unit being materialized in P4 stage 2;
         # `None` at every other time.
         self._active_overlay: ProvenanceOverlay | None = None
@@ -420,29 +420,20 @@ class Raml:
         """
         return _MarkedScope(self, node)
 
-    def scope_for(self, node: Node) -> ParseCtx | None:
-        """The scope a type-bearing node should be decoded under, most specific first.
+    @property
+    def has_provenance(self) -> bool:
+        """Whether a decoder has node-specific scopes to consult."""
+        return bool(self._active_overlay or self._document_provenance)
 
-        The `type:`/`schema:` facet value of a mapping beats the mapping itself:
-        a value the caller substituted is more specific than the grafted body it
-        was substituted into.
-        """
-        if self._active_overlay is None and not self._document_provenance:
-            return None
-        if node.kind is NodeKind.MAPPING:
-            content = node.content
-            for index in range(0, len(content) - 1, 2):
-                if content[index].value in _TYPE_FACETS:
-                    scope = self._marked_scope(content[index + 1])
-                    if scope is not None:
-                        return scope
+    def scope_for(self, node: Node) -> ParseCtx | None:
+        """The node's recorded namespace at the current annotation target."""
         return self._marked_scope(node)
 
     def reference_scope(self, node: Node, default: ParseCtx) -> ParseCtx:
         """Select a name's own provenance, falling back only to its enclosing scope.
 
-        Unlike `scope_for`, never inspect a mapping's values: a directive or
-        annotation name may be its key, independently of its arguments.
+        The caller supplies the name-bearing node: a directive or annotation
+        name may be its key, independently of its arguments.
         """
         return self._marked_scope(node) or default
 

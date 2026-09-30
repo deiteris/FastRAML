@@ -1130,8 +1130,8 @@ def make_fragment(raml: Raml, kind: FragmentKind, uri: str) -> _BaseFragment:
     return fragment
 
 
-def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> None:
-    """Verify the document's header against the kind its context demands.
+def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> FragmentKind:
+    """Verify the required kind and return the document's authored kind.
 
     Fails fast rather than accumulating: a fragment of the wrong kind decodes to
     something that misrepresents its source. A `.json` file where a `DataType`
@@ -1143,7 +1143,7 @@ def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> None:
     # is a JSON include, not an include of something ending `.json#`.
     path = strip_uri_suffix(uri).lower()
     if kind is FragmentKind.DATA_TYPE and path.endswith('.json'):
-        return
+        return FragmentKind.DATA_TYPE
     if path.endswith('.xsd'):
         # docs/01 § 3. Reported here rather than left to the header check,
         # which would report an unrecognised RAML header instead. Only `.xsd`:
@@ -1152,16 +1152,17 @@ def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> None:
             'xml schema external types are not supported', uri, info={'path': uri}, kind=ErrorKind.PARSING
         )
 
-    head = read_head(text)
-    found = identify_fragment(head)
+    return _require_fragment_kind(identify_fragment(read_head(text)), uri, kind)
+
+
+def _require_fragment_kind(found: FragmentKind | None, uri: str, expected: FragmentKind) -> FragmentKind:
+    """The same compatibility rule applies to loaded and cached fragments."""
     if found is None:
         raise RamlError.new('unknown fragment kind', uri, kind=ErrorKind.PARSING)
-    if found is kind:
-        return
-    if kind is FragmentKind.DATA_TYPE and found is FragmentKind.ANNOTATION_TYPE:
-        return
+    if found is expected or (expected is FragmentKind.DATA_TYPE and found is FragmentKind.ANNOTATION_TYPE):
+        return found
     raise RamlError.new(
-        'unexpected fragment kind', uri, info={'expected': str(kind), 'found': str(found)}, kind=ErrorKind.PARSING
+        'unexpected fragment kind', uri, info={'expected': str(expected), 'found': str(found)}, kind=ErrorKind.PARSING
     )
 
 
@@ -1183,10 +1184,11 @@ def parse_fragment(raml: Raml, uri: str, kind: FragmentKind) -> Fragment:
     """Return the fragment at `uri`, decoding it at most once per parse."""
     cached = raml.get_fragment(uri)
     if cached is not None:
+        _require_fragment_kind(cached.kind, uri, kind)
         return cached
     text = load_fragment_text(raml, uri)
-    check_fragment_kind(text, uri, kind)
-    return decode_fragment(raml, uri, kind, text)
+    authored_kind = check_fragment_kind(text, uri, kind)
+    return decode_fragment(raml, uri, authored_kind, text)
 
 
 def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Fragment:

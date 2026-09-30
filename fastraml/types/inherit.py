@@ -134,9 +134,17 @@ def _inherit(target: BaseShape, source: BaseShape) -> BaseShape:
 
 
 def _inherit_base_facets(target: BaseShape, source: BaseShape) -> None:
-    """The three facets that live on the base, not on the kind (docs/07 § 4)."""
+    """The inherited facets that live on the base, not on the kind (docs/07 § 4)."""
     if target.description is None:
         target.description = source.description
+
+    if source.allowed_targets is not None:
+        if target.allowed_targets is None:
+            target.allowed_targets = list(source.allowed_targets)
+        elif not set(target.allowed_targets) <= set(source.allowed_targets):
+            raise _violation(
+                target, 'allowedTargets constraint violation', source.allowed_targets, target.allowed_targets
+            )
 
     for name, value in source.custom_facets.items():
         # Union, target wins per key.
@@ -342,6 +350,14 @@ def _empty_subtype(parents: list[BaseShape]) -> BaseShape:
     )
     folded.type = first.type
     folded.inherits = list(parents)
+    # The synthetic parent must satisfy all target restrictions at once. Its
+    # list is an intersection, not an explicit child declaration that could
+    # illegally widen a later parent's list (docs/09 § B4).
+    restrictions = [parent.allowed_targets for parent in parents if parent.allowed_targets is not None]
+    if restrictions:
+        folded.allowed_targets = [
+            target for target in restrictions[0] if all(target in allowed for allowed in restrictions[1:])
+        ]
     folded._unwrapped = True  # noqa: SLF001 - built from parents P9 has flattened
     # `shape` reaches this module through `jsonschema_`.
     from fastraml.types.shape import KIND_TO_CLASS  # noqa: PLC0415
@@ -701,6 +717,7 @@ def alias_to(target: BaseShape, source: BaseShape) -> BaseShape:
     target.required = source.required
     target.enum = source.enum
     target.xml = source.xml
+    target.allowed_targets = source.allowed_targets
     target.inherits = source.inherits
     target.custom_facets = source.custom_facets
     target.custom_facet_defs = source.custom_facet_defs

@@ -22,21 +22,24 @@ from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.parser.references import UnresolvedReferenceError
 from fastraml.parser.substitutions import substituted_site
 from fastraml.positions import UNKNOWN, Position
-from fastraml.yamlnode import node_error
+from fastraml.yamlnode import node_error, with_value
 
 if TYPE_CHECKING:
     from fastraml.datanode import DataNode
     from fastraml.parser.fragments import ReferenceResolver
-    from fastraml.registry import Raml
+    from fastraml.registry import ParseCtx, Raml
     from fastraml.yamlnode import Node
 
     BaseShape = Any
 
 __all__ = [
+    'AnnotationSites',
     'DomainExtension',
     'add_domain_extension',
+    'annotation_declaration_key',
     'is_annotation_key',
     'resolve_domain_extensions',
+    'retain_annotation_sites',
     'unmarshal_domain_extension',
 ]
 
@@ -72,12 +75,106 @@ def is_annotation_key(name: str) -> bool:
     return len(name) > 1 and name[0] == '(' and name[-1] == ')'
 
 
+@dataclass(slots=True, eq=False)
+class _AnnotationSite:
+    target: DomainLocation
+    value: Node | None = None
+    extension: DomainExtension | None = None
+    applications: dict[Node, DomainExtension] | None = None
+
+
+class AnnotationSites:
+    """Retained IR keys keep their authored target and share unchanged applications.
+
+    This is decoder state, created only when a template has root annotations and
+    released after P4 materializes its source (docs/09 § B4).
+    """
+
+    __slots__ = ('_sites',)
+
+    def __init__(self) -> None:
+        self._sites: dict[Node, _AnnotationSite | DomainLocation] = {}
+
+    def retain(self, key: Node, target: DomainLocation, *, declaration: bool) -> None:
+        if key not in self._sites:
+            self._sites[key] = _AnnotationSite(target) if declaration else target
+
+    def has_key(self, key: Node) -> bool:
+        return key in self._sites
+
+    def decode(self, raml: Raml, location: str, key: Node, value: Node) -> DomainExtension:
+        site = self._sites.get(key)
+        if site is None:
+            return _unmarshal_domain_extension(raml, location, key, value)
+        if isinstance(site, DomainLocation):
+            # A substituted key is unique to one compiled root. P4 materializes
+            # that root once, so only its target needs retaining, not a cache.
+            with raml.target_scope(site):
+                return _unmarshal_domain_extension(raml, location, key, value)
+        if site.extension is not None and site.value is value:
+            return site.extension
+        applications = site.applications
+        extension = None if applications is None else applications.get(value)
+        if extension is None:
+            with raml.target_scope(site.target):
+                extension = _unmarshal_domain_extension(raml, location, key, value)
+            # Most keys have one application. Allocate a map only when the same
+            # source key receives a second distinct value through substitution.
+            if site.extension is None:
+                site.value = value
+                site.extension = extension
+            else:
+                if applications is None:
+                    applications = site.applications = {}
+                applications[value] = extension
+        return extension
+
+
+def annotation_declaration_key(raml: Raml, key: Node) -> Node:
+    """A repeated literal include is a new declaration, not an application.
+
+    Its root key must distinguish the includer's namespace before the
+    template is materialized and starts sharing its applications.
+    """
+    sites = raml.annotation_sites
+    if sites is None or not sites.has_key(key):
+        return key
+    retained = with_value(key, key.value)
+    author = raml.document_anchor(key)
+    if author is not None:
+        raml.mark_authored(retained, author)
+    return retained
+
+
+def retain_annotation_sites(raml: Raml, node: Node, scope: ParseCtx, *, declaration: bool = False) -> bool:
+    """Record root applications and report whether this template has any."""
+    sites = raml.annotation_sites
+    retained = False
+    content = node.content
+    for index in range(0, len(content), 2):
+        key = content[index]
+        if not is_annotation_key(key.value):
+            continue
+        if sites is None:
+            sites = raml.annotation_sites = AnnotationSites()
+        sites.retain(key, scope.target, declaration=declaration)
+        retained = True
+    return retained
+
+
 def unmarshal_domain_extension(raml: Raml, location: str, key_node: Node, value_node: Node) -> DomainExtension:
     """Build one extension from a `(name): value` pair and register it.
 
     The caller attaches the returned object wherever the annotation was written;
     registration in `Raml.domain_extensions` has already happened.
     """
+    sites = raml.annotation_sites
+    if sites is None:
+        return _unmarshal_domain_extension(raml, location, key_node, value_node)
+    return sites.decode(raml, location, key_node, value_node)
+
+
+def _unmarshal_domain_extension(raml: Raml, location: str, key_node: Node, value_node: Node) -> DomainExtension:
     name = key_node.value[1:-1]
     if not name:
         raise node_error('annotation name must not be empty', location, key_node)

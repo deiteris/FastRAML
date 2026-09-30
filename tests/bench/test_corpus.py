@@ -40,6 +40,7 @@ WRITERS = {
     'inline-json': lambda root: corpus.write_inline_json(root, type_count=3),
     'template-scopes': lambda root: corpus.write_template_scopes(root, resource_count=3),
     'reference-namespaces': lambda root: corpus.write_reference_namespaces(root, resource_count=3),
+    'annotation-targets': lambda root: corpus.write_annotation_targets(root, family_count=3),
 }
 
 
@@ -51,6 +52,42 @@ class TestFeatureCorporaReachTheirCode:
     (docs/12 § 4). Each feature corpus pins, by counting calls, that it runs the
     code it was written for, at every size it was written to cover.
     """
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_annotation_targets_reaches_each_restriction_and_scalar_path(self, tmp_path, monkeypatch, count):
+        from fastraml.domains import DomainLocation
+        from fastraml.registry import Raml
+
+        looked_up = []
+        scope_for = Raml.scope_for
+
+        def counting(raml, node):
+            if node in raml.substitutions and node.value == 'Base':
+                looked_up.append(node)
+            return scope_for(raml, node)
+
+        monkeypatch.setattr(Raml, 'scope_for', counting)
+
+        raml = parse_from_path(
+            corpus.write_annotation_targets(tmp_path, family_count=count), ParseOptions(unwrap=True, validate=True)
+        )
+        targets = [extension.target for extension in raml.domain_extensions]
+        assert len(set(looked_up)) == count, 'the annotated type names must reach provenance lookup'
+        assert targets.count(DomainLocation.TYPE_DECLARATION) == count * 8
+        assert targets.count(DomainLocation.TRAIT) == count * 2
+        assert targets.count(DomainLocation.RESOURCE_TYPE) == count
+        assert targets.count(DomainLocation.REQUEST_BODY) == count
+        assert targets.count(DomainLocation.RESPONSE_BODY) == count
+        for index in range(count):
+            assert raml.entry_point.annotation_types[f'data{index}'].allowed_targets == [
+                DomainLocation.TYPE_DECLARATION
+            ]
+            assert raml.entry_point.annotation_types[f'combined{index}'].allowed_targets == [
+                DomainLocation.TYPE_DECLARATION
+            ]
+            assert raml.entry_point.types[f'T{index}'].default.raw == f'v{index}'
+            assert raml.entry_point.types[f'O{index}'].shape.discriminator_value.raw == f'v{index}'
+            assert raml.endpoints[f'/r{index}'].operations['get'].annotations['dynamic'].value.raw == f'v{index}'
 
     @pytest.mark.parametrize('count', [2, 4])
     def test_reference_namespaces_binds_caller_names_and_preserves_static_names(self, tmp_path, count):

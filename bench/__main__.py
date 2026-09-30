@@ -104,6 +104,9 @@ BENCHES: tuple[Bench, ...] = (
     Bench('includes', lambda root, scale: corpus.write_includes(root, resource_count=_at(500, scale))),
     Bench('include-content', lambda root, scale: corpus.write_include_content(root, resource_count=_at(250, scale))),
     Bench('inline-json', lambda root, scale: corpus.write_inline_json(root, type_count=_at(1000, scale))),
+    Bench(
+        'annotation-targets', lambda root, scale: corpus.write_annotation_targets(root, family_count=_at(250, scale))
+    ),
 )
 
 _BY_NAME = {bench.name: bench for bench in BENCHES}
@@ -331,6 +334,7 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'includes': 'parse',
     'include-content': 'parse',
     'inline-json': 'unwrap+validate',
+    'annotation-targets': 'unwrap+validate',
     'schema-export': 'unwrap',
     'raml-schema': 'unwrap',
 }

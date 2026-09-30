@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from fastraml import ParseOptions
 from fastraml.errors import RamlError
 from fastraml.positions import Position
 from fastraml.yamlnode import (
@@ -89,6 +90,63 @@ class TestIdentity:
         root = parse('a: 1\n')
         overlay = {root.content[1]: 'scope'}
         assert overlay[root.content[1]] == 'scope'
+
+
+class TestMappingKeySharing:
+    """docs/03 § 2: key sharing belongs to the parse, not the process."""
+
+    KEY = 'an_authored_mapping_key_long_enough_to_avoid_small_string_caches'
+
+    def test_equal_keys_share_strings_within_a_document(self):
+        root = parse(f'a:\n  {self.KEY}: 1\nb:\n  {self.KEY}: 2\n')
+        first = root.content[1].content[0]
+        second = root.content[3].content[0]
+        assert first is not second
+        assert first.value is second.value
+
+    def test_standalone_documents_do_not_share_a_process_global_pool(self):
+        first = parse(f'{self.KEY}: 1\n')
+        second = parse(f'{self.KEY}: 2\n')
+        assert first.content[0].value == second.content[0].value
+        assert first.content[0].value is not second.content[0].value
+
+    def test_an_explicit_pool_shares_keys_between_documents(self):
+        pool: dict[str, str] = {}
+        first = parse(f'{self.KEY}: 1\n', key_pool=pool)
+        second = parse(f'{self.KEY}: 2\n', key_pool=pool)
+        assert first.content[0].value is second.content[0].value
+        assert pool[self.KEY] is first.content[0].value
+
+    def test_fragments_libraries_and_data_includes_share_only_their_parse_pool(self, memory_workspace):
+        files = {
+            'api.raml': (
+                '#%RAML 1.0\ntitle: Keys\nuses:\n  lib: lib.raml\ntypes:\n'
+                f'  Item:\n    properties:\n      {self.KEY}: string\n'
+                '    example: !include example.yaml\n  Included: !include type.raml\n'
+            ),
+            'lib.raml': f'#%RAML 1.0 Library\ntypes:\n  Item:\n    properties:\n      {self.KEY}: string\n',
+            'type.raml': f'#%RAML 1.0 DataType\nproperties:\n  {self.KEY}: string\n',
+            'example.yaml': f'{self.KEY}: value\n',
+        }
+        root = memory_workspace(files)
+        options = ParseOptions(retain_source=True)
+        first = memory_workspace.parse(root / 'api.raml', options)
+        second = memory_workspace.parse(root / 'api.raml', options)
+        shared = first.mapping_keys[self.KEY]
+        assert shared == second.mapping_keys[self.KEY]
+        assert shared is not second.mapping_keys[self.KEY]
+        found_files: set[str] = set()
+        for uri, source in {**first.source_nodes, **first.include_nodes}.items():
+            stack = [source]
+            while stack:
+                node = stack.pop()
+                if node.kind is NodeKind.MAPPING:
+                    for key, _ in pairs(node):
+                        if key.value == self.KEY:
+                            assert key.value is shared
+                            found_files.add(uri.rsplit('/', 1)[-1])
+                stack.extend(node.content)
+        assert found_files == set(files)
 
 
 class TestPositions:

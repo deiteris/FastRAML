@@ -136,7 +136,7 @@ def _load(raml: Raml, uri: str, kind: FragmentKind, text: str, *, seen: list[str
     back out: the outermost frame is always the entry's `extends`.
     """
     raml.store_source_text(uri, text)
-    root = compose(text, uri=uri, max_depth=raml.max_depth)
+    root = compose(text, uri=uri, max_depth=raml.max_depth, key_pool=raml.mapping_keys)
     raml.store_source_node(uri, root)
     if root.kind is not NodeKind.MAPPING:
         raise node_error('must be map', uri, root)

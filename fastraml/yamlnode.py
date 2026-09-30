@@ -13,7 +13,6 @@ decoding. See docs/03-yaml-and-io.md.
 from __future__ import annotations
 
 import re
-import sys
 from contextvars import ContextVar
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any, Final, Protocol
@@ -527,10 +526,11 @@ class _Converter:
     expanded into independent copies, bounded by `MAX_NODES`.
     """
 
-    __slots__ = ('_in_progress', '_max_depth', '_max_nodes', '_produced', '_uri')
+    __slots__ = ('_in_progress', '_key_pool', '_max_depth', '_max_nodes', '_produced', '_uri')
 
-    def __init__(self, uri: str, max_depth: int, max_nodes: int) -> None:
+    def __init__(self, uri: str, max_depth: int, max_nodes: int, key_pool: dict[str, str]) -> None:
         self._uri = uri
+        self._key_pool = key_pool
         self._max_depth = max_depth
         self._max_nodes = max_nodes
         self._produced = 0
@@ -599,9 +599,9 @@ class _Converter:
                 seen: set[str] = set()
                 for key, value in node.value:
                     key_node = self.convert(key, depth + 1)
-                    # Decoders compare and hash mapping keys constantly;
-                    # interning makes equal keys share one object.
-                    name = key_node.value = sys.intern(key_node.value)
+                    # Share equal keys without growing Python's process-global
+                    # intern table. A parse supplies one pool for all its files.
+                    name = key_node.value = self._key_pool.setdefault(key_node.value, key_node.value)
                     if key_node.kind is NodeKind.SCALAR:
                         # YAML 1.2 requires unique keys. Compared as text, so
                         # `200` and `'200'` are one key, as RAML reads them.
@@ -672,6 +672,7 @@ def compose(
     uri: str,
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_nodes: int = MAX_NODES,
+    key_pool: dict[str, str] | None = None,
 ) -> Node:
     """Parse one YAML document into a `Node` tree.
 
@@ -679,6 +680,9 @@ def compose(
     empty mapping rather than failing. Each fragment decoder then decides
     whether an empty body is valid for its kind: a `Trait` fragment may be
     empty, an API without a `title` may not.
+
+    Equal mapping keys share one string within `key_pool`, or within this
+    document when no pool is supplied. The parser shares a pool across its files.
 
     Raises `RamlError` for a YAML syntax error, for nesting beyond `max_depth`,
     for alias expansion beyond `max_nodes`, and for a recursive anchor.
@@ -694,7 +698,7 @@ def compose(
     if root is None:
         return _empty_mapping()
 
-    return _Converter(uri, max_depth, max_nodes).convert(root)
+    return _Converter(uri, max_depth, max_nodes, {} if key_pool is None else key_pool).convert(root)
 
 
 def _line_separator_error(text: str, uri: str) -> RamlError | None:

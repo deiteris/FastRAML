@@ -277,7 +277,7 @@ def _compose_include(raml: Raml, node: Node, data: bytes, target: str) -> Node:
             raml.include_heads[target] = head
         if strip_uri_suffix(node.value).lower().endswith('.json'):
             text = _json_tabs_as_spaces(text)
-        return compose(text, uri=target, max_depth=raml.max_depth)
+        return compose(text, uri=target, max_depth=raml.max_depth, key_pool=raml.mapping_keys)
     # Spec section Resolving Includes: any other file is included as a scalar.
     return Node(NodeKind.SCALAR, TAG_STR, text)
 

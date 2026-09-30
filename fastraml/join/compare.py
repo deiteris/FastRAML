@@ -65,7 +65,7 @@ class IncludeReader:
             raise RamlError.wrap('include', err, bare, kind=ErrorKind.LOADING, info={'path': bare}) from err
         text = decode_source(data)
         if posixpath.splitext(bare)[1].lower() in _YAML_EXTENSIONS:
-            loaded = compose(text, uri=bare, max_depth=raml.max_depth)
+            loaded = compose(text, uri=bare, max_depth=raml.max_depth, key_pool=raml.mapping_keys)
         else:
             loaded = Node(NodeKind.SCALAR, TAG_STR, text)
         self._loaded[target] = loaded

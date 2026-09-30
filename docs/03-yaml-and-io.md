@@ -52,6 +52,12 @@ resolution, then converts the result to `Node`. It rejects unknown local tags,
 syntax errors, repeated mapping keys, excessive nesting, recursive anchors, and
 excessive alias expansion.
 
+Equal mapping keys share one string through a parse-local pool held by `Raml`.
+Fragments, content includes, extension documents, and join include comparisons
+use the same pool. A standalone `compose` call uses a document-local pool unless
+the caller supplies one. Authored keys never enter Python's process-global
+string-intern table: its capacity and resizing must not depend on earlier parses.
+
 `decode_source(data)` decodes source bytes as UTF-8 with an optional BOM. Other
 encodings raise `UnicodeDecodeError`.
 

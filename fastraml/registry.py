@@ -196,6 +196,7 @@ class Raml:
         'include_heads',
         'include_nodes',
         'json_schema_registry',
+        'mapping_keys',
         # --- indices ---------------------------------------------------------
         'domain_extensions',
         'endpoints',
@@ -253,6 +254,9 @@ class Raml:
 
         self.fragments: dict[str, Fragment] = {}
         self.include_nodes: dict[str, Node] = {}
+        # Equal YAML mapping keys share a string across this parse's files,
+        # without depending on Python's process-global intern table.
+        self.mapping_keys: dict[str, str] = {}
         # The `#%RAML` first line of an included file that has one, by target:
         # a comment to YAML, so the composed node no longer carries it.
         self.include_heads: dict[str, str] = {}

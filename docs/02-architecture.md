@@ -76,7 +76,7 @@ cycle. These boundaries keep the runtime import graph acyclic.
 One `Raml` instance owns one parse. It holds:
 
 - parse configuration and the scheme loader;
-- fragment, include-node, expression, and JSON Schema caches;
+- fragment, include-node, mapping-key, expression, and JSON Schema caches;
 - declaration, resolver, endpoint, shape, annotation, and include-reference
   indices;
 - the unresolved-shape worklist and parse-context/provenance state;

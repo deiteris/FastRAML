@@ -34,6 +34,7 @@ from fastraml.views.lint.rules.schema import (
     MeaninglessMediaTypeSchema,
     MultipleInheritance,
     OptionalAndNil,
+    OptionalDiscriminator,
     UntypedPayload,
 )
 from fastraml.views.lint.rules.security import (
@@ -107,6 +108,7 @@ def builtin_registry() -> Registry:
         NoAmbiguousPaths(),
         NonScalarParameter(),
         NonStandardMethod(),
+        OptionalDiscriminator(),
         UndefinedVersion(),
         UndescribedSecurityScheme(),
         UnnestedResource(),

@@ -60,6 +60,14 @@ reference, including references in imported fragments. Remote loading remains
 valid when enabled; the warning concerns reproducibility and availability, and
 is independently configurable through `lint.rules`.
 
+`optional-discriminator` warns by default when an effective discriminator
+names an optional property. RAML 1.0 does not require the tag's presence, so
+parsing and validation accept that declaration. Without the tag, structural
+matching may admit several concrete types. The rule covers both optional-property
+spellings and inherited properties or discriminators, reports the optional
+property's authored location once across inherited uses, and is independently
+configurable through `lint.rules`.
+
 ### 2.1 Rule shapes
 
 A rule is exactly one of two forms:

@@ -141,6 +141,8 @@ same numeric-versus-nonnumeric discriminator property kind, plus a distinct,
 scalar claim for every member. Numeric tags use exact numeric keys; strings and
 booleans retain their distinct meanings. A present unknown scalar tag fails;
 missing, null, nonscalar, or non-uniform cases use ordinary member scanning.
+Optional discriminator properties remain legal. The recommended
+`optional-discriminator` lint rule reports their ambiguity risk (docs/18 § 2).
 
 RAML field names shared by fragment, endpoint, and type decoders are defined in
 `facet_names.py`; diagnostic fields and JSON Schema keywords are separate.

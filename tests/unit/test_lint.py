@@ -45,6 +45,80 @@ def parsed(source: str, tmp_path, *, http_client=None):
     )
 
 
+class TestOptionalDiscriminator:
+    """docs/18 § 2: legal optional tags are a configurable warning."""
+
+    @staticmethod
+    def findings(source, tmp_path, config=None):
+        return [
+            finding
+            for finding in Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+            if finding.rule == 'optional-discriminator'
+        ]
+
+    @pytest.mark.parametrize(
+        ('body', 'line'),
+        [
+            ('  T:\n    discriminator: kind\n    properties:\n      kind?: string\n', 7),
+            (
+                '  T:\n    discriminator: kind\n    properties:\n      kind:\n        type: string\n        required: false\n',
+                7,
+            ),
+            ('  Parent:\n    properties:\n      kind?: string\n  T:\n    type: Parent\n    discriminator: kind\n', 6),
+            ('  Parent:\n    discriminator: kind\n    properties:\n      kind?: string\n  T:\n    type: Parent\n', 7),
+        ],
+        ids=['optional-key', 'required-false', 'inherited-property', 'inherited-discriminator'],
+    )
+    def test_warns_by_default_at_the_optional_property_once(self, body, line, tmp_path):
+        findings = self.findings('#%RAML 1.0\ntitle: t\ntypes:\n' + body, tmp_path)
+        assert len(findings) == 1
+        assert findings[0].severity is Severity.WARNING
+        assert findings[0].info == {'discriminator': 'kind'}
+        assert findings[0].position.line == line
+        assert findings[0].location == (tmp_path / 'api.raml').as_uri()
+
+    def test_required_discriminator_and_unrelated_optional_properties_are_silent(self, tmp_path):
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n'
+            '  T:\n    discriminator: kind\n    properties:\n      kind: string\n      name?: string\n'
+            '  Plain:\n    properties:\n      kind?: string\n'
+        )
+        assert not self.findings(source, tmp_path)
+
+    def test_warning_can_be_disabled_or_promoted_to_an_error(self, tmp_path):
+        source = builtin_registry().get('optional-discriminator').meta.bad
+        disabled = Config(rules=(RuleSetting(id='optional-discriminator', disabled=True),))
+        assert not self.findings(source, tmp_path, disabled)
+        promoted = Config(extends=(), rules=(RuleSetting(id='optional-discriminator', severity=Severity.ERROR),))
+        findings = self.findings(source, tmp_path, promoted)
+        assert len(findings) == 1
+        assert findings[0].severity is Severity.ERROR
+
+    def test_inherited_uses_report_the_optional_property_in_its_library(self, tmp_path):
+        library = tmp_path / 'lib.raml'
+        library.write_text(
+            '#%RAML 1.0 Library\ntypes:\n  Parent:\n    discriminator: kind\n    properties:\n      kind?: string\n',
+            encoding='utf-8',
+        )
+        source = (
+            '#%RAML 1.0\ntitle: t\nuses:\n  lib: lib.raml\ntypes:\n'
+            '  A: lib.Parent\n  B:\n    type: lib.Parent\n'
+            '/a:\n  get:\n    responses:\n      200:\n        body:\n          application/json: A\n'
+        )
+        findings = self.findings(source, tmp_path)
+        assert len(findings) == 1
+        assert findings[0].location == library.as_uri()
+        assert findings[0].position.line == 6
+        assert findings[0].info == {'discriminator': 'kind'}
+
+    def test_cli_warning_does_not_fail_unless_requested(self, tmp_path, capsys):
+        path = tmp_path / 'api.raml'
+        path.write_text(builtin_registry().get('optional-discriminator').meta.bad, encoding='utf-8')
+        assert main(['lint', '--rule', 'optional-discriminator', str(path)]) == EXIT_OK
+        capsys.readouterr()
+        assert main(['lint', '--rule', 'optional-discriminator', '--fail-on', 'warning', str(path)]) == EXIT_INVALID
+
+
 class TestRuleExamples:
     @pytest.mark.parametrize('rule', builtin_registry().all(), ids=lambda rule: rule.meta.id)
     def test_good_is_silent_and_bad_fires(self, rule, tmp_path):

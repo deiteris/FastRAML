@@ -319,6 +319,39 @@ class TestDiscriminator:
         assert error is not None
         assert 'discriminator property must be scalar' in messages(error)
 
+    @pytest.mark.parametrize('unwrap', [False, True], ids=['private-unwrap', 'public-unwrap'])
+    @pytest.mark.parametrize(
+        'body',
+        [
+            '  T:\n    discriminator: kind\n    properties:\n      kind?: string\n',
+            '  T:\n    discriminator: kind\n    properties:\n      kind:\n        type: string\n        required: false\n',
+            '  Parent:\n    properties:\n      kind?: string\n  T:\n    type: Parent\n    discriminator: kind\n',
+            '  Parent:\n    discriminator: kind\n    properties:\n      kind?: string\n  T:\n    type: Parent\n',
+        ],
+        ids=['optional-key', 'required-false', 'inherited-property', 'inherited-discriminator'],
+    )
+    def test_optional_discriminator_properties_remain_legal_raml(self, workspace, body, unwrap):
+        root = workspace({'api.raml': API + 'types:\n' + body})
+        assert workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=unwrap)) is not None
+
+    def test_a_required_discriminator_does_not_make_other_properties_required(self, workspace):
+        assert (
+            parse(
+                workspace,
+                '  T:\n    discriminator: kind\n    properties:\n      kind: string\n      name?: string\n'
+                '    example:\n      kind: T\n',
+            )
+            is None
+        )
+
+    def test_an_optional_discriminator_allows_structural_matching_of_an_untagged_union_example(self, workspace):
+        error = parse(
+            workspace,
+            '  Parent:\n    discriminator: kind\n    properties:\n      kind?: string\n'
+            '  A: Parent\n  B: Parent\n  Choice:\n    type: A | B\n    example: {}\n',
+        )
+        assert error is None
+
     def test_a_discriminator_needs_properties(self, workspace):
         error = parse(workspace, '  T:\n    type: object\n    discriminator: kind\n')
         assert error is not None

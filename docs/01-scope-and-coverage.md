@@ -119,6 +119,10 @@ They cannot be specialized through RAML inheritance unless the raw schemas are
 identical. A uniformly discriminated union dispatches by its discriminator;
 an absent discriminator and non-uniform unions use ordinary member matching.
 
+RAML 1.0 does not explicitly forbid optional discriminator properties, so
+fastRAML accepts them. The recommended `optional-discriminator` lint rule warns
+that omitting the tag can make concrete-type selection ambiguous (docs/18 § 2).
+
 ## 5. Dependencies
 
 | Dependency | Purpose | Required |

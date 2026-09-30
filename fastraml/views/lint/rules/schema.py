@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar
 
 from fastraml.nodes import TypeNode
-from fastraml.positions import UNKNOWN
+from fastraml.positions import UNKNOWN, Position
 from fastraml.types.complex_ import ObjectShape, UnionShape
 from fastraml.types.jsonschema_ import JsonShape, escape_json_pointer_segment, projected
 from fastraml.types.scalars import AnyShape, FileShape, NilShape
@@ -36,6 +36,7 @@ __all__ = [
     'MeaninglessMediaTypeSchema',
     'MultipleInheritance',
     'OptionalAndNil',
+    'OptionalDiscriminator',
     'UntypedPayload',
 ]
 
@@ -244,6 +245,49 @@ class MultipleInheritance:
                 supertypes=', '.join(parent.name or '?' for parent in base.inherits),
             ),
         )
+
+
+class OptionalDiscriminator:
+    """docs/18 § 2: an omitted tag may leave several concrete types possible."""
+
+    meta: ClassVar = RuleMeta(
+        id='optional-discriminator',
+        category=Category.SPEC,
+        summary='discriminator properties should be required',
+        rationale=(
+            'RAML 1.0 does not forbid an optional discriminator property. When the tag is omitted, a payload '
+            'can match several concrete types and cannot identify which one was intended. Make the property '
+            'required when consumers depend on discriminator-based type selection.'
+        ),
+        severity=Severity.WARNING,
+        references=('RAML 1.0 § Using Discriminator', 'RAML 1.0 § Property Declarations'),
+        good=('#%RAML 1.0\ntitle: t\ntypes:\n  Pet:\n    discriminator: kind\n    properties:\n      kind: string\n'),
+        bad=('#%RAML 1.0\ntitle: t\ntypes:\n  Pet:\n    discriminator: kind\n    properties:\n      kind?: string\n'),
+    )
+
+    def run(self, ctx: Context) -> Iterable[Finding]:
+        seen: set[tuple[str, Position, str]] = set()
+        for iri, node in ctx.graph.nodes.items():
+            if not isinstance(node, TypeNode):
+                continue
+            shape = node.entity.shape
+            if not isinstance(shape, ObjectShape) or shape.discriminator is None:
+                continue
+            name = shape.discriminator.value
+            prop = (shape.properties or {}).get(name)
+            if prop is None or prop.required:
+                continue
+            site = (prop.base.location, prop.base.key_pos, name)
+            if site in seen:
+                continue
+            seen.add(site)
+            yield ctx.on(
+                self.meta,
+                'discriminator property is optional',
+                prop.base,
+                iri=iri,
+                discriminator=name,
+            )
 
 
 class DiscriminatorWithoutSubtypes:

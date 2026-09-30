@@ -372,7 +372,7 @@ def _authored_resources(source: _Input) -> list[Node]:
 
 def _applications(source: _Input) -> list[Application]:
     if source.applications is None:
-        source.applications = template_applications(source.api, source.uri, _authored_resources(source))
+        source.applications = template_applications(source.raml, source.api, source.uri, _authored_resources(source))
     return source.applications
 
 

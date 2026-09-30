@@ -368,16 +368,18 @@ class TestTemplates:
         )
         assert schemes(raml) == ['basic']
 
-    def test_a_scheme_in_a_trait_resolves_against_the_api(self, workspace):
-        # docs/09 § A6: a library trait names a library scheme by its qualified name.
+    def test_a_library_trait_cannot_use_the_apis_import_alias(self, workspace):
+        # The importing API's alias is not visible inside the library (docs/04 § 4).
         root = workspace(
             {
                 'api.raml': API + 'uses:\n  lib: lib.raml\n/users:\n  get:\n    is: [lib.secured]\n',
                 'lib.raml': '#%RAML 1.0 Library\n' + BASIC + 'traits:\n  secured:\n    securedBy: [lib.basic]\n',
             }
         )
-        raml = workspace.parse(root / 'api.raml')
-        assert raml.endpoints['/users'].operations['get'].secured_by[0].definition.name == 'basic'
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'api.raml')
+        assert 'library not found' in keys(caught.value)
+        assert {'missing': 'lib'} in infos(caught.value)
 
     def test_an_unknown_scheme_in_a_trait_is_rejected(self, workspace):
         error = rejected(
@@ -455,6 +457,95 @@ class TestAnnotationTargets:
             '    settings:\n      accessTokenUri: https://e.com/t\n      (ann): 1\n',
         )
         assert self.target(raml, 'ann') is DomainLocation.SECURITY_SCHEME_SETTINGS
+
+
+class TestLexicalSchemes:
+    @pytest.mark.parametrize('kind', ['trait', 'resource-type'])
+    @pytest.mark.parametrize('api_scheme', ['', BASIC])
+    def test_headerless_template_content_resolves_the_including_library_scheme(self, workspace, kind, api_scheme):
+        declaration = 'traits' if kind == 'trait' else 'resourceTypes'
+        application = '  get:\n    is: [lib.secured]\n' if kind == 'trait' else '  type: lib.secured\n'
+        content = 'securedBy: [basic]\n' if kind == 'trait' else 'get:\n  securedBy: [basic]\n'
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  lib: lib.raml\n' + api_scheme + '/items:\n' + application,
+                'lib.raml': '#%RAML 1.0 Library\n' + BASIC + f'{declaration}:\n  secured: !include template.yaml\n',
+                'template.yaml': content,
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+        reference = raml.endpoints['/items'].operations['get'].secured_by[0]
+        assert reference.definition is raml.entry_point.uses['lib'].link.security_schemes['basic']
+        assert reference.location == (root / 'template.yaml').as_uri()
+
+    @pytest.mark.parametrize('kind', ['trait', 'resource-type'])
+    @pytest.mark.parametrize('qualified', [True, False])
+    def test_a_standalone_template_can_see_only_its_own_imports(self, workspace, kind, qualified):
+        declaration = 'traits' if kind == 'trait' else 'resourceTypes'
+        header = 'Trait' if kind == 'trait' else 'ResourceType'
+        application = '  get:\n    is: [secured]\n' if kind == 'trait' else '  type: secured\n'
+        name = 'auth.basic' if qualified else 'basic'
+        content = f'securedBy: [{name}]\n' if kind == 'trait' else f'get:\n  securedBy: [{name}]\n'
+        root = workspace(
+            {
+                'api.raml': API + BASIC + f'{declaration}:\n  secured: !include template.raml\n/items:\n' + application,
+                'template.raml': f'#%RAML 1.0 {header}\nuses:\n  auth: auth.raml\n' + content,
+                'auth.raml': '#%RAML 1.0 Library\n' + BASIC,
+            }
+        )
+        if not qualified:
+            with pytest.raises(RamlError) as caught:
+                workspace.parse(root / 'api.raml')
+            assert 'invalid reference' in keys(caught.value)
+            assert {'missing': 'basic'} in infos(caught.value)
+            return
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+        reference = raml.endpoints['/items'].operations['get'].secured_by[0]
+        assert reference.definition.location == (root / 'auth.raml').as_uri()
+
+    @pytest.mark.parametrize(
+        ('declaration', 'application'),
+        [
+            ('resourceTypes:\n  secured:\n    get:\n      securedBy: [basic]\n', '  type: lib.secured\n'),
+            ('resourceTypes:\n  secured:\n    securedBy: [basic]\n    get:\n', '  type: lib.secured\n'),
+            ('traits:\n  secured:\n    securedBy: [basic]\n', '  get:\n    is: [lib.secured]\n'),
+        ],
+        ids=['resource-type-method', 'resource-type-resource', 'trait'],
+    )
+    @pytest.mark.parametrize('api_scheme', ['', BASIC])
+    def test_a_library_template_uses_its_own_scheme(self, workspace, declaration, application, api_scheme):
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  lib: lib.raml\n' + api_scheme + '/items:\n' + application,
+                'lib.raml': '#%RAML 1.0 Library\n' + BASIC + declaration,
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+        reference = raml.endpoints['/items'].operations['get'].secured_by[0]
+        assert reference.definition is raml.entry_point.uses['lib'].link.security_schemes['basic']
+
+    @pytest.mark.parametrize('own_scheme', [True, False])
+    def test_a_library_template_resolves_qualified_names_only_through_its_own_imports(self, workspace, own_scheme):
+        root = workspace(
+            {
+                'api.raml': API + 'uses:\n  lib: lib.raml\n  auth: api-auth.raml\n/items:\n  type: lib.secured\n',
+                'lib.raml': '#%RAML 1.0 Library\n'
+                + ('uses:\n  auth: lib-auth.raml\n' if own_scheme else '')
+                + 'resourceTypes:\n  secured:\n    get:\n      securedBy: [auth.basic]\n',
+                'api-auth.raml': '#%RAML 1.0 Library\n' + BASIC,
+                'lib-auth.raml': '#%RAML 1.0 Library\n' + BASIC,
+            }
+        )
+        if not own_scheme:
+            with pytest.raises(RamlError) as caught:
+                workspace.parse(root / 'api.raml')
+            assert 'library not found' in keys(caught.value)
+            assert {'missing': 'auth'} in infos(caught.value)
+            return
+        raml = workspace.parse(root / 'api.raml')
+        reference = raml.endpoints['/items'].operations['get'].secured_by[0]
+        owner = raml.entry_point.uses['lib'].link
+        assert reference.definition is owner.uses['auth'].link.security_schemes['basic']
 
 
 class TestFragment:

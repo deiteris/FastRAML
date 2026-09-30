@@ -30,6 +30,7 @@ name, original parameter nodes, an optional bound definition, optional compiled
 parameters, the null marker, and two positions: `key_pos` for the name alone
 and `value_pos` for the whole entry. It lives in `parser/directives.py`
 with `DirectiveRef`; stage 2 can construct it without importing P5 resolution.
+Its `anchor` retains the namespace where the reference was authored.
 
 Includes are followed by `fragments.py`. The declaration records `link_uri`; the
 fragment decoder fills `link`.
@@ -98,10 +99,16 @@ For an included declaration, P5 follows `link` before reading settings.
 
 ### A6. Scheme-name resolution
 
-P5 resolves every scheme name against the API resolver, not the lexical scope
-where `securedBy` was authored. This lets references inside applied traits and
-resource types resolve API-declared schemes. API `uses` entries remain available,
-so qualified library scheme names work normally.
+P5 resolves a scheme name only in its captured lexical namespace.
+An applied library trait or resource type can therefore use its library's own
+schemes, including names qualified through that library's `uses`. A standalone
+typed fragment sees its own imports, never the importing API's declarations or
+aliases. A scheme name supplied as a template parameter uses the caller's
+namespace. A failed lookup is an error and is not retried against the API.
+
+Literal included template content forwards scheme lookup through its
+`IncludedContent` anchor to the includer. A standalone Trait or ResourceType
+fragment resolves qualified schemes through its own `uses`.
 
 In a target tree, a scheme reference an Overlay or Extension wrote resolves
 against that document's resolver instead. The document's view of the target
@@ -136,10 +143,10 @@ file and value (docs/08 § 5.1). P8 reports an unknown name there; `key_pos`
 stays the template's key, where the application is.
 
 Any nonempty mapping key of the form `(name)` is an application. The decoder
-converts its value to `DataNode`, captures the current anchor and target,
-registers it in `Raml.domain_extensions`, and returns it for the owning model
-node. The flat list lets P8 and P10 process every application without a model
-traversal.
+converts its value to `DataNode`, captures the name key's lexical anchor and the
+current target, registers it in `Raml.domain_extensions`, and returns it for the
+owning model node. The flat list lets P8 and P10 process every application
+without a model traversal.
 
 ### B2. Annotation declarations and names
 
@@ -179,6 +186,9 @@ The target is carried by `ParseCtx`. A decoder that establishes a narrower
 annotation site uses `Raml.target_scope`, which preserves the anchor and restores
 the previous target afterward. An annotated scalar does not establish an
 independent target and therefore inherits its enclosing declaration site.
+Template provenance changes the namespace but preserves the current target:
+headers, query parameters, and URI parameters remain `TypeDeclaration` sites
+when contributed by a trait or resource type.
 The facets of a declaration whose kind waits on P7, such as a subtype's
 properties, are decoded after the stack has unwound; the target they were
 written at is kept with them and restored, while their names resolve as
@@ -193,9 +203,9 @@ that document kind, not API ([19](19-overlays-and-extensions.md) § 5.4).
 Template body annotations are decoded only when the template is materialized,
 so they receive `Method` or `Resource`. The parser does not establish `Trait` or
 `ResourceType` while decoding template definitions. Declaration-time scalar
-facets such as `usage` therefore inherit the enclosing fragment target. There is
-no focused unit test for either template-body targets or template-definition
-targets.
+facets such as `usage` therefore inherit the enclosing fragment target. There are
+focused tests for template parameter targets; declaration-time scalar targets
+still have no focused test.
 
 For a media-type body spelling, annotations inside each media-type declaration
 target `RequestBody` or `ResponseBody`. For a body without media-type keys, its

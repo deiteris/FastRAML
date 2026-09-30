@@ -33,7 +33,9 @@ __all__ = [
     'write_inline_json',
     'write_jsonschema',
     'write_large',
+    'write_reference_namespaces',
     'write_small',
+    'write_template_scopes',
     'write_templates',
     'write_unions',
     'write_validate',
@@ -301,6 +303,55 @@ traits:
         description: Filter on <<field | !lowerhyphencase>>
         required: false
 """
+
+
+def write_reference_namespaces(root: Path, *, resource_count: int = 500) -> Path:
+    """Caller names and forwarded arguments collide with library declarations (docs/08 § 4.2)."""
+    api = (
+        '#%RAML 1.0\ntitle: Generated reference namespace benchmark\nuses:\n  lib: lib.raml\n'
+        'types:\n  Model: integer\nannotationTypes:\n  dynamic: string\n  fixed: integer\n'
+        'securitySchemes:\n  chosen:\n    type: Basic Authentication\n'
+        'traits:\n  chosen:\n    description: caller\n'
+        'resourceTypes:\n  parent:\n    get:\n      is:\n'
+        '        - lib.wrapper: {trait: chosen, scheme: chosen, model: Model, annotation: dynamic, value: marker}\n'
+    )
+    library = (
+        '#%RAML 1.0 Library\ntypes:\n  Model: string\n'
+        'annotationTypes:\n  dynamic: string\n  fixed: string\n'
+        'securitySchemes:\n  chosen:\n    type: Digest Authentication\n'
+        'resourceTypes:\n  parent:\n    get:\n      description: library\n  wrapper:\n    type: <<parent>>\n'
+        'traits:\n  chosen:\n    description: library\n  inner:\n    queryString: <<model>>\n'
+        '  wrapper:\n    is: [{<<trait>>: {}}, inner: {model: <<model>>}]\n'
+        '    securedBy: [{<<scheme>>: {}}]\n    (<<annotation>>): marker\n    (fixed): <<value>>\n'
+    )
+    api += ''.join(f'/items{index}:\n  type: {{lib.wrapper: {{parent: parent}}}}\n' for index in range(resource_count))
+    _write(root, {'api.raml': api, 'lib.raml': library})
+    return root / 'api.raml'
+
+
+def write_template_scopes(root: Path, *, resource_count: int = 500) -> Path:
+    """Library-owned security and annotated template parameters (docs/09 § A6, § B4)."""
+    library = (
+        '#%RAML 1.0 Library\n'
+        'securitySchemes:\n  basic:\n    type: Basic Authentication\n'
+        'annotationTypes:\n  ref:\n    type: string\n    allowedTargets: TypeDeclaration\n'
+        'traits:\n  filtered: !include filtered.yaml\n  imported: !include imported.raml\n'
+        'resourceTypes:\n  secured: !include secured.yaml\n'
+    )
+    lines = ['#%RAML 1.0', 'title: Generated template scope benchmark', 'uses:', '  lib: lib.raml']
+    lines.extend(f'/items{index}:\n  type: lib.secured' for index in range(resource_count))
+    _write(
+        root,
+        {
+            'api.raml': '\n'.join(lines) + '\n',
+            'lib.raml': library,
+            'filtered.yaml': 'queryParameters:\n  id?:\n    type: string\n    (ref): value\n',
+            'secured.yaml': 'get:\n  securedBy: [basic]\n  is: [filtered]\npost:\n  is: [imported]\n',
+            'imported.raml': '#%RAML 1.0 Trait\nuses:\n  auth: auth.raml\nsecuredBy: [auth.basic]\n',
+            'auth.raml': '#%RAML 1.0 Library\nsecuritySchemes:\n  basic:\n    type: Basic Authentication\n',
+        },
+    )
+    return root / 'api.raml'
 
 
 def write_templates(root: Path, *, resource_count: int = 250) -> Path:

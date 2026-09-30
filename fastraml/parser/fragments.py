@@ -205,7 +205,14 @@ class Fragment(Protocol):
 
 
 @runtime_checkable
-class ReferenceResolver(Fragment, Protocol):
+class SecuritySchemeResolver(Protocol):
+    """Resolve a scheme through local declarations or imported libraries."""
+
+    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition: ...
+
+
+@runtime_checkable
+class ReferenceResolver(Fragment, SecuritySchemeResolver, Protocol):
     """A fragment that can resolve a name written inside it.
 
     Implemented by *all* typed fragments, because all of them may carry `uses:`
@@ -229,13 +236,6 @@ class ReferenceResolver(Fragment, Protocol):
         `types/` importing this module at runtime.
         """
         ...
-
-
-@runtime_checkable
-class SecuritySchemeResolver(Protocol):
-    """Only `Library` and `APIFragment`: only those declare security schemes."""
-
-    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition: ...
 
 
 # -- uses: --------------------------------------------------------------------
@@ -339,7 +339,7 @@ class _BaseFragment:
     def library_link(self, prefix: str) -> LibraryLink | None:
         """One `uses:` lookup, shared by every fragment kind.
 
-        Unlike the four name resolvers, this one has no local-declaration half
+        Unlike the five name resolvers, this one has no local-declaration half
         and no annotation fallback, so `_UsesOnlyFragment` does not override it.
         """
         return self.uses.get(prefix)
@@ -348,10 +348,10 @@ class _BaseFragment:
 class _UsesOnlyFragment(_BaseFragment):
     """A typed fragment with no declarations of its own.
 
-    Its four resolvers are identical — every name must be qualified and must
+    Its five resolvers use imports — every name must be qualified and must
     come through `uses:` — so they are written once here rather than six times.
     This is not a capability base class: what a fragment *can* do is still
-    discovered by protocol check, and `Library`/`APIFragment` override all four.
+    discovered by protocol check, and `Library`/`APIFragment` override all five.
     """
 
     __slots__ = ()
@@ -372,6 +372,9 @@ class _UsesOnlyFragment(_BaseFragment):
 
     def trait_definition(self, name: str) -> TraitDefinition:
         return resolve_library_reference(self.uses, name, _pick_trait)
+
+    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition:
+        return resolve_library_reference(self.uses, name, _pick_security_scheme)
 
 
 def _pick_type(library: Library, name: str) -> BaseShape | None:
@@ -617,7 +620,9 @@ class APIFragment(_DeclaringFragment):
                 raw = self._raw_secured_by
                 # A root `securedBy:` an extension document wrote names schemes
                 # in that document's namespace (docs/19 § 5.3).
-                refs = decode_secured_by(raw, *self._raml.document_site(raw, self.location, ParseCtx(anchor=self)))
+                refs = decode_secured_by(
+                    self._raml, raw, *self._raml.document_site(raw, self.location, ParseCtx(anchor=self))
+                )
                 self._raml.global_secured_by = make_security_schemes(self._raml, refs)
             except RamlError as err:
                 accumulator.add(err)

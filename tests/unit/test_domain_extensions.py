@@ -99,6 +99,34 @@ class TestBinding:
 class TestTargets:
     """Which site an application records, for P10's `allowedTargets` check."""
 
+    @pytest.mark.parametrize('field', ['queryParameters', 'headers'])
+    @pytest.mark.parametrize('template', ['trait', 'resource-type'])
+    @pytest.mark.parametrize('library', [False, True])
+    def test_a_template_parameter_targets_type_declaration(self, workspace, field, template, library):
+        declaration = 'annotationTypes:\n  ann:\n    type: string\n    allowedTargets: TypeDeclaration\n'
+        parameter = f'{field}:\n  id?:\n    type: string\n    (ann): some.value\n'
+        if template == 'trait':
+            definition = 'traits:\n  filtered:\n' + ''.join('    ' + line + '\n' for line in parameter.splitlines())
+            application = '  get:\n    is: [PREFIXfiltered]\n'
+        else:
+            definition = 'resourceTypes:\n  filtered:\n    get:\n' + ''.join(
+                '      ' + line + '\n' for line in parameter.splitlines()
+            )
+            application = '  type: PREFIXfiltered\n'
+        files = {'api.raml': API}
+        if library:
+            files['lib.raml'] = LIB + declaration + definition
+            files['api.raml'] += 'uses:\n  lib: lib.raml\n'
+        else:
+            files['api.raml'] += declaration + definition
+        files['api.raml'] += '/items:\n' + application.replace('PREFIX', 'lib.' if library else '')
+        raml = parse(workspace, files, unwrap=True, validate=True)
+        request = raml.endpoints['/items'].operations['get'].request
+        parameters = request.query_parameters if field == 'queryParameters' else request.headers
+        annotation = parameters['id'].declaration.base.annotations['ann']
+        assert annotation.target is DomainLocation.TYPE_DECLARATION
+        assert annotation.defined_by is not None
+
     @pytest.mark.parametrize(
         ('files', 'entry', 'expected'),
         [

@@ -11,6 +11,10 @@ Stage 1 builds and stores these; nothing here applies them. P4
 the definitions they name. Keeping the references here means stage 1 imports
 none of those modules.
 
+Every decoder requires the parse registry and an enclosing `ParseCtx`. Names
+and arguments always select their own provenance over that enclosing scope;
+there is no unscoped decoding mode (docs/08 § 4.2).
+
 See docs/08-templates-and-endpoints.md § 2.1 and § 3.
 """
 
@@ -23,6 +27,7 @@ from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import NodeKind, is_null, node_error, pairs
 
 if TYPE_CHECKING:
+    from fastraml.parser.fragments import ReferenceResolver
     from fastraml.parser.resourcetypes import ResourceTypeDefinition
     from fastraml.parser.security import SecuritySchemeDefinition
     from fastraml.parser.traits import TraitDefinition
@@ -65,13 +70,17 @@ class DirectiveRef:
     #: again, since two libraries may declare one name. `None` where the name
     #: matched nothing.
     resolved: TraitDefinition | ResourceTypeDefinition | None = None
+    #: Argument provenance is independent of the application name's scope.
+    #: Allocated only for applications with parameters.
+    param_scopes: dict[str, ParseCtx] | None = None
 
     def __repr__(self) -> str:
         return f'DirectiveRef({self.name!r})'
 
 
-def _one_ref(node: Node, location: str, scope: ParseCtx | None, *, what: str) -> DirectiveRef:
+def _one_ref(raml: Raml, node: Node, location: str, scope: ParseCtx, *, what: str) -> DirectiveRef:
     """A reference in either spelling: a bare name, or `{name: {params}}`."""
+    scope = raml.reference_scope(node, scope)
     if node.kind is NodeKind.SCALAR:
         if is_null(node):
             # Only `securedBy:` gives this a meaning; the callers that do not
@@ -100,10 +109,15 @@ def _one_ref(node: Node, location: str, scope: ParseCtx | None, *, what: str) ->
 
     key, value = content
     params: dict[str, Node] = {}
+    param_scopes: dict[str, ParseCtx] | None = None
     if not is_null(value):
         if value.kind is not NodeKind.MAPPING:
             raise node_error(f'{what} parameters must be a mapping', location, value)
         params = {param.value: argument for param, argument in pairs(value)}
+        if params:
+            enclosing = raml.reference_scope(value, scope)
+            param_scopes = {name: raml.reference_scope(argument, enclosing) for name, argument in params.items()}
+    scope = raml.reference_scope(key, scope)
     return DirectiveRef(
         name=key.value,
         params=params,
@@ -111,19 +125,21 @@ def _one_ref(node: Node, location: str, scope: ParseCtx | None, *, what: str) ->
         key_pos=key.position,
         value_pos=value.full_position,
         scope=scope,
+        param_scopes=param_scopes,
     )
 
 
-def _ref_list(node: Node, location: str, scope: ParseCtx | None, *, what: str) -> list[DirectiveRef]:
+def _ref_list(raml: Raml, node: Node, location: str, scope: ParseCtx, *, what: str) -> list[DirectiveRef]:
     """A sequence of references, or a single one written without the sequence."""
     if is_null(node):
         return []
     if node.kind is NodeKind.SEQUENCE:
-        return [_one_ref(item, location, scope, what=what) for item in node.content]
-    return [_one_ref(node, location, scope, what=what)]
+        scope = raml.reference_scope(node, scope)
+        return [_one_ref(raml, item, location, scope, what=what) for item in node.content]
+    return [_one_ref(raml, node, location, scope, what=what)]
 
 
-def decode_type_ref(node: Node, location: str, scope: ParseCtx | None = None) -> DirectiveRef:
+def decode_type_ref(raml: Raml, node: Node, location: str, scope: ParseCtx) -> DirectiveRef:
     """`type:` on a resource — exactly one resource type, never a sequence.
 
     A sequence in a `type:` position means multiple inheritance for a type
@@ -131,13 +147,13 @@ def decode_type_ref(node: Node, location: str, scope: ParseCtx | None = None) ->
     """
     if node.kind is NodeKind.SEQUENCE:
         raise node_error('resource type must be a single reference', location, node)
-    ref = _one_ref(node, location, scope, what='resource type')
+    ref = _one_ref(raml, node, location, scope, what='resource type')
     if ref.is_null_scheme:
         raise node_error('resource type must not be null', location, node)
     return ref
 
 
-def decode_trait_refs(node: Node, location: str, scope: ParseCtx | None = None) -> list[DirectiveRef]:
+def decode_trait_refs(raml: Raml, node: Node, location: str, scope: ParseCtx) -> list[DirectiveRef]:
     """`is:` — a sequence of trait references, and a sequence it must be.
 
     Spec section Traits: "The value MUST be an array of any number of elements".
@@ -147,21 +163,21 @@ def decode_trait_refs(node: Node, location: str, scope: ParseCtx | None = None) 
     """
     if not is_null(node) and node.kind is not NodeKind.SEQUENCE:
         raise node_error('is must be a sequence', location, node)
-    refs = _ref_list(node, location, scope, what='trait')
+    refs = _ref_list(raml, node, location, scope, what='trait')
     for ref in refs:
         if ref.is_null_scheme:
             raise node_error('trait must not be null', location, node)
     return refs
 
 
-def decode_secured_by(node: Node, location: str, scope: ParseCtx | None = None) -> list[DirectiveRef]:
+def decode_secured_by(raml: Raml, node: Node, location: str, scope: ParseCtx) -> list[DirectiveRef]:
     """`securedBy:` — a sequence, where a null entry is meaningful.
 
     Spec section Applying Security Schemes: a `null` entry says the method may
     be called without authentication, which is not the same as declaring no
     `securedBy:` at all — the latter inherits from the resource or the API.
     """
-    return _ref_list(node, location, scope, what='security scheme')
+    return _ref_list(raml, node, location, scope, what='security scheme')
 
 
 # -- the one reference that survives into the model ---------------------------
@@ -197,6 +213,8 @@ class SecurityScheme:
     key_pos: Position = UNKNOWN
     #: The whole entry, with its parameters.
     value_pos: Position = UNKNOWN
+    #: The authored namespace, retained across template application (docs/09 § A6).
+    anchor: ReferenceResolver | None = None
 
     def __repr__(self) -> str:
         return f'SecurityScheme({self.name!r})'
@@ -213,6 +231,7 @@ def make_security_schemes(raml: Raml, refs: list[DirectiveRef]) -> list[Security
             is_null=ref.is_null_scheme,
             key_pos=ref.key_pos,
             value_pos=ref.value_pos,
+            anchor=None if ref.scope is None else ref.scope.anchor,
         )
         for ref in refs
     ]

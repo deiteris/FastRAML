@@ -518,14 +518,7 @@ class TestProtocolConformance:
         for name in ('api', 'lib', 'dt', 'ne', 'tr', 'rt', 'ss', 'di'):
             fragment = workspace.parse(root / f'{name}.raml').entry_point
             assert isinstance(fragment, ReferenceResolver), name
-
-    def test_only_the_declaring_fragments_resolve_security_schemes(self, workspace):
-        root = workspace(
-            {'api.raml': API, 'lib.raml': '#%RAML 1.0 Library\n', 'dt.raml': '#%RAML 1.0 DataType\ntype: string\n'}
-        )
-        assert isinstance(workspace.parse(root / 'api.raml').entry_point, SecuritySchemeResolver)
-        assert isinstance(workspace.parse(root / 'lib.raml').entry_point, SecuritySchemeResolver)
-        assert not isinstance(workspace.parse(root / 'dt.raml').entry_point, SecuritySchemeResolver)
+            assert isinstance(fragment, SecuritySchemeResolver), name
 
 
 class TestLibraryLinkLookup:

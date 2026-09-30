@@ -355,6 +355,23 @@ class TestRootDefaults:
         }
         assert failures(tmp_path, files)[0][1] == {'property': 'protocols', 'template': 'plain', 'reason': 'sets'}
 
+    @pytest.mark.parametrize('included', [False, True], ids=['inline', 'literal-content'])
+    def test_nested_library_traits_keep_their_namespace_when_checking_defaults(self, tmp_path, included):
+        # The API's same-named `inner` sets no protocol. The library's does.
+        inner = '  inner: !include inner.yaml\n' if included else '  inner:\n    protocols: [HTTP]\n'
+        files = {
+            'a.raml': HEAD
+            + 'protocols: [HTTPS]\nuses:\n  lib: lib.raml\ntraits:\n  inner:\n    description: API\n'
+            + '/a:\n  get:\n    is: [lib.wrapper]\n',
+            'b.raml': HEAD,
+            'lib.raml': '#%RAML 1.0 Library\ntraits:\n' + inner + '  wrapper:\n    is: [inner]\n',
+        }
+        if included:
+            files['inner.yaml'] = 'protocols: [HTTP]\n'
+        ((message, info, where),) = failures(tmp_path, files)
+        assert (message, where) == ('join default reaches template', 'a.raml')
+        assert info == {'property': 'protocols', 'template': 'inner', 'reason': 'sets'}
+
     def test_a_trait_setting_security_is_refused(self, tmp_path):
         # Written onto the method, the root's `basic` would replace the trait's `digest`.
         files = {

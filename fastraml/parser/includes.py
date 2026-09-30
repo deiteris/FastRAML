@@ -28,6 +28,7 @@ from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, compose, dec
 if TYPE_CHECKING:
     from fastraml.parser.fragments import LibraryLink, ReferenceResolver
     from fastraml.parser.resourcetypes import ResourceTypeDefinition
+    from fastraml.parser.security import SecuritySchemeDefinition
     from fastraml.parser.traits import TraitDefinition
     from fastraml.positions import Position
     from fastraml.registry import Raml
@@ -348,6 +349,9 @@ class IncludedContent:
 
     def trait_definition(self, name: str) -> TraitDefinition:
         return self.host.trait_definition(name)
+
+    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition:
+        return self.host.security_scheme_definition(name)
 
     def library_link(self, prefix: str) -> LibraryLink | None:
         return self.host.library_link(prefix)

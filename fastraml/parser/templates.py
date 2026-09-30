@@ -566,13 +566,15 @@ def compile_source_provenance(  # noqa: PLR0913 - the body, its values, and wher
     written_in: str,
     substitutions: Substitutions,
     reserved: frozenset[str],
+    param_scopes: dict[str, ParseCtx] | None = None,
 ) -> Node:
     """Substitute `params` into a template body, marking what the caller supplied.
 
     Static content is left **unmarked** and therefore keeps the template's own
-    declaration scope; only nodes that received a value are recorded, as
-    `caller_scope`: static content resolves at its declaration and substituted
-    values resolve at their application site (docs/08 § 4.1).
+    declaration scope; nodes that received a value take its `param_scopes`
+    entry, or `caller_scope` when none is captured. Explicit arguments keep
+    their own provenance through nested applications; processor-supplied values
+    keep the applying endpoint's scope (docs/08 § 4.2).
 
     Each substituted scalar is also recorded in `substitutions`, with where
     in `written_in`, the file the application is written in, each value came
@@ -582,7 +584,9 @@ def compile_source_provenance(  # noqa: PLR0913 - the body, its values, and wher
     valid key set for the overlay and for the merge that follows.
     """
     if node.kind is NodeKind.SCALAR:
-        return _compile_scalar(node, params, index, caller_scope, overlay, written_in, substitutions, reserved)
+        return _compile_scalar(
+            node, params, index, caller_scope, overlay, written_in, substitutions, reserved, param_scopes
+        )
 
     modified = False
     content: list[Node] = []
@@ -596,6 +600,7 @@ def compile_source_provenance(  # noqa: PLR0913 - the body, its values, and wher
             written_in=written_in,
             substitutions=substitutions,
             reserved=reserved,
+            param_scopes=param_scopes,
         )
         modified = modified or compiled is not child
         content.append(compiled)
@@ -615,6 +620,7 @@ def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arg
     written_in: str,
     substitutions: Substitutions,
     reserved: frozenset[str],
+    param_scopes: dict[str, ParseCtx] | None,
 ) -> Node:
     variables = index.get(node)
     if not variables:
@@ -626,7 +632,7 @@ def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arg
             # A complex parameter replaces the node rather than being spliced
             # into its text. The subtree came from the caller, so it resolves
             # there — and the mark on its root stops `mark_graft` descending.
-            overlay[param] = caller_scope
+            overlay[param] = caller_scope if param_scopes is None else param_scopes.get(variable.name, caller_scope)
             return param
 
     # One pass substitutes and places each caller's value (docs/08 § 5.1).
@@ -635,6 +641,7 @@ def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arg
     template = text = node.value
     placed: list[Substitution] = []
     substituted, exact = False, True
+    scope = caller_scope
     start = shift = 0
     for variable in variables:
         param = params.get(variable.name)
@@ -644,6 +651,7 @@ def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arg
         for action in variable.actions:
             value = apply_template_action(value, action)
         text = text.replace(variable.substring, value, 1)
+        scope = scope if substituted or param_scopes is None else param_scopes.get(variable.name, caller_scope)
         substituted = True
         at = template.find(variable.substring, start)
         start = at + len(variable.substring)
@@ -676,6 +684,6 @@ def _compile_scalar(  # noqa: PLR0913, PLR0917 - compile_source_provenance's arg
         if written in _VALUE_TAGS:
             tag = written
     compiled = Node(NodeKind.SCALAR, tag, text, None, node.line, node.column, node.end_line, node.end_column)
-    overlay[compiled] = caller_scope
+    overlay[compiled] = scope
     substitutions[compiled] = tuple(placed) if exact and placed else ()
     return compiled

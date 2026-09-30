@@ -203,7 +203,10 @@ resource type, cannot be followed without applying the template. The join
 reports it with `reason: parameter` and the name as written.
 
 The check reads template definitions from the input's parsed model, including
-those declared in libraries.
+those declared in libraries. It uses the parser's directive decoders with the
+input's registry and each application's enclosing scope, then resolves through
+the scope captured on the reference. Literal included template content keeps
+its includer's namespace, as in the parser ([04](04-fragments-and-namespaces.md) § 4.1).
 
 ## 6. Base URI
 

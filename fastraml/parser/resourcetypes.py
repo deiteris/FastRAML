@@ -241,12 +241,14 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
         written_in=application.location,
         substitutions=raml.substitutions,
         reserved=definition.reserved,
+        param_scopes=application.param_scopes,
     )
 
     key = Node(NodeKind.SCALAR, TAG_STR, uri, None, compiled.line, compiled.column, compiled.line, compiled.column)
     raml.push_ctx(ParseCtx(anchor=definition.anchor, target=DomainLocation.RESOURCE_TYPE))
     try:
-        endpoint = make_source_endpoint(raml, key, compiled, location, parent_uri=parent_uri)
+        with raml.active_overlay(overlay):
+            endpoint = make_source_endpoint(raml, key, compiled, location, parent_uri=parent_uri)
     finally:
         raml.pop_ctx()
     _distribute_overlay(endpoint, overlay)

@@ -17,11 +17,14 @@ from fastraml.errors import RamlError
 from fastraml.parser.directives import decode_trait_refs, decode_type_ref
 from fastraml.parser.resourcetypes import ResourceTypeDefinition
 from fastraml.parser.source_ir import METHODS
+from fastraml.parser.templates import find_template_definition
+from fastraml.registry import ParseCtx
 from fastraml.yamlnode import Node, NodeKind, pairs
 
 if TYPE_CHECKING:
     from fastraml.parser.fragments import ReferenceResolver
     from fastraml.parser.templates import TemplateDefinition
+    from fastraml.registry import Raml
 
 __all__ = ['Application', 'Applied', 'body_without_media_type', 'is_media_type_map', 'template_applications']
 
@@ -108,23 +111,34 @@ def reads_resource_path(definition: TemplateDefinition) -> bool:
 
 
 class _Walker:
-    __slots__ = ('_location',)
+    __slots__ = ('_location', '_raml')
 
-    def __init__(self, location: str) -> None:
+    def __init__(self, raml: Raml, location: str) -> None:
+        self._raml = raml
         self._location = location
 
     def _resolve(
         self, anchor: ReferenceResolver, node: Node, *, resource_type: bool, found: Application, seen: set[int]
     ) -> list[TemplateDefinition]:
-        refs = [decode_type_ref(node, self._location)] if resource_type else decode_trait_refs(node, self._location)
+        scope = ParseCtx(anchor=anchor)
+        refs = (
+            [decode_type_ref(self._raml, node, self._location, scope)]
+            if resource_type
+            else decode_trait_refs(self._raml, node, self._location, scope)
+        )
         out: list[TemplateDefinition] = []
         for ref in refs:
             if '<<' in ref.name:
                 found.unresolved.append(ref.name)
                 continue
             try:
-                definition: TemplateDefinition = (
-                    anchor.resource_type_definition(ref.name) if resource_type else anchor.trait_definition(ref.name)
+                definition = find_template_definition(
+                    ref,
+                    lambda namespace, name: (
+                        namespace.resource_type_definition(name) if resource_type else namespace.trait_definition(name)
+                    ),
+                    what='resource type' if resource_type else 'trait',
+                    info_key='resourceType' if resource_type else 'trait',
                 )
             except RamlError:
                 found.unresolved.append(ref.name)
@@ -177,7 +191,9 @@ def _directives(scope: ReferenceResolver, resource: Node) -> list[tuple[Referenc
     return found
 
 
-def template_applications(anchor: ReferenceResolver, location: str, resources: list[Node]) -> list[Application]:
+def template_applications(
+    raml: Raml, anchor: ReferenceResolver, location: str, resources: list[Node]
+) -> list[Application]:
     """One `Application` per authored resource node in `resources`."""
-    walker = _Walker(location)
+    walker = _Walker(raml, location)
     return [walker.applications(anchor, resource) for resource in resources]

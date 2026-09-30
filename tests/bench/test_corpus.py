@@ -38,6 +38,8 @@ WRITERS = {
     'includes': lambda root: corpus.write_includes(root, resource_count=corpus._LEADING_TAB_EVERY + 1),
     'include-content': lambda root: corpus.write_include_content(root, resource_count=3),
     'inline-json': lambda root: corpus.write_inline_json(root, type_count=3),
+    'template-scopes': lambda root: corpus.write_template_scopes(root, resource_count=3),
+    'reference-namespaces': lambda root: corpus.write_reference_namespaces(root, resource_count=3),
 }
 
 
@@ -49,6 +51,43 @@ class TestFeatureCorporaReachTheirCode:
     (docs/12 § 4). Each feature corpus pins, by counting calls, that it runs the
     code it was written for, at every size it was written to cover.
     """
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_reference_namespaces_binds_caller_names_and_preserves_static_names(self, tmp_path, count):
+        raml = parse_from_path(
+            corpus.write_reference_namespaces(tmp_path, resource_count=count), ParseOptions(unwrap=True, validate=True)
+        )
+        api = raml.entry_point
+        library = api.uses['lib'].link
+        assert len(raml.endpoints) == count
+        for endpoint in raml.endpoints.values():
+            operation = endpoint.operations['get']
+            assert operation.description.value == 'caller'
+            assert operation.traits[1].resolved is api.traits['chosen']
+            assert operation.secured_by[0].definition is api.security_schemes['chosen']
+            assert operation.request.query_string.alias is api.types['Model']
+            assert operation.annotations['dynamic'].defined_by is api.annotation_types['dynamic']
+            assert operation.annotations['fixed'].defined_by is library.annotation_types['fixed']
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_template_scopes_binds_library_schemes_and_parameter_annotations(self, tmp_path, count):
+        from fastraml.domains import DomainLocation
+
+        raml = parse_from_path(
+            corpus.write_template_scopes(tmp_path, resource_count=count), ParseOptions(unwrap=True, validate=True)
+        )
+        library = raml.entry_point.uses['lib'].link
+        assert len(raml.endpoints) == count
+        for endpoint in raml.endpoints.values():
+            operation = endpoint.operations['get']
+            assert operation.secured_by[0].definition is library.security_schemes['basic']
+            extension = operation.request.query_parameters['id'].declaration.base.annotations['ref']
+            assert extension.target is DomainLocation.TYPE_DECLARATION
+            assert extension.defined_by is library.annotation_types['ref']
+            assert operation.secured_by[0].location == (tmp_path / 'secured.yaml').as_uri()
+            imported = endpoint.operations['post'].secured_by[0]
+            assert imported.definition.location == (tmp_path / 'auth.raml').as_uri()
+            assert imported.location == (tmp_path / 'imported.raml').as_uri()
 
     @pytest.mark.parametrize('count', [2, 4])
     def test_inline_json_decodes_every_string_once(self, tmp_path, monkeypatch, count):

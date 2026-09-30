@@ -43,16 +43,17 @@ class ReferenceResolver(Fragment, Protocol):
     def reference_annotation_type(self, name: str) -> BaseShape: ...
     def resource_type_definition(self, name: str) -> ResourceTypeDefinition: ...
     def trait_definition(self, name: str) -> TraitDefinition: ...
+    def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition: ...
     def library_link(self, prefix: str) -> LibraryLink | None: ...
 ```
 
-Only API and Library fragments implement `SecuritySchemeResolver`, because only
-they declare security schemes, and so does an Overlay or Extension, which
-resolves in its target tree's declarations ([19](19-overlays-and-extensions.md)
-§ 5.1). The three share one implementation of the five resolvers over two
-hooks: the table an unqualified name resolves in, and the `uses:` map.
-Resolver capabilities are checked structurally; a fragment is not required to
-expose unsupported declaration kinds.
+`ReferenceResolver` includes the `SecuritySchemeResolver` capability. Every
+typed fragment can resolve a qualified scheme through its own `uses`, even when
+it cannot declare schemes. API and Library fragments also resolve local
+declarations, as does an Overlay or Extension in its target tree's declarations
+([19](19-overlays-and-extensions.md) § 5.1). These declaring resolvers share one
+implementation over two hooks: the local table and the `uses:` map. Resolver
+capabilities are checked structurally.
 
 ## 3. Name resolution
 
@@ -84,8 +85,9 @@ type.
 context, whose `anchor` is that fragment's resolver. Every type-bearing or
 reference-bearing entity captures the active context when it is created.
 
-The captured anchor governs type references, template directive names, and
-annotation type names. It is retained even when a source node is merged into an
+The captured anchor governs type references, template directive names,
+annotation type names, and security-scheme names (docs/09 § A6).
+It is retained even when a source node is merged into an
 endpoint authored by another file. A shape constructed outside fragment decoding
 may fall back to `Raml.resolver_at(location)`; parsed shapes carry an anchor.
 
@@ -101,6 +103,12 @@ Consequences:
 - Template parameter values use the caller's context because their source text
   is written by the caller. Provenance overlay rules for merged endpoint nodes
   are defined in [08](08-templates-and-endpoints.md).
+
+A failed lookup never changes namespaces. A location-index lookup supplies an
+anchor only for an entity built without one; it is not a retry after an anchored
+lookup fails. Name-bearing keys and values select their own provenance: a
+substituted application name does not change the namespace of its arguments,
+and a substituted annotation value does not change its static name's namespace.
 
 ### 4.1 Literal include and fragment include
 

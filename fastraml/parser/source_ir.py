@@ -139,7 +139,7 @@ def _retained(kept: list[Node], source: Node) -> Node | None:
     return with_content(source, kept) if kept else None
 
 
-def _directive(raml: Raml, node: Node, location: str, scope: ParseCtx | None) -> tuple[Node, str, ParseCtx | None]:
+def _directive(raml: Raml, node: Node, location: str, scope: ParseCtx) -> tuple[Node, str, ParseCtx]:
     """A directive's value, where it is written and the scope it resolves in.
 
     An `!include` of content stands for it, located in its file (docs/03 § 4.2).
@@ -171,9 +171,9 @@ def make_source_operation(raml: Raml, method: str, key: Node, value: Node, locat
     for child_key, child_value in pairs(value):
         # A method takes two of the three directives: `type:` is a resource's.
         if child_key.value == FACET_IS:
-            operation.traits = decode_trait_refs(*_directive(raml, child_value, location, operation.scope))
+            operation.traits = decode_trait_refs(raml, *_directive(raml, child_value, location, scope))
         elif child_key.value == FACET_SECURED_BY:
-            operation.secured_by = decode_secured_by(*_directive(raml, child_value, location, operation.scope))
+            operation.secured_by = decode_secured_by(raml, *_directive(raml, child_value, location, scope))
             operation.explicit_secured_by = True
         else:
             kept.append(child_key)
@@ -212,11 +212,11 @@ def make_source_endpoint(raml: Raml, key: Node, value: Node, location: str, *, p
         name = child_key.value
         try:
             if name == FACET_TYPE:
-                endpoint.resource_type = decode_type_ref(*_directive(raml, child_value, location, endpoint.scope))
+                endpoint.resource_type = decode_type_ref(raml, *_directive(raml, child_value, location, scope))
             elif name == FACET_IS:
-                endpoint.traits = decode_trait_refs(*_directive(raml, child_value, location, endpoint.scope))
+                endpoint.traits = decode_trait_refs(raml, *_directive(raml, child_value, location, scope))
             elif name == FACET_SECURED_BY:
-                endpoint.secured_by = decode_secured_by(*_directive(raml, child_value, location, endpoint.scope))
+                endpoint.secured_by = decode_secured_by(raml, *_directive(raml, child_value, location, scope))
                 endpoint.explicit_secured_by = True
             elif name in METHODS:
                 endpoint.operations[name] = make_source_operation(raml, name, child_key, child_value, location)

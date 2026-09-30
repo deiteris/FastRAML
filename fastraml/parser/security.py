@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import partial
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
 
 from fastraml.domains import DomainLocation
@@ -427,17 +427,13 @@ def apply_security_schemes(raml: Raml) -> None:
     """
     for endpoint in raml.endpoints.values():
         _inherit(endpoint)
-    resolver = raml.resolver_at(raml.location)
-    # A scheme an Overlay or Extension applied binds in that document's view of
-    # the target tree, which includes the schemes it declared (docs/19 § 5.2).
-    extensions = {fragment.location: fragment for fragment in raml.extensions}
     accumulator = Accumulator()
     for scheme in _every_reference(raml):
         # Stays where it was written, marked (docs/13 § 1). An inherited copy
         # is the same object, so it is marked once.
         try:
             with raml.marking(scheme):
-                _bind(raml, scheme, extensions.get(scheme.location, resolver))
+                _bind(raml, scheme)
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()
@@ -461,22 +457,22 @@ def _inherit(endpoint: EndPoint) -> None:
             operation.secured_by = endpoint.secured_by
 
 
-def _bind(raml: Raml, scheme: SecurityScheme, resolver: Any) -> None:
+def _bind(raml: Raml, scheme: SecurityScheme) -> None:
     """Resolve the name, then compile whatever the application supplied.
 
-    A scheme name resolves against the API, not lexically, unlike a trait or
-    resource type name (docs/09 § A6): a `securedBy:` inside a trait fragment
-    has no lexical namespace that declares schemes.
+    A captured namespace is authoritative. The location index is only for a
+    programmatically built reference with no anchor (docs/09 § A6).
     """
     if scheme.definition is not None:
         return
     if scheme.is_null:
         scheme.definition = null_definition(raml, scheme.location)
         return
-    if resolver is None:
+    anchor = scheme.anchor or raml.resolver_at(scheme.location)
+    if anchor is None:
         raise RamlError.new('no scope to resolve a security scheme name in', scheme.location, scheme.value_pos)
     try:
-        definition = resolver.security_scheme_definition(scheme.name)
+        definition = anchor.security_scheme_definition(scheme.name)
     except LookupError as err:
         raise RamlError.wrap(
             'get security scheme definition', err, scheme.location, scheme.value_pos, info={'scheme': scheme.name}

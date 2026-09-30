@@ -121,7 +121,7 @@ stage 1 takes a method's (§ 2.1):
 - `securedBy` is taken only by an operation with no explicit list, and makes
   it explicit. A method's own list therefore wins whole, and of two traits
   the one applied first, the closer, wins. Its scheme names resolve against
-  the API ([09](09-security-and-annotations.md) § A6).
+  their own lexical namespace ([09](09-security-and-annotations.md) § A6).
 - `is` names nested traits, which resolve in the trait's namespace. The four
   classes above are distance one; the traits a distance's traits name, in
   application order, are the next distance (spec section Algorithm of
@@ -190,6 +190,23 @@ the most-specific scope: a marked `type` or `schema` value wins over its
 containing mapping. `Raml.location_of` uses the marked scope's anchor location
 for diagnostics. That namespace location is not necessarily the node's authored
 location.
+
+Directive decoding in P4 also activates the substitution overlay before taking
+out `type`, `is`, and `securedBy`. All three decoders require the parse's `Raml`
+and an explicit enclosing `ParseCtx`; provenance selection is unconditional.
+With no mark, a name retains the enclosing scope. `Raml.reference_scope` selects
+the provenance of each name-bearing scalar or mapping key, inheriting the
+containing list or mapping's scope when the name has no mark. It never reads the
+arguments to select the application's name scope. `DirectiveRef.param_scopes` retains each
+argument's namespace separately, so forwarding an argument through another
+template preserves its origin, and a static argument remains in the template's
+namespace even when the callee's name was substituted.
+Processor-supplied reserved parameters retain the applying endpoint's scope;
+they are not static arguments authored in a nested template application.
+
+Annotation names use their key's provenance independently of the value's
+provenance. An annotation still receives the materialized declaration's target
+([09](09-security-and-annotations.md) § B4).
 
 Stage 2 locates each top-level pair of a resource or method body by its key:
 a pair a trait or resource type grafted from a fragment or a library is

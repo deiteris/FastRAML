@@ -85,6 +85,7 @@ def unmarshal_domain_extension(raml: Raml, location: str, key_node: Node, value_
     # An application an extension document wrote names its annotation type in
     # that document's namespace; the target is still the enclosing site's.
     location, ctx = raml.document_site(value_node, location, raml.current_ctx())
+    name_scope = raml.reference_scope(key_node, ctx)
     extension = DomainExtension(
         id=raml.next_id(),
         name=name,
@@ -92,7 +93,7 @@ def unmarshal_domain_extension(raml: Raml, location: str, key_node: Node, value_
         location=location,
         key_pos=key_node.position,
         value_pos=value_node.full_position,
-        anchor=ctx.anchor,
+        anchor=name_scope.anchor,
         target=ctx.target,
         name_site=substituted_site(raml.substitutions, key_node, 1, len(name) + 1),
     )

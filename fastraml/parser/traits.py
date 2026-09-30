@@ -51,7 +51,6 @@ if TYPE_CHECKING:
 
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.source_ir import SourceEndPoint, SourceOperation
-    from fastraml.parser.substitutions import Substitutions
     from fastraml.registry import Raml
     from fastraml.yamlnode import Node
 
@@ -130,7 +129,7 @@ def apply_traits(raml: Raml, endpoint: SourceEndPoint) -> None:
                         params,
                         caller_scope=endpoint.scope,
                         application=ref,
-                        substitutions=raml.substitutions,
+                        raml=raml,
                     )
                 except RamlError as err:
                     wrapped = _wrap(ref, err)
@@ -204,7 +203,7 @@ def merge_trait_into(  # noqa: PLR0913 - the application, and where its values a
     *,
     caller_scope: ParseCtx | None,
     application: DirectiveRef,
-    substitutions: Substitutions,
+    raml: Raml,
 ) -> list[DirectiveRef]:
     """Substitute `params`, written at `application`, into the trait body and
     merge it under the operation.
@@ -223,17 +222,19 @@ def merge_trait_into(  # noqa: PLR0913 - the application, and where its values a
         caller_scope if caller_scope is not None else ParseCtx(),
         operation.provenance,
         written_in=application.location,
-        substitutions=substitutions,
+        substitutions=raml.substitutions,
         reserved=definition.reserved,
+        param_scopes=application.param_scopes,
     )
     trait_scope = ParseCtx(anchor=definition.anchor, target=DomainLocation.TRAIT)
-    body, nested = _take_directives(operation, compiled, definition.location, trait_scope)
+    with raml.active_overlay(operation.provenance):
+        body, nested = _take_directives(raml, operation, compiled, definition.location, trait_scope)
     operation.body = merge_structural(operation.body, body, trait_scope, operation.provenance)
     return nested
 
 
 def _take_directives(
-    operation: SourceOperation, compiled: Node, location: str, scope: ParseCtx
+    raml: Raml, operation: SourceOperation, compiled: Node, location: str, scope: ParseCtx
 ) -> tuple[Node | None, list[DirectiveRef]]:
     """Decode the directives a trait body holds, as stage 1 does a method's.
 
@@ -243,15 +244,15 @@ def _take_directives(
     `securedBy:` is taken only by an operation with none of its own: the
     method's is explicit, and wins as any of its nodes wins over a trait's.
     Traits are applied closest first, so the closest trait's is the one taken.
-    Its scheme names resolve against the API, as every one does (docs/09 § A6).
+    Each name follows its own authored or substituted provenance (docs/09 § A6).
     """
     kept: list[Node] = []
     nested: list[DirectiveRef] = []
     for key, value in pairs(compiled):
         if key.value == FACET_IS:
-            nested = decode_trait_refs(value, location, scope)
+            nested = decode_trait_refs(raml, value, location, scope)
         elif key.value == FACET_SECURED_BY:
-            refs = decode_secured_by(value, location, scope)
+            refs = decode_secured_by(raml, value, location, scope)
             if not operation.explicit_secured_by:
                 operation.secured_by = refs
                 operation.explicit_secured_by = True

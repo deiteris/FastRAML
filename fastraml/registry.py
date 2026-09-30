@@ -438,6 +438,14 @@ class Raml:
                         return scope
         return self._marked_scope(node)
 
+    def reference_scope(self, node: Node, default: ParseCtx) -> ParseCtx:
+        """Select a name's own provenance, falling back only to its enclosing scope.
+
+        Unlike `scope_for`, never inspect a mapping's values: a directive or
+        annotation name may be its key, independently of its arguments.
+        """
+        return self._marked_scope(node) or default
+
     def location_of(self, node: Node, default: str) -> str:
         """The location to report for `node`: its recorded scope's anchor, else `default`.
 
@@ -464,7 +472,12 @@ class Raml:
             if authored is not None:
                 return authored
         overlay = self._active_overlay
-        return None if overlay is None else overlay.get(node)
+        scope = None if overlay is None else overlay.get(node)
+        if scope is not None and scope.target is not self.current_ctx().target:
+            # Provenance selects a namespace; the materializing decoder selects
+            # the annotation site (docs/09 § B4).
+            return self._scope(scope.anchor, self.current_ctx().target)
+        return scope
 
     # -- document provenance (docs/19 § 5.3) ----------------------------------
 

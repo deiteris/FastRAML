@@ -118,9 +118,10 @@ defaults to the entry file directory and can be changed with
 ### 4.2 Include result
 
 Targets ending in `.raml`, `.yaml`, `.yml`, or `.json` are composed as nodes.
-A `.json` target's tabs before and after its root value are read as spaces
-first: there YAML does not let a tab start a token, while JSON allows it. One
-space for one tab keeps every position.
+A `.json` target's tabs outside quoted strings are read as spaces first:
+JSON allows them as whitespace, but the pure-Python YAML scanner rejects them
+even inside flow collections. One space for one tab keeps every position;
+tabs and escape sequences inside strings are preserved.
 Other targets become UTF-8 string scalar nodes. URI query and fragment suffixes
 are ignored when determining the extension.
 An included file with invalid UTF-8 produces a diagnostic at its `!include`

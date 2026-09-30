@@ -105,7 +105,7 @@ class TestFeatureCorporaReachTheirCode:
         composed: list[str] = []
         rewritten: list[bool] = []
         original_compose = includes_module._compose_include
-        original_tabs = includes_module._outer_tabs_as_spaces
+        original_tabs = includes_module._json_tabs_as_spaces
 
         def counting_compose(raml, node, data, target):
             composed.append(target.rsplit('/', 1)[-1])
@@ -117,7 +117,7 @@ class TestFeatureCorporaReachTheirCode:
             return result
 
         monkeypatch.setattr(includes_module, '_compose_include', counting_compose)
-        monkeypatch.setattr(includes_module, '_outer_tabs_as_spaces', counting_tabs)
+        monkeypatch.setattr(includes_module, '_json_tabs_as_spaces', counting_tabs)
         count = corpus._LEADING_TAB_EVERY + 1
         parse_from_path(corpus.write_includes(tmp_path, resource_count=count))
         assert sorted(composed) == sorted(f'e{index}.{kind}' for index in range(count) for kind in ('json', 'yaml'))

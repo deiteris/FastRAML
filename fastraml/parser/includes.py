@@ -53,13 +53,8 @@ RAML_HEADER_PREFIX: Final = '#%RAML'
 _RAML_HEADER_BYTES: Final = RAML_HEADER_PREFIX.encode()
 _UTF8_BOM: Final = b'\xef\xbb\xbf'
 
-#: JSON's insignificant whitespace (RFC 8259 § 2).
-_JSON_SPACE: Final = ' \t\r\n'
-#: One character each, so a one-character slice is tested without scanning.
-_JSON_SPACE_CHARACTERS: Final = frozenset(_JSON_SPACE)
-_LEADING_JSON_SPACE: Final = re.compile(r'[ \t\r\n]*')
-#: How much of a file's end `_root_value_end` reads at a time.
-_TAIL_CHUNK: Final = 32
+#: Skip quoted strings, including escaped quotes, when normalizing JSON whitespace.
+_JSON_STRINGS_OR_TABS: Final = re.compile(r'"(?:[^"\\]|\\[\s\S])*"|\t+')
 
 #: Include arguments composed as YAML. Everything else becomes a string scalar,
 #: which is how `content: !include legal.md` works (spec section Includes).
@@ -281,45 +276,27 @@ def _compose_include(raml: Raml, node: Node, data: bytes, target: str) -> Node:
         if head.startswith(RAML_HEADER_PREFIX):
             raml.include_heads[target] = head
         if strip_uri_suffix(node.value).lower().endswith('.json'):
-            text = _outer_tabs_as_spaces(text)
+            text = _json_tabs_as_spaces(text)
         return compose(text, uri=target, max_depth=raml.max_depth)
     # Spec section Resolving Includes: any other file is included as a scalar.
     return Node(NodeKind.SCALAR, TAG_STR, text)
 
 
-def _outer_tabs_as_spaces(text: str) -> str:
-    """JSON text as YAML reads it: tabs before and after the root value as spaces.
+def _json_tabs_as_spaces(text: str) -> str:
+    """Normalize JSON whitespace for both YAML scanners, preserving positions.
 
-    YAML 1.2 reads JSON, but outside a flow collection a tab may not start a
-    token, so a tab before `{` fails while tabs inside the value are accepted. One
-    space for one tab keeps every line and column, which stripping would not.
-
-    On every `.json` include, so it reads only the ends of the text and copies
-    it only when a tab must go (docs/12 § 2): a file that neither begins nor
-    ends with whitespace has no outer run to look at.
+    The pure-Python scanner rejects tabs even inside flow collections. Replace
+    each tab outside a quoted string with one space; string contents, including
+    escaped quotes and tabs, must stay untouched. Tab-free files need no copy.
     """
-    begins, ends = text[:1] in _JSON_SPACE_CHARACTERS, text[-1:] in _JSON_SPACE_CHARACTERS
-    if not begins and not ends:
+    if '\t' not in text:
         return text
-    start = _LEADING_JSON_SPACE.match(text).end() if begins else 0  # type: ignore[union-attr]  # `*` always matches
-    end = _root_value_end(text, start) if ends else len(text)
-    leading = text.count('\t', 0, start)
-    if text.find('\t', end) < 0:
-        # The leading tabs are the text's first ones: one copy replaces them.
-        return text.replace('\t', ' ', leading) if leading else text
-    return text[:start].replace('\t', ' ') + text[start:end] + text[end:].replace('\t', ' ')
+    return _JSON_STRINGS_OR_TABS.sub(_json_space, text)
 
 
-def _root_value_end(text: str, start: int) -> int:
-    """Where the trailing whitespace begins, read from bounded slices of the end."""
-    end = len(text)
-    while end > start:
-        chunk = text[max(start, end - _TAIL_CHUNK) : end]
-        kept = len(chunk.rstrip(_JSON_SPACE))
-        end -= len(chunk) - kept
-        if kept:
-            break
-    return end
+def _json_space(match: re.Match[str]) -> str:
+    token = match.group()
+    return ' ' * len(token) if token[0] == '\t' else token
 
 
 def strip_uri_suffix(ref: str) -> str:

@@ -91,14 +91,22 @@ class TestIncludeContent:
         assert content.kind is NodeKind.MAPPING
 
     def test_a_tab_indented_json_file_is_composed(self, memory_workspace):
-        # Outside the root value a tab may not start a YAML token; in JSON it is
-        # whitespace. Inside the value, YAML accepts it as it is.
+        # JSON whitespace must work with both YAML scanners, including tabs
+        # inside the root value (docs/03 § 4.2).
         root = memory_workspace({'e.json': '\r\n\t{\r\n\t\t"a": "x\\ty"\r\n\t}\r\n\t'})
         raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
         _target, content = resolve_include(raml, include_node('e.json'), path_to_file_uri(root / 'a.raml'))
         key, value = content.content
         # The escaped tab in the string is kept, and columns are where they were.
         assert (key.value, value.value, key.column) == ('a', 'x\ty', 3)
+
+    def test_json_tabs_between_tokens_preserve_escaped_quotes_and_backslashes(self, memory_workspace):
+        root = memory_workspace({'e.json': '{\t"a":\t["x\\"\ty",\t"z\\\\",\t2]\t}'})
+        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+        _target, content = resolve_include(raml, include_node('e.json'), path_to_file_uri(root / 'a.raml'))
+        key, value = content.content
+        assert (key.value, key.column) == ('a', 3)
+        assert [child.value for child in value.content] == ['x"\ty', 'z\\', '2']
 
     @pytest.mark.parametrize('head', ['#%RAML 1.0 NamedExample', '#%RAML 1.0 Type', '#%RAML 0.8'])
     def test_a_file_with_a_raml_header_is_not_data(self, memory_workspace, head):

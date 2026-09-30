@@ -203,8 +203,8 @@ CASES: tuple[Case, ...] = (
     ),
     *(
         Case(
-            f'json outer tabs {shape} n={size}',
-            'fastraml.parser.includes:_outer_tabs_as_spaces',
+            f'json whitespace tabs {shape} n={size}',
+            'fastraml.parser.includes:_json_tabs_as_spaces',
             _called_with(_json_text(size, shape)),
         )
         for shape in ('spaces', 'tabbed', 'leading')

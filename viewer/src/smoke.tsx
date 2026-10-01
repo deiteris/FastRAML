@@ -123,7 +123,7 @@ process.stdout.write(
 // enough to catch its lost type and declaration link: the value still appears.
 {
   const multiple = document.types['sample/api.raml']?.CuratedCollection;
-  if (!multiple || isRef(multiple) || multiple.inherits?.length !== 2) {
+  if (!multiple || multiple.inherits?.length !== 2) {
     process.stderr.write('INHERITS the sample has no type with the two expected parents\n');
     failed += 1;
   } else {
@@ -139,6 +139,28 @@ process.stdout.write(
       ['the parent names are separated', extendsLine.includes('>Entity</a>,')],
       ['the first parent supplies a typed facet', facetHead('stewardedBy').includes('string</span>') && facetHead('stewardedBy').includes('>Entity</a>')],
       ['the second parent supplies a typed facet', facetHead('reviewWindow').includes('integer</span>') && facetHead('reviewWindow').includes('>Curated</a>')],
+    ]);
+  }
+}
+
+// A declared alias is a page of its own, naming its referent by a link. Its
+// supertypes are the referent's, so an `extends` line would skip a step.
+{
+  const alias = document.types['sample/api.raml']?.AnythingAlias;
+  if (!alias || alias.alias === undefined) {
+    process.stderr.write('ALIAS  the sample has no declared alias\n');
+    failed += 1;
+  } else {
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={[at('types', 'sample/api.raml', 'AnythingAlias')]}>
+        <Pages document={document} index={index} />
+      </MemoryRouter>,
+    );
+    const aliasLine = html.match(/<span class="label">alias of<\/span>(.*?)<\/div>/s)?.[1] ?? '';
+    expect('ALIAS', [
+      ['the page is headed by the alias', html.includes('<h1>AnythingAlias</h1>')],
+      ['the referent is a link', aliasLine.includes('>Anything</a>')],
+      ['no extends line restates the referent', !html.includes('<span class="label">extends</span>')],
     ]);
   }
 }
@@ -192,7 +214,7 @@ process.stdout.write(
 // twice would not say which alternative is which.
 {
   const pet = document.types['sample/api.raml']?.HomelyPet;
-  if (!pet || isRef(pet) || pet.type !== 'union' || pet.inherits?.length !== 2 || pet.any_of?.length !== 2) {
+  if (!pet || pet.type !== 'union' || pet.inherits?.length !== 2 || pet.any_of?.length !== 2) {
     process.stderr.write('INHERITS the sample has no object-plus-union type\n');
     failed += 1;
   } else {
@@ -310,13 +332,9 @@ let expected = 0;
 let literal = 0;
 let borrowed = 0;
 for (const { file, name, value } of declarations(document.types)) {
-  if (isRef(value)) {
-    const target = index.declaration(value);
-    if (!target) {
-      process.stderr.write(`ALIAS  ${name}: ${value.$ref} has no type page\n`);
-      failed += 1;
-    }
-    continue;
+  if (value.alias !== undefined && isRef(value.alias) && !index.get(value.alias.$ref)) {
+    process.stderr.write(`ALIAS  ${name}: ${value.alias.$ref} has no type page\n`);
+    failed += 1;
   }
   const want = controls(value);
   const open = declares(value);

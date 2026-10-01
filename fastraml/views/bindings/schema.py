@@ -47,7 +47,6 @@ _NOT_EMITTED: Final = frozenset(
         'items_written',
         'pending_facets',
         'link',
-        'alias',
         'is_annotation_type',
         'shape',
         'from_mapping',
@@ -364,11 +363,13 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
         'view': Structural(Holds.CONSTANT, constant='effective'),
         'base': Structural(Holds.SCALAR, 'Address'),
         'entry_point': Structural(Holds.RECORD, 'EntryPoint', nullable=True),
+        #: A shape, never a link: a declared alias is a declaration of its own
+        #: and names its referent under `alias` (docs/16 § 6.1).
         'types': Structural(
-            Holds.SHAPE_NODE, container=Container.MAP_OF_MAP, key='DeclarationName', alias='ShapeDeclarationsByFile'
+            Holds.SHAPE, container=Container.MAP_OF_MAP, key='DeclarationName', alias='ShapeDeclarationsByFile'
         ),
         'annotation_types': Structural(
-            Holds.SHAPE_NODE, container=Container.MAP_OF_MAP, key='DeclarationName', alias='ShapeDeclarationsByFile'
+            Holds.SHAPE, container=Container.MAP_OF_MAP, key='DeclarationName', alias='ShapeDeclarationsByFile'
         ),
         'security_schemes': Structural(
             Holds.RECORD,
@@ -485,6 +486,9 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
         'xml': _JSON,
         'allowed_targets': Structural(Holds.VOCABULARY, 'AnnotationTarget', container=Container.LIST),
         'inherits': Structural(Holds.SHAPE_NODE, container=Container.LIST),
+        #: Only on a declared alias (`ID: Key`): the type it is a second name
+        #: for. An anonymous alias is the link itself (docs/16 § 6.1).
+        'alias': Structural(Holds.SHAPE_NODE),
         #: Custom facet *values* -- what this type supplies. `declared_facets` is
         #: the other half: what a subtype must supply (docs/10 § 4).
         'custom_facets': Structural(Holds.JSON, container=Container.MAP),

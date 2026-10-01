@@ -20,6 +20,7 @@ from __future__ import annotations
 from .address import Address
 from .amount import Amount
 from .anything import Anything
+from .anything_alias import AnythingAlias
 from .author import Author
 from .barcode import Barcode
 from .book import Book
@@ -59,6 +60,7 @@ __all__ = [
     'Address',
     'Amount',
     'Anything',
+    'AnythingAlias',
     'Author',
     'Barcode',
     'Book',

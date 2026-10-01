@@ -13,7 +13,7 @@ that a Python annotation cares about.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from .walk import Tree as _Tree
 from .walk import UnreadableTree, is_recursion, is_ref
@@ -83,17 +83,9 @@ class Tree(_Tree):
 
     def _declared(self, by_file: ShapeDeclarationsByFile) -> Iterator[Declaration]:
         for file, declarations in by_file.items():
-            for name, node in declarations.items():
-                # An alias never reaches the output as a node (docs/16 § 6.1),
-                # so a declaration that is a bare link names another declaration
-                # and resolves. One that does not is a tree we cannot read.
-                if is_ref(node):
-                    address: str | None = node['$ref']
-                else:
-                    address = cast('Shape', node).get('id')
-                found = self.resolve(node)
-                if found is None or is_recursion(found) or address is None:
-                    continue
-                # `is_recursion` is a `TypeGuard`, which narrows only the branch
-                # it is true in; the `Shape` on this side has to be asserted.
-                yield Declaration(file=file, name=name, address=address, shape=cast('Shape', found))
+            for name, shape in declarations.items():
+                # Always a shape: a declared alias is a declaration of its own,
+                # naming its referent under `alias` (docs/16 § 6.1).
+                address = shape.get('id')
+                if address is not None:
+                    yield Declaration(file=file, name=name, address=address, shape=shape)

@@ -92,11 +92,9 @@ export class Index {
     this.tree = tree;
     const document = tree.document;
     for (const { file, name, value } of declarations(document.types)) {
-      if (isRef(value)) continue;
       this.add(value.id, name, 'type', file);
     }
     for (const { file, name, value } of declarations(document.annotation_types)) {
-      if (isRef(value)) continue;
       this.add(value.id, name, 'annotationType', file);
     }
     for (const { file, name, value } of declarations(document.security_schemes)) {
@@ -123,9 +121,9 @@ export class Index {
     return address == null ? undefined : this.byAddress.get(address);
   }
 
-  /** The page for a declaration, following a transparent alias to its target. */
-  declaration(node: Shape | Ref): Entry | undefined {
-    return this.get(isRef(node) ? node.$ref : node.id);
+  /** The page for a declaration. A declared alias has its own (docs/16 § 6.1). */
+  declaration(shape: Shape): Entry | undefined {
+    return this.get(shape.id);
   }
 
   /**
@@ -188,6 +186,7 @@ const NOT_A_FACET: ReadonlySet<string> = new Set([
   'description',
   'required',
   'inherits',
+  'alias',
   'annotations',
   'properties',
   'pattern_properties',

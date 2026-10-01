@@ -265,6 +265,12 @@ export function TypeName({
       </>
     );
   }
+  // A declared alias is its referent under a second name, so the referent is
+  // what names it: `ID: Key` reads as the link `Key`. Its `inherits` are the
+  // referent's, and naming it by them would skip the type the author wrote.
+  if (!borrowed && shape.alias !== undefined && isRef(shape.alias)) {
+    return <TypeName shape={shape.alias} index={index} suffix={suffix} />;
+  }
   // A name written as an expression is still a name. `type: Entity` gives a
   // shape that is not a `$ref`, so the listing printed `Entity` as grey text
   // beside `Money[]` as a link -- two names of declarations, one reachable.
@@ -417,7 +423,15 @@ function Body({
           anonymous supertype that *is* the schema, so it carries the same
           projection this shape does and renders the whole type a second
           time. */}
-      {inherits.length > 0 && !hideInherits && content === shape && (
+      {/* An alias's supertypes are its referent's, shown on the referent's
+          page. What it says of its own is which type it names. */}
+      {shape.alias !== undefined && !hideInherits && (
+        <div className="shape-line">
+          <span className="label">alias of</span>
+          <RefLink parent={shape.alias} index={index} />
+        </div>
+      )}
+      {inherits.length > 0 && !hideInherits && content === shape && shape.alias === undefined && (
         <div className="shape-line">
           <span className="label">extends</span>
           {inherits.map((parent, at) => (
@@ -623,6 +637,8 @@ export function restates(shape: Shape, index: Index): boolean {
   // A schema type shows no supertype, so there is nothing for its name to
   // restate: `Invoice` reads `object`, from the projection, and not `json`.
   if (contentOf(shape) !== shape) return false;
+  // An alias shows an `alias of` line instead, saying the same of its referent.
+  if (shape.alias !== undefined) return spellingOf(shape, index) === labelOf(shape.alias, index);
   const inherits = shape.inherits ?? [];
   const only = inherits[0];
   return inherits.length === 1 && only !== undefined && spellingOf(shape, index) === labelOf(only, index);

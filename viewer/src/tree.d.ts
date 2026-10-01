@@ -54,7 +54,7 @@ export interface Ref {
 }
 
 export type ShapeNode = Shape | Ref | Recursion;
-export type ShapeDeclarations = Record<DeclarationName, Shape | Ref>;
+export type ShapeDeclarations = Record<DeclarationName, Shape>;
 export type ShapeDeclarationsByFile = Record<SourceFile, ShapeDeclarations>;
 export type SecuritySchemeDeclarations = Record<DeclarationName, SecurityScheme>;
 export type SecuritySchemeDeclarationsByFile = Record<SourceFile, SecuritySchemeDeclarations>;
@@ -101,6 +101,7 @@ export interface ShapeBase {
   id: Address | null;
   name: string | null;
   inherits?: ShapeNode[];
+  alias?: ShapeNode;
   custom_facets?: Record<string, Json>;
   declared_facets?: Record<string, Property>;
   annotations?: Applied[];

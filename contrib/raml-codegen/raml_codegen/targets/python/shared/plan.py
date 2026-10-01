@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, cast
 
 from ....naming import Names, class_name, field_name, from_address, module_name
 from ....reader import is_recursion, is_ref, properties_of
+from .annotate import Annotation
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
     from ....reader import Declaration, Tree
     from ....targets import Settings
     from ....tree import EntryPoint, Operation, Parameter, SecurityScheme, Shape, ShapeNode
-    from .annotate import Annotation, Annotator
+    from .annotate import Annotator
 
 __all__ = ['Argument', 'Body', 'Case', 'Endpoint', 'Field', 'Model', 'Package', 'Reserved', 'Scheme', 'plan']
 
@@ -295,10 +296,28 @@ class _Builder:
 
     # -- models ----------------------------------------------------------------
 
+    def _referent(self, declaration: Declaration) -> Annotation | None:
+        """Return the generated name a declared alias stands for, if it has one.
+
+        `AnythingAlias: Anything` is `AnythingAlias = Anything`. Annotated as
+        its content, it would spell `Anything`'s nine members out again, and the
+        two would read as two types. A class referent's own annotation already
+        names it, with what reads one; any other declaration is a module-level
+        alias, named here.
+        """
+        target = declaration.shape.get('alias')
+        if target is None or not is_ref(target) or target['$ref'] not in self._declared:
+            return None
+        named = self.annotator.of(target)
+        referent = self.classes.get(target['$ref'])
+        if referent is None or named.spelling == referent:
+            return named
+        return Annotation(spelling=referent, models=frozenset({referent}))
+
     def models(self) -> tuple[Model, ...]:
         aliases: list[Model] = []
         for declaration in self._declared.values():
-            annotation = self.annotator.of(declaration.shape)
+            annotation = self._referent(declaration) or self.annotator.of(declaration.shape)
             name = self.classes.claim(declaration.address, class_name(declaration.name))
             if annotation.spelling != name:
                 # Not an object with properties: `Isbn: string` is `str`, and a

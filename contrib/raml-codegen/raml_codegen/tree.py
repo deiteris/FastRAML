@@ -65,7 +65,7 @@ MediaType: TypeAlias = str
 Ref = TypedDict('Ref', {'$ref': Address})
 
 ShapeNode: TypeAlias = 'Shape | Ref | Recursion'
-ShapeDeclarations: TypeAlias = 'dict[DeclarationName, Shape | Ref]'
+ShapeDeclarations: TypeAlias = 'dict[DeclarationName, Shape]'
 ShapeDeclarationsByFile: TypeAlias = 'dict[SourceFile, ShapeDeclarations]'
 SecuritySchemeDeclarations: TypeAlias = 'dict[DeclarationName, SecurityScheme]'
 SecuritySchemeDeclarationsByFile: TypeAlias = 'dict[SourceFile, SecuritySchemeDeclarations]'
@@ -163,6 +163,7 @@ class ShapeBase(TypedDict):
     id: Address | None
     name: str | None
     inherits: NotRequired['list[ShapeNode]']
+    alias: NotRequired['ShapeNode']
     custom_facets: NotRequired['dict[str, Json]']
     declared_facets: NotRequired[dict[str, Property]]
     annotations: NotRequired['list[Applied]']
@@ -414,8 +415,8 @@ VIEW: Final = 'effective'
 CHILDREN: Final[dict[str, tuple[tuple[str, str, str, str], ...]]] = {
     'Document': (
         ('entry_point', 'one', 'record', 'EntryPoint'),
-        ('types', 'map_of_map', 'shape_node', ''),
-        ('annotation_types', 'map_of_map', 'shape_node', ''),
+        ('types', 'map_of_map', 'shape', ''),
+        ('annotation_types', 'map_of_map', 'shape', ''),
         ('security_schemes', 'map_of_map', 'record', 'SecurityScheme'),
         ('endpoints', 'map', 'record', 'Endpoint'),
     ),
@@ -436,7 +437,11 @@ CHILDREN: Final[dict[str, tuple[tuple[str, str, str, str], ...]]] = {
         ('bodies', 'map', 'shape_node', ''),
     ),
     'Response': (('headers', 'map', 'record', 'Parameter'), ('bodies', 'map', 'shape_node', '')),
-    'ShapeBase': (('inherits', 'list', 'shape_node', ''), ('declared_facets', 'map', 'record', 'Property')),
+    'ShapeBase': (
+        ('inherits', 'list', 'shape_node', ''),
+        ('alias', 'one', 'shape_node', ''),
+        ('declared_facets', 'map', 'record', 'Property'),
+    ),
     'Property': (('type', 'one', 'shape_node', ''),),
     'PatternProperty': (('type', 'one', 'shape_node', ''),),
     'Parameter': (('type', 'one', 'shape_node', ''),),

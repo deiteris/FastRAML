@@ -92,11 +92,14 @@ class TestWhatTheDocumentHolds:
         address = next(one for one in tree.types() if one.name == 'Address')
         assert address.file == 'sample/common.raml'
 
-    def test_an_alias_declaration_resolves_to_its_referent(self, tree):
-        # `AnythingAlias: Anything` arrives as a bare link, because an alias
-        # never reaches the output as a node (docs/16 § 6.1).
-        alias = next(one for one in tree.types() if one.name == 'AnythingAlias')
-        assert alias.shape['name'] == 'Anything'
+    def test_an_alias_declaration_is_its_own_and_links_its_referent(self, tree):
+        # `AnythingAlias: Anything` is a declaration under its own name and
+        # address, naming its referent under `alias` (docs/16 § 6.1).
+        declared = {one.name: one for one in tree.types()}
+        alias = declared['AnythingAlias']
+        assert alias.shape['name'] == 'AnythingAlias'
+        assert alias.address != declared['Anything'].address
+        assert alias.shape.get('alias') == {'$ref': declared['Anything'].address}
 
     def test_security_schemes_arrive_with_their_settings(self, tree):
         schemes = dict(tree.security_schemes())

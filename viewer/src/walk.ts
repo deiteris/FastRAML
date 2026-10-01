@@ -197,8 +197,8 @@ const RECURSION_TYPE = 'recursive';
 const CHILDREN: Record<string, [string, string, string, string][]> = {
   Document: [
     ['entry_point', 'one', 'record', 'EntryPoint'],
-    ['types', 'map_of_map', 'shape_node', ''],
-    ['annotation_types', 'map_of_map', 'shape_node', ''],
+    ['types', 'map_of_map', 'shape', ''],
+    ['annotation_types', 'map_of_map', 'shape', ''],
     ['security_schemes', 'map_of_map', 'record', 'SecurityScheme'],
     ['endpoints', 'map', 'record', 'Endpoint'],
   ],
@@ -219,7 +219,7 @@ const CHILDREN: Record<string, [string, string, string, string][]> = {
     ['bodies', 'map', 'shape_node', ''],
   ],
   Response: [['headers', 'map', 'record', 'Parameter'], ['bodies', 'map', 'shape_node', '']],
-  ShapeBase: [['inherits', 'list', 'shape_node', ''], ['declared_facets', 'map', 'record', 'Property']],
+  ShapeBase: [['inherits', 'list', 'shape_node', ''], ['alias', 'one', 'shape_node', ''], ['declared_facets', 'map', 'record', 'Property']],
   Property: [['type', 'one', 'shape_node', '']],
   PatternProperty: [['type', 'one', 'shape_node', '']],
   Parameter: [['type', 'one', 'shape_node', '']],

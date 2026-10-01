@@ -316,6 +316,17 @@ class TestAliases:
         assert types['X'].shape.properties is types['Y'].shape.properties
         assert types['X'] is not types['Y']
 
+    def test_an_alias_of_a_collapsed_union_names_the_replacement(self, workspace):
+        # `U` collapses to its one surviving member, which replaces it in every
+        # index (docs/07 § 4). Left on the original, `V` names a shape no index
+        # holds, and every view gives that stranger an address of its own.
+        _raml, types = unwrapped(
+            workspace,
+            '  Text:\n    properties:\n      id: string\n  Number:\n    properties:\n      id: integer\n'
+            '  U:\n    type: [object, Text | Number]\n    properties:\n      id: string\n  V: U\n',
+        )
+        assert types['V'].alias is types['U']
+
 
 class TestLinks:
     def test_a_link_becomes_inheritance_and_is_cleared(self, workspace):
@@ -480,6 +491,15 @@ class TestRecursionMarking:
         _raml, types = unwrapped(workspace, '  Node:\n    properties:\n      kids: Node[]\n')
         items = types['Node'].shape.properties['kids'].base.shape.items
         assert isinstance(items.shape, RecursiveShape)
+
+    def test_a_cycle_through_a_chain_of_aliases_closes_on_the_declaration(self, workspace):
+        # `next?: Chain` is an alias of `Chain`, itself an alias of `Link`, and
+        # only `Link` is on the stack. Following one alias edge misses it, and
+        # the cycle closes on the anonymous copy, a head nothing can address.
+        _raml, types = unwrapped(workspace, '  Link:\n    properties:\n      next?: Chain\n  Chain: Link\n')
+        marker = types['Link'].shape.properties['next'].base
+        assert isinstance(marker.shape, RecursiveShape)
+        assert marker.shape.head is types['Link']
 
     def test_a_diamond_is_not_a_cycle(self, workspace):
         # Two paths to one shape is not recursion; only a path back to an

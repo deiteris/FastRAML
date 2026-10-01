@@ -172,6 +172,110 @@ class TestEveryReferenceResolves:
         assert applied == [{'name': 'tier', 'type': f'{graph.base}#/declarations/annotations/tier', 'value': 'gold'}]
 
 
+#: Declared aliases, local, chained and across a library, each used where the
+#: tree writes an address: a property, an array's items, a supertype, a cycle
+#: through an alias, and an applied annotation.
+ALIASED = {
+    'lib.raml': '#%RAML 1.0 Library\ntypes:\n  ID:\n    type: string\n    minLength: 1\n',
+    'api.raml': """#%RAML 1.0
+title: Aliased
+uses:
+  generic: lib.raml
+annotationTypes:
+  base: string
+  tag: base
+types:
+  ID: generic.ID
+  Key: string
+  Code: Key
+  Again: Code
+  Link:
+    (tag): x
+    properties:
+      id: ID
+      codes: Again[]
+      next?: Chain
+  Chain: Link
+/things/{id}:
+  uriParameters:
+    id:
+      type: ID
+""",
+}
+
+
+class TestADeclaredAliasIsADeclaration:
+    """`ID: Key` is a second declaration identity for one type (docs/07 § 3),
+    and after P9 it carries the referent's effective facets. Every reference to
+    `ID` is to `ID`'s address, so the tree must hold a node there; only an
+    anonymous alias is transparent (docs/16 § 6.1).
+
+    Resolution is checked against the tree's own `id`s, which is what a consumer
+    resolves by. `graph.nodes` has the alias either way.
+    """
+
+    @pytest.fixture
+    def doc(self, workspace):
+        root = workspace(ALIASED)
+        return build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
+
+    def test_every_link_names_a_node_the_tree_carries(self, doc):
+        found = references(doc)
+        ids = {address for key, address in found if key == 'id'}
+        links = [address for key, address in found if key != 'id']
+        assert links, 'guards the guard'
+        # `references` reads addresses only, and a link with none is the worst
+        # case: `{"$ref": null}` is a head the walk never addressed.
+        assert '"$ref": null' not in json.dumps(doc), 'a link with no address'
+        dangling = [address for address in links if address not in ids]
+        assert not dangling, dangling
+
+    def test_it_is_emitted_under_its_own_name_with_the_effective_facets(self, doc):
+        declared = doc['types']['api.raml']['ID']
+        assert declared['id'] == 'fastraml://id#/declarations/types/ID'
+        assert (declared['name'], declared['type'], declared['type_expr']) == ('ID', 'string', 'generic.ID')
+        assert declared['min_length'] == 1
+
+    def test_it_links_the_type_it_is_a_second_name_for(self, doc):
+        assert doc['types']['api.raml']['ID']['alias'] == {'$ref': doc['types']['lib.raml']['ID']['id']}
+        tag = doc['annotation_types']['api.raml']['tag']
+        assert tag['alias'] == {'$ref': doc['annotation_types']['api.raml']['base']['id']}
+
+    def test_a_chain_links_one_step_at_a_time(self, doc):
+        declared = doc['types']['api.raml']
+        assert declared['Again']['alias'] == {'$ref': declared['Code']['id']}
+        assert declared['Code']['alias'] == {'$ref': declared['Key']['id']}
+
+    def test_only_an_alias_carries_the_key(self, doc):
+        declared = doc['types']['api.raml']
+        assert 'alias' not in declared['Key']
+        assert 'alias' not in declared['Link']['properties']['id']['type'], 'an anonymous alias is the link itself'
+
+    def test_a_use_site_links_to_the_alias_not_its_referent(self, doc):
+        own = doc['types']['api.raml']['ID']['id']
+        assert doc['types']['api.raml']['Link']['properties']['id']['type'] == {'$ref': own}
+        assert doc['endpoints']['/things/{id}']['uri_parameters']['id']['type']['inherits'] == [{'$ref': own}]
+
+    def test_each_link_in_a_chain_is_its_own_declaration(self, doc):
+        declared = doc['types']['api.raml']
+        assert declared['Link']['properties']['codes']['type']['items'] == {'$ref': declared['Again']['id']}
+        assert [declared[name]['type_expr'] for name in ('Again', 'Code')] == ['Code', 'Key']
+
+    def test_an_alias_of_a_recursive_type_shares_its_marked_cycle(self, doc):
+        # The two share one `properties` container (docs/07 § 3), so one marker
+        # serves both, headed by the declaration the walk was inside.
+        declared = doc['types']['api.raml']
+        for name in ('Link', 'Chain'):
+            marker = declared[name]['properties']['next']['type']
+            assert marker['type'] == 'recursive'
+            assert marker['head'] == {'$ref': declared['Link']['id']}
+
+    def test_an_annotation_bound_through_an_alias_points_at_the_alias(self, doc):
+        tag = doc['annotation_types']['api.raml']['tag']
+        assert (tag['name'], tag['type_expr']) == ('tag', 'base')
+        assert doc['types']['api.raml']['Link']['annotations'][0]['type'] == tag['id']
+
+
 class TestTheProjectionAndTheGraphAgree:
     def test_a_declared_type_has_the_same_address_in_both(self, both):
         projection, graph = both

@@ -371,15 +371,19 @@ class _Projector:
         marker rather than a bare `{'$ref': …}`: a consumer expands links and
         stops only at markers (docs/16 § 6.1).
 
-        An alias is transparent (docs/16 § 6.1). `Price[]` puts an alias of
-        `Price` under `items` (docs/07 § 3); emitting the alias itself would show
-        an anonymous node whose `inherits` names `Price`'s supertype.
+        An anonymous alias is transparent (docs/16 § 6.1). `Price[]` puts an
+        alias of `Price` under `items` (docs/07 § 3); emitting the alias itself
+        would show an anonymous node whose `inherits` names `Price`'s supertype.
+        A declared one, `ID: Key`, is emitted: after P9 it is the effective type
+        under a second identity, and every reference to `ID` is to that address.
+        Its `alias` links the referent, so a consumer can say `ID` *is* `Key`
+        rather than restate it.
         """
         if base is None:
             return None
         if base.id in seen:
             return self.recursion(base)
-        if base.alias is not None:
+        if base.alias is not None and base.id not in self.declared:
             return self.reference(base.alias, seen)
         seen = seen | {base.id}
 
@@ -400,6 +404,9 @@ class _Projector:
             # say which.
             parents: list[Json] = [self.reference(parent, seen) for parent in base.inherits]
             out['inherits'] = parents
+        if base.alias is not None:
+            # Only a declared alias reaches here; an anonymous one returned above.
+            out['alias'] = self.reference(base.alias, seen)
         if base.custom_facets:
             out['custom_facets'] = {name: self.value(node, seen) for name, node in base.custom_facets.items()}
         if base.custom_facet_defs:

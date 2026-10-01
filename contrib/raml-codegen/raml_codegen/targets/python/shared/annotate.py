@@ -190,6 +190,12 @@ class Annotator:
     # -- per kind ---------------------------------------------------------------
 
     def _of_shape(self, shape: Shape, address: str | None, prefer: str | None = None) -> Annotation:
+        # A declared alias is its referent under a second name, and a use site
+        # spells it as the referent. The alias itself is a module-level name of
+        # its own; see `_Builder.models`.
+        alias = shape.get('alias')
+        if alias is not None:
+            return self.of(alias, prefer)
         # A `json` shape is how a type *arrived*, not what it is: it carries no
         # RAML facets, so reading it directly reports a type made of nothing.
         # Its `projection` is the type (docs/16 § 6.2).

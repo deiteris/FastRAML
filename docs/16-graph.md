@@ -207,9 +207,15 @@ A consumer descends containment, follows links, and stops at recursion markers.
 It does not need an ancestor set or an independent RAML resolver.
 
 Named declarations are referenced instead of duplicated. Anonymous structural
-content is inlined where it would otherwise have no representation. Aliases are
-transparent references to their referents. Annotation applications include their
-bound type and value at the application site.
+content is inlined where it would otherwise have no representation. An anonymous
+alias, such as the items of `Price[]`, is a transparent reference to its
+referent. A declared alias (`ID: Key`) is a declaration like any other: it is
+listed under its own name and address with the effective facets it shares with
+its referent (docs/07 § 3), and every reference to `ID` links to it. Its
+`alias` key links the referent, one step of a chain at a time; only a declared
+alias carries the key. A `types` or `annotation_types` entry is therefore always
+a shape, never a bare link. Annotation applications include their bound type and
+value at the application site.
 
 The `types` inventory includes every registered DataType fragment root, even
 when only a body or a property includes it. Each root is listed once under its

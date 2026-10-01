@@ -65,7 +65,7 @@ MediaType: TypeAlias = str
 Ref = TypedDict('Ref', {'$ref': Address})
 
 ShapeNode: TypeAlias = 'Shape | Ref | Recursion'
-ShapeDeclarations: TypeAlias = 'dict[DeclarationName, Shape | Ref]'
+ShapeDeclarations: TypeAlias = 'dict[DeclarationName, Shape]'
 ShapeDeclarationsByFile: TypeAlias = 'dict[SourceFile, ShapeDeclarations]'
 SecuritySchemeDeclarations: TypeAlias = 'dict[DeclarationName, SecurityScheme]'
 SecuritySchemeDeclarationsByFile: TypeAlias = 'dict[SourceFile, SecuritySchemeDeclarations]'

@@ -45,6 +45,7 @@ types:
   Order:
     properties:
       sku: string
+  Purchase: Order
   HasHome:
     properties:
       home: string
@@ -125,6 +126,13 @@ types:
             items:
               properties:
                 id: string
+/purchases:
+  get:
+    responses:
+      200:
+        body:
+          application/json:
+            type: Purchase
 /invoices:
   get:
     responses:
@@ -175,6 +183,29 @@ class TestABodyIsNamedForWhereItSits:
         # was sent and nothing about what it is.
         assert not any(name.startswith('application') for name in models)
         assert "TypedDict('ApplicationJson" not in ''.join(models.values())
+
+
+class TestADeclaredAliasNamesItsReferent:
+    """`Purchase: Order` is `Order` under a second name (docs/16 § 6.1).
+
+    The tree carries `Purchase` as a declaration of its own, with `Order`'s
+    properties and an `alias` link to it. Read as content, it would generate a
+    second class with the same fields, which a caller cannot pass where the
+    other is expected.
+    """
+
+    @pytest.mark.parametrize('target', ['python-httpx', 'python-fastapi'])
+    def test_it_is_assigned_rather_than_declared(self, target):
+        document = json.loads((HERE / 'inline.json').read_text(encoding='utf-8'))
+        files = generate(document, target, Settings()).files
+        module = next(text for name, text in files.items() if name.endswith('/models/purchase.py'))
+        assert 'Purchase = Order\n' in module
+        assert 'from .order import Order\n' in module
+
+    def test_a_use_site_spells_the_referent(self, generated):
+        endpoint = next(text for name, text in generated.files.items() if name.endswith('/get_purchases.py'))
+        assert 'Response[Order]' in endpoint
+        assert 'Purchase' not in endpoint
 
 
 class TestALabelBeatsAPosition:

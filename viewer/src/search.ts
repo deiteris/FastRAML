@@ -24,7 +24,7 @@
 
 import Fuse, { type FuseResultMatch, type IFuseOptions, type RangeTuple } from 'fuse.js';
 import MarkdownIt, { type Token } from 'markdown-it';
-import { type Document, type Index, declarations, hrefOf, isRef, methodsOf, operationHref } from './model';
+import { type Document, type Index, declarations, hrefOf, methodsOf, operationHref } from './model';
 
 export type Category = 'documentation' | 'endpoint' | 'operation' | 'type' | 'annotationType' | 'securityScheme';
 
@@ -132,15 +132,12 @@ export class SearchIndex {
       ['annotationType', document.annotation_types, '/annotation-types'],
     ] as const) {
       for (const { file, name, value } of declarations(byFile)) {
-        // A declaration that is a `$ref` has no prose of its own; its page is
-        // its target's, which is where the nav sends it too.
-        const shape = isRef(value) ? undefined : value;
         entries.push({
           category,
           title: category === 'annotationType' ? `(${name})` : name,
-          detail: shape?.display_name,
+          detail: value.display_name,
           file,
-          prose: plainText(shape?.description),
+          prose: plainText(value.description),
           href: index.declaration(value)?.href ?? fallback,
         });
       }

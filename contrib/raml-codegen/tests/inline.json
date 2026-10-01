@@ -29,6 +29,26 @@
           }
         }
       },
+      "Purchase": {
+        "id": "fastraml://id#/declarations/types/Purchase",
+        "name": "Purchase",
+        "type": "object",
+        "alias": {
+          "$ref": "fastraml://id#/declarations/types/Order"
+        },
+        "type_expr": "Order",
+        "properties": {
+          "sku": {
+            "required": true,
+            "type": {
+              "id": "fastraml://id#/declarations/types/Order/property/sku/schema",
+              "name": "sku",
+              "type": "string",
+              "type_expr": "string"
+            }
+          }
+        }
+      },
       "HasHome": {
         "id": "fastraml://id#/declarations/types/HasHome",
         "name": "HasHome",
@@ -770,6 +790,43 @@
                           "type": "string",
                           "type_expr": "string"
                         }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "secured_by": []
+    },
+    "/purchases": {
+      "id": "fastraml://id#/web-api/endpoint/%2Fpurchases",
+      "operations": {
+        "get": {
+          "id": "fastraml://id#/web-api/endpoint/%2Fpurchases/supportedOperation/get",
+          "responses": {
+            "200": {
+              "bodies": {
+                "application/json": {
+                  "id": "fastraml://id#/web-api/endpoint/%2Fpurchases/supportedOperation/get/returns/200/payload/application%2Fjson/schema",
+                  "name": "application/json",
+                  "type": "object",
+                  "inherits": [
+                    {
+                      "$ref": "fastraml://id#/declarations/types/Purchase"
+                    }
+                  ],
+                  "type_expr": "Purchase",
+                  "properties": {
+                    "sku": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id#/declarations/types/Order/property/sku/schema",
+                        "name": "sku",
+                        "type": "string",
+                        "type_expr": "string"
                       }
                     }
                   }

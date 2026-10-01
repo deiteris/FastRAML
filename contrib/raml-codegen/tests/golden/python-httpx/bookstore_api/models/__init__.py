@@ -35,6 +35,7 @@ from __future__ import annotations
 from .address import Address, read_address
 from .amount import Amount, read_amount
 from .anything import Anything
+from .anything_alias import AnythingAlias
 from .author import Author, read_author
 from .barcode import Barcode, read_barcode
 from .book import Book, read_book
@@ -74,6 +75,7 @@ __all__ = [
     'Address',
     'Amount',
     'Anything',
+    'AnythingAlias',
     'Author',
     'Barcode',
     'Book',

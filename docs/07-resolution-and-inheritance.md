@@ -52,7 +52,9 @@ P7 resolves these forms:
 
 An alias keeps its own ID, name, authored location, and positions. After P9 it
 shares the referent's kind fields and common-facet containers; it is not a
-subtype. Traversals that need type structure must follow aliases.
+subtype. Its `alias` edge names the effective referent, which is the replacement
+when the referent collapsed to a union member (§ 4). Traversals that need type
+structure must follow aliases.
 
 ## 4. Unwrap and narrowing
 

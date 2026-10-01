@@ -169,8 +169,11 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
 
         if base.alias is not None:
             # An alias is not a source and is not merged into anything: it is
-            # resolved and returned as it stands (docs/07 § 3).
-            result = alias_to(base, _unwrap(walk, base.alias, depth + 1))
+            # resolved and returned as it stands (docs/07 § 3). The edge is
+            # repointed as `inherits` is: a referent that collapsed to a union
+            # member is a replacement, and the original is in no index.
+            base.alias = _unwrap(walk, base.alias, depth + 1)
+            result = alias_to(base, base.alias)
         else:
             source = _unwrap_parents(walk, base, depth)
             _unwrap_children(walk, base.shape, depth)

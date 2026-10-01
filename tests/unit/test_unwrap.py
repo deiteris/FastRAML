@@ -316,6 +316,17 @@ class TestAliases:
         assert types['X'].shape.properties is types['Y'].shape.properties
         assert types['X'] is not types['Y']
 
+    def test_an_alias_of_a_collapsed_union_names_the_replacement(self, workspace):
+        # `U` collapses to its one surviving member, which replaces it in every
+        # index (docs/07 § 4). Left on the original, `V` names a shape no index
+        # holds, and every view gives that stranger an address of its own.
+        _raml, types = unwrapped(
+            workspace,
+            '  Text:\n    properties:\n      id: string\n  Number:\n    properties:\n      id: integer\n'
+            '  U:\n    type: [object, Text | Number]\n    properties:\n      id: string\n  V: U\n',
+        )
+        assert types['V'].alias is types['U']
+
 
 class TestLinks:
     def test_a_link_becomes_inheritance_and_is_cleared(self, workspace):

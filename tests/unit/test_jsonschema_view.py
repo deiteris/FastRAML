@@ -8,6 +8,8 @@ same verdict, checked by `jsonschema` rather than by this project's own reader.
 
 from __future__ import annotations
 
+import re
+
 import jsonschema
 import pytest
 
@@ -224,3 +226,119 @@ def test_the_output_is_a_valid_draft_07_schema(workspace):
     assert schema['$schema'] == SCHEMA_VERSION
     # Raises if the document is not a well-formed schema.
     jsonschema.Draft7Validator.check_schema(schema)
+
+
+@pytest.mark.parametrize(
+    ('properties', 'values'),
+    [
+        ('name: string\n      /^name$/: integer', [({'name': 'abc'}, True), ({'name': 1}, False)]),
+        (
+            "'a.b?': {type: string, required: true}\n      //: integer",
+            [({'a.b?': 'abc'}, True), ({'a.b?': 1}, False), ({'axb': 1, 'a.b?': 'abc'}, True)],
+        ),
+        (
+            'name: string\n      /x/: integer',
+            [({'name': 'a', 'prefix': 1}, True), ({'name': 'a', 'prefix': 's'}, False), ({'name': 'a', 'z': 1}, False)],
+        ),
+        (
+            '/x/: string\n      /xy/: integer',
+            [({'xy': 'a'}, True), ({'xy': 1}, False), ({'beforexyafter': 'a'}, True), ({'z': 1}, False)],
+        ),
+        (
+            '/xy/: integer\n      /x/: string',
+            [({'xy': 1}, True), ({'xy': 'a'}, False), ({'x': 'a'}, True), ({'z': 1}, False)],
+        ),
+        (
+            '"line\\nbreak": string\n      //: integer',
+            [({'line\nbreak': 'a'}, True), ({'line\nbreak': 1}, False), ({'other\nkey': 1, 'line\nbreak': 'a'}, True)],
+        ),
+    ],
+    ids=['explicit-wins', 'literal-metacharacters', 'search-and-exhaustive', 'first-pattern', 'reversed', 'newlines'],
+)
+@pytest.mark.parametrize('additional', ['', '    additionalProperties: true\n'])
+def test_pattern_precedence_agrees_with_raml(workspace, properties, values, additional):
+    """docs/05 § 4: explicit names, then first pattern; unmatched extras fail."""
+    shape, schema = both(workspace, f'  T:\n{additional}    properties:\n      {properties}\n')
+    jsonschema.Draft7Validator.check_schema(schema)
+    for value, expected in values:
+        assert (shape.validate(value) is None) is expected
+        assert accepts(schema, value) is expected
+
+
+@pytest.mark.parametrize(
+    ('properties', 'value'),
+    [
+        (r'/(x)/: string' + '\n      ' + r'/(a)\1/: integer', {'aa': 1}),
+        (r'/(?P<part>x)/: string' + '\n      ' + r'/(?P<part>a)(?P=part)/: integer', {'aa': 1}),
+        ('/(?i)x/: string\n      /y/: integer', {'X': 'a'}),
+    ],
+    ids=['numbered-backreference', 'named-backreference', 'global-flags'],
+)
+def test_pattern_export_keeps_capture_scopes_and_reports_unsupported_precedence(workspace, properties, value):
+    root = workspace({'api.raml': API + f'types:\n  T:\n    properties:\n      {properties}\n'})
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    shape = raml.types_in(raml.location)['T']
+    schema, dropped = to_json_schema(shape)
+    jsonschema.Draft7Validator.check_schema(schema)
+    definition = schema['definitions']['T']
+    # Composing them would renumber or redefine a capture group.
+    assert list(definition['patternProperties']) == list(shape.shape.pattern_properties)
+    assert shape.validate(value) is None
+    # Not `accepts`: python-jsonschema checks `additionalProperties` against one
+    # alternation of every pattern, which itself shifts capture groups. Check
+    # the per-pattern verdict and the name restriction separately.
+    assert accepts({key: kept for key, kept in definition.items() if key != 'additionalProperties'}, value)
+    assert all(any(re.search(pattern, key) for pattern in definition['patternProperties']) for key in value)
+    assert definition['additionalProperties'] is False
+    assert any('precedence' in notice for notice in dropped)
+
+
+def test_explicit_names_win_when_capture_groups_prevent_pattern_ordering(workspace):
+    """Excluding names adds no group, so only the order between patterns is lost."""
+    shape, schema = both(
+        workspace, '  T:\n    properties:\n      name: string\n      /(n)ame/: integer\n      /z/: string\n'
+    )
+    _, dropped = to_json_schema(shape)
+    assert [notice.partition(': ')[2] for notice in dropped] == [
+        'pattern order precedence with capture groups or global inline flags'
+    ]
+    for value, expected in [({'name': 'a'}, True), ({'name': 'a', 'rename': 1}, True), ({'name': 1}, False)]:
+        assert (shape.validate(value) is None) is expected
+        assert accepts(schema, value) is expected
+
+
+def test_explicit_names_escape_only_ecma_syntax_characters(workspace):
+    """Unicode-mode ECMA-262, ajv's default, rejects identity escapes like `\\-`."""
+    shape, schema = both(
+        workspace,
+        "  T:\n    properties:\n      'first name': string\n      content-type: string\n"
+        "      'a#b&c~d': string\n      //: integer\n",
+    )
+    (pattern,) = schema['definitions']['T']['patternProperties']
+    assert '(?:first name|content-type|a#b&c~d)' in pattern
+    names = {'first name': 'a', 'content-type': 'b', 'a#b&c~d': 'c'}
+    for value, expected in [(names, True), ({**names, 'x': 1}, True), ({**names, 'x': 'a'}, False)]:
+        assert (shape.validate(value) is None) is expected
+        assert accepts(schema, value) is expected
+
+
+@pytest.mark.parametrize(
+    ('properties', 'values'),
+    [
+        (
+            'aa: string\n      ' + r'/(a)\1/: integer',
+            [({'aa': 'x', 'aaaa': 1}, True), ({'aa': 'x', 'aaaa': 'x'}, False)],
+        ),
+        ('/x/: string\n      ' + r'/(a)\1/: integer', [({'aa': 1}, True), ({'aa': 'x'}, False), ({'aax': 'x'}, True)]),
+    ],
+    ids=['single-capture-scope', 'capture-in-last-pattern'],
+)
+def test_pattern_export_preserves_precedence_when_no_capture_scope_is_shifted(workspace, properties, values):
+    root = workspace({'api.raml': API + f'types:\n  T:\n    properties:\n      {properties}\n'})
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    shape = raml.types_in(raml.location)['T']
+    schema, dropped = to_json_schema(shape)
+    assert dropped == []
+    for value, expected in values:
+        assert (shape.validate(value) is None) is expected
+        assert accepts(schema, value) is expected

@@ -64,7 +64,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures twenty-one workloads:
+`bench/` generates deterministic corpora and measures twenty-two workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -78,6 +78,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `schema-export` | project and export each JSON Schema in the `jsonschema` corpus as a standalone RAML document |
 | `schema-allof` | project `allOf` into a graph: neutral members, numeric bounds and multiples, enums, required properties, array-item lengths and uniqueness, UUID formats intersected with length bounds, reversed member orders, cached numeric and recursive children, and diamond-shaped shared conjunction references ([10](10-validation.md) § 7) |
 | `raml-schema` | export each effective RAML type in the `validate` corpus as a JSON Schema document |
+| `projections` | OpenAPI use-site narrowing, closed-object members, unchanged and equivalently redeclared named uses, and aliases; JSON Schema explicit-property and ordered-pattern precedence and capture-scope loss reporting; and typed enum values in the reading renderer |
 | `enums` | enum narrowing and enum membership at 5, 20, 100, and 1000 values, and `uniqueItems` examples at 10, 50, and 500 items, for string, integer, and number |
 | `unions` | `properties` and `items` beside unions of 2, 4, and 8 members, flat and nested, with an enum each member narrows differently ([07](07-resolution-and-inheritance.md) § 5) |
 | `facets` | custom facets declared up every parent of types that inherit from 2, 4, and 8 parents, and a diamond ([10](10-validation.md) § 4) |
@@ -91,7 +92,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `annotation-targets` | included annotation restrictions, query strings and nested body declarations, literal and substituted template-root annotations, annotated substituted type names, and annotated default and discriminator scalars ([09](09-security-and-annotations.md) § B4) |
 
 The six general workloads are `small`, `large`, `endpoints`, `extensions`,
-`validate` and `jsonschema`. The other fifteen are feature workloads:
+`validate` and `jsonschema`. The other sixteen are feature workloads:
 each exists because no general workload runs the code it covers. Their reach
 tests (`tests/bench/test_corpus.py`) count calls or check bound results, and fail
 if a corpus stops reaching that code at every size it covers.
@@ -113,6 +114,8 @@ For `schema-export`, `unwrap` additionally exports each schema as RAML after
 parsing; its other configurations keep their ordinary meanings. The reach test
 guards both sides, so `parse` cannot accidentally measure the export.
 `raml-schema` does the same for effective RAML types exported as JSON Schema.
+For `projections`, `unwrap` additionally exports OpenAPI, exports every declared
+type as JSON Schema, and renders each type as reading YAML.
 For `datatype-fragments`, `unwrap` additionally builds the graph, tree and
 positions; the tree reuses the graph's address map. Its reach test checks that
 every shared root is projected and each inclusion references that root.

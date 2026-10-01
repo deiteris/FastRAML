@@ -23,6 +23,7 @@ What RAML says and JSON Schema cannot carry is listed in `Conversion.dropped`.
 from __future__ import annotations
 
 import json
+import re
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
 
@@ -58,6 +59,10 @@ RFC2616: Final = (
 )
 #: `datetime-only` has no JSON Schema format either.
 DATETIME_ONLY: Final = r'^[0-9]{4}-(?:0[0-9]|1[0-2])-(?:[0-2][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'
+#: ECMA-262 syntax characters. `re.escape` also escapes space, `-`, `#`, `&`
+#: and `~`, identity escapes that unicode-mode ECMA-262 rejects.
+_ECMA_SYNTAX: Final = re.compile(r'[\\^$.*+?()[\]{}|/]')
+_GLOBAL_FLAGS: Final = re.compile(r'\(\?[aiLmsux]+\)')
 
 
 class Conversion:
@@ -197,12 +202,34 @@ def _object(conv: Conversion, node: dict[str, Any], shape: ObjectShape, at: str)
         if required:
             node['required'] = required
     if shape.pattern_properties:
-        # Already the bare regex: the `/…/` delimiters are RAML syntax marking a
-        # name as a pattern, and the decoder strips them. go-raml slices them
-        # off here because its own model keeps them.
-        node['patternProperties'] = {
-            key: conv.inline(prop.base, f'{at}.{key}') for key, prop in shape.pattern_properties.items()
-        }
+        # RAML checks explicit names first, then the first matching pattern;
+        # JSON Schema applies every matching pattern. Make their domains
+        # disjoint while retaining search semantics (docs/05 § 4).
+        declared = shape.pattern_properties
+        # Any prefix moves a global inline flag off the start of its regex.
+        flagged = any(_GLOBAL_FLAGS.search(key) for key in declared)
+        exclusions = []
+        if shape.properties:
+            if flagged:
+                conv.drop(at, 'explicit-property precedence over patterns with global inline flags')
+            else:
+                names = '|'.join(_ECMA_SYNTAX.sub(r'\\\g<0>', name) for name in shape.properties)
+                exclusions.append(f'(?!(?:{names})(?![\\s\\S]))')
+        # Embedding an earlier pattern renumbers the capture groups after it;
+        # the names' exclusion holds none, so only patterns decide this.
+        chained = not flagged and not any(prop.pattern.groups for prop in tuple(declared.values())[:-1])
+        if len(declared) > 1 and not chained:
+            conv.drop(at, 'pattern order precedence with capture groups or global inline flags')
+        patterns: dict[str, Any] = {}
+        for key, pattern_prop in declared.items():
+            effective = f'^{"".join(exclusions)}[\\s\\S]*?(?:{key})' if exclusions else key
+            patterns[effective] = conv.inline(pattern_prop.base, f'{at}.{key}')
+            if chained:
+                exclusions.append(f'(?![\\s\\S]*?(?:{key}))')
+        node['patternProperties'] = patterns
+        # A pattern block restricts the names of all additional properties,
+        # even when additionalProperties was omitted or explicitly true.
+        node['additionalProperties'] = False
 
 
 def _array(conv: Conversion, node: dict[str, Any], shape: ArrayShape, at: str) -> None:

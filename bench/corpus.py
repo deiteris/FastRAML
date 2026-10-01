@@ -35,6 +35,7 @@ __all__ = [
     'write_inline_json',
     'write_jsonschema',
     'write_large',
+    'write_projections',
     'write_reference_namespaces',
     'write_schema_allof',
     'write_small',
@@ -53,6 +54,52 @@ def _write(root: Path, files: dict[str, str]) -> None:
 
 
 # -- types --------------------------------------------------------------------
+
+
+def write_projections(root: Path, *, family_count: int = 200) -> Path:
+    """Effective use-site narrowing, pattern precedence, and typed enum display."""
+    types = []
+    resources = []
+    for index in range(family_count):
+        types.append(
+            f'  Text{index}: {{type: string, maxLength: 10}}\n'
+            f'  Patterned{index}:\n'
+            '    properties:\n'
+            '      name: string\n'
+            '      /^name$/: integer\n'
+            '      /x/: string\n'
+            '      /xy/: integer\n'
+            f'  Choice{index}: {{type: integer, enum: [1, 2]}}\n'
+            f'  Captured{index}:\n'
+            '    properties:\n'
+            '      /(x)/: string\n'
+            '      /(a)\\1/: integer\n'
+            f'  Closed{index}:\n'
+            '    properties: {name: string}\n'
+            '    additionalProperties: false\n'
+        )
+        resources.append(
+            f'/r{index}:\n'
+            '  post:\n'
+            f'    queryParameters: {{q: {{type: Text{index}, maxLength: 3}}}}\n'
+            '    body:\n'
+            f'      application/json: {{type: Closed{index}, properties: {{age: integer}}}}\n'
+            '    responses:\n'
+            '      200:\n'
+            '        body:\n'
+            f'          application/json: {{type: Text{index}, maxLength: 3}}\n'
+            '      201:\n'
+            '        body:\n'
+            f'          application/json: {{type: Closed{index}}}\n'
+            '      202:\n'
+            '        body:\n'
+            f'          application/json: Text{index}\n'
+            '      203:\n'
+            '        body:\n'
+            f'          application/json: {{type: Closed{index}, properties: {{name: string}}}}\n'
+        )
+    _write(root, {'api.raml': '#%RAML 1.0\ntitle: Projections\ntypes:\n' + ''.join(types + resources)})
+    return root / 'api.raml'
 
 
 def _plain(name: str, _ordinal: int, _previous: str) -> str:

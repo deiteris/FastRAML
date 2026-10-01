@@ -136,6 +136,12 @@ available. It shows effective inheritance, properties, constraints, annotations,
 custom facets, security descriptions, and structured JSON Schema projections.
 `--depth` controls structural expansion; recursion remains finite.
 
+This is a human-readable display, not a RAML export. Explanatory fields such as
+`inherits` and expanded security descriptions are part of the display, and prose
+is limited to its first line. The YAML preserves enum value types but is not
+guaranteed to parse as a RAML declaration. Use the format exports in § 8 when
+you need a document for another tool.
+
 A member a trait or resource type contributed is noted with its name: the
 declaration whose span, key through value and columns included, holds the
 member's key, and only when the site applied it. A line alone would not tell

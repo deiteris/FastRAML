@@ -5,9 +5,10 @@ answers: **what is this type, actually?** Every inherited property in one place,
 every constraint beside the property it constrains, and for each one the file
 and line it was really written on.
 
-Output is RAML-shaped on purpose. It is the notation the reader already knows,
-it pastes back into a document, and two versions of it diff. Origin rides in
-trailing comments so the result stays valid YAML.
+Output is RAML-shaped YAML for reading and comparison. It includes explanatory
+fields and expanded security descriptions, and truncates prose to its first
+line; it is not a reusable RAML declaration. Origin rides in trailing comments
+so the result stays valid YAML.
 
 This walks the **model**, not the graph. The projection carries what a traversal
 needs and deliberately drops facet detail, so rendering from it
@@ -180,7 +181,7 @@ def _aligned(lines: list[_Line]) -> Iterator[str]:
 
 
 def render(base: BaseShape, *, depth: int = 1, root: str = '') -> Iterator[str]:
-    """The declaration as RAML, one line at a time.
+    """The effective declaration as reading YAML, one line at a time.
 
     `depth` counts levels of *expansion*: 1 shows this type's own effective
     properties and names their types without opening them; 2 opens one more
@@ -418,7 +419,7 @@ def _facets(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]:
     if base.enum is not None:
         # Dumped as a list, so the flow context quotes a member containing a
         # comma rather than silently splitting it into two.
-        yield _Line(f'{indent}enum: {_dumped([str(member.raw) for member in base.enum])}')
+        yield _Line(f'{indent}enum: {_dumped([_plain(member.raw) for member in base.enum])}')
     if base.description is not None and base.description.value:
         first = base.description.value.strip().splitlines()[0]
         yield _Line(f'{indent}description: {_dumped(first)}')
@@ -524,7 +525,7 @@ def _emit(value: Any) -> str:
 def render_endpoint(
     endpoint: EndPoint, *, depth: int = 1, root: str = '', sources: Sources | None = None
 ) -> Iterator[str]:
-    """One resource as RAML, with everything that reached it already applied.
+    """One resource as reading YAML, with everything that reached it already applied.
 
     The endpoint is the entity that needs this most. It accumulates a resource
     type, any number of traits, security inherited from the API root, and URI

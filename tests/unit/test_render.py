@@ -209,7 +209,7 @@ class TestDepth:
 class TestOutputContract:
     @pytest.mark.parametrize('name', ['Admin', 'User', 'UserList', 'Node', 'Either', 'Priced', 'Address'])
     def test_it_is_valid_yaml(self, shown, name):
-        """§ 9 claims the output pastes back, so it has to parse."""
+        """The reading contract in docs/16 § 4 promises valid YAML."""
         assert loaded(shown(name, depth=2)) is not None
 
     def test_facets_use_raml_spelling_not_the_slot_name(self, shown):
@@ -221,6 +221,26 @@ class TestOutputContract:
         reaching a reader would be this module's defect all the same.
         """
         assert 'multipleOf: 1.1' in shown('Priced')
+
+    @pytest.mark.parametrize(
+        ('kind', 'members', 'expected'),
+        [
+            ('integer', '[1, 2]', [1, 2]),
+            ('number', '[1.25, 2.5]', [1.25, 2.5]),
+            ('boolean', '[true, false]', [True, False]),
+            ('nil', '[null]', [None]),
+            ('string', "['1', 'true', 'null']", ['1', 'true', 'null']),
+            ('object', '[{a: 1}, {a: 2}]', [{'a': 1}, {'a': 2}]),
+            ('array', '[[1, 2], [3]]', [[1, 2], [3]]),
+        ],
+    )
+    def test_enum_members_keep_their_value_types(self, workspace, kind, members, expected):
+        root = workspace({'type.raml': f'#%RAML 1.0 DataType\ntype: {kind}\nenum: {members}\n'})
+        raml = workspace.parse(root / 'type.raml', ParseOptions(unwrap=True))
+        shape = raml.entry_point.shape
+        shown = loaded('\n'.join(render(shape)))[shape.name or '<anonymous>']['enum']
+        assert shown == expected
+        assert [type(value) for value in shown] == [type(value) for value in expected]
 
 
 API = """#%RAML 1.0

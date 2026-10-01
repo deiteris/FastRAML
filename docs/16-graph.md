@@ -293,6 +293,18 @@ exports a DataType fragment directly; an API or Library requires the name of
 one declared type. It writes JSON (`-o FILE` saves it) and reports dropped
 information on stderr.
 
+For RAML object types, explicit properties take precedence over patterns. The
+export excludes explicit names and earlier matching patterns from each pattern's
+domain, and rejects extra keys that match no pattern, preserving RAML's
+first-match behavior rather than JSON Schema's usual overlapping constraints.
+Explicit names are escaped only where ECMA-262 syntax requires it, because
+unicode-mode validators reject identity escapes such as `\-`. Each exclusion
+is a prefix, so a global inline flag anywhere prevents both kinds. A capture
+group in any pattern but the last prevents only the ordering between patterns,
+because embedding that pattern would renumber the groups after it; explicit
+names still win. Each precedence the export cannot keep is reported as a
+conversion notice.
+
 `fastraml.views.openapi.to_openapi(raml)` returns an OpenAPI 3.0.3 document and
 loss notices. `fastraml convert openapi` emits YAML by default or JSON with
 `--format json`; notices go to stderr.

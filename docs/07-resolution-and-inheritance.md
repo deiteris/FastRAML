@@ -173,7 +173,10 @@ cycle with `RecursiveShape(head)`. It covers array items, object and pattern
 properties, union members, and custom-facet declaration shapes. Validation of a
 marker delegates to its head. A marker is placed where the edge it replaces was
 written, so `next: Node` keeps the property's key position, not `Node`'s. Alias edges are resolved before recursion marking
-so a shared alias container is not corrupted. Recursive walks use the parse's
+so a shared alias container is not corrupted. A cycle reached through aliases
+closes on the first shape along the alias chain that the walk is inside: with
+`Chain: Link`, `next: Chain` under `Link` is headed by `Link`, never by the
+anonymous copy, which has no address. Recursive walks use the parse's
 shared depth limit.
 
 Marking runs even when a declaration fails to flatten, before P9 reports the

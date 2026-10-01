@@ -492,6 +492,15 @@ class TestRecursionMarking:
         items = types['Node'].shape.properties['kids'].base.shape.items
         assert isinstance(items.shape, RecursiveShape)
 
+    def test_a_cycle_through_a_chain_of_aliases_closes_on_the_declaration(self, workspace):
+        # `next?: Chain` is an alias of `Chain`, itself an alias of `Link`, and
+        # only `Link` is on the stack. Following one alias edge misses it, and
+        # the cycle closes on the anonymous copy, a head nothing can address.
+        _raml, types = unwrapped(workspace, '  Link:\n    properties:\n      next?: Chain\n  Chain: Link\n')
+        marker = types['Link'].shape.properties['next'].base
+        assert isinstance(marker.shape, RecursiveShape)
+        assert marker.shape.head is types['Link']
+
     def test_a_diamond_is_not_a_cycle(self, workspace):
         # Two paths to one shape is not recursion; only a path back to an
         # ancestor is.

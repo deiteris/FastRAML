@@ -556,13 +556,18 @@ def _finish(raml: Raml, base: BaseShape, depth: int, max_depth: int, unions: lis
     """
     if base._visiting:  # noqa: SLF001 - unwrap and this pass co-own the flag
         return _make_recursive(raml, base, base)
-    if base.alias is not None and base.alias._visiting:  # noqa: SLF001 - see above
-        # A bare reference is an alias, so what stands here is a *copy* of the
-        # referent rather than the referent itself, and the cycle would
-        # otherwise close one level further in with the copy as its head. The
-        # cycle a reader means is the one back to the referent, so follow the
-        # alias edge `alias_to` left in place and mark against that.
-        return _make_recursive(raml, base.alias, base)
+    # A bare reference is an alias, so what stands here is a *copy* of the
+    # referent rather than the referent itself, and the cycle would otherwise
+    # close one level further in with the copy as its head. The cycle a reader
+    # means is the one back to the referent, so follow the alias edges
+    # `alias_to` left in place and mark against the one being walked. The whole
+    # chain: `next: Chain` under `Link`, with `Chain: Link`, reaches `Link`
+    # through `Chain`, which is not itself on the stack.
+    referent = base.alias
+    while referent is not None and not referent._visiting:  # noqa: SLF001 - see above
+        referent = referent.alias
+    if referent is not None:
+        return _make_recursive(raml, referent, base)
     if depth > max_depth:
         raise RamlError.new(
             'type nesting too deep',

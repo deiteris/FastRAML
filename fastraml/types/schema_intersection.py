@@ -1,0 +1,639 @@
+"""Order-independent JSON Schema conjunction for the RAML projection (docs/10 § 7).
+
+Source schemas retain their resolvers until child declarations are projected.
+No input schema, cached projection, or RAML inheritance rule is changed here.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+from fractions import Fraction
+from math import ceil, floor, gcd, isfinite, lcm
+from typing import TYPE_CHECKING, Any, Final
+from urllib.parse import urldefrag, urljoin
+
+from jsonschema import (
+    Draft4Validator,
+    Draft6Validator,
+    Draft7Validator,
+    Draft201909Validator,
+    Draft202012Validator,
+    FormatChecker,
+)
+from jsonschema.validators import validator_for
+
+from fastraml.errors import ErrorKind, RamlError
+from fastraml.types.base import BaseShape, Property, ScalarFacet
+from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from fastraml.types.jsonschema_ import (
+    _KEYWORD_TYPE,
+    JsonShape,
+    _attach,
+    _data,
+    _document_of,
+    _kind,
+    _pattern_facet,
+    _project,
+    _specification_of,
+    _unsupported,
+    _view_base,
+)
+from fastraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
+from fastraml.types.values import EnumValues, as_fraction
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from fastraml.types.jsonschema_ import _Projection, _Visiting
+
+type _Part = tuple[_Projection, dict[str, Any]]
+type _Source = tuple[_Projection, Any]
+type _ScopeKey = tuple[int, str | None]
+type _CompositeKey = frozenset[tuple[str | None, str]]
+
+
+@dataclass(slots=True, eq=False)
+class _Intersection:
+    visiting: _Visiting
+    strict: bool = True
+    built: dict[_CompositeKey, BaseShape] = field(default_factory=dict)
+    active: set[_CompositeKey] = field(default_factory=set)
+    checked: set[_ScopeKey] = field(default_factory=set)
+
+
+_UNSUPPORTED: Final = frozenset(
+    {
+        '$dynamicRef',
+        '$recursiveRef',
+        'not',
+        'if',
+        'then',
+        'else',
+        'oneOf',
+        'anyOf',
+        'patternProperties',
+        'propertyNames',
+        'dependencies',
+        'dependentSchemas',
+        'dependentRequired',
+        'contains',
+        'minContains',
+        'maxContains',
+        'additionalItems',
+        'unevaluatedItems',
+        'unevaluatedProperties',
+        'format',
+        'prefixItems',
+    }
+)
+_ACTIVE: Final = {
+    'draft-04': frozenset(Draft4Validator.VALIDATORS) | {'exclusiveMinimum', 'exclusiveMaximum'},
+    'draft-06': frozenset(Draft6Validator.VALIDATORS),
+    'draft-07': frozenset(Draft7Validator.VALIDATORS) | {'then', 'else'},
+    'draft2019-09': frozenset(Draft201909Validator.VALIDATORS) | {'then', 'else', 'minContains', 'maxContains'},
+    'draft2020-12': frozenset(Draft202012Validator.VALIDATORS) | {'then', 'else', 'minContains', 'maxContains'},
+}
+_VALIDATORS: Final = {
+    'draft-04': Draft4Validator,
+    'draft-06': Draft6Validator,
+    'draft-07': Draft7Validator,
+    'draft2019-09': Draft201909Validator,
+    'draft2020-12': Draft202012Validator,
+}
+_KNOWN: Final = frozenset().union(*_ACTIVE.values())
+_CONDITIONAL: Final = _KEYWORD_TYPE | {
+    'dependentRequired': 'object',
+    'dependentSchemas': 'object',
+    'unevaluatedProperties': 'object',
+    'minContains': 'array',
+    'maxContains': 'array',
+    'unevaluatedItems': 'array',
+    'prefixItems': 'array',
+}
+
+
+class _EmptyIntersection(Exception):  # noqa: N818 - an internal signal, caught at the projection boundary
+    __slots__ = ()
+
+
+class _JsonEnumValues(EnumValues):
+    """Use JSON Schema equality on projected enums, not RAML value equality."""
+
+    __slots__ = ('_json_keys',)
+
+    def __init__(self, members: list[Any]) -> None:
+        super().__init__(members)
+        self._json_keys = {_json_key(member.raw) for member in members}
+
+    def contains(self, value: Any) -> bool:
+        return _json_key(value) in self._json_keys
+
+
+def intersect(
+    context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting, *, strict: bool = True
+) -> BaseShape:
+    try:
+        return _intersect(context, [(context, contents)], base, _Intersection(visiting, strict), len(visiting))
+    except _EmptyIntersection:
+        if context.allow_empty:
+            raise
+        raise _unsupported(context, 'unsatisfiable allOf') from None
+
+
+def _depth(context: _Projection, depth: int) -> None:
+    if depth > context.parent._raml.max_depth:  # noqa: SLF001 - the projection shares the parse's ceiling
+        raise RamlError.new(
+            'JSON schema nesting too deep',
+            context.parent.location,
+            context.parent.value_pos,
+            kind=ErrorKind.RESOLVING,
+            info={'limit': context.parent._raml.max_depth},  # noqa: SLF001
+        )
+
+
+def _effective_specification(context: _Projection, contents: dict[str, Any]) -> tuple[Any, Any]:
+    assert isinstance(context.parent.shape, JsonShape)  # noqa: S101 - entered by the JSON Schema projection
+    # A JSON Pointer entry's selected schema need not repeat its document's
+    # $schema. The compiled validator, not that selected body, owns the draft.
+    root_spec = _specification_of(type(context.parent.shape.validator).META_SCHEMA)
+    if '$schema' in contents:
+        return _specification_of(contents), root_spec
+    resource = context.resolver._registry.get(_document_of(context.resolver) or '')  # noqa: SLF001
+    if resource is not None and isinstance(resource.contents, dict) and '$schema' in resource.contents:
+        return resource._specification, root_spec  # noqa: SLF001 - referencing exposes no specification query
+    return root_spec, root_spec
+
+
+def ref_siblings_apply(context: _Projection, contents: dict[str, Any]) -> bool:
+    specification, _ = _effective_specification(context, contents)
+    return specification.name not in {'draft-04', 'draft-06', 'draft-07'} and bool(
+        contents.keys() & (_KNOWN - {'$ref'})
+    )
+
+
+def _parts(  # noqa: PLR0912 - refs, draft-specific siblings, and nested conjunctions
+    context: _Projection, contents: Any, active: set[_ScopeKey], done: set[_ScopeKey], depth: int
+) -> Iterator[_Part]:
+    """Flatten conjunctions and references, keeping each leaf's resolution scope."""
+    _depth(context, depth)
+    if contents is False:
+        raise _EmptyIntersection
+    if contents is True:
+        return
+    key = id(contents), _document_of(context.resolver)
+    if key in active:
+        raise _unsupported(context, 'recursive allOf member')
+    if key in done:
+        return
+    active.add(key)
+    try:
+        from referencing.jsonschema import DRAFT4, DRAFT6, DRAFT7  # noqa: PLC0415 - JSON Schema only
+
+        specification, root_spec = _effective_specification(context, contents)
+        subresource = specification.create_resource(contents)
+        if subresource.id() is not None:
+            context = context.at(context.resolver.in_subresource(subresource), context.pointer)
+        reference = contents.get('$ref')
+        if isinstance(reference, str):
+            if specification != root_spec and len(contents.keys() - {'$schema', '$id', '$ref', 'id'}) > 0:
+                # jsonschema.descend selects applicable $ref siblings with the
+                # enclosing validator class before evolving to the new draft.
+                raise _unsupported(context, 'allOf mixed-draft $ref siblings')
+            resolved = context.resolver.lookup(reference)
+            _, pointer = urldefrag(urljoin(_document_of(context.resolver) or '', reference))
+            yield from _parts(context.at(resolved.resolver, pointer), resolved.contents, active, done, depth + 1)
+            # Draft 4/6/7 ignore siblings of $ref; newer drafts apply them.
+            if specification in (DRAFT4, DRAFT6, DRAFT7):
+                return
+        keywords = _ACTIVE.get(specification.name)
+        siblings = {
+            key: value
+            for key, value in contents.items()
+            if key not in {'allOf', '$ref'} and (keywords is None or key not in _KNOWN or key in keywords)
+        }
+        if 'if' not in contents:
+            siblings.pop('then', None)
+            siblings.pop('else', None)
+        if 'contains' not in contents:
+            siblings.pop('minContains', None)
+            siblings.pop('maxContains', None)
+        if not isinstance(contents.get('items'), list):
+            siblings.pop('additionalItems', None)
+        if siblings.keys() & _KNOWN:
+            yield context, siblings
+        for index, member in enumerate(contents.get('allOf', ()) if keywords is None or 'allOf' in keywords else ()):
+            yield from _parts(context.into('allOf', str(index)), member, active, done, depth + 1)
+    finally:
+        active.remove(key)
+        done.add(key)
+
+
+def _types(parts: list[_Part]) -> list[str]:
+    allowed: set[str] | None = None
+    order: list[str] = []
+    for _, contents in parts:
+        declared = contents.get('type')
+        if declared is None:
+            continue
+        written = declared if isinstance(declared, list) else [declared]
+        if allowed is None:
+            order = list(written)
+        names = set(written)
+        if 'number' in names:
+            names.add('integer')
+        allowed = names if allowed is None else allowed & names
+    if allowed is None:
+        return _inferred_types(parts)
+    if not allowed:
+        raise _EmptyIntersection
+    if 'number' in allowed:
+        allowed.discard('integer')
+    result: dict[str, None] = {}
+    for name in order:
+        if name in allowed:
+            result[name] = None
+        elif name == 'number' and 'integer' in allowed:
+            result['integer'] = None
+    return list(result)
+
+
+def _inferred_types(parts: list[_Part]) -> list[str]:
+    values = _finite_values(parts)
+    if values is not None:
+        names = dict.fromkeys(_value_type(value) for value in values)
+        if 'number' in names:
+            names.pop('integer', None)
+        return list(names)
+    hinted = {_CONDITIONAL[key] for _, contents in parts for key in contents if key in _CONDITIONAL}
+    if any(contents.get('format') in FormatChecker.checkers for _, contents in parts):
+        hinted.add('string')
+    if len(hinted) > 1:
+        raise _unsupported(parts[0][0], 'allOf constraints on multiple inferred types')
+    return list(hinted) or ['any']
+
+
+def _intersect(
+    context: _Projection, sources: list[_Source], base: BaseShape, state: _Intersection, depth: int
+) -> BaseShape:
+    _depth(context, depth)
+    done: set[_ScopeKey] = set()
+    parts = [part for scope, schema in sources for part in _parts(scope, schema, set(), done, depth)]
+    key = frozenset((_document_of(scope.resolver), scope.pointer) for scope, _ in parts)
+    previous = state.built.get(key)
+    if previous is not None:
+        if key in state.active:
+            return _kind(_view_base(context), 'recursive', RecursiveShape, head=previous)
+        return previous
+    state.built[key] = base
+    state.active.add(key)
+    try:
+        return _build(context, parts, base, state, depth)
+    except BaseException:
+        del state.built[key]
+        raise
+    finally:
+        state.active.remove(key)
+
+
+def _build(context: _Projection, parts: list[_Part], base: BaseShape, state: _Intersection, depth: int) -> BaseShape:
+    names = _types(parts)
+    if len(names) == 1:
+        _body(context, parts, names[0], base, state, depth)
+    else:
+        members = []
+        for name in names:
+            member = _view_base(context)
+            try:
+                _body(context, parts, name, member, state, depth)
+                _enum(member, parts, name)
+            except _EmptyIntersection:
+                continue
+            members.append(member)
+        if not members:
+            raise _EmptyIntersection
+        _kind(base, 'union', UnionShape, any_of=members)
+    _enum(base, parts, names[0] if len(names) == 1 else 'union')
+    return base
+
+
+def _body(  # noqa: PLR0913, PLR0917 - the selected kind and recursion state
+    context: _Projection, parts: list[_Part], name: str, base: BaseShape, state: _Intersection, depth: int
+) -> None:
+    if state.strict:
+        _check_keywords(parts, name)
+    if name == 'object':
+        _object(context, parts, base, state, depth)
+    elif name == 'array':
+        _array(context, parts, base, state, depth)
+    elif name in {'number', 'integer'}:
+        _number(context, parts, name, base)
+    elif name == 'string':
+        shape = StringShape(base)
+        shape.min_length, shape.max_length = _bounds(base, parts, 'minLength', 'maxLength')
+        patterns = {contents['pattern'] for _, contents in parts if 'pattern' in contents}
+        if len(patterns) > 1:
+            raise _unsupported(context, 'allOf with multiple patterns')
+        if patterns:
+            shape.pattern = _pattern_facet(base, patterns.pop())
+            if shape.pattern is None and state.strict:
+                raise _unsupported(context, 'allOf pattern')
+        _attach(base, name, shape)
+    elif name == 'any':
+        _kind(base, name, AnyShape)
+    elif name == 'boolean':
+        _kind(base, name, BooleanShape)
+    elif name == 'null':
+        _kind(base, 'nil', NilShape)
+    else:
+        raise _unsupported(context, f'type: {name}')
+
+
+def _check_keywords(parts: list[_Part], name: str) -> None:
+    for scope, contents in parts:
+        for key in contents:
+            if key not in _UNSUPPORTED:
+                continue
+            if key == 'format' and (name != 'string' or contents[key] not in FormatChecker.checkers):
+                continue
+            applies = _CONDITIONAL.get(key)
+            if applies is not None and applies != name and not (applies == 'number' and name == 'integer'):
+                continue
+            raise _unsupported(scope, f'allOf keyword: {key}')
+
+
+def _bounds(
+    base: BaseShape, parts: list[_Part], low: str, high: str
+) -> tuple[ScalarFacet[int] | None, ScalarFacet[int] | None]:
+    lows = [_count(scope, contents[low], low) for scope, contents in parts if low in contents]
+    highs = [_count(scope, contents[high], high) for scope, contents in parts if high in contents]
+    minimum, maximum = max(lows, default=0), min(highs, default=None)
+    if maximum is not None and minimum > maximum:
+        raise _EmptyIntersection
+    return (
+        ScalarFacet(value=minimum, location=base.location) if lows else None,
+        ScalarFacet(value=maximum, location=base.location) if maximum is not None else None,
+    )
+
+
+def _count(context: _Projection, value: Any, keyword: str) -> int:
+    # The entry schema is checked, but a referenced document need not be. JSON
+    # Schema accepts integral JSON numbers such as 1.0; RAML count facets are int.
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or (isinstance(value, float) and not isfinite(value))
+        or int(value) != value
+        or value < 0
+    ):
+        raise _unsupported(context, f'allOf invalid {keyword}')
+    return int(value)
+
+
+def _numeric_bound(parts: list[_Part], keyword: str) -> tuple[Fraction, bool] | None:
+    exclusive = 'exclusive' + keyword.title()
+    bounds = []
+    for context, contents in parts:
+        if keyword in contents:
+            bounds.append((_fraction(context, contents[keyword]), contents.get(exclusive) is True))
+        value = contents.get(exclusive)
+        if value is not None and not isinstance(value, bool):
+            bounds.append((_fraction(context, value), True))
+    if not bounds:
+        return None
+    return max(bounds) if keyword == 'minimum' else min(bounds, key=lambda bound: (bound[0], not bound[1]))
+
+
+def _fraction(context: _Projection, value: Any) -> Fraction:
+    number = as_fraction(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+    if number is None:
+        raise _unsupported(context, 'allOf invalid numeric facet')
+    return number
+
+
+def _number(  # noqa: PLR0912 - per-kind bounds and exact multiples share their consistency check
+    context: _Projection, parts: list[_Part], name: str, base: BaseShape
+) -> None:
+    low, high = _numeric_bound(parts, 'minimum'), _numeric_bound(parts, 'maximum')
+    if low and high and (low[0] > high[0] or (low[0] == high[0] and (low[1] or high[1]))):
+        raise _EmptyIntersection
+    if name == 'integer':
+        minimum = Fraction(floor(low[0]) + 1 if low[1] else ceil(low[0])) if low else None
+        maximum = Fraction(ceil(high[0]) - 1 if high[1] else floor(high[0])) if high else None
+        shape: IntegerShape | NumberShape = IntegerShape(base)
+    else:
+        if (low and low[1]) or (high and high[1]):
+            raise _unsupported(context, 'allOf exclusive number bound')
+        minimum, maximum = low[0] if low else None, high[0] if high else None
+        shape = NumberShape(base)
+    if minimum is not None and maximum is not None and minimum > maximum:
+        raise _EmptyIntersection
+    if isinstance(shape, IntegerShape):
+        shape.minimum = ScalarFacet(value=int(minimum), location=base.location) if minimum is not None else None
+        shape.maximum = ScalarFacet(value=int(maximum), location=base.location) if maximum is not None else None
+    else:
+        shape.minimum = ScalarFacet(value=minimum, location=base.location) if minimum is not None else None
+        shape.maximum = ScalarFacet(value=maximum, location=base.location) if maximum is not None else None
+    multiple: Fraction | None = None
+    for scope, contents in parts:
+        if 'multipleOf' not in contents:
+            continue
+        value = as_fraction(contents['multipleOf']) if isinstance(contents['multipleOf'], int | float) else None
+        if value is None or value <= 0:
+            raise _unsupported(scope, 'allOf invalid multipleOf')
+        multiple = (
+            value
+            if multiple is None
+            else Fraction(lcm(multiple.numerator, value.numerator), gcd(multiple.denominator, value.denominator))
+        )
+    if multiple is not None:
+        if name == 'integer':
+            multiple = Fraction(multiple.numerator)
+        shape.multiple_of = ScalarFacet(value=multiple, location=base.location)
+        if minimum is not None and maximum is not None and ceil(Fraction(minimum) / multiple) * multiple > maximum:
+            raise _EmptyIntersection
+    _attach(base, name, shape)
+
+
+def _check_child(scope: _Projection, contents: Any, state: _Intersection, depth: int) -> None:
+    """Check representability before a canonical cache can bypass the source walk."""
+    _depth(scope, depth)
+    target, target_scope = contents, scope
+    if isinstance(contents, dict) and set(contents) == {'$ref'}:
+        resolved = scope.resolver.lookup(contents['$ref'])
+        target, target_scope = resolved.contents, scope.at(resolved.resolver, '')
+    key = id(target), _document_of(target_scope.resolver)
+    if key in state.checked:
+        return
+    parts = list(_parts(scope, contents, set(), set(), depth))
+    names = _types(parts)
+    for name in names:
+        _check_keywords(parts, name)
+    state.checked.add(key)
+    children: list[_Source] = []
+    for context, part in parts:
+        if 'object' in names:
+            children.extend(
+                (context.into('properties', name), child) for name, child in part.get('properties', {}).items()
+            )
+        if 'array' in names and isinstance(part.get('items'), dict | bool):
+            children.append((context.into('items'), part['items']))
+    for context, child in children:
+        try:
+            _check_child(context, child, state, depth + 1)
+        except _EmptyIntersection:
+            # The projector decides whether a contradictory descendant forbids an
+            # optional property, restricts an array to empty, or makes its parent empty.
+            continue
+
+
+def _child(context: _Projection, sources: list[_Source], state: _Intersection, depth: int) -> BaseShape:
+    _depth(context, depth + 1)
+    if len(sources) == 1:
+        scope, contents = sources[0]
+        # An unchanged child uses the ordinary projector, including its canonical
+        # reference cache and recursion heads. Only combined children get a new head.
+        if state.strict:
+            _check_child(scope, contents, state, depth + 1)
+        return _project(replace(scope, allow_empty=True), contents, state.visiting)
+    return _intersect(context, sources, _view_base(context), state, depth + 1)
+
+
+def _object(  # noqa: PLR0912 - closed members and impossible optional properties are distinct cases
+    context: _Projection, parts: list[_Part], base: BaseShape, state: _Intersection, depth: int
+) -> None:
+    required: dict[str, None] = {}
+    properties: dict[str, list[_Source]] = {}
+    allowed: set[str] | None = None
+    for scope, contents in parts:
+        extras = contents.get('additionalProperties')
+        if isinstance(extras, dict):
+            raise _unsupported(scope, 'schema-form additionalProperties')
+        declared = contents.get('properties', {})
+        if extras is False:
+            allowed = set(declared) if allowed is None else allowed & declared.keys()
+        required.update(dict.fromkeys(contents.get('required', ())))
+        for name, schema in declared.items():
+            properties.setdefault(name, []).append((scope.into('properties', name), schema))
+    if allowed is not None and not required.keys() <= allowed:
+        raise _EmptyIntersection
+    for name in required:
+        properties.setdefault(name, [])
+    built: dict[str, Property] = {}
+    for name, sources in properties.items():
+        if allowed is not None and name not in allowed:
+            continue
+        scope = context.into('properties', name)
+        try:
+            child = _child(scope, sources, state, depth) if sources else _kind(_view_base(scope), 'any', AnyShape)
+        except _EmptyIntersection:
+            if name in required:
+                raise
+            if allowed is not None:
+                continue
+            raise _unsupported(scope, 'allOf with an impossible optional property') from None
+        built[name] = Property(name=name, base=child, required=name in required)
+    shape = ObjectShape(base, properties=built or None)
+    shape.min_properties, shape.max_properties = _bounds(base, parts, 'minProperties', 'maxProperties')
+    if shape.max_properties is not None and len(required) > shape.max_properties.value:
+        raise _EmptyIntersection
+    if allowed is not None:
+        shape.additional_properties = ScalarFacet(value=False, location=base.location)
+        if shape.min_properties is not None and shape.min_properties.value > len(built):
+            raise _EmptyIntersection
+    _attach(base, 'object', shape)
+
+
+def _array(context: _Projection, parts: list[_Part], base: BaseShape, state: _Intersection, depth: int) -> None:
+    sources = [(scope.into('items'), contents['items']) for scope, contents in parts if 'items' in contents]
+    if any(isinstance(contents, list) for _, contents in sources):
+        raise _unsupported(context, 'tuple-form items')
+    shape = ArrayShape(base)
+    shape.min_items, shape.max_items = _bounds(base, parts, 'minItems', 'maxItems')
+    if sources:
+        try:
+            shape.items = _child(context.into('items'), sources, state, depth)
+        except _EmptyIntersection:
+            if shape.min_items is not None and shape.min_items.value > 0:
+                raise
+            shape.max_items = ScalarFacet(value=0, location=base.location)
+    if any(contents.get('uniqueItems') for _, contents in parts):
+        shape.unique_items = ScalarFacet(value=True, location=base.location)
+    _attach(base, 'array', shape)
+
+
+def _json_key(value: Any) -> Any:
+    """JSON equality, unlike RAML's equality, never coerces numeric strings."""
+    if isinstance(value, bool):
+        return 'boolean', value
+    if isinstance(value, str):
+        return 'string', value
+    if isinstance(value, dict):
+        return 'object', frozenset((key, _json_key(child)) for key, child in value.items())
+    if isinstance(value, list):
+        return 'array', tuple(_json_key(child) for child in value)
+    if value is None:
+        return 'null', None
+    return 'number', as_fraction(value)
+
+
+def _value_type(value: Any) -> str:
+    kind = _json_key(value)[0]
+    if kind == 'number':
+        number = as_fraction(value)
+        if number is not None and number.denominator == 1:
+            return 'integer'
+    return str(kind)
+
+
+def _finite_values(parts: list[_Part]) -> list[Any] | None:
+    constraints = [contents['enum'] for _, contents in parts if 'enum' in contents]
+    constraints += [[contents['const']] for _, contents in parts if 'const' in contents]
+    if not constraints:
+        return None
+    allowed = {_json_key(value) for value in constraints[0]}
+    for constraint in constraints[1:]:
+        allowed.intersection_update(_json_key(value) for value in constraint)
+    values = [value for value in constraints[0] if _json_key(value) in allowed]
+    if not values:
+        raise _EmptyIntersection
+    return values
+
+
+def _enum(base: BaseShape, parts: list[_Part], name: str) -> None:
+    candidates = _finite_values(parts)
+    if candidates is None:
+        base.enum = None
+        return
+    validators = [
+        validator_for(contents, default=_validator_at(scope))(
+            contents,
+            registry=scope.resolver._registry,  # noqa: SLF001 - the compiled schema's registry
+            _resolver=scope.resolver,
+            format_checker=FormatChecker(),
+        )
+        for scope, contents in parts
+    ]
+    values = []
+    for value in candidates:
+        kind = _value_type(value)
+        if name not in {'any', 'union', kind} and not (name == 'number' and kind == 'integer'):
+            continue
+        assert base.shape is not None  # noqa: S101 - constructed before intersecting enum values
+        try:
+            base.shape.validate(value, '$')
+        except RamlError:
+            continue
+        if not all(validator.is_valid(value) for validator in validators):
+            continue
+        values.append(_data(base, value))
+    if not values:
+        raise _EmptyIntersection
+    base.enum = _JsonEnumValues(values)
+
+
+def _validator_at(scope: _Projection) -> Any:
+    resource = scope.resolver._registry.get(_document_of(scope.resolver) or '')  # noqa: SLF001
+    if resource is not None and isinstance(resource.contents, dict) and '$schema' in resource.contents:
+        return _VALIDATORS.get(resource._specification.name, Draft7Validator)  # noqa: SLF001 - authored draft
+    assert isinstance(scope.parent.shape, JsonShape)  # noqa: S101 - JSON Schema projection context
+    return type(scope.parent.shape.validator)

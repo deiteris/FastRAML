@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from fractions import Fraction
+from itertools import permutations
 from typing import ClassVar
 
 import pytest
@@ -602,7 +603,7 @@ class TestProjection:
         assert shape.type == 'union'
         assert [member.type for member in shape.shape.any_of] == ['string', 'integer']
 
-    def test_all_of_merges_sequentially(self, workspace):
+    def test_all_of_intersects_object_properties(self, workspace):
         shape = project(
             workspace,
             {
@@ -678,6 +679,924 @@ class TestProjection:
             project(workspace, schema)
         assert 'JSON schema construct has no RAML equivalent' in messages(caught.value)
         assert construct in str(caught.value)
+
+
+class TestAllOfProjection:
+    """Neutral members and cached reference targets in docs/10 § 7."""
+
+    @pytest.mark.parametrize(
+        'neutral', [{}, True, {'description': 'No root constraint'}], ids=['empty', 'true', 'metadata']
+    )
+    @pytest.mark.parametrize('neutral_first', [True, False], ids=['neutral-first', 'neutral-last'])
+    def test_unconstrained_members_do_not_determine_the_result_kind(self, workspace, neutral, neutral_first):
+        concrete = {'type': 'object', 'properties': {'code': {'type': 'string', 'enum': ['X']}}}
+        members = [neutral, concrete] if neutral_first else [concrete, neutral]
+        shape = project(workspace, {'allOf': members})
+        assert shape.type == 'object'
+        assert shape.inherits == []
+        assert list(shape.shape.properties) == ['code']
+        assert shape.validate({'code': 'X'}) is None
+        assert shape.validate({'code': 'Y'}) is not None
+        assert shape.validate('X') is not None
+
+    def test_a_definitions_only_reference_is_neutral_in_the_tree(self, workspace):
+        from fastraml import build_tree
+
+        files = {
+            'api.raml': API + 'types:\n  Derived: !include derived.json\n  Base: !include base.json\n',
+            'base.json': json.dumps(
+                {
+                    '$schema': 'http://json-schema.org/draft-04/schema#',
+                    'definitions': {'error': {'type': 'object', 'properties': {'other': {'type': 'integer'}}}},
+                }
+            ),
+            'derived.json': json.dumps(
+                {
+                    '$schema': 'http://json-schema.org/draft-04/schema#',
+                    'allOf': [
+                        {'$ref': 'base.json'},
+                        {'type': 'object', 'properties': {'code': {'type': 'string', 'enum': ['X']}}},
+                    ],
+                }
+            ),
+        }
+        raml = parsed(workspace, files)
+        build_tree(raml)
+        declared = raml.types_in(raml.location)
+        derived = declared['Derived'].shape.as_shape()
+        base = declared['Base'].shape.as_shape()
+        assert derived.type == 'object'
+        assert list(derived.shape.properties) == ['code']
+        assert base.type == 'any'
+        assert derived.inherits == []
+        assert derived is not base
+        assert derived.location.endswith('/derived.json#')
+        assert base.location.endswith('/base.json#')
+        for value in ({}, {'code': 'X'}, {'code': 'Y'}, 'X', 1):
+            assert (derived.validate(value) is None) == (declared['Derived'].validate(value) is None)
+
+    @pytest.mark.parametrize('neutral_first', [True, False], ids=['enum-first', 'enum-last'])
+    def test_a_typeless_enum_still_constrains_the_result(self, workspace, neutral_first):
+        enum, concrete = {'enum': ['X']}, {'type': 'string'}
+        shape = project(workspace, {'allOf': [enum, concrete] if neutral_first else [concrete, enum]})
+        assert shape.type == 'string'
+        assert shape.validate('X') is None
+        assert shape.validate('Y') is not None
+
+    @pytest.mark.parametrize('base_first', [True, False], ids=['base-first', 'derived-first'])
+    def test_all_of_does_not_narrow_a_shared_reference_target(self, workspace, base_first):
+        declarations = ['  Base: !include base.json\n', '  Derived: !include derived.json\n']
+        if not base_first:
+            declarations.reverse()
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API + 'types:\n' + ''.join(declarations),
+                'base.json': json.dumps({'type': 'object', 'properties': {'code': {'type': 'string'}}}),
+                'derived.json': json.dumps(
+                    {
+                        'allOf': [
+                            {'$ref': 'base.json'},
+                            {'type': 'object', 'properties': {'code': {'type': 'string', 'enum': ['X']}}},
+                        ]
+                    }
+                ),
+            },
+        )
+        declared = raml.types_in(raml.location)
+        projected_shapes = {name: declaration.shape.as_shape() for name, declaration in declared.items()}
+        base, derived = projected_shapes['Base'], projected_shapes['Derived']
+        assert base is not derived
+        assert base.id != derived.id
+        assert base.name == 'base'
+        assert derived.name == 'derived'
+        assert base.location.endswith('/base.json#')
+        assert derived.location.endswith('/derived.json#')
+        assert base.shape.properties['code'].base.enum is None
+        assert base.validate({'code': 'Y'}) is None
+        assert derived.validate({'code': 'Y'}) is not None
+        assert derived.validate({'code': 'X'}) is None
+
+    def test_later_members_do_not_mutate_properties_borrowed_from_a_reference(self, workspace):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API + 'types:\n  Derived: !include derived.json\n  Base: !include base.json\n',
+                'base.json': json.dumps({'type': 'object', 'properties': {'code': {'type': 'string'}}}),
+                'derived.json': json.dumps(
+                    {
+                        'allOf': [
+                            {'type': 'object', 'properties': {'extra': {'type': 'boolean'}}},
+                            {'$ref': 'base.json'},
+                            {'type': 'object', 'properties': {'code': {'type': 'string', 'enum': ['X']}}},
+                        ]
+                    }
+                ),
+            },
+        )
+        declared = raml.types_in(raml.location)
+        derived = declared['Derived'].shape.as_shape()
+        base = declared['Base'].shape.as_shape()
+        assert list(derived.shape.properties) == ['extra', 'code']
+        assert derived.validate({'code': 'Y'}) is not None
+        assert base.shape.properties['code'].base.enum is None
+        assert base.validate({'code': 'Y'}) is None
+
+
+class TestAllOfIntersection:
+    """Conjunction is commutative, including nested declarations (docs/10 § 7)."""
+
+    @staticmethod
+    def assert_matches_schema(workspace, members, values, **siblings):
+        for ordered in permutations(members):
+            schema = {'allOf': list(ordered), **siblings}
+            raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+            declared = raml.types_in(raml.location)['T']
+            projected_shape = declared.shape.as_shape()
+            for value in values:
+                assert (projected_shape.validate(value) is None) == (declared.validate(value) is None), (ordered, value)
+
+    def test_numeric_bounds_take_the_strongest_restrictions_in_every_order(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'number', 'minimum': 0, 'maximum': 20}, {'minimum': 5}, {'maximum': 10}],
+            [-1, 0, 4, 5, 7, 10, 11, 20],
+        )
+
+    def test_sibling_constraints_participate_in_the_intersection(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'number', 'minimum': 0}, {'minimum': 5}],
+            [4, 5, 6, 7, 8],
+            maximum=7,
+            enum=[4, 5, 7, 8],
+        )
+
+    def test_numeric_multiples_are_intersected_not_replaced(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'number', 'multipleOf': 2}, {'multipleOf': 3}],
+            [0, 2, 3, 6, 12, 15],
+        )
+        shape = project(workspace, {'allOf': [{'multipleOf': 1.1}, {'multipleOf': 0.3}]})
+        assert shape.shape.multiple_of.value == Fraction(33, 10)
+        assert shape.validate(3.3) is None
+        assert shape.validate(1.1) is not None
+
+    def test_number_and_integer_intersect_as_integer_with_rounded_bounds(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'number', 'minimum': 1.2}, {'type': 'integer', 'maximum': 3.8}],
+            [1, 1.5, 2, 3, 3.5, 4],
+        )
+
+    @pytest.mark.parametrize(
+        'draft', ['http://json-schema.org/draft-04/schema#', 'http://json-schema.org/draft-07/schema#']
+    )
+    def test_exclusive_integer_bounds_use_the_declared_draft(self, workspace, draft):
+        exclusive = (
+            {'minimum': 1, 'exclusiveMinimum': True, 'maximum': 4, 'exclusiveMaximum': True}
+            if 'draft-04' in draft
+            else {'exclusiveMinimum': 1, 'exclusiveMaximum': 4}
+        )
+        self.assert_matches_schema(
+            workspace, [{'type': 'integer'}, exclusive], [0, 1, 2, 3, 4, 5], **{'$schema': draft}
+        )
+
+    def test_a_stronger_inclusive_bound_can_subsume_an_exclusive_number_bound(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'number', 'exclusiveMinimum': 0}, {'minimum': 5}],
+            [0, 1, 4, 5, 6],
+        )
+
+    def test_constraints_for_other_instance_kinds_do_not_impose_a_type(self, workspace):
+        self.assert_matches_schema(workspace, [{'type': 'string'}, {'minimum': 5}], ['', 'abc', 0, 6, None])
+
+    def test_typeless_enum_values_select_their_actual_kinds_before_conditional_constraints(self, workspace):
+        self.assert_matches_schema(workspace, [{'enum': [3, 'abc']}, {'minLength': 4}], [3, 4, 'abc', 'abcd'])
+
+    def test_type_lists_intersect_and_keep_constraints_on_each_survivor(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': ['string', 'number', 'null'], 'minLength': 2}, {'type': ['string', 'null'], 'maxLength': 3}],
+            [None, '', 'a', 'ab', 'abc', 'abcd', 1, True],
+        )
+        shape = project(workspace, {'allOf': [{'type': ['null', 'string', 'number']}, {'type': ['string', 'null']}]})
+        assert [member.type for member in shape.shape.any_of] == ['nil', 'string']
+
+    def test_enums_intersect_and_filter_values_that_fail_other_constraints(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'number', 'enum': [0, 2, 4, 6]}, {'enum': [2, 4, 6, 8]}, {'minimum': 3, 'multipleOf': 2}],
+            [0, 2, 3, 4, 6, 8],
+        )
+
+    def test_json_enum_equality_keeps_booleans_and_numeric_strings_separate(self, workspace):
+        shape = project(workspace, {'allOf': [{'enum': [1, True, '1', {'x': 1}]}, {'enum': [1.0, {'x': 1.0}]}]})
+        assert [node.raw for node in shape.enum] == [1, {'x': 1}]
+        assert shape.validate('1') is not None
+        assert shape.validate(True) is not None
+        assert shape.validate({'x': '1'}) is not None
+        assert shape.validate({'x': 1.0}) is None
+
+    def test_projected_integer_enum_uses_json_equality_without_changing_raml(self, workspace):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API
+                + 'types:\n'
+                + declaration('T', json.dumps({'allOf': [{'type': 'integer'}, {'enum': [1]}]}))
+            },
+        )
+        assert raml.types_in(raml.location)['T'].validate('1') is not None
+        shape = raml.types_in(raml.location)['T'].shape.as_shape()
+        assert shape.validate(1) is None
+        assert shape.validate(1.0) is None
+        assert shape.validate('1') is not None
+
+    def test_const_participates_in_an_enum_intersection(self, workspace):
+        self.assert_matches_schema(workspace, [{'type': 'string', 'enum': ['a', 'b']}, {'const': 'b'}], ['a', 'b', 'c'])
+
+    def test_draft_four_const_is_an_unknown_keyword(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'string'}, {'const': 'b'}],
+            ['a', 'b', 'c'],
+            **{'$schema': 'http://json-schema.org/draft-04/schema#'},
+        )
+
+    def test_required_names_and_shared_property_constraints_are_combined(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [
+                {'type': 'object', 'properties': {'x': {'type': 'number', 'minimum': 0}}, 'required': ['x']},
+                {'properties': {'x': {'minimum': 5, 'maximum': 10}}, 'required': ['y']},
+            ],
+            [{}, {'x': 6}, {'y': True}, {'x': 4, 'y': True}, {'x': 6, 'y': True}, {'x': 11, 'y': True}],
+        )
+
+    def test_closed_members_do_not_admit_properties_declared_only_elsewhere(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [
+                {'type': 'object', 'properties': {'x': {'type': 'string'}}, 'additionalProperties': False},
+                {'properties': {'y': {'type': 'number'}}},
+            ],
+            [{}, {'x': 'ok'}, {'y': 1}, {'x': 'ok', 'y': 1}, {'z': True}],
+        )
+
+    def test_two_closed_members_allow_only_their_common_property_names(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [
+                {'type': 'object', 'properties': {'x': {}, 'y': {}}, 'additionalProperties': False},
+                {'properties': {'y': {}, 'z': {}}, 'additionalProperties': False},
+            ],
+            [{}, {'x': 1}, {'y': 1}, {'z': 1}, {'x': 1, 'y': 1}],
+        )
+
+    def test_array_items_lengths_and_uniqueness_are_intersected(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [
+                {'type': 'array', 'items': {'type': 'string', 'minLength': 1}, 'minItems': 1, 'maxItems': 5},
+                {'items': {'maxLength': 2}, 'minItems': 2, 'maxItems': 3, 'uniqueItems': True},
+            ],
+            [[], ['a'], ['a', 'b'], ['a', 'a'], ['a', 'bbb'], ['a', 'b', 'c'], ['a', 'b', 'c', 'd']],
+        )
+
+    def test_single_referenced_property_preserves_type_list_constraints(self, workspace):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API
+                + 'types:\n'
+                + declaration(
+                    'T', json.dumps({'allOf': [{'type': 'object', 'properties': {'p': {'$ref': 'value.json'}}}, {}]})
+                ),
+                'value.json': json.dumps({'type': ['string', 'null'], 'minLength': 3}),
+            },
+        )
+        declared = raml.types_in(raml.location)['T']
+        projected_shape = declared.shape.as_shape()
+        for value in (None, 'a', 'abc', 1):
+            instance = {'p': value}
+            assert (projected_shape.validate(instance) is None) == (declared.validate(instance) is None), instance
+
+    @pytest.mark.parametrize(
+        'draft', ['http://json-schema.org/draft-07/schema#', 'https://json-schema.org/draft/2020-12/schema']
+    )
+    def test_single_referenced_property_applies_ref_siblings_under_the_entry_draft(self, workspace, draft):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API
+                + 'types:\n'
+                + declaration(
+                    'T',
+                    json.dumps(
+                        {
+                            '$schema': draft,
+                            'allOf': [
+                                {'type': 'object', 'properties': {'p': {'$ref': 'value.json'}}},
+                                {},
+                            ],
+                        }
+                    ),
+                ),
+                'value.json': json.dumps({'$ref': 'leaf.json', 'minimum': 5}),
+                'leaf.json': json.dumps({'type': 'number'}),
+            },
+        )
+        declared = raml.types_in(raml.location)['T']
+        shape = declared.shape.as_shape()
+        for value in (1, 5, 11):
+            instance = {'p': value}
+            assert (shape.validate(instance) is None) == (declared.validate(instance) is None), (draft, instance)
+
+    def test_mixed_draft_reference_siblings_are_not_projected_with_the_wrong_rules(self, workspace):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API
+                + 'types:\n'
+                + declaration(
+                    'T',
+                    json.dumps(
+                        {
+                            'allOf': [
+                                {'type': 'object', 'properties': {'p': {'$ref': 'value.json'}}},
+                                {},
+                            ]
+                        }
+                    ),
+                ),
+                'value.json': json.dumps(
+                    {
+                        '$schema': 'https://json-schema.org/draft/2020-12/schema',
+                        '$ref': 'leaf.json',
+                        'minimum': 5,
+                    }
+                ),
+                'leaf.json': json.dumps({'type': 'number'}),
+            },
+        )
+        declared = raml.types_in(raml.location)['T']
+        assert declared.validate({'p': 1}) is None
+        with pytest.raises(RamlError) as caught:
+            declared.shape.as_shape()
+        assert any(
+            trace.info == {'construct': 'allOf mixed-draft $ref siblings'}
+            for chain in caught.value.chains()
+            for trace in chain
+        )
+
+    def test_false_referenced_items_admit_only_an_empty_array(self, workspace):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API
+                + 'types:\n'
+                + declaration('T', json.dumps({'allOf': [{'type': 'array', 'items': {'$ref': 'false.json'}}, {}]})),
+                'false.json': 'false',
+            },
+        )
+        declared = raml.types_in(raml.location)['T']
+        shape = declared.shape.as_shape()
+        for value in ([], [1], ['a']):
+            assert (shape.validate(value) is None) == (declared.validate(value) is None)
+
+    def test_integral_json_counts_are_integer_projection_facets(self, workspace):
+        shape = project(workspace, {'allOf': [{'type': 'string', 'minLength': 1.0}, {'maxLength': 3.0}]})
+        assert type(shape.shape.min_length.value) is int
+        assert type(shape.shape.max_length.value) is int
+        assert (shape.shape.min_length.value, shape.shape.max_length.value) == (1, 3)
+
+    def test_invalid_referenced_numeric_bounds_report_a_projection_diagnostic(self, workspace):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API + 'types:\n  T: !include schema.json\n',
+                'schema.json': json.dumps({'allOf': [{'$ref': 'invalid.json'}, {}]}),
+                'invalid.json': json.dumps({'type': 'number', 'minimum': 'oops'}),
+            },
+        )
+        with pytest.raises(RamlError) as caught:
+            raml.types_in(raml.location)['T'].shape.as_shape()
+        assert any(
+            trace.message == 'JSON schema construct has no RAML equivalent'
+            and trace.info == {'construct': 'allOf invalid numeric facet'}
+            for chain in caught.value.chains()
+            for trace in chain
+        )
+
+    def test_filtered_object_enum_does_not_use_raml_integer_string_equality(self, workspace):
+        schema = {
+            'allOf': [
+                {'enum': [{'x': '1'}]},
+                {'type': 'object', 'properties': {'x': {'type': 'integer'}}},
+            ]
+        }
+        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        declared = raml.types_in(raml.location)['T']
+        assert declared.validate({'x': 1}) is not None
+        assert declared.validate({'x': '1'}) is not None
+        with pytest.raises(RamlError) as caught:
+            declared.shape.as_shape()
+        assert any(
+            trace.info == {'construct': 'unsatisfiable allOf'} for chain in caught.value.chains() for trace in chain
+        )
+
+    @pytest.mark.parametrize('member', [{'x': '1'}, {'x': 1}], ids=['numeric-string', 'number'])
+    def test_nested_enum_uses_json_equality(self, workspace, member):
+        schema = {'allOf': [{'type': 'object'}, {'enum': [member]}]}
+        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        shape = raml.types_in(raml.location)['T'].shape.as_shape()
+        assert shape.validate(member) is None
+        other = {'x': 1} if isinstance(member['x'], str) else {'x': '1'}
+        assert shape.validate(other) is not None
+
+    def test_nullable_recursive_all_of_projects_without_recursing_forever(self, workspace):
+        schema = {'allOf': [{'type': ['object', 'null'], 'properties': {'next': {'$ref': '#'}}}, {}]}
+        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        declared = raml.types_in(raml.location)['T']
+        shape = declared.shape.as_shape()
+        for value in (None, {}, {'next': None}, {'next': {}}, {'next': 1}):
+            assert (shape.validate(value) is None) == (declared.validate(value) is None)
+
+    def test_object_count_bounds_are_intersected(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'object', 'minProperties': 1, 'maxProperties': 4}, {'minProperties': 2, 'maxProperties': 3}],
+            [{}, {'a': 1}, {'a': 1, 'b': 2}, {'a': 1, 'b': 2, 'c': 3}, {'a': 1, 'b': 2, 'c': 3, 'd': 4}],
+        )
+
+    def test_nested_all_of_is_flattened_without_losing_sibling_bounds(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'number', 'allOf': [{'minimum': 0}, {'minimum': 5}]}, {'maximum': 10}],
+            [0, 4, 5, 10, 11],
+        )
+
+    def test_references_in_intersected_properties_keep_their_own_directories(self, workspace):
+        shape = project(
+            workspace,
+            {'allOf': [{'$ref': 'left/base.json'}, {'$ref': 'right/base.json'}]},
+            **{
+                'left/base.json': json.dumps({'type': 'object', 'properties': {'x': {'$ref': 'value.json'}}}),
+                'left/value.json': json.dumps({'type': 'number', 'minimum': 5}),
+                'right/base.json': json.dumps({'properties': {'x': {'$ref': 'value.json'}}}),
+                'right/value.json': json.dumps({'maximum': 10}),
+            },
+        )
+        assert shape.validate({'x': 5}) is None
+        assert shape.validate({'x': 10}) is None
+        assert shape.validate({'x': 4}) is not None
+        assert shape.validate({'x': 11}) is not None
+
+    @pytest.mark.parametrize(
+        'draft', ['http://json-schema.org/draft-07/schema#', 'https://json-schema.org/draft/2020-12/schema']
+    )
+    def test_reference_siblings_follow_the_declared_draft(self, workspace, draft):
+        shape = project(
+            workspace,
+            {'$schema': draft, 'allOf': [{'$ref': 'number.json', 'minimum': 5}, {'maximum': 10}]},
+            **{'number.json': json.dumps({'type': 'number', 'minimum': 0})},
+        )
+        assert (shape.validate(4) is None) == ('draft-07' in draft)
+        assert shape.validate(5) is None
+        assert shape.validate(11) is not None
+
+    def test_nested_ids_rebase_references_before_intersecting(self, workspace):
+        shape = project(
+            workspace,
+            {'allOf': [{'$id': 'sub/base.json', 'allOf': [{'$ref': 'value.json'}]}, {'maximum': 10}]},
+            **{'sub/value.json': json.dumps({'type': 'number', 'minimum': 5})},
+        )
+        assert shape.validate(4) is not None
+        assert shape.validate(5) is None
+        assert shape.validate(11) is not None
+
+    @pytest.mark.parametrize(
+        'schema',
+        [
+            {'type': 'string', 'minLength': 2},
+            {'type': 'number', 'minimum': 5, 'multipleOf': 2},
+            {'type': 'integer', 'minimum': 1.2, 'maximum': 3.8},
+            {'type': ['string', 'null'], 'minLength': 3},
+            {'type': 'object', 'properties': {'x': {'type': 'string'}}, 'required': ['y']},
+            {'type': 'array', 'items': {'type': 'string'}, 'maxItems': 2},
+        ],
+        ids=['string', 'number', 'integer', 'nullable', 'object', 'array'],
+    )
+    @pytest.mark.parametrize('value_first', [True, False])
+    def test_unchanged_reference_children_keep_the_cached_projection_identity(self, workspace, schema, value_first):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API + 'types:\n  Root: !include root.json\n  Value: !include value.json\n',
+                'root.json': json.dumps(
+                    {
+                        'allOf': [
+                            {'type': 'object', 'properties': {'value': {'$ref': 'value.json'}}},
+                            {'required': ['value']},
+                        ]
+                    }
+                ),
+                'value.json': json.dumps(schema),
+            },
+        )
+        declared = raml.types_in(raml.location)
+        if value_first:
+            declared['Value'].shape.as_shape()
+        root = declared['Root'].shape.as_shape()
+        assert root.shape.properties['value'].base is declared['Value'].shape.as_shape()
+        assert root.shape.properties['value'].base.location.endswith('/value.json#')
+        for value in (None, '', 'abc', 0, 1, 2, 3, 4, 6, {}, {'x': 'a', 'y': True}, [], ['a'], ['a', 'b', 'c']):
+            assert (root.validate({'value': value}) is None) == (declared['Root'].validate({'value': value}) is None)
+
+    def test_recursive_child_references_point_to_the_completed_intersection(self, workspace):
+        shape = project(
+            workspace,
+            {
+                'allOf': [
+                    {'type': 'object', 'properties': {'next': {'$ref': '#'}}},
+                    {'properties': {'code': {'type': 'string'}}, 'required': ['code']},
+                ]
+            },
+        )
+        assert shape.shape.properties['next'].base.shape.head is shape
+        assert shape.validate({'code': 'x', 'next': {'code': 'y'}}) is None
+        assert shape.validate({'code': 'x', 'next': {}}) is not None
+
+    def test_recursive_inline_children_keep_their_own_projection_head(self, workspace):
+        shape = project(
+            workspace,
+            {
+                'allOf': [
+                    {
+                        'type': 'object',
+                        'properties': {
+                            'node': {
+                                'type': 'object',
+                                'properties': {'next': {'$ref': '#/allOf/0/properties/node'}},
+                            }
+                        },
+                    },
+                    {},
+                ]
+            },
+        )
+        node = shape.shape.properties['node'].base
+        assert node.shape.properties['next'].base.shape.head is node
+
+    def test_impossible_items_leave_only_the_empty_array(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'array', 'items': {'type': 'string'}}, {'items': {'type': 'number'}}],
+            [[], ['x'], [1]],
+        )
+
+    def test_closed_objects_can_forbid_an_impossible_optional_property(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [
+                {'type': 'object', 'properties': {'x': {'type': 'string'}}, 'additionalProperties': False},
+                {'properties': {'x': {'type': 'number'}}},
+            ],
+            [{}, {'x': 'x'}, {'x': 1}],
+        )
+
+    def test_identical_patterns_and_string_lengths_are_preserved(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'string', 'pattern': '^a', 'minLength': 1}, {'pattern': '^a', 'minLength': 2, 'maxLength': 3}],
+            ['', 'a', 'ab', 'abc', 'abcd', 'ba'],
+        )
+
+    def test_unknown_keywords_and_formats_remain_annotations(self, workspace):
+        shape = project(workspace, {'allOf': [{'type': 'string'}, {'x-note': 'extension', 'format': 'custom-format'}]})
+        assert shape.validate('anything') is None
+
+    def test_keywords_from_newer_drafts_remain_annotations_in_draft_seven(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'object'}, {'dependentRequired': {'x': ['y']}, 'unevaluatedProperties': False}],
+            [{}, {'x': 1}, {'x': 1, 'y': 2}],
+        )
+
+    def test_unsupported_conditional_keywords_for_other_kinds_are_irrelevant(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'string'}, {'dependentRequired': {'x': ['y']}}],
+            ['', 'abc', {}],
+            **{'$schema': 'https://json-schema.org/draft/2020-12/schema'},
+        )
+
+    def test_contains_modifiers_without_contains_are_annotations(self, workspace):
+        self.assert_matches_schema(
+            workspace,
+            [{'type': 'array'}, {'minContains': 3, 'additionalItems': False}],
+            [[], [1], [1, 2, 3]],
+            **{'$schema': 'https://json-schema.org/draft/2019-09/schema'},
+        )
+
+    @pytest.mark.parametrize(
+        'members',
+        [
+            [{'type': 'string'}, {'type': 'number'}],
+            [{'minimum': 5}, {'maximum': 4}],
+            [{'minLength': 5}, {'maxLength': 4}],
+            [{'minItems': 2}, {'maxItems': 1}],
+            [{'enum': [True]}, {'enum': [1]}],
+            [{'enum': ['1']}, {'enum': [1]}],
+            [{'type': 'number', 'multipleOf': 3, 'minimum': 1}, {'maximum': 2}],
+            [{'type': 'object', 'additionalProperties': False}, {'required': ['x']}],
+            [False, {'type': 'string'}],
+            [{'type': 'object', 'required': ['x', 'y']}, {'maxProperties': 1}],
+            [{'type': 'object', 'properties': {'x': {}}, 'additionalProperties': False}, {'minProperties': 2}],
+            [{'type': 'integer', 'minimum': 1, 'multipleOf': 1.5}, {'maximum': 2}],
+        ],
+        ids=[
+            'kinds',
+            'numbers',
+            'strings',
+            'arrays',
+            'boolean-enum',
+            'string-enum',
+            'multiples',
+            'required',
+            'false',
+            'property-count',
+            'closed-count',
+            'integer-multiples',
+        ],
+    )
+    def test_unsatisfiable_intersections_are_projection_diagnostics_in_every_order(self, workspace, members):
+        for ordered in permutations(members):
+            with pytest.raises(RamlError) as caught:
+                project(workspace, {'allOf': list(ordered)})
+            assert any(
+                trace.message == 'JSON schema construct has no RAML equivalent'
+                and trace.info == {'construct': 'unsatisfiable allOf'}
+                for chain in caught.value.chains()
+                for trace in chain
+            )
+
+    @pytest.mark.parametrize(
+        ('members', 'construct'),
+        [
+            ([{'type': 'string', 'pattern': '^a'}, {'pattern': 'z$'}], 'allOf with multiple patterns'),
+            ([{'type': 'number'}, {'exclusiveMinimum': 0}], 'allOf exclusive number bound'),
+            (
+                [{'type': 'object'}, {'patternProperties': {'^x': {'type': 'string'}}}],
+                'allOf keyword: patternProperties',
+            ),
+            ([{'type': 'string'}, {'anyOf': [{'type': 'string'}, {'type': 'number'}]}], 'allOf keyword: anyOf'),
+            (
+                [
+                    {'type': 'object', 'properties': {'x': {'type': 'string'}}},
+                    {'properties': {'x': {'type': 'number'}}},
+                ],
+                'allOf with an impossible optional property',
+            ),
+            ([{'type': 'string'}, {'format': 'uuid'}], 'allOf keyword: format'),
+            ([{'format': 'uuid'}, {}], 'allOf keyword: format'),
+            ([{'properties': {'x': {}}}, {'minLength': 1}], 'allOf constraints on multiple inferred types'),
+            ([{'type': 'object'}, {'additionalProperties': {'type': 'string'}}], 'schema-form additionalProperties'),
+            ([{'type': 'array'}, {'items': [{'type': 'string'}]}], 'tuple-form items'),
+        ],
+    )
+    def test_unrepresentable_conjunctions_are_not_silently_weakened(self, workspace, members, construct):
+        for ordered in permutations(members):
+            with pytest.raises(RamlError) as caught:
+                project(workspace, {'allOf': list(ordered)})
+            assert any(
+                trace.message == 'JSON schema construct has no RAML equivalent'
+                and trace.info == {'construct': construct}
+                for chain in caught.value.chains()
+                for trace in chain
+            )
+
+    @pytest.mark.parametrize(
+        ('draft', 'member', 'keyword'),
+        [
+            ('2020-12', {'prefixItems': [{'type': 'string'}]}, 'prefixItems'),
+            ('2020-12', {'$dynamicRef': '#/$defs/value'}, '$dynamicRef'),
+            ('2019-09', {'$recursiveRef': '#/$defs/value'}, '$recursiveRef'),
+            ('2020-12', {'dependentRequired': {'x': ['y']}}, 'dependentRequired'),
+        ],
+    )
+    def test_active_newer_keywords_are_reported_instead_of_ignored(self, workspace, draft, member, keyword):
+        with pytest.raises(RamlError) as caught:
+            project(
+                workspace,
+                {
+                    '$schema': f'https://json-schema.org/draft/{draft}/schema',
+                    '$defs': {'value': {'type': 'number'}},
+                    'allOf': [member],
+                },
+            )
+        assert any(
+            trace.message == 'JSON schema construct has no RAML equivalent'
+            and trace.info == {'construct': f'allOf keyword: {keyword}'}
+            for chain in caught.value.chains()
+            for trace in chain
+        )
+
+
+class TestAllOfReferenceGraphs:
+    """Conjunctions preserve scoped graph identity and recursion (docs/10 § 7)."""
+
+    def test_a_draft_four_pointer_entry_keeps_its_compiled_draft(self, workspace):
+        schema = {
+            '$schema': 'http://json-schema.org/draft-04/schema#',
+            'definitions': {
+                'Value': {'type': 'integer', 'minimum': 0},
+                'T': {'allOf': [{'$ref': '#/definitions/Value', 'minimum': 5}, {'maximum': 10}]},
+            },
+        }
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API + 'types:\n  T: !include schema.json#/definitions/T\n',
+                'schema.json': json.dumps(schema),
+            },
+        )
+        declared = raml.types_in(raml.location)['T']
+        shape = declared.shape.as_shape()
+        for value in (-1, 0, 4, 5, 10, 11):
+            assert (shape.validate(value) is None) == (declared.validate(value) is None)
+        assert shape.validate(4) is None
+
+    @pytest.mark.parametrize('value_first', [True, False])
+    def test_a_cached_child_cannot_hide_an_unrepresentable_nested_restriction(self, workspace, value_first):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API + 'types:\n  T: !include root.json\n  Value: !include value.json\n',
+                'root.json': json.dumps(
+                    {
+                        'allOf': [
+                            {'type': 'object', 'properties': {'value': {'$ref': 'value.json'}}},
+                            {},
+                        ]
+                    }
+                ),
+                'value.json': json.dumps(
+                    {'type': 'object', 'properties': {'code': {'type': 'string', 'format': 'uuid'}}}
+                ),
+            },
+        )
+        declared = raml.types_in(raml.location)
+        if value_first:
+            declared['Value'].shape.as_shape()
+        with pytest.raises(RamlError) as caught:
+            declared['T'].shape.as_shape()
+        assert any(
+            trace.message == 'JSON schema construct has no RAML equivalent'
+            and trace.info == {'construct': 'allOf keyword: format'}
+            for chain in caught.value.chains()
+            for trace in chain
+        )
+
+    @pytest.mark.parametrize('site', ['member', 'property', 'items'])
+    def test_external_recursive_children_do_not_inherit_the_outer_intersection(self, workspace, site):
+        node = {'type': 'object', 'properties': {'next': {'$ref': '#'}}}
+        if site == 'member':
+            schema = {'allOf': [{'$ref': 'node.json'}, {'required': ['code']}]}
+            values = [{'code': 'x'}, {'code': 'x', 'next': {}}, {'code': 'x', 'next': 1}, {}]
+        elif site == 'property':
+            schema = {'allOf': [{'type': 'object', 'properties': {'node': {'$ref': 'node.json'}}}, {}]}
+            values = [{}, {'node': {}}, {'node': {'next': {}}}, {'node': {'next': 1}}]
+        else:
+            schema = {'allOf': [{'type': 'array', 'items': {'$ref': 'node.json'}}, {}]}
+            values = [[], [{}], [{'next': {}}], [{'next': 1}]]
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API + 'types:\n  T: !include root.json\n  Node: !include node.json\n',
+                'root.json': json.dumps(schema),
+                'node.json': json.dumps(node),
+            },
+        )
+        declared = raml.types_in(raml.location)
+        shape = declared['T'].shape.as_shape()
+        target = declared['Node'].shape.as_shape()
+        assert target.shape.properties['next'].base.shape.head is target
+        child = (
+            shape.shape.properties['next'].base
+            if site == 'member'
+            else shape.shape.properties['node'].base
+            if site == 'property'
+            else shape.shape.items
+        )
+        assert child is target
+        for value in values:
+            assert (shape.validate(value) is None) == (declared['T'].validate(value) is None)
+        build_graph(raml)
+
+    def test_an_intersected_inline_child_keeps_references_to_its_original_declaration(self, workspace):
+        schema = {
+            'allOf': [
+                {
+                    'type': 'object',
+                    'properties': {
+                        'node': {
+                            'type': 'object',
+                            'properties': {'next': {'$ref': '#/allOf/0/properties/node'}},
+                        }
+                    },
+                },
+                {'properties': {'node': {'required': ['code']}}},
+            ]
+        }
+        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        declared = raml.types_in(raml.location)['T']
+        shape = declared.shape.as_shape()
+        composite = shape.shape.properties['node'].base
+        original = composite.shape.properties['next'].base
+        assert original is not composite
+        assert original.shape.properties['next'].base.shape.head is original
+        for value in ({'node': {}}, {'node': {'code': 1}}, {'node': {'code': 1, 'next': {}}}):
+            assert (shape.validate(value) is None) == (declared.validate(value) is None)
+
+    def test_recursive_intersections_of_several_children_reuse_the_composite_head(self, workspace):
+        files = {
+            'api.raml': API + 'types:\n  T: !include root.json\n',
+            'root.json': json.dumps({'allOf': [{'$ref': 'left.json'}, {'$ref': 'right.json'}]}),
+        }
+        for name in ('left', 'right'):
+            files[f'{name}.json'] = json.dumps(
+                {
+                    'type': 'object',
+                    'properties': {name: {'type': 'string'}, 'next': {'$ref': '#'}},
+                    'required': [name],
+                }
+            )
+        raml = parsed(workspace, files)
+        declared = raml.types_in(raml.location)['T']
+        shape = declared.shape.as_shape()
+        assert shape.shape.properties['next'].base.shape.head is shape
+        for value in (
+            {'left': 'a', 'right': 'b'},
+            {'left': 'a', 'right': 'b', 'next': {'left': 'c', 'right': 'd'}},
+            {'left': 'a', 'right': 'b', 'next': {'left': 'c'}},
+        ):
+            assert (shape.validate(value) is None) == (declared.validate(value) is None)
+        build_graph(raml)
+
+    @pytest.mark.parametrize('levels', [8, 16, 24])
+    def test_shared_conjunctions_are_walked_linearly_not_expanded_per_path(self, workspace, monkeypatch, levels):
+        import fastraml.types.schema_intersection as module
+
+        definitions = {'n0': {'type': 'number', 'minimum': 5}}
+        for index in range(1, levels + 1):
+            definitions[f'n{index}'] = {'allOf': [{'$ref': f'#/definitions/n{index - 1}'}] * 2}
+        schema = {'definitions': definitions, 'allOf': [{'$ref': f'#/definitions/n{levels}'}, {'maximum': 10}]}
+        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        calls = []
+        original = module._parts
+
+        def counting(context, contents, *args):
+            calls.append(contents)
+            yield from original(context, contents, *args)
+
+        monkeypatch.setattr(module, '_parts', counting)
+        shape = raml.types_in(raml.location)['T'].shape.as_shape()
+        assert shape.validate(5) is None
+        assert shape.validate(4) is not None
+        assert shape.validate(11) is not None
+        assert len(calls) <= 4 * levels + 5
+
+    def test_a_reference_only_conjunction_cycle_is_a_projection_diagnostic(self, workspace):
+        schema = {
+            'definitions': {'loop': {'allOf': [{'$ref': '#/definitions/loop'}]}},
+            'allOf': [{'$ref': '#/definitions/loop'}],
+        }
+        with pytest.raises(RamlError) as caught:
+            project(workspace, schema)
+        assert any(
+            trace.message == 'JSON schema construct has no RAML equivalent'
+            and trace.info == {'construct': 'recursive allOf member'}
+            for chain in caught.value.chains()
+            for trace in chain
+        )
+
+    def test_a_cached_reference_graph_still_obeys_the_projection_depth_limit(self, workspace):
+        definitions = {'n0': {'type': 'number'}}
+        for index in range(1, 15):
+            definitions[f'n{index}'] = {'allOf': [{'$ref': f'#/definitions/n{index - 1}'}]}
+        schema = {'definitions': definitions, 'allOf': [{'$ref': '#/definitions/n14'}]}
+        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))}, max_depth=20)
+        with pytest.raises(RamlError) as caught:
+            raml.types_in(raml.location)['T'].shape.as_shape()
+        assert any(
+            trace.message == 'JSON schema nesting too deep' and trace.info == {'limit': 20}
+            for chain in caught.value.chains()
+            for trace in chain
+        )
 
 
 class TestTwoInlineSchemasStayApart:

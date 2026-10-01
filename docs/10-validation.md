@@ -184,6 +184,79 @@ view objects and must not re-enter parser passes. The projection can lose
 semantics: `oneOf` becomes a union, unsupported conditionals,
 schema-form `additionalProperties`, tuple `items`, and false schemas fail
 projection, and a schema with incompatible inferred kinds projects as `any`.
+`allOf` intersects source constraints before projection; it does not use RAML
+inheritance. Nested conjunctions, references, and sibling constraints beside
+`allOf` participate. Each referenced schema keeps its resolution scope and draft:
+drafts 4, 6, and 7 ignore `$ref` siblings; newer drafts apply them. Keyword
+recognition also follows the draft: newer keywords remain annotations in drafts
+that do not define them. The result has its own identity and containers, with
+no invented inheritance edges. Unchanged reference children retain their cached
+identity. Nothing mutates an input or uses detached cloning.
+The compiled validator supplies the entry draft, even when a JSON Pointer
+selects a subschema that does not repeat its document's `$schema` declaration.
+Mixed-draft schemas with `$ref` siblings fail projection explicitly rather than
+guessing which draft's sibling rules apply.
+
+Ordinary shapes and conjunctions share the reducers for supported type, numeric,
+enum, object, and array constraints. A cached reference therefore has the same
+restrictions whether it was first projected on its own or as a conjunction's
+child. Type-list alternatives carry their applicable constraints, including
+length bounds on a nullable string.
+Before reusing a cached child, the conjunction checks its nested declarations
+for unsupported keywords. An earlier ordinary projection cannot hide those
+restrictions.
+
+The conjunction walk visits a shared source once per intersection, retaining its
+resolution scope. It does not expand a shared reference graph into a tree.
+Recursive references to an original declaration keep that declaration's head;
+narrowing the containing object does not narrow its recursive children.
+When several recursive child declarations are intersected together, a repeated
+set of scoped constraints refers back to the composite head. Pure conjunction
+cycles without a concrete type head still fail projection. All walks obey the
+parser's depth limit.
+
+The effective restrictions are independent of member order. Declaration order
+is still retained for properties, surviving type alternatives, and enum values.
+The intersection:
+
+- intersects explicit type sets, with `integer` a subset of `number`;
+- applies type-specific keywords only to the selected instance kinds. Without
+  an explicit type, finite enum values supply their actual kinds; otherwise a
+  single inferred kind uses the existing projection policy;
+- takes the strongest minimum and maximum bounds for numbers, string lengths,
+  array lengths, and property counts;
+- combines `multipleOf` by exact rational least common multiple;
+- intersects `enum` and `const` using JSON equality, without coercing numeric
+  strings, and removes values that fail the other projected restrictions;
+- unions required-property names, including names absent from `properties`, and
+  recursively intersects shared property and array-item declarations;
+- preserves each closed object's own allowed-property set: properties forbidden
+  by any closed member stay forbidden, even if another member declares them;
+- requires `uniqueItems` if any member does, and preserves a single distinct
+  string pattern;
+- converts integer exclusive or fractional bounds to equivalent inclusive integer
+  bounds. Number bounds remain exact fractions; an exclusive number bound is
+  supported only when a stronger inclusive bound makes it redundant.
+
+A definitions-only schema, an empty schema, or `true` contributes no root
+restriction. Referring to a definitions-only document does not apply the
+definitions inside it; `$ref` must select a definition to apply its constraints.
+Detected contradictions fail projection as `unsatisfiable allOf`, not as an
+invalid JSON Schema. An impossible optional property can be omitted from a
+closed object; contradictory array items admit only the empty array when its
+length bounds allow it.
+
+Conjunctions that the projection cannot represent fail explicitly rather than
+selecting one member's restriction. These include distinct string patterns,
+effective exclusive number bounds, known string formats, `patternProperties`,
+schema-form `additionalProperties`, tuple or prefix items, `oneOf`/`anyOf`,
+conditionals, dependencies, dynamic/recursive reference keywords, unevaluated
+keywords, constraints on several inferred kinds, and an impossible optional
+property in an open object. Recursive reference-only conjunctions are refused;
+recursive child references remain supported. Unknown
+keywords and formats remain annotations. Ordinary schema instance validation
+continues to use the original compiled schema, independently of projection.
+
 `as_shape_definitions()` additionally projects unused top-level `definitions`
 and `$defs` entries and collects named references inside cached subtrees for
 document exports, without changing the cached `as_shape_defs()` result. Its
@@ -195,6 +268,6 @@ RAML type head and fails projection with a diagnostic rather than recursing.
 not mutate it.
 
 Implementation: `types/validate.py`, `types/values.py`, `types/scalars.py`,
-`types/complex_.py`, and `types/jsonschema_.py`. Tests:
+`types/complex_.py`, `types/jsonschema_.py`, and `types/schema_intersection.py`. Tests:
 `tests/unit/test_check.py`, `test_validate.py`, `test_jsonschema.py`,
 `test_depth_guard.py`, and `test_regex_engine.py`.

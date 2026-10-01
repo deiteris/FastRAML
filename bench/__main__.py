@@ -90,6 +90,7 @@ BENCHES: tuple[Bench, ...] = (
     Bench('validate', lambda root, scale: corpus.write_validate(root, type_count=_at(1000, scale))),
     Bench('jsonschema', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
     Bench('schema-export', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
+    Bench('schema-allof', lambda root, scale: corpus.write_schema_allof(root, schema_count=_at(200, scale))),
     Bench('raml-schema', lambda root, scale: corpus.write_validate(root, type_count=_at(200, scale))),
     Bench('enums', lambda root, scale: corpus.write_enums(root, family_count=_at(40, scale))),
     Bench('unions', lambda root, scale: corpus.write_unions(root, family_count=_at(60, scale))),
@@ -336,6 +337,7 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'inline-json': 'unwrap+validate',
     'annotation-targets': 'unwrap+validate',
     'schema-export': 'unwrap',
+    'schema-allof': 'unwrap+graph',
     'raml-schema': 'unwrap',
 }
 

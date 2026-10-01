@@ -64,6 +64,26 @@ def test_unused_definitions_still_export_a_library(memory_workspace):
     assert parsed.types['Unused'].validate('a') is not None
 
 
+def test_all_of_with_a_definitions_only_reference_exports_the_concrete_type(memory_workspace):
+    text = export(
+        memory_workspace,
+        {
+            'allOf': [
+                {'$ref': 'base.json'},
+                {'type': 'object', 'properties': {'code': {'type': 'string', 'enum': ['X']}}},
+            ]
+        },
+        **{'base.json': json.dumps({'definitions': {'error': {'type': 'object'}}})},
+    )
+    parsed = reparse(memory_workspace, text)
+    assert isinstance(parsed, DataTypeFragment)
+    assert parsed.shape.type == 'object'
+    assert list(parsed.shape.shape.properties) == ['code']
+    assert parsed.shape.validate({'code': 'X'}) is None
+    assert parsed.shape.validate({'code': 'Y'}) is not None
+    assert parsed.shape.validate('X') is not None
+
+
 def test_defs_are_exported_even_without_references(memory_workspace):
     text = export(
         memory_workspace,

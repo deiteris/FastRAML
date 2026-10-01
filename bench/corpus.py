@@ -35,6 +35,7 @@ __all__ = [
     'write_jsonschema',
     'write_large',
     'write_reference_namespaces',
+    'write_schema_allof',
     'write_small',
     'write_template_scopes',
     'write_templates',
@@ -724,6 +725,59 @@ def write_jsonschema(root: Path, *, schema_count: int = 200, shared_count: int =
             f'"more": {{"d{more}Name": "m"}}}}'
             for number in range(EXAMPLES_PER_SCHEMA)
         ]
+    files['lib.raml'] = '\n'.join(lines) + '\n'
+    _write(root, files)
+    return root / 'lib.raml'
+
+
+def write_schema_allof(root: Path, *, schema_count: int = 200) -> Path:
+    """Intersect bounds, enums and child declarations across independently shared refs."""
+    files = {
+        'base.json': json.dumps({'definitions': {'error': {'type': 'object'}}}),
+        'record.json': json.dumps({'type': 'object', 'properties': {'code': {'type': 'string'}}}),
+        'limit.json': json.dumps({'type': 'number', 'minimum': 5}),
+        'node.json': json.dumps({'type': 'object', 'properties': {'next': {'$ref': '#'}}}),
+    }
+    lines = [
+        '#%RAML 1.0 Library',
+        'types:',
+        '  Base: !include base.json',
+        '  Record: !include record.json',
+        '  Limit: !include limit.json',
+        '  Node: !include node.json',
+    ]
+    definitions: dict = {'required0': {'required': ['code']}}
+    for level in range(1, 9):
+        definitions[f'required{level}'] = {'allOf': [{'$ref': f'#/definitions/required{level - 1}'}] * 2}
+    for index in range(schema_count):
+        neutral = ({'$ref': 'base.json'}, {}, True)[index % 3]
+        members = [
+            {
+                'type': 'object',
+                'properties': {
+                    'extra': {'type': 'boolean'},
+                    'amount': {'type': 'number', 'minimum': 0, 'multipleOf': 2},
+                    'tags': {'type': 'array', 'items': {'type': 'string', 'minLength': 1}},
+                    'limit': {'$ref': 'limit.json'},
+                    'node': {'$ref': 'node.json'},
+                },
+            },
+            {'$ref': 'record.json'},
+            {
+                'properties': {
+                    'code': {'type': 'string', 'enum': [f'v{index}']},
+                    'amount': {'minimum': 5, 'maximum': 20, 'multipleOf': 3},
+                    'tags': {'items': {'maxLength': 4}, 'uniqueItems': True},
+                },
+                'required': ['code'],
+            },
+        ]
+        if index % 2:
+            members.reverse()
+        members.append({'$ref': '#/definitions/required8'})
+        members.insert(0 if index % 2 == 0 else len(members), neutral)
+        files[f's{index}.json'] = json.dumps({'definitions': definitions, 'allOf': members})
+        lines += [f'  S{index}:', f'    type: !include s{index}.json', f'    example: {{code: v{index}}}']
     files['lib.raml'] = '\n'.join(lines) + '\n'
     _write(root, files)
     return root / 'lib.raml'

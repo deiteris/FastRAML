@@ -30,6 +30,7 @@ WRITERS = {
     'validate': lambda root: corpus.write_validate(root, type_count=3),
     'jsonschema': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
     'schema-export': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
+    'schema-allof': lambda root: corpus.write_schema_allof(root, schema_count=6),
     'raml-schema': lambda root: corpus.write_validate(root, type_count=6),
     'enums': lambda root: corpus.write_enums(root, family_count=1),
     'unions': lambda root: corpus.write_unions(root, family_count=1),
@@ -52,6 +53,51 @@ class TestFeatureCorporaReachTheirCode:
     (docs/12 § 4). Each feature corpus pins, by counting calls, that it runs the
     code it was written for, at every size it was written to cover.
     """
+
+    @pytest.mark.parametrize('count', [6, 12])
+    def test_schema_allof_projects_every_composite_without_narrowing_shared_refs(self, tmp_path, monkeypatch, count):
+        import fastraml.types.jsonschema_ as schema_module
+        import fastraml.types.schema_intersection as intersection_module
+        from fastraml import build_graph
+
+        calls = []
+        original = schema_module._project_all_of
+
+        def counting(context, contents, base, visiting):
+            calls.append(contents['allOf'])
+            return original(context, contents, base, visiting)
+
+        monkeypatch.setattr(schema_module, '_project_all_of', counting)
+        references = []
+        original_parts = intersection_module._parts
+
+        def counting_parts(context, contents, *args):
+            if isinstance(contents, dict) and contents.get('$ref', '').startswith('#/definitions/required'):
+                references.append(contents['$ref'])
+            yield from original_parts(context, contents, *args)
+
+        monkeypatch.setattr(intersection_module, '_parts', counting_parts)
+        raml = parse_from_path(corpus.write_schema_allof(tmp_path, schema_count=count), ParseOptions(unwrap=True))
+        build_graph(raml)
+        assert len(calls) == count
+        assert len(references) == 17 * count
+        assert sum(members[0] is True or members[0] in ({}, {'$ref': 'base.json'}) for members in calls) == count // 2
+        declared = raml.types_in(raml.location)
+        for index in range(count):
+            declaration = declared[f'S{index}']
+            projection = declaration.shape.as_shape()
+            assert set(projection.shape.properties) == {'extra', 'amount', 'tags', 'code', 'limit', 'node'}
+            assert [value.raw for value in projection.shape.properties['code'].base.enum] == [f'v{index}']
+            amount = projection.shape.properties['amount'].base.shape
+            assert amount.minimum.value == 5
+            assert amount.multiple_of.value == 6
+            assert projection.shape.properties['tags'].base.shape.items.shape.max_length.value == 4
+            assert projection.shape.properties['limit'].base is declared['Limit'].shape.as_shape()
+            node = declared['Node'].shape.as_shape()
+            assert projection.shape.properties['node'].base is node
+            assert node.shape.properties['next'].base.shape.head is node
+        assert declared['Record'].shape.as_shape().shape.properties['code'].base.enum is None
+        assert declared['Base'].shape.as_shape().type == 'any'
 
     @pytest.mark.parametrize('count', [2, 4])
     def test_annotation_targets_reaches_each_restriction_and_scalar_path(self, tmp_path, monkeypatch, count):

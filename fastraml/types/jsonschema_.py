@@ -20,7 +20,6 @@ needs to build object, array and union shapes, so this module sits above
 from __future__ import annotations
 
 from dataclasses import dataclass
-from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urldefrag, urljoin
 
@@ -30,9 +29,6 @@ from fastraml.parser.facets import regex_engine
 from fastraml.types.base import (
     TYPE_ANY,
     TYPE_ARRAY,
-    TYPE_BOOLEAN,
-    TYPE_INTEGER,
-    TYPE_NIL,
     TYPE_NUMBER,
     TYPE_OBJECT,
     TYPE_RECURSIVE,
@@ -45,8 +41,7 @@ from fastraml.types.base import (
 )
 from fastraml.types.complex_ import ArrayShape, ComplexKind, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.examples import Example, Examples
-from fastraml.types.inherit import inherit
-from fastraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
+from fastraml.types.scalars import AnyShape
 from fastraml.types.values import EnumValues, index_path, key_path, rejected
 from fastraml.uris import uri_stem
 from fastraml.yamlnode import node_error
@@ -726,15 +721,17 @@ class _Projection:
     defs: dict[str, BaseShape]
     #: JSON Pointer of the subschema being walked, within `resolver`'s document.
     pointer: str = ''
+    #: A containing object/array can recover from an impossible child restriction.
+    allow_empty: bool = False
 
     def at(self, resolver: Resolver[Any], pointer: str) -> _Projection:
         """The same walk, moved into another document at `pointer`."""
-        return _Projection(self.parent, resolver, self.defs, pointer)
+        return _Projection(self.parent, resolver, self.defs, pointer, self.allow_empty)
 
     def into(self, *segments: str) -> _Projection:
         """One step deeper in the current document."""
         suffix = ''.join(f'/{escape_json_pointer_segment(segment)}' for segment in segments)
-        return _Projection(self.parent, self.resolver, self.defs, self.pointer + suffix)
+        return _Projection(self.parent, self.resolver, self.defs, self.pointer + suffix, self.allow_empty)
 
 
 def escape_json_pointer_segment(segment: str) -> str:
@@ -854,23 +851,31 @@ def _project(context: _Projection, contents: Any, visiting: _Visiting) -> BaseSh
         return _kind(_view_base(context), TYPE_ANY, AnyShape)
 
     reference = contents.get('$ref')
+    siblings_apply = False
     if isinstance(reference, str):
-        # Reference-only chains can cycle without ever opening a body. Mark
-        # these nodes too; a back-edge to one cannot yield a RAML shape head.
-        visiting[id(contents)] = None
-        try:
-            return _project_reference(context, reference, visiting)
-        finally:
-            del visiting[id(contents)]
-    if 'if' in contents:
-        raise _unsupported(context, 'if/then/else')
+        from fastraml.types.schema_intersection import ref_siblings_apply  # noqa: PLC0415 - shared draft policy
 
-    base = _decorate(_view_base(context), contents)
-    visiting[id(contents)] = base
+        siblings_apply = ref_siblings_apply(context, contents)
+    key = id(contents)
+    present, previous = key in visiting, visiting.get(key)
+    # A productive recursive target may revisit its caller's reference wrapper.
+    # Restore that frame on return; it is not owned by the nested traversal.
+    base = None if isinstance(reference, str) and not siblings_apply else _decorate(_view_base(context), contents)
+    visiting[key] = base
     try:
+        if isinstance(reference, str) and not siblings_apply:
+            return _project_reference(context, reference, visiting)
+        assert base is not None  # noqa: S101 - only reference-only frames have no type head
+        if siblings_apply:
+            return _project_all_of(context, contents, base, visiting)
+        if 'if' in contents:
+            raise _unsupported(context, 'if/then/else')
         return _project_body(context, contents, base, visiting)
     finally:
-        del visiting[id(contents)]
+        if present:
+            visiting[key] = previous
+        else:
+            del visiting[key]
 
 
 def _project_reference(context: _Projection, reference: str, visiting: _Visiting) -> BaseShape:
@@ -955,7 +960,7 @@ def _pointer_tail(reference: str) -> str | None:
 
 def _project_body(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
     if contents.get('allOf'):
-        return _project_all_of(context, contents['allOf'], base, visiting)
+        return _project_all_of(context, contents, base, visiting)
     for keyword in ('oneOf', 'anyOf'):
         # `oneOf`'s exactly-one semantics is lost. RAML's union is "at least
         # one" and there is nothing nearer; docs/10 § 7 records the loss.
@@ -964,16 +969,13 @@ def _project_body(context: _Projection, contents: dict, base: BaseShape, visitin
             return _project_union(context, keyword, members, base, visiting)
 
     declared = contents.get('type') or _inferred_type(contents)
-    if declared is None:
+    if declared is None and not contents.keys() & {'enum', 'const'}:
         return _kind(base, TYPE_ANY, AnyShape)
-    if isinstance(declared, list):
-        if len(declared) == 1:
-            return _project_type(context, str(declared[0]), contents, base, visiting)
-        # Each member carries only its type; the constraints stay on the union
-        # base, because a JSON Schema states them once for every member.
-        members = [_project_type(context, str(name), {}, _view_base(context), visiting) for name in declared]
-        return _kind(base, TYPE_UNION, UnionShape, any_of=members)
-    return _project_type(context, str(declared), contents, base, visiting)
+    if declared == 'object' and 'patternProperties' in contents:
+        return _project_object(context, contents, base, visiting)
+    from fastraml.types.schema_intersection import intersect  # noqa: PLC0415 - shared constraint reducers
+
+    return intersect(context, contents, base, visiting, strict=False)
 
 
 #: JSON Schema keywords that apply to exactly one instance type.
@@ -1031,32 +1033,18 @@ def _inferred_type(contents: dict) -> str | None:
     express — this returns `None` and the shape stays `any` rather than silently
     choosing. Losing the constraints is bad; claiming the wrong kind is worse.
 
-    Needed for `allOf`, where a member rarely repeats `"type"`: projected as
-    `any`, such a member would make `inherit` refuse the merge ("cannot inherit
-    from different type") and fail the projection of the whole schema.
+    `allOf` selects a type from the whole intersection before projecting its
+    conditional constraints (docs/10 § 7).
     """
     implied = {_KEYWORD_TYPE[keyword] for keyword in contents if keyword in _KEYWORD_TYPE}
     return implied.pop() if len(implied) == 1 else None
 
 
-def _project_all_of(context: _Projection, members: list, base: BaseShape, visiting: _Visiting) -> BaseShape:
-    """Sequential inheritance, which is the nearest thing RAML has to `allOf`."""
-    merged = _project(context.into('allOf', '0'), members[0], visiting)
-    for index, member in enumerate(members[1:], start=1):
-        merged = inherit(merged, _project(context.into('allOf', str(index)), member, visiting))
-    # The merge is a composite, not its first member: `allOf: [userFull, extra]`
-    # is neither `userFull` nor `extra`. It takes the identity of the schema that
-    # wrote the `allOf`, or it would answer to its first member's URI.
-    canonical = _subschema_uri(context, _document_of(context.resolver))
-    if canonical:
-        merged.location = canonical
-    # The wrapper's own title, description, default and enum still apply.
-    _decorate(merged, {})
-    for field_name in ('display_name', 'description', 'default', 'enum'):
-        value = getattr(base, field_name)
-        if value is not None:
-            setattr(merged, field_name, value)
-    return merged
+def _project_all_of(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
+    """Intersect source constraints rather than directional RAML inheritance."""
+    from fastraml.types.schema_intersection import intersect  # noqa: PLC0415 - used only by JSON Schema projection
+
+    return intersect(context, contents, base, visiting)
 
 
 def _project_union(
@@ -1064,40 +1052,6 @@ def _project_union(
 ) -> BaseShape:
     projected = [_project(context.into(keyword, str(i)), member, visiting) for i, member in enumerate(members)]
     return _kind(base, TYPE_UNION, UnionShape, any_of=projected)
-
-
-def _project_type(  # noqa: PLR0911 - one return per projected kind
-    context: _Projection, declared: str, contents: dict, base: BaseShape, visiting: _Visiting
-) -> BaseShape:
-    match declared:
-        case 'object':
-            return _project_object(context, contents, base, visiting)
-        case 'array':
-            return _project_array(context, contents, base, visiting)
-        case 'string':
-            shape = StringShape(base)
-            shape.min_length = _int_facet(base, contents.get('minLength'))
-            shape.max_length = _int_facet(base, contents.get('maxLength'))
-            shape.pattern = _pattern_facet(base, contents.get('pattern'))
-            return _attach(base, TYPE_STRING, shape)
-        case 'integer':
-            integer = IntegerShape(base)
-            integer.minimum = _int_facet(base, contents.get('minimum'))
-            integer.maximum = _int_facet(base, contents.get('maximum'))
-            integer.multiple_of = _fraction_facet(base, contents.get('multipleOf'))
-            return _attach(base, TYPE_INTEGER, integer)
-        case 'number':
-            number = NumberShape(base)
-            number.minimum = _fraction_facet(base, contents.get('minimum'))
-            number.maximum = _fraction_facet(base, contents.get('maximum'))
-            number.multiple_of = _fraction_facet(base, contents.get('multipleOf'))
-            return _attach(base, TYPE_NUMBER, number)
-        case 'boolean':
-            return _kind(base, TYPE_BOOLEAN, BooleanShape)
-        case 'null':
-            return _kind(base, TYPE_NIL, NilShape)
-        case _:
-            raise _unsupported(context, f'type: {declared}')
 
 
 def _project_object(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
@@ -1125,19 +1079,6 @@ def _project_object(context: _Projection, contents: dict, base: BaseShape, visit
     if isinstance(extras, bool):
         shape.additional_properties = ScalarFacet(value=extras, location=base.location)
     return _attach(base, TYPE_OBJECT, shape)
-
-
-def _project_array(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
-    items = contents.get('items')
-    if isinstance(items, list):
-        raise _unsupported(context, 'tuple-form items')
-
-    shape = ArrayShape(base, items=None if items is None else _project(context.into('items'), items, visiting))
-    shape.min_items = _int_facet(base, contents.get('minItems'))
-    shape.max_items = _int_facet(base, contents.get('maxItems'))
-    if contents.get('uniqueItems'):
-        shape.unique_items = ScalarFacet(value=True, location=base.location)
-    return _attach(base, TYPE_ARRAY, shape)
 
 
 def _decorate(base: BaseShape, contents: dict) -> BaseShape:
@@ -1178,20 +1119,6 @@ def _int_facet(base: BaseShape, value: Any) -> ScalarFacet[int] | None:
     if not isinstance(value, int) or isinstance(value, bool):
         return None
     return ScalarFacet(value=value, location=base.location)
-
-
-def _fraction_facet(base: BaseShape, value: Any) -> ScalarFacet[Fraction] | None:
-    """A bound as an exact `Fraction`, never through `float`.
-
-    `json.loads` already made a `float` of `1.1`, so the conversion goes through
-    its decimal text: `Fraction(repr(v))` recovers `11/10`, while the binary
-    ratio would not divide evenly by anything the author wrote (docs/10 § 5).
-    """
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return ScalarFacet(
-        value=Fraction(value) if isinstance(value, int) else Fraction(repr(value)), location=base.location
-    )
 
 
 def _pattern_facet(base: BaseShape, value: Any) -> ScalarFacet[re.Pattern[str]] | None:

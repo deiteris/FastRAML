@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from typing import Any
 
+    from fastraml.parser.fragments import DataTypeFragment
     from fastraml.registry import Raml
     from fastraml.types.base import DeclarationFacet, Shape
     from fastraml.yamlnode import Node
@@ -111,6 +112,15 @@ def unwrap_shapes(raml: Raml) -> None:
     for declared in (*raml.fragment_types.values(), *raml.fragment_annotations.values()):
         for name, base in declared.items():
             declared[name] = walk.done.get(base.id, base)
+
+    # A fragment owns its root outside the name indices. A union collapse can
+    # replace that root too, so its owner must expose the same effective shape
+    # as every inclusion site's parent (docs/07 § 4).
+    for fragment in raml.fragments.values():
+        if fragment.kind in ('DataType', 'AnnotationTypeDeclaration'):
+            typed = cast('DataTypeFragment', fragment)
+            if typed.shape is not None:
+                typed.shape = walk.done.get(typed.shape.id, typed.shape)
 
     # P8 bound `defined_by` to the un-flattened declaration. Left alone, P10
     # would validate annotation values against a shape with no inherited

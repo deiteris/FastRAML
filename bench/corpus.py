@@ -25,6 +25,7 @@ __all__ = [
     'UNION_WIDTHS',
     'UNIQUE_LENGTHS',
     'write_annotation_targets',
+    'write_datatype_fragments',
     'write_endpoints',
     'write_enums',
     'write_facets',
@@ -680,6 +681,49 @@ def write_inheritance(root: Path, *, family_count: int = 150) -> Path:
 
 #: Examples per schema: about what a real API with example-rich schemas holds.
 EXAMPLES_PER_SCHEMA: int = 5
+
+
+def write_datatype_fragments(root: Path, *, fragment_count: int = 200) -> Path:
+    """Shared DataType and annotation roots with colliding basenames and body uses."""
+    files = {
+        'base.raml': '#%RAML 1.0 Library\ntypes:\n  Text:\n    properties:\n      id: string\n'
+        '  Number:\n    properties:\n      id: integer\n',
+    }
+    lines = ['#%RAML 1.0', 'title: Fragment identities', 'annotationTypes:']
+    lines += [f'  tag{index}: !include annotations/{index}/tag.raml' for index in range(fragment_count)]
+    lines.append('types:')
+    for index in range(fragment_count):
+        target = f'models/{index}/user.raml'
+        files[target] = (
+            '#%RAML 1.0 DataType\ntype: object\nproperties:\n  id: integer\n  label?: string\n  tags?: string[]\n'
+        )
+        files[f'annotations/{index}/tag.raml'] = '#%RAML 1.0 AnnotationTypeDeclaration\ntype: string\n'
+        files[f'models/{index}/narrowed.raml'] = (
+            '#%RAML 1.0 DataType\nuses:\n  base: ../../base.raml\n'
+            'type: [object, base.Text | base.Number]\nproperties:\n  id: string\n'
+        )
+        lines += [
+            f'  A{index}: !include ./{target}',
+            f'  B{index}:',
+            f'    type: !include /{target}',
+            f'    (tag{index}): shared',
+            '    properties:',
+            '      extra?: string',
+            f'  C{index}: !include models/{index}/narrowed.raml',
+        ]
+    for index in range(fragment_count):
+        lines += [
+            f'/users{index}:',
+            '  get:',
+            '    responses:',
+            '      200:',
+            '        body:',
+            '          application/json:',
+            f'            type: !include models/{index}/user.raml',
+        ]
+    files['api.raml'] = '\n'.join(lines) + '\n'
+    _write(root, files)
+    return root / 'api.raml'
 
 
 def write_jsonschema(root: Path, *, schema_count: int = 200, shared_count: int = 20) -> Path:

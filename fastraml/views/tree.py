@@ -28,13 +28,12 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Final
 
 from fastraml.datanode import DataNode, ValueNode
-from fastraml.parser.fragments import DataTypeFragment
+from fastraml.facet_names import FACET_ANNOTATION_TYPES, FACET_TYPES
 from fastraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet, copyable_slots
 from fastraml.types.examples import Example, Examples
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.types.values import decimal_digits, decimal_text
-from fastraml.uris import relative_to
-from fastraml.views.walk import DEFAULT_BASE, Addresses, address, workspace_of
+from fastraml.views.walk import DEFAULT_BASE, Addresses, address, file_key, typed_declarations, workspace_of
 from fastraml.yamlnode import Node, NodeKind
 
 if TYPE_CHECKING:
@@ -115,25 +114,6 @@ def build_tree(raml: Raml, *, addresses: Addresses | None = None, base: str = DE
     return _Projector(addresses, _declared(raml)).model(raml)
 
 
-def _typed_fragment(raml: Raml) -> tuple[str, str, BaseShape] | None:
-    """The `#%RAML 1.0 DataType` entry document, if that is what was parsed.
-
-    A typed fragment is one declaration, and `fragment_types` lists it only when
-    some document's `types:` included it. As the entry point nothing lists it.
-
-    The entry point alone, because that is the only case nothing else covers.
-    An included fragment is already listed under the name that included it, and
-    the graph gives its shape an address *under* that declaration
-    (`…/types/User/inherits/user.raml`) rather than a top-level one — so adding
-    a top-level entry here would invent a declaration the graph does not have.
-    """
-    entry = raml.entry_point
-    if not isinstance(entry, DataTypeFragment) or entry.shape is None:
-        return None
-    location = entry.location
-    return location, entry.shape.name or location.rsplit('/', 1)[-1], entry.shape
-
-
 def _declared(raml: Raml) -> frozenset[int]:
     """Every shape the document declares under a name.
 
@@ -149,9 +129,7 @@ def _declared(raml: Raml) -> frozenset[int]:
         for shape in declared.values()
         if shape is not None
     ]
-    entry = _typed_fragment(raml)
-    if entry is not None:
-        named.append(entry[2])
+    named.extend(shape for _, _, _, shape in typed_declarations(raml))
     return frozenset(shape.id for shape in named)
 
 
@@ -168,16 +146,14 @@ def positions_of(raml: Raml) -> Json:
                 name: {'key': _position(base.key_pos), 'value': _position(base.value_pos)}
                 for name, base in declared.items()
             }
-    entry = _typed_fragment(raml)
-    if entry is not None:
-        uri, name, shape = entry
+    for uri, _, name, shape in typed_declarations(raml):
         out[_relative(raml, uri)] = {name: {'key': _position(shape.key_pos), 'value': _position(shape.value_pos)}}
     return out
 
 
 def _relative(raml: Raml, uri: str) -> str:
-    """A URI as a path relative to the workspace root."""
-    return relative_to(uri, workspace_of(raml))
+    """A workspace-relative local path or a full remote URI."""
+    return file_key(uri, workspace_of(raml))
 
 
 def _position(position: Position | None) -> Json:
@@ -287,7 +263,7 @@ class _Projector:
             'base': self.addresses.base,
             'entry_point': self.fragment(raml.entry_point, raml.global_secured_by),
             'types': self.types(raml),
-            'annotation_types': self.declared_shapes(raml, raml.fragment_annotations),
+            'annotation_types': self.declared_shapes(raml, raml.fragment_annotations, FACET_ANNOTATION_TYPES),
             'security_schemes': self.security_schemes(raml),
             'endpoints': {path: self.endpoint(endpoint) for path, endpoint in raml.endpoints.items()},
             'annotations': [self.annotation(extension) for extension in raml.domain_extensions],
@@ -366,14 +342,11 @@ class _Projector:
         Typed fragments are folded in under their own location: one is a
         declaration that no `types:` block need mention.
         """
-        out = self.declared_shapes(raml, raml.fragment_types)
-        entry = _typed_fragment(raml)
-        if entry is not None:
-            uri, name, shape = entry
-            out[_relative(raml, uri)] = {name: self.shape(shape)}
-        return out
+        return self.declared_shapes(raml, raml.fragment_types, FACET_TYPES)
 
-    def declared_shapes(self, raml: Raml, declarations: Mapping[str, Mapping[str, BaseShape]]) -> dict[str, Json]:
+    def declared_shapes(
+        self, raml: Raml, declarations: Mapping[str, Mapping[str, BaseShape]], key: str
+    ) -> dict[str, Json]:
         """One declaration map, by the file each entry was written in.
 
         `annotationTypes:` is a section of its own rather than a flag on a
@@ -384,6 +357,9 @@ class _Projector:
         for uri, declared in declarations.items():
             if declared:
                 out[_relative(raml, uri)] = {name: self.shape(base) for name, base in declared.items()}
+        for uri, authored_key, name, base in typed_declarations(raml):
+            if authored_key == key:
+                out[_relative(raml, uri)] = {name: self.shape(base)}
         return out
 
     # -- shapes ---------------------------------------------------------------

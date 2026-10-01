@@ -13,13 +13,16 @@ remove.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
+from urllib.parse import quote
 
 import pytest
 
 from fastraml import ParseOptions, parse_from_path
+from fastraml.types.unwrap import unwrap_shapes
 from fastraml.views.graph import build_graph
 from fastraml.views.tree import build_tree, positions_of
-from tests.unit.conftest import write_files
+from tests.unit.conftest import CountingLoader, write_files
 
 #: Exercises each of the four cross-references at once: `inherits`, an alias
 #: under an array, a recursion head, and an applied annotation.
@@ -211,13 +214,7 @@ class TestATypedFragmentIsADeclaration:
     def test_its_positions_are_projected_too(self, entry):
         assert positions_of(entry)['user.raml']['user.raml']['key'] is not None
 
-    def test_an_included_fragment_is_listed_only_where_it_was_named(self, workspace):
-        """Included under a `types:` name it is already there, under that name.
-
-        The graph addresses its shape *under* that declaration —
-        `…/types/User/inherits/user.raml` — rather than top-level, so a second
-        entry here would invent a declaration the graph does not have.
-        """
+    def test_an_included_fragment_has_its_own_canonical_declaration(self, workspace):
         root = workspace(
             {
                 'user.raml': self.FRAGMENT,
@@ -226,8 +223,266 @@ class TestATypedFragmentIsADeclaration:
         )
         raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         declared = build_tree(raml)['types']
-        assert {file: list(names) for file, names in declared.items()} == {'api.raml': ['User']}
+        assert {file: list(names) for file, names in declared.items()} == {
+            'api.raml': ['User'],
+            'user.raml': ['user.raml'],
+        }
+        fragment = declared['user.raml']['user.raml']
+        assert fragment['id'] == 'fastraml://id/user.raml#/declarations/types/user.raml'
+        assert declared['api.raml']['User']['inherits'] == [{'$ref': fragment['id']}]
         assert set(build_graph(raml).nodes) >= {addr for _, addr in references(declared)}
+
+    @pytest.mark.parametrize('order', [('A', 'B'), ('B', 'A')])
+    def test_repeated_inclusions_share_a_root_independent_of_visit_order(self, workspace, order):
+        definitions = {
+            'A': '  A: !include ./models/user.raml\n',
+            'B': '  B:\n    type: !include /models/user.raml\n    properties:\n      extra?: string\n',
+        }
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n' + ''.join(definitions[name] for name in order),
+                'models/user.raml': self.FRAGMENT,
+            }
+        )
+        loader = CountingLoader(root, workspace)
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True, file_loader=loader))
+        tree = build_tree(raml)
+        fragment = tree['types']['models/user.raml']['user.raml']
+        expected = 'fastraml://id/models%2Fuser.raml#/declarations/types/user.raml'
+        assert fragment['id'] == expected
+        assert fragment['name'] == 'user.raml'
+        declared = tree['types']['api.raml']
+        assert list(declared) == list(order)
+        assert declared['A']['inherits'] == declared['B']['inherits'] == [{'$ref': expected}]
+        assert list(declared['A']['properties']) == list(fragment['properties']) == ['id']
+        assert set(declared['B']['properties']) == {'id', 'extra'}
+        a, b = raml.entry_point.types['A'], raml.entry_point.types['B']
+        assert a.inherits[0] is b.inherits[0]
+        assert loader.counts[(root / 'models' / 'user.raml').as_uri()] == 1
+        assert 'models/user.raml' in positions_of(raml)
+        graph = build_graph(raml)
+        assert graph.nodes[expected].entity is a.inherits[0]
+        assert {edge.subject for edge in graph.into(expected, ['inherits'])} == {
+            declared['A']['id'],
+            declared['B']['id'],
+        }
+
+    def test_a_body_only_include_is_a_referenceable_type(self, workspace):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\n/users:\n  get:\n    responses:\n      200:\n'
+                '        body:\n          application/json:\n            type: !include user.raml\n',
+                'user.raml': self.FRAGMENT,
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        tree = build_tree(raml)
+        fragment = tree['types']['user.raml']['user.raml']
+        body = tree['endpoints']['/users']['operations']['get']['responses']['200']['bodies']['application/json']
+        assert body['inherits'] == [{'$ref': fragment['id']}]
+        assert list(body['properties']) == ['id']
+        assert fragment['id'] in build_graph(raml).nodes
+
+    def test_same_basename_fragments_are_qualified_by_workspace_path(self, workspace):
+        root = workspace(
+            {
+                'apis/api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n'
+                '  A: !include ../models/user.raml\n  B: !include ../external/user.raml\n',
+                'models/user.raml': self.FRAGMENT,
+                'external/user.raml': '#%RAML 1.0 DataType\ntype: string\n',
+            }
+        )
+        raml = workspace.parse(root / 'apis' / 'api.raml', ParseOptions(unwrap=True, workspace_root=root))
+        tree = build_tree(raml)
+        first = tree['types']['models/user.raml']['user.raml']
+        second = tree['types']['external/user.raml']['user.raml']
+        assert first['name'] == second['name'] == 'user.raml'
+        assert first['id'] != second['id']
+        assert first['type'] == 'object'
+        assert second['type'] == 'string'
+        assert tree['types']['apis/api.raml']['A']['inherits'] == [{'$ref': first['id']}]
+        assert tree['types']['apis/api.raml']['B']['inherits'] == [{'$ref': second['id']}]
+
+    def test_remote_fragment_identity_keeps_the_full_url_and_query(self, workspace):
+        urls = [
+            'https://one.example/types/user.raml?v=1',
+            'https://two.example/types/user.raml?v=1',
+            'https://one.example/types/user.raml?v=2',
+        ]
+
+        class Client:
+            def get(self, url):
+                assert url in urls
+                return SimpleNamespace(status_code=200, content=TestATypedFragmentIsADeclaration.FRAGMENT.encode())
+
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n'
+                + ''.join(f'  T{index}: !include {url}\n' for index, url in enumerate(urls))
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, http_client=Client()))
+        tree = build_tree(raml)
+        addresses = []
+        for index, url in enumerate(urls):
+            fragment = tree['types'][url]['user.raml']
+            expected = f'fastraml://id/{quote(url, safe="")}#/declarations/types/user.raml'
+            assert fragment['name'] == 'user.raml'
+            assert fragment['id'] == expected
+            assert tree['types']['api.raml'][f'T{index}']['inherits'] == [{'$ref': expected}]
+            assert url in positions_of(raml)
+            addresses.append(expected)
+        assert len(set(addresses)) == len(urls)
+        assert set(addresses) <= set(build_graph(raml).nodes)
+
+    @pytest.mark.parametrize('scheme', ['http', 'https'])
+    def test_remote_fragments_keep_full_urls_with_a_remote_workspace_root(self, scheme):
+        from fastraml.loaders import HTTPLoader
+        from fastraml.parser.fragments import FragmentKind, decode_fragment
+        from fastraml.registry import Raml
+        from fastraml.types.resolve import resolve_shapes
+
+        urls = [f'{scheme}://one.example/types/user.raml', f'{scheme}://two.example/types/user.raml']
+
+        class Client:
+            def get(self, url):
+                assert url in urls
+                return SimpleNamespace(status_code=200, content=TestATypedFragmentIsADeclaration.FRAGMENT.encode())
+
+        raml = Raml(loader=HTTPLoader(Client()), workspace_root_uri=f'{scheme}://one.example/types/')
+        entry_uri = f'{scheme}://one.example/api.raml'
+        source = '#%RAML 1.0\ntitle: T\ntypes:\n' + ''.join(
+            f'  T{index}: !include {url}\n' for index, url in enumerate(urls)
+        )
+        raml.entry_point = decode_fragment(raml, entry_uri, FragmentKind.API, source)
+        resolve_shapes(raml)
+        unwrap_shapes(raml)
+        tree = build_tree(raml)
+        for index, url in enumerate(urls):
+            fragment = tree['types'][url]['user.raml']
+            assert fragment['id'] == f'fastraml://id/{quote(url, safe="")}#/declarations/types/user.raml'
+            assert tree['types'][raml.location][f'T{index}']['inherits'] == [{'$ref': fragment['id']}]
+            assert url in positions_of(raml)
+        assert {tree['types'][url]['user.raml']['id'] for url in urls} <= set(build_graph(raml).nodes)
+
+    @pytest.mark.parametrize('entry_only', [False, True])
+    def test_annotation_fragments_use_the_annotation_inventory_and_address(self, workspace, entry_only):
+        root = workspace(
+            {
+                'annotation.raml': '#%RAML 1.0 AnnotationTypeDeclaration\ntype: string\nallowedTargets: TypeDeclaration\n',
+                'api.raml': '#%RAML 1.0\ntitle: T\nannotationTypes:\n  ann: !include annotation.raml\n'
+                'types:\n  T:\n    type: string\n    (ann): x\n',
+            }
+        )
+        raml = workspace.parse(root / ('annotation.raml' if entry_only else 'api.raml'), ParseOptions(unwrap=True))
+        tree = build_tree(raml)
+        fragment = tree['annotation_types']['annotation.raml']['annotation.raml']
+        unit = 'fastraml://id' if entry_only else 'fastraml://id/annotation.raml'
+        assert fragment['id'] == f'{unit}#/declarations/annotations/annotation.raml'
+        assert 'annotation.raml' not in tree['types']
+        assert fragment['id'] in build_graph(raml).nodes
+        assert positions_of(raml)['annotation.raml']['annotation.raml']['key'] is not None
+        if not entry_only:
+            assert tree['annotation_types']['api.raml']['ann']['inherits'] == [{'$ref': fragment['id']}]
+
+    def test_headerless_includes_keep_their_includers_namespace(self, workspace):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\nuses:\n  a: a.raml\n  b: b.raml\n',
+                'a.raml': '#%RAML 1.0 Library\ntypes:\n  Local: string\n  T: !include content.yaml\n',
+                'b.raml': '#%RAML 1.0 Library\ntypes:\n  Local: integer\n  T: !include content.yaml\n',
+                'content.yaml': 'type: Local\n',
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        tree = build_tree(raml)
+        assert 'content.yaml' not in tree['types']
+        first = tree['types']['a.raml']['T']['inherits'][0]
+        second = tree['types']['b.raml']['T']['inherits'][0]
+        assert '$ref' not in first
+        assert '$ref' not in second
+        assert first['id'] != second['id']
+        assert first['type'] == 'string'
+        assert second['type'] == 'integer'
+
+    def test_a_fragment_inclusion_chain_links_each_canonical_root(self, workspace):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  User: !include outer.raml\n',
+                'outer.raml': '#%RAML 1.0 DataType\ntype: !include user.raml\n',
+                'user.raml': self.FRAGMENT,
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        tree = build_tree(raml)
+        outer = tree['types']['outer.raml']['outer.raml']
+        inner = tree['types']['user.raml']['user.raml']
+        assert tree['types']['api.raml']['User']['inherits'] == [{'$ref': outer['id']}]
+        assert outer['inherits'] == [{'$ref': inner['id']}]
+        assert list(outer['properties']) == list(inner['properties']) == ['id']
+
+    def test_external_json_schema_roots_are_canonical_too(self, workspace):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  A: !include user.json\n  B: !include user.json\n',
+                'user.json': '{"type": "string", "minLength": 2}',
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        tree = build_tree(raml)
+        fragment = tree['types']['user.json']['user.json']
+        assert fragment['id'] == 'fastraml://id/user.json#/declarations/types/user.json'
+        assert fragment['projection']['min_length'] == 2
+        for name in ['A', 'B']:
+            assert tree['types']['api.raml'][name]['inherits'] == [{'$ref': fragment['id']}]
+
+    def test_recursive_fragment_content_keeps_a_resolvable_recursion_head(self, workspace):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  Node: !include node.raml\n',
+                'node.raml': '#%RAML 1.0 DataType\ntype: object\nproperties:\n  next?:\n    type: !include node.raml\n',
+            }
+        )
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        tree = build_tree(raml)
+        fragment = tree['types']['node.raml']['node.raml']
+        assert tree['types']['api.raml']['Node']['inherits'] == [{'$ref': fragment['id']}]
+        marker = fragment['properties']['next']['type']['properties']['next']['type']
+        assert marker['type'] == 'recursive'
+        ids = {address for key, address in references(tree) if key == 'id'}
+        assert marker['head']['$ref'] in ids
+        assert {address for key, address in references(tree) if key == '$ref'} <= ids
+
+    @pytest.mark.parametrize('entry_only', [False, True])
+    @pytest.mark.parametrize('kind', ['DataType', 'AnnotationTypeDeclaration'])
+    def test_a_collapsed_fragment_root_is_the_effective_declaration(self, workspace, entry_only, kind):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  A: !include user.raml\n  B: !include user.raml\n',
+                'user.raml': f'#%RAML 1.0 {kind}\nuses:\n  l: lib.raml\ntype: [object, l.Text | l.Number]\n'
+                'properties:\n  id: string\n',
+                'lib.raml': '#%RAML 1.0 Library\ntypes:\n  Text:\n    properties:\n      id: string\n'
+                '  Number:\n    properties:\n      id: integer\n',
+            }
+        )
+        raml = workspace.parse(root / ('user.raml' if entry_only else 'api.raml'))
+        owner = raml.fragments[(root / 'user.raml').as_uri()]
+        original = owner.shape
+        unwrap_shapes(raml)
+        assert owner.shape is not original, 'the union must collapse to a replacement root'
+        tree = build_tree(raml)
+        inventory = 'annotation_types' if kind == 'AnnotationTypeDeclaration' else 'types'
+        segment = 'annotations' if kind == 'AnnotationTypeDeclaration' else 'types'
+        fragment = tree[inventory]['user.raml']['user.raml']
+        unit = 'fastraml://id' if entry_only else 'fastraml://id/user.raml'
+        assert fragment['id'] == f'{unit}#/declarations/{segment}/user.raml'
+        if not entry_only:
+            for name in ['A', 'B']:
+                assert tree['types']['api.raml'][name]['inherits'] == [{'$ref': fragment['id']}]
+                assert raml.entry_point.types[name].inherits[0] is owner.shape
+        assert build_graph(raml).nodes[fragment['id']].entity is owner.shape
+        assert fragment['type'] == 'object'
+        assert list(fragment['properties']) == ['id']
 
 
 class TestAnAddressMapCanBeReused:

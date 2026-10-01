@@ -330,6 +330,12 @@ That is the one reference position where expansion shows nothing new; a
 property's `$ref` is not, because `Money`'s attributes are genuinely not
 inlined into `Book`.
 
+**An included DataType has its own page.** Its short name is the file basename,
+including the extension, and its file qualifier is a workspace-relative path or
+the full remote URI. Repeated inclusions link to that same page in the `extends`
+line. The effective attributes appear below the link once, including any local
+constraints the inclusion site adds.
+
 **Multiple supertypes stay separate links.** The `extends` line separates their
 names with commas and shows the merged attributes below. When a subtype supplies
 a custom facet, its type and declaration link come from whichever ancestor

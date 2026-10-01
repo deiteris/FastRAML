@@ -60,6 +60,9 @@ subtype. Traversals that need type structure must follow aliases.
 reaches nested declarations, and rebuilds `raml.shapes` with effective shapes.
 It is idempotent. `unwrap_shape(raml, base)` may return a replacement base,
 particularly when a union merge collapses; callers must use that return value.
+P9 refreshes both declaration-name indices and typed fragments' root pointers
+with replacement shapes, so a fragment and every inclusion site expose the same
+effective root after a collapse.
 
 All parents are unwrapped before a child. Multiple inheritance folds parents
 into a fresh shape (`fold` in `types/inherit.py`), so merges cannot mutate or

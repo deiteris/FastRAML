@@ -64,7 +64,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures twenty workloads:
+`bench/` generates deterministic corpora and measures twenty-one workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -74,6 +74,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `extensions` | the `endpoints` corpus under an Overlay and an Extension: chain load, merge, overlay check, and document provenance |
 | `validate` | declaration and example validation |
 | `jsonschema` | shared JSON Schema references, and five examples per schema validated through them |
+| `datatype-fragments` | canonical DataType and annotation fragment roots, repeated inclusions with colliding basenames, body uses, roots replaced by union collapse, and the shared graph, tree and position projections (docs/16 § 2 and § 6.1) |
 | `schema-export` | project and export each JSON Schema in the `jsonschema` corpus as a standalone RAML document |
 | `schema-allof` | project `allOf` into a graph: neutral members, numeric bounds and multiples, enums, required properties, array-item lengths and uniqueness, UUID formats intersected with length bounds, reversed member orders, cached numeric and recursive children, and diamond-shaped shared conjunction references ([10](10-validation.md) § 7) |
 | `raml-schema` | export each effective RAML type in the `validate` corpus as a JSON Schema document |
@@ -89,7 +90,8 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `inline-json` | JSON-encoded strings in examples, enums, defaults, annotations, and custom facets; one decoding step per value ([03](03-yaml-and-io.md) § 6) |
 | `annotation-targets` | included annotation restrictions, query strings and nested body declarations, literal and substituted template-root annotations, annotated substituted type names, and annotated default and discriminator scalars ([09](09-security-and-annotations.md) § B4) |
 
-The first six are general workloads. The other fourteen are feature workloads:
+The six general workloads are `small`, `large`, `endpoints`, `extensions`,
+`validate` and `jsonschema`. The other fifteen are feature workloads:
 each exists because no general workload runs the code it covers. Their reach
 tests (`tests/bench/test_corpus.py`) count calls or check bound results, and fail
 if a corpus stops reaching that code at every size it covers.
@@ -111,6 +113,9 @@ For `schema-export`, `unwrap` additionally exports each schema as RAML after
 parsing; its other configurations keep their ordinary meanings. The reach test
 guards both sides, so `parse` cannot accidentally measure the export.
 `raml-schema` does the same for effective RAML types exported as JSON Schema.
+For `datatype-fragments`, `unwrap` additionally builds the graph, tree and
+positions; the tree reuses the graph's address map. Its reach test checks that
+every shared root is projected and each inclusion references that root.
 The small corpus-validity tests run in the ordinary test suite.
 
 ```bash

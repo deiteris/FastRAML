@@ -36,7 +36,7 @@ body is what the server sent, typed. Read a key the server may leave out with
 | | |
 |---|---|
 | `client.py` | `Client` and `AuthenticatedClient`, over `httpx` |
-| `models/` | 36 declared and nested types, as `TypedDict`s and aliases |
+| `models/` | 37 declared and nested types, as `TypedDict`s and aliases |
 | `api/` | 8 operations, grouped by the first path segment |
 | `types.py` | `Unset`/`UNSET`, `Response[T]`, `File`, and the names of the date strings |
 | `errors.py` | `UnexpectedStatus` |

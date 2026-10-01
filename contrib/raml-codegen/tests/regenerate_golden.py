@@ -39,7 +39,7 @@ def main() -> None:
         for name in written:
             path = destination / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(generated.files[name], encoding='utf-8')
+            path.write_text(generated.files[name], encoding='utf-8', newline='\n')
         print(f'{target}: wrote {len(written)} files to {destination}')  # noqa: T201
 
 

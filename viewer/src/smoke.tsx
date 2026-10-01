@@ -143,6 +143,49 @@ process.stdout.write(
   }
 }
 
+// Included DataType roots have a page of their own. A shared parent link must
+// not print its attributes again in the subtype's extends line.
+{
+  const address = 'fastraml://id/models%2Fuser.raml#/declarations/types/user.raml';
+  const fragment: Shape = {
+    id: address,
+    name: 'user.raml',
+    type: 'object',
+    properties: { id: { required: true, type: { id: null, name: 'id', type: 'string' } } },
+  };
+  const included: Document = {
+    format: document.format,
+    format_version: document.format_version,
+    view: document.view,
+    base: document.base,
+    entry_point: null,
+    annotation_types: {},
+    security_schemes: {},
+    endpoints: {},
+    annotations: [],
+    types: {
+      'api.raml': {
+        A: { ...fragment, id: 'fastraml://id#/declarations/types/A', name: 'A', inherits: [{ $ref: address }] },
+        B: { ...fragment, id: 'fastraml://id#/declarations/types/B', name: 'B', inherits: [{ $ref: address }] },
+      },
+      'models/user.raml': { 'user.raml': fragment },
+    },
+  };
+  const includedIndex = new Index(Tree.of(included));
+  for (const name of ['A', 'B']) {
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={[at('types', 'api.raml', name)]}>
+        <Pages document={included} index={includedIndex} />
+      </MemoryRouter>,
+    );
+    const extendsLine = html.match(/<span class="label">extends<\/span>(.*?)<\/div>/s)?.[1] ?? '';
+    expect('INCLUDE', [
+      [`${name} links to the shared fragment page`, extendsLine.includes(`href="${includedIndex.get(address)?.href}"`) && extendsLine.includes('>user.raml</a>')],
+      [`${name} renders inherited attributes once`, (html.match(/>id<\/code>/g) ?? []).length === 1],
+    ]);
+  }
+}
+
 // A union in a multiple-inheritance list is an anonymous parent, not a second
 // union panel inside the extends line. Each effective variant inherits the
 // parents it took (docs/07 § 5), and is named by them: a tab reading `object`

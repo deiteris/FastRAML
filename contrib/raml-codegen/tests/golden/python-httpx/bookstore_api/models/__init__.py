@@ -52,6 +52,7 @@ from .homely_pet import HomelyPet
 from .homely_pet_cat import HomelyPetCat, read_homely_pet_cat
 from .homely_pet_dog import HomelyPetDog, read_homely_pet_dog
 from .invoice import Invoice, read_invoice
+from .invoice_json import InvoiceJson, read_invoice_json
 from .isbn import Isbn
 from .line import Line, read_line
 from .magazine import Magazine, read_magazine
@@ -90,6 +91,7 @@ __all__ = [
     'HomelyPetCat',
     'HomelyPetDog',
     'Invoice',
+    'InvoiceJson',
     'Isbn',
     'Line',
     'Magazine',
@@ -123,6 +125,7 @@ __all__ = [
     'read_homely_pet_cat',
     'read_homely_pet_dog',
     'read_invoice',
+    'read_invoice_json',
     'read_line',
     'read_magazine',
     'read_money',

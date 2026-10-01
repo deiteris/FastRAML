@@ -37,6 +37,7 @@ from .homely_pet import HomelyPet
 from .homely_pet_cat import HomelyPetCat
 from .homely_pet_dog import HomelyPetDog
 from .invoice import Invoice
+from .invoice_json import InvoiceJson
 from .isbn import Isbn
 from .line import Line
 from .magazine import Magazine
@@ -75,6 +76,7 @@ __all__ = [
     'HomelyPetCat',
     'HomelyPetDog',
     'Invoice',
+    'InvoiceJson',
     'Isbn',
     'Line',
     'Magazine',

@@ -15,7 +15,7 @@
       "HTTP",
       "HTTPS"
     ],
-    "description": "A worked example exercising every construct the tree carries — including\n**Markdown** in a description, which is what the RAML spec says every\n`description:` is.\n\nSee [Getting started](#) for the `{tenant}` you will need.\n",
+    "description": "A worked example exercising every construct the tree carries \u2014 including\n**Markdown** in a description, which is what the RAML spec says every\n`description:` is.\n\nSee [Getting started](#) for the `{tenant}` you will need.\n",
     "base_uri_parameters": {
       "tenant": {
         "binding": "uri",
@@ -33,7 +33,7 @@
     "documentation": [
       {
         "title": "Getting started",
-        "content": "Every request goes to your own tenant, so the first thing to settle is\nthe `{tenant}` in the base URI: it is the subdomain you were given at\nsign-up, and it is not optional.\n\n    curl https://acme.books.example.com/v2/books\n\nReads of the catalogue are open. Anything that writes needs a token —\nsee **Authentication** below.\n"
+        "content": "Every request goes to your own tenant, so the first thing to settle is\nthe `{tenant}` in the base URI: it is the subdomain you were given at\nsign-up, and it is not optional.\n\n    curl https://acme.books.example.com/v2/books\n\nReads of the catalogue are open. Anything that writes needs a token \u2014\nsee **Authentication** below.\n"
       },
       {
         "title": "Authentication",
@@ -45,7 +45,7 @@
       },
       {
         "title": "Errors",
-        "content": "Failures use the status code and nothing else — there is no error\nenvelope to parse.\n\n* `400` — the body did not match the schema on this page.\n* `401` — no token, or one that has expired.\n* `422` — the body was well-formed but matched no member of a union.\n* `500` — ours. Retry with backoff; it is safe for every method here\n  except `POST /books`, which is not idempotent.\n"
+        "content": "Failures use the status code and nothing else \u2014 there is no error\nenvelope to parse.\n\n* `400` \u2014 the body did not match the schema on this page.\n* `401` \u2014 no token, or one that has expired.\n* `422` \u2014 the body was well-formed but matched no member of a union.\n* `500` \u2014 ours. Retry with backoff; it is safe for every method here\n  except `POST /books`, which is not idempotent.\n"
       }
     ],
     "secured_by": [
@@ -1032,190 +1032,7 @@
         },
         "inherits": [
           {
-            "id": "fastraml://id#/declarations/types/Invoice/inherits/invoice.json",
-            "name": "invoice.json",
-            "type": "json",
-            "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"settled\": { \"$ref\": \"../shared/money.schema.json#/definitions/Amount\" },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n",
-            "json_schema": {
-              "$schema": "http://json-schema.org/draft-07/schema#",
-              "title": "Invoice",
-              "description": "A type declared by JSON Schema rather than by RAML.",
-              "type": "object",
-              "required": [
-                "number",
-                "total"
-              ],
-              "properties": {
-                "number": {
-                  "type": "string",
-                  "description": "The invoice number, as printed.",
-                  "pattern": "^INV-[0-9]{6}$"
-                },
-                "total": {
-                  "type": "number",
-                  "description": "The amount due, in the currency of the account.",
-                  "minimum": 0,
-                  "multipleOf": 0.01
-                },
-                "settled": {
-                  "$ref": "#/definitions/Amount"
-                },
-                "paid": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "lines": {
-                  "type": "array",
-                  "minItems": 1,
-                  "items": {
-                    "$ref": "#/definitions/line"
-                  }
-                }
-              },
-              "definitions": {
-                "line": {
-                  "type": "object",
-                  "required": [
-                    "description",
-                    "amount"
-                  ],
-                  "properties": {
-                    "description": {
-                      "type": "string"
-                    },
-                    "amount": {
-                      "type": "number"
-                    }
-                  }
-                },
-                "Amount": {
-                  "type": "object",
-                  "description": "A sum of money, in the smallest unit of its currency.",
-                  "required": [
-                    "minor",
-                    "currency"
-                  ],
-                  "properties": {
-                    "minor": {
-                      "type": "integer",
-                      "description": "Pence, cents, or the equivalent."
-                    },
-                    "currency": {
-                      "type": "string",
-                      "enum": [
-                        "USD",
-                        "EUR",
-                        "GBP"
-                      ]
-                    }
-                  }
-                }
-              }
-            },
-            "projection": {
-              "id": null,
-              "name": "invoice",
-              "type": "object",
-              "display_name": "Invoice",
-              "description": "A type declared by JSON Schema rather than by RAML.",
-              "properties": {
-                "number": {
-                  "required": true,
-                  "type": {
-                    "id": "fastraml://id/sample%2Finvoice.json#/properties/number",
-                    "name": null,
-                    "type": "string",
-                    "description": "The invoice number, as printed.",
-                    "pattern": "^INV-[0-9]{6}$"
-                  }
-                },
-                "total": {
-                  "required": true,
-                  "type": {
-                    "id": "fastraml://id/sample%2Finvoice.json#/properties/total",
-                    "name": null,
-                    "type": "number",
-                    "description": "The amount due, in the currency of the account.",
-                    "minimum": "0",
-                    "multiple_of": "0.01"
-                  }
-                },
-                "settled": {
-                  "required": false,
-                  "type": {
-                    "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount",
-                    "name": "Amount",
-                    "type": "object",
-                    "description": "A sum of money, in the smallest unit of its currency.",
-                    "properties": {
-                      "minor": {
-                        "required": true,
-                        "type": {
-                          "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/minor",
-                          "name": null,
-                          "type": "integer",
-                          "description": "Pence, cents, or the equivalent."
-                        }
-                      },
-                      "currency": {
-                        "required": true,
-                        "type": {
-                          "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/currency",
-                          "name": null,
-                          "type": "string",
-                          "enum": [
-                            "USD",
-                            "EUR",
-                            "GBP"
-                          ]
-                        }
-                      }
-                    }
-                  }
-                },
-                "paid": {
-                  "required": false,
-                  "type": {
-                    "id": "fastraml://id/sample%2Finvoice.json#/properties/paid",
-                    "name": null,
-                    "type": "boolean",
-                    "default": false
-                  }
-                },
-                "lines": {
-                  "required": false,
-                  "type": {
-                    "id": "fastraml://id/sample%2Finvoice.json#/properties/lines",
-                    "name": null,
-                    "type": "array",
-                    "items": {
-                      "id": "fastraml://id/sample%2Finvoice.json#/definitions/line",
-                      "name": "line",
-                      "type": "object",
-                      "properties": {
-                        "description": {
-                          "required": true,
-                          "type": {
-                            "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/description",
-                            "name": null,
-                            "type": "string"
-                          }
-                        },
-                        "amount": {
-                          "required": true,
-                          "type": {
-                            "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/amount",
-                            "name": null,
-                            "type": "number"
-                          }
-                        }
-                      }
-                    },
-                    "min_items": 1
-                  }
-                }
-              }
-            }
+            "$ref": "fastraml://id/sample%2Finvoice.json#/declarations/types/invoice.json"
           }
         ],
         "type_expr": "invoice.json",
@@ -1801,6 +1618,194 @@
           }
         }
       }
+    },
+    "sample/invoice.json": {
+      "invoice.json": {
+        "id": "fastraml://id/sample%2Finvoice.json#/declarations/types/invoice.json",
+        "name": "invoice.json",
+        "type": "json",
+        "type_expr": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Invoice\",\n  \"description\": \"A type declared by JSON Schema rather than by RAML.\",\n  \"type\": \"object\",\n  \"required\": [\"number\", \"total\"],\n  \"properties\": {\n    \"number\": {\n      \"type\": \"string\",\n      \"description\": \"The invoice number, as printed.\",\n      \"pattern\": \"^INV-[0-9]{6}$\"\n    },\n    \"total\": {\n      \"type\": \"number\",\n      \"description\": \"The amount due, in the currency of the account.\",\n      \"minimum\": 0,\n      \"multipleOf\": 0.01\n    },\n    \"settled\": { \"$ref\": \"../shared/money.schema.json#/definitions/Amount\" },\n    \"paid\": {\n      \"type\": \"boolean\",\n      \"default\": false\n    },\n    \"lines\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": { \"$ref\": \"#/definitions/line\" }\n    }\n  },\n  \"definitions\": {\n    \"line\": {\n      \"type\": \"object\",\n      \"required\": [\"description\", \"amount\"],\n      \"properties\": {\n        \"description\": { \"type\": \"string\" },\n        \"amount\": { \"type\": \"number\" }\n      }\n    }\n  }\n}\n",
+        "json_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "title": "Invoice",
+          "description": "A type declared by JSON Schema rather than by RAML.",
+          "type": "object",
+          "required": [
+            "number",
+            "total"
+          ],
+          "properties": {
+            "number": {
+              "type": "string",
+              "description": "The invoice number, as printed.",
+              "pattern": "^INV-[0-9]{6}$"
+            },
+            "total": {
+              "type": "number",
+              "description": "The amount due, in the currency of the account.",
+              "minimum": 0,
+              "multipleOf": 0.01
+            },
+            "settled": {
+              "$ref": "#/definitions/Amount"
+            },
+            "paid": {
+              "type": "boolean",
+              "default": false
+            },
+            "lines": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/line"
+              }
+            }
+          },
+          "definitions": {
+            "line": {
+              "type": "object",
+              "required": [
+                "description",
+                "amount"
+              ],
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "number"
+                }
+              }
+            },
+            "Amount": {
+              "type": "object",
+              "description": "A sum of money, in the smallest unit of its currency.",
+              "required": [
+                "minor",
+                "currency"
+              ],
+              "properties": {
+                "minor": {
+                  "type": "integer",
+                  "description": "Pence, cents, or the equivalent."
+                },
+                "currency": {
+                  "type": "string",
+                  "enum": [
+                    "USD",
+                    "EUR",
+                    "GBP"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "projection": {
+          "id": null,
+          "name": "invoice",
+          "type": "object",
+          "display_name": "Invoice",
+          "description": "A type declared by JSON Schema rather than by RAML.",
+          "properties": {
+            "number": {
+              "required": true,
+              "type": {
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/number",
+                "name": null,
+                "type": "string",
+                "description": "The invoice number, as printed.",
+                "pattern": "^INV-[0-9]{6}$"
+              }
+            },
+            "total": {
+              "required": true,
+              "type": {
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/total",
+                "name": null,
+                "type": "number",
+                "description": "The amount due, in the currency of the account.",
+                "minimum": "0",
+                "multiple_of": "0.01"
+              }
+            },
+            "settled": {
+              "required": false,
+              "type": {
+                "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount",
+                "name": "Amount",
+                "type": "object",
+                "description": "A sum of money, in the smallest unit of its currency.",
+                "properties": {
+                  "minor": {
+                    "required": true,
+                    "type": {
+                      "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/minor",
+                      "name": null,
+                      "type": "integer",
+                      "description": "Pence, cents, or the equivalent."
+                    }
+                  },
+                  "currency": {
+                    "required": true,
+                    "type": {
+                      "id": "fastraml://id/shared%2Fmoney.schema.json#/definitions/Amount/properties/currency",
+                      "name": null,
+                      "type": "string",
+                      "enum": [
+                        "USD",
+                        "EUR",
+                        "GBP"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "paid": {
+              "required": false,
+              "type": {
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/paid",
+                "name": null,
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "lines": {
+              "required": false,
+              "type": {
+                "id": "fastraml://id/sample%2Finvoice.json#/properties/lines",
+                "name": null,
+                "type": "array",
+                "items": {
+                  "id": "fastraml://id/sample%2Finvoice.json#/definitions/line",
+                  "name": "line",
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/description",
+                        "name": null,
+                        "type": "string"
+                      }
+                    },
+                    "amount": {
+                      "required": true,
+                      "type": {
+                        "id": "fastraml://id/sample%2Finvoice.json#/definitions/line/properties/amount",
+                        "name": null,
+                        "type": "number"
+                      }
+                    }
+                  }
+                },
+                "min_items": 1
+              }
+            }
+          }
+        }
+      }
     }
   },
   "annotation_types": {
@@ -1930,7 +1935,7 @@
                 "id": null,
                 "name": "access_token?",
                 "type": "string",
-                "description": "The same token, for callers that cannot set a header (RFC 6750 § 2.3).\nPrefer the header: a query string is logged by every proxy in between.\n",
+                "description": "The same token, for callers that cannot set a header (RFC 6750 \u00a7 2.3).\nPrefer the header: a query string is logged by every proxy in between.\n",
                 "type_expr": "string"
               }
             }
@@ -2167,7 +2172,7 @@
               }
             },
             "400": {
-              "description": "The body did not match `Book` — see the schema above. The response\ncarries no envelope; the status code is the whole of it.\n"
+              "description": "The body did not match `Book` \u2014 see the schema above. The response\ncarries no envelope; the status code is the whole of it.\n"
             }
           },
           "description": "Adds one book to the catalogue and returns it with its identifier.",

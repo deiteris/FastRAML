@@ -89,6 +89,9 @@ BENCHES: tuple[Bench, ...] = (
     Bench('extensions', lambda root, scale: corpus.write_extensions(root, resource_count=_at(500, scale))),
     Bench('validate', lambda root, scale: corpus.write_validate(root, type_count=_at(1000, scale))),
     Bench('jsonschema', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
+    Bench(
+        'datatype-fragments', lambda root, scale: corpus.write_datatype_fragments(root, fragment_count=_at(200, scale))
+    ),
     Bench('schema-export', lambda root, scale: corpus.write_jsonschema(root, schema_count=_at(200, scale))),
     Bench('schema-allof', lambda root, scale: corpus.write_schema_allof(root, schema_count=_at(200, scale))),
     Bench('raml-schema', lambda root, scale: corpus.write_validate(root, type_count=_at(200, scale))),
@@ -134,8 +137,8 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     """Measure one configuration. Runs in the subprocess, not the driver."""
     from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - see module docstring
 
-    if config == 'unwrap' and bench in {'schema-export', 'raml-schema'}:
-        return _measure_schema_export(bench, entry, repeat)
+    if config == 'unwrap' and bench in {'schema-export', 'raml-schema', 'datatype-fragments'}:
+        return _measure_view(bench, entry, repeat)
     if config == 'service':
         return _measure_edit(bench, entry, repeat)
     options = ParseOptions(
@@ -160,8 +163,19 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     return measure(bench, config, lambda: parse_from_path(entry, options), repeat=repeat)
 
 
-def _measure_schema_export(bench: str, entry: Path, repeat: int) -> Measurement:
+def _measure_view(bench: str, entry: Path, repeat: int) -> Measurement:
     from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - feature workload only
+
+    if bench == 'datatype-fragments':
+        from fastraml.views.graph import build_graph  # noqa: PLC0415 - feature workload only
+        from fastraml.views.tree import build_tree, positions_of  # noqa: PLC0415 - feature workload only
+
+        def project() -> object:
+            raml = parse_from_path(entry, ParseOptions(unwrap=True))
+            graph = build_graph(raml)
+            return graph, build_tree(raml, addresses=graph.addresses), positions_of(raml)
+
+        return measure(bench, 'unwrap', project, repeat=repeat)
 
     if bench == 'schema-export':
         from fastraml.views.raml import to_raml  # noqa: PLC0415 - feature workload only
@@ -339,6 +353,7 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'schema-export': 'unwrap',
     'schema-allof': 'unwrap+graph',
     'raml-schema': 'unwrap',
+    'datatype-fragments': 'unwrap',
 }
 
 

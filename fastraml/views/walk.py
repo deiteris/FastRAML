@@ -36,7 +36,7 @@ from fastraml.facet_names import (
     FACET_TYPES,
 )
 from fastraml.parser.directives import SecurityScheme
-from fastraml.parser.fragments import APIFragment, DataTypeFragment, Library
+from fastraml.parser.fragments import APIFragment, DataTypeFragment, FragmentKind, Library
 from fastraml.parser.security import SecuritySchemeDefinition
 from fastraml.parser.traits import TraitDefinition
 from fastraml.types.base import BaseShape
@@ -45,6 +45,8 @@ from fastraml.types.jsonschema_ import projected
 from fastraml.uris import relative_to
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from fastraml.registry import Raml
 
 
@@ -63,6 +65,24 @@ def workspace_of(raml: Raml) -> str:
     return raml.location.rsplit('/', 1)[0] + '/' if raml.location else ''
 
 
+def file_key(location: str, root: str) -> str:
+    """A workspace-relative local path or a full remote URI (docs/16 § 2)."""
+    return location if location.startswith(('http://', 'https://')) else relative_to(location, root)
+
+
+def typed_declarations(raml: Raml) -> Iterator[tuple[str, str, str, BaseShape]]:
+    """Registered type fragment roots, qualified by file and authored kind.
+
+    Literal includes are not registered fragments: their declarations depend on
+    the includer's namespace and must stay at their use sites (docs/04 § 4.1).
+    External JSON Schemas are registered DataType fragments too (docs/04 § 5).
+    """
+    for location, fragment in raml.fragments.items():
+        if isinstance(fragment, DataTypeFragment) and fragment.shape is not None:
+            key = FACET_ANNOTATION_TYPES if fragment.kind is FragmentKind.ANNOTATION_TYPE else FACET_TYPES
+            yield location, key, fragment.declared_name, fragment.shape
+
+
 if TYPE_CHECKING:
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.directives import DirectiveRef
@@ -79,6 +99,8 @@ __all__ = [
     'Sink',
     'Walk',
     'address',
+    'file_key',
+    'typed_declarations',
 ]
 
 #: The default root of every address. `fastraml://id` mirrors AMF's `amf://id`,
@@ -244,18 +266,18 @@ class Walk:
     def unit(self, location: str) -> str:
         """The IRI prefix for declarations authored in `location`.
 
-        Relative to the workspace root, so the graph does not carry the absolute
-        path of the machine that produced it.
+        Local paths are relative to the workspace root, so the graph does not
+        carry the producing machine's absolute paths. Remote URIs stay whole.
 
         Memoised: every subschema asks for its document's prefix, and
-        `relative_to` walks the path apart on each call.
+        `file_key` qualifies the location on each call.
         """
         found = self._units.get(location)
         if found is None:
             if location == self.raml.location or not location:
                 found = self.base
             else:
-                found = f'{self.base}/{self.segment(relative_to(location, self.root))}'
+                found = f'{self.base}/{self.segment(file_key(location, self.root))}'
             self._units[location] = found
         return found
 
@@ -312,6 +334,8 @@ class Walk:
         for location, declared in self.raml.fragment_annotations.items():
             for name in declared:
                 self.reserve(declared[name], self.declare(self.unit(location), 'annotations', name))
+        for location, key, name, shape in typed_declarations(self.raml):
+            self.reserve(shape, self.declare(self.unit(location), _SEGMENTS[key], name))
 
         for location, fragment in self.raml.fragments.items():
             self.fragment(location, fragment)
@@ -346,14 +370,10 @@ class Walk:
         """
         unit = self.unit(location)
         if isinstance(fragment, DataTypeFragment):
-            # The whole document is one declaration, so the file declares it.
-            # It is normally reached first as a parent of the `types:` entry
-            # that included it and already holds an IRI; the fallback names it
-            # after the file, which is what a type with no name of its own is
-            # called everywhere else.
+            # Its canonical address was reserved before any includer could
+            # reach it as a parent. The file declares that one shared root.
             if fragment.shape is not None:
-                named = fragment.shape.name or location.rsplit('/', 1)[-1]
-                self.declared(fragment.shape, self.shape(fragment.shape, self.declare(unit, 'types', named)))
+                self.declared(fragment.shape, self.shape(fragment.shape, self.iris[fragment.shape.id]))
             return
         if not isinstance(fragment, (APIFragment, Library)):
             return

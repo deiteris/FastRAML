@@ -47,6 +47,16 @@ fastraml://id#/web-api/endpoint/%2Fusers/supportedOperation/get/returns/200
 address once. Segments are percent-escaped. The workspace root supplies the
 relative unit path, so addresses do not expose an absolute filesystem path.
 
+A registered DataType fragment has one canonical declaration address under its
+own file, reserved before any inclusion site is visited. Its short name is the
+file basename, including the extension; its file qualifier is the path relative
+to the workspace root for a local file, or the full resolved HTTP(S) URI for a
+remote file. Query components in that URI are retained. For example,
+`models/User.raml` declares `User.raml` at
+`fastraml://id/models%2FUser.raml#/declarations/types/User.raml`.
+Different files may use the same short name without sharing an identity.
+Different include spellings that resolve to the same fragment share its address.
+
 An address is an address, not a replacement for model identity. Address lookup
 may be many-to-one where model entities are linked. Consumers must use the
 address supplied by a projection rather than reconstructing one.
@@ -194,6 +204,15 @@ Named declarations are referenced instead of duplicated. Anonymous structural
 content is inlined where it would otherwise have no representation. Aliases are
 transparent references to their referents. Annotation applications include their
 bound type and value at the application site.
+
+The `types` inventory includes every registered DataType fragment root, even
+when only a body or a property includes it. Each root is listed once under its
+file qualifier and short name (§ 2); inclusion sites reference it through
+`inherits` and retain their own effective constraints. An
+AnnotationTypeDeclaration root is listed in `annotation_types` and addressed
+under `declarations/annotations`. External JSON Schemas registered as DataType
+fragments follow the same rule. A headerless YAML include stays inline: it is
+literal content whose meaning depends on the includer's namespace (docs/04 § 4.1).
 
 ### 6.2 Tree wire rules
 

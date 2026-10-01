@@ -29,6 +29,7 @@ WRITERS = {
     'extensions': lambda root: corpus.write_extensions(root, resource_count=11),
     'validate': lambda root: corpus.write_validate(root, type_count=3),
     'jsonschema': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
+    'datatype-fragments': lambda root: corpus.write_datatype_fragments(root, fragment_count=3),
     'schema-export': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
     'schema-allof': lambda root: corpus.write_schema_allof(root, schema_count=6),
     'raml-schema': lambda root: corpus.write_validate(root, type_count=6),
@@ -53,6 +54,73 @@ class TestFeatureCorporaReachTheirCode:
     (docs/12 § 4). Each feature corpus pins, by counting calls, that it runs the
     code it was written for, at every size it was written to cover.
     """
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_datatype_fragments_projects_every_shared_root(self, tmp_path, monkeypatch, count):
+        import fastraml.views.graph as graph_module
+        import fastraml.views.tree as tree_module
+        from bench.__main__ import run_one
+
+        projected = []
+        graphs = []
+        positions = []
+        original = tree_module.build_tree
+        original_graph = graph_module.build_graph
+        original_positions = tree_module.positions_of
+
+        def counting_graph(raml):
+            graph = original_graph(raml)
+            graphs.append(graph)
+            return graph
+
+        def counting_positions(raml):
+            found = original_positions(raml)
+            positions.append(found)
+            return found
+
+        def counting(raml, **kwargs):
+            tree = original(raml, **kwargs)
+            projected.append(tree)
+            assert kwargs['addresses'] is graphs[-1].addresses
+            assert all(
+                root['id'] in graphs[-1].nodes
+                for file, declared in tree['types'].items()
+                if file != 'api.raml'
+                for root in declared.values()
+            )
+            return tree
+
+        monkeypatch.setattr(tree_module, 'build_tree', counting)
+        monkeypatch.setattr(graph_module, 'build_graph', counting_graph)
+        monkeypatch.setattr(tree_module, 'positions_of', counting_positions)
+        entry = corpus.write_datatype_fragments(tmp_path, fragment_count=count)
+        run_one('datatype-fragments', 'parse', entry, repeat=1)
+        assert not projected, 'parse must not time a projection'
+        assert not graphs
+        assert not positions
+        run_one('datatype-fragments', 'unwrap', entry, repeat=1)
+        assert projected
+        assert len(projected) == len(graphs) == len(positions)
+        for tree, placed in zip(projected, positions, strict=True):
+            assert len(tree['types']) == 2 * count + 2
+            assert len(tree['annotation_types']) == count + 1
+            for index in range(count):
+                fragment = tree['types'][f'models/{index}/user.raml']['user.raml']
+                expected = [{'$ref': fragment['id']}]
+                assert tree['types']['api.raml'][f'A{index}']['inherits'] == expected
+                assert tree['types']['api.raml'][f'B{index}']['inherits'] == expected
+                body = tree['endpoints'][f'/users{index}']['operations']['get']['responses']['200']['bodies'][
+                    'application/json'
+                ]
+                assert body['inherits'] == expected
+                collapsed = tree['types'][f'models/{index}/narrowed.raml']['narrowed.raml']
+                assert collapsed['type'] == 'object'
+                assert tree['types']['api.raml'][f'C{index}']['inherits'] == [{'$ref': collapsed['id']}]
+                annotation = tree['annotation_types'][f'annotations/{index}/tag.raml']['tag.raml']
+                assert tree['annotation_types']['api.raml'][f'tag{index}']['inherits'] == [{'$ref': annotation['id']}]
+                assert set(placed[f'models/{index}/user.raml']) == {'user.raml'}
+                assert set(placed[f'models/{index}/narrowed.raml']) == {'narrowed.raml'}
+                assert set(placed[f'annotations/{index}/tag.raml']) == {'tag.raml'}
 
     @pytest.mark.parametrize('count', [6, 12])
     def test_schema_allof_projects_every_composite_without_narrowing_shared_refs(self, tmp_path, monkeypatch, count):

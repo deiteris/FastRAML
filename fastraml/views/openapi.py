@@ -6,10 +6,11 @@ types, security, and inheritance by the time anything here runs.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, fields
 from fractions import Fraction
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from fastraml.gctuning import tuned_gc
 from fastraml.parser.security import (
@@ -20,6 +21,7 @@ from fastraml.parser.security import (
     TYPE_OAUTH2,
     TYPE_PASS_THROUGH,
 )
+from fastraml.types.base import BaseShape, ScalarFacet, copyable_slots
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.examples import examples_of
 from fastraml.types.jsonschema_ import JsonShape, subschema_document
@@ -47,7 +49,7 @@ if TYPE_CHECKING:
     from fastraml.parser.fragments import APIFragment
     from fastraml.parser.security import SecuritySchemeDefinition, SecuritySchemeSettings
     from fastraml.registry import Raml
-    from fastraml.types.base import BaseShape, Parameter
+    from fastraml.types.base import Parameter
 
 __all__ = [
     'OAS3XML',
@@ -85,28 +87,54 @@ _RFC2616: Final = (
 )
 _DATETIME_ONLY: Final = r'^[0-9]{4}-(?:0[0-9]|1[0-2])-(?:[0-2][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'
 
+#: What an OpenAPI component key may not contain.
+_COMPONENT_KEY: Final = re.compile(r'[^a-zA-Z0-9._-]')
+
+type _WireFields = tuple[tuple[str, str, bool, bool, bool], ...]
+
 
 @dataclass(slots=True, eq=False)
 class _OAS3Object:
     """A typed object with one ordered, non-copying wire projection."""
 
+    _wire_layout: ClassVar[_WireFields | None] = None
+
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {}
-        extensions: dict[str, Any] = {}
-        for descriptor in fields(self):
-            value = getattr(self, descriptor.name)
-            if descriptor.name == 'extensions':
-                extensions = value
+        for attr, name, required, keep_empty, keep_null in self._wire_fields():
+            value = getattr(self, attr)
+            if (
+                not required
+                and not (keep_empty and value is not None)
+                and not (keep_null and value is not _MISSING)
+                and _empty(value)
+            ):
                 continue
-            required = bool(descriptor.metadata.get('required'))
-            keep_empty = bool(descriptor.metadata.get('keep_empty')) and value is not None
-            keep_null = bool(descriptor.metadata.get('keep_null')) and value is not _MISSING
-            if not required and not keep_empty and not keep_null and _empty(value):
-                continue
-            name = str(descriptor.metadata.get('name', descriptor.name))
             result[name] = _plain(value)
-        result.update(extensions)
+        if extensions := getattr(self, 'extensions', None):
+            result.update(extensions)
         return result
+
+    @classmethod
+    def _wire_fields(cls) -> _WireFields:
+        """Read the fixed field spelling and omission policy once per record kind."""
+        # Keep primitive metadata on its owner: a caller's temporary subclass
+        # must remain collectible and must not inherit its parent's layout.
+        cached = cls._wire_layout if '_wire_layout' in cls.__dict__ else None
+        if cached is None:
+            cached = tuple(
+                (
+                    descriptor.name,
+                    str(descriptor.metadata.get('name', descriptor.name)),
+                    bool(descriptor.metadata.get('required')),
+                    bool(descriptor.metadata.get('keep_empty')),
+                    bool(descriptor.metadata.get('keep_null')),
+                )
+                for descriptor in fields(cls)
+                if descriptor.name != 'extensions'
+            )
+            cls._wire_layout = cached
+        return cached
 
 
 def _wire(
@@ -185,7 +213,9 @@ class OAS3Schema(_OAS3Object):
     format: str = ''
     enum: list[Any] = field(default_factory=list)
     properties: dict[str, OAS3Schema] = field(default_factory=dict)
-    additional_properties: bool | None = field(default=None, metadata=_wire(name='additionalProperties'))
+    additional_properties: bool | None = field(
+        default=None, metadata=_wire(name='additionalProperties', keep_empty=True)
+    )
     required: list[str] = field(default_factory=list)
     min_properties: int | None = field(default=None, metadata=_wire(name='minProperties'))
     max_properties: int | None = field(default=None, metadata=_wire(name='maxProperties'))
@@ -417,7 +447,12 @@ class _SchemaConversion:
         OpenAPI's component table is flat, so `paged` declared twice becomes
         `paged` and `roles_lib.paged` rather than one silently replacing the
         other.
+
+        OpenAPI restricts component keys to `[a-zA-Z0-9._-]`. A recursive
+        inline body is named from its property key, so `next?` becomes `next_`.
         """
+        name = _COMPONENT_KEY.sub('_', name)
+        qualifier = _COMPONENT_KEY.sub('_', qualifier)
         if name not in self.taken:
             return name
         if qualifier and f'{qualifier}.{name}' not in self.taken:
@@ -430,11 +465,21 @@ class _SchemaConversion:
     def inline(self, base: BaseShape, at: str) -> OAS3Schema:
         """One type where it is used: a `$ref` if it is named, its body if not."""
         base._assert_unwrapped()  # noqa: SLF001 - the view requires the finished model
-        # Through the alias, because `items` under `User[]` holds the alias and
-        # stopping there names `User`'s supertype instead of `User` (docs/07 § 3).
-        referent = base.alias or (base.inherits[0] if len(base.inherits) == 1 else None)
-        if referent is not None and (name := self._component(referent)):
-            schema = _subtract(self._common(base), self._common(referent))
+        referent = _referent(base)
+        # A use site can narrow facets and structural members, not just
+        # metadata. Then it is written inline with its effective schema: allOf
+        # with a closed parent can forbid newly declared fields, and a parent's
+        # patterns can constrain a new explicit field. Decided before the
+        # parent's component is built, so a narrowing leaves none unreferenced.
+        narrowed = (
+            referent is not None
+            and base.alias is None
+            and not _equivalent_kinds(base.shape, referent.shape, {(base.id, referent.id)})
+        )
+        if referent is not None and not narrowed and (name := self._component(referent)):
+            schema = self._common(base)
+            self._decorate(schema, base, at)
+            schema = _subtract(schema, self.components[name])
         elif name := self._component(base):
             # The use site *is* the named type, so it adds nothing to it: a
             # property whose type is `!include uuid.json` reaches that document.
@@ -851,23 +896,139 @@ class OpenAPIConversion:
         return flows
 
 
-#: What `_common` fills, so a use site can be asked what it adds to its supertype.
-_COMMON: Final = ('title', 'description', 'default', 'example', 'enum')
+#: Metadata and enum refinements that can safely compose with a reference.
+#: Structural constraints and members instead need the effective inline body.
+_COMMON: Final = ('title', 'description', 'default', 'example', 'enum', 'xml', 'extensions')
+#: Kind slots no schema is projected from: bookkeeping, caches, and the
+#: schema validator `raw` already determines. Skipping one wrongly could only
+#: hide a difference, so a slot missing here is compared, never ignored.
+_UNPROJECTED: Final = frozenset({'items_written', 'pending_facets', 'pending_target', 'from_mapping', 'validator'})
+#: The `xml` facets `_decorate` projects.
+_XML: Final = ('name', 'namespace', 'prefix', 'attribute', 'wrapped')
+
+
+def _referent(base: BaseShape) -> BaseShape | None:
+    """The one type `base` names, whose component a `$ref` would point at.
+
+    Through the alias, because `items` under `User[]` holds the alias and
+    stopping there names `User`'s supertype instead of `User` (docs/07 § 3).
+    """
+    return base.alias or (base.inherits[0] if len(base.inherits) == 1 else None)
+
+
+def _equivalent(left: BaseShape, right: BaseShape, seen: set[tuple[int, int]]) -> bool:
+    """Whether two member declarations project to the same schema.
+
+    Read from the model rather than from projected schemas, so the comparison
+    neither registers components nor reports losses for output it discards.
+    """
+    if left is right or (left.id, right.id) in seen:
+        # A pair already under comparison closes a cycle: equal unless some
+        # other part of the walk finds a difference.
+        return True
+    seen.add((left.id, right.id))
+    return (
+        _referent(left) is _referent(right)
+        and _schema_name(left) == _schema_name(right)
+        and _same(_metadata(left), _metadata(right))
+        and _equivalent_kinds(left.shape, right.shape, seen)
+    )
+
+
+def _equivalent_kinds(left: Any, right: Any, seen: set[tuple[int, int]]) -> bool:
+    """Whether two kinds carry the same constraints and equivalent members.
+
+    Read off `__slots__` like `clone`, so a facet added to a kind is compared
+    without this function being edited (docs/07 § 6).
+    """
+    if type(left) is not type(right):
+        return False
+    for slot in copyable_slots(type(left)):
+        mine, theirs = getattr(left, slot), getattr(right, slot)
+        if mine is theirs or slot in _UNPROJECTED or slot.startswith('_'):
+            continue
+        if isinstance(mine, BaseShape) and isinstance(theirs, BaseShape):
+            same = _equivalent(mine, theirs, seen)
+        elif slot in {'properties', 'pattern_properties'}:
+            # Ordered: output order, and the first matching pattern wins.
+            mine, theirs = list((mine or {}).items()), list((theirs or {}).items())
+            same = len(mine) == len(theirs) and all(
+                name == other
+                and getattr(prop, 'required', None) == getattr(match, 'required', None)
+                and _equivalent(prop.base, match.base, seen)
+                for (name, prop), (other, match) in zip(mine, theirs, strict=True)
+            )
+        elif slot == 'any_of':
+            mine, theirs = mine or [], theirs or []
+            same = len(mine) == len(theirs) and all(_equivalent(a, b, seen) for a, b in zip(mine, theirs, strict=True))
+        else:
+            same = _same(_facet_data(mine), _facet_data(theirs))
+        if not same:
+            return False
+    return True
+
+
+def _facet_data(value: Any) -> Any:
+    """A facet's value, through lists of facets such as `fileTypes`."""
+    if isinstance(value, ScalarFacet):
+        return value.value
+    if isinstance(value, list):
+        return [_facet_data(item) for item in value]
+    return value
+
+
+def _metadata(base: BaseShape) -> list[Any]:
+    """What `_common` and `_decorate` project from a declaration, as plain data."""
+    xml = base.xml
+    return [
+        _value(base.display_name),
+        _value(base.description),
+        base.default.raw if base.default is not None else _MISSING,
+        _examples(base)[:1],
+        [member.raw for member in base.enum or ()],
+        None if xml is None else [_value(getattr(xml, name)) for name in _XML],
+        {name: extension.value.raw for name, extension in base.annotations.items()},
+    ]
+
+
+def _same(left: Any, right: Any) -> bool:
+    """Compare projected values structurally.
+
+    Model and projection objects have identity equality, so containers holding
+    them need a structural comparison. Most scalar fields are shared values or
+    empty defaults and stop at the identity check.
+    """
+    if left is right:
+        return True
+    # Defaults and enum members are typed data: True must not compare equal to
+    # 1, even inside a container. Check once before descending either kind.
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, _OAS3Object):
+        return all(
+            _same(getattr(left, descriptor.name), getattr(right, descriptor.name)) for descriptor in fields(left)
+        )
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(_same(value, right[key]) for key, value in left.items())
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_same(a, b) for a, b in zip(left, right, strict=True))
+    return bool(left == right)
 
 
 def _subtract(schema: OAS3Schema, inherited: OAS3Schema) -> OAS3Schema:
-    """Clear what `schema` says only because it inherited it.
+    """Return only the metadata and enum refinements of an equivalent structure.
 
     After unwrap a use site carries every facet its supertype declared, so
     without this each `type: user` would repeat `user`'s own description beside
     the `$ref` that already carries it, and every one of them would have to be
     written as an `allOf`.
     """
-    blank = OAS3Schema()
+    refinements = OAS3Schema()
     for attr in _COMMON:
-        if getattr(schema, attr) == getattr(inherited, attr):
-            setattr(schema, attr, getattr(blank, attr))
-    return schema
+        value = getattr(schema, attr)
+        if not _same(value, getattr(inherited, attr)):
+            setattr(refinements, attr, value)
+    return refinements
 
 
 def _take(schema: OAS3Schema | None, attr: str) -> Any:

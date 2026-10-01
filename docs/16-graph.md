@@ -308,6 +308,21 @@ conversion notice.
 `fastraml.views.openapi.to_openapi(raml)` returns an OpenAPI 3.0.3 document and
 loss notices. `fastraml convert openapi` emits YAML by default or JSON with
 `--format json`; notices go to stderr.
+Named use sites retain a reference when their effective constraints and members
+match the component. The match is read from the model, recursively through
+members and their metadata, before any component is built: a narrowing leaves
+no unreferenced component, and a matching use site reports no loss for a body
+it never writes. A slot the comparison does not recognise counts as a
+difference, so an unknown facet costs a reference, never a constraint. A use site that narrows a structural constraint or changes
+members exports its full effective schema inline, preserving inherited
+restrictions without composing it with a parent whose closed property set or
+patterns could reject the new members. Metadata-only changes decorate the
+reference through OpenAPI 3.0's `allOf` form. Enum-only narrowing also uses
+`allOf` to intersect the use-site enum with the component's restrictions.
+Reference refinements preserve value types, including booleans and numbers
+inside structured defaults. Component keys keep only `[a-zA-Z0-9._-]`, the set
+OpenAPI allows; other characters become `_`, so an inline body that heads a
+cycle from property `next?` is named `next_`.
 
 `fastraml.bound_base_uri(api)` is `baseUri` with `{version}` bound to the
 root `version:`, the one base URI variable RAML binds itself; every other

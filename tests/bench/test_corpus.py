@@ -33,6 +33,7 @@ WRITERS = {
     'schema-export': lambda root: corpus.write_jsonschema(root, schema_count=6, shared_count=2),
     'schema-allof': lambda root: corpus.write_schema_allof(root, schema_count=6),
     'raml-schema': lambda root: corpus.write_validate(root, type_count=6),
+    'projections': lambda root: corpus.write_projections(root, family_count=3),
     'enums': lambda root: corpus.write_enums(root, family_count=1),
     'unions': lambda root: corpus.write_unions(root, family_count=1),
     'facets': lambda root: corpus.write_facets(root, family_count=1),
@@ -54,6 +55,70 @@ class TestFeatureCorporaReachTheirCode:
     (docs/12 § 4). Each feature corpus pins, by counting calls, that it runs the
     code it was written for, at every size it was written to cover.
     """
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_projections_reaches_narrowing_patterns_and_typed_enums(self, tmp_path, monkeypatch, count):
+        import yaml
+
+        import fastraml.views.jsonschema as schema_module
+        import fastraml.views.openapi as openapi_module
+        import fastraml.views.render as render_module
+        from bench.__main__ import run_one
+
+        documents, schemas, displays = [], [], []
+        original_openapi = openapi_module.to_openapi
+        original_schema = schema_module.to_json_schema
+        original_render = render_module.render
+
+        def openapi(raml):
+            result = original_openapi(raml)
+            documents.append(result[0].to_dict())
+            return result
+
+        def schema(base):
+            result = original_schema(base)
+            schemas.append((base.name, result[0]))
+            return result
+
+        def render(base):
+            result = list(original_render(base))
+            displays.append(yaml.safe_load('\n'.join(result)))
+            return iter(result)
+
+        monkeypatch.setattr(openapi_module, 'to_openapi', openapi)
+        monkeypatch.setattr(schema_module, 'to_json_schema', schema)
+        monkeypatch.setattr(render_module, 'render', render)
+        entry = corpus.write_projections(tmp_path, family_count=count)
+        run_one('projections', 'parse', entry, repeat=1)
+        assert not documents
+        assert not schemas
+        assert not displays
+        run_one('projections', 'unwrap', entry, repeat=1)
+        assert documents
+        assert len(schemas) == len(displays) == len(documents) * 5 * count
+        for document in documents:
+            assert len(document['paths']) == count
+            for path in document['paths'].values():
+                response = path['post']['responses']['200']['content']['application/json']['schema']
+                assert response['maxLength'] == 3
+                body = path['post']['requestBody']['content']['application/json']['schema']
+                assert set(body['properties']) == {'name', 'age'}
+                assert body['additionalProperties'] is False
+                unchanged = path['post']['responses']['201']['content']['application/json']['schema']
+                alias = path['post']['responses']['202']['content']['application/json']['schema']
+                redeclared = path['post']['responses']['203']['content']['application/json']['schema']
+                assert set(unchanged) == set(alias) == set(redeclared) == {'$ref'}
+        for name, exported in schemas:
+            if name.startswith('Patterned'):
+                patterns = exported['definitions'][name]['patternProperties']
+                assert len(patterns) == 3
+                assert all(pattern.startswith('^(?!') for pattern in patterns)
+            if name.startswith('Captured'):
+                assert set(exported['definitions'][name]['patternProperties']) == {'(x)', r'(a)\1'}
+        for display in displays:
+            for name, shown in display.items():
+                if name.startswith('Choice'):
+                    assert shown['enum'] == [1, 2]
 
     @pytest.mark.parametrize('count', [2, 4])
     def test_datatype_fragments_projects_every_shared_root(self, tmp_path, monkeypatch, count):

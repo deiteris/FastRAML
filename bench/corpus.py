@@ -737,6 +737,7 @@ def write_schema_allof(root: Path, *, schema_count: int = 200) -> Path:
         'record.json': json.dumps({'type': 'object', 'properties': {'code': {'type': 'string'}}}),
         'limit.json': json.dumps({'type': 'number', 'minimum': 5}),
         'node.json': json.dumps({'type': 'object', 'properties': {'next': {'$ref': '#'}}}),
+        'uuid.json': json.dumps({'type': 'string', 'format': 'uuid'}),
     }
     lines = [
         '#%RAML 1.0 Library',
@@ -745,6 +746,7 @@ def write_schema_allof(root: Path, *, schema_count: int = 200) -> Path:
         '  Record: !include record.json',
         '  Limit: !include limit.json',
         '  Node: !include node.json',
+        '  UUID: !include uuid.json',
     ]
     definitions: dict = {'required0': {'required': ['code']}}
     for level in range(1, 9):
@@ -760,6 +762,7 @@ def write_schema_allof(root: Path, *, schema_count: int = 200) -> Path:
                     'tags': {'type': 'array', 'items': {'type': 'string', 'minLength': 1}},
                     'limit': {'$ref': 'limit.json'},
                     'node': {'$ref': 'node.json'},
+                    'id': {'$ref': 'uuid.json'},
                 },
             },
             {'$ref': 'record.json'},
@@ -768,6 +771,7 @@ def write_schema_allof(root: Path, *, schema_count: int = 200) -> Path:
                     'code': {'type': 'string', 'enum': [f'v{index}']},
                     'amount': {'minimum': 5, 'maximum': 20, 'multipleOf': 3},
                     'tags': {'items': {'maxLength': 4}, 'uniqueItems': True},
+                    'id': {'format': 'uuid', 'minLength': 30, 'maxLength': 40},
                 },
                 'required': ['code'],
             },

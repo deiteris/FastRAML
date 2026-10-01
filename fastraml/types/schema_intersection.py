@@ -110,6 +110,11 @@ _CONDITIONAL: Final = _KEYWORD_TYPE | {
     'unevaluatedItems': 'array',
     'prefixItems': 'array',
 }
+# Length bounds make `$` an absolute end for the fixed-width spelling, including
+# on `re`, where `$` alone also matches before a trailing newline (docs/10 § 7).
+_STRING_FORMATS: Final = {
+    'uuid': (r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$', 36),
+}
 
 
 class _EmptyIntersection(Exception):  # noqa: N818 - an internal signal, caught at the projection boundary
@@ -328,16 +333,7 @@ def _body(  # noqa: PLR0913, PLR0917 - the selected kind and recursion state
     elif name in {'number', 'integer'}:
         _number(context, parts, name, base)
     elif name == 'string':
-        shape = StringShape(base)
-        shape.min_length, shape.max_length = _bounds(base, parts, 'minLength', 'maxLength')
-        patterns = {contents['pattern'] for _, contents in parts if 'pattern' in contents}
-        if len(patterns) > 1:
-            raise _unsupported(context, 'allOf with multiple patterns')
-        if patterns:
-            shape.pattern = _pattern_facet(base, patterns.pop())
-            if shape.pattern is None and state.strict:
-                raise _unsupported(context, 'allOf pattern')
-        _attach(base, name, shape)
+        _string(context, parts, base, strict=state.strict)
     elif name == 'any':
         _kind(base, name, AnyShape)
     elif name == 'boolean':
@@ -348,12 +344,41 @@ def _body(  # noqa: PLR0913, PLR0917 - the selected kind and recursion state
         raise _unsupported(context, f'type: {name}')
 
 
+def _string(context: _Projection, parts: list[_Part], base: BaseShape, *, strict: bool) -> None:
+    shape = StringShape(base)
+    shape.min_length, shape.max_length = _bounds(base, parts, 'minLength', 'maxLength')
+    patterns = {contents['pattern'] for _, contents in parts if 'pattern' in contents}
+    for _, contents in parts:
+        format_name = contents.get('format')
+        if format_name not in _STRING_FORMATS:
+            continue
+        pattern, length = _STRING_FORMATS[format_name]
+        patterns.add(pattern)
+        if (shape.min_length is not None and shape.min_length.value > length) or (
+            shape.max_length is not None and shape.max_length.value < length
+        ):
+            raise _EmptyIntersection
+        shape.min_length = ScalarFacet(value=length, location=base.location)
+        shape.max_length = ScalarFacet(value=length, location=base.location)
+    if len(patterns) > 1:
+        raise _unsupported(context, 'allOf with multiple patterns')
+    if patterns:
+        shape.pattern = _pattern_facet(base, patterns.pop())
+        if shape.pattern is None and (
+            strict or any(contents.get('format') in _STRING_FORMATS for _, contents in parts)
+        ):
+            raise _unsupported(context, 'allOf pattern')
+    _attach(base, 'string', shape)
+
+
 def _check_keywords(parts: list[_Part], name: str) -> None:
     for scope, contents in parts:
         for key in contents:
             if key not in _UNSUPPORTED:
                 continue
-            if key == 'format' and (name != 'string' or contents[key] not in FormatChecker.checkers):
+            if key == 'format' and (
+                name != 'string' or contents[key] in _STRING_FORMATS or contents[key] not in FormatChecker.checkers
+            ):
                 continue
             applies = _CONDITIONAL.get(key)
             if applies is not None and applies != name and not (applies == 'number' and name == 'integer'):

@@ -103,6 +103,17 @@ class TestJsonSchemaPatterns:
         shape = schema_shape(workspace, {'type': 'string', 'pattern': '^[a-z]+$'})
         assert isinstance(shape.as_shape().shape.pattern.value, re2._Regexp)
 
+    @pytest.mark.parametrize('conjunction', [False, True])
+    def test_a_projected_uuid_pattern_uses_re2_and_rejects_trailing_newlines(self, workspace, conjunction):
+        schema = {'type': 'string', 'format': 'uuid'}
+        if conjunction:
+            schema = {'allOf': [schema, {'minLength': 36}]}
+        projected = schema_shape(workspace, schema).as_shape()
+        assert isinstance(projected.shape.pattern.value, re2._Regexp)
+        value = '123e4567-e89b-12d3-a456-426614174000'
+        assert projected.validate(value) is None
+        assert projected.validate(value + '\n') is not None
+
     def test_a_backreference_in_a_schema_drops_the_projected_constraint(self, workspace):
         """A facet `re2` cannot compile is dropped from the *view*, not fatal.
 

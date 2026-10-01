@@ -1361,8 +1361,8 @@ class TestAllOfIntersection:
                 ],
                 'allOf with an impossible optional property',
             ),
-            ([{'type': 'string'}, {'format': 'uuid'}], 'allOf keyword: format'),
-            ([{'format': 'uuid'}, {}], 'allOf keyword: format'),
+            ([{'type': 'string'}, {'format': 'date-time'}], 'allOf keyword: format'),
+            ([{'format': 'date-time'}, {}], 'allOf keyword: format'),
             ([{'properties': {'x': {}}}, {'minLength': 1}], 'allOf constraints on multiple inferred types'),
             ([{'type': 'object'}, {'additionalProperties': {'type': 'string'}}], 'schema-form additionalProperties'),
             ([{'type': 'array'}, {'items': [{'type': 'string'}]}], 'tuple-form items'),
@@ -1406,6 +1406,203 @@ class TestAllOfIntersection:
         )
 
 
+class TestUuidProjection:
+    """Canonical UUID spelling is a bounded string pattern (docs/10 § 7)."""
+
+    UUID = '123e4567-e89b-12d3-a456-426614174000'
+
+    @pytest.mark.parametrize(
+        'schema',
+        [
+            {'type': 'string', 'format': 'uuid'},
+            {'format': 'uuid'},
+            {'allOf': [{'type': 'string'}, {'format': 'uuid'}]},
+            {'allOf': [{'format': 'uuid'}, {'type': 'string'}]},
+            {'allOf': [{'type': 'string', 'format': 'uuid'}, {'format': 'uuid'}, {'format': 'custom-format'}]},
+            {'type': 'string', 'format': 'uuid', 'allOf': [{}]},
+        ],
+        ids=['ordinary', 'format-only', 'format-last', 'format-first', 'repeated', 'sibling'],
+    )
+    def test_uuid_is_an_anchored_ascii_pattern_in_ordinary_and_conjoined_schemas(self, workspace, schema):
+        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        declared = raml.types_in(raml.location)['T']
+        shape = declared.shape.as_shape()
+        assert shape.type == 'string'
+        assert shape.shape.min_length.value == shape.shape.max_length.value == 36
+        assert shape.shape.pattern is not None
+        for value in (
+            self.UUID,
+            self.UUID.upper(),
+            '00000000-0000-0000-0000-000000000000',
+            'ffffffff-ffff-ffff-ffff-ffffffffffff',
+            '',
+            'not-a-uuid',
+            self.UUID[:-1],
+            self.UUID.replace('e', 'g'),
+            self.UUID.replace('-', ''),
+            self.UUID.replace('-', '_'),
+            'prefix' + self.UUID,
+            self.UUID + '\n',
+            self.UUID + '\r\n',
+            '{' + self.UUID + '}',
+            'urn:uuid:' + self.UUID,
+        ):
+            assert (shape.validate(value) is None) == (declared.validate(value) is None), value
+        build_graph(raml)
+
+    @pytest.mark.parametrize(
+        'value',
+        [
+            UUID + '-',
+            UUID + 'uuid:',
+            '1_3e4567-e89b-12d3-a456-426614174000',
+            '\u066123e4567-e89b-12d3-a456-426614174000',
+        ],
+    )
+    def test_projection_excludes_noncanonical_spellings_accepted_by_the_compiled_checker(self, workspace, value):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API + 'types:\n' + declaration('T', json.dumps({'type': 'string', 'format': 'uuid'})),
+            },
+        )
+        declared = raml.types_in(raml.location)['T']
+        assert declared.validate(value) is None
+        assert declared.shape.as_shape().validate(value) is not None
+
+    @pytest.mark.parametrize('conjunction', [False, True])
+    def test_uuid_is_applied_only_to_string_alternatives_of_a_nullable_type(self, workspace, conjunction):
+        schema = {'type': ['null', 'string'], 'format': 'uuid'}
+        if conjunction:
+            schema = {'allOf': [schema, {'minLength': 36, 'maxLength': 40}]}
+        shape = project(workspace, schema)
+        assert [member.type for member in shape.shape.any_of] == ['nil', 'string']
+        assert shape.validate(None) is None
+        assert shape.validate(self.UUID) is None
+        assert shape.validate('not-a-uuid') is not None
+        assert shape.validate(1) is not None
+
+    @pytest.mark.parametrize('conjunction', [False, True])
+    def test_uuid_format_is_irrelevant_to_a_selected_non_string_kind(self, workspace, conjunction):
+        schema = {'type': 'integer', 'format': 'uuid', 'minimum': 1}
+        if conjunction:
+            schema = {'allOf': [schema, {'maximum': 3}]}
+        shape = project(workspace, schema)
+        assert shape.type == 'integer'
+        assert shape.validate(2) is None
+        assert shape.validate(0) is not None
+
+    def test_bounds_and_enums_are_narrowed_without_losing_common_metadata(self, workspace):
+        shape = project(
+            workspace,
+            {
+                'title': 'Identifier',
+                'description': 'Canonical UUID',
+                'default': self.UUID,
+                'allOf': [
+                    {'type': 'string', 'format': 'uuid', 'enum': [self.UUID, 'bad', self.UUID + '-']},
+                    {'minLength': 20, 'maxLength': 40},
+                ],
+            },
+        )
+        assert shape.display_name.value == 'Identifier'
+        assert shape.description.value == 'Canonical UUID'
+        assert shape.default.raw == self.UUID
+        assert [node.raw for node in shape.enum] == [self.UUID]
+        assert shape.shape.min_length.value == shape.shape.max_length.value == 36
+        assert shape.validate(self.UUID) is None
+        assert shape.validate(self.UUID.upper()) is not None
+
+    @pytest.mark.parametrize('bound', [{'minLength': 37}, {'maxLength': 35}])
+    def test_length_bounds_incompatible_with_uuid_are_projection_contradictions(self, workspace, bound):
+        for members in permutations([{'type': 'string', 'format': 'uuid'}, bound]):
+            with pytest.raises(RamlError) as caught:
+                project(workspace, {'allOf': list(members)})
+            assert any(
+                trace.message == 'JSON schema construct has no RAML equivalent'
+                and trace.info == {'construct': 'unsatisfiable allOf'}
+                for chain in caught.value.chains()
+                for trace in chain
+            )
+
+    def test_an_impossible_uuid_string_branch_does_not_eliminate_null(self, workspace):
+        shape = project(workspace, {'allOf': [{'type': ['string', 'null'], 'format': 'uuid'}, {'maxLength': 35}]})
+        assert shape.validate(None) is None
+        assert shape.validate(self.UUID) is not None
+
+    @pytest.mark.parametrize('conjunction', [False, True])
+    def test_an_additional_distinct_pattern_is_not_silently_dropped(self, workspace, conjunction):
+        schema = {'type': 'string', 'format': 'uuid', 'pattern': '^123'}
+        if conjunction:
+            schema = {'allOf': [{'type': 'string', 'format': 'uuid'}, {'pattern': '^123'}]}
+        with pytest.raises(RamlError) as caught:
+            project(workspace, schema)
+        assert any(
+            trace.message == 'JSON schema construct has no RAML equivalent'
+            and trace.info == {'construct': 'allOf with multiple patterns'}
+            for chain in caught.value.chains()
+            for trace in chain
+        )
+
+    def test_an_identical_uuid_pattern_can_be_repeated(self, workspace):
+        ordinary = project(workspace, {'type': 'string', 'format': 'uuid'})
+        shape = project(
+            workspace,
+            {
+                'allOf': [
+                    {'type': 'string', 'format': 'uuid'},
+                    {'pattern': ordinary.shape.pattern.value.pattern},
+                ]
+            },
+        )
+        assert shape.validate(self.UUID) is None
+        assert shape.validate(self.UUID + '\n') is not None
+
+    @pytest.mark.parametrize('keyword', ['oneOf', 'anyOf'])
+    def test_uuid_format_beside_a_disjunction_is_not_discarded(self, workspace, keyword):
+        with pytest.raises(RamlError) as caught:
+            project(workspace, {'format': 'uuid', keyword: [{'type': 'string'}, {'type': 'null'}]})
+        assert any(
+            trace.message == 'JSON schema construct has no RAML equivalent'
+            and trace.info == {'construct': f'{keyword} with format'}
+            for chain in caught.value.chains()
+            for trace in chain
+        )
+
+    @pytest.mark.parametrize('keyword', ['oneOf', 'anyOf'])
+    def test_uuid_formats_inside_disjunction_members_are_projected(self, workspace, keyword):
+        shape = project(workspace, {keyword: [{'type': 'string', 'format': 'uuid'}, {'type': 'null'}]})
+        assert shape.validate(self.UUID) is None
+        assert shape.validate(None) is None
+        assert shape.validate('bad') is not None
+
+    @pytest.mark.parametrize('value_first', [True, False])
+    def test_referenced_uuid_children_keep_their_canonical_identity_and_restrictions(self, workspace, value_first):
+        raml = parsed(
+            workspace,
+            {
+                'api.raml': API + 'types:\n  T: !include root.json\n  Value: !include value.json\n',
+                'root.json': json.dumps(
+                    {
+                        'allOf': [
+                            {'type': 'object', 'properties': {'id': {'$ref': 'value.json'}}},
+                            {'required': ['id']},
+                        ]
+                    }
+                ),
+                'value.json': json.dumps({'type': 'string', 'format': 'uuid'}),
+            },
+        )
+        declared = raml.types_in(raml.location)
+        if value_first:
+            declared['Value'].shape.as_shape()
+        shape = declared['T'].shape.as_shape()
+        assert shape.shape.properties['id'].base is declared['Value'].shape.as_shape()
+        assert shape.validate({'id': self.UUID}) is None
+        assert shape.validate({'id': 'bad'}) is not None
+        assert shape.validate({}) is not None
+
+
 class TestAllOfReferenceGraphs:
     """Conjunctions preserve scoped graph identity and recursion (docs/10 § 7)."""
 
@@ -1445,7 +1642,7 @@ class TestAllOfReferenceGraphs:
                     }
                 ),
                 'value.json': json.dumps(
-                    {'type': 'object', 'properties': {'code': {'type': 'string', 'format': 'uuid'}}}
+                    {'type': 'object', 'properties': {'code': {'type': 'string', 'format': 'uri'}}}
                 ),
             },
         )

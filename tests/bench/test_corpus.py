@@ -77,16 +77,26 @@ class TestFeatureCorporaReachTheirCode:
             yield from original_parts(context, contents, *args)
 
         monkeypatch.setattr(intersection_module, '_parts', counting_parts)
+        uuid_calls = []
+        original_string = intersection_module._string
+
+        def counting_string(context, parts, base, *, strict):
+            if any(contents.get('format') == 'uuid' for _, contents in parts):
+                uuid_calls.append(base)
+            return original_string(context, parts, base, strict=strict)
+
+        monkeypatch.setattr(intersection_module, '_string', counting_string)
         raml = parse_from_path(corpus.write_schema_allof(tmp_path, schema_count=count), ParseOptions(unwrap=True))
         build_graph(raml)
         assert len(calls) == count
         assert len(references) == 17 * count
+        assert len(uuid_calls) == count + 1
         assert sum(members[0] is True or members[0] in ({}, {'$ref': 'base.json'}) for members in calls) == count // 2
         declared = raml.types_in(raml.location)
         for index in range(count):
             declaration = declared[f'S{index}']
             projection = declaration.shape.as_shape()
-            assert set(projection.shape.properties) == {'extra', 'amount', 'tags', 'code', 'limit', 'node'}
+            assert set(projection.shape.properties) == {'extra', 'amount', 'tags', 'code', 'limit', 'node', 'id'}
             assert [value.raw for value in projection.shape.properties['code'].base.enum] == [f'v{index}']
             amount = projection.shape.properties['amount'].base.shape
             assert amount.minimum.value == 5
@@ -96,6 +106,10 @@ class TestFeatureCorporaReachTheirCode:
             node = declared['Node'].shape.as_shape()
             assert projection.shape.properties['node'].base is node
             assert node.shape.properties['next'].base.shape.head is node
+            identifier = projection.shape.properties['id'].base
+            assert identifier.shape.min_length.value == identifier.shape.max_length.value == 36
+            assert identifier.validate('123e4567-e89b-12d3-a456-426614174000') is None
+            assert identifier.validate('123e4567-e89b-12d3-a456-426614174000\n') is not None
         assert declared['Record'].shape.as_shape().shape.properties['code'].base.enum is None
         assert declared['Base'].shape.as_shape().type == 'any'
 

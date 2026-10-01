@@ -84,6 +84,25 @@ def test_all_of_with_a_definitions_only_reference_exports_the_concrete_type(memo
     assert parsed.shape.validate('X') is not None
 
 
+@pytest.mark.parametrize('conjunction', [False, True])
+def test_uuid_format_exports_as_a_bounded_pattern_and_round_trips(memory_workspace, conjunction):
+    schema = {'type': 'string', 'format': 'uuid'}
+    if conjunction:
+        schema = {'allOf': [schema, {'minLength': 20, 'maxLength': 40}]}
+    text = export(memory_workspace, schema)
+    body = yaml.safe_load(text.partition('\n')[2])
+    assert body['type'] == 'string'
+    assert body['minLength'] == body['maxLength'] == 36
+    assert 'pattern' in body
+    parsed = reparse(memory_workspace, text)
+    assert isinstance(parsed, DataTypeFragment)
+    value = '123e4567-e89b-12d3-a456-426614174000'
+    assert parsed.shape.validate(value) is None
+    assert parsed.shape.validate(value.upper()) is None
+    assert parsed.shape.validate('bad') is not None
+    assert parsed.shape.validate(value + '\n') is not None
+
+
 def test_defs_are_exported_even_without_references(memory_workspace):
     text = export(
         memory_workspace,

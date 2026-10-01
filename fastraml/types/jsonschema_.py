@@ -961,20 +961,24 @@ def _pointer_tail(reference: str) -> str | None:
 def _project_body(context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting) -> BaseShape:
     if contents.get('allOf'):
         return _project_all_of(context, contents, base, visiting)
+    from fastraml.types.schema_intersection import _STRING_FORMATS, intersect  # noqa: PLC0415 - shared reducers
+
     for keyword in ('oneOf', 'anyOf'):
         # `oneOf`'s exactly-one semantics is lost. RAML's union is "at least
         # one" and there is nothing nearer; docs/10 § 7 records the loss.
         members = contents.get(keyword)
         if members:
+            if contents.get('format') in _STRING_FORMATS:
+                # A format beside a disjunction constrains the complete result;
+                # the ordinary union projector does not distribute sibling facets.
+                raise _unsupported(context, f'{keyword} with format')
             return _project_union(context, keyword, members, base, visiting)
 
     declared = contents.get('type') or _inferred_type(contents)
-    if declared is None and not contents.keys() & {'enum', 'const'}:
+    if declared is None and not contents.keys() & {'enum', 'const'} and contents.get('format') not in _STRING_FORMATS:
         return _kind(base, TYPE_ANY, AnyShape)
     if declared == 'object' and 'patternProperties' in contents:
         return _project_object(context, contents, base, visiting)
-    from fastraml.types.schema_intersection import intersect  # noqa: PLC0415 - shared constraint reducers
-
     return intersect(context, contents, base, visiting, strict=False)
 
 

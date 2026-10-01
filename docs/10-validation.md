@@ -206,6 +206,27 @@ Before reusing a cached child, the conjunction checks its nested declarations
 for unsupported keywords. An earlier ordinary projection cannot hide those
 restrictions.
 
+`format: uuid` projects as a string with an anchored ASCII hexadecimal
+8-4-4-4-12 pattern and `minLength: 36`, `maxLength: 36`. This applies to ordinary
+schemas, conjunctions, referenced children, and string alternatives of a union.
+`format: uuid` alone infers `string` under the existing projection policy.
+Uppercase, lowercase, mixed-case, and nil UUIDs are accepted; version and variant
+bits are not restricted. Compatible authored length bounds are subsumed by the
+fixed length. Incompatible bounds fail projection as `unsatisfiable allOf`.
+Repeated UUID formats and an identical pattern contribute one restriction;
+an additional distinct pattern fails projection rather than being dropped.
+UUID formats inside `oneOf`/`anyOf` members are projected normally. A UUID format
+beside `oneOf`/`anyOf` fails projection: the ordinary union projector does not
+distribute sibling restrictions. A nullable `type: [string, null]` remains supported.
+
+The UUID projection deliberately accepts only the canonical spelling. The
+compiled schema's `FormatChecker` also accepts some noncanonical strings, such
+as a UUID followed by `-` or `uuid:`, an underscore in place of a hex digit, or
+Unicode decimal digits. Those strings fail the projected pattern. Original
+schema instance validation retains the checker's behavior. The length bound
+also rejects trailing newlines, since Python's `$` anchor alone matches before
+a final newline. Both regex engines use the same projected pattern and bounds.
+
 The conjunction walk visits a shared source once per intersection, retaining its
 resolution scope. It does not expand a shared reference graph into a tree.
 Recursive references to an original declaration keep that declaration's head;
@@ -248,7 +269,7 @@ length bounds allow it.
 
 Conjunctions that the projection cannot represent fail explicitly rather than
 selecting one member's restriction. These include distinct string patterns,
-effective exclusive number bounds, known string formats, `patternProperties`,
+effective exclusive number bounds, known string formats other than `uuid`, `patternProperties`,
 schema-form `additionalProperties`, tuple or prefix items, `oneOf`/`anyOf`,
 conditionals, dependencies, dynamic/recursive reference keywords, unevaluated
 keywords, constraints on several inferred kinds, and an impossible optional

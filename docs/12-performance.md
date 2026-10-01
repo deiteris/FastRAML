@@ -75,7 +75,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `validate` | declaration and example validation |
 | `jsonschema` | shared JSON Schema references, and five examples per schema validated through them |
 | `schema-export` | project and export each JSON Schema in the `jsonschema` corpus as a standalone RAML document |
-| `schema-allof` | project `allOf` into a graph: neutral members, numeric bounds and multiples, enums, required properties, array-item lengths and uniqueness, reversed member orders, cached numeric and recursive children, and diamond-shaped shared conjunction references ([10](10-validation.md) § 7) |
+| `schema-allof` | project `allOf` into a graph: neutral members, numeric bounds and multiples, enums, required properties, array-item lengths and uniqueness, UUID formats intersected with length bounds, reversed member orders, cached numeric and recursive children, and diamond-shaped shared conjunction references ([10](10-validation.md) § 7) |
 | `raml-schema` | export each effective RAML type in the `validate` corpus as a JSON Schema document |
 | `enums` | enum narrowing and enum membership at 5, 20, 100, and 1000 values, and `uniqueItems` examples at 10, 50, and 500 items, for string, integer, and number |
 | `unions` | `properties` and `items` beside unions of 2, 4, and 8 members, flat and nested, with an enum each member narrows differently ([07](07-resolution-and-inheritance.md) § 5) |

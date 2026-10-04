@@ -53,6 +53,7 @@ in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
 | Endpoints and templates | `parser/source_ir.py`, `parser/structural_merge.py`, `parser/source_decode.py`, `parser/endpoint_build.py`, `parser/endpoints.py`, `parser/traits.py`, `parser/resourcetypes.py`, `parser/templates.py`, `parser/substitutions.py`, `parser/uritemplates.py` | [08](08-templates-and-endpoints.md) |
 | Security and annotations | `parser/security.py`, `parser/annotations.py`, `parser/directives.py` | [09](09-security-and-annotations.md) |
 | Type system | `types/` | [05](05-type-model.md) through [10](10-validation.md) |
+| JSON Schema types: the kind, compilation and registry, projection to RAML, `allOf` intersection, bundling | `types/jsonschema_.py`, `types/schema_compile.py`, `types/schema_view.py`, `types/schema_projection.py`, `types/schema_intersection.py`, `types/schema_bundle.py` | [10](10-validation.md) |
 | Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, value samples, occurrences, authorship, and linting | [16](16-graph.md), [18](18-linting.md) |
 | Graph node classes | `nodes.py` | [16](16-graph.md) |
 | Joining API documents | `join/` | [20](20-join.md) |
@@ -83,10 +84,15 @@ leaves with no runtime `fastraml` imports. Imports deferred into a function
 body break the remaining cycles, and these are the only ones under `parser/`
 and `types/`:
 
-- `types/shape.py` and `types/jsonschema_.py` import `parser/fragments.py`,
-  which imports the type layer;
-- `types/jsonschema_.py` imports `types/schema_intersection.py`, which imports
-  `jsonschema_` at module level.
+- `types/shape.py` and `types/schema_compile.py` import `parser/fragments.py`,
+  which imports the type layer.
+
+The JSON Schema modules import one another at module level only, in one
+direction: `jsonschema_.py` (the `JsonShape` kind) above `schema_projection.py`,
+above `schema_intersection.py`, above `schema_view.py`, above
+`schema_compile.py`; `schema_bundle.py` imports only `schema_compile.py`. The
+projection hands `intersect` its node projector, so the reducers never import
+the projection back.
 
 These boundaries keep the runtime import graph acyclic.
 `tests/unit/test_layering.py` enforces them; imports under `if TYPE_CHECKING:`

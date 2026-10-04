@@ -359,6 +359,8 @@ head, and a back-edge reference is never shared as its target's projection.
 not mutate it.
 
 Implementation: `types/validate.py`, `types/values.py`, `types/scalars.py`,
-`types/complex_.py`, `types/jsonschema_.py`, and `types/schema_intersection.py`. Tests:
+`types/complex_.py`, and the JSON Schema modules `types/jsonschema_.py`,
+`types/schema_compile.py`, `types/schema_view.py`, `types/schema_projection.py`,
+`types/schema_intersection.py`, and `types/schema_bundle.py`. Tests:
 `tests/unit/test_check.py`, `test_validate.py`, `test_jsonschema.py`,
 `test_depth_guard.py`, `test_regex_engine.py`, and `test_unprojectable_schema.py`.

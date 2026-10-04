@@ -40,8 +40,7 @@ _PARSER_FOR_TYPES = frozenset(
 _DEFERRED = frozenset(
     {
         ('fastraml.types.shape', 'fastraml.parser.fragments'),
-        ('fastraml.types.jsonschema_', 'fastraml.parser.fragments'),
-        ('fastraml.types.jsonschema_', 'fastraml.types.schema_intersection'),
+        ('fastraml.types.schema_compile', 'fastraml.parser.fragments'),
     }
 )
 

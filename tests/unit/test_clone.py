@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from fastraml.types.base import EMPTY_DICT, EMPTY_LIST
 from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
+from tests.shapes import CONTAINERS, is_shared_empty
 
 LIB = '#%RAML 1.0 Library\n'
 
@@ -25,12 +25,12 @@ def library(workspace, body: str, extra: dict[str, str] | None = None):
 
 CYCLE = '  Node:\n    properties:\n      name: string\n      next: Node\n'
 
-#: A type that fills `custom_facets`, `annotations`, `inherits` and `type_expr_refs`.
+#: A type that fills every container in `CONTAINERS`.
 CHILD = (
     'annotationTypes:\n  note: string\n'
     'types:\n'
     '  Parent:\n    facets:\n      extra: string\n'
-    '  Child:\n    type: Parent\n    extra: x\n    (note): y\n'
+    '  Child:\n    type: Parent\n    extra: x\n    facets:\n      more: string\n    (note): y\n'
 )
 
 
@@ -75,7 +75,7 @@ class TestDetachment:
         raml = workspace.parse(workspace({'lib.raml': LIB + CHILD}) / 'lib.raml')
         child = raml.types_in(raml.location)['Child']
         clone = child.clone_detached()
-        for field in ('custom_facets', 'annotations', 'inherits', 'type_expr_refs'):
+        for field in CONTAINERS:
             assert getattr(child, field), field
             assert getattr(clone, field) is not getattr(child, field), field
 
@@ -83,9 +83,8 @@ class TestDetachment:
         # A copy of nothing is an allocation, and the shared empty refuses an
         # edit, so neither side can reach the other through it.
         clone = library(workspace, CYCLE)['Node'].clone_detached()
-        assert clone.custom_facets is EMPTY_DICT
-        assert clone.annotations is EMPTY_DICT
-        assert clone.inherits is EMPTY_LIST
+        for field in CONTAINERS:
+            assert is_shared_empty(getattr(clone, field)), field
 
     def test_mutating_a_clone_does_not_reach_the_original(self, workspace):
         node = library(workspace, CYCLE)['Node']

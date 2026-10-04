@@ -13,6 +13,7 @@ from typing import ClassVar
 import pytest
 
 from fastraml import ParseOptions, RamlError
+from tests.diagnostics import keys, traces
 
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
 
@@ -246,7 +247,7 @@ class TestParameters:
                 + 'traits:\n  t:\n    queryParameters:\n      q:\n        maxLength: <<n>>\n'
                 + '/users:\n  get:\n    is: [{t: {n: "5"}}]\n'
             )
-        assert [frame.message for chain in caught.value.chains() for frame in chain][-1] == 'expected an integer value'
+        assert keys(caught.value)[-1] == 'expected an integer value'
 
     def test_a_typed_value_where_a_type_name_goes_is_reported_where_the_caller_wrote_it(self, workspace):
         # The template's line is in paged.raml; the value, the thing to fix, is in api.raml.
@@ -265,9 +266,9 @@ class TestParameters:
     def test_a_reserved_parameter_supplied_to_a_resource_type_is_rejected(self, workspace):
         with pytest.raises(RamlError) as caught:
             workspace.document(API + 'resourceTypes:\n  r:\n    get:\n/users:\n  type: {r: {resourcePath: x}}\n')
-        assert [
-            frame.info for chain in caught.value.chains() for frame in chain if frame.message == 'reserved parameter'
-        ] == [{'parameter': 'resourcePath'}]
+        assert [frame.info for frame in traces(caught.value) if frame.message == 'reserved parameter'] == [
+            {'parameter': 'resourcePath'}
+        ]
 
     def test_an_unresolvable_trait_names_itself(self, workspace):
         with pytest.raises(RamlError) as caught:
@@ -341,8 +342,7 @@ class TestProvenance:
             workspace.parse(workspace(files) / 'api.raml')
         frames = {
             (frame.location.rsplit('/', 1)[-1], frame.position.line)
-            for chain in caught.value.chains()
-            for frame in chain
+            for frame in traces(caught.value)
             if frame.info.get('type') == 'types.Nope'
         }
         assert frames == {
@@ -358,8 +358,7 @@ class TestProvenance:
             workspace.parse(workspace(files) / 'api.raml')
         frames = {
             (frame.location.rsplit('/', 1)[-1], frame.position.line, frame.position.column)
-            for chain in caught.value.chains()
-            for frame in chain
+            for frame in traces(caught.value)
             if frame.info.get('annotation') == 'nope'
         }
         line = files['api.raml'].splitlines().index('    is: [{paged: {responseType: types.PagedResult, tag: nope}}]')
@@ -556,8 +555,7 @@ def _where(error: RamlError, message: str) -> list[tuple[str, int, int]]:
     """File, line and column of every frame carrying `message`."""
     return [
         (frame.location.rsplit('/', 1)[-1], frame.position.line, frame.position.column)
-        for chain in error.chains()
-        for frame in chain
+        for frame in traces(error)
         if frame.message == message and frame.position is not None
     ]
 

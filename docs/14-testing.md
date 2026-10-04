@@ -66,7 +66,9 @@ Unit tests that check parser behavior use the `workspace` fixture from
 through `ParseOptions(file_loader=...)` without creating directories or files.
 `workspace.document(text)` parses `text` as `api.raml`; `lenient_document` and
 `rejection` are its `parse_lenient` and error-or-`None` forms. The `disk_workspace` fixture writes real files, for tests of filesystem behavior
-and callers that read paths outside the parser's loader (the CLI).
+and callers that read paths outside the parser's loader (the CLI). A test reads a
+`RamlError` through `tests/diagnostics.py`, which yields message keys, frames and
+`info` dicts, never rendered text.
 
 Golden cases live in `tests/golden/cases/`, and rendered reports in
 `tests/golden/reports/`. Regenerate only with

@@ -11,6 +11,7 @@ import pytest
 
 from fastraml import ParseOptions, RamlError
 from fastraml.domains import DomainLocation
+from tests.diagnostics import messages, traces
 
 API = '#%RAML 1.0\ntitle: T\n'
 JSON = API + 'mediaType: application/json\n'
@@ -22,10 +23,6 @@ def parse(workspace, body: str, head: str = API, **options):
 
 def fails(workspace, body: str, head: str = API) -> RamlError | None:
     return workspace.rejection(head + body)
-
-
-def messages(error: RamlError) -> set[str]:
-    return {trace.message for chain in error.chains() for trace in chain}
 
 
 class TestStructure:
@@ -62,7 +59,7 @@ LEVELS = {
 
 
 def frames(error: RamlError) -> list[tuple[str, dict]]:
-    return [(frame.message, frame.info) for chain in error.chains() for frame in chain]
+    return [(frame.message, frame.info) for frame in traces(error)]
 
 
 class TestProtocols:
@@ -143,19 +140,14 @@ class TestOperations:
         """
         error = fails(workspace, f'/users:\n  {method}:\n  get:\n')
         assert error is not None
-        assert [frame.info for chain in error.chains() for frame in chain if frame.message == 'unknown field'] == [
-            {'field': method}
-        ]
+        assert [frame.info for frame in traces(error) if frame.message == 'unknown field'] == [{'field': method}]
 
     @pytest.mark.parametrize('method', ['trace', 'connect'])
     def test_a_resource_type_cannot_contribute_a_non_raml_method(self, workspace, method):
         error = fails(workspace, f'resourceTypes:\n  r:\n    {method}:\n/users:\n  type: r\n')
         assert error is not None
         assert [
-            frame.info
-            for chain in error.chains()
-            for frame in chain
-            if frame.message == 'resource type method must be an HTTP method'
+            frame.info for frame in traces(error) if frame.message == 'resource type method must be an HTTP method'
         ] == [{'key': method}]
 
     def test_headers_and_query_parameters_are_properties(self, workspace):
@@ -366,7 +358,7 @@ class TestBodyMediaTypeKeys:
         text = BODY_SITES['request'](key).replace('body:\n', 'body:\n      text/plain: string\n')
         error = fails(workspace, text)
         assert error is not None
-        bad = [frame for chain in error.chains() for frame in chain if frame.message == 'invalid media type']
+        bad = [frame for frame in traces(error) if frame.message == 'invalid media type']
         assert [(frame.info, frame.position.line) for frame in bad] == [
             ({'media type': key.strip("'")}, API.count('\n') + 5)
         ]

@@ -18,13 +18,10 @@ import pytest
 from fastraml import ParseOptions, RamlError
 from fastraml.registry import DEFAULT_MAX_INCLUDE_SIZE
 from fastraml.types.scalars import INTEGER_FORMATS, NUMBER_FORMATS
+from tests.diagnostics import messages
 
 LIB = '#%RAML 1.0 Library\n'
 XSD = '<?xml version="1.0"?>\n<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/>\n'
-
-
-def messages(error: RamlError) -> set[str]:
-    return {trace.message for chain in error.chains() for trace in chain}
 
 
 class TestD1NoXsd:

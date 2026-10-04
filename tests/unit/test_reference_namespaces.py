@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from fastraml import ParseOptions, RamlError
+from tests.diagnostics import traces
 
 API = '#%RAML 1.0\ntitle: T\n'
 LIB = '#%RAML 1.0 Library\n'
@@ -62,8 +63,7 @@ def test_a_name_resolves_only_in_its_own_namespace(workspace, kind, present, sub
         field = 'annotation' if kind == 'annotation' else 'missing'
         assert any(
             frame.message == 'reference not found' and frame.info.get(field) == 'chosen'
-            for chain in caught.value.chains()
-            for frame in chain
+            for frame in traces(caught.value)
         )
         return
     raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))

@@ -21,6 +21,7 @@ import pytest
 from fastraml import ParseOptions, RamlError
 from fastraml.parser.facets import regex_engine
 from fastraml.registry import Raml
+from tests.diagnostics import messages
 from tests.unit.test_jsonschema import API, indent
 
 re2 = pytest.importorskip('re2', reason='the optional google-re2 package is not installed')
@@ -31,10 +32,6 @@ RE2 = ParseOptions(regex_engine='re2')
 #: Valid ECMA-262 and valid `re`; RE2 has no backreferences at all, which is
 #: exactly why it is linear-time.
 BACKREFERENCE = '(a)\\1'
-
-
-def messages(error: RamlError) -> list[str]:
-    return [trace.message for chain in error.chains() for trace in chain]
 
 
 def schema_shape(workspace, schema: dict, **options):

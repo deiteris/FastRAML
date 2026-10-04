@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from fastraml import ParseOptions, RamlError
+from tests.diagnostics import leaves, messages, problems, traces
 
 API = '#%RAML 1.0\ntitle: T\n'
 
@@ -26,19 +27,11 @@ def parse(workspace, body: str, **files: str):
     return None
 
 
-def traces(error: RamlError) -> list:
-    return [chain[-1] for chain in error.chains()]
-
-
-def messages(error: RamlError) -> set[str]:
-    return {trace.message for trace in traces(error)}
-
-
 class TestString:
     def test_min_length_may_not_exceed_max_length(self, workspace):
         error = parse(workspace, '  T:\n    type: string\n    minLength: 10\n    maxLength: 5\n')
         assert error is not None
-        assert 'minLength exceeds maxLength' in messages(error)
+        assert 'minLength exceeds maxLength' in problems(error)
 
     def test_equal_bounds_are_fine(self, workspace):
         assert parse(workspace, '  T:\n    type: string\n    minLength: 5\n    maxLength: 5\n') is None
@@ -70,8 +63,8 @@ class TestNonNegativeBounds:
     def test_a_negative_bound_is_rejected(self, workspace, body, facet):
         error = parse(workspace, body)
         assert error is not None
-        assert 'facet must not be negative' in messages(error)
-        assert traces(error)[0].info['facet'] == facet
+        assert 'facet must not be negative' in problems(error)
+        assert leaves(error)[0].info['facet'] == facet
 
     def test_zero_is_allowed(self, workspace):
         assert parse(workspace, '  T:\n    type: string\n    minLength: 0\n    maxLength: 0\n') is None
@@ -81,7 +74,7 @@ class TestNonNegativeBounds:
         # what this pins is that neither negative bound is swallowed.
         error = parse(workspace, '  T:\n    type: string\n    minLength: -1\n    maxLength: -2\n')
         assert error is not None
-        negative = [t.info['facet'] for t in traces(error) if t.message == 'facet must not be negative']
+        negative = [t.info['facet'] for t in leaves(error) if t.message == 'facet must not be negative']
         assert sorted(negative) == ['maxLength', 'minLength']
 
 
@@ -90,13 +83,13 @@ class TestNumeric:
     def test_minimum_may_not_exceed_maximum(self, workspace, kind):
         error = parse(workspace, f'  T:\n    type: {kind}\n    minimum: 10\n    maximum: 5\n')
         assert error is not None
-        assert 'minimum exceeds maximum' in messages(error)
+        assert 'minimum exceeds maximum' in problems(error)
 
     @pytest.mark.parametrize('kind', ['number', 'integer'])
     def test_multiple_of_zero_is_rejected(self, workspace, kind):
         error = parse(workspace, f'  T:\n    type: {kind}\n    multipleOf: 0\n')
         assert error is not None
-        assert 'multipleOf must not be zero' in messages(error)
+        assert 'multipleOf must not be zero' in problems(error)
 
     @pytest.mark.parametrize('declared', ['float', 'double'])
     def test_a_number_accepts_its_own_formats(self, workspace, declared):
@@ -111,12 +104,12 @@ class TestNumeric:
         # not, and neither do we.
         error = parse(workspace, '  T:\n    type: integer\n    format: float\n')
         assert error is not None
-        assert traces(error)[0].info == {'format': 'float', 'type': 'integer'}
+        assert leaves(error)[0].info == {'format': 'float', 'type': 'integer'}
 
     def test_a_number_rejects_an_integer_format(self, workspace):
         error = parse(workspace, '  T:\n    type: number\n    format: int32\n')
         assert error is not None
-        assert traces(error)[0].info == {'format': 'int32', 'type': 'number'}
+        assert leaves(error)[0].info == {'format': 'int32', 'type': 'number'}
 
 
 class TestDateTime:
@@ -127,14 +120,14 @@ class TestDateTime:
     def test_any_other_format_is_rejected(self, workspace):
         error = parse(workspace, '  T:\n    type: datetime\n    format: iso8601\n')
         assert error is not None
-        assert 'unknown format' in messages(error)
+        assert 'unknown format' in problems(error)
 
 
 class TestArray:
     def test_min_items_may_not_exceed_max_items(self, workspace):
         error = parse(workspace, '  T:\n    type: array\n    items: string\n    minItems: 5\n    maxItems: 2\n')
         assert error is not None
-        assert 'minItems exceeds maxItems' in messages(error)
+        assert 'minItems exceeds maxItems' in problems(error)
 
     def test_items_are_checked_recursively(self, workspace):
         error = parse(
@@ -142,14 +135,14 @@ class TestArray:
             '  T:\n    type: array\n    items:\n      type: string\n      minLength: 9\n      maxLength: 2\n',
         )
         assert error is not None
-        assert 'minLength exceeds maxLength' in messages(error)
+        assert 'minLength exceeds maxLength' in problems(error)
 
 
 class TestObject:
     def test_min_properties_may_not_exceed_max_properties(self, workspace):
         error = parse(workspace, '  T:\n    type: object\n    minProperties: 5\n    maxProperties: 2\n')
         assert error is not None
-        assert 'minProperties exceeds maxProperties' in messages(error)
+        assert 'minProperties exceeds maxProperties' in problems(error)
 
     def test_every_property_is_checked(self, workspace):
         error = parse(
@@ -157,7 +150,7 @@ class TestObject:
             '  T:\n    properties:\n      a:\n        type: string\n        minLength: 9\n        maxLength: 2\n',
         )
         assert error is not None
-        assert 'minLength exceeds maxLength' in messages(error)
+        assert 'minLength exceeds maxLength' in problems(error)
 
     def test_pattern_properties_are_checked_too(self, workspace):
         error = parse(
@@ -165,7 +158,7 @@ class TestObject:
             '  T:\n    properties:\n      /^a/:\n        type: integer\n        minimum: 9\n        maximum: 2\n',
         )
         assert error is not None
-        assert 'minimum exceeds maximum' in messages(error)
+        assert 'minimum exceeds maximum' in problems(error)
 
     def test_pattern_properties_conflict_with_no_additional_properties(self, workspace):
         # A pattern property can only ever match a key the declaration did not
@@ -175,7 +168,7 @@ class TestObject:
             '  T:\n    additionalProperties: false\n    properties:\n      /^a/: string\n',
         )
         assert error is not None
-        assert 'pattern properties conflict with additionalProperties' in messages(error)
+        assert 'pattern properties conflict with additionalProperties' in problems(error)
 
     @pytest.mark.parametrize(
         'body',
@@ -191,7 +184,7 @@ class TestObject:
         """
         error = parse(workspace, body)
         assert error is not None
-        assert 'pattern properties conflict with additionalProperties' in messages(error)
+        assert 'pattern properties conflict with additionalProperties' in problems(error)
 
     def test_pattern_properties_are_fine_when_extras_are_allowed(self, workspace):
         assert parse(workspace, '  T:\n    additionalProperties: true\n    properties:\n      /^a/: string\n') is None
@@ -204,14 +197,14 @@ class TestUnion:
             '  Bad:\n    type: string\n    minLength: 9\n    maxLength: 2\n  T: Bad | integer\n',
         )
         assert error is not None
-        assert 'minLength exceeds maxLength' in messages(error)
+        assert 'minLength exceeds maxLength' in problems(error)
 
 
 class TestFile:
     def test_length_bounds_are_ordered(self, workspace):
         error = parse(workspace, '  T:\n    type: file\n    minLength: 9\n    maxLength: 2\n')
         assert error is not None
-        assert 'minLength exceeds maxLength' in messages(error)
+        assert 'minLength exceeds maxLength' in problems(error)
 
     @pytest.mark.parametrize('declared', ["'*/*'", 'text/*', 'image/png', 'application/vnd.api+json'])
     def test_a_wellformed_media_type_is_accepted(self, workspace, declared):
@@ -222,7 +215,7 @@ class TestFile:
     def test_a_malformed_media_type_is_rejected(self, workspace):
         error = parse(workspace, '  T:\n    type: file\n    fileTypes: [notamediatype]\n')
         assert error is not None
-        assert traces(error)[0].info == {'fileType': 'notamediatype'}
+        assert leaves(error)[0].info == {'fileType': 'notamediatype'}
 
     @pytest.mark.parametrize('declared', ['a_b/c', 'vnd!#$&^/x', '\'text/plain; charset="utf-8"\'', "'*/*;q=1'"])
     def test_a_media_range_follows_rfc_6838_names_and_rfc_9110_parameters(self, workspace, declared):
@@ -234,7 +227,7 @@ class TestFile:
         # whole type or subtype or nothing; an RFC 9110 parameter needs `=value`.
         error = parse(workspace, f'  T:\n    type: file\n    fileTypes: [{declared}]\n')
         assert error is not None
-        assert traces(error)[0].info == {'fileType': declared.strip("'")}
+        assert leaves(error)[0].info == {'fileType': declared.strip("'")}
 
 
 class TestEnum:
@@ -243,19 +236,17 @@ class TestEnum:
     def test_a_member_of_the_wrong_type_is_rejected(self, workspace):
         error = parse(workspace, "  T:\n    type: integer\n    enum: [1, 'two']\n")
         assert error is not None
-        assert 'invalid enum member' in {trace.message for chain in error.chains() for trace in chain}
+        assert 'invalid enum member' in messages(error)
 
     def test_a_member_violating_a_facet_is_rejected(self, workspace):
         error = parse(workspace, '  T:\n    type: integer\n    maximum: 5\n    enum: [1, 99]\n')
         assert error is not None
-        assert 'value is above the maximum' in messages(error)
+        assert 'value is above the maximum' in problems(error)
 
     def test_the_offending_member_is_identified_by_index(self, workspace):
         error = parse(workspace, '  T:\n    type: integer\n    maximum: 5\n    enum: [1, 99]\n')
         assert error is not None
-        indexes = [
-            trace.info['index'] for chain in error.chains() for trace in chain if trace.message == 'invalid enum member'
-        ]
+        indexes = [trace.info['index'] for trace in traces(error) if trace.message == 'invalid enum member']
         assert indexes == [1]
 
     def test_a_valid_enum_passes(self, workspace):
@@ -268,7 +259,7 @@ class TestDiscriminator:
     def test_the_named_property_must_exist(self, workspace):
         error = parse(workspace, '  T:\n    properties:\n      a: string\n    discriminator: kind\n')
         assert error is not None
-        assert traces(error)[0].info == {'property': 'kind'}
+        assert leaves(error)[0].info == {'property': 'kind'}
 
     def test_only_declarations_with_discriminators_enter_the_check_index(self, workspace):
         root = workspace({'api.raml': API + 'types:\n  T: string\n'})
@@ -337,7 +328,7 @@ class TestDiscriminator:
             '  T:\n    properties:\n      kind:\n        properties:\n          a: string\n    discriminator: kind\n',
         )
         assert error is not None
-        assert 'discriminator property must be scalar' in messages(error)
+        assert 'discriminator property must be scalar' in problems(error)
 
     @pytest.mark.parametrize('unwrap', [False, True], ids=['private-unwrap', 'public-unwrap'])
     @pytest.mark.parametrize(
@@ -374,7 +365,7 @@ class TestDiscriminator:
     def test_a_discriminator_needs_properties(self, workspace):
         error = parse(workspace, '  T:\n    type: object\n    discriminator: kind\n')
         assert error is not None
-        assert 'discriminator requires properties' in messages(error)
+        assert 'discriminator requires properties' in problems(error)
 
     def test_an_explicit_value_is_validated_against_the_property(self, workspace):
         error = parse(
@@ -382,7 +373,7 @@ class TestDiscriminator:
             '  T:\n    properties:\n      kind: integer\n    discriminator: kind\n    discriminatorValue: notanumber\n',
         )
         assert error is not None
-        assert 'invalid type' in messages(error)
+        assert 'invalid type' in problems(error)
 
     def test_a_compatible_explicit_value_passes(self, workspace):
         assert (
@@ -396,14 +387,14 @@ class TestDiscriminator:
     def test_a_value_without_a_discriminator_is_rejected(self, workspace):
         error = parse(workspace, '  T:\n    properties:\n      a: string\n    discriminatorValue: dog\n')
         assert error is not None
-        assert 'discriminatorValue without discriminator' in messages(error)
+        assert 'discriminatorValue without discriminator' in problems(error)
 
     def test_a_union_refuses_a_discriminator_at_decode_time(self, workspace):
         # The one discriminator rule that is *not* P10's: a union has no
         # properties, so it can never become valid later (docs/05 § 6).
         error = parse(workspace, '  T:\n    type: string | integer\n    discriminator: kind\n')
         assert error is not None
-        assert 'discriminator cannot be used with union type' in messages(error)
+        assert 'discriminator cannot be used with union type' in problems(error)
 
 
 class TestDiscriminatorValuesInExamples:
@@ -441,7 +432,7 @@ class TestDiscriminatorValuesInExamples:
         tail = '  Roster:\n    type: Person[]\n    example:\n      - name: A\n        kind: administrator\n'
         error = self.parse(workspace, tail)
         assert error is not None
-        assert 'discriminator value names no known type' in messages(error)
+        assert 'discriminator value names no known type' in problems(error)
 
     def test_strict_false_does_not_waive_it(self, workspace):
         """The TCK's `EdgeCases/identifying-discriminator` pair sets it in both.
@@ -455,7 +446,7 @@ class TestDiscriminatorValuesInExamples:
         )
         error = self.parse(workspace, tail)
         assert error is not None
-        assert 'discriminator value names no known type' in messages(error)
+        assert 'discriminator value names no known type' in problems(error)
 
     def test_strict_false_still_waives_ordinary_conformance(self, workspace):
         tail = (
@@ -474,7 +465,7 @@ class TestAccumulation:
             '  B:\n    type: integer\n    minimum: 9\n    maximum: 2\n',
         )
         assert error is not None
-        assert messages(error) == {'minLength exceeds maxLength', 'minimum exceeds maximum'}
+        assert problems(error) == {'minLength exceeds maxLength', 'minimum exceeds maximum'}
 
     def test_two_bad_properties_of_one_object_are_both_reported(self, workspace):
         error = parse(
@@ -484,7 +475,7 @@ class TestAccumulation:
             '      b:\n        type: string\n        minLength: 8\n        maxLength: 1\n',
         )
         assert error is not None
-        assert len([t for t in traces(error) if t.message == 'minLength exceeds maxLength']) == 2
+        assert len([t for t in leaves(error) if t.message == 'minLength exceeds maxLength']) == 2
 
 
 #: Fourteen levels, each holding two properties of the next level's type.
@@ -519,7 +510,7 @@ class TestASharedNestedType:
             workspace, SHARED + f'  T{SHARED_LEVELS}:\n    type: string\n    minLength: 9\n    maxLength: 2\n'
         )
         assert error is not None
-        assert [t.message for t in traces(error)] == ['minLength exceeds maxLength']
+        assert [t.message for t in leaves(error)] == ['minLength exceeds maxLength']
 
 
 class TestNotRunWithoutTheOption:

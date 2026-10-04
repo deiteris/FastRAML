@@ -18,6 +18,7 @@ import os
 
 import pytest
 
+from tests.diagnostics import messages
 from tests.tck.conftest import collect_fixtures, fixture_id, tck_root
 
 pytestmark = pytest.mark.tck
@@ -65,7 +66,7 @@ def verdicts() -> list:
         try:
             parse_from_path(path, options)
         except RamlError as err:
-            return 'reject', {trace.message for chain in err.chains() for trace in chain}
+            return 'reject', messages(err)
         return 'accept', set()
 
     copied = ParseOptions(validate=True)

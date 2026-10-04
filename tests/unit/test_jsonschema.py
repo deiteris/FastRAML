@@ -24,6 +24,7 @@ from fastraml.types.complex_ import RecursiveShape
 from fastraml.types.jsonschema_ import projected
 from fastraml.views.graph import build_graph
 from fastraml.views.walk import DEFAULT_BASE
+from tests.diagnostics import messages, traces
 from tests.unit.conftest import CountingLoader
 
 API = '#%RAML 1.0\ntitle: T\n'
@@ -51,10 +52,6 @@ def parse(workspace, files: dict[str, str]):
     except RamlError as err:
         return err
     return None
-
-
-def messages(error: RamlError) -> set[str]:
-    return {trace.message for chain in error.chains() for trace in chain}
 
 
 def indent(text: str, width: int = 4) -> str:
@@ -236,7 +233,7 @@ class TestReferences:
         assert 'unresolvable JSON schema reference' in messages(error)
         # The loader's own diagnostic survives, rather than being flattened into
         # "could not resolve": which scheme was refused is the useful half.
-        assert any('no loader for URI scheme' in trace.message for chain in error.chains() for trace in chain)
+        assert 'no loader for URI scheme' in messages(error)
 
     def test_a_ref_shared_by_many_schemas_is_read_once(self, workspace):
         """Section 6.1: one registry per parse, not one per shape."""
@@ -291,8 +288,7 @@ class TestInstanceValidation:
             assert any(
                 trace.message == 'value does not match the JSON schema'
                 and trace.info == {'path': '$', 'schema_path': 'oneOf'}
-                for chain in error.chains()
-                for trace in chain
+                for trace in traces(error)
             )
 
     @pytest.mark.parametrize(
@@ -317,8 +313,7 @@ class TestInstanceValidation:
         assert any(
             trace.message == 'value does not match the JSON schema'
             and trace.info == {'path': '$', 'schema_path': 'format'}
-            for chain in error.chains()
-            for trace in chain
+            for trace in traces(error)
         )
 
     def test_unknown_formats_remain_annotations(self, workspace):
@@ -490,12 +485,7 @@ class TestMultipleOfIsExact:
 
     @staticmethod
     def schema_paths(error) -> list[object]:
-        return [
-            trace.info
-            for chain in error.chains()
-            for trace in chain
-            if trace.message == 'value does not match the JSON schema'
-        ]
+        return [trace.info for trace in traces(error) if trace.message == 'value does not match the JSON schema']
 
     def declared(self, workspace, divisor: str):
         schema = f'{{"$schema": "{self.DRAFT7}", "type": "number", "multipleOf": {divisor}}}'
@@ -600,7 +590,7 @@ PLACEMENT = frozenset(
 
 def placement(error) -> list[tuple[str, dict]]:
     """The JSON-schema placement failures in `error`, as message key and info."""
-    return [(frame.message, frame.info) for chain in error.chains() for frame in chain if frame.message in PLACEMENT]
+    return [(frame.message, frame.info) for frame in traces(error) if frame.message in PLACEMENT]
 
 
 HEADER_H = ('JSON schema in a parameter', {'parameter': 'H', 'binding': 'header'})
@@ -1216,11 +1206,7 @@ class TestAllOfIntersection:
         assert declared.validate({'p': 1}) is None
         with pytest.raises(RamlError) as caught:
             projection_of(declared.shape)
-        assert any(
-            trace.info == {'construct': 'allOf mixed-draft $ref siblings'}
-            for chain in caught.value.chains()
-            for trace in chain
-        )
+        assert any(trace.info == {'construct': 'allOf mixed-draft $ref siblings'} for trace in traces(caught.value))
 
     def test_false_referenced_items_admit_only_an_empty_array(self, workspace):
         raml = parsed(
@@ -1274,9 +1260,7 @@ class TestAllOfIntersection:
         assert declared.validate({'x': '1'}) is not None
         with pytest.raises(RamlError) as caught:
             projection_of(declared.shape)
-        assert any(
-            trace.info == {'construct': 'unsatisfiable allOf'} for chain in caught.value.chains() for trace in chain
-        )
+        assert any(trace.info == {'construct': 'unsatisfiable allOf'} for trace in traces(caught.value))
 
     @pytest.mark.parametrize('member', [{'x': '1'}, {'x': 1}], ids=['numeric-string', 'number'])
     def test_nested_enum_uses_json_equality(self, workspace, member):
@@ -1510,8 +1494,7 @@ class TestAllOfIntersection:
             assert any(
                 trace.message == 'JSON schema construct has no RAML equivalent'
                 and trace.info == {'construct': 'unsatisfiable allOf'}
-                for chain in caught.value.chains()
-                for trace in chain
+                for trace in traces(caught.value)
             )
 
     @pytest.mark.parametrize(
@@ -1545,8 +1528,7 @@ class TestAllOfIntersection:
             assert any(
                 trace.message == 'JSON schema construct has no RAML equivalent'
                 and trace.info == {'construct': construct}
-                for chain in caught.value.chains()
-                for trace in chain
+                for trace in traces(caught.value)
             )
 
     @pytest.mark.parametrize(
@@ -1571,8 +1553,7 @@ class TestAllOfIntersection:
         assert any(
             trace.message == 'JSON schema construct has no RAML equivalent'
             and trace.info == {'construct': f'allOf keyword: {keyword}'}
-            for chain in caught.value.chains()
-            for trace in chain
+            for trace in traces(caught.value)
         )
 
 
@@ -1688,8 +1669,7 @@ class TestUuidProjection:
             assert any(
                 trace.message == 'JSON schema construct has no RAML equivalent'
                 and trace.info == {'construct': 'unsatisfiable allOf'}
-                for chain in caught.value.chains()
-                for trace in chain
+                for trace in traces(caught.value)
             )
 
     def test_an_impossible_uuid_string_branch_does_not_eliminate_null(self, workspace):
@@ -1707,8 +1687,7 @@ class TestUuidProjection:
         assert any(
             trace.message == 'JSON schema construct has no RAML equivalent'
             and trace.info == {'construct': 'allOf with multiple patterns'}
-            for chain in caught.value.chains()
-            for trace in chain
+            for trace in traces(caught.value)
         )
 
     def test_an_identical_uuid_pattern_can_be_repeated(self, workspace):
@@ -1732,8 +1711,7 @@ class TestUuidProjection:
         assert any(
             trace.message == 'JSON schema construct has no RAML equivalent'
             and trace.info == {'construct': f'{keyword} with format'}
-            for chain in caught.value.chains()
-            for trace in chain
+            for trace in traces(caught.value)
         )
 
     @pytest.mark.parametrize('keyword', ['oneOf', 'anyOf'])
@@ -1821,8 +1799,7 @@ class TestAllOfReferenceGraphs:
         assert any(
             trace.message == 'JSON schema construct has no RAML equivalent'
             and trace.info == {'construct': 'allOf keyword: format'}
-            for chain in caught.value.chains()
-            for trace in chain
+            for trace in traces(caught.value)
         )
 
     @pytest.mark.parametrize('site', ['member', 'property', 'items'])
@@ -1944,8 +1921,7 @@ class TestAllOfReferenceGraphs:
         assert any(
             trace.message == 'JSON schema construct has no RAML equivalent'
             and trace.info == {'construct': 'recursive allOf member'}
-            for chain in caught.value.chains()
-            for trace in chain
+            for trace in traces(caught.value)
         )
 
     def test_a_cached_reference_graph_still_obeys_the_projection_depth_limit(self, workspace):
@@ -1961,8 +1937,7 @@ class TestAllOfReferenceGraphs:
             projection_of(raml.types_in(raml.location)['T'].shape)
         assert any(
             trace.message == 'JSON schema nesting too deep' and trace.info == {'limit': 20}
-            for chain in caught.value.chains()
-            for trace in chain
+            for trace in traces(caught.value)
         )
 
 

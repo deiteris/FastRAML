@@ -32,20 +32,13 @@ from fastraml.parser.fragments import (
     every_declaration,
     identify_fragment,
 )
+from tests.diagnostics import leaves, problems
 from tests.unit.conftest import CountingLoader, write_files
 
 #: `a` and `here` are declared because P8 requires every application to bind to
 #: a declaration; `any` because these tests carry arbitrary values on them.
 API = '#%RAML 1.0\ntitle: Example\nannotationTypes:\n  a: any\n  here: any\n'
 BARE_API = '#%RAML 1.0\ntitle: Example\n'
-
-
-def messages(error: RamlError) -> list[str]:
-    return error.messages()
-
-
-def traces(error: RamlError):
-    return [chain[-1] for chain in error.chains()]
 
 
 class TestIdentification:
@@ -60,7 +53,7 @@ class TestIdentification:
     def test_a_document_without_a_raml_header_fails_fast(self, workspace):
         with pytest.raises(RamlError) as caught:
             workspace.document('title: not raml\n')
-        assert traces(caught.value)[0].message == 'unknown fragment kind'
+        assert leaves(caught.value)[0].message == 'unknown fragment kind'
 
     def test_a_fragment_of_the_wrong_kind_names_both_kinds(self, workspace):
         # `uses:` demands a Library; a DataType there is a fail-fast error.
@@ -73,7 +66,7 @@ class TestIdentification:
         with pytest.raises(RamlError) as caught:
             workspace.parse(root / 'api.raml')
 
-        trace = traces(caught.value)[0]
+        trace = leaves(caught.value)[0]
         assert trace.message == 'unexpected fragment kind'
         assert trace.info == {'expected': 'Library', 'found': 'DataType'}
 
@@ -111,7 +104,7 @@ class TestIdentification:
         assert fragments.parse_fragment(raml, uri, FragmentKind.DATA_TYPE) is fragment
         with pytest.raises(RamlError) as caught:
             fragments.parse_fragment(raml, uri, FragmentKind.TRAIT)
-        trace = traces(caught.value)[0]
+        trace = leaves(caught.value)[0]
         assert trace.message == 'unexpected fragment kind'
         assert trace.info == {'expected': 'Trait', 'found': 'AnnotationTypeDeclaration'}
         assert headers == [content]
@@ -148,7 +141,7 @@ class TestEntryPoints:
     def test_parse_from_string_requires_an_absolute_base_dir(self):
         with pytest.raises(RamlError) as caught:
             parse_from_string(API, file_name='api.raml', base_dir='relative')
-        assert traces(caught.value)[0].message == 'base_dir must be an absolute path'
+        assert leaves(caught.value)[0].message == 'base_dir must be an absolute path'
 
     def test_a_relative_base_dir_is_reported_at_a_uri(self):
         """I1: a location is a URI even when the caller handed in a path."""
@@ -177,23 +170,23 @@ class TestApiDecoding:
     def test_title_is_required(self, workspace):
         with pytest.raises(RamlError) as caught:
             workspace.document('#%RAML 1.0\nversion: v1\n')
-        assert 'title is required' in messages(caught.value)
+        assert 'title is required' in problems(caught.value)
 
     def test_an_empty_title_is_rejected(self, workspace):
         with pytest.raises(RamlError) as caught:
             workspace.document('#%RAML 1.0\ntitle:\n')
-        assert 'title must not be empty' in messages(caught.value)
+        assert 'title must not be empty' in problems(caught.value)
 
     def test_an_unknown_root_field_is_reported_with_its_name(self, workspace):
         with pytest.raises(RamlError) as caught:
             workspace.document(API + 'nonsense: 1\n')
-        assert traces(caught.value)[0].info == {'field': 'nonsense'}
+        assert leaves(caught.value)[0].info == {'field': 'nonsense'}
 
     def test_independent_root_errors_are_all_reported(self, workspace):
         # One broken key does not discard its siblings (docs/02 § 5).
         with pytest.raises(RamlError) as caught:
             workspace.document(API + 'nonsense: 1\nrubbish: 2\n')
-        assert [trace.info['field'] for trace in traces(caught.value)] == ['nonsense', 'rubbish']
+        assert [trace.info['field'] for trace in leaves(caught.value)] == ['nonsense', 'rubbish']
 
     def test_endpoint_buffer_is_released_after_materialization(self, workspace):
         raml = workspace.document(API + '/users:\n  get:\n/orders:\n  post:\n')
@@ -208,7 +201,7 @@ class TestApiDecoding:
     def test_types_and_schemas_are_mutually_exclusive(self, workspace):
         with pytest.raises(RamlError) as caught:
             workspace.document(API + 'types:\n  A: string\nschemas:\n  B: string\n')
-        assert traces(caught.value)[0].message == 'types and schemas are mutually exclusive'
+        assert leaves(caught.value)[0].message == 'types and schemas are mutually exclusive'
 
     def test_every_declaration_kind_is_decoded_with_the_fragment(self, workspace):
         api = workspace.document(
@@ -252,12 +245,14 @@ class TestGlobalPrePass:
         """
         with pytest.raises(RamlError) as caught:
             workspace.document(API + 'documentation: []\n')
-        assert messages(caught.value) == ['documentation must not be empty']
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [('documentation must not be empty', {})]
 
     def test_an_invalid_media_type_is_rejected(self, workspace):
         with pytest.raises(RamlError) as caught:
             workspace.document(API + 'mediaType: nonsense\n')
-        assert 'invalid media type' in messages(caught.value)[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [
+            ('invalid media type', {'media type': 'nonsense'})
+        ]
 
     @pytest.mark.parametrize('media', ['a_b/c', 'vnd!#$&^/x', "'application/json; charset=utf-8'"])
     def test_a_media_type_follows_rfc_6838_names_and_rfc_9110_parameters(self, workspace, media):
@@ -277,7 +272,7 @@ class TestGlobalPrePass:
         # is an unclosed expression rather than part of a hostname.
         with pytest.raises(RamlError) as caught:
             workspace.document(API + 'baseUri: http://{myapi.com\n')
-        assert "unclosed '{'" in messages(caught.value)[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [("unclosed '{'", {})]
 
     def test_a_well_formed_base_uri_template_is_accepted(self, workspace):
         assert workspace.document(API + 'version: v1\nbaseUri: http://api.example.com/{version}\n') is not None
@@ -296,7 +291,7 @@ class TestGlobalPrePass:
         # be a Template URI; the template half is checked separately above.
         with pytest.raises(RamlError) as caught:
             workspace.document(API + f"baseUri: '{base_uri}'\n")
-        trace = traces(caught.value)[0]
+        trace = leaves(caught.value)[0]
         assert trace.message == message
         assert trace.info == info
 
@@ -327,14 +322,14 @@ class TestGlobalPrePass:
         # `uriParameters`, whose every name MUST be a variable in the URI.
         with pytest.raises(RamlError) as caught:
             workspace.document(API + document)
-        trace = traces(caught.value)[0]
+        trace = leaves(caught.value)[0]
         assert trace.message == 'uri parameter is not used'
         assert trace.info == {'parameter': 'p', 'uri': uri}
 
     def test_a_base_uri_that_failed_is_not_followed_by_one_error_per_parameter(self, workspace):
         with pytest.raises(RamlError) as caught:
             workspace.document(API + 'baseUri: http://{p\nbaseUriParameters:\n  p: string\n')
-        assert [trace.message for trace in traces(caught.value)] == ["unclosed '{'"]
+        assert [trace.message for trace in leaves(caught.value)] == ["unclosed '{'"]
 
     def test_version_needs_no_declaration_but_may_have_one(self, workspace):
         document = 'version: v1\nbaseUri: https://x.test/{version}\nbaseUriParameters:\n  version: string\n'
@@ -411,7 +406,7 @@ class TestLibrary:
         root = workspace({'lib.raml': '#%RAML 1.0 Library\nnonsense: 1\n'})
         with pytest.raises(RamlError) as caught:
             workspace.parse(root / 'lib.raml')
-        assert traces(caught.value)[0].info == {'field': 'nonsense'}
+        assert leaves(caught.value)[0].info == {'field': 'nonsense'}
 
 
 class TestTypedFragments:

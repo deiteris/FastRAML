@@ -19,6 +19,7 @@ from hypothesis import strategies as st
 
 from fastraml import ParseOptions, RamlError, Stage, parse_from_path
 from fastraml.types.values import ValueSet, is_subset, same_value, unique_items
+from tests.diagnostics import messages, traces
 
 API = '#%RAML 1.0\ntitle: T\n'
 
@@ -44,10 +45,6 @@ def parse_validating(workspace, body: str):
     except RamlError as err:
         return err
     return None
-
-
-def messages(error: RamlError) -> set[str]:
-    return {trace.message for chain in error.chains() for trace in chain}
 
 
 class TestScalarTypes:
@@ -96,8 +93,8 @@ class TestScalarTypes:
         # Python's `\d` would take Arabic-Indic digits and `int()` would read them.
         error = parse_validating(workspace, f"  T:\n    type: {kind}\n    example: '{value}'\n")
         assert error is not None
-        traces = [trace for chain in error.chains() for trace in chain if trace.message == 'invalid date']
-        assert [trace.info['expected'] for trace in traces] == [expected]
+        dates = [trace for trace in traces(error) if trace.message == 'invalid date']
+        assert [trace.info['expected'] for trace in dates] == [expected]
 
     def test_rfc2616_is_selected_by_format(self, workspace):
         shape = declared(workspace, '  T:\n    type: datetime\n    format: rfc2616\n')
@@ -270,7 +267,7 @@ class TestArray:
 
     def test_the_failing_index_is_in_the_path(self, workspace):
         error = declared(workspace, '  T: integer[]\n').validate([1, 2, 'x'])
-        paths = {trace.info.get('path') for chain in error.chains() for trace in chain if trace.info}
+        paths = {trace.info.get('path') for trace in traces(error) if trace.info}
         assert '$[2]' in paths
 
     def test_unique_items(self, workspace):
@@ -335,10 +332,7 @@ class TestObject:
         shape = declared(workspace, '  T:\n    properties:\n      a: string\n      b: string\n      c: string\n')
         error = shape.validate({})
         missing = [
-            trace.info['properties']
-            for chain in error.chains()
-            for trace in chain
-            if trace.message == 'missing required properties'
+            trace.info['properties'] for trace in traces(error) if trace.message == 'missing required properties'
         ]
         assert missing == [['a', 'b', 'c']]
 
@@ -347,7 +341,7 @@ class TestObject:
         # reads in, which makes the diagnostic reproducible.
         shape = declared(workspace, '  T:\n    properties:\n      a: integer\n      b: integer\n')
         error = shape.validate({'b': 'x', 'a': 'y'})
-        paths = [trace.info['path'] for chain in error.chains() for trace in chain if trace.info.get('path')]
+        paths = [trace.info['path'] for trace in traces(error) if trace.info.get('path')]
         assert paths.index('$.a') < paths.index('$.b')
 
     def test_additional_properties_are_allowed_by_default(self, workspace):
@@ -493,7 +487,7 @@ class TestObject:
             '  T:\n    properties:\n      address:\n        properties:\n          zip: integer\n',
         )
         error = shape.validate({'address': {'zip': 'x'}})
-        paths = {trace.info.get('path') for chain in error.chains() for trace in chain if trace.info}
+        paths = {trace.info.get('path') for trace in traces(error) if trace.info}
         assert '$.address.zip' in paths
 
 
@@ -508,9 +502,7 @@ class TestUnion:
         # tell which one they meant to satisfy.
         error = declared(workspace, '  T: string | integer\n').validate([])
         assert error is not None
-        expected = {
-            trace.info.get('expected') for chain in error.chains() for trace in chain if trace.message == 'invalid type'
-        }
+        expected = {trace.info.get('expected') for trace in traces(error) if trace.message == 'invalid type'}
         assert expected == {'string', 'integer'}
 
 
@@ -539,7 +531,7 @@ class TestUnionDispatchesOnADiscriminator:
     def test_an_unknown_tag_is_refused_by_name(self, workspace):
         error = declared(workspace, TAGGED).validate({'kind': 'Fish', 'meows': True})
         assert error is not None
-        trace = next(t for chain in error.chains() for t in chain if t.message == 'unknown discriminator value')
+        trace = next(t for t in traces(error) if t.message == 'unknown discriminator value')
         assert trace.info['discriminator'] == 'kind'
         assert trace.info['known'] == ['Cat', 'Dog']
 
@@ -621,8 +613,7 @@ class TestUnionDispatchesOnADiscriminator:
         assert error is not None
         trace = next(
             t
-            for chain in error.chains()
-            for t in chain
+            for t in traces(error)
             if t.message == 'discriminator value is claimed by more than one member of the union'
         )
         assert trace.info['discriminator'] == 'k'
@@ -787,7 +778,7 @@ class TestExamplesAndDefaults:
             '  T:\n    type: integer\n    examples:\n      good: 1\n      bad: notanumber\n',
         )
         assert error is not None
-        named = {trace.info.get('example') for chain in error.chains() for trace in chain if trace.info}
+        named = {trace.info.get('example') for trace in traces(error) if trace.info}
         assert 'bad' in named
 
     def test_a_bad_default_is_reported(self, workspace):
@@ -938,7 +929,7 @@ class TestCustomFacets:
         error = parse_validating(workspace, body)
         assert error is not None
         assert messages(error) == {'required custom facet is missing'}
-        assert [trace.info for chain in error.chains() for trace in chain if trace.info] == [{'facet': 'breed'}]
+        assert [trace.info for trace in traces(error) if trace.info] == [{'facet': 'breed'}]
         assert 'unknown facet' not in messages(error)
 
     def test_a_diamond_reaches_its_shared_ancestor_once(self, workspace):
@@ -989,9 +980,7 @@ class TestCustomFacets:
         for tail in ('', '  C:\n    type: B\n  D:\n    type: C\n'):
             error = parse_validating(workspace, body + tail)
             assert error is not None
-            duplicates = [
-                frame for chain in error.chains() for frame in chain if frame.message == 'duplicate custom facet'
-            ]
+            duplicates = [frame for frame in traces(error) if frame.message == 'duplicate custom facet']
             # Lines 7 and 11 of the document are A's and B's `f?:`.
             assert [(frame.info, frame.position.line) for frame in duplicates] == [({'facet': 'f'}, 11)]
             assert [(frame.origin.message, frame.origin.position.line) for frame in duplicates] == [
@@ -1017,7 +1006,7 @@ class TestCustomFacets:
         )
         error = parse_validating(workspace, body + tail)
         assert error is not None
-        duplicates = [frame for chain in error.chains() for frame in chain if frame.message == 'duplicate custom facet']
+        duplicates = [frame for frame in traces(error) if frame.message == 'duplicate custom facet']
         # Line 11 of the document is B's `f?:`.
         assert [(frame.info, frame.position.line) for frame in duplicates] == [({'facet': 'f'}, 11)]
 
@@ -1028,9 +1017,7 @@ class TestCustomFacets:
         )
         error = parse_validating(workspace, body)
         assert error is not None
-        assert [
-            frame.info for chain in error.chains() for frame in chain if frame.message == 'duplicate custom facet'
-        ] == [{'facet': 'f'}]
+        assert [frame.info for frame in traces(error) if frame.message == 'duplicate custom facet'] == [{'facet': 'f'}]
 
 
 class TestUnionFacetsAreDistributed:
@@ -1115,7 +1102,7 @@ class TestUnionDeclarationFacetsAreDistributed:
         body = self.OBJECTS + '  T:\n    type: A | B\n    properties:\n      c: integer\n    example: {a: x, c: no}\n'
         error = parse_validating(workspace, body)
         assert error is not None
-        paths = {trace.info.get('path') for chain in error.chains() for trace in chain if trace.info}
+        paths = {trace.info.get('path') for trace in traces(error) if trace.info}
         assert '$.c' in paths
 
     def test_items_beside_a_union_of_arrays_constrain_every_member(self, workspace):
@@ -1177,7 +1164,7 @@ class TestPublicSurface:
 
     def test_the_path_starts_at_the_root(self, workspace):
         error = declared(workspace, '  T:\n    properties:\n      a: integer\n').validate({'a': 'x'})
-        paths = {trace.info.get('path') for chain in error.chains() for trace in chain if trace.info}
+        paths = {trace.info.get('path') for trace in traces(error) if trace.info}
         assert '$.a' in paths
 
 

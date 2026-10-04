@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from fastraml import ParseOptions, RamlError
+from tests.diagnostics import traces
 
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
 
@@ -35,12 +36,9 @@ class TestParameters:
         # reached the model as written.
         with pytest.raises(RamlError) as caught:
             workspace.document(API + self.RT + '/users:\n  type: r\n')
-        assert [
-            frame.info
-            for chain in caught.value.chains()
-            for frame in chain
-            if frame.message == 'missing required parameter'
-        ] == [{'parameter': 'methodName'}]
+        assert [frame.info for frame in traces(caught.value) if frame.message == 'missing required parameter'] == [
+            {'parameter': 'methodName'}
+        ]
 
     def test_the_reserved_parameters_omit_ext(self, workspace):
         """Spec § Resource Type and Trait Parameters (raml-10.md L2356): applying
@@ -153,12 +151,10 @@ class TestOptionalMethods:
                 + '/topics:\n  type: { corpResource: { TextAboutPost: p } }\n  get:\n'
                 + '/orders:\n  type: { corpResource: { TextAboutGet: g } }\n  post:\n'
             )
-        assert [
-            frame.info
-            for chain in caught.value.chains()
-            for frame in chain
-            if frame.message == 'missing required parameter'
-        ] == [{'parameter': 'TextAboutGet'}, {'parameter': 'TextAboutPost'}]
+        assert [frame.info for frame in traces(caught.value) if frame.message == 'missing required parameter'] == [
+            {'parameter': 'TextAboutGet'},
+            {'parameter': 'TextAboutPost'},
+        ]
 
     def test_a_sibling_variable_is_still_substituted(self, workspace):
         # The second half of the same fault: with a stale index, filtering out

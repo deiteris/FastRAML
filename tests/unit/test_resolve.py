@@ -15,6 +15,7 @@ from fastraml import ParseOptions, RamlError
 from fastraml.types.base import BaseShape
 from fastraml.types.complex_ import ArrayShape, UnionShape, UnknownShape
 from fastraml.yamlnode import Node, WrittenScalar
+from tests.diagnostics import traces
 
 LIB = '#%RAML 1.0 Library\n'
 
@@ -331,8 +332,7 @@ class TestErrorPositions:
             workspace.parse(root / 'lib.raml')
         located = {
             (trace.location.rsplit('/', 1)[-1], trace.position.line)
-            for chain in caught.value.chains()
-            for trace in chain
+            for trace in traces(caught.value)
             if trace.message == 'invalid type expression'
         }
         assert located == {('lib.raml', 5), ('other.raml', 3)}

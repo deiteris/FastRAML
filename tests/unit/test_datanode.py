@@ -17,6 +17,7 @@ from fastraml.registry import Raml
 from fastraml.types.examples import examples_of
 from fastraml.types.shape import make_shape
 from fastraml.yamlnode import compose, pairs
+from tests.diagnostics import keys
 
 #: Several tests here carry their value on an annotation key, which accepts
 #: anything. P8 binds every application to a declaration, so they are declared.
@@ -93,7 +94,7 @@ class TestAnExplicitBoolTagReadsTheCoreSchemaOnly:
     def test_a_non_core_spelling_is_not_a_boolean_facet_value(self):
         with pytest.raises(RamlError) as caught:
             self.required_of('T:\n  type: object\n  properties:\n    a:\n      required: !!bool yes\n')
-        assert [trace.message for chain in caught.value.chains() for trace in chain][-1] == 'expected a boolean value'
+        assert keys(caught.value)[-1] == 'expected a boolean value'
 
     @pytest.mark.parametrize('text', ['yes', 'no', 'on', 'y'])
     def test_a_non_core_spelling_keeps_its_text_as_data(self, text):
@@ -103,7 +104,7 @@ class TestAnExplicitBoolTagReadsTheCoreSchemaOnly:
         # A literal block keeps its final newline; `true\n` is not `true`.
         with pytest.raises(RamlError) as caught:
             self.required_of('T:\n  type: object\n  properties:\n    a:\n      required: !!bool |\n        true\n')
-        assert [trace.message for chain in caught.value.chains() for trace in chain][-1] == 'expected a boolean value'
+        assert keys(caught.value)[-1] == 'expected a boolean value'
         assert first_value(Raml(), 'v: !!bool |\n  true\n').raw == 'true\n'
 
     def test_a_non_core_example_fails_a_boolean_type(self, workspace):

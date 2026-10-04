@@ -13,15 +13,12 @@ from __future__ import annotations
 import pytest
 
 from fastraml import ParseOptions, RamlError, Stage, parse_lenient, path_to_file_uri
+from tests.diagnostics import messages
 from tests.unit.conftest import write_files
 
 API = '#%RAML 1.0\ntitle: T\n'
 LIB = '#%RAML 1.0 Library\n'
 BOTH = ParseOptions(unwrap=True, validate=True)
-
-
-def messages(error: RamlError) -> set[str]:
-    return {trace.message for chain in error.chains() for trace in chain}
 
 
 class TestCleanInput:

@@ -13,6 +13,7 @@ import pytest
 
 from fastraml import ParseOptions, RamlError
 from fastraml.domains import DomainLocation
+from tests.diagnostics import infos, keys
 
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
 
@@ -37,14 +38,6 @@ def rejected(workspace, body: str) -> RamlError:
     with pytest.raises(RamlError) as caught:
         parse(workspace, body)
     return caught.value
-
-
-def keys(error: RamlError) -> list[str]:
-    return [trace.message for chain in error.chains() for trace in chain]
-
-
-def infos(error: RamlError) -> list[dict]:
-    return [trace.info for chain in error.chains() for trace in chain if trace.info]
 
 
 class TestSchemeType:

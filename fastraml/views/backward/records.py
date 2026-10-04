@@ -70,15 +70,16 @@ def configure(changes: Sequence[Change], config: CompatibilityConfig) -> list[Ch
         raise ValueError(f'unknown compatibility subject: {unknown_subjects[0]}')
     configured: list[Change] = []
     for original in changes:
-        change: Change | None = original
+        # In order, so a later entry overrides an earlier one: `--rule`, appended
+        # after the file's entries, wins over them (docs/16 § 5).
+        change, disabled = original, False
         for setting in config.rules:
-            if change is None or setting.id != change.rule or not _matches(change, setting.match):
+            if setting.id != change.rule or not _matches(change, setting.match):
                 continue
-            if setting.disabled:
-                change = None
-            elif setting.impact is not None:
+            disabled = setting.disabled
+            if not disabled and setting.impact is not None:
                 change = replace(change, impact=setting.impact)
-        if change is not None:
+        if not disabled:
             configured.append(change)
     return configured
 

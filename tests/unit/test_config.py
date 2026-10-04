@@ -181,6 +181,53 @@ def test_cli_rule_override_applies_after_the_file(workspace, tmp_path, capsys):
     assert '| `protocols` | `HTTP`, `HTTPS` -> `HTTPS` | Compatible |' in capsys.readouterr().out
 
 
+def test_cli_rule_override_revives_a_rule_the_file_disables(workspace, tmp_path, capsys):
+    # docs/16 § 5: `--rule` applies after the file, so the file's `off` is not final.
+    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+    config = tmp_path / 'fastraml.yaml'
+    config.write_text('compatibility:\n  rules:\n    - id: protocol-removed\n      disabled: true\n', encoding='utf-8')
+    args = ['compat', '--config', str(config), '--rule', 'protocol-removed=breaking']
+    assert main([*args, str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
+    assert '| `protocols` | `HTTP`, `HTTPS` -> `HTTPS` | Breaking |' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ('entries', 'expected'),
+    [
+        (
+            '    - id: protocol-removed\n      disabled: true\n    - id: protocol-removed\n      impact: breaking\n',
+            EXIT_INVALID,
+        ),
+        (
+            '    - id: protocol-removed\n      impact: breaking\n    - id: protocol-removed\n      disabled: true\n',
+            EXIT_OK,
+        ),
+    ],
+)
+def test_the_last_matching_file_entry_decides(workspace, tmp_path, entries, expected):
+    # docs/16 § 5: entries are ordered overrides, so the first `off` is not final.
+    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+    config = tmp_path / 'fastraml.yaml'
+    config.write_text(f'compatibility:\n  rules:\n{entries}', encoding='utf-8')
+    assert main(['compat', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == expected
+
+
+def test_cli_rule_override_names_each_rule_once(workspace, capsys):
+    # Shared with `lint --rule`: two overrides of one rule contradict each other.
+    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+    args = ['compat', '--rule', 'protocol-removed=off', '--rule', 'protocol-removed=breaking']
+    assert main([*args, str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
+    assert 'duplicate compatibility rule override: protocol-removed' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('raw', ['protocol-removed', 'protocol-removed=Severe'])
+def test_an_invalid_cli_rule_override_is_quoted_as_typed(workspace, capsys, raw):
+    # The message names the argument the user wrote, not a re-spelling of it.
+    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+    assert main(['compat', '--rule', raw, str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
+    assert f'invalid compatibility rule override: {raw!r}' in capsys.readouterr().err
+
+
 @pytest.mark.parametrize(
     ('action', 'expected', 'refused'),
     [('off', EXIT_OK, False), ('cosmetic', EXIT_OK, False), ('severe', EXIT_INVALID, True)],

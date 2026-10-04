@@ -168,7 +168,12 @@ The default mode compares effective operations. `--types` compares entry-point
 `types:` declarations and reports their request and response implications. The
 JSON records are the machine contract; Markdown is the reading view. Compatibility
 policy is configurable through the common configuration and repeatable `--rule`
-overrides. See `fastraml/views/backward/` and `tests/unit/test_cli.py` for the
+overrides. Overrides apply in order: the configuration's `compatibility.rules`,
+then each `--rule`. For each change the last matching entry decides: `disabled:
+true` (or `off`) drops the change, and any other entry keeps it, regrading it
+when it names an impact. So `--rule` overrides the file, including a file's
+`disabled: true`. As in `lint`, one invocation may name a rule in `--rule` only
+once. See `fastraml/views/backward/` and `tests/unit/test_cli.py` for the
 supported record and CLI behavior.
 
 Protocols are compared as effective sets (docs/08 § 6.1). Undetermined

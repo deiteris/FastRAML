@@ -27,6 +27,10 @@ def workspace(memory_workspace):
     return memory_workspace
 
 
+#: `12` in Arabic-Indic digits, which Python's `\d` matches and `int()` reads.
+_ARABIC_INDIC_12 = chr(0x0661) + chr(0x0662)
+
+
 def declared_in(workspace, body: str, name: str = 'T'):
     """The parse and the named type from `types:\n<body>`, unwrapped."""
     root = workspace({'api.raml': API + 'types:\n' + body})
@@ -81,6 +85,25 @@ class TestScalarTypes:
         shape = declared(workspace, '  T: date-only\n')
         assert shape.validate('2024-02-29') is None
         assert shape.validate('2025-02-29') is not None
+
+    @pytest.mark.parametrize(
+        ('kind', 'expected', 'value'),
+        [
+            ('date-only', 'date-only', f'{_ARABIC_INDIC_12}26-09-04'),
+            ('time-only', 'time-only', f'{_ARABIC_INDIC_12}:00:00'),
+            ('datetime-only', 'datetime-only', f'2026-09-04T{_ARABIC_INDIC_12}:00:00'),
+            ('datetime', 'rfc3339', f'2026-09-04T{_ARABIC_INDIC_12}:00:00Z'),
+            ('datetime\n    format: rfc2616', 'rfc2616', f'Sun, {_ARABIC_INDIC_12} Nov 1994 08:49:37 GMT'),
+        ],
+        ids=['date-only', 'time-only', 'datetime-only', 'rfc3339', 'rfc2616'],
+    )
+    def test_an_example_with_non_ascii_digits_is_rejected(self, workspace, kind, expected, value):
+        # The grammar is `[0-9]`, which the exported schema patterns also say;
+        # Python's `\d` would take Arabic-Indic digits and `int()` would read them.
+        error = parse_validating(workspace, f"  T:\n    type: {kind}\n    example: '{value}'\n")
+        assert error is not None
+        traces = [trace for chain in error.chains() for trace in chain if trace.message == 'invalid date']
+        assert [trace.info['expected'] for trace in traces] == [expected]
 
     def test_rfc2616_is_selected_by_format(self, workspace):
         shape = declared(workspace, '  T:\n    type: datetime\n    format: rfc2616\n')

@@ -234,6 +234,34 @@ class TestAResponseKeepsItsHeaders:
             endpoint(package, 'post', '/books')
         )
 
+    def test_a_documented_header_carries_its_kind(self, package):
+        created = next(one for one in endpoint(package, 'post', '/books').cases if one.status == '201')
+        assert (created.headers[0].kind, created.headers[0].format) == ('string', '')
+
+    @pytest.mark.parametrize(
+        ('kind', 'spelling', 'form', 'schema'),
+        [
+            ('datetime', 'datetime.datetime', '', "{'type': 'string', 'format': 'date-time'}"),
+            ('date-only', 'datetime.date', '', "{'type': 'string', 'format': 'date'}"),
+            # No offset, which OpenAPI's `time` and `date-time` require.
+            ('time-only', 'datetime.time', '', "{'type': 'string'}"),
+            ('datetime-only', 'datetime.datetime', '', "{'type': 'string'}"),
+            # An HTTP date, which `date-time` is not.
+            ('datetime', 'datetime.datetime', 'rfc2616', "{'type': 'string'}"),
+        ],
+        ids=['datetime', 'date-only', 'time-only', 'datetime-only', 'rfc2616'],
+    )
+    def test_a_header_format_is_one_its_kind_satisfies(self, kind, spelling, form, schema):
+        from raml_codegen.targets.python.fastapi.emit import _documented_headers
+        from raml_codegen.targets.python.shared.annotate import Annotation
+        from raml_codegen.targets.python.shared.plan import Argument, Case
+
+        header = Argument(
+            name='at', wire='At', annotation=Annotation(spelling), required=True, docs='', kind=kind, format=form
+        )
+        case = Case(status='200', annotation=None, description='', headers=(header,))
+        assert _documented_headers(case) == f"{{'At': {{'required': True, 'schema': {schema}}}}}"
+
 
 class TestParametersKeepWhatTheDocumentGaveThem:
     def test_a_parameter_with_a_default_is_never_none(self, package):

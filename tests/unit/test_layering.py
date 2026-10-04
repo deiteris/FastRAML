@@ -181,13 +181,21 @@ def test_a_name_that_only_looks_like_io_is_not_flagged():
 #: The `re` functions that take a pattern first.
 _RE_CALLS = frozenset({'compile', 'search', 'match', 'fullmatch', 'finditer', 'findall', 'sub', 'subn', 'split'})
 
-#: The calls that compile a pattern that is not RAML's, as (module, function):
-#: a configuration file's regex, and one built from `re.escape`d pieces. A RAML
-#: regex goes through `compile_pattern` / `regex_engine` instead, so
-#: `regex_engine='re2'` covers it (docs/13 § 2).
+#: The calls that compile a pattern that is not RAML's, as (module, scope),
+#: the scope being the enclosing function or, at module level, the name
+#: assigned: a configuration file's regex, one built from `re.escape`d pieces,
+#: and the built-in date/time grammars, composed from constant pieces and
+#: shared with the schema exports. Those end in `(?![\s\S])`, which re2 cannot
+#: compile. A RAML regex goes through `compile_pattern` / `regex_engine`
+#: instead, so `regex_engine='re2'` covers it (docs/13 § 2).
 _NON_RAML_PATTERNS = frozenset(
     {
         ('fastraml.config', '_compatibility_rule'),
+        ('fastraml.types.values', 'DATE_ONLY'),
+        ('fastraml.types.values', 'TIME_ONLY'),
+        ('fastraml.types.values', 'DATETIME_ONLY'),
+        ('fastraml.types.values', '_RFC3339'),
+        ('fastraml.types.values', '_RFC2616'),
         ('fastraml.views.lint.config', '_setting'),
         ('fastraml.views.lint.rules.content', '_Segment.__init__'),
     }
@@ -195,10 +203,11 @@ _NON_RAML_PATTERNS = frozenset(
 
 
 def _regex_calls(tree: ast.Module) -> list[tuple[int, str, str]]:
-    """(line, enclosing qualified name, call) for each `re` function reached
-    other than by a call with a string literal as its pattern (called with a
-    computed one, or passed as a value), each `from re import` of one, and
-    each import of `re2`.
+    """(line, scope, call) for each `re` function reached other than by a call
+    with a string literal as its pattern (called with a computed one, or passed
+    as a value), each `from re import` of one, and each import of `re2`. The
+    scope is the enclosing qualified name; at module level, the single name an
+    assignment binds, or `''`.
     """
     aliases = {name for name, target in _bound_names(tree).items() if target == 're'}
     literal = {
@@ -213,6 +222,8 @@ def _regex_calls(tree: ast.Module) -> list[tuple[int, str, str]]:
     def visit(node: ast.AST, scope: str) -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             scope = f'{scope}.{node.name}' if scope else node.name
+        elif not scope and (target := _assigned_name(node)):
+            scope = target
         if isinstance(node, ast.Import) and any(alias.name.split('.')[0] == 're2' for alias in node.names):
             found.append((node.lineno, scope, 'import re2'))
         elif isinstance(node, ast.ImportFrom) and (node.module or '').split('.')[0] == 're2':
@@ -241,15 +252,37 @@ def _pattern(call: ast.Call) -> ast.expr | None:
     return next((keyword.value for keyword in call.keywords if keyword.arg == 'pattern'), None)
 
 
-def test_every_computed_regex_is_raml_s_or_listed():
-    offenders = [
-        f'{module_name(path)}:{line} {call} in {scope or "<module>"}'
-        for path in sources('fastraml')
-        for line, scope, call in _regex_calls(parse(path))
-        if not (module_name(path) == 'fastraml.parser.facets' and call == 'import re2')
-        and (module_name(path), scope) not in _NON_RAML_PATTERNS
+def _assigned_name(node: ast.AST) -> str | None:
+    """The one name an assignment binds, if it binds exactly one."""
+    if isinstance(node, ast.Assign) and len(node.targets) == 1:
+        target: ast.expr = node.targets[0]
+    elif isinstance(node, ast.AnnAssign):
+        target = node.target
+    else:
+        return None
+    return target.id if isinstance(target, ast.Name) else None
+
+
+def _regex_offenders(module: str, tree: ast.Module) -> list[str]:
+    return [
+        f'{module}:{line} {call} in {scope or "<module>"}'
+        for line, scope, call in _regex_calls(tree)
+        if not (module == 'fastraml.parser.facets' and call == 'import re2')
+        and (module, scope) not in _NON_RAML_PATTERNS
     ]
+
+
+def test_every_computed_regex_is_raml_s_or_listed():
+    offenders = [found for path in sources('fastraml') for found in _regex_offenders(module_name(path), parse(path))]
     assert not offenders, '\n'.join(offenders)
+
+
+def test_a_listed_module_level_grammar_does_not_exempt_its_neighbours():
+    source = 'import re\nDATE_ONLY: Final = re.compile(rf"^{_DATE}")\nOTHER = re.compile(p)\nre.compile(p)\n'
+    assert _regex_offenders('fastraml.types.values', ast.parse(source)) == [
+        'fastraml.types.values:3 re.compile in OTHER',
+        'fastraml.types.values:4 re.compile in <module>',
+    ]
 
 
 @pytest.mark.parametrize(

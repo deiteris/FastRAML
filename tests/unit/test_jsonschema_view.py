@@ -14,6 +14,14 @@ import jsonschema
 import pytest
 
 from fastraml import ParseOptions
+from fastraml.types.values import (
+    DATETIME_ONLY_PATTERN,
+    RFC2616_PATTERN,
+    TIME_ONLY_PATTERN,
+    parse_rfc2616,
+    valid_datetime_only,
+    valid_time_only,
+)
 from fastraml.views.jsonschema import SCHEMA_VERSION, to_json_schema
 
 API = '#%RAML 1.0\ntitle: T\n'
@@ -140,7 +148,7 @@ class TestKinds:
             ('nil', {'type': 'null'}),
             ('datetime', {'type': 'string', 'format': 'date-time'}),
             ('date-only', {'type': 'string', 'format': 'date'}),
-            ('time-only', {'type': 'string', 'format': 'time'}),
+            ('time-only', {'type': 'string', 'pattern': TIME_ONLY_PATTERN}),
             ('any', {}),
         ],
     )
@@ -166,7 +174,7 @@ class TestKinds:
         schema, _ = converted(workspace, '  T:\n    type: datetime\n    format: rfc2616\n')
         node = schema['definitions']['T']
         assert 'format' not in node
-        assert node['pattern'].startswith('^(Mon|Tue')
+        assert node['pattern'] == RFC2616_PATTERN
 
 
 class TestUnwrapped:
@@ -216,6 +224,100 @@ class TestTheSchemaAgreesWithTheShape:
     def test_the_cases_are_not_all_one_verdict(self, workspace):
         _, schema = both(workspace, '  T:\n    type: string\n    minLength: 2\n')
         assert {accepts(schema, value) for value in ('ab', 'a')} == {True, False}
+
+
+#: One corpus per exported date/time pattern: values the parser accepts and
+#: values it rejects, at each boundary the pattern spells out.
+_DATE_TIME_CORPUS = {
+    'time-only': (
+        valid_time_only,
+        TIME_ONLY_PATTERN,
+        ['00:00:00', '23:59:59', '12:30:00.5', '12:30:00.123456', '23:59:60'],
+        [
+            '24:00:00',
+            '12:60:00',
+            '12:00:61',
+            '12:00',
+            '12:00:00.',
+            '12:00:00Z',
+            '12:00:00+01:00',
+            '1:00:00',
+            '12:00:00\n',
+        ],
+    ),
+    'datetime-only': (
+        valid_datetime_only,
+        DATETIME_ONLY_PATTERN,
+        [
+            '2024-01-31T00:00:00',
+            '2024-02-29T12:00:00',
+            '2000-02-29T12:00:00',
+            '0000-02-29T00:00:00',
+            '2023-04-30T23:59:60',
+            '2023-12-01T08:00:00.25',
+        ],
+        [
+            '2023-00-10T00:00:00',
+            '2023-01-00T00:00:00',
+            '2023-13-01T00:00:00',
+            '2023-04-31T00:00:00',
+            '2023-02-29T00:00:00',
+            '1900-02-29T00:00:00',
+            '2023-01-01T24:00:00',
+            '2023-01-01 00:00:00',
+            '2023-01-01T00:00:00Z',
+            '2023-01-01T00:00:00\n',
+        ],
+    ),
+    'rfc2616': (
+        parse_rfc2616,
+        RFC2616_PATTERN,
+        [
+            'Sun, 06 Nov 1994 08:49:37 GMT',
+            'Thu, 29 Feb 2024 00:00:00 GMT',
+            'Sat, 30 Apr 2022 23:59:60 GMT',
+            'Mon, 31 Dec 1999 23:59:59 GMT',
+        ],
+        [
+            'Sun, 00 Nov 1994 08:49:37 GMT',
+            'Sun, 31 Nov 1994 08:49:37 GMT',
+            'Tue, 29 Feb 2023 00:00:00 GMT',
+            'Sun, 06 Nov 1994 24:00:00 GMT',
+            'Sun, 06 Nov 1994 08:49:37.5 GMT',
+            'Sunday, 06-Nov-94 08:49:37 GMT',
+            'Sun, 6 Nov 1994 08:49:37 GMT',
+            'Sun, 06 Nov 1994 08:49:37 GMT\n',
+        ],
+    ),
+}
+
+
+class TestDateTimePatternsMatchTheParser:
+    r"""An exported date/time pattern accepts exactly what the parser accepts.
+
+    The patterns use only syntax ECMA-262 and Python `re` read alike (ASCII
+    classes, non-capturing groups, `^` and `(?![\s\S])` with no flags), so
+    Python's `re.search` -- what a JSON Schema validator applies, in Python or
+    in ECMA-262 -- gives the verdict either language gives. A trailing newline
+    is in the corpus because Python's `$` would have let it through.
+    """
+
+    @pytest.mark.parametrize('kind', list(_DATE_TIME_CORPUS))
+    def test_verdicts_match(self, kind):
+        validator, pattern, valid, invalid = _DATE_TIME_CORPUS[kind]
+        compiled = re.compile(pattern)
+        for value in valid + invalid:
+            by_parser = validator(value)
+            assert by_parser == (value in valid), value
+            assert (compiled.search(value) is not None) == by_parser, value
+
+    @pytest.mark.parametrize('kind', list(_DATE_TIME_CORPUS))
+    def test_the_pattern_reaches_a_schema_validator(self, workspace, kind):
+        _, _, valid, invalid = _DATE_TIME_CORPUS[kind]
+        body = '  T:\n    type: datetime\n    format: rfc2616\n' if kind == 'rfc2616' else f'  T: {kind}\n'
+        shape, schema = both(workspace, body)
+        for value in valid + invalid:
+            assert accepts(schema, value) == (shape.validate(value) is None) == (value in valid), value
 
 
 def test_the_output_is_a_valid_draft_07_schema(workspace):

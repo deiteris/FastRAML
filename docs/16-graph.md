@@ -337,6 +337,19 @@ variable stays written for the caller to supply. `version` declared under
 `baseUriParameters` is the caller's too, as the OpenAPI export reads it.
 `APIFragment.base_uri` stays as written.
 
+Both schema exports write `datetime` as `format: date-time` and `date-only` as
+`format: date`. The other date and time kinds have no matching format and are
+written as a `pattern`: `time-only`, because JSON Schema's `time` requires an
+offset and OpenAPI 3.0 defines none; `datetime-only`; and `datetime` with
+`format: rfc2616`. The patterns are `TIME_ONLY_PATTERN`,
+`DATETIME_ONLY_PATTERN` and `RFC2616_PATTERN` in `types/values.py`, and the
+parser's validators compile the same grammar, so the export accepts exactly what
+the parser accepts. The grammar spells out ASCII digits, day ranges, leap years,
+fractional seconds and the leap second `:60`. The patterns use only syntax
+ECMA-262 and Python `re` read alike, and end with `(?![\s\S])` rather than `$`,
+which in Python also matches before a final newline; `test_jsonschema_view.py`
+runs one corpus through both.
+
 These are read-only views. Their detailed tests are
 `tests/unit/test_jsonschema_view.py`, `tests/unit/test_openapi_view.py` and
 `tests/unit/test_base_uri_view.py`.

@@ -42,7 +42,7 @@ from fastraml.facet_names import (
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.directives import make_security_schemes
 from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Response, decode_protocols
-from fastraml.parser.facets import make_string_facet
+from fastraml.parser.facets import MEDIA_RANGE, make_string_facet
 from fastraml.parser.includes import inline_include
 from fastraml.types.shape import make_body_shape, make_parameter_map, make_shape
 from fastraml.yamlnode import NodeKind, is_null, node_error, pairs
@@ -110,19 +110,35 @@ def _is_media_type_map(node: Node) -> bool:
     return all('/' in content[index].value for index in range(0, len(content), 2))
 
 
-def _decode_bodies(raml: Raml, key: Node, node: Node, location: str, target: DomainLocation) -> dict[str, Body]:
-    """`body:` in either spelling (docs/08 § 6.3), written at `key`."""
+def _decode_bodies(  # noqa: PLR0913, PLR0917 - filling the holder's map keeps what decoded when a key fails
+    raml: Raml, key: Node, node: Node, location: str, target: DomainLocation, bodies: dict[str, Body]
+) -> None:
+    """`body:` in either spelling (docs/08 § 6.3), written at `key`, into `bodies`."""
     if is_null(node):
-        return {}
+        return
     location = raml.location_of(node, location)
-    bodies: dict[str, Body] = {}
 
     if _is_media_type_map(node):
+        # Spec section Bodies: each key "MUST be a media type string conforming
+        # to ... RFC6838". A media range, `type/*` or `*/*`, is kept: the JSON
+        # Schema check and a lint rule read one as a body that accepts every
+        # format (docs/08 § 6.3). A bad key, or a body that fails to decode, is
+        # skipped, not fatal to its siblings: each is reported, and the bodies
+        # beside it are decoded and kept in the lenient model.
+        accumulator = Accumulator()
         # The media-type node *is* the body node the spec's target table names,
         # so an annotation written inside one targets RequestBody/ResponseBody.
         with raml.target_scope(target):
             for media, value in pairs(node):
-                shape = make_body_shape(raml, media, value, location)
+                if MEDIA_RANGE.fullmatch(media.value) is None:
+                    at = raml.location_of(media, location)
+                    accumulator.add(node_error('invalid media type', at, media, info={'media type': media.value}))
+                    continue
+                try:
+                    shape = make_body_shape(raml, media, value, location)
+                except RamlError as err:
+                    accumulator.add(err)
+                    continue
                 raml.put_typedef(shape.location, shape)
                 bodies[media.value] = Body(
                     id=raml.next_id(),
@@ -132,7 +148,8 @@ def _decode_bodies(raml: Raml, key: Node, node: Node, location: str, target: Dom
                     key_pos=media.position,
                     value_pos=value.full_position,
                 )
-        return bodies
+        accumulator.raise_if_any()
+        return
 
     # A `body:` written without media-type keys *is* a type declaration, and an
     # annotation inside it targets `TypeDeclaration` rather than the body — the
@@ -164,7 +181,6 @@ def _decode_bodies(raml: Raml, key: Node, node: Node, location: str, target: Dom
                 value_pos=node.full_position,
                 media_type_written=False,
             )
-    return bodies
 
 
 # -- responses -----------------------------------------------------------------
@@ -213,8 +229,8 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str, attach: 
                     elif name == FACET_HEADERS:
                         response.headers = make_parameter_map(raml, child_value, location, 'header')
                     elif name == FACET_BODY:
-                        response.bodies = _decode_bodies(
-                            raml, child_key, child_value, location, DomainLocation.RESPONSE_BODY
+                        _decode_bodies(
+                            raml, child_key, child_value, location, DomainLocation.RESPONSE_BODY, response.bodies
                         )
                     elif is_annotation_key(name):
                         add_domain_extension(raml, response.annotations, location, child_key, child_value)
@@ -299,7 +315,7 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
     elif name == FACET_PROTOCOLS:
         operation.protocols = decode_protocols(raml, value, location)
     elif name == FACET_BODY:
-        request.bodies = _decode_bodies(raml, key, value, location, DomainLocation.REQUEST_BODY)
+        _decode_bodies(raml, key, value, location, DomainLocation.REQUEST_BODY, request.bodies)
     elif name == FACET_RESPONSES:
         decode_responses(raml, value, location, operation.responses)
     elif is_annotation_key(name):

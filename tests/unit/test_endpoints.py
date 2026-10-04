@@ -332,6 +332,111 @@ class TestBodies:
         assert response.bodies['application/json'].shape.type == 'string'
 
 
+#: `body: {<key>: string}` at each site a body is written, reaching the model
+#: after templates are applied (docs/08 § 6.3).
+BODY_SITES = {
+    'request': lambda key: f'/a:\n  post:\n    body:\n      {key}: string\n',
+    'response': lambda key: f'/a:\n  get:\n    responses:\n      200:\n        body:\n          {key}: string\n',
+    'trait': lambda key: f'traits:\n  t:\n    body:\n      {key}: string\n/a:\n  post:\n    is: [t]\n',
+    'resource type': lambda key: (
+        f'resourceTypes:\n  r:\n    post:\n      body:\n        {key}: string\n/a:\n  type: r\n'
+    ),
+    'describedBy': lambda key: (
+        'securitySchemes:\n  s:\n    type: x-custom\n    describedBy:\n      responses:\n        401:\n'
+        f'          body:\n            {key}: string\n/a:\n  get:\n    securedBy: [s]\n'
+    ),
+}
+
+
+class TestBodyMediaTypeKeys:
+    """Spec section Bodies: each key "MUST be a media type string conforming to
+    the media type specification in RFC6838". A media range is kept (docs/08 § 6.3).
+    """
+
+    @pytest.mark.parametrize('site', sorted(BODY_SITES))
+    def test_a_key_that_is_not_a_media_type_is_refused_at_every_site(self, workspace, site):
+        error = fails(workspace, BODY_SITES[site]('application/json/x'))
+        assert error is not None
+        assert ('invalid media type', {'media type': 'application/json/x'}) in frames(error)
+
+    @pytest.mark.parametrize('site', sorted(BODY_SITES))
+    def test_a_media_type_with_parameters_is_accepted_at_every_site(self, workspace, site):
+        assert fails(workspace, BODY_SITES[site]("'application/json; charset=utf-8'")) is None
+
+    @pytest.mark.parametrize('key', ["'*/*'", 'application/*'])
+    def test_a_media_range_is_accepted(self, workspace, key):
+        # The JSON Schema check (docs/10 § 7) and `restricted-request-media-type`
+        # both read a wildcard key as a body that accepts every format.
+        raml = parse(workspace, BODY_SITES['request'](key))
+        assert list(raml.endpoints['/a'].operations['post'].request.bodies) == [key.strip("'")]
+
+    @pytest.mark.parametrize('key', ['a/b/c', 'application/ json', '/json', "'application/json; q'"])
+    def test_each_bad_key_is_reported_once_at_itself(self, workspace, key):
+        # Beside a good key, which is not reported: the check is per key.
+        text = BODY_SITES['request'](key).replace('body:\n', 'body:\n      text/plain: string\n')
+        error = fails(workspace, text)
+        assert error is not None
+        bad = [frame for chain in error.chains() for frame in chain if frame.message == 'invalid media type']
+        assert [(frame.info, frame.position.line) for frame in bad] == [
+            ({'media type': key.strip("'")}, API.count('\n') + 5)
+        ]
+
+    @staticmethod
+    def _beside(site: str, sibling: str) -> str:
+        """A bad key first, then `sibling` and a plain body, at `site`."""
+        head = (
+            '/a:\n  post:\n    body:\n'
+            if site == 'request'
+            else '/a:\n  post:\n    responses:\n      200:\n        body:\n'
+        )
+        indent = ' ' * (6 if site == 'request' else 10)
+        return head + ''.join(
+            f'{indent}{pair}\n' for pair in ('a/b/c: string', f'application/json: {sibling}', 'text/plain: string')
+        )
+
+    @pytest.mark.parametrize('site', ['request', 'response'])
+    def test_a_bad_key_and_a_failing_sibling_are_both_reported(self, workspace, site):
+        # Each body is decoded on its own: neither error hides the other, in
+        # either order of failure.
+        error = fails(workspace, self._beside(site, '{type: string, minLength: x}'))
+        assert error is not None
+        reported = [message for message, _ in frames(error)]
+        assert 'invalid media type' in reported
+        assert 'expected an integer value' in reported
+
+    @pytest.mark.parametrize('site', ['request', 'response'])
+    def test_a_bad_key_keeps_its_valid_siblings_in_the_lenient_model(self, workspace, site):
+        # `Missing` is kept for P7 to judge; the parse stops at the failing
+        # pass, so in this model it stays unresolved and unreported.
+        root = workspace({'api.raml': API + self._beside(site, 'Missing')})
+        raml, error = workspace.lenient(root / 'api.raml')
+        assert error is not None
+        operation = raml.endpoints['/a'].operations['post']
+        holder = operation.request if site == 'request' else operation.responses['200']
+        assert list(holder.bodies) == ['application/json', 'text/plain']
+        marked = operation if site == 'request' else holder
+        assert raml.broken[marked.id].head.info == {'media type': 'a/b/c'}
+
+    @pytest.mark.parametrize(
+        ('kind', 'frame'),
+        [
+            ('Extension', ('invalid media type', {'media type': 'a/b/c'})),
+            # An overlay cannot add a body at all, so that is what it reports.
+            ('Overlay', ('not allowed in an overlay', {'field': 'a/b/c', 'change': 'added'})),
+        ],
+    )
+    def test_a_body_key_an_extension_or_overlay_adds_is_refused(self, workspace, kind, frame):
+        root = workspace(
+            {
+                'api.raml': API + '/a:\n  post:\n    body:\n      application/json: string\n',
+                'ext.raml': f'#%RAML 1.0 {kind}\nextends: api.raml\n/a:\n  post:\n    body:\n      a/b/c: string\n',
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'ext.raml')
+        assert frame in frames(caught.value)
+
+
 class TestUriParameters:
     def test_an_undeclared_variable_is_synthesised_as_a_required_string(self, workspace):
         raml = parse(workspace, '/users/{id}:\n')

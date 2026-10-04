@@ -376,7 +376,16 @@ is placed at the `body:` key and records `media_type_written=False`, so a
 reader tells one declaration from several written under their own keys. A
 mapping that mixes media-type keys and type facets is an error. API default media types must be
 RFC 6838 `type/subtype`, without wildcards, optionally followed by RFC 9110
-parameters (docs/10 § 2).
+parameters (docs/10 § 2). Each key of a media-type map is checked as the body
+is decoded, so a request or response body, one a trait, resource type or
+extension contributed, and one in a `describedBy:` response all get the check;
+a key that fails is `invalid media type`, with the key, at the key. A bad key,
+or a body that fails to decode, is skipped and reported; the bodies beside it
+are still decoded and kept, and the holder is marked broken. A key may
+also be a media range, `type/*` or `*/*`: the spec asks for an RFC 6838 media
+type, but the JSON Schema check (docs/10 § 7) and the lint rule
+`restricted-request-media-type` read a wildcard key as a body that accepts
+every format. An overlay cannot add a body key at all.
 
 ### 6.4 Query strings
 

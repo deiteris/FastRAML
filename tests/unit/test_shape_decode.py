@@ -11,9 +11,11 @@ from fractions import Fraction
 import pytest
 
 from fastraml import RamlError
+from fastraml import facet_names as fn
 from fastraml.registry import Raml
-from fastraml.types.complex_ import UnknownShape
-from fastraml.types.shape import make_shape
+from fastraml.types.base import facet_slots
+from fastraml.types.complex_ import UnionShape, UnknownShape
+from fastraml.types.shape import COMMON_FACETS, KIND_TO_CLASS, TYPE_SPECIFIC_FACETS, make_shape
 from fastraml.yamlnode import compose, pairs
 
 LOCATION = 'file:///a.raml'
@@ -219,6 +221,76 @@ class TestCustomFacets:
         # minLength belongs to string and file, not to object.
         base = shape('T:\n  type: object\n  facets:\n    minLength: integer\n')
         assert 'minLength' in base.custom_facet_defs
+
+    @pytest.mark.parametrize(
+        ('kind', 'facet'),
+        [
+            ('number', 'format'),
+            ('integer', 'format'),
+            ('datetime', 'format'),
+            ('file', 'minLength'),
+            ('file', 'maxLength'),
+            ('string', 'xml'),
+            ('object', 'xml'),
+            ('union', 'anyOf'),
+        ],
+    )
+    def test_a_facet_may_not_shadow_any_key_the_kinds_decoder_takes(self, kind: str, facet: str):
+        # Spec: a facet name must not match a built-in facet of the type. A
+        # subtype could never supply such a facet: the decoder takes the key.
+        with pytest.raises(RamlError) as caught:
+            shape(f'T:\n  type: {kind}\n  facets:\n    {facet}: string\n')
+        trace = first_trace(caught)
+        assert trace.message == 'cannot redefine built-in facet'
+        assert trace.info == {'facet': facet, 'type': kind}
+
+
+def _consumed(kind: str, candidates: frozenset[str]) -> frozenset[str]:
+    """The candidate keys `kind`'s decoders take rather than file as custom.
+
+    The value `x` is wrong for most built-in facets, and a decoder that rejects
+    it has still taken the key; `attach` keeps the shape for inspection. A
+    union's leftovers wait in `pending_facets`, and its discriminator refusal
+    is a rule about the union, not a facet it owns. The kind is quoted, or
+    `null` would read as YAML null.
+    """
+    taken = {fn.FACET_TYPE}  # the probe's own key
+    for name in candidates - taken:
+        held = []
+        key, value = next(iter(pairs(compose(f"T:\n  type: '{kind}'\n  {name}: x\n", uri=LOCATION))))
+        try:
+            make_shape(Raml(), key, value, LOCATION, attach=held.append)
+        except RamlError as err:
+            if next(iter(err.chains()))[-1].message == 'discriminator cannot be used with union type':
+                continue
+        base = held[0]
+        leftover = set(base.custom_facets)
+        if isinstance(base.shape, UnionShape):
+            leftover |= {node.value for node in base.shape.pending_facets[::2]}
+        if name not in leftover:
+            taken.add(name)
+    return frozenset(taken)
+
+
+class TestBuiltInFacetGuardMatchesTheDecoders:
+    """`COMMON_FACETS` and `TYPE_SPECIFIC_FACETS` are what the decoders take.
+
+    Derived by feeding every facet spelling the code knows to each kind, so a
+    key added to a decoder without the guard fails here (docs/05 § 5).
+    """
+
+    CANDIDATES = frozenset(
+        {value for name, value in vars(fn).items() if name.startswith('FACET_') and isinstance(value, str)}
+        | {spelling for cls in KIND_TO_CLASS.values() for _, spelling in facet_slots(cls)}
+    )
+
+    def test_the_common_set_is_what_every_kind_takes(self):
+        assert _consumed('any', self.CANDIDATES) == COMMON_FACETS
+
+    # `json` refuses every sibling key, so it takes none as a facet.
+    @pytest.mark.parametrize('kind', sorted(set(KIND_TO_CLASS) - {'json'}))
+    def test_each_kinds_set_is_what_its_decoders_take(self, kind: str):
+        assert _consumed(kind, self.CANDIDATES) - COMMON_FACETS == TYPE_SPECIFIC_FACETS.get(kind, frozenset())
 
 
 class TestJsonSchemaTypes:

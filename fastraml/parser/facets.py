@@ -89,7 +89,8 @@ _PARAMETERS: Final = rf'(?:[ \t]*;[ \t]*(?:{_TOKEN}=(?:{_TOKEN}|{_QUOTED}))?)*'
 MEDIA_TYPE: Final = re.compile(rf'{_RESTRICTED_NAME}/{_RESTRICTED_NAME}{_PARAMETERS}')
 
 #: A media range, RFC 9110 § 12.5.1: a media type, `type/*` or `*/*`. What
-#: `fileTypes` takes; the spec requires `*/*` there (docs/10 § 2).
+#: `fileTypes` takes, where the spec requires `*/*` (docs/10 § 2), and what a
+#: `body:` key takes (docs/08 § 6.3).
 MEDIA_RANGE: Final = re.compile(rf'(?:\*/\*|{_RESTRICTED_NAME}/(?:\*|{_RESTRICTED_NAME})){_PARAMETERS}')
 
 _MEDIA_HEAD: Final = re.compile(rf'\*/\*|{_RESTRICTED_NAME}/(?:\*|{_RESTRICTED_NAME})')

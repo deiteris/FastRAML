@@ -18,14 +18,17 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 __all__ = [
-    'JSON_ONLY',
+    'ENVELOPE',
     'PRODUCES',
+    'RECURSION',
     'Container',
     'ContractSchema',
     'Emitted',
     'Facet',
     'Holds',
+    'Recursion',
     'ShapeKind',
+    'ShapeLayout',
     'Structural',
     'Vocabulary',
     'contract_schema',
@@ -80,6 +83,47 @@ class Emitted:
     optional: tuple[str, ...]
     delegates: tuple[str, ...]
     dynamic: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ShapeLayout:
+    """Which `ShapeBase` keys each shape record declares, and how.
+
+    `shape()` writes every key, so the source read puts them all on
+    `ShapeBase`. Where each is declared is decided here, once, for every backend.
+    """
+
+    #: Present on every shape. The discriminator is not among them: each
+    #: variant declares its own, which is how a backend narrows on it.
+    required: tuple[str, ...]
+    #: Present on some shapes. A delegate's keys are optional whatever it says
+    #: of them: whether it runs at all is the caller's condition.
+    optional: tuple[str, ...]
+    #: Model class -> the `ShapeBase` keys declared only on that variant, each
+    #: optional.
+    extras: dict[str, tuple[str, ...]]
+
+
+@dataclass(frozen=True, slots=True)
+class Recursion:
+    """The recursion marker: a `ShapeBase` with its own `type` and keys.
+
+    P9 builds a `RecursiveShape` and `shape()` projects it down the generic
+    path, so a marker carries `id`, `name` and whatever `ShapeBase` fields the
+    type it stands for had. It is not a `Shape`: `Shape` is what a declaration
+    and a `projection` hold, and a marker is neither.
+
+    Declared rather than read. `_Projector.recursion()` is a literal three-key
+    dict that never runs, so generating from it declares three keys where seven
+    ship (docs/16 § 6.1). `head` is declared for a second reason: `shape()`
+    writes it through a loop over `_BACK_POINTERS`, which no AST read resolves.
+    """
+
+    #: The marker's `type`, which no shape kind uses.
+    type: str
+    #: The keys it adds to `ShapeBase`, each required. `structure_of('ShapeBase',
+    #: key)` says what one holds.
+    keys: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +248,19 @@ class ContractSchema:
             raise LookupError(f"shape() emits {undeclared}, not declared under 'ShapeBase' in schema.py")
         return found, delegated
 
+    def shape_layout(self) -> ShapeLayout:
+        """Where each `ShapeBase` key is declared, in the order `shape()` writes it."""
+        found, delegated = self.shape_projection()
+        moved = {key for keys in _VARIANT_ONLY.values() for key in keys}
+        # A variant-only key is taken off the base wherever `shape()` writes it,
+        # itself or through a delegate, so it is looked for in both.
+        written = tuple(dict.fromkeys((*found.optional, *delegated)))
+        return ShapeLayout(
+            required=tuple(key for key in found.required if key != _DISCRIMINATOR),
+            optional=tuple(key for key in found.optional if key not in moved),
+            extras={model: tuple(key for key in written if key in keys) for model, keys in _VARIANT_ONLY.items()},
+        )
+
     def kinds_by_model(self) -> dict[str, list[str]]:
         """Each model class, and the discriminator values it implements, in order."""
         by_model: dict[str, list[str]] = {}
@@ -248,8 +305,8 @@ class ContractSchema:
         # `ShapeBase` costs nothing in a language that reads a table by string
         # key and fails to compile in one that does not -- which is how Go found
         # it.
-        json_only = {key: records['ShapeBase'].pop(key) for key in JSON_ONLY if key in records['ShapeBase']}
-        records['JsonShape'].update(json_only)
+        for model, moved in self.shape_layout().extras.items():
+            records[model].update({key: records['ShapeBase'].pop(key) for key in moved})
 
         # A record bears shapes if it holds one directly, or holds a record that
         # does. Iterate to a fixed point; the graph is small and cyclic (a
@@ -307,12 +364,21 @@ _FACET_STRUCTURE: Final[dict[str, Structural]] = {
     'DataNode | None': Structural(Holds.JSON),
 }
 
-#: The two keys only a `json` shape carries. Both are whole documents about the
-#: same schema, and the spec forbids a JSON-schema type from taking part in
-#: inheritance, so neither belongs to every shape. Declared under `ShapeBase`
-#: because `shape()` is what writes them, and moved onto `JsonShape` wherever a
-#: backend or a walk asks which record holds them.
-JSON_ONLY: Final = frozenset({'json_schema', 'projection'})
+#: The key every shape variant narrows on.
+_DISCRIMINATOR: Final = 'type'
+
+#: Keys only one variant carries. `json_schema` and `projection` are whole
+#: documents about the same schema, and the spec forbids a JSON-schema type
+#: from taking part in inheritance, so neither belongs to every shape. Declared
+#: under `ShapeBase` because `shape()` is what writes them, and moved onto
+#: `JsonShape` by `shape_layout()`, which every backend and the walk table read.
+_VARIANT_ONLY: Final[dict[str, frozenset[str]]] = {'JsonShape': frozenset({'json_schema', 'projection'})}
+
+#: The `Document` keys holding the constants a reader checks before trusting
+#: anything else (docs/16 § 6), in the order every backend declares them.
+ENVELOPE: Final = ('format', 'format_version', 'view')
+
+RECURSION: Final = Recursion(type='recursive', keys=('head',))
 
 #: Which record each `_Projector` method produces. One mapping, not three: the
 #: method-to-record correspondence is a fact about the projection, and a backend

@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass
 from typing import Final, Literal, Protocol, get_args
 
+from fastraml.config import Impact
 from fastraml.views.backward.rules import RULES
 from fastraml.views.severity import Ranking
 
@@ -49,7 +50,6 @@ __all__ = [
     'side_of_rule',
 ]
 
-type Impact = Literal['breaking', 'review', 'compatible', 'cosmetic']
 type Direction = Literal['request', 'response']
 type ChangeKind = Literal['added', 'removed', 'changed']
 
@@ -91,8 +91,9 @@ SUBJECTS: Final = frozenset(get_args(Subject.__value__))
 RULE_IDS: Final = frozenset(RULES)
 
 #: Worst first, and the only ordering this view has; the arithmetic is the
-#: shared `severity.Ranking`.
-IMPACTS: Final = Ranking[Impact](('breaking', 'review', 'compatible', 'cosmetic'))
+#: shared `severity.Ranking`. The order is `Impact`'s own, which the project
+#: configuration declares, so an override and a grade name one vocabulary.
+IMPACTS: Final = Ranking[Impact](get_args(Impact.__value__))
 
 
 def impact_of(rule: str) -> Impact:

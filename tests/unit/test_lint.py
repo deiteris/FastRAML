@@ -729,6 +729,50 @@ class TestStandardsRules:
         findings = run_rule('unanchored-string-pattern', source, tmp_path)
         assert bool(findings) is not anchored
 
+    @pytest.mark.parametrize(
+        ('pattern', 'anchored'),
+        [
+            ('^x-.+$', True),
+            ('^a$|^b$', True),
+            ('^a|b$', False),
+            ('(?m)^a$', False),
+            (r'^a\$', False),
+        ],
+    )
+    def test_unanchored_pattern_property_reads_alternation_line_mode_and_escapes(self, pattern, anchored, tmp_path):
+        # The same reading as `unanchored-string-pattern`: first and last
+        # characters alone pass all three unanchored forms.
+        source = f"#%RAML 1.0\ntitle: t\ntypes:\n  T:\n    properties:\n      '/{pattern}/': string\n"
+        findings = run_rule('unanchored-pattern-property', source, tmp_path)
+        assert [(finding.rule, finding.info['pattern']) for finding in findings] == (
+            [] if anchored else [('unanchored-pattern-property', pattern)]
+        )
+
+    @pytest.mark.parametrize('rule_id', ['unbounded-string', 'i-json-datetime'])
+    @pytest.mark.parametrize(
+        ('body', 'label'),
+        [
+            (' Input', 'Input'),
+            (' Alias', 'Input'),
+            (' Sub', 'Input'),
+            (' string | datetime-only', 'application/json'),
+            (' (string | datetime-only) | nil', 'application/json'),
+            ('\n        properties:\n          p: string | datetime-only', 'p'),
+        ],
+        ids=['declared', 'alias', 'union-subtype', 'inline-body', 'nested-inline', 'property'],
+    )
+    def test_an_anonymous_union_member_is_labelled_by_its_holder(self, rule_id, body, label, tmp_path):
+        # docs/18 § 2.1: a graph rule and a body-walking I-JSON rule both name
+        # the member by what holds the union that declares it -- `Input` through
+        # an alias or a union subtype, else the body's media type or property.
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n  Input: string | datetime-only\n  Alias: Input\n'
+            '  Sub:\n    type: Input\n    description: d\n'
+            f'/a:\n  post:\n    body:\n      application/json:{body}\n'
+        )
+        findings = run_rule(rule_id, source, tmp_path)
+        assert [(finding.rule, finding.info['type']) for finding in findings] == [(rule_id, label)]
+
     def test_unanchored_string_pattern_ignores_response_only_shapes(self, tmp_path):
         source = (
             '#%RAML 1.0\ntitle: t\n/a:\n  get:\n    responses:\n      200:\n        body:\n'
@@ -967,6 +1011,40 @@ class TestStandardsRules:
         )
         findings = run_rule('i-json-datetime', source, tmp_path)
         assert [finding.info for finding in findings] == [{'type': 'at', 'reason': 'no UTC offset'}]
+
+    @pytest.mark.parametrize('union', ['string | datetime-only', 'datetime-only | string', 'datetime-only | integer'])
+    @pytest.mark.parametrize('declared', [False, True], ids=['inline', 'declared'])
+    def test_i_json_reaches_every_member_of_a_union(self, union, declared, tmp_path):
+        # The members of `a | b` share the expression's position, so a position
+        # key alone kept only the member popped first.
+        types, body = (f'types:\n  Input: {union}\n', 'Input') if declared else ('', union)
+        source = f'#%RAML 1.0\ntitle: t\n{types}/a:\n  post:\n    body:\n      application/json: {body}\n'
+        findings = run_rule('i-json-datetime', source, tmp_path)
+        assert [finding.info['reason'] for finding in findings] == ['no UTC offset']
+
+    @pytest.mark.parametrize(
+        ('body', 'reached'),
+        [
+            (' datetime-only[]', 1),
+            (' string[] | datetime-only[]', 1),
+            ('\n        properties:\n          a: datetime-only[]', 1),
+            ('\n        properties:\n          a: (string | datetime-only)[]', 1),
+            ('\n        properties:\n          a: datetime-only[][]', 1),
+            ('\n        properties:\n          a: datetime-only[]\n          b: datetime-only[]', 2),
+        ],
+        ids=['items', 'union-of-arrays', 'property', 'property-union-items', 'nested-items', 'two-properties'],
+    )
+    def test_i_json_reaches_shorthand_array_items(self, body, reached, tmp_path):
+        # The items of `X[]` share the array expression's position, so a key
+        # without the `items` segment collided with the array itself.
+        source = f'#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/json:{body}\n'
+        findings = run_rule('i-json-datetime', source, tmp_path)
+        assert [finding.info['reason'] for finding in findings] == ['no UTC offset'] * reached
+
+    def test_every_i_json_walk_rule_reaches_shorthand_array_items(self, tmp_path):
+        # One walk serves the body rules; `i-json-binary` stands for the others.
+        source = '#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/json: file[]\n'
+        assert [finding.rule for finding in run_rule('i-json-binary', source, tmp_path)] == ['i-json-binary']
 
     @pytest.mark.parametrize(
         ('shape', 'reported'),

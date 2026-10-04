@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import dataclasses
 import importlib
 import json
 import pathlib
@@ -1168,6 +1169,41 @@ class TestTheSchemaIsLanguageNeutral:
             for facets in schema.shape_facets.values():
                 for facet in facets:
                     assert module._spelling(schema.facet_structure(facet)), f'{name} cannot spell {facet.name}'
+
+    def test_the_schema_decides_the_shape_layout(self):
+        """`bindings/schema.py` decides key sets; a backend only spells them.
+
+        The discriminator is declared per variant, and the JSON-schema keys only
+        on `JsonShape` -- in the layout and in the walk table alike.
+        """
+        schema = contract_schema()
+        layout = schema.shape_layout()
+        on_base = {*layout.required, *layout.optional}
+        assert 'type' not in on_base
+        assert layout.extras == {'JsonShape': ('json_schema', 'projection')}
+        assert not on_base & {'json_schema', 'projection'}
+        bearing = schema.shape_bearing()
+        assert 'projection' in bearing['JsonShape']
+        assert 'projection' not in bearing['ShapeBase']
+
+    def test_a_variant_only_key_written_by_shape_itself_stays_on_its_variant(self):
+        # Were `shape()` to write `json_schema` itself rather than through its
+        # delegate, the key must move to `JsonShape`, not vanish from both.
+        schema = contract_schema()
+        shape, delegate = schema.projector['shape'], schema.projector['json_schema']
+        moved = dataclasses.replace(
+            schema,
+            projector={
+                **schema.projector,
+                'shape': dataclasses.replace(shape, optional=(*shape.optional, 'json_schema')),
+                'json_schema': dataclasses.replace(
+                    delegate, optional=tuple(key for key in delegate.optional if key != 'json_schema')
+                ),
+            },
+        )
+        layout = moved.shape_layout()
+        assert set(layout.extras['JsonShape']) == {'json_schema', 'projection'}
+        assert 'json_schema' not in layout.optional
 
     def test_a_structural_kind_no_backend_knows_fails_by_name(self):
         """A new `Holds` member is a change every backend has to answer."""

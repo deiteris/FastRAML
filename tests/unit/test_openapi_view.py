@@ -11,6 +11,7 @@ import pytest
 from jsonschema import Draft7Validator
 
 from fastraml import OAS3Document, ParseOptions, to_openapi
+from fastraml.types.values import DATETIME_ONLY_PATTERN, RFC2616_PATTERN, TIME_ONLY_PATTERN
 from fastraml.views.openapi import OAS3Schema
 
 
@@ -499,6 +500,46 @@ types:
     schema = document.components.schemas['Maybe']
     assert schema.type == 'string'
     assert schema.nullable is True
+
+
+def test_a_projected_json_schema_keeps_the_raml_metadata(workspace):
+    document, _ = converted(
+        workspace,
+        """title: Schema
+types:
+  Code:
+    type: '{"type":"string"}'
+    displayName: Code
+    description: A code.
+    example: abc
+/x:
+  get:
+    responses:
+      200:
+        body:
+          application/json: Code
+""",
+    )
+    schema = document.components.schemas['Code']
+    assert (schema.type, schema.title, schema.description, schema.example) == ('string', 'Code', 'A code.', 'abc')
+
+
+@pytest.mark.parametrize(
+    ('declared', 'pattern'),
+    [
+        ('time-only', TIME_ONLY_PATTERN),
+        ('datetime-only', DATETIME_ONLY_PATTERN),
+        ('\n    type: datetime\n    format: rfc2616', RFC2616_PATTERN),
+    ],
+    ids=['time-only', 'datetime-only', 'rfc2616'],
+)
+def test_a_date_time_without_an_openapi_format_is_the_parsers_pattern(workspace, declared, pattern):
+    # OpenAPI 3.0 has no `time` format, and JSON Schema's `time` needs an
+    # offset `time-only` never has; the pattern is the parser's own reading.
+    used = '/x:\n  get:\n    responses:\n      200:\n        body:\n          application/json: T\n'
+    document, _ = converted(workspace, f'title: Times\ntypes:\n  T: {declared}\n{used}')
+    schema = document.components.schemas['T']
+    assert (schema.type, schema.format, schema.pattern) == ('string', '', pattern)
 
 
 def test_security_schemes_and_narrowed_scopes(workspace):

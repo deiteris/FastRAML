@@ -47,7 +47,7 @@ from functools import cache
 from typing import TYPE_CHECKING, Final
 
 from .output import write_rendered
-from .schema import JSON_ONLY, PRODUCES, Container, ContractSchema, Holds, Structural, contract_schema
+from .schema import ENVELOPE, PRODUCES, RECURSION, Container, ContractSchema, Holds, Structural, contract_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -151,7 +151,7 @@ def python() -> str:
 
     blocks.append(_envelope(schema))
     blocks.append(_children(schema))
-    blocks.append(_exports(schema))
+    blocks.append(_exports(schema, static))
     return '\n\n\n'.join(blocks) + '\n'
 
 
@@ -270,18 +270,12 @@ def _annotation(spelling: str, behind: _Behind, *, optional: bool) -> str:
 
 def _shape(schema: ContractSchema, behind: _Behind) -> list[str]:
     """A common shape record and one discriminator-derived TypedDict per kind."""
-    found, delegated = schema.shape_projection()
-
-    # `type` is left off the base and declared on each variant: a TypedDict
-    # subclass may not re-declare a key, so this is the only way the
-    # discriminator narrows.
-    base = [_field(schema, 'ShapeBase', name, behind, optional=False) for name in found.required if name != 'type']
-    # A delegate's keys are optional whatever it says of them: whether it runs
-    # at all is the caller's condition, not the delegate's. JSON-schema fields
-    # are the exception: they belong only to JsonShape below.
-    base += [
-        _field(schema, 'ShapeBase', name, behind, optional=True) for name in found.optional if name not in JSON_ONLY
-    ]
+    # The layout leaves `type` off the base; each variant declares it. A
+    # TypedDict subclass may not re-declare a key, so this is also the only way
+    # the discriminator could narrow.
+    layout = schema.shape_layout()
+    base = [_field(schema, 'ShapeBase', name, behind, optional=False) for name in layout.required]
+    base += [_field(schema, 'ShapeBase', name, behind, optional=True) for name in layout.optional]
 
     by_model = schema.kinds_by_model()
 
@@ -294,10 +288,7 @@ def _shape(schema: ContractSchema, behind: _Behind) -> list[str]:
                 note = "  # exact decimal, e.g. '0.01' or '1.7976931348623157E+308'"
             spelling = _spelling(schema.facet_structure(facet))
             lines.append(f'    {facet.name}: {_annotation(spelling, behind, optional=True)}{note}')
-        if model == 'JsonShape':
-            lines.extend(
-                _field(schema, 'ShapeBase', name, behind, optional=True) for name in delegated if name in JSON_ONLY
-            )
+        lines.extend(_field(schema, 'ShapeBase', name, behind, optional=True) for name in layout.extras.get(model, ()))
         variants.append(f'class {model}(ShapeBase):\n' + '\n'.join(lines))
 
     head = (
@@ -318,22 +309,13 @@ def _shape(schema: ContractSchema, behind: _Behind) -> list[str]:
 
 
 def _recursion(schema: ContractSchema) -> str:
-    """The recursion marker, as a shape rather than a record of its own.
+    """The recursion marker (`schema.RECURSION`), extending `ShapeBase` and outside `Shape`.
 
-    P9 builds a `RecursiveShape` and `shape()` projects it down the generic
-    path, so a marker carries `id`, `name` and whatever `ShapeBase` fields the
-    type it stands for had. It is not a member of `Shape`: `Shape` is what a
-    declaration and a `projection` hold, and a marker is neither.
-
-    Hand-declared. `schema.py` derives records by reading a `_Projector`
-    method's AST, and `_Projector.recursion()` is a literal three-key dict that
-    never runs, so generating from it declares three keys where seven ship
-    (docs/16 § 6.1). `head` is hand-declared for a second reason:
-    `shape()` writes it through a loop over `_BACK_POINTERS`, which no AST read
-    resolves.
     `name` is not re-declared: a TypedDict subclass may not, and `ShapeBase`
     already carries it.
     """
+    lines = [f'    type: Literal[{RECURSION.type!r}]']
+    lines += [f'    {key}: {_spelling(schema.structure_of("ShapeBase", key))}' for key in RECURSION.keys]
     return (
         'class Recursion(ShapeBase):\n'
         '    """A type that repeats here. Do not expand it; look `head` up instead.\n'
@@ -341,9 +323,7 @@ def _recursion(schema: ContractSchema) -> str:
         '    Spelled in `type` rather than a key of its own, so a consumer that\n'
         '    switches on `type` and has not handled it fails loudly.\n'
         '    """\n'
-        '\n'
-        "    type: Literal['recursive']\n"
-        f'    head: {_spelling(schema.structure_of("ShapeBase", "head"))}'
+        '\n' + '\n'.join(lines)
     )
 
 
@@ -362,10 +342,7 @@ def _envelope(schema: ContractSchema) -> str:
     The envelope exists so a reader can refuse a representation it does not
     know (docs/16 § 6), and refusing needs the value.
     """
-    names = {'format': 'FORMAT', 'format_version': 'FORMAT_VERSION', 'view': 'VIEW'}
-    return '\n'.join(
-        f'{name}: Final = {schema.structure_of("Document", key).constant!r}' for key, name in names.items()
-    )
+    return '\n'.join(f'{key.upper()}: Final = {schema.structure_of("Document", key).constant!r}' for key in ENVELOPE)
 
 
 def _children(schema: ContractSchema) -> str:
@@ -409,39 +386,16 @@ def _children(schema: ContractSchema) -> str:
     )
 
 
-def _exports(schema: ContractSchema) -> str:
-    """Every name this module declares, so a star import is the whole contract."""
+def _exports(schema: ContractSchema, static: str) -> str:
+    """`__all__`: the hand-written half's names, the vocabularies, the shapes and the produced records.
+
+    The hand-written half's names are read from it, so a record added there is
+    exported without a second edit here.
+    """
     names = [
-        'Address',
-        'BodiesByMediaType',
-        'DeclarationName',
-        'DocumentationItem',
-        'EndpointPath',
-        'EndpointsByPath',
-        'ExactDecimal',
-        'Json',
-        'JsonObject',
-        'MediaType',
-        'OperationsByMethod',
-        'Parameter',
-        'ParameterBinding',
-        'PatternProperty',
-        'Property',
-        'Protocol',
-        'Ref',
-        'ResponsesByStatus',
-        'SecuritySchemeDeclarations',
-        'SecuritySchemeDeclarationsByFile',
-        'SecuritySchemeType',
-        'SecuritySetting',
-        'SecuritySettings',
+        *_declared_in(static),
         'Shape',
         'ShapeBase',
-        'ShapeDeclarations',
-        'ShapeDeclarationsByFile',
-        'ShapeNode',
-        'SourceFile',
-        'StatusCode',
         *(vocabulary.name for vocabulary in schema.vocabularies),
         *dict.fromkeys(PRODUCES.values()),
         *dict.fromkeys(kind.model for kind in schema.shape_kinds),

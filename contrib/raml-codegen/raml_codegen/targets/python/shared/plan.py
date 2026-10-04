@@ -127,6 +127,11 @@ class Argument:
     description: str = ''
     #: As `Field.default`.
     default: str | None = None
+    #: The RAML kind the parameter's type resolves to (`time-only`, `string`),
+    #: and its `format:` where it states one. The annotation cannot say which:
+    #: `datetime` and `datetime-only` are both `datetime.datetime`.
+    kind: str = ''
+    format: str = ''
 
 
 @dataclass(frozen=True, slots=True)
@@ -462,6 +467,8 @@ class _Builder:
                 docs=_docs(self.tree, parameter['type']),
                 description=_described(self.tree, parameter['type']),
                 default=_default(self.tree, parameter['type']),
+                kind=_kind(self.tree, parameter['type']),
+                format=_format(self.tree, parameter['type']),
             )
             for wire, parameter in parameters.items()
         )
@@ -558,6 +565,18 @@ def _content(tree: Tree, node: ShapeNode | None) -> Shape | None:
         return None
     shape = tree.at(node['$ref']) if is_ref(node) else cast('Shape', node)
     return None if shape is None else tree.content(shape)
+
+
+def _kind(tree: Tree, node: ShapeNode | None) -> str:
+    """The RAML kind a node resolves to, or `''` for a recursion or nothing."""
+    content = _content(tree, node)
+    return content['type'] if content else ''
+
+
+def _format(tree: Tree, node: ShapeNode | None) -> str:
+    """The `format:` a node's type states, or `''`."""
+    content = _content(tree, node)
+    return str(content.get('format') or '') if content else ''
 
 
 def _description(shape: Shape) -> str:

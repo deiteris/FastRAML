@@ -43,6 +43,7 @@ from fastraml.types.scalars import (
     StringShape,
     TimeOnlyShape,
 )
+from fastraml.types.values import DATETIME_ONLY_PATTERN, RFC2616_PATTERN, TIME_ONLY_PATTERN
 
 if TYPE_CHECKING:
     from fastraml.types.base import BaseShape
@@ -51,14 +52,6 @@ __all__ = ['SCHEMA_VERSION', 'Conversion', 'to_json_schema']
 
 SCHEMA_VERSION: Final = 'http://json-schema.org/draft-07/schema'
 
-#: RFC 2616 date-time. JSON Schema has no format for it.
-RFC2616: Final = (
-    r'^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), ([0-3][0-9]) '
-    r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([0-9]{4})'
-    r' ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9] GMT$'
-)
-#: `datetime-only` has no JSON Schema format either.
-DATETIME_ONLY: Final = r'^[0-9]{4}-(?:0[0-9]|1[0-2])-(?:[0-2][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'
 #: ECMA-262 syntax characters. `re.escape` also escapes space, `-`, `#`, `&`
 #: and `~`, identity escapes that unicode-mode ECMA-262 rejects.
 _ECMA_SYNTAX: Final = re.compile(r'[\\^$.*+?()[\]{}|/]')
@@ -287,14 +280,21 @@ def _datetime(conv: Conversion, node: dict[str, Any], shape: DateTimeShape, at: 
     node['type'] = 'string'
     spelling = shape.format.value if shape.format is not None else None
     if spelling == 'rfc2616':
-        node['pattern'] = RFC2616
+        node['pattern'] = RFC2616_PATTERN
     else:
         node['format'] = 'date-time'
 
 
 def _datetime_only(conv: Conversion, node: dict[str, Any], shape: DateTimeOnlyShape, at: str) -> None:  # noqa: ARG001
     node['type'] = 'string'
-    node['pattern'] = DATETIME_ONLY
+    node['pattern'] = DATETIME_ONLY_PATTERN
+
+
+def _time_only(conv: Conversion, node: dict[str, Any], shape: TimeOnlyShape, at: str) -> None:  # noqa: ARG001
+    # Not `format: time`: draft-07 and later read it as RFC 3339 `full-time`,
+    # which requires an offset that `time-only` never has.
+    node['type'] = 'string'
+    node['pattern'] = TIME_ONLY_PATTERN
 
 
 def _formatted(spelling: str) -> Any:
@@ -320,7 +320,7 @@ _BUILDERS: Final[dict[type, Any]] = {
     DateTimeShape: _datetime,
     DateTimeOnlyShape: _datetime_only,
     DateOnlyShape: _formatted('date'),
-    TimeOnlyShape: _formatted('time'),
+    TimeOnlyShape: _time_only,
 }
 
 

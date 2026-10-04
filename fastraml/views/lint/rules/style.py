@@ -13,6 +13,8 @@ from fastraml.types.inference import FACET_TYPE_HINT
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.views.graph import is_declaration
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
+from fastraml.views.lint.labels import type_label
+from fastraml.views.lint.regex import fully_anchored
 from fastraml.views.lint.source import declaration_nodes, mapping_value
 from fastraml.yamlnode import NodeKind, pairs
 
@@ -111,7 +113,7 @@ class PreferArrayExpression:
                 base,
                 iri=iri,
                 position=type_entry[0].position,
-                type=base.name or 'anonymous',
+                type=type_label(ctx, iri, base),
             ),
         )
 
@@ -175,7 +177,7 @@ class PreferOptionalType:
                 base,
                 iri=iri,
                 position=expr.position,
-                type=base.name or 'anonymous',
+                type=type_label(ctx, iri, base),
             ),
         )
 
@@ -210,7 +212,7 @@ class AvoidExplicitInferredType:
                 base,
                 iri=iri,
                 position=type_entry[0].position,
-                type=base.name or 'anonymous',
+                type=type_label(ctx, iri, base),
             ),
         )
 
@@ -263,7 +265,7 @@ class UniqueItemsDiscouraged:
         if not isinstance(shape, ArrayShape) or shape.unique_items is None or not shape.unique_items.value:
             return ()
         facet = shape.unique_items
-        return (ctx.on(self.meta, 'array requires unique items', facet, iri=iri, type=base.name or 'anonymous'),)
+        return (ctx.on(self.meta, 'array requires unique items', facet, iri=iri, type=type_label(ctx, iri, base)),)
 
 
 class RequireClosedObject:
@@ -284,7 +286,13 @@ class RequireClosedObject:
         ):
             return ()
         return (
-            ctx.on(self.meta, 'object permits additional properties', base, iri=iri, type=base.name or 'anonymous'),
+            ctx.on(
+                self.meta,
+                'object permits additional properties',
+                base,
+                iri=iri,
+                type=type_label(ctx, iri, base),
+            ),
         )
 
 
@@ -320,7 +328,7 @@ class UnanchoredPatternProperty:
 
     def pattern_property(self, ctx: Context, iri: str, prop: PatternProperty) -> Iterable[Finding]:
         pattern = prop.pattern.pattern
-        if pattern.startswith(('^', '\\A')) and pattern.endswith(('$', '\\Z')):
+        if fully_anchored(pattern):
             return ()
         return (ctx.on(self.meta, 'pattern property is not fully anchored', prop.base, iri=iri, pattern=pattern),)
 
@@ -393,7 +401,7 @@ class MissingExample:
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         if not is_declaration(iri) or self._has_example(base):
             return ()
-        return (ctx.on(self.meta, 'type has no example', base, iri=iri, type=base.name or 'anonymous'),)
+        return (ctx.on(self.meta, 'type has no example', base, iri=iri, type=type_label(ctx, iri, base)),)
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
         bodies = list(operation.request.bodies.values()) if operation.request is not None else []

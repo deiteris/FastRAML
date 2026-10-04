@@ -979,15 +979,15 @@ def _compat(args: argparse.Namespace) -> int:
 
 
 def _compatibility_rule_overrides(config: Any, values: Sequence[str]) -> Any:
-    from typing import cast  # noqa: PLC0415 - compatibility CLI only
+    from typing import cast, get_args  # noqa: PLC0415 - compatibility CLI only
 
-    from fastraml.config import CompatibilityConfig, CompatibilityRuleSetting  # noqa: PLC0415 - compat only
+    from fastraml.config import CompatibilityConfig, CompatibilityRuleSetting, Impact  # noqa: PLC0415 - compat only
 
     rules = list(config.rules)
     for raw in values:
         rule_id, separator, action = raw.strip().partition('=')
         action = action.strip().lower()
-        if not rule_id or not separator or action not in ('breaking', 'review', 'compatible', 'cosmetic', 'off'):
+        if not rule_id or not separator or (action != 'off' and action not in get_args(Impact.__value__)):
             raise ValueError(f'invalid compatibility rule override: {raw!r}')
         rules.append(
             CompatibilityRuleSetting(

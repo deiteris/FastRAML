@@ -29,9 +29,12 @@ if TYPE_CHECKING:
 
 __all__ = [
     'DATETIME_ONLY',
+    'DATETIME_ONLY_PATTERN',
     'DATE_ONLY',
     'INTEGER_RANGES',
+    'RFC2616_PATTERN',
     'TIME_ONLY',
+    'TIME_ONLY_PATTERN',
     'EnumValues',
     'ValueSet',
     'as_exact',
@@ -248,78 +251,68 @@ def decimal_digits(value: Fraction) -> tuple[int, int] | None:
 
 # -- dates (docs/10 § 5) -------------------------------------------------------
 
-#: Strict, anchored, and compiled once (docs/12 § 2).
-DATE_ONLY: Final = re.compile(r'\A(\d{4})-(\d{2})-(\d{2})\Z')
-TIME_ONLY: Final = re.compile(r'\A(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?\Z')
-DATETIME_ONLY: Final = re.compile(r'\A(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?\Z')
-
-#: RFC 3339: `datetime-only` plus a mandatory offset, `Z` or `±hh:mm`.
-_RFC3339: Final = re.compile(
-    r'\A(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})\Z'
+#: One grammar per kind, spelled once. The parser compiles it for its own check
+#: and the views export it as a schema `pattern` (docs/16 § 8), so the two
+#: cannot disagree. Day ranges, the leap-year rule, the clock's ranges and the
+#: leap second `:60` (which RFC 3339 permits and RAML does not forbid) are all
+#: in the grammar, so a match is the whole check. Digits are ASCII `[0-9]`:
+#: Python's `\d` would also take Arabic-Indic and other Unicode digits.
+#:
+#: The spelling is the subset ECMA-262 and Python `re` read alike: ASCII
+#: classes, non-capturing groups, `^` with no flags, and `(?![\s\S])` for the
+#: end. Python's `$` also matches before a final newline, and `jsonschema`
+#: applies a pattern with `re.search`, so a time followed by a newline would
+#: pass.
+_LEAP_YEAR: Final = r'(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)'
+_DATE: Final = (
+    r'(?:[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])'
+    r'|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))'
+    rf'|{_LEAP_YEAR}-02-29)'
 )
-
+_CLOCK: Final = r'(?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)'
+_TIME: Final = rf'{_CLOCK}(?:\.[0-9]+)?'
+_DAY_MONTH: Final = (
+    r'(?:(?:0[1-9]|[12][0-9]|3[01]) (?:Jan|Mar|May|Jul|Aug|Oct|Dec)'
+    r'|(?:0[1-9]|[12][0-9]|30) (?:Apr|Jun|Sep|Nov)'
+    r'|(?:0[1-9]|1[0-9]|2[0-8]) Feb) [0-9]{4}'
+    rf'|29 Feb {_LEAP_YEAR}'
+)
+_END: Final = r'(?![\s\S])'
+TIME_ONLY_PATTERN: Final = rf'^{_TIME}{_END}'
+DATETIME_ONLY_PATTERN: Final = rf'^{_DATE}T{_TIME}{_END}'
 #: RFC 2616 section 3.3.1's preferred form, which is what `format: rfc2616`
 #: means. The two obsolete forms the RFC also permits are not accepted, matching
-#: go-raml.
-_RFC2616: Final = re.compile(
-    r'\A(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), '
-    r'(\d{2}) (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) '
-    r'(\d{2}):(\d{2}):(\d{2}) GMT\Z'
-)
+#: go-raml. The weekday is not checked against the date.
+RFC2616_PATTERN: Final = rf'^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), (?:{_DAY_MONTH}) {_CLOCK} GMT{_END}'
 
-#: February holds 29 so the leap-year rule is the only special case below.
-_DAYS_IN_MONTH: Final = (31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
-_FEBRUARY: Final = 2
-_LEAP_DAY: Final = 29
-_MONTHS: Final = 12
-
-
-def _valid_date(year: int, month: int, day: int) -> bool:
-    if not 1 <= month <= _MONTHS or day < 1:
-        return False
-    if month == _FEBRUARY and day == _LEAP_DAY:
-        return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
-    return day <= _DAYS_IN_MONTH[month - 1]
-
-
-def _valid_time(hour: int, minute: int, second: int) -> bool:
-    # 60 is a leap second, which RFC 3339 permits and RAML does not forbid.
-    return hour <= 23 and minute <= 59 and second <= 60  # noqa: PLR2004 - the clock's own numbers
+#: Compiled once (docs/12 § 2). `date-only` and RFC 3339 export as a JSON
+#: Schema `format`, so only their compiled form is needed.
+DATE_ONLY: Final = re.compile(rf'^{_DATE}{_END}')
+TIME_ONLY: Final = re.compile(TIME_ONLY_PATTERN)
+DATETIME_ONLY: Final = re.compile(DATETIME_ONLY_PATTERN)
+#: RFC 3339: `datetime-only` plus a mandatory offset, `Z` or `±hh:mm`.
+_RFC3339: Final = re.compile(rf'^{_DATE}[Tt]{_TIME}(?:[Zz]|[+-][0-9]{{2}}:[0-9]{{2}}){_END}')
+_RFC2616: Final = re.compile(RFC2616_PATTERN)
 
 
 def valid_date_only(text: str) -> bool:
-    match = DATE_ONLY.match(text)
-    return match is not None and _valid_date(*map(int, match.groups()))
+    return DATE_ONLY.match(text) is not None
 
 
 def valid_time_only(text: str) -> bool:
-    match = TIME_ONLY.match(text)
-    return match is not None and _valid_time(*map(int, match.groups()))
+    return TIME_ONLY.match(text) is not None
 
 
 def valid_datetime_only(text: str) -> bool:
-    match = DATETIME_ONLY.match(text)
-    if match is None:
-        return False
-    year, month, day, hour, minute, second = map(int, match.groups())
-    return _valid_date(year, month, day) and _valid_time(hour, minute, second)
+    return DATETIME_ONLY.match(text) is not None
 
 
 def parse_rfc3339(text: str) -> bool:
-    match = _RFC3339.match(text)
-    if match is None:
-        return False
-    year, month, day, hour, minute, second = map(int, match.groups())
-    return _valid_date(year, month, day) and _valid_time(hour, minute, second)
+    return _RFC3339.match(text) is not None
 
 
 def parse_rfc2616(text: str) -> bool:
-    match = _RFC2616.match(text)
-    if match is None:
-        return False
-    day, year, hour, minute, second = map(int, match.groups())
-    month = 'JanFebMarAprMayJunJulAugSepOctNovDec'.index(text[8:11]) // 3 + 1
-    return _valid_date(year, month, day) and _valid_time(hour, minute, second)
+    return _RFC2616.match(text) is not None
 
 
 # -- semantic equality (docs/10 § 5) -----------------------------------------

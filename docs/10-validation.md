@@ -81,8 +81,8 @@ is checked where it is declared.
 | string | `str`, length bounds, unanchored `pattern` search |
 | integer | integral `int`, `float`, `Decimal`, or numeric string; exact bounds, `multipleOf`, and format range |
 | number | `int`, `float`, or `Decimal`; exact bounds and `multipleOf` |
-| date-only, time-only, datetime-only | strict RAML date/time grammar |
-| datetime | RFC 3339 by default or RFC 2616 with that format |
+| date-only, time-only, datetime-only | strict RAML date/time grammar, ASCII digits only; the schema exports write the same grammar (docs/16 § 8) |
+| datetime | RFC 3339 by default or RFC 2616 with that format, ASCII digits only |
 | file | `bytes` or `str`; byte-length bounds. `fileTypes` has no instance media-type input and is not enforced here |
 | array | `list`, item validation, count bounds, semantic `uniqueItems` |
 | object | required properties, declared properties, patterns, extras, and property counts |

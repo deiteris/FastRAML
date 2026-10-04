@@ -351,18 +351,29 @@ def _other_responses(endpoint: Endpoint) -> str:
     return '{' + ', '.join(entries) + '}' if entries else ''
 
 
-#: A header's type, as OpenAPI spells it. Everything crosses the wire as text,
-#: so an unknown type is a string rather than a guess; the ones below are the
-#: document being specific about what that text holds.
+#: A header's type, as OpenAPI spells it, by RAML kind. Everything crosses the
+#: wire as text, so an unknown type is a string rather than a guess; the ones
+#: below are the document being specific about what that text holds.
+#:
+#: Only kinds whose format means the same thing are here. `time-only` and
+#: `datetime-only` have no offset, which `time` and `date-time` require, and a
+#: `datetime` with `format: rfc2616` is not `date-time` at all; each stays a
+#: plain string. Their grammar is the parser's, which this package does not
+#: carry (docs/17 § 1).
 _HEADER_SCHEMA = {
-    'str': "{'type': 'string'}",
-    'int': "{'type': 'integer'}",
-    'float': "{'type': 'number'}",
-    'bool': "{'type': 'boolean'}",
-    'datetime.datetime': "{'type': 'string', 'format': 'date-time'}",
-    'datetime.date': "{'type': 'string', 'format': 'date'}",
-    'datetime.time': "{'type': 'string', 'format': 'time'}",
+    'string': "{'type': 'string'}",
+    'integer': "{'type': 'integer'}",
+    'number': "{'type': 'number'}",
+    'boolean': "{'type': 'boolean'}",
+    'datetime': "{'type': 'string', 'format': 'date-time'}",
+    'date-only': "{'type': 'string', 'format': 'date'}",
 }
+
+
+def _header_schema(one: Argument) -> str:
+    if one.kind == 'datetime' and one.format == 'rfc2616':
+        return _HEADER_SCHEMA['string']
+    return _HEADER_SCHEMA.get(one.kind, _HEADER_SCHEMA['string'])
 
 
 def _documented_headers(case: Case) -> str:
@@ -376,7 +387,7 @@ def _documented_headers(case: Case) -> str:
     for one in case.headers:
         parts = [
             f"'required': {one.required}",
-            f"'schema': {_HEADER_SCHEMA.get(one.annotation.plain, _HEADER_SCHEMA['str'])}",
+            f"'schema': {_header_schema(one)}",
         ]
         if one.description:
             parts.insert(0, f"'description': {one.description!r}")

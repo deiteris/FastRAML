@@ -261,7 +261,11 @@ Edit `fastraml/views/bindings/static/` only for target-language code that does
 not vary with the tree contract.
 
 `bindings/schema.py` is the single declaration of tree key sets and structural
-kinds. Generation fails when the emitter writes an undeclared key.
+kinds. It also decides which shape record declares each key (`shape_layout()`:
+the discriminator on each variant, `json_schema` and `projection` on
+`JsonShape` only), the envelope constants, and the recursion marker's keys; a
+backend iterates these and only spells them. Generation fails when the emitter
+writes an undeclared key.
 `tests/unit/test_bindings.py` checks checked-in TypeScript and Python artifacts;
 `tests/unit/test_conformance.py` checks the shared cross-language corpus. CI's
 `bindings` job installs Go and Node and fails if those checks skip.
@@ -336,6 +340,19 @@ root `version:`, the one base URI variable RAML binds itself; every other
 variable stays written for the caller to supply. `version` declared under
 `baseUriParameters` is the caller's too, as the OpenAPI export reads it.
 `APIFragment.base_uri` stays as written.
+
+Both schema exports write `datetime` as `format: date-time` and `date-only` as
+`format: date`. The other date and time kinds have no matching format and are
+written as a `pattern`: `time-only`, because JSON Schema's `time` requires an
+offset and OpenAPI 3.0 defines none; `datetime-only`; and `datetime` with
+`format: rfc2616`. The patterns are `TIME_ONLY_PATTERN`,
+`DATETIME_ONLY_PATTERN` and `RFC2616_PATTERN` in `types/values.py`, and the
+parser's validators compile the same grammar, so the export accepts exactly what
+the parser accepts. The grammar spells out ASCII digits, day ranges, leap years,
+fractional seconds and the leap second `:60`. The patterns use only syntax
+ECMA-262 and Python `re` read alike, and end with `(?![\s\S])` rather than `$`,
+which in Python also matches before a final newline; `test_jsonschema_view.py`
+runs one corpus through both.
 
 These are read-only views. Their detailed tests are
 `tests/unit/test_jsonschema_view.py`, `tests/unit/test_openapi_view.py` and

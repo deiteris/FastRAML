@@ -38,6 +38,7 @@ from fastraml.types.scalars import (
     StringShape,
     TimeOnlyShape,
 )
+from fastraml.types.values import DATETIME_ONLY_PATTERN, RFC2616_PATTERN, TIME_ONLY_PATTERN
 from fastraml.uris import uri_stem
 
 if TYPE_CHECKING:
@@ -80,13 +81,6 @@ __all__ = [
 OPENAPI_VERSION: Final = '3.0.3'
 _COMPONENT_REF: Final = '#/components/schemas/'
 _MISSING: Final = object()
-_RFC2616: Final = (
-    r'^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), ([0-3][0-9]) '
-    r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([0-9]{4})'
-    r' ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9] GMT$'
-)
-_DATETIME_ONLY: Final = r'^[0-9]{4}-(?:0[0-9]|1[0-2])-(?:[0-2][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'
-
 #: What an OpenAPI component key may not contain.
 _COMPONENT_KEY: Final = re.compile(r'[^a-zA-Z0-9._-]')
 
@@ -588,21 +582,22 @@ class _SchemaConversion:
         if isinstance(shape, DateTimeShape):
             schema.type = 'string'
             if shape.format is not None and shape.format.value == 'rfc2616':
-                schema.pattern = _RFC2616
+                schema.pattern = RFC2616_PATTERN
             else:
                 schema.format = 'date-time'
             return schema
         if isinstance(shape, DateTimeOnlyShape):
             schema.type = 'string'
-            schema.pattern = _DATETIME_ONLY
+            schema.pattern = DATETIME_ONLY_PATTERN
             return schema
         if isinstance(shape, DateOnlyShape):
             schema.type = 'string'
             schema.format = 'date'
             return schema
         if isinstance(shape, TimeOnlyShape):
+            # OpenAPI 3.0 defines no `time` format; JSON Schema's needs an offset.
             schema.type = 'string'
-            schema.format = 'time'
+            schema.pattern = TIME_ONLY_PATTERN
             return schema
         if shape is not None and not isinstance(shape, AnyShape):
             self.dropped.append(f'{at}: {type(shape).__name__} has no OpenAPI 3.0 form')
@@ -619,7 +614,8 @@ class _SchemaConversion:
         schema.any_of = [self.inline(member, f'{at}|') for member in non_nil]
         return schema
 
-    def _common(self, base: BaseShape) -> OAS3Schema:
+    @staticmethod
+    def _common(base: BaseShape) -> OAS3Schema:
         schema = OAS3Schema()
         schema.title = base.display_name.value if base.display_name is not None else ''
         schema.description = base.description.value if base.description is not None else ''
@@ -629,27 +625,17 @@ class _SchemaConversion:
         schema.enum = [member.raw for member in base.enum or ()]
         return schema
 
-    @staticmethod
-    def _overlay_common(target: OAS3Schema, source: BaseShape | OAS3Schema) -> None:
-        if isinstance(source, OAS3Schema):
-            title, description = source.title, source.description
-            default, example, enum = source.default, source.example, source.enum
-            extensions, xml = source.extensions, source.xml
-        else:
-            title = source.display_name.value if source.display_name is not None else ''
-            description = source.description.value if source.description is not None else ''
-            default = source.default.raw if source.default is not None else _MISSING
-            examples = list(_examples(source))
-            example = examples[0] if examples else _MISSING
-            enum = [member.raw for member in source.enum or ()]
-            extensions, xml = {}, None
-        target.title = title or target.title
-        target.description = description or target.description
-        target.default = default if default is not _MISSING else target.default
-        target.example = example if example is not _MISSING else target.example
-        target.enum = enum or target.enum
-        target.extensions.update(extensions)
-        target.xml = xml or target.xml
+    @classmethod
+    def _overlay_common(cls, target: OAS3Schema, source: BaseShape | OAS3Schema) -> None:
+        if not isinstance(source, OAS3Schema):
+            source = cls._common(source)
+        target.title = source.title or target.title
+        target.description = source.description or target.description
+        target.default = source.default if source.default is not _MISSING else target.default
+        target.example = source.example if source.example is not _MISSING else target.example
+        target.enum = source.enum or target.enum
+        target.extensions.update(source.extensions)
+        target.xml = source.xml or target.xml
 
     def _decorate(self, schema: OAS3Schema, base: BaseShape, at: str) -> None:
         if base.xml is not None:

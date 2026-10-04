@@ -314,6 +314,10 @@ is handed a `Response` to set them on — but only where the document says a
 response carries one. That is the same reading that drops a URI parameter the
 path never mentions: an argument that goes nowhere is worse than a missing one.
 Setting it is still yours; nothing checks that a required header was set.
+A header's schema claims a `format` only where the RAML kind satisfies it:
+`datetime` is `date-time` and `date-only` is `date`, while `time-only`,
+`datetime-only` and an RFC 2616 `datetime` stay plain strings, since OpenAPI's
+`time` and `date-time` require an offset.
 
 ### Security
 

@@ -382,6 +382,35 @@ class TestFileRules:
             f"    type: file\n    fileTypes: ['{allowed}']\n",
         )
 
+    @pytest.mark.parametrize(
+        ('narrowed', 'allowed'),
+        [
+            ('text/plain; charset=utf-8', 'text/plain'),
+            ('text/plain;charset=utf-8', 'text/plain ;  charset=utf-8'),
+            ('text/plain; Charset="utf-8"; a=b', 'text/*; charset=utf-8'),
+        ],
+    )
+    def test_parameters_narrow_and_compare_normalised(self, workspace, narrowed, allowed):
+        # docs/07 § 4: adding a parameter narrows; whitespace, name case and
+        # quoting are spelling, not a different parameter (RFC 9110 § 5.6.6).
+        child = merge(
+            workspace,
+            f"    type: file\n    fileTypes: ['{narrowed}']\n",
+            f"    type: file\n    fileTypes: ['{allowed}']\n",
+        )
+        assert [facet.value for facet in child.shape.file_types] == [narrowed]
+
+    @pytest.mark.parametrize(
+        ('widened', 'allowed'),
+        [('text/plain', 'text/plain; charset=utf-8'), ('text/plain; charset=latin1', 'text/plain; charset=utf-8')],
+    )
+    def test_dropping_or_changing_a_parameter_widens(self, workspace, widened, allowed):
+        assert 'fileTypes constraint violation' in failure(
+            workspace,
+            f"    type: file\n    fileTypes: ['{widened}']\n",
+            f"    type: file\n    fileTypes: ['{allowed}']\n",
+        )
+
 
 class TestAnyAbsorbs:
     def test_a_parent_of_type_any_constrains_nothing(self, workspace):

@@ -289,6 +289,21 @@ class TestGlobalPrePass:
             workspace.parse(root / 'api.raml')
         assert 'invalid media type' in messages(caught.value)[0]
 
+    @pytest.mark.parametrize('media', ['a_b/c', 'vnd!#$&^/x', "'application/json; charset=utf-8'"])
+    def test_a_media_type_follows_rfc_6838_names_and_rfc_9110_parameters(self, workspace, media):
+        # Spec section Default Media Types: each value conforms to RFC 6838.
+        root = workspace({'api.raml': API + f'mediaType: {media}\n'})
+        assert workspace.parse(root / 'api.raml').global_media_types == [media.strip("'")]
+
+    @pytest.mark.parametrize('media', ["'*/*'", "'application/*'", '-a/b', 'ä/b', 'aä/b'])
+    def test_a_media_range_or_a_name_outside_rfc_6838_is_rejected(self, workspace, media):
+        # A default media type names what a body is, so it takes no wildcard;
+        # restricted-name is ASCII and starts with a letter or digit.
+        root = workspace({'api.raml': API + f'mediaType: {media}\n'})
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'api.raml')
+        assert next(iter(caught.value.chains()))[-1].info == {'media type': media.strip("'")}
+
     def test_a_malformed_base_uri_template_is_rejected(self, workspace):
         # A base URI is a URI template like a resource's own, so `{myapi.com`
         # is an unclosed expression rather than part of a hostname.

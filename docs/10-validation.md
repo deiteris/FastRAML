@@ -30,8 +30,11 @@ P10 checks:
 - pattern properties cannot coexist with `additionalProperties: false`, judged
   on the effective type, so either may be inherited (*spec section Property
   Declarations*: "explicitly or by inheritance");
-- file media-type strings are well formed `type/subtype`, or a media range,
-  `type/*` or `*/*`. The spec names only `*/*`; `text/*` is as meaningful;
+- file media-type strings are media ranges (RFC 9110 § 12.5.1): `type/subtype`,
+  `type/*` or `*/*`, each name an RFC 6838 § 4.2 restricted-name, optionally
+  followed by RFC 9110 parameters. The spec names only `*/*`; `text/*` is as
+  meaningful. The root `mediaType` uses the same grammar without wildcards;
+  both are `MEDIA_RANGE` and `MEDIA_TYPE` in `parser/facets.py`;
 - every enum member validates against the shape's non-enum constraints;
 - discriminator declarations satisfy the contracts in
   [05](05-type-model.md#6-discriminators).

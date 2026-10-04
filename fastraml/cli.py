@@ -588,24 +588,16 @@ def _lint_rule_overrides(config: LintConfig, values: Sequence[str], registry: Li
     """Apply repeatable `--rule ID[=SEVERITY|off]` entries after file config."""
     from fastraml.views.lint import Config, RuleSetting, parse_severity  # noqa: PLC0415
 
-    seen: set[str] = set()
     rules = list(config.rules)
-    for raw in values:
-        rule_id, separator, action = raw.strip().partition('=')
-        rule_id, action = rule_id.strip(), action.strip().lower()
-        if not rule_id or (separator and not action):
-            raise ValueError(f'invalid rule override: {raw!r}')
-        if rule_id in seen:
-            raise ValueError(f'duplicate rule override: {rule_id}')
-        seen.add(rule_id)
+    for _, rule_id, action in _rule_overrides(values, 'rule'):
         if registry.get(rule_id) is None:
             raise ValueError(f'unknown rule: {rule_id}')
         plugin = registry.plugin_of(rule_id)
         if plugin and plugin not in config.plugins:
             raise ValueError(f'rule {rule_id!r} requires lint plugin {plugin!r} in the config')
 
-        severity = None if not separator or action == 'off' else parse_severity(action)
         disabled = action == 'off'
+        severity = None if action is None or disabled else parse_severity(action)
         existing_index = next(
             (index for index, setting in enumerate(rules) if setting.id == rule_id and setting.match is None),
             None,
@@ -613,7 +605,7 @@ def _lint_rule_overrides(config: LintConfig, values: Sequence[str], registry: Li
         existing = rules[existing_index] if existing_index is not None else None
         setting = RuleSetting(
             id=rule_id,
-            severity=severity if separator and action != 'off' else (existing.severity if existing else None),
+            severity=severity if severity is not None else (existing.severity if existing else None),
             disabled=disabled,
             options=existing.options if existing else {},
         )
@@ -622,6 +614,27 @@ def _lint_rule_overrides(config: LintConfig, values: Sequence[str], registry: Li
         else:
             rules[existing_index] = setting
     return Config(extends=config.extends, plugins=config.plugins, categories=config.categories, rules=tuple(rules))
+
+
+def _rule_overrides(values: Sequence[str], noun: str) -> list[tuple[str, str, str | None]]:
+    """Repeatable `--rule ID[=ACTION]`, as `(raw, id, action)`; `None` without `=`.
+
+    Shared by `lint` and `compat`. Each id may be named once: two overrides of
+    one rule in a single invocation contradict each other. Each caller applies
+    them after the configuration file (docs/16 § 5, docs/18 § 3).
+    """
+    seen: set[str] = set()
+    parsed: list[tuple[str, str, str | None]] = []
+    for raw in values:
+        rule_id, separator, action = raw.strip().partition('=')
+        rule_id, action = rule_id.strip(), action.strip().lower()
+        if not rule_id or (separator and not action):
+            raise ValueError(f'invalid {noun} override: {raw!r}')
+        if rule_id in seen:
+            raise ValueError(f'duplicate {noun} override: {rule_id}')
+        seen.add(rule_id)
+        parsed.append((raw, rule_id, action if separator else None))
+    return parsed
 
 
 def _report(raml: Raml, elapsed: float, *, path: str | None = None) -> None:
@@ -986,14 +999,14 @@ def _compatibility_rule_overrides(config: Any, values: Sequence[str]) -> Any:
     from fastraml.config import CompatibilityConfig, CompatibilityRuleSetting, Impact  # noqa: PLC0415 - compat only
 
     rules = list(config.rules)
-    for raw in values:
-        rule_id, separator, action = raw.strip().partition('=')
-        action = action.strip().lower()
-        if not rule_id or not separator or (action != 'off' and action not in get_args(Impact.__value__)):
+    for raw, rule_id, action in _rule_overrides(values, 'compatibility rule'):
+        if action is None or (action != 'off' and action not in get_args(Impact.__value__)):
             raise ValueError(f'invalid compatibility rule override: {raw!r}')
+        # Appended after the file's entries; `configure` lets the last matching
+        # entry decide, so these win over the file (docs/16 § 5).
         rules.append(
             CompatibilityRuleSetting(
-                id=rule_id.strip(),
+                id=rule_id,
                 impact=None if action == 'off' else cast('Any', action),
                 disabled=action == 'off',
             )

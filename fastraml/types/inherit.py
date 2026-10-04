@@ -23,6 +23,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
+from fastraml.parser.facets import media_parts
 from fastraml.types.base import TYPE_JSON, TYPE_UNION, BaseShape, PatternProperty, copyable_slots
 from fastraml.types.complex_ import (
     ArrayShape,
@@ -534,12 +535,19 @@ def _narrow_file(target: BaseShape, mine: FileShape, theirs: FileShape) -> None:
 
 def _covered(media_type: str, allowed: set[str]) -> bool:
     """Whether one of `allowed` admits `media_type`: itself, its `type/*`, or
-    `*/*`. Case-insensitive, as media types are (RFC 6838 § 4.2). A range is
-    covered only by a range as wide, so `image/*` does not narrow `image/png`.
+    `*/*`, with parameters that are a subset of its own. Case-insensitive, as
+    media types are (RFC 6838 § 4.2); parameters are compared as `media_parts`
+    normalises them. A range is covered only by a range as wide, so `image/*`
+    does not narrow `image/png`, nor `text/plain` narrow `text/plain; a=b`.
     """
-    kind, _, subtype = media_type.lower().partition('/')
-    wanted = {'*/*', f'{kind}/*', f'{kind}/{subtype}'}
-    return any(entry.lower() in wanted for entry in allowed)
+    head, parameters = media_parts(media_type)
+    kind, _, _ = head.partition('/')
+    wanted = {'*/*', f'{kind}/*', head}
+    for entry in allowed:
+        entry_head, entry_parameters = media_parts(entry)
+        if entry_head in wanted and entry_parameters <= parameters:
+            return True
+    return False
 
 
 def _narrow_number(target: BaseShape, mine: NumberShape, theirs: NumberShape) -> None:

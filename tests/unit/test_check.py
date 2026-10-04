@@ -229,6 +229,18 @@ class TestFile:
         assert error is not None
         assert traces(error)[0].info == {'fileType': 'notamediatype'}
 
+    @pytest.mark.parametrize('declared', ['a_b/c', 'vnd!#$&^/x', '\'text/plain; charset="utf-8"\'', "'*/*;q=1'"])
+    def test_a_media_range_follows_rfc_6838_names_and_rfc_9110_parameters(self, workspace, declared):
+        assert parse(workspace, f'  T:\n    type: file\n    fileTypes: [{declared}]\n') is None
+
+    @pytest.mark.parametrize('declared', ['-a/b', 'ä/b', 'aä/b', "'*/b'", "'a/b; c'"])
+    def test_a_name_outside_rfc_6838_is_rejected(self, workspace, declared):
+        # restricted-name is ASCII and starts with a letter or digit; `*` is a
+        # whole type or subtype or nothing; an RFC 9110 parameter needs `=value`.
+        error = parse(workspace, f'  T:\n    type: file\n    fileTypes: [{declared}]\n')
+        assert error is not None
+        assert traces(error)[0].info == {'fileType': declared.strip("'")}
+
 
 class TestEnum:
     """`BaseShape.check()` validates every member against the shape itself."""

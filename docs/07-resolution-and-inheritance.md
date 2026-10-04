@@ -86,7 +86,7 @@ inherited pattern (below, and [01](01-scope-and-coverage.md) § 4.6):
 | string | increase `minLength`, decrease `maxLength`; child pattern replaces parent pattern; two parents' patterns conflict (below) |
 | number/integer | increase minimum, decrease maximum, use a compatible `multipleOf` and format |
 | datetime | format must agree |
-| file | increase/decrease length bounds; each `fileTypes` entry is admitted by a parent's: itself, its `type/*`, or `*/*`, case-insensitively |
+| file | increase/decrease length bounds; each `fileTypes` entry is admitted by a parent's: itself, its `type/*`, or `*/*`, case-insensitively, whose parameters are a subset of its own; parameter names are case-insensitive, whitespace around `;` and quoting are ignored (`media_parts` in `parser/facets.py`) |
 | array | recursively narrow `items`; tighten counts; a unique parent requires a unique child |
 | object | recursively narrow shared properties and patterns; inherited patterns stand before the child's own (below); required cannot become optional; tighten counts; inherit absent `additionalProperties` and discriminator |
 | union | merge compatible members as described below |

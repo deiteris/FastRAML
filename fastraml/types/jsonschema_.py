@@ -21,18 +21,17 @@ projecting a schema need all of the above, which sit above `complex_.py` and
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastraml.errors import RamlError
 from fastraml.types.complex_ import ArrayShape, ComplexKind, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.schema_bundle import bundle
 from fastraml.types.schema_compile import (
-    CompiledSchema,
     SchemaRegistry,
+    canonical,
     document_of,
     draft_of,
     escape_json_pointer_segment,
-    is_one_schema,
     schema_registry,
 )
 from fastraml.types.schema_projection import project, project_reference
@@ -42,10 +41,10 @@ from fastraml.yamlnode import node_error
 
 if TYPE_CHECKING:
     from fastraml.types.base import BaseShape
+    from fastraml.types.schema_compile import CompiledSchema
     from fastraml.yamlnode import Node
 
 __all__ = [
-    'CompiledSchema',
     'JsonShape',
     'SchemaRegistry',
     'escape_json_pointer_segment',
@@ -160,20 +159,21 @@ class JsonShape(ComplexKind):
                 return None
             self._projection_error = None
             if shared is None:
-                shared = self._project_alone(self._compiled, registry, uri, draft)
+                shared = self._project_alone(registry, uri, draft)
                 if shared is None:
                     return None
             self._cached_shape, self._cached_defs = shared
         return self._cached_shape
 
     def _project_alone(
-        self, compiled: CompiledSchema, registry: SchemaRegistry, uri: str | None, draft: str
+        self, registry: SchemaRegistry, uri: str | None, draft: str
     ) -> tuple[BaseShape, dict[str, BaseShape]] | None:
         """Walk the whole schema, or record why it has no projection."""
+        compiled = cast('CompiledSchema', self._compiled)  # `as_shape` returns first without one
         failed = registry.failed(uri, draft) if uri else None
         if failed is None:
             defs: dict[str, BaseShape] = {}
-            _, _, pointer = (uri or compiled.uri).partition('#')
+            pointer = compiled.uri.partition('#')[2]
             try:
                 context = Projection(self.base, self.validator, compiled.resolver, defs, pointer)
                 built = project(context, compiled.contents, {})
@@ -254,11 +254,10 @@ class JsonShape(ComplexKind):
         with every other inline schema in that file — so it has no identity to
         be shared under, and two of them would collapse into one projection.
         """
-        if self._compiled is None or not self.document_uri:
+        if self._compiled is None:
             return None
-        if not is_one_schema(self.base._raml, self.document_uri):  # noqa: SLF001 - the parse's index
-            return None
-        return self._compiled.uri
+        pointer = self._compiled.uri.partition('#')[2]
+        return canonical(self.base._raml, self.document_uri, pointer)  # noqa: SLF001 - the parse's index
 
     @property
     def contents(self) -> Any | None:

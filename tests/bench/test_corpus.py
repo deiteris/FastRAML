@@ -197,13 +197,14 @@ class TestFeatureCorporaReachTheirCode:
         from fastraml import build_graph
 
         calls = []
-        original = schema_module._project_all_of
+        original = schema_module.intersect
 
-        def counting(context, contents, base, visiting):
-            calls.append(contents['allOf'])
-            return original(context, contents, base, visiting)
+        def counting(context, contents, *args, **kwargs):
+            if kwargs.get('strict', True):  # the `allOf` path; a plain body intersects with `strict=False`
+                calls.append(contents['allOf'])
+            return original(context, contents, *args, **kwargs)
 
-        monkeypatch.setattr(schema_module, '_project_all_of', counting)
+        monkeypatch.setattr(schema_module, 'intersect', counting)
         references = []
         original_parts = intersection_module._parts
 

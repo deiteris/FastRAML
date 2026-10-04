@@ -9,9 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urldefrag, urljoin
 
-from fastraml.types.schema_compile import document_of, escape_json_pointer_segment
+from fastraml.types.schema_compile import escape_json_pointer_segment, ref_target
 from fastraml.uris import uri_stem
 
 if TYPE_CHECKING:
@@ -182,7 +181,7 @@ def _pull(context: _Bundling, reference: str) -> str | None:
     """
     from referencing.exceptions import Unresolvable  # noqa: PLC0415 - deferred for startup cost
 
-    document, fragment = urldefrag(urljoin(document_of(context.resolver) or '', reference))
+    document, fragment = ref_target(context.resolver, reference)
     if document == context.document:
         return f'#{fragment}'
     try:

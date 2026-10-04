@@ -115,7 +115,10 @@ def parse_from_string(
     options = options or _DEFAULT_OPTIONS
     root = Path(base_dir)
     if not root.is_absolute():
-        raise RamlError.new('base_dir must be an absolute path', str(root), kind=ErrorKind.READING)
+        # Located at the document a relative `base_dir` would name, spelled as
+        # a URI like every other location (docs/02 § 4).
+        location = path_to_file_uri(Path.cwd() / root / file_name)
+        raise RamlError.new('base_dir must be an absolute path', location, kind=ErrorKind.READING)
 
     raml = _new_registry(options, default_root=str(root))
     return _parse(raml, path_to_file_uri(root / file_name), content, options)

@@ -104,7 +104,10 @@ class TestWhatJsonSchemaLoses:
         assert list(walk.types['M'].properties['by_id'].properties) == [r'/^[-+]?\d+$/']
         assert shape.validate({'by_id': {'7': 'x'}}) is None
         assert shape.validate({'by_id': {'-7': 'x'}}) is None
-        assert shape.validate({'by_id': {'abc': 'x'}}) is not None
+        assert shape.validate({'by_id': {'7': 1}}) is not None
+        # RAML 1.0 § Property Declarations: a key no pattern matches is open.
+        assert shape.validate({'by_id': {'abc': 1}}) is None
+        assert any('cannot refuse a key that is not int' in message for message in walk.dropped)
 
     def test_a_string_keyed_dict_is_the_bare_pattern_any(self):
         class M(BaseModel):

@@ -194,11 +194,11 @@ class OAuth2(SecurityScheme, ABC):
     scopes: Sequence[str] = ()
 
     def settings(self) -> dict[str, Yaml]:
-        out: dict[str, Yaml] = {'accessTokenUri': self.access_token_uri}
+        # RAML 1.0 § OAuth 2.0 requires `authorizationGrants`, so it is written
+        # even when empty.
+        out: dict[str, Yaml] = {'accessTokenUri': self.access_token_uri, 'authorizationGrants': [*self.grants]}
         if self.authorization_uri:
             out['authorizationUri'] = self.authorization_uri
-        if self.grants:
-            out['authorizationGrants'] = [*self.grants]
         if self.scopes:
             out['scopes'] = [*self.scopes]
         return out

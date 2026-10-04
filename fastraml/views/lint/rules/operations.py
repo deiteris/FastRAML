@@ -19,7 +19,6 @@ _BODILESS_METHODS: Final = {
     'get': 'RFC 9110 § 9.3.1',
     'head': 'RFC 9110 § 9.3.2',
     'delete': 'RFC 9110 § 9.3.5',
-    'trace': 'RFC 9110 § 9.3.8',
 }
 
 
@@ -27,16 +26,16 @@ class MeaninglessRequestBody:
     meta: ClassVar = RuleMeta(
         id='meaningless-request-body',
         category=Category.SPEC,
-        summary='a GET, HEAD, DELETE or TRACE operation that declares a request body',
+        summary='a GET, HEAD or DELETE operation that declares a request body',
         rationale=(
             'RAML permits a body on any method, but content in a GET, HEAD or DELETE request "has no generally '
             'defined semantics, cannot alter the meaning or target of the request", and implementations may '
-            'reject it as a request-smuggling risk; a client MUST NOT send content in a TRACE request. The '
+            'reject it as a request-smuggling risk. The '
             'contract therefore cannot tell a consumer that sending the body will work. Formerly '
             '`get-with-body`, which covered GET only.'
         ),
         severity=Severity.WARNING,
-        references=('RFC 9110 § 9.3.1', 'RFC 9110 § 9.3.2', 'RFC 9110 § 9.3.5', 'RFC 9110 § 9.3.8'),
+        references=('RFC 9110 § 9.3.1', 'RFC 9110 § 9.3.2', 'RFC 9110 § 9.3.5'),
         good='#%RAML 1.0\ntitle: t\n/a:\n  post:\n    body:\n      application/json:\n        type: string\n',
         bad='#%RAML 1.0\ntitle: t\n/a:\n  delete:\n    body:\n      application/json:\n        type: string\n',
     )

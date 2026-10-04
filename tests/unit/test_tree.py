@@ -132,6 +132,22 @@ class TestEveryReferenceResolves:
         assert marker['head'] == {'$ref': f'{graph.base}#/declarations/types/Chain'}
         assert graph.nodes[marker['head']['$ref']].entity.name == 'Chain'
 
+    @pytest.mark.parametrize('declaration', ['/^x/: P', 'x?: P'], ids=['pattern-property', 'property'])
+    def test_marking_a_parents_cycle_leaves_the_subtypes_declaration_alone(self, workspace, declaration):
+        """docs/07 § 6: `C` inherits `P`'s self-referencing declaration. Marking
+        replaces the declaration in `P`'s set rather than editing the one `C`
+        shares, so `C`'s still names `P` instead of carrying `P`'s marker.
+        """
+        body = f'  P:\n    properties:\n      {declaration}\n  C:\n    type: P\n'
+        root = workspace({'api.raml': f'#%RAML 1.0\ntitle: t\ntypes:\n{body}'})
+        declared = build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))['types']['api.raml']
+        field = 'pattern_properties' if declaration.startswith('/') else 'properties'
+        [marker] = [entry['type'] for entry in declared['P'][field].values()]
+        assert marker['type'] == 'recursive'
+        assert marker['head']['$ref'].endswith('#/declarations/types/P')
+        [inherited] = [entry['type'] for entry in declared['C'][field].values()]
+        assert inherited['$ref'].endswith('#/declarations/types/P')
+
     def test_a_declared_supertype_is_referenced_rather_than_repeated(self, both):
         """`Named`, the string, would be ambiguous across two libraries. The
         declaration is under `types` already, so a `$ref` loses nothing and

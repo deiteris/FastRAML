@@ -164,6 +164,23 @@ class TestParameters:
         )
         assert operation(parse(workspace, root), '/users/{id}', 'get').description.value == 'get /users/{id} users'
 
+    @pytest.mark.parametrize(
+        ('uri', 'expected'),
+        [('/bom/{itemId}{ext}', '/bom/{itemId} bom'), ('/bom{ext}', '/bom bom')],
+    )
+    def test_the_reserved_parameters_omit_ext(self, workspace, uri, expected):
+        """Spec § Resource Type and Trait Parameters (raml-10.md L2356): both omit
+        any `ext` parameter and its brackets (docs/08 § 3.3).
+        """
+        root = workspace(
+            {
+                'api.raml': API
+                + 'traits:\n  t:\n    description: <<resourcePath>> <<resourcePathName>>\n'
+                + f'{uri}:\n  get:\n    is: [t]\n'
+            }
+        )
+        assert operation(parse(workspace, root), uri, 'get').description.value == expected
+
     def test_an_action_transforms_the_value(self, workspace):
         root = workspace(
             {

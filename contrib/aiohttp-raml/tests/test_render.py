@@ -8,10 +8,12 @@ second implementation to disagree with, so each rule here names itself.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
 import pytest
 from aiohttp import web
+from fastraml import parse_from_string
 from pydantic import BaseModel, Field, computed_field
 
 from aiohttp_raml import (
@@ -329,6 +331,17 @@ def test_oauth2_settings_are_ramls_own() -> None:
         'scopes': ['read', 'write'],
     }
     assert dropped == []
+
+
+def test_oauth2_grants_are_written_even_when_none_are_given() -> None:
+    # RAML 1.0 § OAuth 2.0 lists `authorizationGrants` without `?`, so a
+    # scheme without it does not parse.
+    report = render(secured_app({'oauth': Books(access_token_uri='https://auth.example/token')}, Open), title='T')
+    assert report.document.render()['securitySchemes']['oauth']['settings'] == {
+        'accessTokenUri': 'https://auth.example/token',
+        'authorizationGrants': [],
+    }
+    parse_from_string(report.to_raml(), file_name='api.raml', base_dir=Path(__file__).parent)
 
 
 def test_oauth1_settings_are_ramls_own() -> None:

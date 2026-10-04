@@ -197,7 +197,8 @@ def _object(conv: Conversion, node: dict[str, Any], shape: ObjectShape, at: str)
     if shape.pattern_properties:
         # RAML checks explicit names first, then the first matching pattern;
         # JSON Schema applies every matching pattern. Make their domains
-        # disjoint while retaining search semantics (docs/05 § 4).
+        # disjoint while retaining search semantics (docs/05 § 4). The order
+        # is the effective one, inherited patterns first (docs/07 § 4).
         declared = shape.pattern_properties
         # Any prefix moves a global inline flag off the start of its regex.
         flagged = any(_GLOBAL_FLAGS.search(key) for key in declared)
@@ -220,9 +221,6 @@ def _object(conv: Conversion, node: dict[str, Any], shape: ObjectShape, at: str)
             if chained:
                 exclusions.append(f'(?![\\s\\S]*?(?:{key}))')
         node['patternProperties'] = patterns
-        # A pattern block restricts the names of all additional properties,
-        # even when additionalProperties was omitted or explicitly true.
-        node['additionalProperties'] = False
 
 
 def _array(conv: Conversion, node: dict[str, Any], shape: ArrayShape, at: str) -> None:

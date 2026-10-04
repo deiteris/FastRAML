@@ -29,7 +29,12 @@ plus `extends` and `usage`. `title` is optional, because the target tree inherit
 the master's title. Every other key is decoded with the target tree and is
 reported by the API decoder, located in the document that wrote it.
 
-`extends` is required and holds a string. The value resolves like an `!include`
+`extends` is required and holds a string, written plainly or in the
+annotated-scalar spelling `{value: ..., (a): ...}` (*spec section Annotating
+Scalar-valued Nodes*). Loading reads only the value; the annotations are
+registered when the document's own keys are decoded, and target the Overlay or
+Extension ([09](09-security-and-annotations.md) § B4). Any other mapping, or a
+value that is not a non-empty scalar, is `extends must be a string`. The value resolves like an `!include`
 argument, relative to the document that contains it ([03](03-yaml-and-io.md)
 § 4.1). Its target must have an API, Overlay, or Extension header. Any other
 header reports `unexpected fragment kind`.

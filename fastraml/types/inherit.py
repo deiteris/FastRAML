@@ -17,6 +17,7 @@ parents.
 from __future__ import annotations
 
 import operator
+from contextvars import ContextVar
 from fractions import Fraction
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
 __all__ = [
     'alias_to',
     'fold',
+    'fold_parents',
     'inherit',
 ]
 
@@ -65,6 +67,15 @@ _INTEGER_WIDTH: dict[str, int] = {
     'int64': 64,
     'long': 64,
 }
+
+
+#: Whether the merge under way is multiple inheritance: a fold of a type's
+#: parents, where their facets meet as equals rather than a child narrowing its
+#: one parent (docs/07 § 4). Everything merged beneath such a fold is material
+#: the parents hold, so it is a meeting of equals too. A context variable
+#: rather than a parameter, because the merge recurses through every kind's
+#: rule.
+_SEVERAL_PARENTS: ContextVar[bool] = ContextVar('_SEVERAL_PARENTS', default=False)
 
 
 # -- diagnostics --------------------------------------------------------------
@@ -147,9 +158,11 @@ def _inherit_base_facets(target: BaseShape, source: BaseShape) -> None:
                 target, 'allowedTargets constraint violation', source.allowed_targets, target.allowed_targets
             )
 
-    for name, value in source.custom_facets.items():
-        # Union, target wins per key.
-        target.custom_facets.setdefault(name, value)
+    # Union, target wins per key. Rebound rather than filled in place: an alias
+    # shares its referent's dict (docs/07 § 3).
+    added = {name: value for name, value in source.custom_facets.items() if name not in target.custom_facets}
+    if added:
+        target.custom_facets = target.custom_facets | added
 
     if target.enum is None:
         target.enum = source.enum
@@ -315,14 +328,23 @@ def _descends(variant: BaseShape, parents: list[BaseShape]) -> bool:
     return True
 
 
+def fold_parents(parents: list[BaseShape]) -> BaseShape:
+    """`fold` for a type's own parents: multiple inheritance (docs/07 § 4)."""
+    token = _SEVERAL_PARENTS.set(True)
+    try:
+        return fold(parents)
+    finally:
+        _SEVERAL_PARENTS.reset(token)
+
+
 def fold(parents: list[BaseShape]) -> BaseShape:
     """A new shape that is a subtype of every one of `parents`, in order.
 
-    Unwrap merges several parents through this (docs/07 § 4), and a union
-    member narrowed by a non-union through it (docs/07 § 5). The result holds
-    what it took from a parent by reference, and never narrows that in place
-    (`_borrowed`): a like-named property, pattern property or `items` two
-    parents both declare is folded in turn.
+    Unwrap merges several parents through this (docs/07 § 4), by way of
+    `fold_parents`, and a union member narrowed by a non-union through it
+    (docs/07 § 5). The result holds what it took from a parent by reference,
+    and never narrows that in place (`_borrowed`): a like-named property,
+    pattern property or `items` two parents both declare is folded in turn.
     """
     folded = _empty_subtype(parents)
     for parent in parents:
@@ -380,11 +402,18 @@ def _empty_subtype(parents: list[BaseShape]) -> BaseShape:
 
 
 def _borrowed(target: BaseShape, source: Shape, held: BaseShape, find: Callable[[Shape], BaseShape | None]) -> bool:
-    """Whether `target` holds `held` by reference from a parent other than `source`.
+    """Whether `held` is not `target`'s own to narrow in place, so a fold must stand for it.
 
-    Only a fold holds a declaration of two parents: a subtype's own
+    Either `target` holds it by reference from a parent other than `source`
+    (only a fold holds a declaration of two parents), or it is an alias of an
+    object or array, which shares its referent's containers (docs/07 § 3):
+    `n1: Bar` narrowing a parent's `n1: Foo` would otherwise write `Foo`'s
+    properties into `Bar`, and `items` narrowed in place is the referent's.
+    Narrowing any other kind assigns to the alias's own slots. A subtype's own
     declaration, merged with its one parent, is narrowed in place.
     """
+    if held.alias is not None and isinstance(held.shape, (ObjectShape, ArrayShape)):
+        return True
     return any(
         parent.shape is not None and parent.shape is not source and find(parent.shape) is held
         for parent in target.inherits
@@ -462,11 +491,25 @@ def _narrow_string(target: BaseShape, mine: StringShape, theirs: StringShape) ->
     _bound(target, mine, theirs, 'min_length', 'minLength constraint violation', operator.lt)
     _bound(target, mine, theirs, 'max_length', 'maxLength constraint violation', operator.gt)
     # The child's pattern wins outright; the parent's only fills a gap. Whether
-    # two patterns can *both* hold is a question about their languages, and the
-    # spec's rule about conflicting patterns is scoped to multiple inheritance
-    # (docs/07 § 4).
+    # two patterns can *both* hold is a question about their languages. Where
+    # parents meet as equals, a second pattern makes the declaration invalid
+    # (spec section Multiple Inheritance, docs/07 § 4), unless it is the same
+    # text, or the one pattern both reached through a shared ancestor.
     if mine.pattern is None:
         mine.pattern = theirs.pattern
+    elif (
+        theirs.pattern is not None
+        and theirs.pattern is not mine.pattern
+        and theirs.pattern.value.pattern != mine.pattern.value.pattern
+        and _SEVERAL_PARENTS.get()
+    ):
+        raise RamlError.new(
+            'conflicting pattern from multiple parents',
+            target.location,
+            target.key_pos,
+            kind=ErrorKind.UNWRAPPING,
+            info={'source': theirs.pattern.value.pattern, 'target': mine.pattern.value.pattern},
+        )
 
 
 def _narrow_file(target: BaseShape, mine: FileShape, theirs: FileShape) -> None:
@@ -533,7 +576,7 @@ def _narrow_array(target: BaseShape, mine: ArrayShape, theirs: ArrayShape) -> No
         if _borrowed(target, theirs, mine.items, _items_of):
             mine.items = fold([mine.items, theirs.items])
         else:
-            inherit(mine.items, theirs.items)
+            mine.items = inherit(mine.items, theirs.items)
     _bound(target, mine, theirs, 'min_items', 'minItems constraint violation', operator.lt)
     _bound(target, mine, theirs, 'max_items', 'maxItems constraint violation', operator.gt)
     if mine.unique_items is None:
@@ -573,7 +616,11 @@ def _narrow_properties(target: BaseShape, mine: ObjectShape, theirs: ObjectShape
         if _borrowed(target, theirs, child.base, partial(_property_of, name)):
             mine.properties[name] = child.with_base(fold([child.base, parent.base]))
         else:
-            inherit(child.base, parent.base)
+            # The merge may hand back another shape: a union parent collapses
+            # to the member that survived (docs/07 § 5).
+            narrowed = inherit(child.base, parent.base)
+            if narrowed is not child.base:
+                mine.properties[name] = child.with_base(narrowed)
 
 
 def _items_of(shape: Shape) -> BaseShape | None:
@@ -591,17 +638,38 @@ def _pattern_property_of(key: str, shape: Shape) -> BaseShape | None:
 
 
 def _narrow_pattern_properties(target: BaseShape, mine: ObjectShape, theirs: ObjectShape) -> None:
-    if mine.pattern_properties is None:
+    """Merge `theirs`' pattern properties into `mine`'s, in effective order (docs/07 § 4).
+
+    The first matching pattern prevails (*spec section Property Declarations*),
+    so order decides. A parent's patterns stand before the subtype's own, and a
+    pattern of the same text narrows the parent's in the parent's place. Where
+    parents meet in a fold, `mine` holds the earlier parents', which keep their
+    place before the later parent's. The set is rewritten once, after every
+    merge succeeded, and keeps its identity.
+    """
+    own = mine.pattern_properties
+    if own is None:
         mine.pattern_properties = dict(theirs.pattern_properties) if theirs.pattern_properties is not None else None
         return
+    merged: dict[str, PatternProperty] = {}
     for key, parent in (theirs.pattern_properties or {}).items():
-        child = mine.pattern_properties.get(key)
+        child = own.get(key)
         if child is None:
-            mine.pattern_properties[key] = parent
+            merged[key] = parent
         elif _borrowed(target, theirs, child.base, partial(_pattern_property_of, key)):
-            mine.pattern_properties[key] = PatternProperty(pattern=child.pattern, base=fold([child.base, parent.base]))
+            merged[key] = child.with_base(fold([child.base, parent.base]))
         else:
-            inherit(child.base, parent.base)
+            # The merge may hand back another shape: a union parent collapses
+            # to the member that survived (docs/07 § 5).
+            merged[key] = child.with_base(inherit(child.base, parent.base))
+    if not merged:
+        return
+    if _SEVERAL_PARENTS.get():
+        ordered = {**own, **merged}
+    else:
+        ordered = merged | {key: child for key, child in own.items() if key not in merged}
+    own.clear()
+    own.update(ordered)
 
 
 def _narrow_union(target: BaseShape, mine: UnionShape, theirs: UnionShape) -> None:

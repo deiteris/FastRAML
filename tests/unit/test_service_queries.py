@@ -12,6 +12,7 @@ from fastraml.service import outline, queries
 from fastraml.service.queries import SymbolKind
 from fastraml.service.workspace import Workspace
 from fastraml.uris import path_to_file_uri
+from fastraml.views import authored
 from tests.unit.test_lenient import TestTheModelSaysHowFarItGot as _Lenient
 
 if TYPE_CHECKING:
@@ -246,6 +247,27 @@ class TestSymbols:
                 ]),
             ]),
         ]  # fmt: skip
+
+    def test_a_redeclared_pattern_is_outlined_where_it_was_written(self, memory_workspace):
+        """docs/07 § 4 puts a redeclared `/b/` at P's place after unwrap; the
+        authored view and the outline follow the author, who wrote `/c/` first.
+        """
+        document = (
+            '#%RAML 1.0\ntitle: T\ntypes:\n'
+            '  P:\n    properties:\n      /a/: string\n      /b/: integer\n'
+            '  T:\n    type: P\n    properties:\n      /c/: boolean\n'
+            '      /b/:\n        type: integer\n        minimum: 5\n'
+        )
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
+        tree = _tree(outline.document_symbols(snapshot, f'{folder}/api.raml'))
+        types = next(entry for entry in tree if entry[0] == 'types')
+        subtype = next(entry for entry in types[3] if entry[0] == 'T')
+        assert [member[0] for member in subtype[3]] == ['/c/', '/b/']
+        assert snapshot.raml is not None
+        declared = snapshot.raml.types_in(snapshot.raml.location)['T']
+        assert list(declared.shape.pattern_properties) == ['a', 'b', 'c']
+        assert [key for key, _ in authored.pattern_properties(declared)] == ['c', 'b']
 
     def test_a_fragment_file_that_is_one_declaration_outlines_its_body(self, memory_workspace):
         # docs/21 § 4: the file is the declaration, so its members are at the

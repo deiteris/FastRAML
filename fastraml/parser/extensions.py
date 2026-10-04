@@ -20,9 +20,10 @@ from typing import TYPE_CHECKING, Final
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, ErrorKind, RamlError
-from fastraml.facet_names import FACET_TITLE, FACET_USAGE, FACET_USES
+from fastraml.facet_names import FACET_TITLE, FACET_USAGE, FACET_USES, FACET_VALUE
+from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.extension_merge import merge_extension
-from fastraml.parser.facets import make_string_facet
+from fastraml.parser.facets import annotated_scalar_value, make_string_facet, resolve_annotated_scalar
 from fastraml.parser.fragments import (
     API_HEAD_SPAN,
     FRAGMENT_TARGETS,
@@ -167,12 +168,27 @@ def _load(raml: Raml, uri: str, kind: FragmentKind, text: str, *, seen: list[str
 
 
 def _extends_node(uri: str, root: Node) -> Node:
+    """The `extends` value node, read through its annotated-scalar spelling.
+
+    The annotations of `{value: ..., (a): ...}` are registered when the
+    document's own keys are decoded (`_decode_own_keys`), under its target.
+    """
     for key, value in pairs(root):
         if key.value == 'extends':
-            if value.kind is not NodeKind.SCALAR or is_null(value) or not value.value:
+            node = _annotated_value(value)
+            if node is None or node.kind is not NodeKind.SCALAR or is_null(node) or not node.value:
                 raise node_error('extends must be a string', uri, value)
-            return value
+            return node
     raise node_error('extends is required', uri, root)
+
+
+def _annotated_value(node: Node) -> Node | None:
+    """`node`, or the `value` of an annotated scalar whose other keys are all annotations."""
+    if node.kind is not NodeKind.MAPPING:
+        return node
+    if not all(key.value == FACET_VALUE or is_annotation_key(key.value) for key, _ in pairs(node)):
+        return None
+    return annotated_scalar_value(node)
 
 
 # -- applying it --------------------------------------------------------------
@@ -195,6 +211,9 @@ def _decode_own_keys(raml: Raml, fragment: ExtensionFragment, document: _Documen
                     fragment.usage = make_string_facet(raml, key, value, fragment.location)
                 elif key.value == FACET_USES:
                     fragment.uses = unmarshal_uses(raml, value, fragment.location)
+                elif key.value == 'extends' and value.kind is NodeKind.MAPPING:
+                    # Loading read the value; this registers its annotations.
+                    resolve_annotated_scalar(raml, value, fragment.location)
             except RamlError as err:
                 accumulator.add(err)
     finally:

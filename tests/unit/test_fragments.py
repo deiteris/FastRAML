@@ -24,6 +24,7 @@ from fastraml import (
     parse_from_string,
     path_to_file_uri,
 )
+from fastraml.domains import DomainLocation
 from fastraml.parser.fragments import (
     HEADS,
     ReferenceResolver,
@@ -260,6 +261,27 @@ class TestGlobalPrePass:
     def test_a_single_media_type_is_accepted_as_a_scalar(self, workspace):
         root = workspace({'api.raml': API + 'mediaType: application/json\n'})
         assert workspace.parse(root / 'api.raml').global_media_types == ['application/json']
+
+    def test_a_media_type_accepts_the_annotated_scalar_spelling(self, workspace):
+        """Spec § Annotating Scalar-valued Nodes (raml-10.md L2992): `mediaType`
+        is scalar-valued, so `{value: ..., (a): ...}` spells it too. An annotated
+        scalar targets its enclosing site, here the API (docs/09 § B4).
+        """
+        root = workspace({'api.raml': API + 'mediaType:\n  value: application/json\n  (here): 1\n'})
+        raml = workspace.parse(root / 'api.raml')
+        assert raml.global_media_types == ['application/json']
+        [facet] = raml.entry_point.media_types
+        assert facet.annotations['here'].value.raw == 1
+        assert facet.annotations['here'].target is DomainLocation.API
+
+    def test_an_empty_documentation_sequence_is_rejected(self, workspace):
+        """Spec § User Documentation (raml-10.md L252): "a sequence of one or
+        more documents". (`allowedTargets: []` is a different rule, and stays.)
+        """
+        root = workspace({'api.raml': API + 'documentation: []\n'})
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'api.raml')
+        assert messages(caught.value) == ['documentation must not be empty']
 
     def test_an_invalid_media_type_is_rejected(self, workspace):
         root = workspace({'api.raml': API + 'mediaType: nonsense\n'})

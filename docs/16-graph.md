@@ -310,8 +310,10 @@ information on stderr.
 
 For RAML object types, explicit properties take precedence over patterns. The
 export excludes explicit names and earlier matching patterns from each pattern's
-domain, and rejects extra keys that match no pattern, preserving RAML's
-first-match behavior rather than JSON Schema's usual overlapping constraints.
+domain, preserving RAML's first-match behavior rather than JSON Schema's usual
+overlapping constraints. An extra key that matches no pattern is governed by
+`additionalProperties` alone, as in RAML (docs/05 § 4). The patterns are
+chained in the type's effective order, inherited ones first (docs/07 § 4).
 Explicit names are escaped only where ECMA-262 syntax requires it, because
 unicode-mode validators reject identity escapes such as `\-`. Each exclusion
 is a prefix, so a global inline flag anywhere prevents both kinds. A capture

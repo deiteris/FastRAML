@@ -42,7 +42,7 @@ The accepted named scheme types are:
 | Type | Accepted settings | Required settings |
 |---|---|---|
 | `OAuth 1.0` | `requestTokenUri`, `authorizationUri`, `tokenCredentialsUri`, `signatures` | all three URIs |
-| `OAuth 2.0` | `authorizationUri`, `accessTokenUri`, `authorizationGrants`, `scopes` | `accessTokenUri`; `authorizationUri` for `authorization_code` or `implicit` |
+| `OAuth 2.0` | `authorizationUri`, `accessTokenUri`, `authorizationGrants`, `scopes` | `accessTokenUri`, `authorizationGrants`; `authorizationUri` for `authorization_code` or `implicit` |
 | `Basic Authentication` | none | none |
 | `Digest Authentication` | none | none |
 | `Pass Through` | none | none |

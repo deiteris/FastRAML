@@ -36,7 +36,7 @@ from fastraml.types.complex_ import (
     RecursiveShape,
     UnionShape,
 )
-from fastraml.types.inherit import alias_to, fold, inherit
+from fastraml.types.inherit import alias_to, fold_parents, inherit
 from fastraml.types.values import EnumValues
 
 if TYPE_CHECKING:
@@ -569,7 +569,7 @@ def _unwrap_parents(walk: _Walk, base: BaseShape, depth: int) -> BaseShape | Non
     # The fold stands for these parents. Where one of them is a union, each
     # variant names the parents it took, the union replaced by one member
     # (docs/07 § 5).
-    return fold(base.inherits)
+    return fold_parents(base.inherits)
 
 
 def _unwrap_children(walk: _Walk, shape: Shape, depth: int) -> None:
@@ -583,9 +583,11 @@ def _unwrap_children(walk: _Walk, shape: Shape, depth: int) -> None:
     elif isinstance(shape, ObjectShape) and shape.properties is not None:
         for name, prop in shape.properties.items():
             shape.properties[name] = prop.with_base(_unwrap(walk, prop.base, depth + 1))
-    if isinstance(shape, ObjectShape):
-        for pattern_prop in (shape.pattern_properties or {}).values():
-            pattern_prop.base = _unwrap(walk, pattern_prop.base, depth + 1)
+    if isinstance(shape, ObjectShape) and shape.pattern_properties is not None:
+        # Replaced, never edited: inheritance shares a parent's declarations
+        # with its subtypes, so an edit would reach them too.
+        for key, pattern_prop in shape.pattern_properties.items():
+            shape.pattern_properties[key] = pattern_prop.with_base(_unwrap(walk, pattern_prop.base, depth + 1))
 
 
 def _unwrap_custom_facet_defs(walk: _Walk, base: BaseShape, depth: int) -> None:
@@ -707,10 +709,12 @@ def _finish_children(finishing: _Finishing, shape: Shape, depth: int) -> None:
             marked = _finish(finishing, prop.base, depth + 1)
             if marked is not None and shape.properties is not None:
                 shape.properties[name] = prop.with_base(marked)
-        for pattern_prop in (shape.pattern_properties or {}).values():
+        for key, pattern_prop in (shape.pattern_properties or {}).items():
             marked = _finish(finishing, pattern_prop.base, depth + 1)
-            if marked is not None:
-                pattern_prop.base = marked
+            if marked is not None and shape.pattern_properties is not None:
+                # Replaced, never edited: a subtype shares this declaration,
+                # and the marker belongs to this cycle only.
+                shape.pattern_properties[key] = pattern_prop.with_base(marked)
 
 
 def _make_recursive(finishing: _Finishing, head: BaseShape, slot: BaseShape) -> BaseShape:

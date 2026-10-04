@@ -87,7 +87,7 @@ export interface Parameter {
 }
 
 export type ShapeType = 'any' | 'nil' | 'null' | 'boolean' | 'string' | 'integer' | 'number' | 'datetime' | 'datetime-only' | 'date-only' | 'time-only' | 'file' | 'object' | 'array' | 'union' | 'json';
-export type HttpMethod = 'connect' | 'delete' | 'get' | 'head' | 'options' | 'patch' | 'post' | 'put' | 'trace';
+export type HttpMethod = 'delete' | 'get' | 'head' | 'options' | 'patch' | 'post' | 'put';
 export type FragmentKind = 'API' | 'Library' | 'DataType' | 'AnnotationTypeDeclaration' | 'NamedExample' | 'DocumentationItem' | 'Trait' | 'ResourceType' | 'SecurityScheme';
 export type AnnotationTarget = 'API' | 'DocumentationItem' | 'Resource' | 'Method' | 'Response' | 'RequestBody' | 'ResponseBody' | 'TypeDeclaration' | 'Example' | 'ResourceType' | 'Trait' | 'SecurityScheme' | 'SecuritySchemeSettings' | 'AnnotationType' | 'Library' | 'Overlay' | 'Extension';
 /**

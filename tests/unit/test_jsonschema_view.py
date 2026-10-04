@@ -340,31 +340,91 @@ def test_the_output_is_a_valid_draft_07_schema(workspace):
         ),
         (
             'name: string\n      /x/: integer',
-            [({'name': 'a', 'prefix': 1}, True), ({'name': 'a', 'prefix': 's'}, False), ({'name': 'a', 'z': 1}, False)],
+            [({'name': 'a', 'prefix': 1}, True), ({'name': 'a', 'prefix': 's'}, False), ({'name': 'a', 'z': 1}, True)],
         ),
         (
             '/x/: string\n      /xy/: integer',
-            [({'xy': 'a'}, True), ({'xy': 1}, False), ({'beforexyafter': 'a'}, True), ({'z': 1}, False)],
+            [({'xy': 'a'}, True), ({'xy': 1}, False), ({'beforexyafter': 'a'}, True), ({'z': 1}, True)],
         ),
         (
             '/xy/: integer\n      /x/: string',
-            [({'xy': 1}, True), ({'xy': 'a'}, False), ({'x': 'a'}, True), ({'z': 1}, False)],
+            [({'xy': 1}, True), ({'xy': 'a'}, False), ({'x': 'a'}, True), ({'z': 1}, True)],
         ),
         (
             '"line\\nbreak": string\n      //: integer',
             [({'line\nbreak': 'a'}, True), ({'line\nbreak': 1}, False), ({'other\nkey': 1, 'line\nbreak': 'a'}, True)],
         ),
     ],
-    ids=['explicit-wins', 'literal-metacharacters', 'search-and-exhaustive', 'first-pattern', 'reversed', 'newlines'],
+    ids=['explicit-wins', 'literal-metacharacters', 'search-and-open', 'first-pattern', 'reversed', 'newlines'],
 )
 @pytest.mark.parametrize('additional', ['', '    additionalProperties: true\n'])
 def test_pattern_precedence_agrees_with_raml(workspace, properties, values, additional):
-    """docs/05 § 4: explicit names, then first pattern; unmatched extras fail."""
+    """docs/05 § 4: explicit names, then first pattern; unmatched extras pass (spec L712)."""
     shape, schema = both(workspace, f'  T:\n{additional}    properties:\n      {properties}\n')
     jsonschema.Draft7Validator.check_schema(schema)
     for value, expected in values:
         assert (shape.validate(value) is None) is expected
         assert accepts(schema, value) is expected
+
+
+INHERITED_PATTERNS = '  P:\n    properties:\n      /^x/: integer\n  Q:\n    properties:\n      /x/: string\n'
+
+
+@pytest.mark.parametrize(
+    ('body', 'values'),
+    [
+        (
+            '  T:\n    type: P\n    properties:\n      /a/: string\n',
+            [({'xa': 's'}, False), ({'xa': 1}, True), ({'ba': 's'}, True), ({'ba': 1}, False), ({'zz': 1}, True)],
+        ),
+        (
+            '  C:\n    type: P\n    properties:\n      /a/: string\n  T:\n    type: C\n    properties:\n      /b/: integer\n',
+            [({'xab': 1}, True), ({'xab': 's'}, False), ({'ab': 's'}, True), ({'ab': 1}, False), ({'b': 1}, True)],
+        ),
+        (
+            '  T:\n    type: [P, Q]\n',
+            [({'xa': 's'}, False), ({'xa': 1}, True), ({'ax': 's'}, True), ({'ax': 1}, False)],
+        ),
+        (
+            '  T:\n    type: [Q, P]\n',
+            [({'xa': 's'}, True), ({'xa': 1}, False), ({'ax': 's'}, True), ({'ax': 1}, False)],
+        ),
+        (
+            '  T:\n    type: P\n    properties:\n      n?: string\n      /a/: string\n',
+            [({'n': 's'}, True), ({'n': 1}, False), ({'xa': 1}, True), ({'na': 's'}, True), ({'na': 1}, False)],
+        ),
+        (
+            '  T:\n    type: P\n    properties:\n      /a/: string\n      /^x/:\n        type: integer\n        minimum: 5\n',
+            [({'xa': 6}, True), ({'xa': 1}, False), ({'xa': 's'}, False), ({'ba': 's'}, True)],
+        ),
+        (
+            (
+                '  R:\n    properties:\n      /x/: integer\n  S:\n    properties:\n      /x/:\n'
+                '        type: integer\n        minimum: 5\n  T:\n    type: [R, S]\n    properties:\n      /a/: string\n'
+            ),
+            [({'xa': 6}, True), ({'xa': 1}, False), ({'xa': 's'}, False), ({'ba': 's'}, True), ({'ba': 1}, False)],
+        ),
+    ],
+    ids=[
+        'inherited-before-own',
+        'through-a-subtype',
+        'two-parents',
+        'two-parents-reversed',
+        'explicit-name-first',
+        'same-pattern-narrowed',
+        'one-pattern-two-parents',
+    ],
+)
+def test_inherited_pattern_precedence_agrees_with_raml(workspace, body, values):
+    """Spec § Property Declarations (raml-10.md L733): the first matching
+    pattern prevails, and inherited patterns come first (docs/07 § 4). The
+    projection's disjoint domains decide every key as RAML does.
+    """
+    shape, schema = both(workspace, INHERITED_PATTERNS + body)
+    jsonschema.Draft7Validator.check_schema(schema)
+    for value, expected in values:
+        assert (shape.validate(value) is None) is expected, value
+        assert accepts(schema, value) is expected, value
 
 
 @pytest.mark.parametrize(
@@ -386,12 +446,10 @@ def test_pattern_export_keeps_capture_scopes_and_reports_unsupported_precedence(
     # Composing them would renumber or redefine a capture group.
     assert list(definition['patternProperties']) == list(shape.shape.pattern_properties)
     assert shape.validate(value) is None
-    # Not `accepts`: python-jsonschema checks `additionalProperties` against one
-    # alternation of every pattern, which itself shifts capture groups. Check
-    # the per-pattern verdict and the name restriction separately.
-    assert accepts({key: kept for key, kept in definition.items() if key != 'additionalProperties'}, value)
-    assert all(any(re.search(pattern, key) for pattern in definition['patternProperties']) for key in value)
-    assert definition['additionalProperties'] is False
+    # Patterns do not close the key set (spec L712), so nothing beside them
+    # restricts the names.
+    assert 'additionalProperties' not in definition
+    assert accepts(definition, value)
     assert any('precedence' in notice for notice in dropped)
 
 

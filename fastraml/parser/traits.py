@@ -43,7 +43,7 @@ from fastraml.parser.templates import (
     make_template_definition,
     parameter_node,
 )
-from fastraml.parser.uritemplates import resource_path_name
+from fastraml.parser.uritemplates import resource_path, resource_path_name
 from fastraml.registry import ParseCtx
 from fastraml.yamlnode import pairs, with_content
 
@@ -99,7 +99,7 @@ def apply_traits(raml: Raml, endpoint: SourceEndPoint) -> None:
     # and every trait of this resource, so their nodes are built once. They are
     # read-only scalars that substitution never inserts by pointer, so sharing
     # them is safe and saves an allocation per application.
-    path = parameter_node(endpoint.full_uri)
+    path = parameter_node(resource_path(endpoint.full_uri))
     path_name = parameter_node(resource_path_name(endpoint.full_uri))
 
     accumulator = Accumulator()

@@ -584,14 +584,14 @@ export function pathTree(endpoints: Record<string, Endpoint>, order: PathOrder =
   return roots;
 }
 
-const METHODS: readonly HttpMethod[] = ['connect', 'delete', 'get', 'head', 'options', 'patch', 'post', 'put', 'trace'];
+const METHODS: readonly HttpMethod[] = ['delete', 'get', 'head', 'options', 'patch', 'post', 'put'];
 
 /** The `:method` URL segment is a bare string; this is what makes it a key of `operations`. */
 export function isHttpMethod(value: string): value is HttpMethod {
   return (METHODS as readonly string[]).includes(value);
 }
 
-const METHOD_ORDER = ['get', 'head', 'post', 'put', 'patch', 'delete', 'options', 'trace'];
+const METHOD_ORDER = ['get', 'head', 'post', 'put', 'patch', 'delete', 'options'];
 const METHOD_RANK = new Map(METHOD_ORDER.map((method, at) => [method, at]));
 
 export function methodsOf(endpoint: Endpoint): [string, Operation][] {

@@ -248,7 +248,6 @@ class TestRuleExamples:
             ('get', 'RFC 9110 § 9.3.1'),
             ('head', 'RFC 9110 § 9.3.2'),
             ('delete', 'RFC 9110 § 9.3.5'),
-            ('trace', 'RFC 9110 § 9.3.8'),
             ('options', None),
         ],
     )
@@ -1202,11 +1201,6 @@ class TestSpecRules:
         # RAML 1.0 § Template URIs defaults a non-scalar URI parameter to JSON.
         source = '#%RAML 1.0\ntitle: t\n/a/{p}:\n  uriParameters:\n    p:\n      type: object\n  get:\n'
         assert not run_rule('non-scalar-parameter', source, tmp_path)
-
-    @pytest.mark.parametrize('method', ['trace', 'connect'])
-    def test_non_standard_method_reports_the_methods_raml_does_not_define(self, method, tmp_path):
-        findings = run_rule('non-standard-method', f'#%RAML 1.0\ntitle: t\n/a:\n  {method}:\n  get:\n', tmp_path)
-        assert [finding.info for finding in findings] == [{'method': method}]
 
 
 class TestConfiguration:

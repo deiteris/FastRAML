@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 from fastraml.datanode import at_value, locate
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
+from fastraml.types.base import TYPE_JSON
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.examples import examples_of
 from fastraml.types.unwrap import unwrap_detached
@@ -32,8 +33,10 @@ if TYPE_CHECKING:
 
     from fastraml.datanode import DataNode
     from fastraml.parser.annotations import DomainExtension
+    from fastraml.parser.endpoints import Body
+    from fastraml.parser.security import SecuritySchemeDescription
     from fastraml.registry import Raml
-    from fastraml.types.base import BaseShape, Property
+    from fastraml.types.base import BaseShape, Parameter, Property
     from fastraml.types.examples import Example
 
 __all__ = ['check_declared_discriminators', 'validate_shapes']
@@ -106,6 +109,7 @@ def validate_shapes(raml: Raml) -> None:
     accumulator = Accumulator()
     _validate_types(raml, cache, accumulator)
     _validate_query_strings(raml, cache, accumulator)
+    _validate_json_schema_placement(raml, cache, accumulator)
     _validate_domain_extensions(raml, cache, accumulator)
     accumulator.raise_if_any()
 
@@ -149,6 +153,13 @@ def _query_strings(raml: Raml) -> Iterator[BaseShape]:
         for operation in endpoint.operations.values():
             if operation.request is not None and operation.request.query_string is not None:
                 yield operation.request.query_string
+    for described_by in _descriptions(raml):
+        if described_by.query_string is not None:
+            yield described_by.query_string
+
+
+def _descriptions(raml: Raml) -> Iterator[SecuritySchemeDescription]:
+    """Every security scheme's `describedBy`, in every fragment."""
     for fragment in raml.fragments.values():
         schemes = list(getattr(fragment, 'security_schemes', {}).values())
         # A SecurityScheme fragment is one scheme; a Trait or ResourceType
@@ -156,8 +167,103 @@ def _query_strings(raml: Raml) -> Iterator[BaseShape]:
         schemes.append(getattr(fragment, 'definition', None))
         for scheme in schemes:
             described_by = getattr(scheme, 'described_by', None)
-            if described_by is not None and described_by.query_string is not None:
-                yield described_by.query_string
+            if described_by is not None:
+                yield described_by
+
+
+# -- where a JSON schema may stand (docs/10 § 7) --------------------------------
+
+
+def _validate_json_schema_placement(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator) -> None:
+    """Spec § Using XML and JSON Schema: a JSON schema "MUST NOT be used where
+    the media type does not allow [...] JSON-formatted data", and is "forbidden
+    in any declaration of query parameters, query string, URI parameters, and
+    headers".
+
+    A `body:` written without a media type was instantiated once per default
+    media type, so each instance is judged by the media type it stands for.
+    Every place is also a declaration in `fragment_typedefs`, so one that cannot
+    be unwrapped has already been reported by `_validate_types`.
+    """
+    for body in _bodies(raml):
+        if body.shape is not None and not _allows_json(body.media_type) and _holds_json_schema(raml, body.shape, cache):
+            acc.add(
+                failure(
+                    'JSON schema for a media type that is not JSON',
+                    body.location,
+                    body.key_pos,
+                    info={'mediaType': body.media_type},
+                )
+            )
+    for parameter in _parameters(raml):
+        if _holds_json_schema(raml, parameter.base, cache):
+            acc.add(
+                failure(
+                    'JSON schema in a parameter',
+                    parameter.base.location,
+                    parameter.key_pos,
+                    info={'parameter': parameter.name, 'binding': parameter.binding},
+                )
+            )
+    for base in _query_strings(raml):
+        if _holds_json_schema(raml, base, cache):
+            acc.add(failure('JSON schema in a query string', base.location, base.key_pos))
+
+
+def _allows_json(media_type: str) -> bool:
+    """`application/json`, a `+json` suffix (RFC 6839 § 3.1), or a range that admits one."""
+    kind, _, subtype = media_type.partition(';')[0].strip().casefold().partition('/')
+    if kind == '*' or (kind == 'application' and subtype in {'json', '*'}):
+        return True
+    return subtype.endswith('+json')
+
+
+def _holds_json_schema(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) -> bool:
+    """Whether the flattened declaration is a JSON schema, or a union with one among its members."""
+    try:
+        flattened = _ensure_unwrapped(raml, base, cache)
+    except RamlError:
+        return False
+    pending = [flattened]
+    while pending:
+        current = pending.pop()
+        if current.type == TYPE_JSON:
+            return True
+        if isinstance(current.shape, UnionShape):
+            pending.extend(current.shape.any_of or ())
+    return False
+
+
+def _bodies(raml: Raml) -> Iterator[Body]:
+    """Every request and response body, an operation's and then a `describedBy`'s."""
+    for endpoint in raml.endpoints.values():
+        for operation in endpoint.operations.values():
+            if operation.request is not None:
+                yield from operation.request.bodies.values()
+            for response in operation.responses.values():
+                yield from response.bodies.values()
+    for described_by in _descriptions(raml):
+        for response in described_by.responses.values():
+            yield from response.bodies.values()
+
+
+def _parameters(raml: Raml) -> Iterator[Parameter]:
+    """Every bound parameter: base URI, URI, header and query, wherever declared."""
+    for fragment in raml.fragments.values():
+        yield from getattr(fragment, 'base_uri_parameters', {}).values()
+    for endpoint in raml.endpoints.values():
+        yield from (parameter for parameter in endpoint.uri_parameters.values() if not parameter.synthesized)
+        for operation in endpoint.operations.values():
+            if operation.request is not None:
+                yield from operation.request.headers.values()
+                yield from operation.request.query_parameters.values()
+            for response in operation.responses.values():
+                yield from response.headers.values()
+    for described_by in _descriptions(raml):
+        yield from described_by.headers.values()
+        yield from described_by.query_parameters.values()
+        for response in described_by.responses.values():
+            yield from response.headers.values()
 
 
 def _admits_array(base: BaseShape) -> bool:
@@ -411,9 +517,13 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
     has several. go-raml follows `inherits[0]` only. The walk is breadth-first
     in declaration order with a visited set, so a diamond reaches its shared
     ancestor once. A name met again is a duplicate unless it is the same
-    declaration, which an alias shares with its referent (docs/07 § 3).
+    declaration, which an alias shares with its referent (docs/07 § 3), or one
+    of two where either declaring type inherits the other: that is a
+    redeclaration, reported once where it is written (`_redeclared_facets`),
+    whichever the walk reaches first.
     """
     declared: dict[str, Property] = {}
+    owners: dict[str, BaseShape] = {}
     seen: set[int] = set()
     queue = deque(base.inherits)
     while queue:
@@ -425,7 +535,14 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
             existing = declared.get(name)
             if existing is None:
                 declared[name] = prop
-            elif existing is not prop:
+                owners[name] = current
+            elif (
+                existing is not prop
+                and not _inherits_from(owners[name], current)
+                and not _inherits_from(current, owners[name])
+            ):
+                # Two unrelated declarations. One that inherits the other is a
+                # redeclaration, reported once where it is written.
                 acc.add(
                     failure(
                         'duplicate custom facet',
@@ -438,6 +555,61 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
     return declared
 
 
+def _inherits_from(shape: BaseShape, ancestor: BaseShape) -> bool:
+    """Whether `ancestor` is among `shape`'s ancestors, transitively.
+
+    Through alias edges: a parent written in `type: [A, B]` is an alias of the
+    declaration it names, which shares that declaration's parents (docs/07 § 3).
+    """
+    wanted = _referent(ancestor)
+    seen: set[int] = set()
+    queue = deque(shape.inherits)
+    while queue:
+        current = _referent(queue.popleft())
+        if current is wanted:
+            return True
+        if current.id not in seen:
+            seen.add(current.id)
+            queue.extend(current.inherits)
+    return False
+
+
+def _referent(base: BaseShape) -> BaseShape:
+    """The declaration an alias chain ends at, or `base` itself."""
+    while base.alias is not None:
+        base = base.alias
+    return base
+
+
+def _redeclared_facets(base: BaseShape, declared: dict[str, Property], acc: Accumulator) -> None:
+    """A facet `base` declares that an ancestor already declares.
+
+    Spec section User-defined Facets: a facet name "MUST NOT" match one of
+    "any ancestor type in the inheritance chain". Reported here, at the type
+    that declares it again, and not at each of its subtypes (docs/10 § 4). An
+    alias shares its referent's declarations, so its referent reports them.
+    """
+    if base.alias is not None:
+        return
+    for name, prop in base.custom_facet_defs.items():
+        inherited = declared.get(name)
+        if inherited is None or inherited is prop:
+            continue
+        origin = Trace('declared here', inherited.base.location, inherited.base.key_pos)
+        acc.add(
+            RamlError(
+                Trace(
+                    'duplicate custom facet',
+                    prop.base.location,
+                    prop.base.key_pos,
+                    ErrorKind.VALIDATING,
+                    {'facet': name},
+                    origin=origin,
+                )
+            )
+        )
+
+
 def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
     # A union is checked like anything else: P9 hands each facet written beside
     # `type: A | B` to the members, so what reaches this point on a union is a
@@ -446,6 +618,7 @@ def _validate_custom_facets(base: BaseShape, acc: Accumulator) -> None:
         # Nothing declared above to require, and nothing supplied to check.
         return
     declared = _facet_declarations(base, acc)
+    _redeclared_facets(base, declared, acc)
     for name, prop in declared.items():
         if prop.required and name not in base.custom_facets:
             # At the type that lacks it, beside the facet's declaration.

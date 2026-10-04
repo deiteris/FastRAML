@@ -135,7 +135,11 @@ resolves every name through the includer and is located in the included file.
 ## 5. Fragment decoding
 
 API decoding first collects global `mediaType`, `protocols`, and `securedBy`,
-then decodes remaining declarations in source order. It retains resource source
+then decodes remaining declarations in source order. A lone `mediaType` may be
+written as an annotated scalar, `{value: ..., (a): ...}`; its annotations
+target the API (docs/09 § B4). `documentation` is a sequence of one or more
+items (*spec section User Documentation*); an authored `documentation: []` is
+`documentation must not be empty`. It retains resource source
 nodes for endpoint construction.
 
 Libraries decode their declarations and root `uses:` map. A DataType or

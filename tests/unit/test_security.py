@@ -135,6 +135,16 @@ class TestOAuth2:
         )
         assert {'setting': 'accessTokenUri'} in infos(error)
 
+    def test_the_authorization_grants_are_required(self, workspace):
+        """Spec § OAuth 2.0 (raml-10.md L2711): the settings table writes
+        `authorizationGrants` without `?` (docs/09 § A2).
+        """
+        error = rejected(
+            workspace,
+            'securitySchemes:\n  s:\n    type: OAuth 2.0\n    settings:\n      accessTokenUri: https://e.com/t\n',
+        )
+        assert infos(error) == [{'setting': 'authorizationGrants'}]
+
     def test_the_authorization_uri_is_required_only_for_two_grants(self, workspace):
         head = 'securitySchemes:\n  s:\n    type: OAuth 2.0\n    settings:\n      accessTokenUri: https://e.com/t\n'
         parse(workspace, head + '      authorizationGrants: [client_credentials]\n')
@@ -454,7 +464,8 @@ class TestAnnotationTargets:
         raml = parse(
             workspace,
             self.DECLARE + 'securitySchemes:\n  s:\n    type: OAuth 2.0\n'
-            '    settings:\n      accessTokenUri: https://e.com/t\n      (ann): 1\n',
+            '    settings:\n      accessTokenUri: https://e.com/t\n      authorizationGrants: [client_credentials]\n'
+            '      (ann): 1\n',
         )
         assert self.target(raml, 'ann') is DomainLocation.SECURITY_SCHEME_SETTINGS
 
@@ -558,6 +569,7 @@ class TestFragment:
                     'type: OAuth 2.0\n'
                     'settings:\n'
                     '  accessTokenUri: https://e.com/t\n'
+                    '  authorizationGrants: [client_credentials]\n'
                     '  scopes: [ADMIN]\n'
                 ),
             }
@@ -577,6 +589,7 @@ class TestFragment:
                     'type: OAuth 2.0\n'
                     'settings:\n'
                     '  accessTokenUri: https://e.com/t\n'
+                    '  authorizationGrants: [client_credentials]\n'
                     '  scopes: [ADMIN]\n'
                 ),
             }

@@ -68,7 +68,7 @@ Kind = Literal[
 Declared = Literal['type', 'annotation-type', 'security-scheme']
 DECLARED: tuple[Declared, ...] = ('type', 'annotation-type', 'security-scheme')
 
-METHODS: frozenset[str] = frozenset(('connect', 'delete', 'get', 'head', 'options', 'patch', 'post', 'put', 'trace'))
+METHODS: frozenset[str] = frozenset(('delete', 'get', 'head', 'options', 'patch', 'post', 'put'))
 
 
 class Catalogue:

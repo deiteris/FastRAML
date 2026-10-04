@@ -182,6 +182,22 @@ class TestObject:
         assert error is not None
         assert 'pattern properties conflict with additionalProperties' in messages(error)
 
+    @pytest.mark.parametrize(
+        'body',
+        [
+            '  P:\n    additionalProperties: false\n  T:\n    type: P\n    properties:\n      /^a/: string\n',
+            '  P:\n    properties:\n      /^a/: string\n  T:\n    type: P\n    additionalProperties: false\n',
+        ],
+        ids=['inherited-false', 'inherited-patterns'],
+    )
+    def test_the_conflict_is_judged_on_the_effective_type(self, workspace, body):
+        """Spec § Property Declarations: `additionalProperties: false`
+        "(explicitly or by inheritance)" forbids pattern properties (docs/10 § 2).
+        """
+        error = parse(workspace, body)
+        assert error is not None
+        assert 'pattern properties conflict with additionalProperties' in messages(error)
+
     def test_pattern_properties_are_fine_when_extras_are_allowed(self, workspace):
         assert parse(workspace, '  T:\n    additionalProperties: true\n    properties:\n      /^a/: string\n') is None
 

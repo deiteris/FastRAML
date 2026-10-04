@@ -370,17 +370,115 @@ class TestObject:
         assert shape.validate({'n_1': 5}) is None
         assert shape.validate({'n_1': 'x'}) is not None
 
-    def test_declaring_a_pattern_makes_the_set_of_them_exhaustive(self, workspace):
-        """Spec § Property Declarations, per its own examples' comments.
-
-        `additionalProperties` defaults to true, so this reads backwards until
-        you notice that `additional-properties.raml` writes the empty pattern
-        `//` to "force all additional properties to be a string" — which is only
-        worth writing if a non-empty pattern restricts what is allowed.
+    def test_a_key_no_pattern_matches_is_an_ordinary_additional_property(self, workspace):
+        """Spec § Property Declarations (raml-10.md L712): beside
+        `/^note\\d+$/: string`, `note: 123` is "valid as it does not match the
+        pattern". Patterns restrict the keys they match; they do not close the
+        key set (docs/05 § 4).
         """
-        shape = declared(workspace, '  T:\n    properties:\n      a: string\n      /^n_/: integer\n')
-        assert shape.validate({'a': 'x', 'n_1': 5}) is None
-        assert shape.validate({'a': 'x', 'z': 5}) is not None
+        shape = declared(workspace, '  T:\n    properties:\n      name: string\n      /^note\\d+$/: string\n')
+        assert shape.validate({'name': 'John', 'note1': 'US'}) is None
+        assert shape.validate({'name': 'John', 'note2': 123}) is not None
+        assert shape.validate({'name': 'John', 'note': 123}) is None
+
+    def test_the_first_matching_pattern_prevails(self, workspace):
+        """Spec § Property Declarations (raml-10.md L733): "If two or more
+        pattern property regular expressions match a property name ..., the
+        first one prevails." Only that pattern validates the value.
+        """
+        shape = declared(workspace, '  T:\n    properties:\n      /^x/: integer\n      /a/: string\n')
+        assert shape.validate({'xa': 1}) is None
+        assert shape.validate({'xa': 's'}) is not None
+        assert shape.validate({'ba': 's'}) is None
+
+    def test_an_explicit_property_prevails_over_every_pattern(self, workspace):
+        """Spec § Property Declarations (raml-10.md L733): "the explicitly
+        declared property definition prevails", inherited patterns included. A
+        subtype's explicit property is not narrowed by a parent's pattern, so
+        it accepts `n1: 5`, which the parent rejects (docs/01 § 4.6).
+        """
+        body = '  P:\n    properties:\n      /^n/: string\n  T:\n    type: P\n    properties:\n      n1: number\n'
+        shape = declared(workspace, body)
+        assert shape.validate({'n1': 5}) is None
+        assert shape.validate({'n1': 's'}) is not None
+        assert shape.validate({'n2': 5}) is not None
+        assert declared(workspace, body, 'P').validate({'n1': 5}) is not None
+
+    def test_an_inherited_pattern_precedes_the_subtypes_own(self, workspace):
+        """Spec § Property Declarations (raml-10.md L733), docs/07 § 4: the
+        effective order lists inherited patterns first, so the parent's `//`
+        takes `n1` and the child's `/^n/` is shadowed for every key.
+        """
+        body = '  P:\n    properties:\n      //: string\n  T:\n    type: P\n    properties:\n      /^n/: number\n'
+        shape = declared(workspace, body)
+        assert shape.validate({'n1': 5}) is not None
+        assert shape.validate({'n1': 's'}) is None
+
+    def test_a_subtypes_pattern_governs_keys_no_inherited_pattern_matches(self, workspace):
+        """docs/07 § 4: the child's `/a/` decides `ba`, which the parent's `/^x/`
+        does not match; `xa` is the parent's, and the child's `/a/` does not apply.
+        """
+        body = '  P:\n    properties:\n      /^x/: integer\n  T:\n    type: P\n    properties:\n      /a/: string\n'
+        shape = declared(workspace, body)
+        assert shape.validate({'xa': 1}) is None
+        assert shape.validate({'xa': 's'}) is not None
+        assert shape.validate({'ba': 's'}) is None
+        assert shape.validate({'ba': 1}) is not None
+
+    def test_a_redeclared_pattern_narrows_in_the_inherited_place(self, workspace):
+        """docs/07 § 4: a same-text pattern narrows the parent's and keeps its
+        position, so the parent's earlier `/a/` still takes `ab`.
+        """
+        body = (
+            '  P:\n    properties:\n      /a/: string\n      /b/: integer\n'
+            '  T:\n    type: P\n    properties:\n      /c/: boolean\n      /b/:\n        type: integer\n'
+            '        minimum: 5\n'
+        )
+        shape = declared(workspace, body)
+        assert list(shape.shape.pattern_properties) == ['a', 'b', 'c']
+        assert shape.validate({'ab': 's'}) is None
+        assert shape.validate({'b': 6}) is None
+        assert shape.validate({'b': 1}) is not None
+        assert shape.validate({'bc': 6}) is None
+        assert shape.validate({'c': True}) is None
+
+    @pytest.mark.parametrize(
+        ('parents', 'first'),
+        [('[P, Q]', 'P'), ('[Q, P]', 'Q')],
+    )
+    def test_parents_patterns_stand_in_declaration_order(self, workspace, parents, first):
+        """docs/07 § 4: with several parents, each parent's patterns stand in
+        `type: [..]` order, then the subtype's own; the first match prevails.
+        """
+        body = (
+            '  P:\n    properties:\n      /^x/: integer\n'
+            '  Q:\n    properties:\n      /x/: string\n'
+            f'  T:\n    type: {parents}\n    properties:\n      /a/: boolean\n'
+        )
+        shape = declared(workspace, body)
+        assert (shape.validate({'xa': 1}) is None) is (first == 'P')
+        assert (shape.validate({'xa': 's'}) is None) is (first == 'Q')
+        assert shape.validate({'ax': 's'}) is None, "only Q's /x/ matches"
+        assert shape.validate({'ba': True}) is None, "only T's /a/ matches"
+        assert shape.validate({'ba': 1}) is not None
+
+    def test_two_parents_one_pattern_fold(self, workspace):
+        """docs/07 § 4: two parents' declarations of one pattern text fold into
+        one, which carries both constraints.
+        """
+        body = (
+            '  P:\n    properties:\n      /^x/: integer\n'
+            '  Q:\n    properties:\n      /^x/:\n        type: integer\n        minimum: 5\n'
+            '  T:\n    type: [P, Q]\n'
+        )
+        shape = declared(workspace, body)
+        assert shape.validate({'x': 6}) is None
+        assert shape.validate({'x': 1}) is not None
+        assert shape.validate({'x': 's'}) is not None
+
+    def test_explicit_additional_properties_true_beside_patterns_stays_open(self, workspace):
+        shape = declared(workspace, '  T:\n    additionalProperties: true\n    properties:\n      /^n_/: integer\n')
+        assert shape.validate({'z': 'anything'}) is None
 
     def test_the_empty_pattern_lets_everything_through(self, workspace):
         shape = declared(workspace, '  T:\n    properties:\n      a: string\n      //: string\n')
@@ -886,6 +984,61 @@ class TestCustomFacets:
         error = parse_validating(workspace, body)
         assert error is not None
         assert 'duplicate custom facet' in messages(error)
+
+    def test_a_redeclared_facet_is_rejected_at_the_type_that_redeclares_it(self, workspace):
+        """Spec § User-defined Facets (raml-10.md L1341): a facet name must not
+        match one an ancestor declares. Reported once, at the redeclaring type,
+        with no subtype to reveal it and none reporting it again (docs/10 § 4).
+        """
+        body = (
+            '  A:\n    type: string\n    facets:\n      f?: integer\n'
+            '  B:\n    type: A\n    facets:\n      f?: integer\n'
+        )
+        for tail in ('', '  C:\n    type: B\n  D:\n    type: C\n'):
+            error = parse_validating(workspace, body + tail)
+            assert error is not None
+            duplicates = [
+                frame for chain in error.chains() for frame in chain if frame.message == 'duplicate custom facet'
+            ]
+            # Lines 7 and 11 of the document are A's and B's `f?:`.
+            assert [(frame.info, frame.position.line) for frame in duplicates] == [({'facet': 'f'}, 11)]
+            assert [(frame.origin.message, frame.origin.position.line) for frame in duplicates] == [
+                ('declared here', 7)
+            ]
+
+    @pytest.mark.parametrize(
+        'tail',
+        [
+            '  D:\n    type: [A, B]\n',
+            '  C:\n    type: B\n  D:\n    type: [A, C]\n',
+            '  D:\n    type: [B, A]\n',
+        ],
+        ids=['ancestor-first', 'through-a-subtype', 'redeclarer-first'],
+    )
+    def test_a_subtype_reaching_both_declarations_does_not_report_again(self, workspace, tail):
+        """docs/10 § 4: the redeclaration is reported once, at B, however a
+        subtype reaches A's declaration and B's.
+        """
+        body = (
+            '  A:\n    type: string\n    facets:\n      f?: integer\n'
+            '  B:\n    type: A\n    facets:\n      f?: integer\n'
+        )
+        error = parse_validating(workspace, body + tail)
+        assert error is not None
+        duplicates = [frame for chain in error.chains() for frame in chain if frame.message == 'duplicate custom facet']
+        # Line 11 of the document is B's `f?:`.
+        assert [(frame.info, frame.position.line) for frame in duplicates] == [({'facet': 'f'}, 11)]
+
+    def test_an_alias_of_a_redeclaring_type_does_not_report_it_again(self, workspace):
+        body = (
+            '  A:\n    type: string\n    facets:\n      f?: integer\n'
+            '  B:\n    type: A\n    facets:\n      f?: integer\n  Same: B\n'
+        )
+        error = parse_validating(workspace, body)
+        assert error is not None
+        assert [
+            frame.info for chain in error.chains() for frame in chain if frame.message == 'duplicate custom facet'
+        ] == [{'facet': 'f'}]
 
 
 class TestUnionFacetsAreDistributed:

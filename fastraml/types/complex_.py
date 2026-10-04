@@ -168,8 +168,9 @@ class ObjectShape(ComplexKind):
     ) -> None:
         super().__init__(base)
         self.properties = properties
-        #: `/regex/` keys found inside `properties:`, in declaration order —
-        #: the first pattern that matches wins (docs/05 § 4).
+        #: `/regex/` keys found inside `properties:`, in declaration order, and
+        #: after P9 inherited ones first — the first pattern that matches wins
+        #: (docs/05 § 4, docs/07 § 4).
         self.pattern_properties = pattern_properties
         self.min_properties: ScalarFacet[int] | None = None
         self.max_properties: ScalarFacet[int] | None = None
@@ -320,28 +321,18 @@ class ObjectShape(ComplexKind):
         return broken(message, bound, info={'path': path, 'count': count, 'bound': bound.value})
 
     def _validate_extra(self, name: str, item: Any, path: str) -> None:
-        """A key the declaration did not name: a pattern property, or refused."""
+        r"""A key the declaration did not name: a pattern property, refused, or open.
+
+        A key no pattern matches is an ordinary additional property: the spec's
+        own example accepts `note: 123` beside `/^note\d+$/: string` "as it
+        does not match the pattern" (docs/05 § 4).
+        """
         for pattern in (self.pattern_properties or {}).values():
-            # Declaration order, first match wins (docs/05 § 4).
+            # Effective declaration order, first match prevails (docs/05 § 4):
+            # inherited patterns stand before the type's own (docs/07 § 4).
             if pattern.pattern.search(name) is not None:
                 pattern.base.validate_at(item, key_path(path, name))
                 return
-        if self.pattern_properties:
-            # Spec § Property Declarations, in the words of its own example:
-            # pattern properties are "restricting the property names of any
-            # additional properties", and `//` is how you "force all additional
-            # properties to be a string". So declaring any pattern makes the
-            # set of them exhaustive — a key matching none is refused whatever
-            # `additionalProperties` says (docs/05 § 4).
-            raise rejected(
-                'property name matches no pattern property',
-                self.base,
-                info={
-                    'path': path,
-                    'property': name,
-                    'patterns': [pattern.pattern.pattern for pattern in self.pattern_properties.values()],
-                },
-            )
         if self.additional_properties is not None and not self.additional_properties.value:
             raise broken(
                 'additional properties are not allowed',

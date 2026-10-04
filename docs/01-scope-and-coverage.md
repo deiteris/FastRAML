@@ -117,7 +117,9 @@ text is authored. See [04](04-fragments-and-namespaces.md).
 
 ### 4.5 JSON Schema and discriminators
 
-JSON Schema types may be used in properties, arrays, unions, and parameters.
+JSON Schema types may be used in properties, arrays, and unions, and in bodies
+whose media type allows JSON; not in parameters or query strings
+([10](10-validation.md) § 7).
 They cannot be specialized through RAML inheritance unless the raw schemas are
 identical. A uniformly discriminated union dispatches by its discriminator;
 an absent discriminator and non-uniform unions use ordinary member matching.
@@ -125,6 +127,22 @@ an absent discriminator and non-uniform unions use ordinary member matching.
 RAML 1.0 does not explicitly forbid optional discriminator properties, so
 fastRAML accepts them. The recommended `optional-discriminator` lint rule warns
 that omitting the tag can make concrete-type selection ambiguous (docs/18 § 2).
+
+### 4.6 Pattern properties under inheritance
+
+The spec says that when several pattern properties match a key "the first one
+prevails" (*spec section Property Declarations*), but not how a subtype's
+patterns order against inherited ones, nor how a subtype's explicit property
+relates to an inherited pattern its name matches. fastRAML reads it this way
+([07](07-resolution-and-inheritance.md) § 4):
+
+- Inherited patterns precede the subtype's own, so a subtype's pattern
+  governs only keys no inherited pattern matches.
+- An explicit property prevails over every pattern, and a subtype's explicit
+  property is not compared with an inherited pattern. It can therefore accept
+  a key the parent's pattern rejects: parent `/^n/: string` with child
+  `n1: number` accepts `n1: 5`. This is the one place a subtype widens what its
+  parent accepts.
 
 ## 5. Dependencies
 

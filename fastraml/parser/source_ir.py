@@ -39,11 +39,12 @@ __all__ = [
     'note_failure',
 ]
 
-#: The HTTP methods a resource may declare (spec section Methods). `?`-suffixed
+#: The HTTP methods a resource may declare (spec section Methods), and no
+#: others: `trace` and `connect` are unknown resource keys. `?`-suffixed
 #: spellings are legal only inside a resource type, where they mean "apply this
 #: only if the target already declares it"; the suffix is chomped by whoever
 #: compiles the template, so plain names are what reach here.
-METHODS: Final = frozenset({'get', 'patch', 'put', 'post', 'delete', 'options', 'head', 'trace', 'connect'})
+METHODS: Final = frozenset({'get', 'patch', 'put', 'post', 'delete', 'options', 'head'})
 
 
 @dataclass(slots=True, eq=False)

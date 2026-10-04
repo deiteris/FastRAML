@@ -46,6 +46,26 @@ class TestLoadingTheChain:
         head = failure(tmp_path, {'entry.raml': '#%RAML 1.0 Extension\nextends: [a.raml]\n'})
         assert head == [('extends must be a string', {}, 'entry.raml')]
 
+    @pytest.mark.parametrize('kind', ['Overlay', 'Extension'])
+    def test_extends_accepts_the_annotated_scalar_spelling(self, tmp_path, kind):
+        """Spec § Annotating Scalar-valued Nodes (raml-10.md L2992): a scalar-valued
+        node may be written `{value: ..., (a): ...}`. The annotation targets the
+        document (docs/09 § B4, docs/19 § 1).
+        """
+        files = {
+            'api.raml': API + 'annotationTypes:\n  note: string\n',
+            'entry.raml': f'#%RAML 1.0 {kind}\nextends:\n  value: api.raml\n  (note): base\n',
+        }
+        raml = parse(tmp_path, files)
+        assert raml.entry_point.title.value == 'Books'
+        [note] = [extension for extension in raml.domain_extensions if extension.name == 'note']
+        assert note.value.raw == 'base'
+        assert note.target is getattr(DomainLocation, kind.upper())
+
+    def test_an_annotated_extends_still_needs_its_value(self, tmp_path):
+        files = {'entry.raml': '#%RAML 1.0 Extension\nextends:\n  (note): base\n'}
+        assert failure(tmp_path, files) == [('extends must be a string', {}, 'entry.raml')]
+
     def test_a_missing_master_is_reported_at_the_entrys_extends(self, tmp_path):
         write_files(tmp_path, {'entry.raml': '#%RAML 1.0 Extension\nextends: missing.raml\n'})
         with pytest.raises(RamlError) as caught:

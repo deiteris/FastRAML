@@ -514,7 +514,11 @@ class Walk:
         """`dict[K, V]` -> RAML's pattern-any property, narrowed by the key type.
 
         JSON Schema has one `additionalProperties` and no place for `K`, so this
-        is one of the things reading the model recovers.
+        is one of the things reading the model recovers. Only the values of
+        such keys are typed: a RAML pattern property leaves the keys it does not
+        match open (RAML 1.0 § Property Declarations), and
+        `additionalProperties: false` may not stand beside it, so a key of
+        another type is accepted, and reported as such.
         """
         key, value = (*args, Any, Any)[:2]
         key, _ = unwrap_annotated(key)
@@ -522,6 +526,8 @@ class Walk:
         if pattern is None:
             self.drop(at, f'no RAML property pattern for key type {key!r}; any key accepted')
             pattern = ANY_KEY
+        elif pattern != ANY_KEY:
+            self.drop(at, f'RAML cannot refuse a key that is not {key.__name__}; any key accepted')
         return TypeDecl(type='object', properties={pattern: self.annotation(value, f'{at}.{pattern}')})
 
     def _constrain(self, decl: TypeDecl, metadata: Any, at: str) -> None:

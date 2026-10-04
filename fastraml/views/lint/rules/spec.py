@@ -21,7 +21,7 @@ from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from fastraml.parser.endpoints import EndPoint, Operation
+    from fastraml.parser.endpoints import EndPoint
     from fastraml.parser.fragments import APIFragment
     from fastraml.parser.security import SecuritySchemeDefinition
     from fastraml.types.base import BaseShape, Parameter
@@ -32,15 +32,11 @@ __all__ = [
     'EmptyPathSegment',
     'ExtensionRemovesProperty',
     'NonScalarParameter',
-    'NonStandardMethod',
     'UndefinedVersion',
     'UndescribedSecurityScheme',
     'UnnestedResource',
 ]
 
-#: RAML 1.0 § Methods: the methods a resource may declare. fastRAML also
-#: accepts `trace` and `connect` as an extension (`parser/source_ir.METHODS`).
-_RAML_METHODS: Final = frozenset({'get', 'patch', 'put', 'post', 'delete', 'head', 'options'})
 _WEB_SCHEMES: Final = frozenset({'http', 'https'})
 #: A segment that is one simple expansion, `{name}`; the parser has validated the name.
 _PARAMETER_SEGMENT: Final = re.compile(r'\{([^{}+#][^{}]*)\}')
@@ -335,24 +331,3 @@ class NonScalarParameter:
                 reason=reason,
             ),
         )
-
-
-class NonStandardMethod:
-    meta: ClassVar = RuleMeta(
-        'non-standard-method',
-        Category.SPEC,
-        'resources should declare only the methods RAML 1.0 defines',
-        (
-            'RAML 1.0 defines get, patch, put, post, delete, head and options. fastRAML also accepts trace and '
-            'connect, but other RAML processors reject a document that declares them.'
-        ),
-        Severity.WARNING,
-        references=('RAML 1.0 § Methods',),
-        good='#%RAML 1.0\ntitle: t\n/a:\n  options:\n',
-        bad='#%RAML 1.0\ntitle: t\n/a:\n  trace:\n',
-    )
-
-    def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
-        if operation.method in _RAML_METHODS:
-            return ()
-        return (ctx.on(self.meta, 'method is not a RAML 1.0 method', operation, iri=iri, method=operation.method),)

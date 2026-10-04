@@ -599,46 +599,106 @@ class TestRestrictions:
 SCALAR_SCHEMA = json.dumps({'type': 'string', 'minLength': 4})
 
 
-class TestParameterDeclarations:
-    """A schema type *is* a type, including in a parameter.
+PLACEMENT = frozenset(
+    {'JSON schema in a parameter', 'JSON schema in a query string', 'JSON schema for a media type that is not JSON'}
+)
 
-    The spec forbids one outright in a query parameter, query string, URI
-    parameter or header. fastRAML permits it (`docs/01` § 4.5) because a
-    `JsonShape` is asked for nothing here but `validate(value)`, which it does.
+
+def placement(error) -> list[tuple[str, dict]]:
+    """The JSON-schema placement failures in `error`, as message key and info."""
+    return [(frame.message, frame.info) for chain in error.chains() for frame in chain if frame.message in PLACEMENT]
+
+
+HEADER_H = ('JSON schema in a parameter', {'parameter': 'H', 'binding': 'header'})
+
+
+class TestParameterDeclarations:
+    """Spec § Using XML and JSON Schema (raml-10.md L1316): JSON schemas "are
+    also forbidden in any declaration of query parameters, query string, URI
+    parameters, and headers" (docs/10 § 7).
     """
 
-    RESOURCE: ClassVar[dict[str, str]] = {
-        'headers': '/r:\n  get:\n    headers:\n      H: {ref}\n',
-        'queryParameters': '/r:\n  get:\n    queryParameters:\n      q: {ref}\n',
-        'queryString': '/r:\n  get:\n    queryString: {ref}\n',
-        'uriParameters': '/r/{{id}}:\n  uriParameters:\n    id: {ref}\n  get:\n',
-        'responseHeaders': '/r:\n  get:\n    responses:\n      200:\n        headers:\n          H: {ref}\n',
-        'baseUriParameters': 'baseUriParameters:\n  h: {ref}\n',
+    RESOURCE: ClassVar[dict[str, tuple[str, tuple[str, dict]]]] = {
+        'headers': ('/r:\n  get:\n    headers:\n      H: {ref}\n', HEADER_H),
+        'queryParameters': (
+            '/r:\n  get:\n    queryParameters:\n      q: {ref}\n',
+            ('JSON schema in a parameter', {'parameter': 'q', 'binding': 'query'}),
+        ),
+        'queryString': ('/r:\n  get:\n    queryString: {ref}\n', ('JSON schema in a query string', {})),
+        'uriParameters': (
+            '/r/{{id}}:\n  uriParameters:\n    id: {ref}\n  get:\n',
+            ('JSON schema in a parameter', {'parameter': 'id', 'binding': 'uri'}),
+        ),
+        'responseHeaders': (
+            '/r:\n  get:\n    responses:\n      200:\n        headers:\n          H: {ref}\n',
+            HEADER_H,
+        ),
+        'baseUriParameters': (
+            'baseUriParameters:\n  h: {ref}\n',
+            ('JSON schema in a parameter', {'parameter': 'h', 'binding': 'uri'}),
+        ),
     }
 
     @pytest.mark.parametrize('facet', sorted(RESOURCE))
-    def test_a_named_schema_type_is_accepted(self, workspace, facet):
-        body = 'types:\n  Code: |\n' + indent(SCALAR_SCHEMA) + self.RESOURCE[facet].format(ref='Code')
-        assert parse(workspace, {'api.raml': API + 'baseUri: http://x/{h}\n' + body}) is None
+    def test_a_named_schema_type_is_rejected(self, workspace, facet):
+        template, expected = self.RESOURCE[facet]
+        body = 'types:\n  Code: |\n' + indent(SCALAR_SCHEMA) + template.format(ref='Code')
+        error = parse(workspace, {'api.raml': API + 'baseUri: http://x/{h}\n' + body})
+        assert error is not None
+        assert placement(error) == [expected]
 
-    def test_an_inline_schema_is_accepted_too(self, workspace):
+    def test_an_inline_schema_is_rejected_too(self, workspace):
         body = '/r:\n  get:\n    headers:\n      H:\n        type: |\n' + indent(SCALAR_SCHEMA, 10)
-        assert parse(workspace, {'api.raml': API + body}) is None
+        assert placement(parse(workspace, {'api.raml': API + body})) == [HEADER_H]
 
-    def test_the_schema_still_validates_the_value(self, workspace):
-        """The point of permitting it. A parameter that parses but never
-        validates would be worse than refusing it.
-        """
-        body = 'types:\n  Code: |\n' + indent(SCALAR_SCHEMA) + self.RESOURCE['queryParameters'].format(ref='Code')
-        raml = parsed(workspace, {'api.raml': API + body})
-        operation = next(iter(next(iter(raml.endpoints.values())).operations.values()))
-        code = operation.request.query_parameters['q'].base
-        assert code.validate('long enough') is None
-        assert code.validate('abc') is not None
+    def test_a_union_with_a_schema_member_is_rejected(self, workspace):
+        body = 'types:\n  Code: |\n' + indent(SCALAR_SCHEMA) + '/r:\n  get:\n    headers:\n      H: Code | integer\n'
+        assert placement(parse(workspace, {'api.raml': API + body})) == [HEADER_H]
+
+    def test_a_trait_carrying_one_is_rejected_where_it_is_applied(self, workspace):
+        body = (
+            'types:\n  Code: |\n'
+            + indent(SCALAR_SCHEMA)
+            + 'traits:\n  t:\n    headers:\n      H: Code\n/r:\n  get:\n    is: [t]\n'
+        )
+        assert placement(parse(workspace, {'api.raml': API + body})) == [HEADER_H]
 
     def test_an_ordinary_parameter_is_untouched(self, workspace):
         body = '/r:\n  get:\n    headers:\n      H: string\n'
         assert parse(workspace, {'api.raml': API + body}) is None
+
+
+class TestBodyMediaType:
+    """Spec § Using XML and JSON Schema (raml-10.md L1316): a JSON schema "MUST
+    NOT be used where the media type does not allow [...] JSON-formatted data"
+    (docs/10 § 7).
+    """
+
+    SCHEMA = 'types:\n  Code: |\n' + indent(SCALAR_SCHEMA)
+
+    @pytest.mark.parametrize(
+        'media_type', ['application/json', 'application/hal+json', 'Application/JSON; charset=utf-8', '*/*']
+    )
+    def test_a_json_media_type_allows_it(self, workspace, media_type):
+        body = self.SCHEMA + f"/r:\n  post:\n    body:\n      '{media_type}': Code\n"
+        assert parse(workspace, {'api.raml': API + body}) is None
+
+    @pytest.mark.parametrize('media_type', ['application/xml', 'text/plain', 'multipart/form-data'])
+    def test_another_media_type_rejects_it(self, workspace, media_type):
+        body = self.SCHEMA + f'/r:\n  get:\n    responses:\n      200:\n        body:\n          {media_type}: Code\n'
+        error = parse(workspace, {'api.raml': API + body})
+        assert placement(error) == [('JSON schema for a media type that is not JSON', {'mediaType': media_type})]
+
+    def test_a_body_without_a_media_type_is_judged_per_default_media_type(self, workspace):
+        head = API + 'mediaType: [application/json, application/xml]\n'
+        body = self.SCHEMA + '/r:\n  post:\n    body:\n      type: Code\n'
+        error = parse(workspace, {'api.raml': head + body})
+        assert placement(error) == [('JSON schema for a media type that is not JSON', {'mediaType': 'application/xml'})]
+
+    def test_a_json_default_media_type_allows_it(self, workspace):
+        head = API + 'mediaType: application/json\n'
+        body = self.SCHEMA + '/r:\n  post:\n    body:\n      type: Code\n'
+        assert parse(workspace, {'api.raml': head + body}) is None
 
 
 def projection_of(shape):

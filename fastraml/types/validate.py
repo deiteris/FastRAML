@@ -23,7 +23,7 @@ from fastraml.datanode import at_value, locate
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.examples import examples_of
-from fastraml.types.unwrap import finish_unwrap, unwrap_shape
+from fastraml.types.unwrap import unwrap_detached
 from fastraml.types.values import failure, key_path
 
 if TYPE_CHECKING:
@@ -185,8 +185,7 @@ def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) 
     cached = cache.get(base.id)
     if cached is not None:
         return cached
-    copy = unwrap_shape(raml, base.clone_detached())
-    finish_unwrap(raml, roots=[copy])
+    copy = unwrap_detached(raml, base)
     cache[base.id] = copy
     return copy
 

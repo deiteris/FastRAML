@@ -11,6 +11,9 @@ or a fixture file. On every result it checks the whole contract:
 - each fragment's declaration maps are the registry's;
 - every mark in `Raml.broken` names an entity the model holds;
 - no registered shape lacks a kind, and no marked one is flagged unwrapped;
+- an unmarked shape is not unknown once P7 finished (I5), and one flagged
+  unwrapped was merged from flattened parents and aliases a flattened
+  referent;
 - a walk of the shapes' containment terminates without a visited set;
 - the occurrence index builds, and every use in it meets one definition
   (docs/16 § 9);
@@ -41,7 +44,7 @@ from fastraml import APIFragment, ParseOptions, RamlError, Stage, parse_lenient
 from fastraml.loaders import SafeFileLoader
 from fastraml.parser.entry import _FATAL
 from fastraml.registry import Raml
-from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape, UnknownShape
 from fastraml.uris import path_to_file_uri
 from fastraml.views.graph import build_graph
 from fastraml.views.lint.engine import Linter
@@ -241,15 +244,39 @@ def _reachable_ids(raml: Raml) -> set[int]:
 
 def _shapes(raml: Raml) -> list[str]:
     problems = []
+    resolved = Stage.RESOLVED in raml.completed
     for base in raml.shapes:
         if base.shape is None:
             problems.append(f'shape {base.id} ({base.name!r}) has no kind')
-        if base.id in raml.broken and base._unwrapped:
-            problems.append(f'marked shape {base.id} ({base.name!r}) is flagged unwrapped')
+        if base.id in raml.broken:
+            if base._unwrapped:
+                problems.append(f'marked shape {base.id} ({base.name!r}) is flagged unwrapped')
+        else:
+            problems += _unmarked(base, resolved=resolved)
         try:
             _contained(base, 0)
         except RecursionError:
             problems.append(f'walking the containment of {base.id} ({base.name!r}) does not terminate')
+    return problems
+
+
+def _unmarked(base: BaseShape, *, resolved: bool) -> list[str]:
+    """An unmarked shape keeps the invariants of the stages that finished.
+
+    Once P7 finished, it has a kind (I5). Flagged unwrapped, it was merged
+    from flattened parents and aliases a flattened referent; one merged from
+    a parent whose own merge failed is a broken shape passed off as sound.
+    """
+    problems = []
+    if resolved and isinstance(base.shape, UnknownShape):
+        problems.append(f'unmarked shape {base.id} ({base.name!r}) is unknown after P7')
+    if base._unwrapped:
+        sources = [*base.inherits, *([base.alias] if base.alias is not None else [])]
+        problems += [
+            f'unmarked shape {base.id} ({base.name!r}) is flagged unwrapped over unflattened {source.id}'
+            for source in sources
+            if not source._unwrapped
+        ]
     return problems
 
 

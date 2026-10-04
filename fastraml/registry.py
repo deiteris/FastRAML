@@ -75,7 +75,7 @@ class Stage(Enum):
     VALIDATED = 'validated'  # P10, when requested
 
 
-class _Identified(Protocol):
+class Identified(Protocol):
     """Anything `Raml.broken` can mark: every model entity has an id."""
 
     @property
@@ -134,7 +134,7 @@ class _Marking:
 
     __slots__ = ('_entity', '_raml')
 
-    def __init__(self, raml: Raml, entity: _Identified) -> None:
+    def __init__(self, raml: Raml, entity: Identified) -> None:
         self._raml = raml
         self._entity = entity
 
@@ -367,7 +367,7 @@ class Raml:
             raise
         self.completed.append(stage)
 
-    def mark(self, entity: _Identified, error: RamlError) -> None:
+    def mark(self, entity: Identified, error: RamlError) -> None:
         """Record that `entity` is in the model but incomplete (docs/13 § 1).
 
         A second failure of the same entity joins the first: a template that
@@ -384,7 +384,7 @@ class Raml:
         both.add(error)
         self.broken[entity.id] = cast('RamlError', both.result())
 
-    def marking(self, entity: _Identified) -> _Marking:
+    def marking(self, entity: Identified) -> _Marking:
         """Decode `entity`'s content, marking it if that fails."""
         return _Marking(self, entity)
 

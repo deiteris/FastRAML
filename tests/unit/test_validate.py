@@ -10,13 +10,14 @@ same either side of the n=20 strategy switch.
 
 from __future__ import annotations
 
+import re
 from fractions import Fraction
 
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from fastraml import ParseOptions, RamlError, parse_from_path
+from fastraml import ParseOptions, RamlError, Stage, parse_from_path
 from fastraml.types.values import ValueSet, is_subset, same_value, unique_items
 
 API = '#%RAML 1.0\ntitle: T\n'
@@ -617,7 +618,7 @@ class TestUnionDispatchesOnADiscriminator:
         # table until P9 runs over it — the path `_ensure_unwrapped` takes for
         # `validate=True` without `unwrap=True`.
         from fastraml.types.complex_ import UnionShape
-        from fastraml.types.unwrap import finish_unwrap, unwrap_shape
+        from fastraml.types.unwrap import unwrap_detached
 
         raml, shape = declared_in(workspace, TAGGED)
         assert isinstance(shape.shape, UnionShape)
@@ -628,8 +629,7 @@ class TestUnionDispatchesOnADiscriminator:
         assert isinstance(clone.shape, UnionShape)
         assert clone.shape.dispatch() is None, 'a clone must not inherit the table'
 
-        copy = unwrap_shape(raml, clone)
-        finish_unwrap(raml, roots=[copy])
+        copy = unwrap_detached(raml, clone)
         assert isinstance(copy.shape, UnionShape)
         cloned = copy.shape.dispatch()
         assert cloned is not None
@@ -643,8 +643,13 @@ class TestUnionDispatchesOnADiscriminator:
         # property its parent made required — silently, which is the hazard.
         root = workspace({'api.raml': API + 'types:\n' + TAGGED})
         raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=False))
-        with pytest.raises(AssertionError, match='unwrapped shape'):
+        with pytest.raises(AssertionError, match='unwrapped shape') as caught:
             raml.types_in(raml.location)['Cat'].validate({'meows': True})
+        # The remedy it names is the function P10 itself uses.
+        import fastraml.types.unwrap as unwrap_module
+
+        (named,) = re.findall(r'(\w+)\(\) returns', str(caught.value))
+        assert named == unwrap_module.unwrap_detached.__name__
 
 
 class TestRecursive:
@@ -1057,6 +1062,23 @@ class TestPrivateUnwrap:
         )
         with pytest.raises(RamlError):
             workspace.parse(root / 'api.raml', ParseOptions(validate=True))
+
+    def test_the_private_copies_are_not_indexed(self, workspace):
+        """docs/10 § 1: the copies keep the declarations' ids; registered, they
+        put duplicate ids into `Raml.shapes`."""
+        body = 'types:\n  P:\n    properties:\n      a: string\n  T:\n    type: P\n  Node:\n    properties:\n      next?: Node\n'
+        root = workspace({'api.raml': API + body})
+        validated = workspace.parse(root / 'api.raml', ParseOptions(validate=True))
+        declared = workspace.parse(root / 'api.raml', ParseOptions(validate=False))
+        assert [shape.id for shape in validated.shapes] == [shape.id for shape in declared.shapes]
+        assert len({shape.id for shape in validated.shapes}) == len(validated.shapes)
+
+    def test_a_merge_the_private_copy_rejects_marks_nothing(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  N: integer\n  C:\n    type: [string, N]\n'})
+        raml, error = workspace.lenient(root / 'api.raml', ParseOptions(validate=True))
+        assert error is not None
+        assert raml.stopped_at is Stage.VALIDATED
+        assert raml.broken == {}
 
 
 # -- property-based: inheritance narrows ----------------------------------

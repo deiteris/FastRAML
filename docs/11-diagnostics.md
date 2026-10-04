@@ -93,7 +93,7 @@ continue without misreading the enclosing construct. The current boundaries are:
 
 | Pipeline area | What can continue independently |
 |---|---|
-| P1-P3 fragment decoding | Library links, declarations, fields, and list entries where the decoder has a local recovery boundary |
+| P1-P3 fragment decoding | Library links, declarations, a NamedExample fragment's examples, fields, and list entries where the decoder has a local recovery boundary. A fragment's `uses:` is resolved even when its body failed |
 | P4 and P6 endpoint construction | Resources, directive applications, endpoint fields, operations, responses, nested resources, and URI parameters |
 | P5 security | Scheme fields, settings, required settings, and scheme references |
 | P7 shape resolution | Each queued shape |
@@ -115,10 +115,15 @@ declaration of any of the five kinds is kept there too, marked in
 `Raml.broken` (docs/13 § 1). A declaration key written twice is a
 `duplicate key` (docs/03 § 1).
 
-The endpoint tree retains everything: a resource, an operation and a response
-are attached before their content is decoded. A bad key in one response keeps
+The endpoint tree retains everything but a top-level resource whose full URI
+an earlier resource took: a resource, an operation and a response are
+attached before their content is decoded. A bad key in one response keeps
 the response, its operation and every enclosing resource, each marked in
-`Raml.broken`, and leaves their siblings unmarked (docs/13 § 1). P6 still runs
+`Raml.broken`, and leaves their siblings unmarked (docs/13 § 1). A nested
+resource whose full URI an earlier one took stays in its parent's
+`endpoints`, outside `Raml.endpoints`, and it and every resource enclosing it
+are marked; a top-level one is in neither, so it is absent, and so are the
+resources beneath it. P6 still runs
 over a kept resource, so an unused URI parameter on it is reported as its own
 mistake. Below a declaration, a failed property, `items` or `anyOf` member
 is absent from its declaration, which keeps its kind and the children that

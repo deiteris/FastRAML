@@ -40,7 +40,7 @@ from fastraml.types.inherit import alias_to, fold, inherit
 from fastraml.types.values import EnumValues
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Iterator, Mapping
     from typing import Any
 
     from fastraml.parser.fragments import DataTypeFragment
@@ -50,6 +50,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     'finish_unwrap',
+    'unwrap_detached',
     'unwrap_shape',
     'unwrap_shapes',
 ]
@@ -65,20 +66,40 @@ class _Walk:
     model's own identity, not `id()`, which neither keeps the object alive nor
     stays unique.
 
-    `failed` is the ids of every shape an error passed through, so that a
-    second route to one returns it instead of failing, and reporting, again.
+    `failed` maps the id of every shape an error passed through to that error.
+    A second route to one raises `_Failed` with it, so the referrer is marked
+    with the failure it inherits or encloses, and nothing is reported again.
+
+    `register` is false for P10's private copy (`unwrap_detached`): its shapes
+    keep the declarations' ids, and are not the model's to index or mark.
     """
 
-    __slots__ = ('done', 'failed', 'max_depth', 'raml')
+    __slots__ = ('done', 'failed', 'max_depth', 'raml', 'register')
 
-    def __init__(self, raml: Raml) -> None:
+    def __init__(self, raml: Raml, *, register: bool = True) -> None:
         self.raml = raml
+        self.register = register
         # Read once per pass rather than per level: the ceiling is one number
         # for the whole parse (docs/12 § 3), and the guard is on a hot
         # recursive path.
         self.max_depth = raml.max_depth
         self.done: dict[int, BaseShape] = {}
-        self.failed: set[int] = set()
+        self.failed: dict[int, RamlError] = {}
+
+
+class _Failed(Exception):  # noqa: N818 - private, never escapes this module
+    """A second route to a shape that already failed in this walk.
+
+    Not a `RamlError`, so no accumulator collects it: the failure it carries
+    was reported on the first route. Each `_unwrap` it passes through marks its
+    shape with that failure, as the first route did (docs/13 § 1).
+    """
+
+    __slots__ = ('error',)
+
+    def __init__(self, error: RamlError) -> None:
+        super().__init__()
+        self.error = error
 
 
 def unwrap_shapes(raml: Raml) -> None:
@@ -105,6 +126,9 @@ def unwrap_shapes(raml: Raml) -> None:
                 shapes[index] = _unwrap(walk, base, 0)
             except RamlError as err:
                 accumulator.add(RamlError.wrap('unwrap shape', err, location, base.key_pos, kind=ErrorKind.UNWRAPPING))
+            except _Failed:
+                continue
+    _fail_what_reached_a_failure(walk)
 
     # The name indices hold the same objects, so this is a cheap second pass
     # over `done` rather than more unwrapping — but it is what keeps
@@ -136,9 +160,67 @@ def unwrap_shapes(raml: Raml) -> None:
     accumulator.raise_if_any()
 
 
+def _fail_what_reached_a_failure(walk: _Walk) -> None:
+    """Mark each finished shape that encloses or inherits from a failed one.
+
+    A shape can finish over one that fails only later: a cycle back to a shape
+    still being walked returns it as it stands, and so does a second route to
+    a finished shape that encloses such a back-edge. Neither route raises, so
+    the failure is carried to them here, until nothing more changes
+    (docs/07 § 6). Nothing runs on a walk with no failure.
+    """
+    failed = walk.failed
+    changed = bool(failed)
+    while changed:
+        changed = False
+        for ident, result in walk.done.items():
+            if ident in failed:
+                continue
+            error = next((failed[source.id] for source in _sources(result) if source.id in failed), None)
+            if error is None:
+                continue
+            result._unwrapped = False  # noqa: SLF001 - this pass is the field's declared owner
+            failed[ident] = failed[result.id] = error
+            walk.raml.mark(result, error)
+            changed = True
+
+
+def _sources(base: BaseShape) -> Iterator[BaseShape]:
+    """Every shape `base` inherits from or encloses, one level down."""
+    yield from base.inherits
+    if base.alias is not None:
+        yield base.alias
+    shape = base.shape
+    if isinstance(shape, ArrayShape):
+        if shape.items is not None:
+            yield shape.items
+    elif isinstance(shape, UnionShape):
+        yield from shape.any_of or ()
+    elif isinstance(shape, ObjectShape):
+        for prop in (shape.properties or {}).values():
+            yield prop.base
+        for pattern_prop in (shape.pattern_properties or {}).values():
+            yield pattern_prop.base
+    for prop in base.custom_facet_defs.values():
+        yield prop.base
+
+
 def unwrap_shape(raml: Raml, base: BaseShape) -> BaseShape:
     """Flatten one declaration. **Use the return value** — it may differ."""
     return _unwrap(_Walk(raml), base, 0)
+
+
+def unwrap_detached(raml: Raml, base: BaseShape) -> BaseShape:
+    """A flattened, recursion-marked detached copy of `base`, for P10 alone.
+
+    The copy keeps the declarations' ids (docs/07 § 6), so nothing it builds is
+    added to `Raml.shapes` or marked in `Raml.broken`: the model the caller
+    sees is the declared one, and a failure here is P10's to report
+    (docs/10 § 1).
+    """
+    copy = _unwrap(_Walk(raml, register=False), base.clone_detached(), 0)
+    _finish_roots(_Finishing(raml, register=False), [copy])
+    return copy
 
 
 def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
@@ -152,8 +234,9 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
         raise RamlError.new('declaration has no shape', base.location, base.key_pos, kind=ErrorKind.UNWRAPPING)
     if base._unwrapped:  # noqa: SLF001 - this pass is the field's declared owner
         return walk.done.get(base.id, base)
-    if base.id in walk.failed:
-        return base
+    failure = walk.failed.get(base.id)
+    if failure is not None:
+        raise _Failed(failure)
     if depth > walk.max_depth:
         raise RamlError.new(
             'type nesting too deep',
@@ -184,16 +267,19 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
             # parent's `anyOf`, so a child that merely narrows a union has no
             # members of its own until `inherit` has run (docs/07 § 5).
             _distribute_union_facets(walk, result, depth)
-    except RamlError as err:
+    except (RamlError, _Failed) as raised:
         # Every shape the error passes through is left unmerged, and must not
         # claim to be flattened (docs/07 § 6). It is marked (docs/13 § 1).
+        err = raised.error if isinstance(raised, _Failed) else raised
         base._unwrapped = False  # noqa: SLF001 - see above
-        walk.raml.mark(base, err)
-        walk.failed.add(base.id)
-        walk.raml.put_shape(base)
+        walk.failed[base.id] = err
+        if walk.register:
+            walk.raml.mark(base, err)
+            walk.raml.put_shape(base)
         raise
     walk.done[base.id] = result
-    walk.raml.put_shape(result)
+    if walk.register:
+        walk.raml.put_shape(result)
     return result
 
 
@@ -328,7 +414,8 @@ def _narrowed_member(  # noqa: PLR0913 - the member, and what the union hands it
             return None, {}
         for nested_site, indices in nested[1].items():
             kept.setdefault(nested_site, set()).update(indices)
-    walk.raml.put_shape(merged)
+    if walk.register:
+        walk.raml.put_shape(merged)
     return merged, kept
 
 
@@ -517,7 +604,7 @@ def _unwrap_custom_facet_defs(walk: _Walk, base: BaseShape, depth: int) -> None:
 # -- recursion marking (docs/07 § 6) ------------------------------------------
 
 
-def finish_unwrap(raml: Raml, *, roots: Iterable[BaseShape] | None = None) -> None:
+def finish_unwrap(raml: Raml) -> None:
     """The post-pass over a flattened model: mark cycles, settle union dispatch.
 
     One walk, two results (see the module docstring). On re-entry a cycle does
@@ -526,36 +613,45 @@ def finish_unwrap(raml: Raml, *, roots: Iterable[BaseShape] | None = None) -> No
     met along the way are collected, and their tables are built after the walk,
     because marking itself writes `any_of`.
 
-    Runs on **both** unwrap paths: `unwrap_shapes` for the whole registry, and
-    `_ensure_unwrapped` for the private copy P10 makes when `validate=True`
-    without `unwrap=True`. A union that reaches neither has no table and
-    validates by linear scan — correct, but slower and with a worse report.
-
-    `roots` narrows the walk to shapes outside `fragment_typedefs`: that private
-    copy needs finishing without the registry's own shapes being walked again
-    (docs/10 § 1).
+    Runs on **both** unwrap paths: here for the whole registry, and in
+    `unwrap_detached` for the private copy P10 makes when `validate=True`
+    without `unwrap=True`, which is finished alone, without the registry's own
+    shapes being walked again (docs/10 § 1). A union that reaches neither has
+    no table and validates by linear scan — correct, but slower and with a
+    worse report.
     """
-    max_depth = raml.max_depth
-    unions: list[UnionShape] = []
-    if roots is not None:
-        for base in roots:
-            _finish(raml, base, 0, max_depth, unions)
-    else:
-        for shapes in raml.fragment_typedefs.values():
-            for base in shapes:
-                _finish(raml, base, 0, max_depth, unions)
-    for union in unions:
+    roots = (base for shapes in raml.fragment_typedefs.values() for base in shapes)
+    _finish_roots(_Finishing(raml, register=True), roots)
+
+
+class _Finishing:
+    """The state one recursion-marking walk carries.
+
+    `unions` is the collector dispatch tables are built off; it is filled as a
+    side effect of the descent rather than by a second walk. `register` is as
+    `_Walk`'s.
+    """
+
+    __slots__ = ('max_depth', 'raml', 'register', 'unions')
+
+    def __init__(self, raml: Raml, *, register: bool) -> None:
+        self.raml = raml
+        self.max_depth = raml.max_depth
+        self.register = register
+        self.unions: list[UnionShape] = []
+
+
+def _finish_roots(finishing: _Finishing, roots: Iterable[BaseShape]) -> None:
+    for base in roots:
+        _finish(finishing, base, 0)
+    for union in finishing.unions:
         union.build_dispatch()
 
 
-def _finish(raml: Raml, base: BaseShape, depth: int, max_depth: int, unions: list[UnionShape]) -> BaseShape | None:
-    """Return a marker to put in the caller's slot, or `None` to leave it be.
-
-    `unions` is the collector the caller builds dispatch tables off; it is filled
-    as a side effect of the descent rather than by a second walk.
-    """
+def _finish(finishing: _Finishing, base: BaseShape, depth: int) -> BaseShape | None:
+    """Return a marker to put in the caller's slot, or `None` to leave it be."""
     if base._visiting:  # noqa: SLF001 - unwrap and this pass co-own the flag
-        return _make_recursive(raml, base, base)
+        return _make_recursive(finishing, base, base)
     # A bare reference is an alias, so what stands here is a *copy* of the
     # referent rather than the referent itself, and the cycle would otherwise
     # close one level further in with the copy as its head. The cycle a reader
@@ -567,31 +663,31 @@ def _finish(raml: Raml, base: BaseShape, depth: int, max_depth: int, unions: lis
     while referent is not None and not referent._visiting:  # noqa: SLF001 - see above
         referent = referent.alias
     if referent is not None:
-        return _make_recursive(raml, referent, base)
-    if depth > max_depth:
+        return _make_recursive(finishing, referent, base)
+    if depth > finishing.max_depth:
         raise RamlError.new(
             'type nesting too deep',
             base.location,
             base.key_pos,
             kind=ErrorKind.UNWRAPPING,
-            info={'limit': max_depth},
+            info={'limit': finishing.max_depth},
         )
     base._visiting = True  # noqa: SLF001 - see above
     if base.shape is not None:
-        _finish_children(raml, base.shape, depth, max_depth, unions)
+        _finish_children(finishing, base.shape, depth)
 
     # Cleared *before* the facet declarations, deliberately: a facet declaration
     # may reference the very type that declares it, and that is not a recursion
     # worth marking — facets cannot nest (docs/07 § 6).
     base._visiting = False  # noqa: SLF001 - see above
     for name, prop in base.custom_facet_defs.items():
-        marked = _finish(raml, prop.base, depth + 1, max_depth, unions)
+        marked = _finish(finishing, prop.base, depth + 1)
         if marked is not None:
             base.custom_facet_defs[name] = prop.with_base(marked)
     return None
 
 
-def _finish_children(raml: Raml, shape: Shape, depth: int, max_depth: int, unions: list[UnionShape]) -> None:
+def _finish_children(finishing: _Finishing, shape: Shape, depth: int) -> None:
     """The four slots a marker can be substituted into (docs/07 § 6).
 
     Also where a union is collected, because this is the one place that already
@@ -599,31 +695,32 @@ def _finish_children(raml: Raml, shape: Shape, depth: int, max_depth: int, union
     """
     if isinstance(shape, ArrayShape):
         if shape.items is not None:
-            shape.items = _finish(raml, shape.items, depth + 1, max_depth, unions) or shape.items
+            shape.items = _finish(finishing, shape.items, depth + 1) or shape.items
     elif isinstance(shape, UnionShape):
         # Collected whether or not it has members: `build_dispatch` is what
         # settles `_dispatch` away from "never unwrapped".
-        unions.append(shape)
+        finishing.unions.append(shape)
         if shape.any_of is not None:
-            shape.any_of = [_finish(raml, member, depth + 1, max_depth, unions) or member for member in shape.any_of]
+            shape.any_of = [_finish(finishing, member, depth + 1) or member for member in shape.any_of]
     elif isinstance(shape, ObjectShape):
         for name, prop in (shape.properties or {}).items():
-            marked = _finish(raml, prop.base, depth + 1, max_depth, unions)
+            marked = _finish(finishing, prop.base, depth + 1)
             if marked is not None and shape.properties is not None:
                 shape.properties[name] = prop.with_base(marked)
         for pattern_prop in (shape.pattern_properties or {}).values():
-            marked = _finish(raml, pattern_prop.base, depth + 1, max_depth, unions)
+            marked = _finish(finishing, pattern_prop.base, depth + 1)
             if marked is not None:
                 pattern_prop.base = marked
 
 
-def _make_recursive(raml: Raml, head: BaseShape, slot: BaseShape) -> BaseShape:
+def _make_recursive(finishing: _Finishing, head: BaseShape, slot: BaseShape) -> BaseShape:
     """The back-edge itself. Validation delegates to `head`, so behaviour is
     unchanged; only the object graph becomes a DAG.
 
     Placed where `slot`, the shape it replaces, was written: `parent: Parent`
     is the property's key, not `Parent`'s declaration.
     """
+    raml = finishing.raml
     base = BaseShape(
         id=raml.next_id(),
         raml=raml,
@@ -640,5 +737,6 @@ def _make_recursive(raml: Raml, head: BaseShape, slot: BaseShape) -> BaseShape:
     # No facet declarations: the head provides them.
     base.shape = RecursiveShape(base, head)
     base._unwrapped = True  # noqa: SLF001 - a marker is flattened by construction
-    raml.put_shape(base)
+    if finishing.register:
+        raml.put_shape(base)
     return base

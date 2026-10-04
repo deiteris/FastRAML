@@ -102,6 +102,7 @@ BENCHES: tuple[Bench, ...] = (
     Bench('inheritance', lambda root, scale: corpus.write_inheritance(root, family_count=_at(150, scale))),
     Bench('templates', lambda root, scale: corpus.write_templates(root, resource_count=_at(250, scale))),
     Bench('template-scopes', lambda root, scale: corpus.write_template_scopes(root, resource_count=_at(500, scale))),
+    Bench('sequence-merge', lambda root, scale: corpus.write_sequence_merge(root, resource_count=_at(60, scale))),
     Bench(
         'reference-namespaces',
         lambda root, scale: corpus.write_reference_namespaces(root, resource_count=_at(500, scale)),
@@ -362,6 +363,7 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'inheritance': 'unwrap+validate',
     'templates': 'unwrap+validate',
     'template-scopes': 'unwrap+validate',
+    'sequence-merge': 'parse',
     'reference-namespaces': 'unwrap+validate',
     'includes': 'parse',
     'include-content': 'parse',

@@ -38,6 +38,7 @@ WRITERS = {
     'unions': lambda root: corpus.write_unions(root, family_count=1),
     'facets': lambda root: corpus.write_facets(root, family_count=1),
     'inheritance': lambda root: corpus.write_inheritance(root, family_count=1),
+    'sequence-merge': lambda root: corpus.write_sequence_merge(root, resource_count=len(corpus.MERGED_ENUM_SIZES)),
     'includes': lambda root: corpus.write_includes(root, resource_count=corpus._LEADING_TAB_EVERY + 1),
     'include-content': lambda root: corpus.write_include_content(root, resource_count=3),
     'inline-json': lambda root: corpus.write_inline_json(root, type_count=3),
@@ -462,6 +463,23 @@ class TestFeatureCorporaReachTheirCode:
         assert transformed['!singularize'] >= names
         assert transformed['!pluralize'] >= names
         assert transformed.keys() == {'!singularize', '!pluralize', '!uppercamelcase', '!lowerhyphencase'}
+
+    def test_sequence_merge_unions_a_trait_enum_at_every_size(self, tmp_path, monkeypatch):
+        import fastraml.parser.structural_merge as merge_module
+
+        merged: list[tuple[int, int, int]] = []
+        original = merge_module._merge_sequences
+
+        def counting(target, source, source_scope, overlay):
+            result = original(target, source, source_scope, overlay)
+            merged.append((len(target.content), len(source.content), len(result.content)))
+            return result
+
+        monkeypatch.setattr(merge_module, '_merge_sequences', counting)
+        count = len(corpus.MERGED_ENUM_SIZES)
+        parse_from_path(corpus.write_sequence_merge(tmp_path, resource_count=count))
+        # The method's values, then the trait's other half.
+        assert sorted(merged) == sorted((size, size, size + size // 2) for size in corpus.MERGED_ENUM_SIZES)
 
     def test_unions_narrows_every_width_nested_and_items(self, tmp_path, monkeypatch):
         import fastraml.types.unwrap as unwrap_module

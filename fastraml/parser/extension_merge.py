@@ -27,7 +27,7 @@ from fastraml import facet_names as fn
 from fastraml.errors import Accumulator
 from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.source_ir import METHODS
-from fastraml.parser.structural_merge import node_value_equal
+from fastraml.parser.structural_merge import node_value_equal, union_items
 from fastraml.yamlnode import TAG_MAP, TAG_SEQ, TAG_STR, Node, NodeKind, is_null, node_error, with_grafts
 
 if TYPE_CHECKING:
@@ -404,23 +404,8 @@ class _Merger:
 
         The spec says only that an array's objects "are added"; skipping ones
         already there is what makes a restated array no change (docs/19 § 7).
-        Scalars compare through a set, so a long `enum` is not quadratic.
         """
-        items = list(old.content)
-        scalars = {(item.tag, item.value) for item in items if item.kind is NodeKind.SCALAR}
-        composites = [item for item in items if item.kind is not NodeKind.SCALAR]
-        for item in new.content:
-            if item.kind is NodeKind.SCALAR:
-                identity = (item.tag, item.value)
-                if identity in scalars:
-                    continue
-                scalars.add(identity)
-            else:
-                if any(node_value_equal(existing, item) for existing in composites):
-                    continue
-                composites.append(item)
-            self.mark(item)
-            items.append(item)
+        items = union_items(old.content, new.content, self.mark)
         if len(items) == len(old.content):
             return old
         self._change(site, name, key, 'added', free=free)

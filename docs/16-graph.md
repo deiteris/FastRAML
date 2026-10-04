@@ -261,7 +261,11 @@ Edit `fastraml/views/bindings/static/` only for target-language code that does
 not vary with the tree contract.
 
 `bindings/schema.py` is the single declaration of tree key sets and structural
-kinds. Generation fails when the emitter writes an undeclared key.
+kinds. It also decides which shape record declares each key (`shape_layout()`:
+the discriminator on each variant, `json_schema` and `projection` on
+`JsonShape` only), the envelope constants, and the recursion marker's keys; a
+backend iterates these and only spells them. Generation fails when the emitter
+writes an undeclared key.
 `tests/unit/test_bindings.py` checks checked-in TypeScript and Python artifacts;
 `tests/unit/test_conformance.py` checks the shared cross-language corpus. CI's
 `bindings` job installs Go and Node and fails if those checks skip.

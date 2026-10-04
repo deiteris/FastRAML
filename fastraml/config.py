@@ -37,6 +37,7 @@ __all__ = [
     'schema_type',
 ]
 
+#: Worst first: `views/backward/model.py`'s `IMPACTS` ranks by this order.
 type Impact = Literal['breaking', 'review', 'compatible', 'cosmetic']
 
 SCHEMA = Path(__file__).with_name('config.raml')

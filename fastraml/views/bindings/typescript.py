@@ -41,7 +41,7 @@ import pathlib
 from typing import TYPE_CHECKING, Final
 
 from .output import write_rendered
-from .schema import JSON_ONLY, Container, ContractSchema, Holds, Structural, contract_schema
+from .schema import ENVELOPE, RECURSION, Container, ContractSchema, Holds, Structural, contract_schema
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -139,11 +139,8 @@ def _envelope(schema: ContractSchema) -> str:
     against. The envelope exists so a reader can refuse a representation it does
     not know (docs/16 § 6), and refusing needs the value.
     """
-    names = {'format': 'FORMAT', 'format_version': 'FORMAT_VERSION', 'view': 'VIEW'}
-    lines = [
-        f'const {name} = {_literal(schema.structure_of("Document", key).constant)};' for key, name in names.items()
-    ]
-    lines.append("const RECURSION_TYPE = 'recursive';")
+    lines = [f'const {key.upper()} = {_literal(schema.structure_of("Document", key).constant)};' for key in ENVELOPE]
+    lines.append(f'const RECURSION_TYPE = {_literal(RECURSION.type)};')
     return '\n'.join(lines)
 
 
@@ -222,13 +219,9 @@ def _field(schema: ContractSchema, owner: str, name: str, *, optional: bool) -> 
 
 def _shape(schema: ContractSchema) -> str:
     """A common shape record and one discriminator-derived interface per kind."""
-    found, delegated = schema.shape_projection()
-
-    base = [_field(schema, 'ShapeBase', name, optional=False) for name in found.required if name != 'type']
-    # A delegate's keys are optional whatever it says of them: whether it runs
-    # at all is the caller's condition, not the delegate's. JSON-schema fields
-    # are the exception: they belong only to JsonShape below.
-    base += [_field(schema, 'ShapeBase', name, optional=True) for name in found.optional if name not in JSON_ONLY]
+    layout = schema.shape_layout()
+    base = [_field(schema, 'ShapeBase', name, optional=False) for name in layout.required]
+    base += [_field(schema, 'ShapeBase', name, optional=True) for name in layout.optional]
 
     by_model = schema.kinds_by_model()
 
@@ -241,8 +234,7 @@ def _shape(schema: ContractSchema) -> str:
                 note = ' // exact decimal, e.g. "0.01" or "1.7976931348623157E+308"'
             spelling = _spelling(schema.facet_structure(facet))
             lines.append(f'  {facet.name}?: {spelling};{note}')
-        if model == 'JsonShape':
-            lines.extend(_field(schema, 'ShapeBase', name, optional=True) for name in delegated if name in JSON_ONLY)
+        lines.extend(_field(schema, 'ShapeBase', name, optional=True) for name in layout.extras.get(model, ()))
         variants.append(f'export interface {model} extends ShapeBase {{\n' + '\n'.join(lines) + '\n}\n')
 
     variants.append(_recursion(schema))
@@ -262,20 +254,9 @@ def _shape(schema: ContractSchema) -> str:
 
 
 def _recursion(schema: ContractSchema) -> str:
-    """The recursion marker, as a shape rather than a record of its own.
-
-    P9 builds a `RecursiveShape` and `shape()` projects it down the generic
-    path, so a marker carries `id`, `name` and whatever `ShapeBase` fields the
-    type it stands for had. It is not in `Shape`: `Shape` is what a declaration
-    and a `projection` hold, and a marker is neither.
-
-    Hand-declared. `schema.py` derives records by reading a `_Projector`
-    method's AST, and `_Projector.recursion()` is a literal three-key dict that
-    never runs, so generating from it declares three keys where seven ship
-    (docs/16 § 6.1). `head` is hand-declared for a second reason:
-    `shape()` writes it through a loop over `_BACK_POINTERS`, which no AST read
-    resolves.
-    """
+    """The recursion marker (`schema.RECURSION`), extending `ShapeBase` and outside `Shape`."""
+    lines = [f'  type: {_literal(RECURSION.type)};']
+    lines += [_field(schema, 'ShapeBase', key, optional=False) for key in RECURSION.keys]
     return (
         '/**\n'
         ' * A type that repeats here. Do not expand it; look `head` up instead.\n'
@@ -283,10 +264,7 @@ def _recursion(schema: ContractSchema) -> str:
         ' * Spelled in `type` rather than a key of its own so a consumer that\n'
         ' * switches on `type` and has not handled it fails loudly.\n'
         ' */\n'
-        'export interface Recursion extends ShapeBase {\n'
-        "  type: 'recursive';\n"
-        f'  head: {_spelling(schema.structure_of("ShapeBase", "head"))};\n'
-        '}\n'
+        'export interface Recursion extends ShapeBase {\n' + '\n'.join(lines) + '\n}\n'
     )
 
 

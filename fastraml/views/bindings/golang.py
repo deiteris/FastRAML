@@ -49,7 +49,7 @@ import re
 from typing import TYPE_CHECKING, Final
 
 from .output import write_rendered
-from .schema import JSON_ONLY, Container, ContractSchema, Holds, Structural, contract_schema
+from .schema import ENVELOPE, RECURSION, Container, ContractSchema, Holds, Structural, contract_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -244,8 +244,7 @@ def _envelope(schema: ContractSchema) -> str:
     a hand-written copy is a second place for them to be wrong.
     """
     rows = [
-        (_go_name(key), f'= {_go_literal(schema.structure_of("Document", key).constant)}', '', '')
-        for key in ('format', 'format_version', 'view')
+        (_go_name(key), f'= {_go_literal(schema.structure_of("Document", key).constant)}', '', '') for key in ENVELOPE
     ]
     return (
         '// The three constants a Document always carries, and the values a reader\n'
@@ -422,15 +421,11 @@ def _optional(spelling: str) -> str:
 
 def _shape(schema: ContractSchema) -> list[str]:
     """The Shape interface, its base, one struct per kind, and the dispatcher."""
-    found, delegated = schema.shape_projection()
-
-    # `type` is left off the base and declared on each variant: it is what the
-    # union discriminates on, and it is what `ShapeKind` returns.
-    base = [_row(schema, 'ShapeBase', name, optional=False) for name in found.required if name != 'type']
-    # A delegate's keys are optional whatever it says of them: whether it runs at
-    # all is the caller's condition, not the delegate's. JSON-schema fields are
-    # the exception: they belong only to JsonShape below.
-    base += [_row(schema, 'ShapeBase', name, optional=True) for name in found.optional if name not in JSON_ONLY]
+    # The layout leaves `type` off the base; each variant declares it, as what
+    # the union discriminates on and what `ShapeKind` returns.
+    layout = schema.shape_layout()
+    base = [_row(schema, 'ShapeBase', name, optional=False) for name in layout.required]
+    base += [_row(schema, 'ShapeBase', name, optional=True) for name in layout.optional]
 
     by_model = schema.kinds_by_model()
 
@@ -457,8 +452,7 @@ def _shape(schema: ContractSchema) -> list[str]:
                 note = '// exact decimal, e.g. "0.01" or "1.7976931348623157E+308"'
             spelling = _spelling(schema.facet_structure(facet))
             rows.append(_field(facet.name, spelling, optional=True, note=note))
-        if model == 'JsonShape':
-            rows += [_row(schema, 'ShapeBase', name, optional=True) for name in delegated if name in JSON_ONLY]
+        rows += [_row(schema, 'ShapeBase', name, optional=True) for name in layout.extras.get(model, ())]
         spelled = ' or '.join(f'`{name}`' for name in names)
         blocks.append(_struct(model, f'{model} is the expanded form of a type whose kind is {spelled}.', rows))
         blocks.append(
@@ -471,26 +465,15 @@ def _shape(schema: ContractSchema) -> list[str]:
 
 
 def _recursion(schema: ContractSchema) -> str:
-    """The recursion marker, as a shape rather than a record of its own.
+    """The recursion marker (`schema.RECURSION`), embedding `ShapeBase`.
 
-    P9 builds a `RecursiveShape` and `shape()` projects it down the generic
-    path, so a marker carries `id`, `name` and whatever `ShapeBase` fields the
-    type it stands for had. It embeds `ShapeBase` for that reason, and it gets
-    no `ShapeKind` method: it is not a `Shape`, because `Shape` is what a
-    declaration and a `projection` hold and a marker is neither. `ShapeNode`
-    holds it as its own arm.
-
-    Hand-declared. `schema.py` derives records by reading a `_Projector`
-    method's AST, and `_Projector.recursion()` is a literal three-key dict that
-    never runs, so generating from it declares three keys where seven ship
-    (docs/16 § 6.1). `head` is hand-declared for a second reason:
-    `shape()` writes it through a loop over `_BACK_POINTERS`, which no AST read
-    resolves.
+    It gets no `ShapeKind` method: it is not a `Shape`. `ShapeNode` holds it as
+    its own arm. Its `type` value is `RecursionType` in `static/tree.go`.
     """
     rows = [
         ('', 'ShapeBase', '', ''),
         ('Type', 'string', '`json:"type"`', '// always RecursionType'),
-        ('Head', _spelling(schema.structure_of('ShapeBase', 'head')), '`json:"head"`', ''),
+        *(_row(schema, 'ShapeBase', key, optional=False) for key in RECURSION.keys),
     ]
     return _struct(
         'Recursion',

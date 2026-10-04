@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import fields
 
+import pytest
+
 from fastraml.cli import EXIT_INVALID, EXIT_OK, main
 from fastraml.config import ParserConfig, parse_config
 from fastraml.parser.entry import ParseOptions
@@ -177,6 +179,18 @@ def test_cli_rule_override_applies_after_the_file(workspace, tmp_path, capsys):
     ]
     assert main(args) == EXIT_OK
     assert '| `protocols` | `HTTP`, `HTTPS` -> `HTTPS` | Compatible |' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ('action', 'expected', 'refused'),
+    [('off', EXIT_OK, False), ('cosmetic', EXIT_OK, False), ('severe', EXIT_INVALID, True)],
+)
+def test_cli_rule_override_accepts_an_impact_or_off(workspace, capsys, action, expected, refused):
+    # The accepted actions are `Impact`'s values and `off`, read off the type.
+    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+    args = ['compat', '--rule', f'protocol-removed={action}', str(root / 'old.raml'), str(root / 'new.raml')]
+    assert main(args) == expected
+    assert ('invalid compatibility rule override' in capsys.readouterr().err) is refused
 
 
 def test_parser_workspace_root_applies_to_validate(tmp_path, capsys):

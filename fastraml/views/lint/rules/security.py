@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, Final
 
-from fastraml.parser.fragments import APIFragment
 from fastraml.parser.security import TYPE_BASIC, TYPE_OAUTH1, TYPE_OAUTH2
 from fastraml.parser.uritemplates import extract_uri_template_params
 from fastraml.types.complex_ import ArrayShape, ObjectShape
@@ -68,16 +67,6 @@ def _rate_header_usable(name: str, shape: object) -> bool:
     if name in {'ratelimit', 'ratelimit-policy'}:
         return isinstance(shape, StringShape)
     return isinstance(shape, IntegerShape)
-
-
-def _effective_protocols(ctx: Context, operation: Operation) -> set[str]:
-    values = operation.protocols or ctx.raml.global_protocols
-    if values:
-        return {value.casefold() for value in values}
-    entry = ctx.raml.entry_point
-    if isinstance(entry, APIFragment) and entry.base_uri is not None:
-        return {entry.base_uri.value.partition(':')[0].casefold()}
-    return set()
 
 
 def _status_code(response: Response) -> int:
@@ -218,8 +207,9 @@ class HttpsOnly:
     )
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
-        protocols = _effective_protocols(ctx, operation)
-        if protocols == {'https'}:
+        # Effective, as the parser settled them (docs/08 § 6.1).
+        protocols = {facet.value for facet in operation.protocols} or set(ctx.raml.global_protocols)
+        if protocols == {'HTTPS'}:
             return ()
         return (
             ctx.on(

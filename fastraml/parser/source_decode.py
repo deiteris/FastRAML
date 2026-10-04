@@ -41,8 +41,8 @@ from fastraml.facet_names import (
 )
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.directives import make_security_schemes
-from fastraml.parser.endpoints import VALID_PROTOCOLS, Body, EndPoint, Operation, Request, Response
-from fastraml.parser.facets import make_string_facet, scalar_str
+from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Response, decode_protocols
+from fastraml.parser.facets import make_string_facet
 from fastraml.parser.includes import inline_include
 from fastraml.types.shape import make_body_shape, make_parameter_map, make_shape
 from fastraml.yamlnode import NodeKind, is_null, node_error, pairs
@@ -91,20 +91,6 @@ def _secured_by(raml: Raml, source: SourceEndPoint | SourceOperation) -> list[Se
     if not source.explicit_secured_by:
         return raml.global_secured_by
     return make_security_schemes(raml, source.secured_by)
-
-
-def _protocols(raml: Raml, node: Node, location: str) -> list[str]:
-    """`protocols:` on a method. The same rule the API root applies to its own."""
-    node, location = inline_include(raml, node, location)
-    if node.kind is not NodeKind.SEQUENCE:
-        raise node_error('protocols must be a sequence', location, node)
-    protocols = []
-    for item in node.content:
-        text = scalar_str(item, location)
-        if text.lower() not in VALID_PROTOCOLS:
-            raise node_error('unknown protocol', location, item, info={'protocol': text})
-        protocols.append(text.upper())
-    return protocols
 
 
 # -- bodies and media types (docs/08 § 6.3) ------------------------------------
@@ -311,7 +297,7 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
     elif name == FACET_DESCRIPTION:
         operation.description = make_string_facet(raml, key, value, location)
     elif name == FACET_PROTOCOLS:
-        operation.protocols = _protocols(raml, value, location)
+        operation.protocols = decode_protocols(raml, value, location)
     elif name == FACET_BODY:
         request.bodies = _decode_bodies(raml, key, value, location, DomainLocation.REQUEST_BODY)
     elif name == FACET_RESPONSES:

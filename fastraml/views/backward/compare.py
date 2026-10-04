@@ -211,8 +211,14 @@ class _Backward:
             )
 
     def api_protocols(self) -> None:
-        old, new = _api_protocols(self.old_api), _api_protocols(self.new_api)
-        if old != new:
+        """The API's effective protocols: its `protocols:`, else its baseUri's (docs/08 § 6.1).
+
+        Compared as sets. The parser has upper-cased them, so `[https]` to
+        `[HTTPS]`, or a reordering, is no change. An empty side is
+        undetermined, not "no protocol", so it is compared with nothing.
+        """
+        old, new = tuple(self.old.global_protocols), tuple(self.new.global_protocols)
+        if old and new and set(old) != set(new):
             self.emit(
                 _At(TransportLocation(), None), 'changed', 'protocol', _protocol_rule(old, new), 'protocols', old, new
             )
@@ -239,14 +245,18 @@ class _Backward:
         `protocols:` is an API-level default a method may override, so an edit at
         the root is one change that reaches every method, reported once by
         `api_protocols` rather than once per method. An operation that declares
-        its own protocols makes its own statement and is compared here.
+        its own protocols makes its own statement and is compared here, against
+        the effective protocols on the other side: a method that starts or stops
+        restating the API's protocols changes nothing. Where the other side
+        falls back to undetermined API protocols, there is nothing to compare.
         """
-        old_declared, new_declared = tuple(old_operation.protocols), tuple(new_operation.protocols)
+        old_declared = tuple(facet.value for facet in old_operation.protocols)
+        new_declared = tuple(facet.value for facet in new_operation.protocols)
         if not old_declared and not new_declared:
             return
-        old = old_declared or _api_protocols(self.old_api)
-        new = new_declared or _api_protocols(self.new_api)
-        if old != new:
+        old = old_declared or tuple(self.old.global_protocols)
+        new = new_declared or tuple(self.new.global_protocols)
+        if old and new and set(old) != set(new):
             self.emit(
                 _At(TransportLocation(), operation),
                 'changed',
@@ -760,10 +770,6 @@ def _operations(raml: Raml) -> dict[OperationId, tuple[EndPoint, Operation]]:
 
 def _protocol_rule(old: tuple[str, ...], new: tuple[str, ...]) -> str:
     return 'protocol-removed' if any(item not in new for item in old) else 'protocol-added'
-
-
-def _api_protocols(api: APIFragment | None) -> tuple[str, ...]:
-    return () if api is None else tuple(facet.value for facet in api.protocols)
 
 
 def _facet_movement(attribute: str, before: object, after: object) -> str:

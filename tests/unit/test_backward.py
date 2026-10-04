@@ -890,6 +890,61 @@ def test_a_method_that_starts_overriding_an_inherited_default_is_compared(tmp_pa
     assert operation.impact == 'breaking'
 
 
+@pytest.mark.parametrize(
+    ('old', 'new'),
+    [
+        ('protocols: [https]\n/a:\n  get:\n', 'protocols: [HTTPS]\n/a:\n  get:\n'),
+        ('protocols: [HTTP, HTTPS]\n/a:\n  get:\n', 'protocols: [HTTPS, HTTP]\n/a:\n  get:\n'),
+        ('protocols: [HTTPS]\n/a:\n  get:\n', 'protocols: [HTTPS]\n/a:\n  get:\n    protocols: [https]\n'),
+        ('baseUri: https://x.test\n/a:\n  get:\n', 'baseUri: https://x.test\nprotocols: [HTTPS]\n/a:\n  get:\n'),
+        ('baseUri: https://x.test\n/a:\n  get:\n', 'baseUri: https://x.test\n/a:\n  get:\n    protocols: [HTTPS]\n'),
+    ],
+    ids=['case', 'order', 'method-restates-root', 'root-states-base-uri', 'method-states-base-uri'],
+)
+def test_protocols_that_say_the_same_thing_are_no_change(tmp_path, old, new):
+    """Effective protocols, compared as sets (docs/08 § 6.1): a spelling, an
+    order, or a restatement of what was already in force moves nothing."""
+    head = '#%RAML 1.0\ntitle: T\n'
+    assert not [change for change in graded(tmp_path, head + old, head + new) if change.subject == 'protocol']
+
+
+@pytest.mark.parametrize(
+    ('old', 'new'),
+    [
+        ('baseUri: http://x.test\n', "baseUri: '{s}://x.test'\n"),
+        ('baseUri: http://x.test\n', ''),
+        ('', 'baseUri: https://x.test\n'),
+        ("baseUri: '{s}://x.test'\n", 'protocols: [HTTPS]\n'),
+        ("baseUri: '{s}://x.test'\n/a:\n  get:\n", "baseUri: '{s}://x.test'\n/a:\n  get:\n    protocols: [HTTPS]\n"),
+        ("baseUri: '{s}://x.test'\n/a:\n  get:\n    protocols: [HTTP]\n", "baseUri: '{s}://x.test'\n/a:\n  get:\n"),
+    ],
+    ids=['to-templated', 'base-uri-removed', 'base-uri-added', 'templated-to-stated', 'method-states', 'method-drops'],
+)
+def test_undetermined_protocols_are_compared_with_nothing(tmp_path, old, new):
+    """No `protocols:` and no literal web scheme leaves the effective protocols
+    undetermined (docs/08 § 6.1), which is not the empty set: neither a
+    protocol removed nor one added."""
+    head = '#%RAML 1.0\ntitle: T\n'
+    assert not [change for change in graded(tmp_path, head + old, head + new) if change.subject == 'protocol']
+
+
+def test_a_base_uri_scheme_change_without_protocols_is_also_a_protocol_change(tmp_path):
+    """Without `protocols:`, the baseUri's scheme is the API's protocol. The
+    address and the transport are different facts, so both are reported
+    (docs/16 § 5)."""
+    old = '#%RAML 1.0\ntitle: T\nbaseUri: http://x.test\n/a:\n  get:\n'
+    new = old.replace('http://', 'https://')
+    found = graded(tmp_path, old, new)
+    [change] = [change for change in found if change.subject == 'protocol']
+    assert (change.operation, change.before, change.after, change.rule) == (
+        None,
+        ('HTTP',),
+        ('HTTPS',),
+        'protocol-removed',
+    )
+    assert 'base-uri-changed' in {change.rule for change in found}
+
+
 def test_an_addition_says_what_the_new_thing_is_for(tmp_path):
     """The author's `description` is what a reader wants about a field they have
     never seen, and no coordinate can supply it.

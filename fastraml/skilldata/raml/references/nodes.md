@@ -67,7 +67,7 @@ Reserved URI parameter names:
 | `queryString?` | a type name or declaration; mutually exclusive with `queryParameters` |
 | `body?` | a body declaration |
 | `responses?` | a map of status code to response |
-| `protocols?` | an array of `HTTP` and `HTTPS` |
+| `protocols?` | a non-empty array of `HTTP` and `HTTPS`, case-insensitive |
 | `is?` | an array of trait names |
 | `securedBy?` | an array of scheme names |
 | `(annotationName)?` | an annotation application |

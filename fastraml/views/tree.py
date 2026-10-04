@@ -567,8 +567,7 @@ class _Projector:
         for field in ('title', 'version', 'base_uri', 'media_types', 'protocols', 'usage', 'description'):
             value = getattr(fragment, field, None)
             if value is not None:
-                spelled = self.value(value, frozenset())
-                out[field] = _protocols(spelled) if field == 'protocols' else spelled
+                out[field] = self.value(value, frozenset())
         declared = getattr(fragment, 'base_uri_parameters', None)
         if declared:
             # `{tenant}` in the base URI is a value every caller has to supply,
@@ -625,7 +624,7 @@ class _Projector:
             # A method may narrow the API's protocols, and the narrowing is the
             # scheme of the URL a caller has to build -- an `HTTPS`-only method
             # under an `HTTP, HTTPS` API is not a detail of presentation.
-            out['protocols'] = [protocol.upper() for protocol in operation.protocols]
+            out['protocols'] = [facet.value for facet in operation.protocols]
         if operation.secured_by:
             out['secured_by'] = self.schemes(operation.secured_by)
         if operation.annotations:
@@ -720,18 +719,6 @@ class _Projector:
             'type': self.at(extension.defined_by.id) if extension.defined_by is not None else None,
             'value': self.value(extension.value, frozenset()) if extension.value is not None else None,
         }
-
-
-def _protocols(value: Json) -> list[Json]:
-    """Protocols in one canonical wire spelling."""
-    if not isinstance(value, list):
-        raise TypeError('protocols did not project as a list')
-    out: list[Json] = []
-    for item in value:
-        if not isinstance(item, str):
-            raise TypeError('protocol did not project as a string')
-        out.append(item.upper())
-    return out
 
 
 def _node(node: Node) -> Json:

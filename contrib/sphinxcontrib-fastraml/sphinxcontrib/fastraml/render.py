@@ -101,7 +101,7 @@ class Writer:
                     # The template, where binding `{version}` changed it.
                     ('As written', _written(self.catalogue)),
                     ('Base URI parameters', self.parameters(self.catalogue.base_uri_parameters(), addressable=True)),
-                    ('Protocols', _words([protocol.upper() for protocol in self.catalogue.value('protocols')])),
+                    ('Protocols', _words(self.catalogue.value('protocols'))),
                     ('Media types', _literals(self.catalogue.value('media_types'))),
                     ('Security', self.security(self.catalogue.secured_by())),
                     ('Annotations', self.annotations(entry.annotations if entry else None)),
@@ -188,7 +188,7 @@ class Writer:
                     # Already the effective list: falling back to the resource's
                     # would re-show a requirement the method removed (docs/09 § A4).
                     ('Security', self.security(operation.secured_by)),
-                    ('Protocols', _words([protocol.upper() for protocol in operation.protocols])),
+                    ('Protocols', _words([facet.value for facet in operation.protocols])),
                     ('Annotations', self.annotations(operation.annotations)),
                     ('Base URI parameters', self.base_parameters()),
                     ('URI parameters', self.parameters(endpoint.uri_parameters)),

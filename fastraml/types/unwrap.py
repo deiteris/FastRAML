@@ -72,9 +72,12 @@ class _Walk:
 
     `register` is false for P10's private copy (`unwrap_detached`): its shapes
     keep the declarations' ids, and are not the model's to index or mark.
+
+    `hops` counts the alias edges on the current path, which `depth` does not
+    (`_unwrap_alias`).
     """
 
-    __slots__ = ('done', 'failed', 'max_depth', 'raml', 'register')
+    __slots__ = ('done', 'failed', 'hops', 'max_depth', 'raml', 'register')
 
     def __init__(self, raml: Raml, *, register: bool = True) -> None:
         self.raml = raml
@@ -85,6 +88,7 @@ class _Walk:
         self.max_depth = raml.max_depth
         self.done: dict[int, BaseShape] = {}
         self.failed: dict[int, RamlError] = {}
+        self.hops = 0
 
 
 class _Failed(Exception):  # noqa: N818 - private, never escapes this module
@@ -255,7 +259,7 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
             # resolved and returned as it stands (docs/07 § 3). The edge is
             # repointed as `inherits` is: a referent that collapsed to a union
             # member is a replacement, and the original is in no index.
-            base.alias = _unwrap(walk, base.alias, depth + 1)
+            base.alias = _unwrap_alias(walk, base.alias, depth)
             result = alias_to(base, base.alias)
         else:
             source = _unwrap_parents(walk, base, depth)
@@ -281,6 +285,30 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
     if walk.register:
         walk.raml.put_shape(result)
     return result
+
+
+def _unwrap_alias(walk: _Walk, referent: BaseShape, depth: int) -> BaseShape:
+    """An alias's referent, at the alias's own depth.
+
+    `p: T` reaches `T` through the property and then through the name, and
+    the name is not a level: charging it made a chain declared top-down fail
+    at half the depth of the same chain declared bottom-up (docs/12 § 3).
+    Alias hops on the current path are bounded on their own instead, so a
+    chain of names cannot recurse without limit.
+    """
+    if walk.hops >= walk.max_depth and not referent._unwrapped:  # noqa: SLF001 - see `_unwrap`
+        raise RamlError.new(
+            'type nesting too deep',
+            referent.location,
+            referent.key_pos,
+            kind=ErrorKind.UNWRAPPING,
+            info={'limit': walk.max_depth},
+        )
+    walk.hops += 1
+    try:
+        return _unwrap(walk, referent, depth)
+    finally:
+        walk.hops -= 1
 
 
 def _distribute_union_facets(walk: _Walk, base: BaseShape, depth: int) -> None:
@@ -631,7 +659,10 @@ class _Finishing:
 
     `unions` is the collector dispatch tables are built off; it is filled as a
     side effect of the descent rather than by a second walk. `register` is as
-    `_Walk`'s.
+    `_Walk`'s. A shape is walked once per path to it, because where a marker
+    goes depends on what is on the stack. `unions` holds each union once
+    however many paths reach it, keyed by the shape itself, which has no
+    equality.
     """
 
     __slots__ = ('max_depth', 'raml', 'register', 'unions')
@@ -640,7 +671,7 @@ class _Finishing:
         self.raml = raml
         self.max_depth = raml.max_depth
         self.register = register
-        self.unions: list[UnionShape] = []
+        self.unions: dict[UnionShape, None] = {}
 
 
 def _finish_roots(finishing: _Finishing, roots: Iterable[BaseShape]) -> None:
@@ -701,7 +732,7 @@ def _finish_children(finishing: _Finishing, shape: Shape, depth: int) -> None:
     elif isinstance(shape, UnionShape):
         # Collected whether or not it has members: `build_dispatch` is what
         # settles `_dispatch` away from "never unwrapped".
-        finishing.unions.append(shape)
+        finishing.unions[shape] = None
         if shape.any_of is not None:
             shape.any_of = [_finish(finishing, member, depth + 1) or member for member in shape.any_of]
     elif isinstance(shape, ObjectShape):

@@ -126,20 +126,25 @@ def _count_bounds(
     accumulator.raise_if_any()
 
 
-def _clone_properties(properties: dict[str, Property] | None, memo: dict[int, BaseShape]) -> dict[str, Property] | None:
+def _clone_properties(
+    properties: dict[str, Property] | None, memo: dict[int, BaseShape], depth: int
+) -> dict[str, Property] | None:
     if properties is None:
         return None
-    return {name: prop.with_base(prop.base.clone(memo)) for name, prop in properties.items()}
+    return {name: prop.with_base(prop.base.clone(memo, depth + 1)) for name, prop in properties.items()}
 
 
 def _clone_pattern_properties(
-    properties: dict[str, PatternProperty] | None, memo: dict[int, BaseShape]
+    properties: dict[str, PatternProperty] | None, memo: dict[int, BaseShape], depth: int
 ) -> dict[str, PatternProperty] | None:
     if properties is None:
         return None
     # The compiled pattern is shared: `re.Pattern` is immutable, and it is one
     # of the three things `copy.deepcopy` would have copied pointlessly.
-    return {key: PatternProperty(pattern=prop.pattern, base=prop.base.clone(memo)) for key, prop in properties.items()}
+    return {
+        key: PatternProperty(pattern=prop.pattern, base=prop.base.clone(memo, depth + 1))
+        for key, prop in properties.items()
+    }
 
 
 class ObjectShape(ComplexKind):
@@ -206,10 +211,10 @@ class ObjectShape(ComplexKind):
         if declares_discriminator:
             raml._discriminator_shapes.append(self.base)  # noqa: SLF001 - consumed by the pre-P9 check
 
-    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> ObjectShape:
-        clone = cast('ObjectShape', super().clone(base, memo))
-        clone.properties = _clone_properties(self.properties, memo)
-        clone.pattern_properties = _clone_pattern_properties(self.pattern_properties, memo)
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape], depth: int) -> ObjectShape:
+        clone = cast('ObjectShape', super().clone(base, memo, depth))
+        clone.properties = _clone_properties(self.properties, memo, depth)
+        clone.pattern_properties = _clone_pattern_properties(self.pattern_properties, memo, depth)
         return clone
 
     def check(self) -> None:
@@ -378,9 +383,9 @@ class ArrayShape(ComplexKind):
                     rest.append(value)
         super().decode_facets(rest)
 
-    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> ArrayShape:
-        clone = cast('ArrayShape', super().clone(base, memo))
-        clone.items = self.items.clone(memo) if self.items is not None else None
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape], depth: int) -> ArrayShape:
+        clone = cast('ArrayShape', super().clone(base, memo, depth))
+        clone.items = self.items.clone(memo, depth + 1) if self.items is not None else None
         return clone
 
     def check(self) -> None:
@@ -663,9 +668,9 @@ class UnionShape(ComplexKind):
         # needs the YAML nodes it was written as.
         self.pending_facets = rest
 
-    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> UnionShape:
-        clone = cast('UnionShape', super().clone(base, memo))
-        clone.any_of = None if self.any_of is None else [member.clone(memo) for member in self.any_of]
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape], depth: int) -> UnionShape:
+        clone = cast('UnionShape', super().clone(base, memo, depth))
+        clone.any_of = None if self.any_of is None else [member.clone(memo, depth + 1) for member in self.any_of]
         # Not copied: the table holds the *members*, and the clone's are new
         # shapes. Carrying it over would dispatch into the original's graph. The
         # clone gets its own when P9 reaches it.
@@ -673,7 +678,7 @@ class UnionShape(ComplexKind):
         # Cloned, not shared: P9 unwraps the holders in place.
         if self._member_declarations is not None:
             clone._member_declarations = {  # noqa: SLF001 - see above
-                name: holder.clone(memo) for name, holder in self._member_declarations.items()
+                name: holder.clone(memo, depth + 1) for name, holder in self._member_declarations.items()
             }
         return clone
 
@@ -826,11 +831,14 @@ class UnknownShape(ComplexKind):
     (docs/07 § 2).
     """
 
-    __slots__ = ('from_mapping', 'pending_facets', 'pending_target')
+    __slots__ = ('chain_failure', 'from_mapping', 'pending_facets', 'pending_target')
 
     def __init__(self, base: BaseShape, facets: list[Node] | None = None, *, from_mapping: bool = True) -> None:
         super().__init__(base)
         self.pending_facets: list[Node] = facets if facets is not None else []
+        #: The reference-chain depth error P7 met resolving through this
+        #: declaration, raised again on any later route to it (docs/12 § 3).
+        self.chain_failure: RamlError | None = None
         #: Where an annotation among `pending_facets` is applied, as it stood
         #: when they were written. P7 decodes them long after, when the stack
         #: says the root (docs/09 § B4). Only the target: their names resolve as
@@ -873,11 +881,11 @@ class RecursiveShape(ComplexKind):
         super().__init__(base)
         self.head = head
 
-    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> RecursiveShape:
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape], depth: int) -> RecursiveShape:
         # `head` is a back-edge into the same graph, so it goes through `memo`:
         # cloning it afresh would unroll the cycle the marker exists to close.
         # The generic path cannot be used at all — `__init__` requires a head.
-        return RecursiveShape(base, self.head.clone(memo))
+        return RecursiveShape(base, self.head.clone(memo, depth + 1))
 
     def check(self) -> None:
         # The head is checked where it is declared. Following the back-edge here

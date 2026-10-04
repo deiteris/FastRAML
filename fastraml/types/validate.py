@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 from fastraml.datanode import at_value, locate
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
-from fastraml.types.base import TYPE_JSON
+from fastraml.types.base import TYPE_JSON, checks_memoized
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.examples import examples_of
 from fastraml.types.unwrap import unwrap_detached
@@ -116,18 +116,19 @@ def validate_shapes(raml: Raml) -> None:
 
 def _validate_types(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator) -> None:
     known = _discriminator_values(raml, cache)
-    for location, shapes in raml.fragment_typedefs.items():
-        for base in shapes:
-            try:
-                flattened = _ensure_unwrapped(raml, base, cache)
-            except RamlError as err:
-                acc.add(RamlError.wrap('unwrap for validation', err, location, base.key_pos))
-                continue
-            try:
-                flattened.check()
-            except RamlError as err:
-                acc.add(err)
-            _validate_commons(flattened, known, acc, set())
+    with checks_memoized():
+        for location, shapes in raml.fragment_typedefs.items():
+            for base in shapes:
+                try:
+                    flattened = _ensure_unwrapped(raml, base, cache)
+                except RamlError as err:
+                    acc.add(RamlError.wrap('unwrap for validation', err, location, base.key_pos))
+                    continue
+                try:
+                    flattened.check()
+                except RamlError as err:
+                    acc.add(err)
+                _validate_commons(flattened, known, acc, set())
 
 
 def _validate_query_strings(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator) -> None:

@@ -716,6 +716,45 @@ class TestRecursionMarking:
         assert not isinstance(properties['a'].base.shape, RecursiveShape)
         assert not isinstance(properties['b'].base.shape, RecursiveShape)
 
+    def test_a_shape_reached_again_is_marked_against_the_new_stack(self, workspace):
+        """docs/07 § 6: where a marker goes depends on what is being walked.
+
+        `T3` is walked first under `T0`, then again as its own root, where the
+        cycle through `q` closes elsewhere. A walk that skipped the second
+        visit left `p2`'s copy validating against the wrong head.
+        """
+        root = workspace(
+            {
+                'lib.raml': LIB + 'types:\n'
+                '  T0: T2[]\n'
+                '  T2: T3\n'
+                '  T3:\n    properties:\n      p2?: T0\n      q?: T2[]\n'
+                '  U:\n    type: T3\n    example:\n      q:\n        - p2: 5\n'
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
+        paths = [trace.info.get('path') for chain in caught.value.chains() for trace in chain if trace.info]
+        assert '$.q[0].p2' in paths
+
+    def test_a_shared_union_gets_one_dispatch_table(self, workspace, monkeypatch):
+        """The collector holds each union once however many paths reach it."""
+        built = []
+        original = UnionShape.build_dispatch
+
+        def counting(shape):
+            built.append(shape)
+            return original(shape)
+
+        monkeypatch.setattr(UnionShape, 'build_dispatch', counting)
+        unwrapped(
+            workspace,
+            '  U:\n    type: string | integer\n'
+            '  M:\n    properties:\n      a: U\n      b: U\n'
+            '  T:\n    properties:\n      l: M\n      r: M\n',
+        )
+        assert len(built) == len({id(shape) for shape in built})
+
     def test_the_model_can_be_walked_without_recursing_forever(self, workspace):
         _raml, types = unwrapped(workspace, '  Node:\n    properties:\n      next: Node\n')
 

@@ -38,6 +38,7 @@ WRITERS = {
     'unions': lambda root: corpus.write_unions(root, family_count=1),
     'facets': lambda root: corpus.write_facets(root, family_count=1),
     'inheritance': lambda root: corpus.write_inheritance(root, family_count=1),
+    'diamonds': lambda root: corpus.write_diamonds(root, family_count=1),
     'sequence-merge': lambda root: corpus.write_sequence_merge(root, resource_count=len(corpus.MERGED_ENUM_SIZES)),
     'includes': lambda root: corpus.write_includes(root, resource_count=corpus._LEADING_TAB_EVERY + 1),
     'include-content': lambda root: corpus.write_include_content(root, resource_count=3),
@@ -571,6 +572,39 @@ class TestFeatureCorporaReachTheirCode:
         monkeypatch.setattr(validate_module, '_facet_declarations', counting)
         parse_from_path(corpus.write_facets(tmp_path, family_count=1), ParseOptions(unwrap=True, validate=True))
         assert set(widths) >= set(corpus.FACET_PARENTS)
+
+    def test_diamonds_reaches_every_shared_level_by_both_routes(self, tmp_path, monkeypatch):
+        """Recursion marking, `check` and the example walk each meet every shared level twice."""
+        import fastraml.types.unwrap as unwrap_module
+        import fastraml.types.validate as validate_module
+        from fastraml.types.base import BaseShape
+
+        calls: dict[str, list[BaseShape]] = {'finish': [], 'check': [], 'commons': []}
+
+        def counting(name, original, position):
+            def call(*args):
+                calls[name].append(args[position])
+                return original(*args)
+
+            return call
+
+        monkeypatch.setattr(unwrap_module, '_finish', counting('finish', unwrap_module._finish, 1))
+        monkeypatch.setattr(
+            validate_module, '_validate_commons', counting('commons', validate_module._validate_commons, 0)
+        )
+        monkeypatch.setattr(BaseShape, 'check', counting('check', BaseShape.check, 0))
+        raml = parse_from_path(
+            corpus.write_diamonds(tmp_path, family_count=1), ParseOptions(unwrap=True, validate=True)
+        )
+        types = raml.types_in(raml.location)
+        for level in range(1, corpus.DIAMOND_DEPTH):
+            # Level `level` is shared: both of the previous level's properties
+            # lead into its one `properties` container.
+            above = types[f'F0D{level - 1}'].shape.properties
+            assert above['l'].base.shape.properties is above['r'].base.shape.properties
+            for prop in types[f'F0D{level}'].shape.properties.values():
+                for name, reached in calls.items():
+                    assert sum(base is prop.base for base in reached) >= 2, (name, level)
 
     def test_inheritance_takes_every_union_path_and_folds_every_declaration_kind(self, tmp_path, monkeypatch):
         import fastraml.types.inherit as inherit_module

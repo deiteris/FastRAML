@@ -497,6 +497,40 @@ class TestAccumulation:
         assert len([t for t in traces(error) if t.message == 'minLength exceeds maxLength']) == 2
 
 
+#: Fourteen levels, each holding two properties of the next level's type.
+SHARED_LEVELS = 14
+SHARED = ''.join(f'  T{i}:\n    properties:\n      l: T{i + 1}\n      r: T{i + 1}\n' for i in range(SHARED_LEVELS))
+
+
+class TestASharedNestedType:
+    """docs/10 § 2: P10 checks a shape once, not once per path to it."""
+
+    @pytest.mark.parametrize('unwrap', [True, False])
+    def test_is_checked_once_per_declaration_copy(self, workspace, monkeypatch, unwrap):
+        from fastraml.types.complex_ import ObjectShape
+
+        checked = []
+        original = ObjectShape.check
+
+        def counting(shape):
+            checked.append(shape)
+            return original(shape)
+
+        monkeypatch.setattr(ObjectShape, 'check', counting)
+        root = workspace({'api.raml': API + 'types:\n' + SHARED + f'  T{SHARED_LEVELS}: string\n'})
+        workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=unwrap))
+        # Without unwrap each declaration is checked in a copy of its own.
+        copies = 1 if unwrap else SHARED_LEVELS
+        assert len(checked) <= 3 * SHARED_LEVELS * copies
+
+    def test_its_failure_is_reported_once(self, workspace):
+        error = parse(
+            workspace, SHARED + f'  T{SHARED_LEVELS}:\n    type: string\n    minLength: 9\n    maxLength: 2\n'
+        )
+        assert error is not None
+        assert [t.message for t in traces(error)] == ['minLength exceeds maxLength']
+
+
 class TestNotRunWithoutTheOption:
     def test_a_bad_declaration_parses_when_validation_is_off(self, workspace):
         root = workspace({'api.raml': API + 'types:\n  T:\n    type: string\n    minLength: 9\n    maxLength: 2\n'})
